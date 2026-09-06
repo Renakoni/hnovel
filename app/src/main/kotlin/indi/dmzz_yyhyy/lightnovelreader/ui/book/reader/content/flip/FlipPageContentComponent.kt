@@ -4,6 +4,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
@@ -282,20 +283,22 @@ private fun SimpleFlipPageTextComponent(
                     settingState.flipAnime,
                     settingState.fastChapterChange
                 ) {
-                    awaitPointerEventScope {
-                        val hadSelectionFocus = selectionState.hasFocus
-                        val down = awaitFirstDown(requireUnconsumed = false)
-                        val up = waitForUpOrCancellation()
-                        if (up != null && hadSelectionFocus) {
-                            focusManager.clearFocus()
-                        } else if (up != null && !up.isConsumed) {
-                            if (settingState.isUsingFlipPage && settingState.isUsingClickFlipPage)
-                                when {
-                                    down.position.x < screenWidthPx / 3f -> lastPage(uiState.pagerState)
-                                    down.position.x > screenWidthPx * 2f / 3f -> nextPage(uiState.pagerState)
-                                    else -> changeIsImmersive.invoke()
-                                }
-                            else changeIsImmersive.invoke()
+                    awaitEachGesture {
+                        awaitPointerEventScope {
+                            val hadSelectionFocus = selectionState.hasFocus
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            val up = waitForUpOrCancellation()
+                            if (up != null && hadSelectionFocus) {
+                                focusManager.clearFocus()
+                            } else if (up != null && !up.isConsumed) {
+                                if (settingState.isUsingFlipPage && settingState.isUsingClickFlipPage)
+                                    when {
+                                        down.position.x < screenWidthPx / 3f -> lastPage(uiState.pagerState)
+                                        down.position.x > screenWidthPx * 2f / 3f -> nextPage(uiState.pagerState)
+                                        else -> changeIsImmersive.invoke()
+                                    }
+                                else changeIsImmersive.invoke()
+                            }
                         }
                     }
                 },

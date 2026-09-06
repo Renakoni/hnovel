@@ -7,6 +7,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -255,14 +256,16 @@ fun ScrollContentTextComponent(
             modifier = modifier
                 .padding(paddingValues)
                 .pointerInput(Unit) {
-                    awaitPointerEventScope {
-                        val hadSelectionFocus = selectionState.hasFocus
-                        awaitFirstDown(requireUnconsumed = false)
-                        val up = waitForUpOrCancellation()
-                        if (up != null && hadSelectionFocus) {
-                            focusManager.clearFocus()
-                        } else if (up != null && !up.isConsumed) {
-                            changeIsImmersive.invoke()
+                    awaitEachGesture {
+                        awaitPointerEventScope {
+                            val hadSelectionFocus = selectionState.hasFocus
+                            awaitFirstDown(requireUnconsumed = false)
+                            val up = waitForUpOrCancellation()
+                            if (up != null && hadSelectionFocus) {
+                                focusManager.clearFocus()
+                            } else if (up != null && !up.isConsumed) {
+                                changeIsImmersive.invoke()
+                            }
                         }
                     }
                 }
