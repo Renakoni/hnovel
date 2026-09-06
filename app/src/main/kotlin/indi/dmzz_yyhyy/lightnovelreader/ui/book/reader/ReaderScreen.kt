@@ -190,29 +190,10 @@ fun ReaderScreen(
                 )
             }
         },
-        bottomBar = {
-            AnimatedVisibility(
-                visible = !isImmersive,
-                enter = expandVertically(),
-                exit = shrinkVertically()
-            ) {
-                BottomBar(
-                    hasNextChapter = readingScreenUiState.contentUiState?.readingChapterContent
-                        ?.get()
-                        ?.hasNextChapter() ?: false,
-                    hasPrevChapter = readingScreenUiState.contentUiState?.readingChapterContent
-                        ?.get()
-                        ?.hasPrevChapter() ?: false,
-                    onClickPrevChapter = onClickPrevChapter,
-                    onClickNextChapter = onClickNextChapter,
-                    onClickSettings = { showSettingsBottomSheet = true },
-                    onClickChapterSelector = { showChapterSelectionBottomSheet = true },
-                )
-            }
-        },
         containerColor = readerBackgroundColor(settingState),
         contentWindowInsets = WindowInsets(0, 0, 0, 0)
     ) { _ ->
+        Box(Modifier.fillMaxSize()) {
         if (settingState.enableBackgroundImage) {
             val bgPainter = rememberReaderBackgroundPainter(settingState)
             val bgState by remember(bgPainter) {
@@ -239,6 +220,27 @@ fun ReaderScreen(
             onClickNextChapter = onClickNextChapter,
             onChangeIsImmersive = { isImmersive = !isImmersive }
         )
+
+        AnimatedVisibility(
+            modifier = Modifier.align(Alignment.BottomCenter),
+            visible = !isImmersive,
+            enter = expandVertically(),
+            exit = shrinkVertically()
+        ) {
+            BottomBar(
+                hasNextChapter = readingScreenUiState.contentUiState?.readingChapterContent
+                    ?.get()
+                    ?.hasNextChapter() ?: false,
+                hasPrevChapter = readingScreenUiState.contentUiState?.readingChapterContent
+                    ?.get()
+                    ?.hasPrevChapter() ?: false,
+                onClickPrevChapter = onClickPrevChapter,
+                onClickNextChapter = onClickNextChapter,
+                onClickSettings = { showSettingsBottomSheet = true },
+                onClickChapterSelector = { showChapterSelectionBottomSheet = true },
+            )
+        }
+        }
     }
     AnimatedVisibility(visible = showSettingsBottomSheet) {
         SettingsBottomSheet(

@@ -3,9 +3,10 @@ package indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.flip
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.Orientation
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -277,17 +278,19 @@ private fun SimpleFlipPageTextComponent(
                     settingState.flipAnime,
                     settingState.fastChapterChange
                 ) {
-                    detectTapGestures(
-                        onTap = {
+                    awaitPointerEventScope {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        val up = waitForUpOrCancellation()
+                        if (up != null && !up.consumed) {
                             if (settingState.isUsingFlipPage && settingState.isUsingClickFlipPage)
                                 when {
-                                    it.x < screenWidthPx / 3f -> lastPage(uiState.pagerState)
-                                    it.x > screenWidthPx * 2f / 3f -> nextPage(uiState.pagerState)
+                                    down.position.x < screenWidthPx / 3f -> lastPage(uiState.pagerState)
+                                    down.position.x > screenWidthPx * 2f / 3f -> nextPage(uiState.pagerState)
                                     else -> changeIsImmersive.invoke()
                                 }
                             else changeIsImmersive.invoke()
                         }
-                    )
+                    }
                 },
         ) {
             Box(Modifier.fillMaxSize()) {

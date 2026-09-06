@@ -6,7 +6,8 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -250,11 +251,13 @@ fun ScrollContentTextComponent(
             modifier = modifier
                 .padding(paddingValues)
                 .pointerInput(Unit) {
-                    detectTapGestures(
-                        onTap = {
+                    awaitPointerEventScope {
+                        awaitFirstDown(requireUnconsumed = false)
+                        val up = waitForUpOrCancellation()
+                        if (up != null && !up.consumed) {
                             changeIsImmersive.invoke()
                         }
-                    )
+                    }
                 }
                 .onGloballyPositioned {
                     scope.launch {
