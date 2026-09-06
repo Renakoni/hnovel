@@ -6,6 +6,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -13,6 +14,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
 import io.nightfish.lightnovelreader.api.ui.LocalTextLocaleList
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.LocalReaderSelectionState
 
 @Composable
 fun SimpleTextComponentContent(
@@ -26,7 +28,10 @@ fun SimpleTextComponentContent(
 ) {
     val localeList = LocalTextLocaleList.current
 
-    SelectionContainer {
+    val selectionState = LocalReaderSelectionState.current
+    SelectionContainer(
+        modifier = Modifier.onFocusChanged { selectionState.hasFocus = it.hasFocus }
+    ) {
         Text(
             modifier = modifier.fillMaxSize(),
             text = text,

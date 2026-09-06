@@ -38,6 +38,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalWindowInfo
@@ -49,6 +50,7 @@ import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.SettingState
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentError
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentLoading
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentUiState
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.LocalReaderSelectionState
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.data.MenuOptions
 import indi.dmzz_yyhyy.lightnovelreader.utils.LocalSnackbarHost
 import indi.dmzz_yyhyy.lightnovelreader.utils.rememberReaderBackgroundPainter
@@ -101,6 +103,8 @@ private fun SimpleFlipPageTextComponent(
     onClickNextChapter: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
+    val focusManager = LocalFocusManager.current
+    val selectionState = LocalReaderSelectionState.current
     val resources = LocalResources.current
     val density = LocalDensity.current
     val layoutDirection = LocalLayoutDirection.current
@@ -279,9 +283,12 @@ private fun SimpleFlipPageTextComponent(
                     settingState.fastChapterChange
                 ) {
                     awaitPointerEventScope {
+                        val hadSelectionFocus = selectionState.hasFocus
                         val down = awaitFirstDown(requireUnconsumed = false)
                         val up = waitForUpOrCancellation()
-                        if (up != null && !up.consumed) {
+                        if (up != null && hadSelectionFocus) {
+                            focusManager.clearFocus()
+                        } else if (up != null && !up.consumed) {
                             if (settingState.isUsingFlipPage && settingState.isUsingClickFlipPage)
                                 when {
                                     down.position.x < screenWidthPx / 3f -> lastPage(uiState.pagerState)

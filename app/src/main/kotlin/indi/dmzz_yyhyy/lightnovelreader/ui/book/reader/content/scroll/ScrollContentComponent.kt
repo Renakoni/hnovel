@@ -39,6 +39,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -57,6 +58,7 @@ import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.SettingState
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentError
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentLoading
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentUiState
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.LocalReaderSelectionState
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.Loading
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.data.MenuOptions
 import indi.dmzz_yyhyy.lightnovelreader.utils.LocalSnackbarHost
@@ -98,6 +100,8 @@ fun ScrollContentTextComponent(
     onClickPrevChapter: () -> Unit,
     onClickNextChapter: () -> Unit
 ) {
+    val focusManager = LocalFocusManager.current
+    val selectionState = LocalReaderSelectionState.current
     val snackbarHostState = LocalSnackbarHost.current
     val density = LocalDensity.current
     val screenHeight = LocalResources.current.displayMetrics.heightPixels
@@ -252,9 +256,12 @@ fun ScrollContentTextComponent(
                 .padding(paddingValues)
                 .pointerInput(Unit) {
                     awaitPointerEventScope {
+                        val hadSelectionFocus = selectionState.hasFocus
                         awaitFirstDown(requireUnconsumed = false)
                         val up = waitForUpOrCancellation()
-                        if (up != null && !up.consumed) {
+                        if (up != null && hadSelectionFocus) {
+                            focusManager.clearFocus()
+                        } else if (up != null && !up.consumed) {
                             changeIsImmersive.invoke()
                         }
                     }
