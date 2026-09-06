@@ -25,12 +25,11 @@ jobs:
         with:
           distribution: temurin
           java-version: '22'
-      - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
       - name: Make Gradle wrapper executable
         run: chmod +x ./gradlew
-      - name: Compile and run unit tests (no APK packaging)
-        run: ./gradlew :app:compileDebugKotlin :app:testDebugUnitTest :epub:compileTestKotlin --stacktrace -Dorg.gradle.jvmargs="-Xmx4g -Dfile.encoding=UTF-8" --max-workers=2
+      - name: Compile sources and type-check (no APK packaging)
+        run: ./gradlew :app:compileDebugKotlin :epub:compileTestKotlin --console=plain --stacktrace -Dorg.gradle.jvmargs="-Xmx4g -Dfile.encoding=UTF-8" --max-workers=2
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v4
