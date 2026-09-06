@@ -261,7 +261,7 @@ fun ScrollContentTextComponent(
                         val up = waitForUpOrCancellation()
                         if (up != null && hadSelectionFocus) {
                             focusManager.clearFocus()
-                        } else if (up != null && !up.consumed) {
+                        } else if (up != null && !up.isConsumed) {
                             changeIsImmersive.invoke()
                         }
                     }

@@ -288,7 +288,7 @@ private fun SimpleFlipPageTextComponent(
                         val up = waitForUpOrCancellation()
                         if (up != null && hadSelectionFocus) {
                             focusManager.clearFocus()
-                        } else if (up != null && !up.consumed) {
+                        } else if (up != null && !up.isConsumed) {
                             if (settingState.isUsingFlipPage && settingState.isUsingClickFlipPage)
                                 when {
                                     down.position.x < screenWidthPx / 3f -> lastPage(uiState.pagerState)
