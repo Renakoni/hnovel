@@ -257,15 +257,13 @@ fun ScrollContentTextComponent(
                 .padding(paddingValues)
                 .pointerInput(Unit) {
                     awaitEachGesture {
-                        awaitPointerEventScope {
-                            val hadSelectionFocus = selectionState.hasFocus
-                            awaitFirstDown(requireUnconsumed = false)
-                            val up = waitForUpOrCancellation()
-                            if (up != null && hadSelectionFocus) {
-                                focusManager.clearFocus()
-                            } else if (up != null && !up.isConsumed) {
-                                changeIsImmersive.invoke()
-                            }
+                        val hadSelectionFocus = selectionState.hasFocus
+                        awaitFirstDown(requireUnconsumed = false)
+                        val up = waitForUpOrCancellation()
+                        if (up != null && hadSelectionFocus) {
+                            focusManager.clearFocus()
+                        } else if (up != null && !up.isConsumed) {
+                            changeIsImmersive.invoke()
                         }
                     }
                 }
