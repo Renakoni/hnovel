@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name" translatable="false">[DEBUG] LightNovelReader</string>
+    <string name="plugin_install_alias_label">[Debug] Install as Plugin</string>
+</resources>

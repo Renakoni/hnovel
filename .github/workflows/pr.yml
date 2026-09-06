@@ -1,0 +1,36 @@
+name: DebugApkBuild
+on:
+  merge_group:
+  pull_request:
+    branches: [master, refactoring]
+    paths:
+      - app/src/**
+      - build.gradle.kts
+      - gradle.properties
+      - settings.gradle
+
+jobs:
+  BuildDebugApk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Setup Java 17
+        uses: actions/setup-java@v3.6.0
+        with:
+          distribution: zulu
+          java-version: 17
+      - name: Build with Gradle
+        uses: gradle/actions/setup-gradle@v3
+      - name: make gradle wrapper executable
+        if: ${{ runner.os != 'Windows' }}
+        run: chmod +x ./gradlew
+      - name: Retrieve Version
+        run: |
+          echo "::set-output name=VERSION_CODE::$(${{github.workspace}}/gradlew -q app:printVersionCode)"
+        id: android_version
+      - name: Build debug APK
+        run: ./gradlew assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LightNovelReader-${{steps.android_version.outputs.VERSION_CODE}}-debug
+          path: app/build/outputs/apk/debug/*
