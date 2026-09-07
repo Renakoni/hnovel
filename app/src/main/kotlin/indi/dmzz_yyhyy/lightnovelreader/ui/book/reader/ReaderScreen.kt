@@ -96,7 +96,8 @@ import java.util.Locale
 @Composable
 fun ReaderScreen(
     readingScreenUiState: ReaderScreenUiState,
-    settingState: SettingState,
+    settingState: ReaderSettingsEditor,
+    fontFamilySettings: ReaderFontFamilySettings,
     onClickBackButton: () -> Unit,
     accumulateReadTime: (bookId: String, Int) -> Unit,
     updateTotalReadingTime: (bookId: String, Int) -> Unit,
@@ -205,6 +206,7 @@ fun ReaderScreen(
             isImmersive = isImmersive,
             readingScreenUiState = readingScreenUiState,
             settingState = settingState,
+            fontFamilySettings = fontFamilySettings,
             onClickPrevChapter = onClickPrevChapter,
             onClickNextChapter = onClickNextChapter,
             onChangeIsImmersive = { isImmersive = !isImmersive }
@@ -310,7 +312,8 @@ fun ReaderScreen(
 fun Content(
     isImmersive: Boolean,
     readingScreenUiState: ReaderScreenUiState,
-    settingState: SettingState,
+    settingState: ReaderSettings,
+    fontFamilySettings: ReaderFontFamilySettings,
     onClickPrevChapter: () -> Unit,
     onClickNextChapter: () -> Unit,
     onChangeIsImmersive: () -> Unit
@@ -329,6 +332,7 @@ fun Content(
                 ContentComponent(
                     uiState = contentUiState,
                     settingState = settingState,
+                    fontFamilySettings = fontFamilySettings,
                     paddingValues =
                         if (settingState.autoPadding)
                             readerAutoPadding(if (isEnableIndicator) 40.dp else 0.dp)

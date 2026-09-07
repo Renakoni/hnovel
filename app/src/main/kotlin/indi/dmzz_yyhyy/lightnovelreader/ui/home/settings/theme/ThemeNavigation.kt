@@ -15,10 +15,12 @@ fun NavGraphBuilder.settingsThemeDestination() {
     composable<Route.Main.Settings.Theme> {
         val navController = LocalNavController.current
         val viewModel = hiltViewModel<ThemeViewModel>()
-        val readerSettingState = viewModel.settingState
+        val themeSettings = viewModel.themeSettings
+        val readerSettings = viewModel.readerSettings
         val isDark = LocalAppTheme.current.isDark
         ThemeScreen(
-            themeSettingState = readerSettingState,
+            themeSettingState = themeSettings,
+            readerSettingState = readerSettings,
             onClickBack = navController::popBackStackIfResumed,
             onClickChangeTextColor = {
                 navController.navigateToColorPickerDialog(
