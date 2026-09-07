@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsIgnoringVisibility
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsIgnoringVisibility
@@ -560,7 +561,7 @@ private fun BottomBar(
     onClickChapterSelector: () -> Unit
 ) {
     BottomAppBar(
-        windowInsets = WindowInsets.systemBarsIgnoringVisibility
+        windowInsets = WindowInsets.navigationBarsIgnoringVisibility
     ) {
         Row(
             Modifier
