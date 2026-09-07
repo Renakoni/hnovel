@@ -164,11 +164,7 @@ fun ReaderScreen(
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            AnimatedVisibility(
-                visible = !isImmersive,
-                enter = expandVertically(),
-                exit = shrinkVertically()
-            ) {
+            if (!isImmersive) {
                 TopBar(
                     onClickBackButton = onClickBackButton,
                     title = readingScreenUiState.contentUiState?.readingChapterContent
@@ -219,12 +215,8 @@ fun ReaderScreen(
             onChangeIsImmersive = { isImmersive = !isImmersive }
         )
 
-        AnimatedVisibility(
-            modifier = Modifier.align(Alignment.BottomCenter),
-            visible = !isImmersive,
-            enter = expandVertically(),
-            exit = shrinkVertically()
-        ) {
+        if (!isImmersive) {
+            Box(Modifier.align(Alignment.BottomCenter)) {
             BottomBar(
                 hasNextChapter = readingScreenUiState.contentUiState?.readingChapterContent
                     ?.get()
@@ -237,6 +229,7 @@ fun ReaderScreen(
                 onClickSettings = { showSettingsBottomSheet = true },
                 onClickChapterSelector = { showChapterSelectionBottomSheet = true },
             )
+            }
         }
         }
     }
