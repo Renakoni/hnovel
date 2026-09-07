@@ -2,6 +2,8 @@ package indi.dmzz_yyhyy.lightnovelreader
 
 import android.app.Application
 import android.content.Context
+import androidx.compose.foundation.ComposeFoundationFlags
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import androidx.work.WorkManager
@@ -42,10 +44,13 @@ class LightNovelReaderApplication : Application(), Configuration.Provider {
         super.attachBaseContext(base)
     }
 
-    @OptIn(ExperimentalCoroutinesApi::class)
+    @OptIn(ExperimentalCoroutinesApi::class, ExperimentalFoundationApi::class)
     @ExperimentalSerializationApi
     override fun onCreate() {
         super.onCreate()
+        // The new Compose text context menu asks MIUI's action mode to treat the
+        // Compose root as a TextView, which leaves a stale "Select all" toolbar.
+        ComposeFoundationFlags.isNewContextMenuEnabled = false
         if (BuildConfig.DEBUG) {
             System.setProperty("kotlinx.coroutines.debug", "on")
         }
