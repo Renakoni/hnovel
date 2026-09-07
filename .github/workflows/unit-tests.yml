@@ -1,4 +1,4 @@
-name: Unit tests
+name: Android PR checks
 
 on:
   pull_request:
@@ -10,12 +10,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: unit-tests-${{ github.event.pull_request.number || github.ref }}
+  group: android-pr-checks-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  unit-tests:
-    name: Unit tests
+  verify:
+    name: JVM unit tests
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -24,6 +24,11 @@ jobs:
         with:
           distribution: temurin
           java-version: '22'
+      - name: Cache Gradle wrapper
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle/wrapper/dists
+          key: gradle-wrapper-${{ runner.os }}-${{ hashFiles('gradle/wrapper/gradle-wrapper.properties') }}
       - uses: gradle/actions/setup-gradle@v4
       - name: Make Gradle wrapper executable
         run: chmod +x ./gradlew
