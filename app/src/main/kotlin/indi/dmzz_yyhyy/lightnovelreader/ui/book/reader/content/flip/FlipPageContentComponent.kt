@@ -3,7 +3,6 @@ package indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.flip
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.Orientation
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -34,7 +33,6 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -48,6 +46,7 @@ import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.SettingState
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentError
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentLoading
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentUiState
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.readerTapGestures
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.data.MenuOptions
 import indi.dmzz_yyhyy.lightnovelreader.utils.LocalSnackbarHost
 import indi.dmzz_yyhyy.lightnovelreader.utils.rememberReaderBackgroundPainter
@@ -271,23 +270,14 @@ private fun SimpleFlipPageTextComponent(
                         if (it.absoluteValue > 60) changeIsImmersive.invoke()
                     }
                 )
-                .pointerInput(
-                    settingState.isUsingClickFlipPage,
-                    settingState.isUsingFlipPage,
-                    settingState.flipAnime,
-                    settingState.fastChapterChange
-                ) {
-                    detectTapGestures(
-                        onTap = {
-                            if (settingState.isUsingFlipPage && settingState.isUsingClickFlipPage)
-                                when {
-                                    it.x < screenWidthPx / 3f -> lastPage(uiState.pagerState)
-                                    it.x > screenWidthPx * 2f / 3f -> nextPage(uiState.pagerState)
-                                    else -> changeIsImmersive.invoke()
-                                }
-                            else changeIsImmersive.invoke()
+                .readerTapGestures { position ->
+                    if (settingState.isUsingFlipPage && settingState.isUsingClickFlipPage)
+                        when {
+                            position.x < screenWidthPx / 3f -> lastPage(uiState.pagerState)
+                            position.x > screenWidthPx * 2f / 3f -> nextPage(uiState.pagerState)
+                            else -> changeIsImmersive.invoke()
                         }
-                    )
+                    else changeIsImmersive.invoke()
                 },
         ) {
             Box(Modifier.fillMaxSize()) {

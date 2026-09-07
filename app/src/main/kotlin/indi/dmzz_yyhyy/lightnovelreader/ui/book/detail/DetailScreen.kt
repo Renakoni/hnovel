@@ -131,8 +131,7 @@ fun DetailScreen(
     onClickExportToEpub: (ExportSettings) -> Unit,
     onClickBackButton: () -> Unit,
     onClickChapter: (String) -> Unit,
-    onClickReadFromStart: () -> Unit,
-    onClickContinueReading: () -> Unit,
+    onClickRead: () -> Unit,
     cacheBook: (String) -> Unit,
     requestAddBookToBookshelf: (String) -> Unit,
     onClickTag: (String) -> Unit,
@@ -176,12 +175,12 @@ fun DetailScreen(
             val allowByDirection = !lazyListState.isScrollInProgress || scrollingUp
             val canGoForward = lazyListState.canScrollForward
 
-            hasVolumes && canGoForward && allowByDirection
+            hasVolumes && uiState.userReadingData != null && canGoForward && allowByDirection
         }
     }
 
 
-    val isStartReading = uiState.userReadingData?.lastReadChapterId != null
+    val isStartReading = uiState.userReadingData?.lastReadChapterId == null
     val fabTextRes = if (isStartReading) R.string.start_reading else R.string.continue_reading
 
     val fabContent = remember {
@@ -233,9 +232,7 @@ fun DetailScreen(
                 }
 
                 Box(modifier = Modifier.align(Alignment.BottomEnd)) {
-                    fabContent(fabVisible, fabTextRes) {
-                        if (isStartReading) onClickReadFromStart() else onClickContinueReading()
-                    }
+                    fabContent(fabVisible, fabTextRes, onClickRead)
                 }
             }
         },

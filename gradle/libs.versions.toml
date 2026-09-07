@@ -44,13 +44,16 @@ kotlinSerialization = "1.11.0"
 kotlinxCoroutinesCore = "1.11.0"
 aboutLibraries = "15.0.4"
 composeShimmer = "1.5.0"
-foundation = "1.11.4"
+# Material3 already resolves Foundation to this version; SelectionState is a direct API dependency.
+foundation = "1.12.0-beta01"
 dokka = "2.2.0"
 zoomimageComposeCoil3 = "1.6.0"
 benchmark = "1.4.1"
 androidxTestExtJunit = "1.3.0"
 androidxTestRunner = "1.7.0"
 uiautomator = "2.4.0"
+junit = "4.13.2"
+robolectric = "4.16.1"
 
 [libraries]
 androidx-material-icons-core = { module = "androidx.compose.material:material-icons-core", version.ref = "materialIconsCore" }
@@ -101,7 +104,7 @@ compose-ui = { module = "androidx.compose.ui:ui", version.ref = "composeUi" }
 compose-ui-graphics = { module = "androidx.compose.ui:ui-graphics", version.ref = "composeUi" }
 compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview", version.ref = "composeUi" }
 compose-ui-tooling = { module = "androidx.compose.ui:ui-tooling", version.ref = "composeUi" }
-compose-ui-test-junit4 = { module = "androidx.compose.ui:ui-test-junit4", version.ref = "composeUi" }
+compose-ui-test-junit4 = { module = "androidx.compose.ui:ui-test-junit4", version.ref = "foundation" }
 compose-animation-graphics = { module = "androidx.compose.animation:animation-graphics-android", version.ref = "composeAnimationGraphics" }
 coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
 coil-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coil" }
@@ -127,6 +130,8 @@ androidx-benchmark-macro-junit4 = { module = "androidx.benchmark:benchmark-macro
 androidx-test-ext-junit = { module = "androidx.test.ext:junit", version.ref = "androidxTestExtJunit" }
 androidx-test-runner = { module = "androidx.test:runner", version.ref = "androidxTestRunner" }
 androidx-test-uiautomator = { module = "androidx.test.uiautomator:uiautomator", version.ref = "uiautomator" }
+junit = { module = "junit:junit", version.ref = "junit" }
+robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
 
 
 [plugins]

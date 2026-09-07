@@ -2,6 +2,8 @@ package indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content
 
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.SettingState
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.flip.FlipPageContentComponent
@@ -21,8 +23,10 @@ fun ContentComponent(
     onClickPrevChapter: () -> Unit,
     onClickNextChapter: () -> Unit
 ) {
-    uiState.let { contentUiState ->
-        when(contentUiState) {
+    val selectionState = remember { ReaderSelectionState() }
+    CompositionLocalProvider(LocalReaderSelectionState provides selectionState) {
+        uiState.let { contentUiState ->
+            when(contentUiState) {
             is FlipPageContentUiState -> FlipPageContentComponent(
                 modifier,
                 contentUiState,
@@ -41,6 +45,7 @@ fun ContentComponent(
                 onClickPrevChapter,
                 onClickNextChapter,
             )
+            }
         }
     }
 }
