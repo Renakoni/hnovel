@@ -58,7 +58,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [35], application = Application::class)
+@Config(sdk = [27], application = Application::class)
 @GraphicsMode(GraphicsMode.Mode.LEGACY)
 @OptIn(ExperimentalFoundationApi::class)
 class ReaderInteractionTest {
