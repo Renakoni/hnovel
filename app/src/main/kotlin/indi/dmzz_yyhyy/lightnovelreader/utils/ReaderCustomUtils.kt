@@ -25,10 +25,12 @@ import coil3.request.ImageRequest
 import coil3.size.Scale
 import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.ui.LocalAppTheme
-import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.SettingState
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.ReaderFontFamilySettings
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.ReaderSettings
 import io.nightfish.lightnovelreader.api.userdata.UriUserData
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -53,15 +55,36 @@ fun loadReaderFontFamilySafe(uri: Uri): FontFamily? {
 fun rememberReaderFontFamily(
     fontFamilyUriUserData: UriUserData,
 ): FontFamily {
+    return rememberReaderFontFamily(
+        fontFamilyUriFlow = fontFamilyUriUserData.getFlowWithDefault(Uri.EMPTY),
+        clearInvalidFontFamily = { fontFamilyUriUserData.set(Uri.EMPTY) },
+    )
+}
+
+@Composable
+fun rememberReaderFontFamily(
+    fontFamilySettings: ReaderFontFamilySettings,
+): FontFamily {
+    return rememberReaderFontFamily(
+        fontFamilyUriFlow = fontFamilySettings.getFlow(),
+        clearInvalidFontFamily = fontFamilySettings::clear,
+    )
+}
+
+@Composable
+private fun rememberReaderFontFamily(
+    fontFamilyUriFlow: Flow<Uri>,
+    clearInvalidFontFamily: suspend () -> Unit,
+): FontFamily {
     val snackbarScope = rememberCoroutineScope()
-    val uri by fontFamilyUriUserData.getFlowWithDefault(Uri.EMPTY).collectAsStateWithLifecycle(Uri.EMPTY)
+    val uri by fontFamilyUriFlow.collectAsStateWithLifecycle(Uri.EMPTY)
     val fontFamily = remember(uri) { loadReaderFontFamilySafe(uri) }
 
     val snackbarHostState = LocalSnackbarHost.current
     val message = stringResource(R.string.reader_custom_font_load_failed)
     if (fontFamily == null && uri != Uri.EMPTY) {
         LaunchedEffect(uri) {
-            withContext(Dispatchers.IO) { fontFamilyUriUserData.set(Uri.EMPTY) }
+            withContext(Dispatchers.IO) { clearInvalidFontFamily() }
             snackbarScope.launch {
                 snackbarHostState.showSnackbar(message)
             }
@@ -143,7 +166,7 @@ private fun rememberCustomBackgroundPainter(
 
 @Composable
 fun rememberReaderBackgroundPainter(
-    settingState: SettingState,
+    settingState: ReaderSettings,
 ): Painter {
     val isDark = LocalAppTheme.current.isDark
     val snackbarScope = rememberCoroutineScope()
@@ -164,7 +187,7 @@ fun rememberReaderBackgroundPainter(
 }
 
 @Composable
-fun readerBackgroundColor(settingState: SettingState): Color {
+fun readerBackgroundColor(settingState: ReaderSettings): Color {
     val localTheme = LocalAppTheme.current
     val isDark = localTheme.isDark
     val background = localTheme.colorScheme.background
@@ -182,7 +205,7 @@ fun readerBackgroundColor(settingState: SettingState): Color {
 }
 
 @Composable
-fun readerTextColor(settingState: SettingState): Color {
+fun readerTextColor(settingState: ReaderSettings): Color {
     val localTheme = LocalAppTheme.current
     val isDark = localTheme.isDark
     val onSurface = localTheme.colorScheme.onSurface

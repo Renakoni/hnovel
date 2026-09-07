@@ -5,7 +5,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
-import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.SettingState
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.ReaderFontFamilySettings
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.ReaderSettings
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.flip.FlipPageContentComponent
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.flip.FlipPageContentUiState
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.scroll.ScrollContentComponent
@@ -17,7 +18,8 @@ import io.nightfish.lightnovelreader.api.error.WebRequestError
 fun ContentComponent(
     modifier: Modifier = Modifier,
     uiState: ContentUiState?,
-    settingState: SettingState,
+    settingState: ReaderSettings,
+    fontFamilySettings: ReaderFontFamilySettings,
     paddingValues: PaddingValues,
     changeIsImmersive: () -> Unit,
     onClickPrevChapter: () -> Unit,
@@ -40,6 +42,7 @@ fun ContentComponent(
                 modifier,
                 contentUiState,
                 settingState,
+                fontFamilySettings,
                 paddingValues,
                 changeIsImmersive,
                 onClickPrevChapter,

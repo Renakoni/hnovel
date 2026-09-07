@@ -56,7 +56,8 @@ fun NavGraphBuilder.bookReaderDestination(onReaderActiveChanged: (Boolean) -> Un
         val viewModel = hiltViewModel<ReaderViewModel>(parentEntry ?: navBackStackEntry)
         ReaderScreen(
             readingScreenUiState = viewModel.uiState,
-            settingState = viewModel.settingState,
+            settingState = viewModel.readerSettings,
+            fontFamilySettings = viewModel.fontFamilySettings,
             onClickBackButton = navController::popBackStackIfResumed,
             updateTotalReadingTime = viewModel::updateTotalReadingTime,
             accumulateReadTime = viewModel::accumulateReadingTime,

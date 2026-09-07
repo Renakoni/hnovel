@@ -42,7 +42,7 @@ import androidx.compose.ui.res.stringResource
 import com.github.michaelbull.result.onErr
 import com.github.michaelbull.result.onOk
 import indi.dmzz_yyhyy.lightnovelreader.R
-import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.SettingState
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.ReaderSettings
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentError
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentLoading
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentUiState
@@ -65,7 +65,7 @@ import kotlin.time.Duration.Companion.milliseconds
 fun FlipPageContentComponent(
     modifier: Modifier,
     uiState: FlipPageContentUiState,
-    settingState: SettingState,
+    settingState: ReaderSettings,
     paddingValues: PaddingValues,
     changeIsImmersive: () -> Unit,
     onClickPrevChapter: () -> Unit,
@@ -93,7 +93,7 @@ private fun SimpleFlipPageTextComponent(
     paddingValues: PaddingValues,
     uiState: FlipPageContentUiState,
     chapterContent: ChapterContentUiState,
-    settingState: SettingState,
+    settingState: ReaderSettings,
     changeIsImmersive: () -> Unit,
     onClickPrevChapter: () -> Unit,
     onClickNextChapter: () -> Unit,

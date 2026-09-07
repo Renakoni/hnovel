@@ -31,7 +31,9 @@ class ReaderViewModel @Inject constructor(
     userDataRepository: UserDataRepository,
     val contentComponentRepository: ContentComponentRepository
 ) : ViewModel() {
-    val settingState = SettingState(userDataRepository, viewModelScope)
+    private val settingState = SettingState(userDataRepository, viewModelScope)
+    val readerSettings: ReaderSettingsEditor = settingState
+    val fontFamilySettings: ReaderFontFamilySettings = settingState.fontFamilySettings
     private var contentViewModel: ContentViewModel? by mutableStateOf(null)
     private val _uiState = MutableReaderScreenUiState(contentViewModel?.uiState)
     val uiState: ReaderScreenUiState = _uiState

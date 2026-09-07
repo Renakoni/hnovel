@@ -74,7 +74,8 @@ import indi.dmzz_yyhyy.lightnovelreader.theme.AppTheme
 import indi.dmzz_yyhyy.lightnovelreader.ui.LocalAppTheme
 import indi.dmzz_yyhyy.lightnovelreader.ui.LocalDarkColorScheme
 import indi.dmzz_yyhyy.lightnovelreader.ui.LocalLightColorScheme
-import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.SettingState
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.ReaderSettingsEditor
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.ThemeSettingsEditor
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.SectionHeader
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.SettingsMenuEntry
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.SettingsSliderEntry
@@ -96,7 +97,8 @@ import java.io.FileInputStream
 
 @Composable
 fun ThemeScreen(
-    themeSettingState: SettingState,
+    themeSettingState: ThemeSettingsEditor,
+    readerSettingState: ReaderSettingsEditor,
     onClickBack: () -> Unit,
     onClickChangeTextColor: () -> Unit,
     onClickChangeBackgroundColor: () -> Unit
@@ -114,13 +116,13 @@ fun ThemeScreen(
                 ThemeSettingsList(themeSettingState)
             }
             item {
-                ReaderThemeSettingsList(themeSettingState, onClickChangeBackgroundColor)
+                ReaderThemeSettingsList(readerSettingState, onClickChangeBackgroundColor)
             }
             item {
-                BackgroundSettings(themeSettingState, context)
+                BackgroundSettings(readerSettingState, context)
             }
             item {
-                ReaderTextSettings(themeSettingState, context, onClickChangeTextColor)
+                ReaderTextSettings(readerSettingState, context, onClickChangeTextColor)
             }
             navigationBarSpacer()
         }
@@ -129,7 +131,7 @@ fun ThemeScreen(
 
 @Composable
 fun DarkModeSettings(
-    settingState: SettingState
+    settingState: ThemeSettingsEditor
 ) {
     SectionHeader(
         modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp),
@@ -240,7 +242,7 @@ fun DarkModeSettings(
 
 @Composable
 fun ThemeSettingsList(
-    settingState: SettingState,
+    settingState: ThemeSettingsEditor,
 ) {
     SettingsCategory(
         title = stringResource(R.string.theme_settings),
@@ -290,7 +292,7 @@ fun ThemeSettingsList(
 @OptIn(ExperimentalCoilApi::class)
 @Composable
 fun ReaderThemeSettingsList(
-    settingState: SettingState,
+    settingState: ReaderSettingsEditor,
     onClickChangeBackgroundColor: () -> Unit
 ) {
     SettingsCategory(
@@ -381,7 +383,7 @@ fun ReaderThemeSettingsList(
 }
 
 @Composable
-fun ReaderTextSettings(settingState: SettingState, context: Context, onClickChangeTextColor: () -> Unit) {
+fun ReaderTextSettings(settingState: ReaderSettingsEditor, context: Context, onClickChangeTextColor: () -> Unit) {
     val coroutineScope = rememberCoroutineScope()
     val textMeasurer = rememberTextMeasurer()
     val onSecondaryContainer = colorScheme.onSecondaryContainer
@@ -556,7 +558,7 @@ private suspend fun saveFontToLocal(context: Context, uri: Uri): File? = withCon
 }
 
 @Composable
-fun BackgroundSettings(settingState: SettingState, context: Context) {
+fun BackgroundSettings(settingState: ReaderSettingsEditor, context: Context) {
     val scope = rememberCoroutineScope()
 
     val isCustomSelected = settingState.backgroundImageUri.toString().isNotBlank() ||

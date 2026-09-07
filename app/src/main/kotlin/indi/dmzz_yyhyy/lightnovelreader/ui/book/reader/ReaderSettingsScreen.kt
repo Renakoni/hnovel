@@ -55,7 +55,7 @@ import io.nightfish.lightnovelreader.api.ui.components.SettingsSwitchEntry
 fun SettingsBottomSheet(
     sheetState: SheetState,
     onDismissRequest: () -> Unit,
-    settingState: SettingState,
+    settingState: ReaderSettingsEditor,
     onClickThemeSettings: () -> Unit
 ) {
     ModalBottomSheet(
@@ -92,7 +92,7 @@ data class TabItem(val title: String, val iconRes: Int)
 
 @Composable
 fun ContentSettings(
-    settingState: SettingState,
+    settingState: ReaderSettingsEditor,
     selectedTabIndex: Int,
     onTabSelected: (Int) -> Unit,
     onClickThemeSettings: () -> Unit
@@ -188,7 +188,7 @@ fun TabsRow(
 }
 
 fun LazyListScope.AppearancePage(
-    settingState: SettingState,
+    settingState: ReaderSettingsEditor,
     onClickThemeSettings: () -> Unit
 ) {
     item {
@@ -263,7 +263,7 @@ fun LazyListScope.AppearancePage(
     }
 }
 
-fun LazyListScope.ActionPage(settingState: SettingState) {
+fun LazyListScope.ActionPage(settingState: ReaderSettingsEditor) {
     item {
         SettingsSwitchEntry(
             modifier = Modifier.background(colorScheme.surfaceContainerHigh).animateItem(),
@@ -363,7 +363,7 @@ fun LazyListScope.ActionPage(settingState: SettingState) {
     }
 }
 
-fun LazyListScope.PaddingPage(settingState: SettingState) {
+fun LazyListScope.PaddingPage(settingState: ReaderSettingsEditor) {
     item {
         SettingsSwitchEntry(
             modifier = Modifier.background(colorScheme.surfaceContainerHigh).animateItem(),

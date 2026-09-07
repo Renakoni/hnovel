@@ -50,7 +50,8 @@ import com.github.michaelbull.result.map
 import com.github.michaelbull.result.onErr
 import com.github.michaelbull.result.onOk
 import indi.dmzz_yyhyy.lightnovelreader.R
-import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.SettingState
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.ReaderSettings
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.ReaderFontFamilySettings
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentError
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentLoading
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentUiState
@@ -69,7 +70,8 @@ import kotlinx.coroutines.launch
 fun ScrollContentComponent(
     modifier: Modifier,
     uiState: ScrollContentUiState,
-    settingState: SettingState,
+    settingState: ReaderSettings,
+    fontFamilySettings: ReaderFontFamilySettings,
     paddingValues: PaddingValues,
     changeIsImmersive: () -> Unit,
     onClickPrevChapter: () -> Unit,
@@ -79,6 +81,7 @@ fun ScrollContentComponent(
         modifier = modifier,
         uiState = uiState,
         settingState = settingState,
+        fontFamilySettings = fontFamilySettings,
         paddingValues = paddingValues,
         changeIsImmersive = changeIsImmersive,
         onClickPrevChapter = onClickPrevChapter,
@@ -90,7 +93,8 @@ fun ScrollContentComponent(
 fun ScrollContentTextComponent(
     modifier: Modifier,
     uiState: ScrollContentUiState,
-    settingState: SettingState,
+    settingState: ReaderSettings,
+    fontFamilySettings: ReaderFontFamilySettings,
     paddingValues: PaddingValues,
     changeIsImmersive: () -> Unit,
     onClickPrevChapter: () -> Unit,
@@ -273,6 +277,7 @@ fun ScrollContentTextComponent(
                         TextContent(
                             modifier = modifier,
                             settingState = settingState,
+                            fontFamilySettings = fontFamilySettings,
                             content = it
                         )
                     }?.onErr {
@@ -287,13 +292,14 @@ fun ScrollContentTextComponent(
 @Composable
 private fun TextContent(
     modifier: Modifier,
-    settingState: SettingState,
+    settingState: ReaderSettings,
+    fontFamilySettings: ReaderFontFamilySettings,
     content: ChapterContentUiState
 ) {
     val density = LocalDensity.current
     val screenHeight = LocalResources.current.displayMetrics.heightPixels
     val textColor = readerTextColor(settingState)
-    val fontFamily = rememberReaderFontFamily(settingState.fontFamilyUriUserData)
+    val fontFamily = rememberReaderFontFamily(fontFamilySettings)
     Column(
         Modifier.defaultMinSize(
             minHeight = with(density) {
