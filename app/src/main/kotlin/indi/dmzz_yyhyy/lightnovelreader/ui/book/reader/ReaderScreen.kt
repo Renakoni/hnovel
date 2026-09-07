@@ -10,7 +10,6 @@ import android.view.WindowManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Image
@@ -18,6 +17,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -27,6 +28,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBarsIgnoringVisibility
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.BottomAppBar
@@ -163,24 +166,12 @@ fun ReaderScreen(
     }
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
-        topBar = {
-            if (!isImmersive) {
-                TopBar(
-                    onClickBackButton = onClickBackButton,
-                    title = readingScreenUiState.contentUiState?.readingChapterContent
-                        ?.map { it.title }
-                        ?.getOrElse { "Unknowing" }
-                        ?: "Unknowing",
-                    scrollBehavior
-                )
-            }
-        },
         snackbarHost = {
             SnackbarHost(LocalSnackbarHost.current) { data ->
                 LnrSnackbar(
                     data,
                     modifier = Modifier
-                        .padding(bottom = animateDpAsState(if (isImmersive) 56.dp else 12.dp).value)
+                        .padding(bottom = if (isImmersive) 56.dp else 12.dp)
                 )
             }
         },
@@ -216,7 +207,17 @@ fun ReaderScreen(
         )
 
         if (!isImmersive) {
-            Box(Modifier.align(Alignment.BottomCenter)) {
+            Box(Modifier.align(Alignment.TopCenter).readerProbeLayout("top-bar")) {
+                TopBar(
+                    onClickBackButton = onClickBackButton,
+                    title = readingScreenUiState.contentUiState?.readingChapterContent
+                        ?.map { it.title }
+                        ?.getOrElse { "Unknowing" }
+                        ?: "Unknowing",
+                    scrollBehavior
+                )
+            }
+            Box(Modifier.align(Alignment.BottomCenter).readerProbeLayout("bottom-bar")) {
             BottomBar(
                 hasNextChapter = readingScreenUiState.contentUiState?.readingChapterContent
                     ?.get()
@@ -315,6 +316,7 @@ fun Content(
     val context = LocalContext.current
     val activity = context as Activity
     val window = activity.window
+    ReaderDebugProbe(window = window, immersive = isImmersive)
     val originalUiFlags = remember {
         @Suppress("DEPRECATION")
         window.decorView.systemUiVisibility
@@ -414,7 +416,7 @@ fun Content(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = Modifier.fillMaxSize().readerProbeLayout("content-root")) {
         val isEnableIndicator =
             settingState.enableTimeIndicator ||
                     settingState.enableReadingChapterProgressIndicator ||
@@ -493,22 +495,20 @@ private fun updateReaderImmersiveMode(
 
     if (immersive) {
         if (enableHideStatusBar) {
-            controller.hide(WindowInsetsCompat.Type.statusBars())
+            controller.hide(WindowInsetsCompat.Type.systemBars())
         } else {
             controller.show(WindowInsetsCompat.Type.statusBars())
         }
     } else {
-        controller.show(WindowInsetsCompat.Type.statusBars())
+        controller.show(WindowInsetsCompat.Type.systemBars())
     }
 
-    if (immersive) {
+    if (immersive && !enableHideStatusBar) {
         controller.hide(WindowInsetsCompat.Type.navigationBars())
-    } else {
-        controller.show(WindowInsetsCompat.Type.navigationBars())
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 private fun TopBar(
     onClickBackButton: () -> Unit,
@@ -537,15 +537,19 @@ private fun TopBar(
                         color = colorScheme.onSurface,
                         maxLines = 1,
                         softWrap = false,
-                        overflow = TextOverflow.Visible
+                        overflow = TextOverflow.Visible,
+                        modifier = Modifier.readerProbeLayout("top-title")
                     )
                 }
             }
         },
-        scrollBehavior = scrollBehavior
+        scrollBehavior = scrollBehavior,
+        windowInsets = WindowInsets.systemBarsIgnoringVisibility
+            .union(WindowInsets.displayCutout)
     )
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun BottomBar(
     hasPrevChapter: Boolean,
@@ -555,7 +559,9 @@ private fun BottomBar(
     onClickSettings: () -> Unit,
     onClickChapterSelector: () -> Unit
 ) {
-    BottomAppBar {
+    BottomAppBar(
+        windowInsets = WindowInsets.systemBarsIgnoringVisibility
+    ) {
         Row(
             Modifier
                 .fillMaxWidth()
