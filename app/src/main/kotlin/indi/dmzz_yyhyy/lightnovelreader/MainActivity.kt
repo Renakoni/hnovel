@@ -7,6 +7,7 @@ import android.content.res.Configuration
 import android.content.res.Resources
 import android.os.Build
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -148,6 +149,7 @@ class MainActivity : ComponentActivity() {
                             onBuildNavHost()
                         }
                     },
+                    onReaderActiveChanged = ::setReaderActive,
                     imageHeaderGetter = { webBookDataSourceProvider.value.imageHeader },
                     webBookDataSourceFoundedFlow = webBookDataSourceFoundedFlow
                 )
@@ -250,5 +252,24 @@ class MainActivity : ComponentActivity() {
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
+    }
+
+    private fun setReaderActive(active: Boolean) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return
+
+        val mode = if (active) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+            } else {
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+        } else {
+            WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT
+        }
+        if (window.attributes.layoutInDisplayCutoutMode == mode) return
+
+        window.attributes = window.attributes.apply {
+            layoutInDisplayCutoutMode = mode
+        }
     }
 }

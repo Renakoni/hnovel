@@ -8,6 +8,7 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.graphics.Color
@@ -41,8 +42,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-fun NavGraphBuilder.bookReaderDestination() {
+fun NavGraphBuilder.bookReaderDestination(onReaderActiveChanged: (Boolean) -> Unit) {
     composable<Route.Book.Reader> { navBackStackEntry ->
+        DisposableEffect(Unit) {
+            onReaderActiveChanged(true)
+            onDispose { onReaderActiveChanged(false) }
+        }
         val navController = LocalNavController.current
         val parentEntry = remember(navBackStackEntry) {
             navBackStackEntry.destination.parent?.route

@@ -65,6 +65,7 @@ import kotlinx.coroutines.flow.Flow
 fun LightNovelReaderNavHost(
     navController: NavHostController,
     onBuildNavHost: NavGraphBuilder.() -> Unit,
+    onReaderActiveChanged: (Boolean) -> Unit,
     readerStyle: ReaderStyle,
     imageHeaderGetter: () -> Map<String, String>,
     webBookDataSourceFoundedFlow: Flow<Boolean>
@@ -132,7 +133,7 @@ fun LightNovelReaderNavHost(
                         popExitTransition = { expandPopExit() }
                     ) {
                         homeNavigation(this@SharedTransitionLayout)
-                        bookNavigation()
+                        bookNavigation(onReaderActiveChanged)
                         updatesAvailableDialog()
                         addBookToBookshelfDialog()
                         bookManager()
