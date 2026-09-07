@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.Flow
 @Composable
 fun LightNovelReaderApp(
     onBuildNavHost: NavGraphBuilder.() -> Unit,
+    onReaderActiveChanged: (Boolean) -> Unit,
     readerStyle: ReaderStyle,
     imageHeaderGetter: () -> Map<String, String>,
     intentFlow: Flow<Intent>,
@@ -49,6 +50,7 @@ fun LightNovelReaderApp(
     LightNovelReaderNavHost(
         navController = navController,
         onBuildNavHost = onBuildNavHost,
+        onReaderActiveChanged = onReaderActiveChanged,
         readerStyle = readerStyle,
         imageHeaderGetter = imageHeaderGetter,
         webBookDataSourceFoundedFlow = webBookDataSourceFoundedFlow

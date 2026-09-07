@@ -78,16 +78,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         enableEdgeToEdge()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            window.attributes = window.attributes.apply {
-                layoutInDisplayCutoutMode =
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                        WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
-                    } else {
-                        WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
-                    }
-            }
-        }
         super.onCreate(savedInstanceState)
         Thread.setDefaultUncaughtExceptionHandler(LogUtils(applicationContext, loggerRepository))
 
@@ -159,6 +149,7 @@ class MainActivity : ComponentActivity() {
                             onBuildNavHost()
                         }
                     },
+                    onReaderActiveChanged = ::setReaderActive,
                     imageHeaderGetter = { webBookDataSourceProvider.value.imageHeader },
                     webBookDataSourceFoundedFlow = webBookDataSourceFoundedFlow
                 )
@@ -261,5 +252,24 @@ class MainActivity : ComponentActivity() {
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
+    }
+
+    private fun setReaderActive(active: Boolean) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return
+
+        val mode = if (active) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+            } else {
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+        } else {
+            WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT
+        }
+        if (window.attributes.layoutInDisplayCutoutMode == mode) return
+
+        window.attributes = window.attributes.apply {
+            layoutInDisplayCutoutMode = mode
+        }
     }
 }
