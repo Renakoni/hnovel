@@ -4,9 +4,6 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context.BATTERY_SERVICE
 import android.os.BatteryManager
-import android.util.Log
-import android.view.Window
-import android.view.WindowManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -54,7 +51,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -72,10 +68,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
-import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImagePainter
 import com.github.michaelbull.result.get
@@ -95,11 +87,9 @@ import indi.dmzz_yyhyy.lightnovelreader.utils.LocalSnackbarHost
 import indi.dmzz_yyhyy.lightnovelreader.utils.readerBackgroundColor
 import indi.dmzz_yyhyy.lightnovelreader.utils.rememberReaderBackgroundPainter
 import indi.dmzz_yyhyy.lightnovelreader.utils.showSnackbar
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.LocalTime
 import java.util.Locale
-import kotlin.time.Duration.Companion.seconds
 
 @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter", "LocalContextGetResourceValueCall")
 @OptIn(ExperimentalMaterial3Api::class)
@@ -196,12 +186,25 @@ fun ReaderScreen(
             }
         }
 
+        val activity = context as Activity
+        val window = activity.window
+        ReaderWindowEffects(
+            window = window,
+            immersive = isImmersive,
+            enableHideStatusBar = settingState.enableHideStatusBar,
+            batteryIndicatorDisplayMode = settingState.batteryIndicatorDisplayMode,
+            keepScreenOn = settingState.keepScreenOn,
+        )
+        ReaderReadingTimeEffects(
+            readingScreenUiState = readingScreenUiState,
+            updateTotalReadingTime = updateTotalReadingTime,
+            accumulateReadTime = accumulateReadTime,
+        )
+
         Content(
             isImmersive = isImmersive,
             readingScreenUiState = readingScreenUiState,
             settingState = settingState,
-            accumulateReadingTime = accumulateReadTime,
-            updateTotalReadingTime = updateTotalReadingTime,
             onClickPrevChapter = onClickPrevChapter,
             onClickNextChapter = onClickNextChapter,
             onChangeIsImmersive = { isImmersive = !isImmersive }
@@ -308,115 +311,10 @@ fun Content(
     isImmersive: Boolean,
     readingScreenUiState: ReaderScreenUiState,
     settingState: SettingState,
-    updateTotalReadingTime: (bookId: String, Int) -> Unit,
-    accumulateReadingTime: (bookId: String, Int) -> Unit,
     onClickPrevChapter: () -> Unit,
     onClickNextChapter: () -> Unit,
     onChangeIsImmersive: () -> Unit
 ) {
-    val context = LocalContext.current
-    val activity = context as Activity
-    val window = activity.window
-    ReaderDebugProbe(window = window, immersive = isImmersive)
-    val originalUiFlags = remember {
-        @Suppress("DEPRECATION")
-        window.decorView.systemUiVisibility
-    }
-
-    var isRunning by remember { mutableStateOf(false) }
-    var totalReadingTime by remember { mutableIntStateOf(0) }
-
-    LaunchedEffect(
-        isImmersive,
-        settingState.enableHideStatusBar,
-        settingState.batteryIndicatorDisplayMode
-    ) {
-        updateReaderImmersiveMode(
-            window = window,
-            immersive = isImmersive,
-            enableHideStatusBar = settingState.enableHideStatusBar,
-        )
-    }
-
-    DisposableEffect(Unit) {
-        onDispose {
-            val controller = WindowCompat.getInsetsController(window, window.decorView)
-            controller.show(WindowInsetsCompat.Type.systemBars())
-        }
-    }
-
-    DisposableEffect(Unit) {
-        @Suppress("deprecation")
-        onDispose {
-            val controller = WindowCompat.getInsetsController(window, window.decorView)
-            controller.show(WindowInsetsCompat.Type.systemBars())
-            window.decorView.systemUiVisibility = originalUiFlags
-        }
-    }
-
-    LifecycleResumeEffect(Unit) {
-        isRunning = true
-        onPauseOrDispose {
-            isRunning = false
-            if (totalReadingTime <= 60) {
-                readingScreenUiState.bookId?.let {
-                    updateTotalReadingTime(it, totalReadingTime)
-                }
-            } else {
-                Log.e("ReaderScreen", "time counter error, time now is $totalReadingTime over 60s")
-            }
-            totalReadingTime = 0
-        }
-    }
-    LaunchedEffect(settingState.keepScreenOn) {
-        if (settingState.keepScreenOn)
-            activity.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        else
-            activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-    }
-    LaunchedEffect(isRunning) {
-        while (isRunning) {
-            totalReadingTime += 1
-            if (totalReadingTime > 60) {
-                readingScreenUiState.bookId?.let {
-                    updateTotalReadingTime(it, totalReadingTime)
-                }
-                totalReadingTime = 0
-            }
-            delay(1.seconds)
-        }
-    }
-
-    LaunchedEffect(isRunning) {
-        while (isRunning) {
-            readingScreenUiState.bookId?.let {
-                accumulateReadingTime(it, 1)
-            }
-            delay(1.seconds)
-        }
-    }
-
-    LifecycleResumeEffect(Unit) {
-        onPauseOrDispose {
-            readingScreenUiState.bookId?.let {
-                accumulateReadingTime(it, -1)
-            }
-        }
-    }
-
-    DisposableEffect(Unit) {
-        onDispose {
-            activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            if (totalReadingTime <= 60) {
-                readingScreenUiState.bookId?.let {
-                    updateTotalReadingTime(it, totalReadingTime)
-                }
-            } else {
-                Log.e("ReaderScreen", "time counter error, time now is $totalReadingTime over 60s")
-            }
-        }
-    }
-
     Box(modifier = Modifier.fillMaxSize().readerProbeLayout("content-root")) {
         val isEnableIndicator =
             settingState.enableTimeIndicator ||
@@ -481,31 +379,6 @@ fun Content(
                 )
             }
         }
-    }
-}
-
-private fun updateReaderImmersiveMode(
-    window: Window,
-    immersive: Boolean,
-    enableHideStatusBar: Boolean,
-) {
-    val controller = WindowCompat.getInsetsController(window, window.decorView)
-
-    controller.systemBarsBehavior =
-        WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-
-    if (immersive) {
-        if (enableHideStatusBar) {
-            controller.hide(WindowInsetsCompat.Type.systemBars())
-        } else {
-            controller.show(WindowInsetsCompat.Type.statusBars())
-        }
-    } else {
-        controller.show(WindowInsetsCompat.Type.systemBars())
-    }
-
-    if (immersive && !enableHideStatusBar) {
-        controller.hide(WindowInsetsCompat.Type.navigationBars())
     }
 }
 
