@@ -3,11 +3,8 @@ package indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.flip
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.Orientation
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
-import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -36,10 +33,8 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalWindowInfo
@@ -51,7 +46,7 @@ import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.SettingState
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentError
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentLoading
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentUiState
-import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.LocalReaderSelectionState
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.readerTapGestures
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.data.MenuOptions
 import indi.dmzz_yyhyy.lightnovelreader.utils.LocalSnackbarHost
 import indi.dmzz_yyhyy.lightnovelreader.utils.rememberReaderBackgroundPainter
@@ -104,8 +99,6 @@ private fun SimpleFlipPageTextComponent(
     onClickNextChapter: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
-    val focusManager = LocalFocusManager.current
-    val selectionState = LocalReaderSelectionState.current
     val resources = LocalResources.current
     val density = LocalDensity.current
     val layoutDirection = LocalLayoutDirection.current
@@ -277,28 +270,14 @@ private fun SimpleFlipPageTextComponent(
                         if (it.absoluteValue > 60) changeIsImmersive.invoke()
                     }
                 )
-                .pointerInput(
-                    settingState.isUsingClickFlipPage,
-                    settingState.isUsingFlipPage,
-                    settingState.flipAnime,
-                    settingState.fastChapterChange
-                ) {
-                    awaitEachGesture {
-                        val hadSelectionFocus = selectionState.hasFocus
-                        val down = awaitFirstDown(requireUnconsumed = false)
-                        val up = waitForUpOrCancellation()
-                        if (up != null && hadSelectionFocus) {
-                            focusManager.clearFocus()
-                        } else if (up != null && !up.isConsumed) {
-                            if (settingState.isUsingFlipPage && settingState.isUsingClickFlipPage)
-                                when {
-                                    down.position.x < screenWidthPx / 3f -> lastPage(uiState.pagerState)
-                                    down.position.x > screenWidthPx * 2f / 3f -> nextPage(uiState.pagerState)
-                                    else -> changeIsImmersive.invoke()
-                                }
-                            else changeIsImmersive.invoke()
+                .readerTapGestures { position ->
+                    if (settingState.isUsingFlipPage && settingState.isUsingClickFlipPage)
+                        when {
+                            position.x < screenWidthPx / 3f -> lastPage(uiState.pagerState)
+                            position.x > screenWidthPx * 2f / 3f -> nextPage(uiState.pagerState)
+                            else -> changeIsImmersive.invoke()
                         }
-                    }
+                    else changeIsImmersive.invoke()
                 },
         ) {
             Box(Modifier.fillMaxSize()) {

@@ -2,11 +2,7 @@ package indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content
 
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.SettingState
@@ -16,12 +12,6 @@ import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.scroll.ScrollCont
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.scroll.ScrollContentUiState
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.Loading
 import io.nightfish.lightnovelreader.api.error.WebRequestError
-
-class ReaderSelectionState {
-    var hasFocus by mutableStateOf(false)
-}
-
-val LocalReaderSelectionState = staticCompositionLocalOf { ReaderSelectionState() }
 
 @Composable
 fun ContentComponent(

@@ -94,19 +94,7 @@ fun NavGraphBuilder.bookDetailDestination() {
             onClickChapter = {
                 navController.navigateToBookReaderDestination(bookId, it, context)
             },
-            onClickReadFromStart = {
-                viewModel.uiState.bookVolumes
-                    ?.map {
-                        it.volumes.firstOrNull()?.chapters?.firstOrNull()?.id
-                    }?.onOk { id ->
-                        id?.let {
-                            navController.navigateToBookReaderDestination(bookId, it, context)
-                        }
-                    }?.onErr {
-                        Toast.makeText(context, it.message, Toast.LENGTH_SHORT).show()
-                    }
-            },
-            onClickContinueReading = {
+            onClickRead = {
                 if (viewModel.uiState.userReadingData?.lastReadChapterId == null)
                     viewModel.uiState.bookVolumes
                         ?.map {

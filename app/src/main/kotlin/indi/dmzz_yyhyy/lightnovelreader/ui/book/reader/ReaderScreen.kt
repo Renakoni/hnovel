@@ -26,7 +26,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeContent
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -62,7 +61,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -324,20 +322,6 @@ fun Content(
     val context = LocalContext.current
     val activity = context as Activity
     val window = activity.window
-    val density = LocalDensity.current
-
-    val stableSafeTopDp by remember {
-        mutableStateOf(
-            with(density) {
-                WindowInsetsCompat
-                    .toWindowInsetsCompat(activity.window.decorView.rootWindowInsets)
-                    .getInsetsIgnoringVisibility(WindowInsetsCompat.Type.statusBars())
-                    .top
-                    .toDp()
-            }
-        )
-    }
-
     val originalUiFlags = remember {
         @Suppress("DEPRECATION")
         window.decorView.systemUiVisibility
@@ -453,12 +437,7 @@ fun Content(
                     settingState = settingState,
                     paddingValues =
                         if (settingState.autoPadding)
-                            PaddingValues(
-                                top = stableSafeTopDp,
-                                bottom = with(density) { WindowInsets.safeContent.getBottom(density).toDp() } + if (isEnableIndicator) 40.dp else 0.dp,
-                                start = 16.dp,
-                                end = 16.dp
-                            )
+                            readerAutoPadding(if (isEnableIndicator) 40.dp else 0.dp)
                         else PaddingValues(
                             top = settingState.topPadding.dp,
                             bottom = if (isEnableIndicator)

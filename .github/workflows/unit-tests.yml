@@ -29,3 +29,12 @@ jobs:
         run: chmod +x ./gradlew
       - name: Run JVM unit tests
         run: ./gradlew :app:testDebugUnitTest --console=plain --stacktrace --max-workers=2
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-reports
+          path: |
+            app/build/reports/tests/testDebugUnitTest
+            app/build/test-results/testDebugUnitTest
+          if-no-files-found: ignore
