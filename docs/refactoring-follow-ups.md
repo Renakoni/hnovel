@@ -110,10 +110,11 @@
 
 ## STATS-002：每次结算独立取整，导致短阅读时间永远不进入总览分钟数
 
-- 状态：**真实统计仓库的受控 DAO 测试已证实；R4 之前已有**。
-- 证据：[StatsRepositoryCharacterizationTest](../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/data/statistics/StatsRepositoryCharacterizationTest.kt) 的 `twoThirtySecondSettlementsProduceSixtyBookSecondsButZeroSummaryMinutes`：两次各 30 秒并分别 flush，书籍记录累计 60 秒，总览仍为 0 分钟。`updateCount` 对每次 `secondDelta / 60` 取整，没有保存余数；`getTotalReadingSummary` 使用这个按分钟累计的统计。
-- 影响：经常暂停/退出形成的短会话会在总览中少计，累计足够一分钟也不会补回，书籍秒数与总览分钟数产生分歧。
-- 后续：定义唯一的统计时间单位和聚合边界，保留余数或从累计秒数派生分钟；覆盖分段结算、跨小时/日期和重复 flush，避免同时改变展示规则而无法定位差异。
+- 状态：**已修复，真实统计仓库的受控 DAO 回归测试通过**。
+- 基线证据：[StatsRepositoryCharacterizationTest](../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/data/statistics/StatsRepositoryCharacterizationTest.kt) 的分段结算契约在 `main` 上失败：两次各 30 秒后，书籍记录累计 60 秒，但 `getTotalReadingSummary` 仍返回 0 分钟。原因是 `updateCount` 对每次 `secondDelta / 60` 取整且不保留余数。
+- 修复语义：总览分钟数从持久化的 `BookRecordEntity.seconds` 汇总后统一除以 60，并以 Long 计算后安全转换为 Int；秒数成为总览的唯一精度来源，不再依赖每次结算时已经取整的 `Count`。
+- 验证：覆盖两次 30 秒分段结算；完整 `:app:testDebugUnitTest` 共 103 项通过，`:app:assembleDebug` 成功。
+- 限制：按小时 `Count` 和热力图仍是分钟粒度，无法从现有记录恢复每小时的秒余数；本修复只校正总览汇总，不改变热力图的既有展示语义。若产品需要按小时精确累计，应另立数据模型/迁移 Issue。
 
 ## READ-004：总体进度和读完标记滞后一次章节进度写入
 
