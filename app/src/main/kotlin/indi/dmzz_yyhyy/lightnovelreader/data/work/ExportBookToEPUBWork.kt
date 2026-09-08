@@ -21,7 +21,7 @@ import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.data.book.BookRepository
-import indi.dmzz_yyhyy.lightnovelreader.data.content.ContentComponentRepository
+import indi.dmzz_yyhyy.lightnovelreader.data.content.ContentJsonDecoder
 import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadProgressRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadType
 import indi.dmzz_yyhyy.lightnovelreader.data.download.MutableDownloadItem
@@ -52,7 +52,7 @@ class ExportBookToEPUBWork @AssistedInject constructor(
     private val webBookDataSourceProvider: WebBookDataSourceProvider,
     private val bookRepository: BookRepository,
     private val downloadProgressRepository: DownloadProgressRepository,
-    private val contentComponentRepository: ContentComponentRepository
+    private val contentJsonDecoder: ContentJsonDecoder
 ) : CoroutineWorker(appContext, workerParams) {
     companion object {
         fun ofId(id: String): String = "export_to_epub:$id"
@@ -483,7 +483,7 @@ class ExportBookToEPUBWork @AssistedInject constructor(
         Log.d(TAG, "render chapter=${it.title}")
         title(it.title)
         content {
-            contentComponentRepository.getDataFromJsonObject(bookContentMap[it.id]!!.content) {
+            contentJsonDecoder.getDataFromJsonObject(bookContentMap[it.id]!!.content) {
                 bodyElement.add(
                     it.toHtmlElement(applicationContext).also { element ->
                         element.parseSrc(tempDir, tasks, epubBuilder, includeImages)

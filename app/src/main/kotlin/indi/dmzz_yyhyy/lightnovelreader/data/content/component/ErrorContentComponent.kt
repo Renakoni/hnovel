@@ -1,10 +1,9 @@
 package indi.dmzz_yyhyy.lightnovelreader.data.content.component
 
 import android.content.Context
-import androidx.compose.foundation.layout.Column
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.componet.ReaderErrorContent
 import indi.dmzz_yyhyy.lightnovelreader.utils.ofId
 import io.nightfish.lightnovelreader.api.content.component.AbstractContentComponent
 import io.nightfish.lightnovelreader.api.content.component.AbstractContentComponentData
@@ -21,10 +20,7 @@ class ErrorContentComponent(data: ErrorContentComponentData) :
 
     @Composable
     override fun Content(modifier: Modifier) {
-        Column {
-            Text("ERROR")
-            Text(data.message)
-        }
+        ReaderErrorContent(data.message)
     }
 
     companion object {

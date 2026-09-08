@@ -1,6 +1,6 @@
 package indi.dmzz_yyhyy.lightnovelreader.data.text
 
-import indi.dmzz_yyhyy.lightnovelreader.data.content.ContentComponentRepository
+import indi.dmzz_yyhyy.lightnovelreader.data.content.ComponentDataRegistry
 import indi.dmzz_yyhyy.lightnovelreader.data.format.FormatRepository
 import indi.dmzz_yyhyy.lightnovelreader.utils.ofId
 import io.nightfish.lightnovelreader.api.identifier.Identifier
@@ -18,7 +18,7 @@ import javax.inject.Singleton
 class TextProcessingRepository @Inject constructor(
     simplifiedTraditionalProcessor: SimplifiedTraditionalProcessor,
     formatRepository: FormatRepository,
-    val contentComponentRepository: ContentComponentRepository
+    private val componentDataRegistry: ComponentDataRegistry
 ): TextProcessingRepositoryApi {
     private val processors = mutableMapOf<Identifier, TextProcessor>()
 
@@ -49,7 +49,7 @@ class TextProcessingRepository @Inject constructor(
     fun processChapterContent(bookId: String, block: () -> ChapterContent): ChapterContent = process(block.invoke()) { processor ->
         {
             processor.processChapterContent(bookId, it, ComponentProcessor(
-                contentComponentRepository.serializeMap, contentComponentRepository.dataKClassMap, it.content
+                componentDataRegistry.serializeMap, componentDataRegistry.dataKClassMap, it.content
             ))
         }
     }
@@ -57,7 +57,7 @@ class TextProcessingRepository @Inject constructor(
     suspend fun coroutineProcessChapterContent(bookId: String, block: suspend () -> ChapterContent): ChapterContent = process(block.invoke()) { processor ->
         {
             processor.processChapterContent(bookId, it, ComponentProcessor(
-                contentComponentRepository.serializeMap, contentComponentRepository.dataKClassMap, it.content
+                componentDataRegistry.serializeMap, componentDataRegistry.dataKClassMap, it.content
             ))
         }
     }
