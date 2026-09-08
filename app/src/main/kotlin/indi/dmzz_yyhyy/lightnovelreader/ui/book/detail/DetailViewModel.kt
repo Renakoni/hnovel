@@ -21,6 +21,8 @@ import indi.dmzz_yyhyy.lightnovelreader.data.bookshelf.BookshelfRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadProgressRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadType
 import indi.dmzz_yyhyy.lightnovelreader.data.work.ExportBookToEPUBWork
+import indi.dmzz_yyhyy.lightnovelreader.data.book.nextWorkSubmissionTag
+import indi.dmzz_yyhyy.lightnovelreader.data.book.selectLatestWorkInfo
 import io.nightfish.lightnovelreader.api.web.WebDataSourcePriority
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -105,6 +107,7 @@ class DetailViewModel @Inject constructor(
 
     fun exportToEpub(uri: Uri, bookId: String, title: String): Flow<WorkInfo?> {
         val workRequest = OneTimeWorkRequestBuilder<ExportBookToEPUBWork>()
+            .addTag(nextWorkSubmissionTag())
             .setInputData(
                 workDataOf(
                     "bookId" to bookId,
@@ -122,11 +125,7 @@ class DetailViewModel @Inject constructor(
             workRequest
         )
         return workManager.getWorkInfosForUniqueWorkFlow(ExportBookToEPUBWork.ofId(bookId)).map { workInfos ->
-            workInfos.firstOrNull {
-                it.state == WorkInfo.State.ENQUEUED ||
-                    it.state == WorkInfo.State.RUNNING ||
-                    it.state == WorkInfo.State.BLOCKED
-            } ?: workInfos.lastOrNull()
+            selectLatestWorkInfo(workInfos)
         }
     }
 }

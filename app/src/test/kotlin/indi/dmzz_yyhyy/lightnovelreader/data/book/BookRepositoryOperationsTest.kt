@@ -30,11 +30,32 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import java.util.UUID
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [27], application = Application::class)
 class BookRepositoryOperationsTest {
     private val fixture = BookRepositoryFixture()
+
+    @Test
+    fun terminalWorkSelectionUsesTheExplicitSubmissionTagInsteadOfListOrder() {
+        val older = mockk<WorkInfo>()
+        every { older.state } returns WorkInfo.State.SUCCEEDED
+        every { older.tags } returns setOf("lightnovelreader:work-submission:100")
+        every { older.generation } returns 0
+        every { older.runAttemptCount } returns 0
+        every { older.id } returns UUID.fromString("00000000-0000-0000-0000-000000000001")
+
+        val newer = mockk<WorkInfo>()
+        every { newer.state } returns WorkInfo.State.FAILED
+        every { newer.tags } returns setOf("lightnovelreader:work-submission:200")
+        every { newer.generation } returns 0
+        every { newer.runAttemptCount } returns 0
+        every { newer.id } returns UUID.fromString("00000000-0000-0000-0000-000000000002")
+
+        assertSame(newer, selectLatestWorkInfo(listOf(newer, older)))
+        assertSame(newer, selectLatestWorkInfo(listOf(older, newer)))
+    }
 
     @Test
     fun cacheWorkKeepsItsWorkerInputAndObservesTheUniqueWorkIdentity() = runTest {

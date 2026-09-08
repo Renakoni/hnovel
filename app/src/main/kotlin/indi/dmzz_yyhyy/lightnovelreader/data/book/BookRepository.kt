@@ -29,8 +29,37 @@ import io.nightfish.lightnovelreader.api.web.WebDataSourcePriority
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
+import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 import javax.inject.Singleton
+
+private const val WORK_SUBMISSION_TAG_PREFIX = "lightnovelreader:work-submission:"
+private val nextWorkSubmission = AtomicLong(System.currentTimeMillis())
+
+internal fun nextWorkSubmissionTag(): String =
+    WORK_SUBMISSION_TAG_PREFIX + nextWorkSubmission.incrementAndGet()
+
+/** Selects an active work first, otherwise the terminal work with the greatest submission tag. */
+internal fun selectLatestWorkInfo(workInfos: List<WorkInfo>): WorkInfo? {
+    fun WorkInfo.isActive() = state == WorkInfo.State.ENQUEUED ||
+        state == WorkInfo.State.RUNNING ||
+        state == WorkInfo.State.BLOCKED
+
+    return workInfos.firstOrNull { it.isActive() }
+        ?: workInfos.asSequence()
+            .filterNot { it.isActive() }
+            .maxWithOrNull(
+                compareBy<WorkInfo> {
+                    it.tags.mapNotNull { tag ->
+                        tag.removePrefix(WORK_SUBMISSION_TAG_PREFIX)
+                            .takeIf { value -> tag.startsWith(WORK_SUBMISSION_TAG_PREFIX) }
+                            ?.toLongOrNull()
+                    }.maxOrNull() ?: Long.MIN_VALUE
+                }.thenBy { it.generation }
+                    .thenBy { it.runAttemptCount }
+                    .thenBy { it.id.toString() }
+            )
+}
 
 @Singleton
 class BookRepository @Inject constructor(
@@ -114,15 +143,12 @@ class BookRepository @Inject constructor(
 
     fun isCacheBookWorkFlow(bookId: String): Flow<WorkInfo?> =
         workManager.getWorkInfosForUniqueWorkFlow(CacheBookWork.ofId(bookId)).map { workInfos ->
-            workInfos.firstOrNull {
-                it.state == WorkInfo.State.ENQUEUED ||
-                    it.state == WorkInfo.State.RUNNING ||
-                    it.state == WorkInfo.State.BLOCKED
-            } ?: workInfos.lastOrNull()
+            selectLatestWorkInfo(workInfos)
         }
 
     fun cacheBook(bookId: String): OneTimeWorkRequest {
         val workRequest = OneTimeWorkRequestBuilder<CacheBookWork>()
+            .addTag(nextWorkSubmissionTag())
             .setInputData(
                 workDataOf(
                     "bookId" to bookId
