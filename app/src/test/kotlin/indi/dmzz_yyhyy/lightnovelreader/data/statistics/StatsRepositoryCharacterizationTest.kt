@@ -104,6 +104,21 @@ class StatsRepositoryCharacterizationTest {
     }
 
     @Test
+    fun failedRecordWriteRestoresAnExistingDailyCountWithoutTheFailedDelta() = runTest {
+        repository.accumulateBookReadTime("book", 60)
+        repository.accumulateBookReadTime("book", -1)
+        failRecordWrite = true
+
+        try {
+            repository.accumulateBookReadTime("book", 60)
+        } catch (_: IllegalStateException) {
+            // The pre-existing daily count must remain intact for the retry.
+        }
+
+        assertEquals(1, repository.getTotalReadingSummary().totalMinutes)
+    }
+
+    @Test
     fun twoThirtySecondSettlementsProduceOneSummaryMinuteFromBookSeconds() = runTest {
         repeat(2) {
             repository.accumulateBookReadTime("book", 30)

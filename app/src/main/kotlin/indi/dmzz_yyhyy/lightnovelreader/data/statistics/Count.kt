@@ -67,6 +67,8 @@ class Count {
     fun getHourStatistics() = (0..23).associateWith { getMinute(it) }
     fun getTotalMinutes() = (0..23).sumOf { getMinute(it) }
 
+    fun copy(): Count = fromByteArray(toByteArray())
+
     operator fun plus(other: Count): Count {
         val count = Count()
         for (hour in 0..23) {
