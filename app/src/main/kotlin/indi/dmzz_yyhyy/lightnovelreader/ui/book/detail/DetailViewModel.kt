@@ -24,6 +24,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.work.ExportBookToEPUBWork
 import io.nightfish.lightnovelreader.api.web.WebDataSourcePriority
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -84,8 +85,8 @@ class DetailViewModel @Inject constructor(
     }
 
     fun cacheBook(bookId: String): Flow<WorkInfo?> {
-        val work = bookRepository.cacheBook(bookId)
-        val isCachedFlow = bookRepository.isCacheBookWorkFlow(work.id)
+        bookRepository.cacheBook(bookId)
+        val isCachedFlow = bookRepository.isCacheBookWorkFlow(bookId)
         viewModelScope.launch(Dispatchers.IO) {
             isCachedFlow.collect { workInfo ->
                 if (workInfo?.state == WorkInfo.State.SUCCEEDED) {
@@ -120,6 +121,12 @@ class DetailViewModel @Inject constructor(
             ExistingWorkPolicy.KEEP,
             workRequest
         )
-        return workManager.getWorkInfoByIdFlow(workRequest.id)
+        return workManager.getWorkInfosForUniqueWorkFlow(ExportBookToEPUBWork.ofId(bookId)).map { workInfos ->
+            workInfos.firstOrNull {
+                it.state == WorkInfo.State.ENQUEUED ||
+                    it.state == WorkInfo.State.RUNNING ||
+                    it.state == WorkInfo.State.BLOCKED
+            } ?: workInfos.lastOrNull()
+        }
     }
 }

@@ -20,6 +20,7 @@ import io.nightfish.lightnovelreader.api.book.ChapterInformation
 import io.nightfish.lightnovelreader.api.book.UserReadingData
 import io.nightfish.lightnovelreader.api.book.Volume
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -36,7 +37,7 @@ class BookRepositoryOperationsTest {
     private val fixture = BookRepositoryFixture()
 
     @Test
-    fun cacheWorkKeepsItsWorkerInputUniqueNamePolicyAndObservationId() {
+    fun cacheWorkKeepsItsWorkerInputAndObservesTheUniqueWorkIdentity() = runTest {
         val submitted = slot<OneTimeWorkRequest>()
         every { fixture.workManager.enqueueUniqueWork("cache:book", ExistingWorkPolicy.KEEP, capture(submitted)) } returns mockk()
         val repository = fixture.repository()
@@ -46,9 +47,14 @@ class BookRepositoryOperationsTest {
         assertEquals(mapOf("bookId" to "book"), work.workSpec.input.keyValueMap)
         verify(exactly = 1) { fixture.workManager.enqueueUniqueWork("cache:book", ExistingWorkPolicy.KEEP, work) }
 
-        val workState = MutableStateFlow<WorkInfo?>(null)
-        every { fixture.workManager.getWorkInfoByIdFlow(work.id) } returns workState
-        assertSame(workState, repository.isCacheBookWorkFlow(work.id))
+        val existingWork = mockk<WorkInfo>()
+        every { existingWork.state } returns WorkInfo.State.RUNNING
+        val completedEarlier = mockk<WorkInfo>()
+        every { completedEarlier.state } returns WorkInfo.State.SUCCEEDED
+        val workState = MutableStateFlow(listOf(completedEarlier, existingWork))
+        every { fixture.workManager.getWorkInfosForUniqueWorkFlow("cache:book") } returns workState
+        assertSame(existingWork, repository.isCacheBookWorkFlow("book").first())
+        verify(exactly = 1) { fixture.workManager.getWorkInfosForUniqueWorkFlow("cache:book") }
     }
 
     @Test
