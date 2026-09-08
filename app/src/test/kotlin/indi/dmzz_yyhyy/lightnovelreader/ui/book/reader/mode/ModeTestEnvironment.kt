@@ -5,6 +5,7 @@ import com.github.michaelbull.result.Result
 import indi.dmzz_yyhyy.lightnovelreader.data.book.BookReadingDataAccess
 import indi.dmzz_yyhyy.lightnovelreader.data.book.ChapterSource
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ContentRenderer
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ReaderChapterLoader
 import io.mockk.every
 import io.mockk.mockk
 import io.nightfish.lightnovelreader.api.book.BookVolumes
@@ -43,6 +44,7 @@ internal class ModeTestEnvironment {
             ContentData.empty()
         }
     }
+    val loader = ReaderChapterLoader(chapters, renderer)
 
     fun runCurrent() {
         Snapshot.sendApplyNotifications()

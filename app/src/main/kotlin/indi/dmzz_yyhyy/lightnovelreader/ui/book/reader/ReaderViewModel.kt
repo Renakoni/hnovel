@@ -1,8 +1,5 @@
 package indi.dmzz_yyhyy.lightnovelreader.ui.book.reader
 
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.github.michaelbull.result.getOrElse
@@ -10,13 +7,12 @@ import com.github.michaelbull.result.map
 import dagger.hilt.android.lifecycle.HiltViewModel
 import indi.dmzz_yyhyy.lightnovelreader.data.book.BookReadingDataAccess
 import indi.dmzz_yyhyy.lightnovelreader.data.book.ChapterSource
-import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ContentRenderer
 import indi.dmzz_yyhyy.lightnovelreader.data.reading.RepositoryReaderRecordStore
 import indi.dmzz_yyhyy.lightnovelreader.data.statistics.StatsRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.userdata.UserDataRepository
-import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ContentViewModel
-import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.flip.FlipPageContentViewModel
-import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.scroll.ScrollContentViewModel
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ReaderMode
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ReaderModeFactory
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ReaderModeHost
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -28,13 +24,15 @@ class ReaderViewModel @Inject constructor(
     private val chapterSource: ChapterSource,
     private val readingData: BookReadingDataAccess,
     userDataRepository: UserDataRepository,
-    val contentRenderer: ContentRenderer
+    private val modeFactory: ReaderModeFactory
 ) : ViewModel() {
     private val settingState = SettingState(userDataRepository, viewModelScope)
     val readerSettings: ReaderSettingsEditor = settingState
     val fontFamilySettings: ReaderFontFamilySettings = settingState.fontFamilySettings
-    private var contentViewModel: ContentViewModel? by mutableStateOf(null)
-    private val _uiState = MutableReaderScreenUiState(contentViewModel?.uiState)
+    private val modeHost: ReaderModeHost = ReaderModeHost { mode ->
+        modeFactory.create(mode, viewModelScope, settingState.continuousScrollSettings, ::saveReadingProgress)
+    }
+    private val _uiState = MutableReaderScreenUiState(modeHost.uiState)
     val uiState: ReaderScreenUiState = _uiState
     private val statisticsScope = CoroutineScope(Dispatchers.IO)
     private val readingRecords = ReaderReadingRecords(
@@ -55,7 +53,7 @@ class ReaderViewModel @Inject constructor(
         set(value) {
             field = value
             _uiState.bookId = value
-            contentViewModel?.changeBookId(value)
+            modeHost.changeBookId(value)
             readingRecords.openBook(value)
 
             viewModelScope.launch(Dispatchers.IO) {
@@ -68,43 +66,22 @@ class ReaderViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            settingState.isUsingFlipPageUserData.getFlowWithDefault(false).collect {
-                if (it && contentViewModel !is FlipPageContentViewModel) {
-                    contentViewModel = FlipPageContentViewModel(
-                        chapterSource = chapterSource,
-                        readingData = readingData,
-                        coroutineScope = viewModelScope,
-                        updateReadingProgress = ::saveReadingProgress,
-                        contentRenderer = contentRenderer
-                    )
-                    contentViewModel?.changeBookId(bookId)
-                    contentViewModel?.changeChapter(chapterId)
-                    _uiState.contentUiState = contentViewModel?.uiState
-                }
-                else if (!it && contentViewModel !is ScrollContentViewModel) {
-                    contentViewModel = ScrollContentViewModel(
-                        chapterSource = chapterSource,
-                        readingData = readingData,
-                        coroutineScope = viewModelScope,
-                        settingState = settingState,
-                        updateReadingProgress = ::saveReadingProgress,
-                        contentRenderer = contentRenderer
-                    )
-                    contentViewModel?.changeBookId(bookId)
-                    contentViewModel?.changeChapter(chapterId)
-                    _uiState.contentUiState = contentViewModel?.uiState
+            settingState.isUsingFlipPageUserData.getFlowWithDefault(false).collect { flip ->
+                val mode = if (flip) ReaderMode.Flip else ReaderMode.Scroll
+                if (modeHost.select(mode, { bookId }, { chapterId })) {
+                    _uiState.contentUiState = modeHost.uiState
                 }
             }
         }
     }
 
-    fun prevChapter() = contentViewModel?.loadPrevChapter()
+    fun prevChapter() = modeHost.loadPrevChapter()
 
-    fun nextChapter() = contentViewModel?.loadNextChapter()
+    fun nextChapter() = modeHost.loadNextChapter()
 
     fun changeChapter(chapterId: String) {
         this.chapterId = chapterId
-        contentViewModel?.changeChapter(chapterId)
+        modeHost.changeChapter(chapterId)
     }
 
     private fun saveReadingProgress(chapterId: String, progress: Float) =

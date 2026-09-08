@@ -25,8 +25,8 @@ import org.robolectric.annotation.Config
 class FlipModeContractTest {
     private val env = ModeTestEnvironment()
     private val progress = mutableListOf<Pair<String, Float>>()
-    private val mode = FlipPageContentViewModel(
-        env.chapters, env.records, env.scope, { id, value -> progress += id to value }, env.renderer,
+    private val mode = FlipReaderController(
+        env.loader, env.records, env.scope, { id, value -> progress += id to value },
         ioDispatcher = env.dispatcher,
     )
 
@@ -154,6 +154,19 @@ class FlipModeContractTest {
         newPage.intValue = 2
         env.runCurrent()
         assertEquals(listOf("payload" to 0.75f), progress)
+    }
+
+    @Test
+    fun queuedRestorationUsesTheOldPageCountButScrollsTheCurrentPager() {
+        env.records.data = env.records.data.copy(currentChapterReadingProgressMap = mapOf("requested" to 0.6f))
+        open()
+        val oldTargets = mutableListOf<Int>()
+        val newTargets = mutableListOf<Int>()
+        mode.updatePagerState(pager(5, targets = oldTargets))
+        mode.updatePagerState(pager(2, targets = newTargets))
+        env.runCurrent()
+        assertTrue(oldTargets.isEmpty())
+        assertEquals(listOf(2), newTargets)
     }
 
     private fun pager(count: Int, page: androidx.compose.runtime.MutableIntState = mutableIntStateOf(0), targets: MutableList<Int> = mutableListOf()): PagerState = mockk {

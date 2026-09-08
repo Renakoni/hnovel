@@ -9,9 +9,7 @@ import androidx.compose.ui.unit.IntSize
 import com.github.michaelbull.result.Err
 import com.github.michaelbull.result.Ok
 import com.github.michaelbull.result.get
-import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.SettingState
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.mode.ModeTestEnvironment
-import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import io.nightfish.lightnovelreader.api.error.WebRequestError
@@ -31,18 +29,18 @@ class ScrollModeContractTest {
     private val env = ModeTestEnvironment()
     private val continuous = MutableStateFlow(false)
     private val progress = mutableListOf<Pair<String, Float>>()
-    private lateinit var mode: ScrollContentViewModel
+    private lateinit var mode: ScrollReaderController
 
     @After fun tearDown() = env.close()
 
     private fun open(continuousScrolling: Boolean = false, id: String = "requested") {
         continuous.value = continuousScrolling
-        val settings = mockk<SettingState>(relaxed = true) {
-            every { isUsingContinuousScrollingUserData.getFlowWithDefault(true) } returns continuous
-            coEvery { isUsingContinuousScrollingUserData.getOrDefault(true) } answers { continuous.value }
+        val settings = object : ContinuousScrollSettings {
+            override fun getFlow() = continuous
+            override suspend fun isEnabled() = continuous.value
         }
-        mode = ScrollContentViewModel(
-            env.chapters, env.records, env.scope, settings, env.renderer,
+        mode = ScrollReaderController(
+            env.loader, env.records, env.scope, settings,
             { chapter, value -> progress += chapter to value },
             ioDispatcher = env.dispatcher, mainDispatcher = env.dispatcher,
         )
