@@ -2,6 +2,8 @@ package indi.dmzz_yyhyy.lightnovelreader.data.content
 
 import android.app.Application
 import fixtures.content.FixtureData
+import fixtures.content.CancellationConstructorFixtureComponent
+import fixtures.content.ErrorConstructorFixtureComponent
 import fixtures.content.FixtureSerializer
 import fixtures.content.InjectedFixtureComponent
 import fixtures.content.NoArgFixtureComponent
@@ -169,6 +171,15 @@ class ContentDecodingContractTest {
         host.initializeInjector()
         register(serializer = FixtureSerializer { throw CancellationException("cancelled") })
         assertThrows(CancellationException::class.java) { renderOne() }
+    }
+
+    @Test
+    fun reflectedConstructorCancellationAndErrorsAreNotConvertedToErrorComponents() {
+        host.initializeInjector()
+        register(component = CancellationConstructorFixtureComponent::class)
+        assertEquals("fixture constructor cancelled", assertThrows(CancellationException::class.java) { renderOne() }.message)
+        register(component = ErrorConstructorFixtureComponent::class)
+        assertEquals("fixture constructor fatal", assertThrows(AssertionError::class.java) { renderOne() }.message)
     }
 
     @Test

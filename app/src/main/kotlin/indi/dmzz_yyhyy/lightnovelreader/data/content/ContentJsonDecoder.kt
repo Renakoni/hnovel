@@ -8,6 +8,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import java.lang.reflect.InvocationTargetException
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.reflect.KClass
@@ -50,6 +51,12 @@ class ContentJsonDecoder @Inject constructor(
                         ?: error("failed to init component")
                 } catch (cancellation: CancellationException) {
                     throw cancellation
+                } catch (wrapped: InvocationTargetException) {
+                    when (val cause = wrapped.targetException) {
+                        is CancellationException -> throw cause
+                        is Error -> throw cause
+                        else -> error("failed to create component")
+                    }
                 } catch (_: Exception) {
                     error("failed to create component")
                 }
