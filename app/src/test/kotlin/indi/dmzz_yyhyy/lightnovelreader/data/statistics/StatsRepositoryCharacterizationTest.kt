@@ -6,7 +6,9 @@ import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.DailyCountDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.BookRecordEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.DailyCountEntity
 import io.mockk.coEvery
+import io.mockk.just
 import io.mockk.mockk
+import io.mockk.Runs
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
@@ -36,6 +38,7 @@ class StatsRepositoryCharacterizationTest {
             records[record.bookId to record.date] = record
         }
         coEvery { getAllBookRecords() } answers { records.values.toList() }
+        coEvery { clear() } just Runs
     }
     private val dailyDao = mockk<DailyCountDao> {
         coEvery { getByDate(any()) } answers { dailyCounts[firstArg<LocalDate>()] }
@@ -47,6 +50,7 @@ class StatsRepositoryCharacterizationTest {
             dailyCounts.remove(firstArg<LocalDate>())
         }
         coEvery { getAll() } answers { dailyCounts.values.toList() }
+        coEvery { clear() } just Runs
     }
     private val repository = StatsRepository(
         recordDao,
@@ -141,6 +145,15 @@ class StatsRepositoryCharacterizationTest {
         job.cancelAndJoin()
 
         assertEquals(0, repository.getTotalReadingSummary().totalMinutes)
+    }
+
+    @Test
+    fun clearingStatisticsDiscardsBufferedSecondsBeforeALateSettlement() = runTest {
+        repository.accumulateBookReadTime("book", 10)
+        repository.clear()
+        repository.accumulateBookReadTime("book", -1)
+
+        assertEquals(0, records.values.sumOf { it.seconds })
     }
 
     @Test

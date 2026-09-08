@@ -21,6 +21,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.FormattingRuleDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.UserDataDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.UserReadingDataDao
 import indi.dmzz_yyhyy.lightnovelreader.data.storage.StorageUsageRepository
+import indi.dmzz_yyhyy.lightnovelreader.data.statistics.StatsRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.web.WebBookDataSourceProvider
 import indi.dmzz_yyhyy.lightnovelreader.data.statistics.StatisticsWriteCoordinator
 import indi.dmzz_yyhyy.lightnovelreader.utils.readAppLocalData
@@ -47,7 +48,8 @@ class LocalDataManager @Inject constructor(
     private val userReadingDataDao: UserReadingDataDao,
     private val userDataDao: UserDataDao,
     private val storageUsageRepository: StorageUsageRepository,
-    private val statisticsWriteCoordinator: StatisticsWriteCoordinator
+    private val statisticsWriteCoordinator: StatisticsWriteCoordinator,
+    private val statsRepository: StatsRepository
 ) {
     companion object {
         const val TAG = "LocalDataManager"
@@ -345,7 +347,7 @@ class LocalDataManager @Inject constructor(
     }
 
     suspend fun cleanDatabaseWithoutGlobalUserData() {
-        statisticsWriteCoordinator.withLock {
+        statsRepository.withStatisticsResetLock {
           bookBookInformationDao.clear()
           bookRecordDao.clear()
           dailyCountDao.clear()

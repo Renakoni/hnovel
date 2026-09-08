@@ -115,8 +115,8 @@
 
 - 状态：**已修复，真实统计仓库的受控 DAO 回归测试通过**。
 - 基线证据：[StatsRepositoryCharacterizationTest](../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/data/statistics/StatsRepositoryCharacterizationTest.kt) 在 `main` 上确认两个序列失败：缓存某书 10 秒后写入该书入书次数会丢失缓冲；缓存 A 的 10 秒和 B 的 20 秒后只结算 B 会丢失 A。[StatsRepository](../app/src/main/kotlin/indi/dmzz_yyhyy/lightnovelreader/data/statistics/StatsRepository.kt) 原先在统计写入后对整个 Map 调用 `clear()`，负数结算也会遍历所有 key 却始终处理传入的同一个 `bookId`。
-- 修复语义：阅读事件写入不再触碰时间缓冲；负数命令只结算传入的 `bookId`，成功写入后只移除该 key；缓冲表的累积和结算由 `Mutex` 串行化，写入失败时保留缓冲供重试。
-- 验证：覆盖入书事件、单书结算、多个书籍缓冲、失败重试；完整 `:app:testDebugUnitTest` 共 104 项通过，`:app:assembleDebug` 成功。
+- 修复语义：阅读事件写入不再触碰时间缓冲；负数命令只结算传入的 `bookId`，成功写入后只移除该 key；缓冲表的累积和结算由 `Mutex` 串行化，写入失败时保留缓冲供重试。统计更新、导入和清库共享写入协调器；清库会在删除 Room 行前清除内存缓冲，避免迟到结算复活已清除的统计。
+- 验证：覆盖入书事件、单书结算、多个书籍缓冲、失败重试、取消回滚和清库后的迟到结算；完整 `:app:testDebugUnitTest` 共 104 项通过，`:app:assembleDebug` 成功。
 - 限制：测试使用受控 DAO 替身，未覆盖真实 Room 事务和设备生命周期调度；这些范围仍需真机/数据库集成验证。
 
 ## STATS-002：每次结算独立取整，导致短阅读时间永远不进入总览分钟数

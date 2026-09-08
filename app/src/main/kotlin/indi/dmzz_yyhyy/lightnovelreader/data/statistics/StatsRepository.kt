@@ -188,9 +188,18 @@ class StatsRepository @Inject constructor(
     }
 
     suspend fun clear() {
-        statisticsWriteCoordinator.withLock {
+        withStatisticsResetLock {
             bookRecordDao.clear()
             dailyCountDao.clear()
+        }
+    }
+
+    suspend fun withStatisticsResetLock(block: suspend () -> Unit) {
+        bookReadTimeBufferMutex.withLock {
+            statisticsWriteCoordinator.withLock {
+                bookReadTimeBuffer.clear()
+                block()
+            }
         }
     }
 }
