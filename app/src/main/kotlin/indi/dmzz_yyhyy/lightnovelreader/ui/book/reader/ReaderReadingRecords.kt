@@ -61,12 +61,13 @@ internal class ReaderReadingRecords(
 
             store.updateUserReadingData(bookId) { userReadingData ->
                 Log.v("ReaderViewModel", "$bookId/$chapterId Saving progress $progress. ($title)")
+                val updatedData = userReadingData.copyWithUpdatedChapterReadingProgress(chapterId, progress)
                 val readingProgress = if (total > 0) {
-                    (userReadingData.maxChapterReadingProgressMap.values.sum() / total).coerceIn(0f, 1f)
+                    (updatedData.maxChapterReadingProgressMap.values.sum() / total).coerceIn(0f, 1f)
                 } else {
                     userReadingData.readingProgress
                 }
-                userReadingData.copyWithUpdatedChapterReadingProgress(chapterId, progress).copy(
+                updatedData.copy(
                     lastReadTime = currentTime,
                     lastReadChapterId = chapterId,
                     lastReadChapterTitle = title,
