@@ -25,6 +25,7 @@ import io.nightfish.lightnovelreader.api.error.WebRequestError
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
@@ -60,47 +61,47 @@ class ReaderDirectoryProgressTest {
 
     @Test
     fun progressUsesTheExistingDirectoryCollectionWithoutWaitingForIt() = runBlocking {
-        withTimeout(5_000) {
-            val started = CompletableDeferred<Unit>()
-            val collectionCount = AtomicInteger()
-            val directory = Channel<Pair<BookVolumes, CompletableDeferred<Unit>>>()
-            val chapters = mockk<ChapterSource> {
-                every { getBookVolumesFlow("book", any()) } returns flow {
-                    collectionCount.incrementAndGet()
-                    started.complete(Unit)
-                    for ((volumes, applied) in directory) {
-                        emit(Ok(volumes))
-                        applied.complete(Unit)
-                    }
+        val started = CompletableDeferred<Unit>()
+        val collectionCount = AtomicInteger()
+        val directory = Channel<Pair<BookVolumes, CompletableDeferred<Unit>>>()
+        val chapters = mockk<ChapterSource> {
+            every { getBookVolumesFlow("book", any()) } returns flow {
+                collectionCount.incrementAndGet()
+                started.complete(Unit)
+                for ((volumes, applied) in directory) {
+                    emit(Ok(volumes))
+                    applied.complete(Unit)
                 }
             }
-            val data = AtomicReference(UserReadingData("book", readingProgress = 0.4f))
-            val writes = Channel<UserReadingData>(Channel.UNLIMITED)
-            val readingData = mockk<BookReadingDataAccess>(relaxed = true)
-            coEvery { readingData.updateUserReadingData("book", any()) } coAnswers {
-                val updated = secondArg<(UserReadingData) -> UserReadingData>()(data.get())
-                data.set(updated)
-                writes.send(updated)
-            }
-            coEvery { readingData.getUserReadingData("book") } answers { data.get() }
-            val saveProgress = slot<(String, Float) -> Unit>()
-            val contentState = object : ContentUiState by mockk(relaxed = true) {
-                override val readingChapterContent: Result<ChapterContentUiState, WebRequestError>? =
-                    Ok(ChapterContentUiState("chapter", "Title", emptyList(), null, null))
-            }
-            val controller = mockk<ReaderModeController>(relaxed = true) {
-                every { uiState } returns contentState
-            }
-            val factory = mockk<ReaderModeFactory> {
-                every { create(any(), any(), any(), capture(saveProgress)) } returns controller
-            }
-            val dao = mockk<UserDataDao>(relaxed = true) {
-                every { getFlow(any()) } returns flowOf(null)
-            }
-            coEvery { dao.get(any()) } returns null
-            val reader = ReaderViewModel(mockk(relaxed = true), chapters, readingData, UserDataRepository(dao), factory)
-            store.put("reader", reader)
-            scheduler.runCurrent()
+        }
+        val data = AtomicReference(UserReadingData("book", readingProgress = 0.4f))
+        val writes = Channel<UserReadingData>(Channel.UNLIMITED)
+        val readingData = mockk<BookReadingDataAccess>(relaxed = true)
+        coEvery { readingData.updateUserReadingData("book", any()) } coAnswers {
+            val updated = secondArg<(UserReadingData) -> UserReadingData>()(data.get())
+            data.set(updated)
+            writes.send(updated)
+        }
+        coEvery { readingData.getUserReadingData("book") } answers { data.get() }
+        val saveProgress = slot<(String, Float) -> Unit>()
+        val contentState = object : ContentUiState by mockk(relaxed = true) {
+            override val readingChapterContent: Result<ChapterContentUiState, WebRequestError>? =
+                Ok(ChapterContentUiState("chapter", "Title", emptyList(), null, null))
+        }
+        val controller = mockk<ReaderModeController>(relaxed = true) {
+            every { uiState } returns contentState
+        }
+        val factory = mockk<ReaderModeFactory> {
+            every { create(any(), any(), any(), capture(saveProgress)) } returns controller
+        }
+        val dao = mockk<UserDataDao>(relaxed = true) {
+            every { getFlow(any()) } returns flowOf(null)
+        }
+        coEvery { dao.get(any()) } returns null
+        val reader = ReaderViewModel(mockk(relaxed = true), chapters, readingData, UserDataRepository(dao), factory)
+        store.put("reader", reader)
+        scheduler.runCurrent()
+        withTimeout(5_000) {
             reader.bookId = "book"
             started.await()
 
@@ -109,7 +110,10 @@ class ReaderDirectoryProgressTest {
             for ((count, expected) in listOf(0 to 0.4f, 2 to 0.25f, 4 to 0.125f)) {
                 val applied = CompletableDeferred<Unit>()
                 directory.send(BookVolumes("book", listOf(Volume("volume", "Title", List(count) { ChapterInformation("$it", "Chapter $it") }))) to applied)
-                applied.await()
+                while (!applied.isCompleted) {
+                    scheduler.runCurrent()
+                    delay(1)
+                }
                 saveProgress.captured("chapter", 0.5f)
                 assertEquals(expected, writes.receive().readingProgress)
             }
