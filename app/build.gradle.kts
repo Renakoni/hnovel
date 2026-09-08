@@ -174,6 +174,7 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
     testImplementation(libs.compose.ui.test.junit4)
+    testImplementation(libs.kotlinx.coroutines.test)
     implementation(libs.kotlin.compose.compiler.plugin)
     // Hilt
     ksp(libs.kotlin.metadata.jvm)
