@@ -159,7 +159,7 @@ class FlipModeContractTest {
     @Test
     fun lateStoredProgressRestoresTheAlreadyCreatedPagerImmediately() {
         val gate = CompletableDeferred<Unit>()
-        env.records.readGate = gate
+        env.records.readGates += gate
         env.records.data = env.records.data.copy(currentChapterReadingProgressMap = mapOf("requested" to 0.75f))
         open()
         val targets = mutableListOf<Int>()
