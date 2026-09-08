@@ -55,10 +55,11 @@
 
 ## READ-002：直接移除仍处于 RESUMED 的阅读器会重复提交剩余时长
 
-- 状态：**R4 的受控 Compose/Lifecycle 测试已证实**。
-- 证据：[ReaderReadingTimeEffectsTest](../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/ReaderReadingTimeEffectsTest.kt) 的 `leavingWhileResumedWritesTheSameRemainderOnBothSidesOfFlush`：总时长 n → 统计 -1 → 总时长 n。先暂停再移除则为统计 -1 → 总时长 n → 总时长 0。
-- 影响：直接移除路径可能重复累计剩余时长。该测试没有测量设备上每种导航是否经过此路径。
-- 后续：明确总时长结算的唯一所有者及生命周期入口，再用现有暂停/恢复/移除测试验证新规则；不要在本轮通过删除一个 effect 改变行为。
+- 状态：**已修复，受控 Compose/Lifecycle 回归测试通过**。
+- 基线证据：[ReaderReadingTimeEffectsTest](../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/ReaderReadingTimeEffectsTest.kt) 在 `main` 上确认直接移除产生“统计 -1 → 总时长 n → 统计 -1 → 总时长 n”，暂停后移除还会额外写入 0。
+- 修复语义：由 `LifecycleResumeEffect` 独占总时长结算；移除重复的 `DisposableEffect` 结算入口。暂停和组合销毁都通过同一个 `onPauseOrDispose` 路径完成一次结算，统计缓冲 flush 保持独立入口。
+- 验证：覆盖直接移除、暂停后移除、恢复新计时段、当前书籍切换和空书籍抑制；完整 `:app:testDebugUnitTest` 共 103 项通过，`:app:assembleDebug` 成功。
+- 限制：测试验证 Compose 生命周期回调语义，不覆盖所有真实导航栈/设备后台路径；这些路径仍需真机验证，重点检查退出时持久化是否完成。
 
 ## READ-003：进度事件的标题与书籍 ID 在不同时间读取
 

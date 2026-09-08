@@ -115,13 +115,12 @@ class ReaderReadingTimeEffectsTest {
     }
 
     @Test
-    fun leavingWhileResumedWritesTheSameRemainderOnBothSidesOfFlush() {
+    fun leavingWhileResumedSettlesTheRemainderOnce() {
         removeReader()
         compose.runOnIdle {
             assertEquals(
                 listOf(
                     Call("stats", "book", 1),
-                    Call("total", "book", 1),
                     Call("stats", "book", -1),
                     Call("total", "book", 1),
                 ),
@@ -131,7 +130,7 @@ class ReaderReadingTimeEffectsTest {
     }
 
     @Test
-    fun leavingAfterPauseStillWritesZeroWithoutASecondFlush() {
+    fun leavingAfterPauseDoesNotSettleAgain() {
         pause()
         removeReader()
         compose.runOnIdle {
@@ -140,7 +139,6 @@ class ReaderReadingTimeEffectsTest {
                     Call("stats", "book", 1),
                     Call("stats", "book", -1),
                     Call("total", "book", 1),
-                    Call("total", "book", 0),
                 ),
                 calls,
             )
