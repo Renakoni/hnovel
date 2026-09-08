@@ -22,6 +22,9 @@ class ScrollReaderController(
 ) : ReaderModeController {
     private var lazyColumnSize = IntSize(0, 0)
 
+    override val requestedChapterId: String?
+        get() = uiState.readingChapterId
+
     override val uiState: MutableScrollContentUiSate = MutableScrollContentUiSate(
         loadPrevChapter = ::loadPrevChapter,
         loadNextChapter = ::loadNextChapter,

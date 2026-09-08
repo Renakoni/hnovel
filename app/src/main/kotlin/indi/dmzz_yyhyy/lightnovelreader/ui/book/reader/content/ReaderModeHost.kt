@@ -25,6 +25,9 @@ internal class ReaderModeHost(
 
     fun changeBookId(id: String) = controller?.changeBookId(id)
     fun changeChapter(id: String) = controller?.changeChapter(id)
+
+    val requestedChapterId: String?
+        get() = controller?.requestedChapterId
     fun loadNextChapter() = controller?.loadNextChapter()
     fun loadPrevChapter() = controller?.loadPrevChapter()
 }

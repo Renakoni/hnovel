@@ -116,8 +116,11 @@ class ReaderModeOwnershipTest {
         val factory = mockk<ReaderModeFactory> {
             every { create(any(), any(), any(), any()) } answers {
                 val mode = firstArg<ReaderMode>()
+                var requestedChapter: String? = null
                 object : ReaderModeController {
                     private var displayedChapter: String? = null
+                    override val requestedChapterId: String?
+                        get() = requestedChapter
                     override val uiState = mockk<ContentUiState> {
                         every { readingChapterId } answers { displayedChapter }
                     }
@@ -126,6 +129,7 @@ class ReaderModeOwnershipTest {
 
                     override fun changeChapter(id: String) {
                         events += "$mode/chapter/$id"
+                        requestedChapter = id
                         if (mode != ReaderMode.Flip || id != "initial-next") {
                             displayedChapter = id
                         }

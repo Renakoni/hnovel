@@ -87,6 +87,12 @@ class ReaderViewModel @Inject constructor(
     }
 
     private fun currentChapterIdForModeSwitch(): String {
+        val requestedChapterId = modeHost.requestedChapterId
+            ?.takeIf { it.isNotBlank() }
+        if (requestedChapterId != null) {
+            lastModeChapterId = requestedChapterId
+            return requestedChapterId
+        }
         val displayedChapterId = _uiState.contentUiState?.readingChapterId
             ?.takeIf { it.isNotBlank() }
         if (displayedChapterId != null) {
