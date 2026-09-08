@@ -8,7 +8,8 @@ import androidx.lifecycle.viewModelScope
 import com.github.michaelbull.result.getOrElse
 import com.github.michaelbull.result.map
 import dagger.hilt.android.lifecycle.HiltViewModel
-import indi.dmzz_yyhyy.lightnovelreader.data.book.BookRepository
+import indi.dmzz_yyhyy.lightnovelreader.data.book.BookReadingDataAccess
+import indi.dmzz_yyhyy.lightnovelreader.data.book.ChapterSource
 import indi.dmzz_yyhyy.lightnovelreader.data.content.ContentComponentRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.reading.RepositoryReaderRecordStore
 import indi.dmzz_yyhyy.lightnovelreader.data.statistics.StatsRepository
@@ -24,7 +25,8 @@ import javax.inject.Inject
 @HiltViewModel
 class ReaderViewModel @Inject constructor(
     statsRepository: StatsRepository,
-    private val bookRepository: BookRepository,
+    private val chapterSource: ChapterSource,
+    private val readingData: BookReadingDataAccess,
     userDataRepository: UserDataRepository,
     val contentComponentRepository: ContentComponentRepository
 ) : ViewModel() {
@@ -36,7 +38,7 @@ class ReaderViewModel @Inject constructor(
     val uiState: ReaderScreenUiState = _uiState
     private val statisticsScope = CoroutineScope(Dispatchers.IO)
     private val readingRecords = ReaderReadingRecords(
-        store = RepositoryReaderRecordStore(bookRepository, statsRepository, userDataRepository),
+        store = RepositoryReaderRecordStore(readingData, statsRepository, userDataRepository),
         scope = viewModelScope,
         statisticsScope = statisticsScope,
         currentBookId = { bookId },
@@ -57,7 +59,7 @@ class ReaderViewModel @Inject constructor(
             readingRecords.openBook(value)
 
             viewModelScope.launch(Dispatchers.IO) {
-                bookRepository.getBookVolumesFlow(value).collect {
+                chapterSource.getBookVolumesFlow(value).collect {
                     _uiState.bookVolumes = it
                 }
             }
@@ -69,7 +71,8 @@ class ReaderViewModel @Inject constructor(
             settingState.isUsingFlipPageUserData.getFlowWithDefault(false).collect {
                 if (it && contentViewModel !is FlipPageContentViewModel) {
                     contentViewModel = FlipPageContentViewModel(
-                        bookRepository = bookRepository,
+                        chapterSource = chapterSource,
+                        readingData = readingData,
                         coroutineScope = viewModelScope,
                         updateReadingProgress = ::saveReadingProgress,
                         contentComponentRepository = contentComponentRepository
@@ -80,7 +83,8 @@ class ReaderViewModel @Inject constructor(
                 }
                 else if (!it && contentViewModel !is ScrollContentViewModel) {
                     contentViewModel = ScrollContentViewModel(
-                        bookRepository = bookRepository,
+                        chapterSource = chapterSource,
+                        readingData = readingData,
                         coroutineScope = viewModelScope,
                         settingState = settingState,
                         updateReadingProgress = ::saveReadingProgress,

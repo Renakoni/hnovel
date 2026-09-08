@@ -1,6 +1,6 @@
 package indi.dmzz_yyhyy.lightnovelreader.data.reading
 
-import indi.dmzz_yyhyy.lightnovelreader.data.book.BookRepository
+import indi.dmzz_yyhyy.lightnovelreader.data.book.BookReadingDataAccess
 import indi.dmzz_yyhyy.lightnovelreader.data.statistics.ReadingStatsUpdate
 import indi.dmzz_yyhyy.lightnovelreader.data.statistics.StatsRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.userdata.UserDataRepository
@@ -8,7 +8,7 @@ import io.nightfish.lightnovelreader.api.book.UserReadingData
 import io.nightfish.lightnovelreader.api.userdata.UserDataPath
 
 internal class RepositoryReaderRecordStore(
-    private val bookRepository: BookRepository,
+    private val readingData: BookReadingDataAccess,
     private val statsRepository: StatsRepository,
     userDataRepository: UserDataRepository,
 ) : ReaderRecordStore {
@@ -20,10 +20,10 @@ internal class RepositoryReaderRecordStore(
     override suspend fun updateUserReadingData(
         bookId: String,
         update: (UserReadingData) -> UserReadingData,
-    ) = bookRepository.updateUserReadingData(bookId, update)
+    ) = readingData.updateUserReadingData(bookId, update)
 
     override suspend fun getUserReadingData(bookId: String): UserReadingData =
-        bookRepository.getUserReadingData(bookId)
+        readingData.getUserReadingData(bookId)
 
     override suspend fun updateReadingStatistics(update: ReadingStatsUpdate) =
         statsRepository.updateReadingStatistics(update)

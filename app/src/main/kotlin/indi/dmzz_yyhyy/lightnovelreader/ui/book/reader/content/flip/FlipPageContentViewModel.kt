@@ -5,7 +5,8 @@ import androidx.compose.foundation.pager.PagerState
 import androidx.compose.runtime.snapshotFlow
 import com.github.michaelbull.result.map
 import com.github.michaelbull.result.onOk
-import indi.dmzz_yyhyy.lightnovelreader.data.book.BookRepository
+import indi.dmzz_yyhyy.lightnovelreader.data.book.BookReadingDataAccess
+import indi.dmzz_yyhyy.lightnovelreader.data.book.ChapterSource
 import indi.dmzz_yyhyy.lightnovelreader.data.content.ContentComponentRepository
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentUiState
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ContentViewModel
@@ -19,7 +20,8 @@ import java.time.LocalDateTime
 import kotlin.math.roundToInt
 
 class FlipPageContentViewModel(
-    val bookRepository: BookRepository,
+    private val chapterSource: ChapterSource,
+    private val readingData: BookReadingDataAccess,
     val coroutineScope: CoroutineScope,
     val updateReadingProgress: (String, Float) -> Unit,
     val contentComponentRepository: ContentComponentRepository
@@ -99,7 +101,7 @@ class FlipPageContentViewModel(
         notRecoveredProgress = 0f
         uiState.readingProgress = 0f
         coroutineScope.launch {
-            bookRepository.getChapterContentFlow(
+            chapterSource.getChapterContentFlow(
                 id,
                 uiState.bookId,
                 WebDataSourcePriority.High
@@ -117,7 +119,7 @@ class FlipPageContentViewModel(
                 uiState.readingChapterId = id
                 uiState.readingChapterContent = result
                 result.onOk { content ->
-                    bookRepository.updateUserReadingData(uiState.bookId) {
+                    readingData.updateUserReadingData(uiState.bookId) {
                         it.copy(
                             lastReadTime = LocalDateTime.now(),
                             lastReadChapterId = id,
@@ -125,7 +127,7 @@ class FlipPageContentViewModel(
                         )
                     }
                     content.nextChapter?.let {
-                        bookRepository.preloadChapterContent(
+                        chapterSource.preloadChapterContent(
                             it,
                             uiState.bookId
                         )
@@ -134,7 +136,7 @@ class FlipPageContentViewModel(
             }
         }
         coroutineScope.launch(Dispatchers.IO) {
-            bookRepository.getUserReadingData(uiState.bookId).let {
+            readingData.getUserReadingData(uiState.bookId).let {
                 notRecoveredProgress = it.currentChapterReadingProgressMap[id] ?: 0f
             }
         }
