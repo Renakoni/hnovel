@@ -29,6 +29,12 @@ internal class ReaderReadingRecords(
     private val chapterCountMutex = Mutex()
     private val chapterCountCache = mutableMapOf<String, Int>()
 
+    fun cacheChapterCount(bookId: String, count: Int) {
+        synchronized(chapterCountCache) {
+            chapterCountCache[bookId] = count
+        }
+    }
+
     fun openBook(bookId: String) {
         scope.launch(ioDispatcher) {
             store.updateRecentBooks {
@@ -77,7 +83,11 @@ internal class ReaderReadingRecords(
 
     private suspend fun chapterCountForBook(bookId: String): Int =
         chapterCountMutex.withLock {
-            chapterCountCache[bookId] ?: chapterCount(bookId).also { chapterCountCache[bookId] = it }
+            synchronized(chapterCountCache) {
+                chapterCountCache[bookId]
+            } ?: chapterCount(bookId).also {
+                if (it > 0) cacheChapterCount(bookId, it)
+            }
         }
 
     fun updateTotalReadingTime(bookId: String, seconds: Int) {

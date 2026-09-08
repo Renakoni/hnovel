@@ -60,6 +60,12 @@ class ReaderViewModel @Inject constructor(
             viewModelScope.launch(Dispatchers.IO) {
                 chapterSource.getBookVolumesFlow(value).collect {
                     _uiState.bookVolumes = it
+                    it.map { volumes ->
+                        readingRecords.cacheChapterCount(
+                            value,
+                            volumes.volumes.sumOf { volume -> volume.chapters.size },
+                        )
+                    }
                 }
             }
     }
