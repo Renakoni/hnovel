@@ -93,6 +93,15 @@ internal class FlipReadingProgress(
         if (pagerState.pageCount == 0 || (!allowCurrentProgress && restorationApplied)) return
         val hasRecoveredProgress = notRecoveredProgress > 0f
         if (!hasRecoveredProgress && (!allowCurrentProgress || uiState.readingProgress <= 0f)) return
+        if (hasRecoveredProgress && initialPagerPage != null &&
+            (pagerState.isScrollInProgress ||
+                pagerState.currentPage != initialPagerPage ||
+                pagerState.targetPage != initialPagerPage)
+        ) {
+            notRecoveredProgress = 0f
+            restorationApplied = true
+            return
+        }
         if (hasRecoveredProgress && initialPagerPage != null && pagerState.settledPage != initialPagerPage) {
             notRecoveredProgress = 0f
             restorationApplied = true

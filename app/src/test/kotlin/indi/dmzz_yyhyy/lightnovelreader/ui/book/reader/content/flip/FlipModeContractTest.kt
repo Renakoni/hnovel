@@ -188,6 +188,28 @@ class FlipModeContractTest {
     }
 
     @Test
+    fun lateStoredProgressDoesNotOverrideAnInFlightPageChange() {
+        val gate = CompletableDeferred<Unit>()
+        env.records.readGate = gate
+        env.records.data = env.records.data.copy(currentChapterReadingProgressMap = mapOf("requested" to 0.75f))
+        open()
+        val targets = mutableListOf<Int>()
+        val pager = mockk<PagerState> {
+            every { pageCount } returns 4
+            every { settledPage } returns 0
+            every { currentPage } returns 1
+            every { targetPage } returns 1
+            every { isScrollInProgress } returns true
+            coEvery { scrollToPage(any(), any()) } answers { targets += firstArg<Int>() }
+        }
+        mode.updatePagerState(pager)
+        env.runCurrent()
+        gate.complete(Unit)
+        env.runCurrent()
+        assertTrue(targets.isEmpty())
+    }
+
+    @Test
     fun replacingThePagerCancelsItsPreviousProgressObserver() {
         open()
         env.emit("requested", Ok(env.chapter("payload")))
@@ -233,6 +255,9 @@ class FlipModeContractTest {
     private fun pager(count: Int, page: androidx.compose.runtime.MutableIntState = mutableIntStateOf(0), targets: MutableList<Int> = mutableListOf()): PagerState = mockk {
         every { pageCount } returns count
         every { settledPage } answers { page.intValue }
+        every { currentPage } answers { page.intValue }
+        every { targetPage } answers { page.intValue }
+        every { isScrollInProgress } returns false
         coEvery { scrollToPage(any(), any()) } answers { targets += firstArg<Int>() }
     }
 }
