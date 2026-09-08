@@ -43,32 +43,30 @@ internal class ReaderReadingRecords(
     }
 
     fun saveProgress(chapterId: String, progress: Float) {
-        if (progress.isNaN() || progress <= 0f || currentBookId().isBlank()) return
+        val bookId = currentBookId()
+        if (progress.isNaN() || progress <= 0f || bookId.isBlank()) return
         val title = currentChapterTitle() ?: return
+        val total = chapterCount()
         scope.launch(ioDispatcher) {
             val currentTime = now()
 
-            // Read the live book ID here, as the original queued ViewModel write did.
-            store.updateUserReadingData(currentBookId()) { userReadingData ->
-                Log.v("ReaderViewModel", "${currentBookId()}/$chapterId Saving progress $progress. ($title)")
-                val total = chapterCount()
-                // Overall progress intentionally uses the map from before this chapter update.
+            store.updateUserReadingData(bookId) { userReadingData ->
+                Log.v("ReaderViewModel", "$bookId/$chapterId Saving progress $progress. ($title)")
                 val readingProgress = if (total > 0) {
                     (userReadingData.maxChapterReadingProgressMap.values.sum() / total).coerceIn(0f, 1f)
                 } else {
                     userReadingData.readingProgress
                 }
-                userReadingData.copyWithUpdatedChapterReadingProgress(chapterId, progress)
-                    .copy(
-                        lastReadTime = currentTime,
-                        lastReadChapterId = chapterId,
-                        lastReadChapterTitle = title,
-                        readingProgress = readingProgress,
-                    )
+                userReadingData.copyWithUpdatedChapterReadingProgress(chapterId, progress).copy(
+                    lastReadTime = currentTime,
+                    lastReadChapterId = chapterId,
+                    lastReadChapterTitle = title,
+                    readingProgress = readingProgress,
+                )
             }
-            val readingData = store.getUserReadingData(currentBookId())
+            val readingData = store.getUserReadingData(bookId)
             if (readingData.readingProgress >= 1f) {
-                store.markBookFinished(currentBookId())
+                store.markBookFinished(bookId)
             }
         }
     }

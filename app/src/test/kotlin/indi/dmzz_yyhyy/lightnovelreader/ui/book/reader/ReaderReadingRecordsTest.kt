@@ -176,7 +176,11 @@ class ReaderReadingRecordsTest {
     }
 
     @Test
-    fun queuedProgressCapturesTheTitleButReadsTheBookCountAndTimeWhenWriting() {
+    fun queuedProgressCapturesTheCompleteProgressIdentityAtTheEventBoundary() {
+        store.data["book"] = UserReadingData(
+            id = "book",
+            maxChapterReadingProgressMap = mapOf("chapter" to 0.5f),
+        )
         store.data["next"] = UserReadingData(id = "next", maxChapterReadingProgressMap = mapOf("other" to 1f))
         records.saveProgress("chapter", 0.5f)
         bookId = "next"
@@ -185,16 +189,19 @@ class ReaderReadingRecordsTest {
         time = time.plusMinutes(1)
         scheduler.runCurrent()
 
-        val data = store.data.getValue("next")
-        assertEquals(listOf("update:next", "write:next", "read:next"), store.events)
+        val data = store.data.getValue("book")
+        assertEquals(listOf("update:book", "write:book", "read:book"), store.events)
         assertEquals("Chapter title", data.lastReadChapterTitle)
         assertEquals(0.25f, data.readingProgress)
         assertEquals(time, data.lastReadTime)
-        assertEquals(UserReadingData("book"), store.data.getValue("book"))
+        assertEquals(
+            UserReadingData(id = "next", maxChapterReadingProgressMap = mapOf("other" to 1f)),
+            store.data.getValue("next"),
+        )
     }
 
     @Test
-    fun completionCheckWaitsForPersistenceAndReadsTheLiveBookAfterSuspension() {
+    fun completionCheckUsesTheCapturedBookAfterPersistenceSuspension() {
         val gate = CompletableDeferred<Unit>()
         store.updateGate = gate
         records.saveProgress("chapter", 0.5f)
@@ -205,7 +212,7 @@ class ReaderReadingRecordsTest {
         store.data["next"] = UserReadingData(id = "next", readingProgress = 1f)
         gate.complete(Unit)
         scheduler.runCurrent()
-        assertEquals(listOf("update:book", "write:book", "read:next", "finished:next"), store.events)
+        assertEquals(listOf("update:book", "write:book", "read:book"), store.events)
     }
 
     @Test
