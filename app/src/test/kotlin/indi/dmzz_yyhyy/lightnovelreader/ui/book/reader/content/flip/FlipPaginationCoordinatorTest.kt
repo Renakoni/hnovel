@@ -25,9 +25,9 @@ class FlipPaginationCoordinatorTest {
             },
         )
 
-        coordinator.submit(emptyList(), height = 10, width = 1) { events += "old" }
+        coordinator.submit("old", emptyList(), height = 10, width = 1) { events += "old" }
         runCurrent()
-        coordinator.submit(emptyList(), height = 10, width = 2) { events += "new" }
+        coordinator.submit("new", emptyList(), height = 10, width = 2) { events += "new" }
         advanceUntilIdle()
 
         assertEquals(listOf("new"), events)
@@ -46,7 +46,7 @@ class FlipPaginationCoordinatorTest {
             },
         )
 
-        coordinator.submit(emptyList(), height = 10, width = 1) { events += it }
+        coordinator.submit("request", emptyList(), height = 10, width = 1) { events += it }
         runCurrent()
         coordinator.close()
         gate.complete(Unit)
@@ -68,9 +68,31 @@ class FlipPaginationCoordinatorTest {
             },
         )
 
-        coordinator.submit(emptyList(), height = 10, width = 1) { events += "stale" }
+        coordinator.submit("request", emptyList(), height = 10, width = 1) { events += "stale" }
         runCurrent()
         coordinator.cancelPending()
+        gate.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(emptyList<String>(), events)
+    }
+
+    @Test
+    fun inputChangeInvalidatesACompletedRequestBeforeTheNextSubmit() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val events = mutableListOf<String>()
+        val coordinator = FlipPaginationCoordinator(
+            scope = this,
+            ioDispatcher = StandardTestDispatcher(testScheduler),
+            paginate = { _, _, _ ->
+                gate.await()
+                emptyList()
+            },
+        )
+
+        coordinator.submit("old", emptyList(), height = 10, width = 1) { events += "old" }
+        runCurrent()
+        coordinator.syncInput("new")
         gate.complete(Unit)
         advanceUntilIdle()
 

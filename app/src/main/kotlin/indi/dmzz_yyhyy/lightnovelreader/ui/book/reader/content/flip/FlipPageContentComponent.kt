@@ -19,6 +19,7 @@ import androidx.compose.material3.SnackbarResult
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -113,6 +114,19 @@ private fun SimpleFlipPageTextComponent(
         (paddingValues.calculateTopPadding() + paddingValues.calculateBottomPadding()).toPx()
     }.toInt()
     val pagination = remember(scope) { FlipPaginationCoordinator(scope) }
+    val paginationInput = FlipPaginationInput(
+        chapterId = chapterContent.id,
+        content = chapterContent.content,
+        contentSize = contentSize,
+        horizontalPadding = horizontalPadding,
+        verticalPadding = verticalPadding,
+        density = density,
+        layoutDirection = layoutDirection,
+        readerStyle = readerStyle,
+        fontFamilyUri = settingState.fontFamilyUri,
+        textLocaleList = textLocaleList,
+    )
+    SideEffect { pagination.syncInput(paginationInput) }
     DisposableEffect(pagination) {
         onDispose { pagination.close() }
     }
@@ -136,7 +150,7 @@ private fun SimpleFlipPageTextComponent(
         }
         slippedContentComponentList = emptyList()
         uiState.updatePageState(PagerState { 0 })
-        pagination.submit(chapterContent.content, height, width) { result ->
+        pagination.submit(paginationInput, chapterContent.content, height, width) { result ->
             slippedContentComponentList = result
             uiState.updatePageState(PagerState { result.size })
         }
