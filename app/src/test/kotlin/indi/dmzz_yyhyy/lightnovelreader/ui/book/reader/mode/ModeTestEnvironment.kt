@@ -17,11 +17,13 @@ import io.nightfish.lightnovelreader.api.web.WebDataSourcePriority
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.serialization.json.JsonObject
@@ -103,18 +105,23 @@ internal class ModeTestEnvironment {
         var data = UserReadingData("book")
         val writes = mutableListOf<UserReadingData>()
         var readGate: CompletableDeferred<Unit>? = null
+        val readGates = ArrayDeque<CompletableDeferred<Unit>>()
         var writeGate: CompletableDeferred<Unit>? = null
+        val writeGates = ArrayDeque<CompletableDeferred<Unit>>()
+        val nonCancellableWriteGates = ArrayDeque<CompletableDeferred<Unit>>()
 
         override suspend fun getUserReadingData(bookId: String): UserReadingData {
             events += "read/start/$bookId"
-            readGate?.await()
+            readGates.removeFirstOrNull()?.await() ?: readGate?.await()
             events += "read/end/$bookId"
             return data
         }
 
         override suspend fun updateUserReadingData(id: String, update: (UserReadingData) -> UserReadingData) {
             events += "write/start/$id"
-            writeGate?.await()
+            nonCancellableWriteGates.removeFirstOrNull()?.let {
+                withContext(NonCancellable) { it.await() }
+            } ?: writeGates.removeFirstOrNull()?.await() ?: writeGate?.await()
             data = update(data)
             writes += data
             events += "write/end/${data.lastReadChapterId}"

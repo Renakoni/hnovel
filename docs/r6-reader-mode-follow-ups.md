@@ -8,19 +8,20 @@
 - [所有权测试][ownership-test] 使用实际 ReaderViewModel 和模式替身，确认切换模式时传递同一个 scope；旧模式任务仍活动，ViewModelStore.clear 后它们全部被取消。R6 明确了这一生命周期归属，但没有增加停用旧模式的行为。
 - 这两项证据不等同于完整真实导航/网络环境中的复现；目录任务、独立统计 scope 的问题继续留在[原记录](refactoring-follow-ups.md)。后续需要分别决定会话切换、模式停用、旧请求结果归属与退出结算规则。
 
-## SCROLL-001：关闭连续滚动后，旧相邻订阅仍可回写三槽
+## SCROLL-001：关闭连续滚动后，旧相邻订阅仍可回写三槽（P1，修复已提交）
 
-- 状态：**原实现与拆分后测试确认**。
-- 证据：[ScrollModeContractTest][scroll-test] 的 `turningOffContinuousScrollingLeavesOldAdjacentSubscriptionsAliveUntilReaderExit`：连续模式订阅当前/前/后章，切换为非连续后槽位被清空，但旧前后章订阅仍在；让旧后章继续发射，槽 2 再次出现数据。[ScrollChapterWindow][window] 直接跳章只取消 current Job；停止连续观察也不等同于取消两个相邻 Job。
-- 影响：非连续界面可能再次收到旧相邻内容；跨章节重新加载也存在类似交错路径，需要进一步覆盖具体布局影响。
-- 后续：定义三槽订阅的会话身份与关闭顺序，再决定取消点或结果归属校验。保留在首次当前章节成功后才创建相邻订阅的因果顺序。
+- 状态：**原实现与拆分后测试确认，修复已提交到独立 PR**。
+- 对照证据：在保留新增断言、强制重新编译并恢复 main 生产代码时，[ScrollModeContractTest][scroll-test] 10 项中 1 项失败。连续模式先订阅当前/前/后章，切换为非连续后，`ScrollChapterWindow.stopContinuousObservation()` 只取消布局观察 Job，前/后章 Job 仍活动；旧后章晚到发射会重新填充槽 2。
+- 修复语义：停止连续观察时同时取消并清空 `collectPrevChapterJob` 与 `collectNextChapterJob`。当前章由既有 `changeChapter` 重载流程负责，前后章不会继续以邻章身份回写；重新打开连续模式仍按当前章成功后的顺序创建新的相邻订阅。
+- 影响边界：取消使用 Kotlin 结构化 Job 生命周期，未增加全局过滤或吞掉章节结果。合法连续滚动的三槽顺序、预加载和跨章替换保持原实现；非合作的外部 Flow/真实网络生命周期仍需真机和集成环境观察。
+- 后续：跨章节窗口切换、模式切换身份和分页问题继续由 MODE-001、READ-001、PAGE-* 独立跟踪。
 
-## FLIP-001：进度读取晚于 Pager 创建时，不会立即应用恢复
+## FLIP-001：进度读取晚于 Pager 创建时，不会立即应用恢复（P1，修复已提交）
 
-- 状态：**原实现与拆分后测试确认**。
-- 证据：[FlipModeContractTest][flip-test] 的 `lateStoredProgressWaitsForAnotherPagerUpdate` 控制阅读记录读取的挂起点，让非空 Pager 先到达。读取恢复后只设置待恢复值；直到再次调用 `updatePagerState` 才收到目标页请求。
-- 影响：分页结果快于记录读取时，首次页面可能显示初始位置，保存的进度处于等待状态。具体真实布局是否恰好再次建立 Pager 决定可见结果。
-- 后续：明确章节、分页结果与恢复进度三个条件的协调时机，避免简单在每次变化时滚动而重复恢复或覆盖用户操作。
+- 状态：**原实现与拆分后测试确认，修复已提交到独立 PR**。
+- 对照证据：[FlipModeContractTest][flip-test] 的新断言让保存进度读取挂起、非空 Pager 先到达；恢复 main 生产实现并强制重新编译后，10 项中 1 项失败。原实现只设置待恢复值，要等下一次 `updatePagerState` 才滚动。
+- 修复语义：`FlipReadingProgress` 保存当前有效 Pager、首次可用页作为恢复基准；Pager 和阅读记录任一先到，另一方就绪后只尝试一次恢复。等待期间用户已经离开初始页时，晚到恢复被消费但不覆盖用户操作。
+- 影响边界：恢复目标的页数计算与排队滚动对象保持原实现，FLIP-002 的 Pager 替换/页数归属另行处理；真实 Pager 布局、网络和导航时序仍需设备/集成验证。
 
 ## FLIP-002：排队恢复使用旧 Pager 的页数，却滚动当前 Pager
 
@@ -37,12 +38,12 @@
 - 影响：名称容易让调用者误以为“最多每 120ms 输出最新值”。滚动模式还有独立停止观察会重新计算并写入，因此不能据此直接认定持久化一定丢进度。
 - 后续：先决定所需的是节流、采样还是带尾发射的节流，再同时审查 2500ms 写入门槛、停止与完成进度例外。可控时钟只用于证明现有行为，默认时间来源仍不变。
 
-## MODE-001：切换模式使用最后的显式跳章 ID，而非当前显示章节
+## MODE-001：切换模式使用最后的显式跳章 ID，而非当前显示章节（P1，修复已提交）
 
-- 状态：**实际 ReaderViewModel 与可移动章节的模式替身测试确认**。
-- 证据：[ReaderModeOwnershipTest][ownership-test] 先显式请求 initial，通过模式的 next 命令把显示 ID 改为 initial-next，再切换模式，新模式仍绑定 initial。[ReaderViewModel][reader] 的私有 chapterId 只在 `changeChapter` 更新，上一章/下一章和模式内连续跨章不回写该字段。
-- 影响：模式内翻到另一章节后切换阅读模式，可能重新打开旧的显式请求章节。替身测试证明了输入归属差异，未模拟真实列表/Pager 的所有交互。
-- 后续：明确“用户请求章节”和“当前阅读章节”的关系，再决定切换时读取哪一个；不要只改一处跳章回调造成两个身份不完整同步。
+- 状态：**实际 ReaderViewModel 与可移动章节的模式替身测试确认，修复已提交到独立 PR**。
+- 证据：[ReaderModeOwnershipTest][ownership-test] 先显式请求 initial，通过模式的 next 命令把显示 ID 改为 initial-next，再切换模式，原实现仍绑定 initial。[ReaderViewModel][reader] 的私有 `chapterId` 只在 `changeChapter` 更新，上一章/下一章和模式内连续跨章不回写该字段。
+- 修复语义：模式切换时由宿主优先读取当前旧模式 `ContentUiState.readingChapterId`；旧模式尚未建立有效章节时才回退到最后显式请求目标。两种模式不互相调用，模式内部的章节导航仍归各自控制器所有。
+- 影响边界：模式切换继续复用同一个 reader scope，旧模式任务生命周期、记录和进度写入策略不在本项改变；真实分页/网络完成时序仍需设备与集成验证。
 
 ## SCROLL-003：相邻订阅的 ID 检查不约束预加载
 

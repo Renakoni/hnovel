@@ -61,14 +61,15 @@ class ReaderViewModel @Inject constructor(
                     _uiState.bookVolumes = it
                 }
             }
-        }
+    }
     private var chapterId = ""
+    private var lastModeChapterId: String? = null
 
     init {
         viewModelScope.launch {
             settingState.isUsingFlipPageUserData.getFlowWithDefault(false).collect { flip ->
                 val mode = if (flip) ReaderMode.Flip else ReaderMode.Scroll
-                if (modeHost.select(mode, { bookId }, { chapterId })) {
+                if (modeHost.select(mode, { bookId }, ::currentChapterIdForModeSwitch)) {
                     _uiState.contentUiState = modeHost.uiState
                 }
             }
@@ -81,7 +82,23 @@ class ReaderViewModel @Inject constructor(
 
     fun changeChapter(chapterId: String) {
         this.chapterId = chapterId
+        lastModeChapterId = chapterId
         modeHost.changeChapter(chapterId)
+    }
+
+    private fun currentChapterIdForModeSwitch(): String {
+        val requestedChapterId = modeHost.requestedChapterId
+            ?.takeIf { it.isNotBlank() }
+        if (requestedChapterId != null) {
+            lastModeChapterId = requestedChapterId
+            return requestedChapterId
+        }
+        val displayedChapterId = _uiState.contentUiState?.readingChapterId
+            ?.takeIf { it.isNotBlank() }
+        if (displayedChapterId != null) {
+            lastModeChapterId = displayedChapterId
+        }
+        return displayedChapterId ?: lastModeChapterId ?: chapterId
     }
 
     private fun saveReadingProgress(chapterId: String, progress: Float) =

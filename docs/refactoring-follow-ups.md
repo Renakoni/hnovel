@@ -47,13 +47,13 @@
 - 影响：目录不完整的书籍可能显示为已缓存；也可能是对空卷的合理处理，目前缺少明确规则。
 - 后续：定义“已缓存”是否要求至少存在一个可阅读章节，再决定是否调整判断。不要仅为了统一空集合处理而修改行为。
 
-## READ-001：快速切换章节时，旧翻页任务可能回写新界面
+## READ-001：快速切换章节时，旧翻页任务可能回写新界面（P1，修复已提交）
 
-- 状态：**R6 独立模式测试已确认旧结果覆盖；真实导航/网络交互仍待验证**。
-- R6 补充：独立翻页模式测试已确认 A/B 发射交错能够使旧 A 覆盖 B，详见 [R6 证据记录](r6-reader-mode-follow-ups.md)。本轮只明确职责和所有权，未改变取消策略。
-- 证据：[FlipReaderController.changeChapter](../app/src/main/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/content/flip/FlipReaderController.kt) 每次启动章节收集和进度恢复协程，未记录/取消上一章的这两个任务，也没有在写状态前检查事件所属章节。章节 Flow 可能先发本地、再较晚发远端。
-- 影响：先请求 A 再切换 B 时，A 的较晚结果可能覆盖 B 的显示状态，或影响进度恢复。滚动模式有不同的 Job 管理，不能直接假定两者应套用同一算法。
-- 后续：基于已有 A/B 交错测试，继续覆盖记录恢复与真实导航/网络交互；明确请求替换规则后再修改取消或结果归属校验。
+- 状态：**已由翻页模式受控测试确认，修复已提交到独立 PR**。R6 只明确了模式任务所有权，没有改变替换行为；本项是其后的行为修复。
+- 证据：原有 [FlipModeContractTest](../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/content/flip/FlipModeContractTest.kt) 先启动 A 再启动 B，让 B 先成功、A 后成功，最终章节 ID 回到 A；A/B 两个订阅直到 reader scope 退出仍活动。`FlipReaderController.changeChapter` 也没有保存/取消上一章的收集和恢复任务，异步写入期间继续从 `uiState` 读取书籍 ID。
+- 修复语义：翻页控制器为每次章节请求保存 `Job`、请求代次和请求开始时的 book ID。切章或换书取消旧章节收集及旧进度恢复；每个结果在更新 UI、完成阅读记录后续操作前检查当前代次，不能依赖书源 Flow 一定及时响应取消。恢复进度在 `FlipReadingProgress` 内同样按代次校验，旧读取完成不能污染新章节的待恢复页。
+- 滚动模式保持自己的 `ScrollChapterWindow` 订阅所有权，本 PR 不把连续滚动的三槽替换算法改成翻页模式的单任务算法。
+- 后续限制：测试使用可控 Flow、挂起的阅读记录和协程调度器，覆盖仓库/加载器以外的章节请求交错；未宣称覆盖每种真实网络、导航动画或设备生命周期组合。若发现滚动窗口在关闭连续模式后继续回写，继续由 SCROLL-001 单独处理。
 
 ## READ-002：直接移除仍处于 RESUMED 的阅读器会重复提交剩余时长
 
@@ -110,10 +110,11 @@
 
 ## STATS-002：每次结算独立取整，导致短阅读时间永远不进入总览分钟数
 
-- 状态：**真实统计仓库的受控 DAO 测试已证实；R4 之前已有**。
-- 证据：[StatsRepositoryCharacterizationTest](../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/data/statistics/StatsRepositoryCharacterizationTest.kt) 的 `twoThirtySecondSettlementsProduceSixtyBookSecondsButZeroSummaryMinutes`：两次各 30 秒并分别 flush，书籍记录累计 60 秒，总览仍为 0 分钟。`updateCount` 对每次 `secondDelta / 60` 取整，没有保存余数；`getTotalReadingSummary` 使用这个按分钟累计的统计。
-- 影响：经常暂停/退出形成的短会话会在总览中少计，累计足够一分钟也不会补回，书籍秒数与总览分钟数产生分歧。
-- 后续：定义唯一的统计时间单位和聚合边界，保留余数或从累计秒数派生分钟；覆盖分段结算、跨小时/日期和重复 flush，避免同时改变展示规则而无法定位差异。
+- 状态：**已修复，真实统计仓库的受控 DAO 回归测试通过**。
+- 基线证据：[StatsRepositoryCharacterizationTest](../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/data/statistics/StatsRepositoryCharacterizationTest.kt) 的分段结算契约在 `main` 上失败：两次各 30 秒后，书籍记录累计 60 秒，但 `getTotalReadingSummary` 仍返回 0 分钟。原因是 `updateCount` 对每次 `secondDelta / 60` 取整且不保留余数。
+- 修复语义：总览分钟数从持久化的 `BookRecordEntity.seconds` 汇总后统一除以 60，并以 Long 计算后安全转换为 Int；秒数成为总览的唯一精度来源，不再依赖每次结算时已经取整的 `Count`。
+- 验证：覆盖两次 30 秒分段结算；完整 `:app:testDebugUnitTest` 共 103 项通过，`:app:assembleDebug` 成功。
+- 限制：按小时 `Count` 和热力图仍是分钟粒度，无法从现有记录恢复每小时的秒余数；本修复只校正总览汇总，不改变热力图的既有展示语义。若产品需要按小时精确累计，应另立数据模型/迁移 Issue。
 
 ## READ-004：总体进度和读完标记滞后一次章节进度写入
 
@@ -124,10 +125,11 @@
 
 ## READ-005：计时累计的是循环次数，恢复时立即计入一秒
 
-- 状态：**R4 既有虚拟时间测试已证实计数规则；暂停频繁时的实际偏差未测量**。
-- 证据：[ReaderReadingTimeEffectsTest](../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/ReaderReadingTimeEffectsTest.kt) 验证恢复后立即产生 1 秒回调，第 61 次计数提交 61 秒；循环在计数后 `delay(1.seconds)`。两条循环不是由同一份实际经过时间派生。
-- 影响：短暂恢复后立即暂停也可能记入 1 秒；主线程调度延迟又可能造成少计。R4 注入的 `LocalDateTime` 只控制记录时间戳，不控制这些循环，也不控制统计仓库的 `LocalTime`/日期。
-- 后续：先明确产品是否需要实际可见阅读时长，再考虑单调时间源和统一的时间区间结算；保留暂停/退出重复结算的专门用例，避免仅修正阈值而遗漏 READ-002。
+- 状态：**已修复，受控 Compose/Lifecycle 回归测试通过**。
+- 基线证据：`main@1dd4604f` 的 [ReaderReadingTimeEffectsTest](../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/ReaderReadingTimeEffectsTest.kt) 原有契约确认恢复后立即产生 1 秒回调，第 61 次循环提交 61 秒；两条循环按回调次数累积，并非按实际经过时间累积。
+- 修复语义：计时开始和每次调度都读取单调 `SystemClock.elapsedRealtime`（测试注入可控时钟），累计从上次测量点到当前的完整秒数；暂停/销毁前再补一次测量。小于一秒的恢复/暂停不产生秒数，调度延迟会在下一次测量补齐；总时长每 60 秒结算，剩余秒数在退出时结算。
+- 验证：覆盖立即恢复/暂停、调度延迟、暂停后恢复、直接移除和书籍 ID 变化；计时测试 5 项通过，完整 `:app:testDebugUnitTest` 共 103 项通过，`:app:assembleDebug` 成功。
+- 限制：本 PR 不处理 READ-002 的重复生命周期结算入口；退出路径仍需真机验证异步持久化是否完成。`LocalDateTime` 记录时间戳和统计仓库的书籍归属仍由其他 Issue 负责。
 
 ## READ-006：目录收集与阅读模式缺少明确的替换/销毁边界
 

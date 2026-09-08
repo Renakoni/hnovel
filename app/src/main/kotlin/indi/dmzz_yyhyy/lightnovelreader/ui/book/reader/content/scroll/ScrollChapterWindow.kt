@@ -27,8 +27,16 @@ internal class ScrollChapterWindow(
     private var collectPrevChapterJob: Job? = null
     private var collectCurrentChapterJob: Job? = null
     private var collectNextChapterJob: Job? = null
+    private var continuousObservationGeneration = 0L
+    private var continuousObservationActive = false
+    private val observationLock = Any()
 
     fun startContinuousObservation() {
+        val observationGeneration = synchronized(observationLock) {
+            continuousObservationActive = true
+            continuousObservationGeneration++
+            continuousObservationGeneration
+        }
         progressScrollLoadJob?.cancel()
         progressScrollLoadJob = coroutineScope.launch {
             snapshotFlow { uiState.lazyListState.layoutInfo.visibleItemsInfo.getOrNull(0) }.collect { itemInfo ->
@@ -40,62 +48,68 @@ internal class ScrollChapterWindow(
                         itemInfo.offset <= -viewportHeight() &&
                         readingChapterContent.hasPrevChapter()
                     ) {
-                        collectNextChapterJob?.cancel()
-                        collectCurrentChapterJob?.cancel()
-                        collectPrevChapterJob?.cancel()
-                        val nextChapter = uiState.contentList[1]
-                        val currentChapter = uiState.contentList[0]
-                        val currentChapterId = readingChapterContent.prevChapter
-                        val currentChapterContent = currentChapter?.second?.get()
-                        resetContentList()
-                        uiState.contentList[2] = nextChapter
-                        uiState.contentList[1] = currentChapter
-                        collectNextChapterJob = collectChapter(2, readingChapterContent.id)
-                        collectCurrentChapterJob = collectChapter(1, currentChapterId) { chapterContent ->
+                        var displacedChapter: ChapterContentUiState? = null
+                        withCurrentObservation(observationGeneration) {
+                            collectNextChapterJob?.cancel()
+                            collectCurrentChapterJob?.cancel()
                             collectPrevChapterJob?.cancel()
-                            collectPrevChapterJob = collectAdjacentChapter(
-                                index = 0,
-                                chapterId = chapterContent.prevChapter,
-                                currentChapterId = chapterContent.id,
-                                occupiedChapterIds = setOf(readingChapterContent.id)
-                            )
-                            updateLastReadChapter(chapterContent.id, chapterContent.title)
+                            val nextChapter = uiState.contentList[1]
+                            val currentChapter = uiState.contentList[0]
+                            val currentChapterId = readingChapterContent.prevChapter
+                            displacedChapter = currentChapter?.second?.get()
+                            resetContentList()
+                            uiState.contentList[2] = nextChapter
+                            uiState.contentList[1] = currentChapter
+                            collectNextChapterJob = collectChapter(2, readingChapterContent.id)
+                            collectCurrentChapterJob = collectChapter(1, currentChapterId) { chapterContent ->
+                                withCurrentObservation(observationGeneration) {
+                                    collectPrevChapterJob?.cancel()
+                                    collectPrevChapterJob = collectAdjacentChapter(
+                                        index = 0,
+                                        chapterId = chapterContent.prevChapter,
+                                        currentChapterId = chapterContent.id,
+                                        occupiedChapterIds = setOf(readingChapterContent.id)
+                                    )
+                                }
+                                updateLastReadChapter(chapterContent.id, chapterContent.title)
+                            }
+                            uiState.readingChapterId = currentChapterId
                         }
-                        uiState.readingChapterId = currentChapterId
-                        currentChapterContent?.let {
-                            updateLastReadChapter(it.id, it.title)
-                        }
+                        displacedChapter?.let { updateLastReadChapter(it.id, it.title) }
                     }
                     if (
                         itemInfo != null &&
                         itemInfo.key == readingChapterContent.nextChapter &&
                         readingChapterContent.hasNextChapter()
                     ) {
-                        collectNextChapterJob?.cancel()
-                        collectCurrentChapterJob?.cancel()
-                        collectPrevChapterJob?.cancel()
-                        val prevChapter = uiState.contentList[1]
-                        val currentChapter = uiState.contentList[2]
-                        val currentChapterId = readingChapterContent.nextChapter
-                        val currentChapterContent = currentChapter?.second?.get()
-                        resetContentList()
-                        uiState.contentList[0] = prevChapter
-                        uiState.contentList[1] = currentChapter
-                        collectPrevChapterJob = collectChapter(0, readingChapterContent.id)
-                        collectCurrentChapterJob = collectChapter(1, currentChapterId) { chapterContent ->
+                        var displacedChapter: ChapterContentUiState? = null
+                        withCurrentObservation(observationGeneration) {
                             collectNextChapterJob?.cancel()
-                            collectNextChapterJob = collectAdjacentChapter(
-                                index = 2,
-                                chapterId = chapterContent.nextChapter,
-                                currentChapterId = chapterContent.id,
-                                occupiedChapterIds = setOf(readingChapterContent.id)
-                            )
-                            updateLastReadChapter(chapterContent.id, chapterContent.title)
+                            collectCurrentChapterJob?.cancel()
+                            collectPrevChapterJob?.cancel()
+                            val prevChapter = uiState.contentList[1]
+                            val currentChapter = uiState.contentList[2]
+                            val currentChapterId = readingChapterContent.nextChapter
+                            displacedChapter = currentChapter?.second?.get()
+                            resetContentList()
+                            uiState.contentList[0] = prevChapter
+                            uiState.contentList[1] = currentChapter
+                            collectPrevChapterJob = collectChapter(0, readingChapterContent.id)
+                            collectCurrentChapterJob = collectChapter(1, currentChapterId) { chapterContent ->
+                                withCurrentObservation(observationGeneration) {
+                                    collectNextChapterJob?.cancel()
+                                    collectNextChapterJob = collectAdjacentChapter(
+                                        index = 2,
+                                        chapterId = chapterContent.nextChapter,
+                                        currentChapterId = chapterContent.id,
+                                        occupiedChapterIds = setOf(readingChapterContent.id)
+                                    )
+                                }
+                                updateLastReadChapter(chapterContent.id, chapterContent.title)
+                            }
+                            uiState.readingChapterId = currentChapterId
                         }
-                        uiState.readingChapterId = currentChapterId
-                        currentChapterContent?.let {
-                            updateLastReadChapter(it.id, it.title)
-                        }
+                        displacedChapter?.let { updateLastReadChapter(it.id, it.title) }
                     }
                 }
             }
@@ -103,7 +117,15 @@ internal class ScrollChapterWindow(
     }
 
     fun stopContinuousObservation() {
-        progressScrollLoadJob?.cancel()
+        synchronized(observationLock) {
+            continuousObservationActive = false
+            continuousObservationGeneration++
+            progressScrollLoadJob?.cancel()
+            collectPrevChapterJob?.cancel()
+            collectPrevChapterJob = null
+            collectNextChapterJob?.cancel()
+            collectNextChapterJob = null
+        }
     }
 
     private fun resetContentList() {
@@ -119,12 +141,15 @@ internal class ScrollChapterWindow(
         uiState.readingProgress = 0f
         uiState.lazyListState = LazyListState()
         coroutineScope.launch (ioDispatcher) {
-            val isUsingContinuousScrolling = settings.isEnabled()
-            collectRequestedChapter(id, isUsingContinuousScrolling)
+            val configuredForContinuousScrolling = settings.isEnabled()
+            val (isUsingContinuousScrolling, observationGeneration) = synchronized(observationLock) {
+                Pair(configuredForContinuousScrolling && continuousObservationActive, continuousObservationGeneration)
+            }
+            collectRequestedChapter(id, isUsingContinuousScrolling, observationGeneration)
         }
     }
 
-    private fun collectRequestedChapter(id: String, continuousScrolling: Boolean) {
+    private fun collectRequestedChapter(id: String, continuousScrolling: Boolean, observationGeneration: Long) {
         collectCurrentChapterJob?.cancel()
         collectCurrentChapterJob = coroutineScope.launch(ioDispatcher) {
             chapters.load(id, uiState.bookId).collect { result ->
@@ -146,20 +171,22 @@ internal class ScrollChapterWindow(
                     }
 
                     if (continuousScrolling) {
-                        collectPrevChapterJob?.cancel()
-                        collectPrevChapterJob = collectAdjacentChapter(
-                            index = 0,
-                            chapterId = chapterContent.prevChapter,
-                            currentChapterId = chapterContent.id,
-                            occupiedChapterIds = setOfNotNull(chapterContent.nextChapter)
-                        )
-                        collectNextChapterJob?.cancel()
-                        collectNextChapterJob = collectAdjacentChapter(
-                            index = 2,
-                            chapterId = chapterContent.nextChapter,
-                            currentChapterId = chapterContent.id,
-                            occupiedChapterIds = setOfNotNull(chapterContent.prevChapter)
-                        )
+                        withCurrentObservation(observationGeneration) {
+                            collectPrevChapterJob?.cancel()
+                            collectPrevChapterJob = collectAdjacentChapter(
+                                index = 0,
+                                chapterId = chapterContent.prevChapter,
+                                currentChapterId = chapterContent.id,
+                                occupiedChapterIds = setOfNotNull(chapterContent.nextChapter)
+                            )
+                            collectNextChapterJob?.cancel()
+                            collectNextChapterJob = collectAdjacentChapter(
+                                index = 2,
+                                chapterId = chapterContent.nextChapter,
+                                currentChapterId = chapterContent.id,
+                                occupiedChapterIds = setOfNotNull(chapterContent.prevChapter)
+                            )
+                        }
                     }
                 }
             }
@@ -192,6 +219,13 @@ internal class ScrollChapterWindow(
             }
         return collectChapter(index, adjacentChapterId)
     }
+
+    private inline fun withCurrentObservation(generation: Long, block: () -> Unit): Boolean =
+        synchronized(observationLock) {
+            if (generation != continuousObservationGeneration) return false
+            block()
+            true
+        }
 
     private suspend fun updateLastReadChapter(chapterId: String, chapterTitle: String?) {
         readingData.updateUserReadingData(uiState.bookId) {

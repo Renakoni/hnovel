@@ -6,7 +6,10 @@ import indi.dmzz_yyhyy.lightnovelreader.data.statistics.ReadingStatsUpdate
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.time.LocalDateTime
 
 /** Records reader events; the owner supplies the existing scopes and live progress inputs. */
@@ -20,6 +23,10 @@ internal class ReaderReadingRecords(
     private val now: () -> LocalDateTime = LocalDateTime::now,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
+    private val totalReadingTimeMutex = Mutex()
+    private val accumulatedReadingTimeLock = Any()
+    private var accumulatedReadingTimeJob: Job? = null
+
     fun openBook(bookId: String) {
         scope.launch(ioDispatcher) {
             store.updateRecentBooks {
@@ -68,17 +75,23 @@ internal class ReaderReadingRecords(
 
     fun updateTotalReadingTime(bookId: String, seconds: Int) {
         scope.launch(ioDispatcher) {
-            store.updateUserReadingData(bookId) {
-                it.copy(lastReadTime = now(), totalReadTime = it.totalReadTime + seconds)
+            totalReadingTimeMutex.withLock {
+                store.updateUserReadingData(bookId) {
+                    it.copy(lastReadTime = now(), totalReadTime = it.totalReadTime + seconds)
+                }
             }
         }
     }
 
     fun accumulateReadingTime(bookId: String, seconds: Int) {
         if (bookId.isBlank()) return
-        statisticsScope.launch(ioDispatcher) {
-            // Negative values remain the statistics repository's existing flush command.
-            store.accumulateBookReadTime(bookId, seconds)
+        synchronized(accumulatedReadingTimeLock) {
+            val previous = accumulatedReadingTimeJob
+            accumulatedReadingTimeJob = statisticsScope.launch(ioDispatcher) {
+                previous?.join()
+                // Negative values remain the statistics repository's existing flush command.
+                store.accumulateBookReadTime(bookId, seconds)
+            }
         }
     }
 }

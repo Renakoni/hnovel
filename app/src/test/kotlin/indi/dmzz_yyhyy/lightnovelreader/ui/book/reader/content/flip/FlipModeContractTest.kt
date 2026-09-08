@@ -69,6 +69,23 @@ class FlipModeContractTest {
     }
 
     @Test
+    fun aSuspendedOlderMetadataWriteCannotOverwriteTheNewerChapter() {
+        open("first")
+        val firstWriteGate = CompletableDeferred<Unit>()
+        env.records.nonCancellableWriteGates += firstWriteGate
+
+        env.emit("first", Ok(env.chapter("first")))
+        mode.changeChapter("second")
+        env.runCurrent()
+        env.emit("second", Ok(env.chapter("second")))
+        firstWriteGate.complete(Unit)
+        env.runCurrent()
+
+        assertEquals("second", env.records.data.lastReadChapterId)
+        assertEquals(listOf("first", "second"), env.records.writes.map { it.lastReadChapterId })
+    }
+
+    @Test
     fun aLaterErrorReplacesCachedContentWithoutAnotherWriteOrPreload() {
         open()
         env.emit("requested", Ok(env.chapter("requested", next = "next")))
@@ -80,19 +97,38 @@ class FlipModeContractTest {
     }
 
     @Test
-    fun olderChapterSubscriptionsRemainActiveAndCanOverwriteTheNewChapterUntilReaderExit() {
+    fun changingChapterCancelsOlderSubscriptionAndIgnoresItsLateResult() {
         open("first")
         mode.changeChapter("second")
         env.runCurrent()
         env.emit("second", Ok(env.chapter("second")))
         env.emit("first", Ok(env.chapter("first")))
-        assertEquals("first", mode.uiState.readingChapterId)
-        assertEquals(listOf("first", "second"), env.chapters.active.map { it.chapterId })
+        assertEquals("second", mode.uiState.readingChapterId)
+        assertEquals(listOf("second"), env.chapters.active.map { it.chapterId })
         env.close()
         assertTrue(env.chapters.active.isEmpty())
         val writes = env.records.writes.size
         env.emit("first", Ok(env.chapter("late")))
         assertEquals(writes, env.records.writes.size)
+    }
+
+    @Test
+    fun changingChapterDiscardsTheOlderPendingProgressRecovery() {
+        val gate = CompletableDeferred<Unit>()
+        env.records.readGate = gate
+        env.records.data = env.records.data.copy(
+            currentChapterReadingProgressMap = mapOf("first" to 0.2f, "second" to 0.8f),
+        )
+        open("first")
+        mode.changeChapter("second")
+        env.runCurrent()
+
+        gate.complete(Unit)
+        env.runCurrent()
+        val targets = mutableListOf<Int>()
+        mode.updatePagerState(pager(10, targets = targets))
+        env.runCurrent()
+        assertEquals(listOf(7), targets)
     }
 
     @Test
@@ -121,9 +157,9 @@ class FlipModeContractTest {
     }
 
     @Test
-    fun lateStoredProgressWaitsForAnotherPagerUpdate() {
+    fun lateStoredProgressRestoresTheAlreadyCreatedPagerImmediately() {
         val gate = CompletableDeferred<Unit>()
-        env.records.readGate = gate
+        env.records.readGates += gate
         env.records.data = env.records.data.copy(currentChapterReadingProgressMap = mapOf("requested" to 0.75f))
         open()
         val targets = mutableListOf<Int>()
@@ -131,10 +167,46 @@ class FlipModeContractTest {
         env.runCurrent()
         gate.complete(Unit)
         env.runCurrent()
-        assertTrue(targets.isEmpty())
-        mode.updatePagerState(pager(4, targets = targets))
-        env.runCurrent()
         assertEquals(listOf(2), targets)
+    }
+
+    @Test
+    fun lateStoredProgressDoesNotOverrideAUserPageChange() {
+        val gate = CompletableDeferred<Unit>()
+        env.records.readGate = gate
+        env.records.data = env.records.data.copy(currentChapterReadingProgressMap = mapOf("requested" to 0.75f))
+        open()
+        val targets = mutableListOf<Int>()
+        val page = mutableIntStateOf(0)
+        mode.updatePagerState(pager(4, page, targets))
+        env.runCurrent()
+        page.intValue = 1
+        env.runCurrent()
+        gate.complete(Unit)
+        env.runCurrent()
+        assertTrue(targets.isEmpty())
+    }
+
+    @Test
+    fun lateStoredProgressDoesNotOverrideAnInFlightPageChange() {
+        val gate = CompletableDeferred<Unit>()
+        env.records.readGate = gate
+        env.records.data = env.records.data.copy(currentChapterReadingProgressMap = mapOf("requested" to 0.75f))
+        open()
+        val targets = mutableListOf<Int>()
+        val pager = mockk<PagerState> {
+            every { pageCount } returns 4
+            every { settledPage } returns 0
+            every { currentPage } returns 1
+            every { targetPage } returns 1
+            every { isScrollInProgress } returns true
+            coEvery { scrollToPage(any(), any()) } answers { targets += firstArg<Int>() }
+        }
+        mode.updatePagerState(pager)
+        env.runCurrent()
+        gate.complete(Unit)
+        env.runCurrent()
+        assertTrue(targets.isEmpty())
     }
 
     @Test
@@ -183,6 +255,9 @@ class FlipModeContractTest {
     private fun pager(count: Int, page: androidx.compose.runtime.MutableIntState = mutableIntStateOf(0), targets: MutableList<Int> = mutableListOf()): PagerState = mockk {
         every { pageCount } returns count
         every { settledPage } answers { page.intValue }
+        every { currentPage } answers { page.intValue }
+        every { targetPage } answers { page.intValue }
+        every { isScrollInProgress } returns false
         coEvery { scrollToPage(any(), any()) } answers { targets += firstArg<Int>() }
     }
 }
