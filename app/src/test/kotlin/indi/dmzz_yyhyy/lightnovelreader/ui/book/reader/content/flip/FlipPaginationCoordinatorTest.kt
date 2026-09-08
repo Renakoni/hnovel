@@ -54,4 +54,26 @@ class FlipPaginationCoordinatorTest {
 
         assertEquals(emptyList<List<AbstractContentComponent<*>>>(), events)
     }
+
+    @Test
+    fun cancelPendingPreventsACompletedRequestFromPublishing() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val events = mutableListOf<String>()
+        val coordinator = FlipPaginationCoordinator(
+            scope = this,
+            ioDispatcher = StandardTestDispatcher(testScheduler),
+            paginate = { _, _, _ ->
+                gate.await()
+                emptyList()
+            },
+        )
+
+        coordinator.submit(emptyList(), height = 10, width = 1) { events += "stale" }
+        runCurrent()
+        coordinator.cancelPending()
+        gate.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(emptyList<String>(), events)
+    }
 }

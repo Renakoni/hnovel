@@ -38,6 +38,11 @@ internal class FlipPaginationCoordinator(
     }
 
     fun close() {
+        cancelPending()
+    }
+
+    /** Invalidates an in-flight request while keeping the coordinator reusable. */
+    fun cancelPending() {
         requestId++
         paginationJob?.cancel()
         paginationJob = null
