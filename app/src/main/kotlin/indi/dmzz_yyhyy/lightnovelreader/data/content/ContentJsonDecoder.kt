@@ -5,7 +5,7 @@ import io.nightfish.lightnovelreader.api.content.component.AbstractContentCompon
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.lang.reflect.InvocationTargetException
@@ -63,15 +63,14 @@ class ContentJsonDecoder @Inject constructor(
             }
     }
 
-    // Export retains its existing policy: exact IDs, skip missing entries, propagate decoder errors.
+    // Export skips structurally invalid entries, uses exact IDs and propagates serializer errors.
     fun getDataFromJsonObject(content: JsonObject, block: (AbstractContentComponentData) -> Unit) {
-        content["components"]
-            ?.jsonArray
-            ?.mapNotNull { it.jsonObject }
+        (content["components"] as? JsonArray)
+            ?.mapNotNull { it as? JsonObject }
             ?.forEach {
-                val id = it["id"]?.jsonPrimitive?.content
+                val id = (it["id"] as? JsonPrimitive)?.content
                     ?: return@forEach
-                val data = it["data"]?.jsonObject
+                val data = it["data"] as? JsonObject
                     ?: return@forEach
                 val serializer = registry.serializeMap[id]
                     ?: return@forEach
