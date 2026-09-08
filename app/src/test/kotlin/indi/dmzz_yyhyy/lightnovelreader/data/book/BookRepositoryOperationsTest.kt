@@ -1,12 +1,17 @@
 package indi.dmzz_yyhyy.lightnovelreader.data.book
 
 import android.app.Application
+import android.net.Uri
+import androidx.concurrent.futures.ResolvableFuture
 import androidx.navigation.NavController
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequest
+import androidx.work.Operation
 import androidx.work.WorkInfo
 import indi.dmzz_yyhyy.lightnovelreader.data.web.proxy.ProxyWebBookDataSource
 import indi.dmzz_yyhyy.lightnovelreader.data.work.CacheBookWork
+import indi.dmzz_yyhyy.lightnovelreader.data.work.ExportBookToEPUBWork
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.detail.DetailViewModel
 import io.mockk.Runs
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -21,6 +26,9 @@ import io.nightfish.lightnovelreader.api.book.UserReadingData
 import io.nightfish.lightnovelreader.api.book.Volume
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.async
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -34,6 +42,7 @@ import java.util.UUID
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [27], application = Application::class)
+@OptIn(ExperimentalCoroutinesApi::class)
 class BookRepositoryOperationsTest {
     private val fixture = BookRepositoryFixture()
 
@@ -60,10 +69,12 @@ class BookRepositoryOperationsTest {
     @Test
     fun cacheWorkKeepsItsWorkerInputAndObservesTheUniqueWorkIdentity() = runTest {
         val submitted = slot<OneTimeWorkRequest>()
-        every { fixture.workManager.enqueueUniqueWork("cache:book", ExistingWorkPolicy.KEEP, capture(submitted)) } returns mockk()
+        val completion = ResolvableFuture.create<Operation.State.SUCCESS>()
+        val operation = mockk<Operation> { every { result } returns completion }
+        every { fixture.workManager.enqueueUniqueWork("cache:book", ExistingWorkPolicy.KEEP, capture(submitted)) } returns operation
         val repository = fixture.repository()
-        val work = repository.cacheBook("book")
-        assertSame(work, submitted.captured)
+        val observed = repository.cacheBook("book")
+        val work = submitted.captured
         assertEquals(CacheBookWork::class.java.name, work.workSpec.workerClassName)
         assertEquals(mapOf("bookId" to "book"), work.workSpec.input.keyValueMap)
         verify(exactly = 1) { fixture.workManager.enqueueUniqueWork("cache:book", ExistingWorkPolicy.KEEP, work) }
@@ -74,8 +85,44 @@ class BookRepositoryOperationsTest {
         every { completedEarlier.state } returns WorkInfo.State.SUCCEEDED
         val workState = MutableStateFlow(listOf(completedEarlier, existingWork))
         every { fixture.workManager.getWorkInfosForUniqueWorkFlow("cache:book") } returns workState
-        assertSame(existingWork, repository.isCacheBookWorkFlow("book").first())
+        completion.set(Operation.SUCCESS)
+        assertSame(existingWork, observed.first())
         verify(exactly = 1) { fixture.workManager.getWorkInfosForUniqueWorkFlow("cache:book") }
+    }
+
+    @Test
+    fun cacheAndExportWaitForEnqueueBeforeReadingTerminalRecords() = runTest {
+        for (export in listOf(false, true)) {
+            val env = BookRepositoryFixture()
+            val name = if (export) ExportBookToEPUBWork.ofId("book") else CacheBookWork.ofId("book")
+            val completion = ResolvableFuture.create<Operation.State.SUCCESS>()
+            val operation = mockk<Operation> { every { result } returns completion }
+            every { env.workManager.enqueueUniqueWork(name, ExistingWorkPolicy.KEEP, any<OneTimeWorkRequest>()) } returns operation
+            fun completedWork(tag: Int) = mockk<WorkInfo> {
+                every { state } returns WorkInfo.State.SUCCEEDED
+                every { tags } returns setOf("lightnovelreader:work-submission:$tag")
+                every { generation } returns 0
+                every { runAttemptCount } returns 0
+                every { id } returns UUID.randomUUID()
+            }
+            val old = completedWork(1)
+            val current = completedWork(2)
+            val infos = MutableStateFlow(listOf(old))
+            every { env.workManager.getWorkInfosForUniqueWorkFlow(name) } returns infos
+            val observed = if (export) {
+                DetailViewModel(env.repository(), mockk(), mockk(), env.workManager)
+                    .exportToEpub(Uri.parse("content://exports/new.epub"), "book", "Title")
+            } else env.repository().cacheBook("book")
+            val first = async { observed.first() }
+            runCurrent()
+            assertFalse(first.isCompleted)
+            verify(exactly = 0) { env.workManager.getWorkInfosForUniqueWorkFlow(name) }
+
+            infos.value = listOf(current)
+            completion.set(Operation.SUCCESS)
+            runCurrent()
+            assertSame(current, first.await())
+        }
     }
 
     @Test

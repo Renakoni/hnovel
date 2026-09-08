@@ -3,10 +3,11 @@ package indi.dmzz_yyhyy.lightnovelreader.data.book
 import android.util.Log
 import androidx.navigation.NavController
 import androidx.work.ExistingWorkPolicy
-import androidx.work.OneTimeWorkRequest
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.Operation
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
+import androidx.work.await
 import androidx.work.workDataOf
 import com.github.michaelbull.result.Ok
 import com.github.michaelbull.result.Result
@@ -27,6 +28,7 @@ import io.nightfish.lightnovelreader.api.book.UserReadingData
 import io.nightfish.lightnovelreader.api.error.WebRequestError
 import io.nightfish.lightnovelreader.api.web.WebDataSourcePriority
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import java.util.concurrent.atomic.AtomicLong
@@ -59,6 +61,12 @@ internal fun selectLatestWorkInfo(workInfos: List<WorkInfo>): WorkInfo? {
                     .thenBy { it.runAttemptCount }
                     .thenBy { it.id.toString() }
             )
+}
+
+/** Start observing only after KEEP has accepted the submission or retained the active work. */
+internal fun WorkManager.observeSubmittedUniqueWork(name: String, operation: Operation): Flow<WorkInfo?> = flow {
+    operation.await()
+    emitAll(getWorkInfosForUniqueWorkFlow(name).map(::selectLatestWorkInfo))
 }
 
 @Singleton
@@ -141,12 +149,7 @@ class BookRepository @Inject constructor(
     override suspend fun updateUserReadingData(id: String, update: (UserReadingData) -> UserReadingData) =
         readingDataRepository.updateUserReadingData(id, update)
 
-    fun isCacheBookWorkFlow(bookId: String): Flow<WorkInfo?> =
-        workManager.getWorkInfosForUniqueWorkFlow(CacheBookWork.ofId(bookId)).map { workInfos ->
-            selectLatestWorkInfo(workInfos)
-        }
-
-    fun cacheBook(bookId: String): OneTimeWorkRequest {
+    fun cacheBook(bookId: String): Flow<WorkInfo?> {
         val workRequest = OneTimeWorkRequestBuilder<CacheBookWork>()
             .addTag(nextWorkSubmissionTag())
             .setInputData(
@@ -155,12 +158,12 @@ class BookRepository @Inject constructor(
                 )
             )
             .build()
-        workManager.enqueueUniqueWork(
+        val operation = workManager.enqueueUniqueWork(
             CacheBookWork.ofId(bookId),
             ExistingWorkPolicy.KEEP,
             workRequest
         )
-        return workRequest
+        return workManager.observeSubmittedUniqueWork(CacheBookWork.ofId(bookId), operation)
     }
 
     override suspend fun getIsBookCached(bookId: String): Boolean {

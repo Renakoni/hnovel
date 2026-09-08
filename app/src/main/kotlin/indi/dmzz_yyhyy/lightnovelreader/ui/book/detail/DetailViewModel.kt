@@ -22,11 +22,10 @@ import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadProgressRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadType
 import indi.dmzz_yyhyy.lightnovelreader.data.work.ExportBookToEPUBWork
 import indi.dmzz_yyhyy.lightnovelreader.data.book.nextWorkSubmissionTag
-import indi.dmzz_yyhyy.lightnovelreader.data.book.selectLatestWorkInfo
+import indi.dmzz_yyhyy.lightnovelreader.data.book.observeSubmittedUniqueWork
 import io.nightfish.lightnovelreader.api.web.WebDataSourcePriority
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -87,8 +86,7 @@ class DetailViewModel @Inject constructor(
     }
 
     fun cacheBook(bookId: String): Flow<WorkInfo?> {
-        bookRepository.cacheBook(bookId)
-        val isCachedFlow = bookRepository.isCacheBookWorkFlow(bookId)
+        val isCachedFlow = bookRepository.cacheBook(bookId)
         viewModelScope.launch(Dispatchers.IO) {
             isCachedFlow.collect { workInfo ->
                 if (workInfo?.state == WorkInfo.State.SUCCEEDED) {
@@ -119,13 +117,11 @@ class DetailViewModel @Inject constructor(
                 )
             )
             .build()
-        workManager.enqueueUniqueWork(
+        val operation = workManager.enqueueUniqueWork(
             ExportBookToEPUBWork.ofId(bookId),
             ExistingWorkPolicy.KEEP,
             workRequest
         )
-        return workManager.getWorkInfosForUniqueWorkFlow(ExportBookToEPUBWork.ofId(bookId)).map { workInfos ->
-            selectLatestWorkInfo(workInfos)
-        }
+        return workManager.observeSubmittedUniqueWork(ExportBookToEPUBWork.ofId(bookId), operation)
     }
 }
