@@ -232,6 +232,28 @@ class ReaderReadingRecordsTest {
     }
 
     @Test
+    fun progressEventsReuseTheChapterCountForEachBook() {
+        var countReads = 0
+        val cachedRecords = ReaderReadingRecords(
+            store = store,
+            scope = scope,
+            statisticsScope = statisticsScope,
+            currentBookId = { bookId },
+            currentChapterTitle = { title },
+            chapterCount = { countReads++; 2 },
+            now = { time },
+            ioDispatcher = dispatcher,
+        )
+
+        cachedRecords.saveProgress("chapter", 0.5f)
+        cachedRecords.saveProgress("chapter", 0.75f)
+        scheduler.runCurrent()
+
+        assertEquals(1, countReads)
+        assertEquals(2, store.writes.size)
+    }
+
+    @Test
     fun completionCheckUsesTheCapturedBookAfterPersistenceSuspension() {
         val gate = CompletableDeferred<Unit>()
         store.updateGate = gate
