@@ -5,7 +5,7 @@
 ## 已有 READ-001 / READ-006 的补充证据
 
 - [翻页测试][flip-test] `olderChapterSubscriptionsRemainActiveAndCanOverwriteTheNewChapterUntilReaderExit` 先请求 A 再请求 B，让 B 先成功、A 后成功，最终章节 ID 回到 A；两个源订阅都持续到 reader scope 取消。R6 前后的同一用例均通过。
-- [所有权测试][ownership-test] 使用实际 ReaderViewModel 和模式替身，确认模式切换会关闭旧控制器，ViewModelStore.clear 后当前模式任务也会取消。R6 原先明确了同一个父 scope，但没有停用旧模式的边界；READ-006 修复为每个工厂控制器建立可取消的子 scope。
+- [所有权测试][ownership-test] 使用实际 ReaderViewModel 和模式替身，确认切换模式时传递同一个 scope；旧模式任务仍活动，ViewModelStore.clear 后它们全部被取消。R6 明确了这一生命周期归属，但没有增加停用旧模式的行为。
 - 这两项证据不等同于完整真实导航/网络环境中的复现；目录任务、独立统计 scope 的问题继续留在[原记录](refactoring-follow-ups.md)。后续需要分别决定会话切换、模式停用、旧请求结果归属与退出结算规则。
 
 ## SCROLL-001：关闭连续滚动后，旧相邻订阅仍可回写三槽（P1，修复已提交）
@@ -31,13 +31,12 @@
 - 回归覆盖：新 Pager 页数重算、空 Pager 替换、原有进度取整与 Pager 观察测试均通过。测试只证明受控 Pager/协程时序和目标调用，不覆盖真实分页测量、设备导航或最终视觉位置。
 - 后续：真实设备上仍需观察分页重建与 Compose Pager 的实际时序；FLIP-001 的晚到记录协调和其他分页语义保持独立。
 
-## READ-006：目录收集与阅读模式缺少明确的替换/销毁边界
+## PAGE-002：重新分页的空 Pager 会丢失当前进度（P1，修复已提交）
 
-- 状态：**目录替换与模式停用已修复并提交独立 PR；统计 scope 的退出结算仍单独跟踪**。
-- 基线证据：新增 `ReaderDirectoryOwnershipTest.replacingBookCancelsThePreviousDirectoryCollection`。测试先订阅 `first`，再切换到 `second`；原始 `main@1dd4604f` 没有保存/取消旧 Job，旧 Flow 的取消信号不会到达，测试超时。修复后旧订阅在新书请求建立时被取消，并以请求序号拒绝迟到结果。
-- 修复语义：`ReaderViewModel` 保存目录收集 Job，切书时取消并清空旧目录状态。目录读取在 IO，请求序号检查与结果发布一起回到主线程，与导航切书重置串行，消除跨线程检查后再写入的竞态。`ReaderModeController` 增加关闭契约，`ReaderModeHost` 保存旧模式请求章节后再关闭并绑定新模式；工厂为每个内置模式建立父 scope 下的可取消子 scope，ViewModel 清理时关闭当前模式。
-- 回归覆盖：[ReaderModeOwnershipTest][ownership-test] 验证模式替换会取消旧模式任务、清理会取消当前任务；目录测试验证旧书迟到不会覆盖新书，且非合作 Flow 在 ViewModel 销毁后仍返回时也不会发布结果。清理先使目录请求序号失效，再取消任务。同步 main 的 READ-003 后，目录计数更新与 UI 发布共同经过请求检查，仍只使用已有目录订阅。真实导航网络和设备退出结算仍不由 JVM 测试覆盖。
-- 限制与后续：`ReaderReadingRecords` 使用的独立 `statisticsScope` 仍需定义“退出前完成写入”与取消的顺序，本 PR 不粗暴取消它；统计结算对应 READ-002/READ-003 的后续修复。
+- Review 对照证据：`emptyPagerDuringRepaginationPreservesProgressUntilTheNewPagesAreReady` 先读到 10 页中的第 6 页，再发布零页 Pager 并让观察器运行。修复前内存进度从 0.6 变成 0，用例失败。
+- 实际影响：记录层会过滤 0，所以不准确之处是“立即持久化零值”；真实问题是内存恢复位置已丢失，新 Pager 随后从第一页计算出的非零进度可能覆盖原记录。
+- 修复语义：零页是暂时没有可用布局，不代表新的阅读位置。进度观察器跳过零页及已替换 Pager，不修改内存进度或发出保存回调。有效分页仍可清掉过期页面；新 Pager 使用保留的进度恢复位置。切换章节仍由原有 `resetForChapter` 清理进度。
+- 验证：同一回归用例确认空页期间没有进度回调，重建为 20 页后恢复到第 12 页，进度仍为 0.6；既有翻页模式、分页任务取消和组件分页测试通过。测试验证受控 Pager 和协程，不声称证明真机排版或视觉效果。
 
 ## SCROLL-002：throttleLatest 不会在窗口结束时自动补发暂存值
 

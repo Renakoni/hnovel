@@ -32,9 +32,11 @@ internal class FlipReadingProgress(
             snapshotFlow { uiState.pagerState }.collect { pagerState ->
                 collectProgressJob?.cancel()
                 collectProgressJob = coroutineScope.launch(ioDispatcher) {
-                    snapshotFlow { pagerState.settledPage }.collect { page ->
-                        val progress = if (pagerState.pageCount == 0) 0f
-                        else ((page + 1) / pagerState.pageCount.toFloat()).coerceIn(0f, 1f)
+                    snapshotFlow { pagerState.settledPage }.collect progress@{ page ->
+                        // An empty pager is a layout transition, not a new reading position.
+                        val pageCount = pagerState.pageCount
+                        if (pageCount == 0 || uiState.pagerState !== pagerState) return@progress
+                        val progress = ((page + 1) / pageCount.toFloat()).coerceIn(0f, 1f)
                         uiState.readingProgress = progress
                         uiState.readingChapterContent?.onOk {
                             updateReadingProgress(it.id, progress)

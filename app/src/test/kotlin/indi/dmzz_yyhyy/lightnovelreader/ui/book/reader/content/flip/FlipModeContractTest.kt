@@ -242,6 +242,36 @@ class FlipModeContractTest {
     }
 
     @Test
+    fun emptyPagerDuringRepaginationPreservesProgressUntilTheNewPagesAreReady() {
+        open()
+        env.emit("requested", Ok(env.chapter("requested")))
+        mode.updatePagerState(pager(10, mutableIntStateOf(5)))
+        env.runCurrent()
+        assertEquals(0.6f, mode.uiState.readingProgress)
+        progress.clear()
+
+        mode.updatePagerState(pager(0))
+        env.runCurrent()
+        assertEquals(0.6f, mode.uiState.readingProgress)
+        assertTrue(progress.isEmpty())
+
+        val page = mutableIntStateOf(0)
+        val targets = mutableListOf<Int>()
+        val rebuilt = pager(20, page, targets)
+        coEvery { rebuilt.scrollToPage(any(), any()) } answers {
+            val target = firstArg<Int>()
+            targets += target
+            page.intValue = target
+        }
+        mode.updatePagerState(rebuilt)
+        env.runCurrent()
+        assertEquals(listOf(11), targets)
+        assertEquals(0.6f, mode.uiState.readingProgress)
+        assertTrue(progress.isNotEmpty())
+        assertTrue(progress.all { it == "requested" to 0.6f })
+    }
+
+    @Test
     fun replacingQueuedRestorationWithAnEmptyPagerDoesNotScrollTheOldPager() {
         env.records.data = env.records.data.copy(currentChapterReadingProgressMap = mapOf("requested" to 0.6f))
         open()
