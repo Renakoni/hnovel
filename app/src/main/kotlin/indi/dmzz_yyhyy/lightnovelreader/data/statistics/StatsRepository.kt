@@ -22,6 +22,7 @@ class StatsRepository @Inject constructor(
 ) {
     private val bookReadTimeBuffer = mutableMapOf<String, Pair<LocalTime, Int>>()
     private val bookReadTimeBufferMutex = Mutex()
+    private val statisticsWriteMutex = Mutex()
 
     suspend fun accumulateBookReadTime(bookId: String, seconds: Int) {
         bookReadTimeBufferMutex.withLock {
@@ -91,24 +92,38 @@ class StatsRepository @Inject constructor(
     }
 
     suspend fun updateReadingStatistics(update: ReadingStatsUpdate) {
-        val today = LocalDate.now()
+        statisticsWriteMutex.withLock {
+            val today = LocalDate.now()
+            val existingDailyCount = dailyCountDao.getByDate(today)
+            val dailyCount = existingDailyCount ?: DailyCountEntity(today, Count())
+            val updatedDailyCount = dailyCount.copy(
+                timeCount = updateCount(dailyCount.timeCount, update)
+            )
+            dailyCountDao.insert(updatedDailyCount)
 
-        val existingDailyCount = dailyCountDao.getByDate(today)
-            ?: DailyCountEntity(today, Count())
-        val updatedDailyCount = existingDailyCount.copy(
-            timeCount = updateCount(existingDailyCount.timeCount, update)
-        )
-        dailyCountDao.insert(updatedDailyCount)
-
-        val existingRecord = bookRecordDao.getBookRecordByIdAndDate(update.bookId, today)
-            ?: createRecordEntity(update.bookId, today)
-
-        val updatedRecord = existingRecord.copy(
-            reads = existingRecord.reads + update.readEventDelta,
-            seconds = existingRecord.seconds + update.secondDelta,
-            lastSeen = update.localTime,
-        )
-        bookRecordDao.insertBookRecord(updatedRecord)
+            try {
+                val existingRecord = bookRecordDao.getBookRecordByIdAndDate(update.bookId, today)
+                    ?: createRecordEntity(update.bookId, today)
+                val updatedRecord = existingRecord.copy(
+                    reads = existingRecord.reads + update.readEventDelta,
+                    seconds = existingRecord.seconds + update.secondDelta,
+                    lastSeen = update.localTime,
+                )
+                bookRecordDao.insertBookRecord(updatedRecord)
+            } catch (failure: Throwable) {
+                // Keep a failed retry from counting the daily delta twice. Room's
+                // production implementation should eventually move this pair of
+                // writes into one database transaction; restoring the prior row
+                // keeps the current DAO boundary idempotent while preserving the
+                // buffered book seconds for the caller to retry.
+                if (existingDailyCount == null) {
+                    dailyCountDao.deleteByDate(today)
+                } else {
+                    dailyCountDao.insert(existingDailyCount)
+                }
+                throw failure
+            }
+        }
     }
 
     suspend fun markBookFinished(bookId: String) {

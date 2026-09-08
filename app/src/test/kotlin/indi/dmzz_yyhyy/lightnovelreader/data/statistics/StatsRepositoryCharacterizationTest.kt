@@ -37,6 +37,9 @@ class StatsRepositoryCharacterizationTest {
             val record = firstArg<DailyCountEntity>()
             dailyCounts[record.date] = record
         }
+        coEvery { deleteByDate(any()) } answers {
+            dailyCounts.remove(firstArg<LocalDate>())
+        }
         coEvery { getAll() } answers { dailyCounts.values.toList() }
     }
     private val repository = StatsRepository(recordDao, dailyDao, mockk())
@@ -80,6 +83,24 @@ class StatsRepositoryCharacterizationTest {
         repository.accumulateBookReadTime("book", -1)
 
         assertEquals(10, records.getValue("book" to LocalDate.now()).seconds)
+    }
+
+    @Test
+    fun failedRecordWriteRollsBackDailyCountBeforeRetry() = runTest {
+        repository.accumulateBookReadTime("book", 59)
+        failRecordWrite = true
+
+        try {
+            repository.accumulateBookReadTime("book", 1)
+        } catch (_: IllegalStateException) {
+            // The buffer and the daily row must both remain retryable.
+        }
+
+        assertEquals(0, repository.getTotalReadingSummary().totalMinutes)
+        failRecordWrite = false
+        repository.accumulateBookReadTime("book", -1)
+
+        assertEquals(1, repository.getTotalReadingSummary().totalMinutes)
     }
 
     @Test
