@@ -38,7 +38,9 @@ class BookRepository @Inject constructor(
     private val localBookDataSource: LocalBookDataSource,
     private val bookshelfRepository: BookshelfRepository,
     private val textProcessingRepository: TextProcessingRepository,
-    private val workManager: WorkManager
+    private val workManager: WorkManager,
+    private val chapterRepository: ChapterRepository,
+    private val readingDataRepository: BookReadingDataRepository
 ): BookRepositoryApi {
     companion object {
         private const val TAG = "BookRepository"
@@ -82,78 +84,32 @@ class BookRepository @Inject constructor(
     override fun getBookVolumesFlow(
         id: String,
         priority: WebDataSourcePriority
-    ): Flow<Result<BookVolumes, WebRequestError>> = flow {
-        localBookDataSource.getBookVolumes(id)?.also {
-            emit(Ok(it))
-            if (BuildConfig.BENCHMARK) return@flow
-        }
-        webBookDataSource.getBookVolumes(id, priority)
-            .onOk { remote ->
-                localBookDataSource.updateBookVolumes(remote)
-            }.onErr {
-                Log.e(TAG, "Failed to request web data (title=${it.title}, message=${it.message})")
-                it.throwable?.printStackTrace()
-            }
-            .also {
-                emit(it)
-            }
-    }.map { result ->
-        result.map {
-            textProcessingRepository.processBookVolumes { it }
-        }
-    }
+    ): Flow<Result<BookVolumes, WebRequestError>> = chapterRepository.getBookVolumesFlow(id, priority)
 
     override fun getChapterContentFlow(
         chapterId: String,
         bookId: String,
         priority: WebDataSourcePriority
-    ): Flow<Result<ChapterContent, WebRequestError>> = flow {
-        localBookDataSource.getChapterContent(chapterId)?.also {
-            emit(Ok(it))
-            if (BuildConfig.BENCHMARK) return@flow
-        }
-        webBookDataSource.getChapterContent(chapterId, bookId, priority)
-            .onOk { remote ->
-                localBookDataSource.updateChapterContent(remote)
-            }.onErr {
-                Log.e(TAG, "Failed to request web data (title=${it.title}, message=${it.message})")
-                it.throwable?.printStackTrace()
-            }
-            .also {
-                emit(it)
-            }
-    }.map { result ->
-        result.map {
-            textProcessingRepository.processChapterContent(bookId) { it }
-        }
-    }
+    ): Flow<Result<ChapterContent, WebRequestError>> =
+        chapterRepository.getChapterContentFlow(chapterId, bookId, priority)
 
     override suspend fun preloadChapterContent(
         chapterId: String,
         bookId: String,
         priority: WebDataSourcePriority
-    ) {
-        webBookDataSource.getChapterContent(chapterId, bookId, priority)
-            .onOk { remote ->
-                localBookDataSource.updateChapterContent(remote)
-            }.onErr {
-                Log.e(TAG, "Failed to request web data (title=${it.title}, message=${it.message})")
-                it.throwable?.printStackTrace()
-            }
-    }
+    ) = chapterRepository.preloadChapterContent(chapterId, bookId, priority)
 
     override suspend fun getUserReadingData(bookId: String): UserReadingData =
-        localBookDataSource.getUserReadingData(bookId)
+        readingDataRepository.getUserReadingData(bookId)
 
     override fun getUserReadingDataFlow(bookId: String): Flow<UserReadingData> =
-        localBookDataSource.getUserReadingDataFlow(bookId)
+        readingDataRepository.getUserReadingDataFlow(bookId)
 
     override suspend fun getAllUserReadingData(): List<UserReadingData> =
-        localBookDataSource.getAllUserReadingData()
+        readingDataRepository.getAllUserReadingData()
 
-    override suspend fun updateUserReadingData(id: String, update: (UserReadingData) -> UserReadingData) {
-        localBookDataSource.updateUserReadingData(id, update)
-    }
+    override suspend fun updateUserReadingData(id: String, update: (UserReadingData) -> UserReadingData) =
+        readingDataRepository.updateUserReadingData(id, update)
 
     fun isCacheBookWorkFlow(workId: UUID) = workManager.getWorkInfoByIdFlow(workId)
 

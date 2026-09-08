@@ -6,7 +6,8 @@ import androidx.compose.ui.unit.IntSize
 import com.github.michaelbull.result.get
 import com.github.michaelbull.result.map
 import com.github.michaelbull.result.onOk
-import indi.dmzz_yyhyy.lightnovelreader.data.book.BookRepository
+import indi.dmzz_yyhyy.lightnovelreader.data.book.BookReadingDataAccess
+import indi.dmzz_yyhyy.lightnovelreader.data.book.ChapterSource
 import indi.dmzz_yyhyy.lightnovelreader.data.content.ContentComponentRepository
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.SettingState
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentUiState
@@ -20,7 +21,8 @@ import kotlinx.coroutines.launch
 import java.time.LocalDateTime
 
 class ScrollContentViewModel(
-    val bookRepository: BookRepository,
+    private val chapterSource: ChapterSource,
+    private val readingData: BookReadingDataAccess,
     val coroutineScope: CoroutineScope,
     val settingState: SettingState,
     val contentComponentRepository: ContentComponentRepository,
@@ -235,7 +237,7 @@ class ScrollContentViewModel(
     private fun changeChapterWithoutContinuousScrolling(id: String) {
         collectCurrentChapterJob?.cancel()
         collectCurrentChapterJob = coroutineScope.launch(Dispatchers.IO) {
-            bookRepository.getChapterContentFlow(id, uiState.bookId).collect { result ->
+            chapterSource.getChapterContentFlow(id, uiState.bookId).collect { result ->
                 uiState.contentList[1] = id to result.map {
                     ChapterContentUiState(
                         id = it.id,
@@ -246,7 +248,7 @@ class ScrollContentViewModel(
                     )
                 }
                 result.onOk { chapterContent ->
-                    bookRepository.updateUserReadingData(uiState.bookId) { userReadingData ->
+                    readingData.updateUserReadingData(uiState.bookId) { userReadingData ->
                         uiState.readingProgress = userReadingData.currentChapterReadingProgressMap[id] ?: 0f
                         userReadingData.copy(
                             lastReadTime = LocalDateTime.now(),
@@ -255,7 +257,7 @@ class ScrollContentViewModel(
                         )
                     }
                     chapterContent.nextChapter?.let {
-                        bookRepository.preloadChapterContent(
+                        chapterSource.preloadChapterContent(
                             it,
                             uiState.bookId
                         )
@@ -268,7 +270,7 @@ class ScrollContentViewModel(
     private fun changeChapterWithContinuousScrolling(id: String) {
         collectCurrentChapterJob?.cancel()
         collectCurrentChapterJob = coroutineScope.launch(Dispatchers.IO) {
-            bookRepository.getChapterContentFlow(id, uiState.bookId).collect { result ->
+            chapterSource.getChapterContentFlow(id, uiState.bookId).collect { result ->
                 uiState.contentList[1] = id to result.map {
                     ChapterContentUiState(
                         id = it.id,
@@ -279,7 +281,7 @@ class ScrollContentViewModel(
                     )
                 }
                 result.onOk { chapterContent ->
-                    bookRepository.updateUserReadingData(uiState.bookId) { userReadingData ->
+                    readingData.updateUserReadingData(uiState.bookId) { userReadingData ->
                         uiState.readingProgress = userReadingData.currentChapterReadingProgressMap[id] ?: 0f
                         userReadingData.copy(
                             lastReadTime = LocalDateTime.now(),
@@ -288,7 +290,7 @@ class ScrollContentViewModel(
                         )
                     }
                     chapterContent.nextChapter?.let {
-                        bookRepository.preloadChapterContent(
+                        chapterSource.preloadChapterContent(
                             it,
                             uiState.bookId
                         )
@@ -318,7 +320,7 @@ class ScrollContentViewModel(
         chapterId: String,
         onLoaded: suspend (ChapterContentUiState) -> Unit = {}
     ) = coroutineScope.launch {
-            bookRepository.getChapterContentFlow(chapterId, uiState.bookId)
+            chapterSource.getChapterContentFlow(chapterId, uiState.bookId)
                 .collect { content ->
                     var loadedContent: ChapterContentUiState? = null
                     uiState.contentList[index] = chapterId to content.map {
@@ -353,7 +355,7 @@ class ScrollContentViewModel(
     }
 
     private suspend fun updateLastReadChapter(chapterId: String, chapterTitle: String?) {
-        bookRepository.updateUserReadingData(uiState.bookId) {
+        readingData.updateUserReadingData(uiState.bookId) {
             it.copy(
                 lastReadTime = LocalDateTime.now(),
                 lastReadChapterId = chapterId,
