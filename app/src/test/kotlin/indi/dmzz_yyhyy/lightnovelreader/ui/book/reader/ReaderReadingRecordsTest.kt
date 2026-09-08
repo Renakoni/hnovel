@@ -176,7 +176,7 @@ class ReaderReadingRecordsTest {
     }
 
     @Test
-    fun queuedProgressCapturesTheCompleteProgressIdentityAtTheEventBoundary() {
+    fun queuedProgressCapturesBookAndTitleAndResolvesCountWhenWriting() {
         store.data["book"] = UserReadingData(
             id = "book",
             maxChapterReadingProgressMap = mapOf("chapter" to 0.5f),
@@ -192,12 +192,43 @@ class ReaderReadingRecordsTest {
         val data = store.data.getValue("book")
         assertEquals(listOf("update:book", "write:book", "read:book"), store.events)
         assertEquals("Chapter title", data.lastReadChapterTitle)
-        assertEquals(0.25f, data.readingProgress)
+        assertEquals(0.125f, data.readingProgress)
         assertEquals(time, data.lastReadTime)
         assertEquals(
             UserReadingData(id = "next", maxChapterReadingProgressMap = mapOf("other" to 1f)),
             store.data.getValue("next"),
         )
+    }
+
+    @Test
+    fun progressResolvesChapterCountForTheCapturedBookWhenWriting() {
+        val count = CompletableDeferred<Int>()
+        val identityRecords = ReaderReadingRecords(
+            store = store,
+            scope = scope,
+            statisticsScope = statisticsScope,
+            currentBookId = { bookId },
+            currentChapterTitle = { title },
+            chapterCount = {
+                assertEquals("book", it)
+                count.await()
+            },
+            now = { time },
+            ioDispatcher = dispatcher,
+        )
+        store.data["book"] = UserReadingData(
+            id = "book",
+            maxChapterReadingProgressMap = mapOf("chapter" to 0.5f, "other" to 0.5f),
+        )
+
+        identityRecords.saveProgress("chapter", 0.5f)
+        scheduler.runCurrent()
+        assertTrue(store.events.isEmpty())
+        bookId = "next"
+        count.complete(2)
+        scheduler.runCurrent()
+
+        assertEquals(0.5f, store.data.getValue("book").readingProgress)
     }
 
     @Test

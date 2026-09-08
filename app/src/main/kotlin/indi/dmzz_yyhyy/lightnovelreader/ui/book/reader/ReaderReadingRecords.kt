@@ -19,7 +19,7 @@ internal class ReaderReadingRecords(
     private val statisticsScope: CoroutineScope,
     private val currentBookId: () -> String,
     private val currentChapterTitle: () -> String?,
-    private val chapterCount: () -> Int,
+    private val chapterCount: suspend (String) -> Int,
     private val now: () -> LocalDateTime = LocalDateTime::now,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
@@ -46,9 +46,11 @@ internal class ReaderReadingRecords(
         val bookId = currentBookId()
         if (progress.isNaN() || progress <= 0f || bookId.isBlank()) return
         val title = currentChapterTitle() ?: return
-        val total = chapterCount()
         scope.launch(ioDispatcher) {
             val currentTime = now()
+            // Resolve the count after the event has been queued and bind it to the
+            // captured book. The UI's current-book state may have changed by now.
+            val total = chapterCount(bookId)
 
             store.updateUserReadingData(bookId) { userReadingData ->
                 Log.v("ReaderViewModel", "$bookId/$chapterId Saving progress $progress. ($title)")

@@ -16,6 +16,7 @@ import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ReaderModeHost
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.firstOrNull
 import javax.inject.Inject
 
 @HiltViewModel
@@ -43,10 +44,10 @@ class ReaderViewModel @Inject constructor(
         currentChapterTitle = {
             _uiState.contentUiState?.readingChapterContent?.map { it.title }?.getOrElse { null }
         },
-        chapterCount = {
-            _uiState.bookVolumes?.map { volumes ->
-                volumes.volumes.sumOf { it.chapters.size }
-            }?.getOrElse { 0 } ?: 0
+        chapterCount = { id ->
+            chapterSource.getBookVolumesFlow(id).firstOrNull { it.isOk }
+                ?.map { volumes -> volumes.volumes.sumOf { it.chapters.size } }
+                ?.getOrElse { 0 } ?: 0
         },
     )
     var bookId = ""
