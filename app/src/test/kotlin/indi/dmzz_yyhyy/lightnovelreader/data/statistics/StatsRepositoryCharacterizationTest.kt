@@ -7,6 +7,10 @@ import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.BookRecordEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.DailyCountEntity
 import io.mockk.coEvery
 import io.mockk.mockk
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -22,10 +26,12 @@ class StatsRepositoryCharacterizationTest {
     private val records = mutableMapOf<Pair<String, LocalDate>, BookRecordEntity>()
     private val dailyCounts = mutableMapOf<LocalDate, DailyCountEntity>()
     private var failRecordWrite = false
+    private var recordWriteGate: CompletableDeferred<Unit>? = null
     private val recordDao = mockk<BookRecordDao> {
         coEvery { getBookRecordByIdAndDate(any(), any()) } answers { records[firstArg<String>() to secondArg<LocalDate>()] }
-        coEvery { insertBookRecord(any()) } answers {
+        coEvery { insertBookRecord(any()) } coAnswers {
             if (failRecordWrite) throw IllegalStateException("record write failed")
+            recordWriteGate?.await()
             val record = firstArg<BookRecordEntity>()
             records[record.bookId to record.date] = record
         }
@@ -116,6 +122,20 @@ class StatsRepositoryCharacterizationTest {
         }
 
         assertEquals(1, repository.getTotalReadingSummary().totalMinutes)
+    }
+
+    @Test
+    fun cancelledRecordWriteStillRollsBackTheDailyCount() = runTest {
+        repository.accumulateBookReadTime("book", 59)
+        recordWriteGate = CompletableDeferred()
+
+        val job = launch {
+            repository.accumulateBookReadTime("book", 1)
+        }
+        runCurrent()
+        job.cancelAndJoin()
+
+        assertEquals(0, repository.getTotalReadingSummary().totalMinutes)
     }
 
     @Test

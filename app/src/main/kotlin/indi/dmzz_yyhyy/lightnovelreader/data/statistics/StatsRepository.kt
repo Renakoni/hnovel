@@ -12,6 +12,8 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 
 @Suppress("unused")
 @Singleton
@@ -116,10 +118,12 @@ class StatsRepository @Inject constructor(
                 // writes into one database transaction; restoring the prior row
                 // keeps the current DAO boundary idempotent while preserving the
                 // buffered book seconds for the caller to retry.
-                if (existingDailyCount == null) {
-                    dailyCountDao.deleteByDate(today)
-                } else {
-                    dailyCountDao.insert(existingDailyCount)
+                withContext(NonCancellable) {
+                    if (existingDailyCount == null) {
+                        dailyCountDao.deleteByDate(today)
+                    } else {
+                        dailyCountDao.insert(existingDailyCount)
+                    }
                 }
                 throw failure
             }
