@@ -68,10 +68,11 @@ internal class FlipReadingProgress(
         uiState.readingProgress = 0f
     }
 
-    fun recoverForChapter(id: String) {
+    fun recoverForChapter(id: String, bookId: String = uiState.bookId) {
+        restorationJob?.cancel()
+        restorationJob = null
         recoveryJob?.cancel()
         val generation = ++recoveryGeneration
-        val bookId = uiState.bookId
         recoveryJob = coroutineScope.launch(ioDispatcher) {
             readingData.getUserReadingData(bookId).let {
                 if (generation != recoveryGeneration) return@let
@@ -105,8 +106,10 @@ internal class FlipReadingProgress(
             if (uiState.pagerState !== pagerState || pagerState.pageCount == 0) return@launch
             val target = ((pagerState.pageCount * recovered).roundToInt() - 1)
                 .coerceIn(0, pagerState.pageCount - 1)
+            if (expectedRecoveryGeneration != null && expectedRecoveryGeneration != recoveryGeneration) return@launch
             if (uiState.pagerState === pagerState) {
                 pagerState.scrollToPage(target)
+                if (expectedRecoveryGeneration != null && expectedRecoveryGeneration != recoveryGeneration) return@launch
                 if (hasRecoveredProgress && notRecoveredProgress == recovered) {
                     notRecoveredProgress = 0f
                     restorationApplied = true
