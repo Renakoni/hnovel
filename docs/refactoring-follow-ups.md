@@ -106,10 +106,10 @@
 
 ## TEST-001：R2 设置测试的替身与断言不足以覆盖真实编辑传播
 
-- 状态：**R2 新增测试的静态并发风险；本次未复现偶发失败**。
-- 证据：[ReaderSettingsBoundaryTest](../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/ReaderSettingsBoundaryTest.kt) 的内存 DAO 使用普通 `mutableMapOf` 和 `getOrPut`；测试 scope 虽采用 `Dispatchers.Unconfined`，但生产 `safeAsState` 明确在 `Dispatchers.IO` 启动多个观察任务，因此这些 Map 仍会被并发访问。
-- 影响：替身存在非线程安全访问；两个现有测试仅覆盖代表性默认值/路径和实例身份，不能证明保存后刷新、两个状态实例同步或字体清理不会覆盖更新的值。全部测试通过也无法消除这些覆盖缺口。
-- 后续：改用线程安全替身或受控存储，再测试实际编辑 → 持久化 → 多个观察者更新的链路。修复测试可独立进行，无需改变生产调度以迁就测试。
+- 状态：**测试改进已提交 PR #52；生产实现未发现新增故障**。
+- 证据：[ReaderSettingsBoundaryTest](../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/ReaderSettingsBoundaryTest.kt) 现在使用并发安全、共享 Flow 的内存 DAO，并验证一个 `FloatUserData` 写入后两个独立 `SettingState` 观察者都收到持久化值。旧实现的普通 `mutableMapOf`/`getOrPut` 只构成测试替身风险，没有复现生产行为失败。
+- 影响：CI 对“编辑 → 持久化 → 多观察者传播”的覆盖更接近真实设置链，替身不再因生产 `Dispatchers.IO` 观察任务而产生数据竞争。该 PR 只修改测试，不改变生产调度。
+- 限制与后续：测试仍不是 Room 真机并发测试，也不覆盖进程终止或设备存储故障；合并 PR #52 后保留为测试边界记录，若未来发现真实 DAO 并发问题再独立建生产 Issue。
 
 ## STATS-001：入书统计和单本书结算会清除不属于该次写入的缓冲
 
