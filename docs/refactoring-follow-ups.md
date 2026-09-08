@@ -88,11 +88,11 @@
 
 ## SET-001：safeAsState 名称没有对应的解析失败保护
 
-- 状态：**受控设置链测试已证实；R2 之前已有**。
-- 证据：[SettingObservationFailureTest](../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/SettingObservationFailureTest.kt) 使用真实 [AbstractSettingState](../app/src/main/kotlin/indi/dmzz_yyhyy/lightnovelreader/data/setting/AbstractSettingState.kt) 和 [FloatUserData](../api/src/main/kotlin/io/nightfish/lightnovelreader/api/userdata/FloatUserData.kt)：输入 `malformed` 产生 `NumberFormatException`，订阅结束；测试捕获异常后改成 `22.0`，该实例仍停在初始 `15f`。`safeAsState` 与 `asState` 当前实现相同；颜色解析也使用会抛异常的转换。
-- 影响：非法存储值或上游 Flow 异常可以终止观察。生产没有在该观察链捕获异常；[MainActivity](../app/src/main/kotlin/indi/dmzz_yyhyy/lightnovelreader/MainActivity.kt) 安装的 [LogUtils](../app/src/main/kotlin/indi/dmzz_yyhyy/lightnovelreader/utils/LogUtils.kt) 会对未捕获异常记录日志并退出进程，因此不能把实际后果仅描述为“设置不刷新”。测试自行捕获异常，没有执行退出进程。
-- 限制：未发现普通字体大小滑块会生成该非法字符串；触发条件是数据无效或观察失败，并非所有正常设置操作都会出错。
-- 后续：明确解析失败、存储失败各自的回退与恢复策略，校正 `safe` 的语义；用“错误输入 → 后续有效输入”验证恢复。这个问题与保留旧版本兼容性无关。
+- 状态：**修复已提交 PR #51；受控设置链回归测试通过**。
+- 证据：[SettingObservationFailureTest](../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/SettingObservationFailureTest.kt) 在旧 main 上确认 Float 的 `malformed` 值抛出 `NumberFormatException` 并终止订阅；修复后覆盖非法 Float/Color 值回退默认、后续合法值恢复，以及底层观察异常不逃逸。`safeAsState` 现在与 `asState` 具有明确不同的异常语义。
+- 修复：`FloatUserData` 和 `ColorUserData` 使用可空解析，让逐值格式错误转换为 null 并由默认值处理；`safeAsState` 捕获非取消的底层 Flow 异常、记录日志并发射一次默认值，取消异常继续传播。
+- 影响与限制：设置页面不会因损坏的 Float/Color 存储值退出或停止后续合法值观察。底层 DAO 失败会保留默认值并结束该订阅，不能凭 JVM 测试保证存储层之后自动重连；正常滑块写入路径和真机进程行为仍需设备验证。
+- 后续：合并 PR #51 后验证真实损坏设置值、主题加载和底层存储失败路径；其他未使用 `safeAsState` 的状态仍保留其原有异常策略。
 
 ## SET-002：R2 已收窄读取接口，但状态与副作用归属尚未完整拆开
 
