@@ -27,8 +27,10 @@ internal class ScrollChapterWindow(
     private var collectPrevChapterJob: Job? = null
     private var collectCurrentChapterJob: Job? = null
     private var collectNextChapterJob: Job? = null
+    private var continuousObservationGeneration = 0L
 
     fun startContinuousObservation() {
+        continuousObservationGeneration++
         progressScrollLoadJob?.cancel()
         progressScrollLoadJob = coroutineScope.launch {
             snapshotFlow { uiState.lazyListState.layoutInfo.visibleItemsInfo.getOrNull(0) }.collect { itemInfo ->
@@ -103,6 +105,7 @@ internal class ScrollChapterWindow(
     }
 
     fun stopContinuousObservation() {
+        continuousObservationGeneration++
         progressScrollLoadJob?.cancel()
         collectPrevChapterJob?.cancel()
         collectPrevChapterJob = null
@@ -130,6 +133,7 @@ internal class ScrollChapterWindow(
 
     private fun collectRequestedChapter(id: String, continuousScrolling: Boolean) {
         collectCurrentChapterJob?.cancel()
+        val observationGeneration = continuousObservationGeneration
         collectCurrentChapterJob = coroutineScope.launch(ioDispatcher) {
             chapters.load(id, uiState.bookId).collect { result ->
                 uiState.contentList[1] = id to result
@@ -149,7 +153,7 @@ internal class ScrollChapterWindow(
                         )
                     }
 
-                    if (continuousScrolling) {
+                    if (continuousScrolling && observationGeneration == continuousObservationGeneration) {
                         collectPrevChapterJob?.cancel()
                         collectPrevChapterJob = collectAdjacentChapter(
                             index = 0,

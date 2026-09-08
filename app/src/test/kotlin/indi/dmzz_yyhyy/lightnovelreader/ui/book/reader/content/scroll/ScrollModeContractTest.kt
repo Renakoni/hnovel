@@ -203,6 +203,25 @@ class ScrollModeContractTest {
     }
 
     @Test
+    fun stoppingWhileCurrentChapterIsWaitingDoesNotRecreateAdjacentSubscriptions() {
+        open(continuousScrolling = true)
+        val preloadGate = CompletableDeferred<Unit>()
+        env.chapters.preloadGate = preloadGate
+
+        env.emit("requested", Ok(env.chapter("requested", "prev", "next")))
+        continuous.value = false
+        env.runCurrent()
+        assertEquals(listOf("requested"), env.chapters.active.map { it.chapterId })
+
+        preloadGate.complete(Unit)
+        env.runCurrent()
+
+        assertEquals(listOf("requested"), env.chapters.active.map { it.chapterId })
+        assertNull(mode.uiState.contentList[0])
+        assertNull(mode.uiState.contentList[2])
+    }
+
+    @Test
     fun stoppingScrollRecalculatesClampedProgressAndExplicitStopWritesSynchronously() {
         open()
         env.emit("requested", Ok(env.chapter("requested")))
