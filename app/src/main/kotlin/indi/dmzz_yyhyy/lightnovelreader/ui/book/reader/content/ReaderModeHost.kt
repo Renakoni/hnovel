@@ -4,8 +4,7 @@ enum class ReaderMode { Scroll, Flip }
 
 /**
  * Owns the selected controller and binds it before the reader publishes its UI state.
- * Task lifetime belongs to the reader scope supplied by the factory's caller. Mode replacement
- * intentionally retains the existing tasks until that reader scope ends.
+ * Replacing or closing the host closes the previous controller and its owned tasks.
  */
 internal class ReaderModeHost(
     private val createController: (ReaderMode) -> ReaderModeController,
@@ -17,16 +16,24 @@ internal class ReaderModeHost(
 
     fun select(mode: ReaderMode, currentBookId: () -> String, currentChapterId: () -> String): Boolean {
         if (selectedMode == mode) return false
+        val previousController = controller
         transitionRequestedChapterId = controller?.requestedChapterId
         controller = createController(mode)
         selectedMode = mode
         try {
+            previousController?.close()
             controller?.changeBookId(currentBookId())
             controller?.changeChapter(currentChapterId())
         } finally {
             transitionRequestedChapterId = null
         }
         return true
+    }
+
+    fun close() {
+        controller?.close()
+        controller = null
+        selectedMode = null
     }
 
     fun changeBookId(id: String) = controller?.changeBookId(id)
