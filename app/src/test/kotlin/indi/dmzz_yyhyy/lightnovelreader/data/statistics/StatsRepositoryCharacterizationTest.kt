@@ -15,6 +15,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -29,11 +31,17 @@ class StatsRepositoryCharacterizationTest {
     private val dailyCounts = mutableMapOf<LocalDate, DailyCountEntity>()
     private var failRecordWrite = false
     private var recordWriteGate: CompletableDeferred<Unit>? = null
+    private var recordWriteStarted: CompletableDeferred<Unit>? = null
+    private var recordWriteCalls = 0
     private val recordDao = mockk<BookRecordDao> {
         coEvery { getBookRecordByIdAndDate(any(), any()) } answers { records[firstArg<String>() to secondArg<LocalDate>()] }
         coEvery { insertBookRecord(any()) } coAnswers {
             if (failRecordWrite) throw IllegalStateException("record write failed")
-            recordWriteGate?.await()
+            val call = recordWriteCalls++
+            if (call == 0) {
+                recordWriteStarted?.complete(Unit)
+                recordWriteGate?.await()
+            }
             val record = firstArg<BookRecordEntity>()
             records[record.bookId to record.date] = record
         }
@@ -154,6 +162,33 @@ class StatsRepositoryCharacterizationTest {
         repository.accumulateBookReadTime("book", -1)
 
         assertEquals(0, records.values.sumOf { it.seconds })
+    }
+
+    @Test
+    fun finishingABookCannotOverwriteAConcurrentReadingUpdate() = runTest {
+        val writeStarted = CompletableDeferred<Unit>()
+        val writeGate = CompletableDeferred<Unit>()
+        recordWriteStarted = writeStarted
+        recordWriteGate = writeGate
+
+        val readingJob = launch {
+            repository.updateReadingStatistics(
+                ReadingStatsUpdate(bookId = "book", readEventDelta = 1)
+            )
+        }
+        writeStarted.await()
+
+        val finishingJob = launch { repository.markBookFinished("book") }
+        runCurrent()
+        assertFalse(finishingJob.isCompleted)
+
+        writeGate.complete(Unit)
+        readingJob.join()
+        finishingJob.join()
+
+        val record = records.getValue("book" to LocalDate.now())
+        assertEquals(1, record.reads)
+        assertTrue(record.isFinished)
     }
 
     @Test

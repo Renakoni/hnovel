@@ -131,22 +131,26 @@ class StatsRepository @Inject constructor(
     }
 
     suspend fun markBookFinished(bookId: String) {
-        val today = LocalDate.now()
-        val existingRecord = bookRecordDao.getBookRecordByIdAndDate(bookId, today)
-            ?: createRecordEntity(bookId, today)
+        statisticsWriteCoordinator.withLock {
+            val today = LocalDate.now()
+            val existingRecord = bookRecordDao.getBookRecordByIdAndDate(bookId, today)
+                ?: createRecordEntity(bookId, today)
 
-        if (!existingRecord.isFinished) {
-            bookRecordDao.insertBookRecord(existingRecord.copy(isFinished = true))
+            if (!existingRecord.isFinished) {
+                bookRecordDao.insertBookRecord(existingRecord.copy(isFinished = true))
+            }
         }
     }
 
     suspend fun markBookFavorited(bookId: String) {
-        val today = LocalDate.now()
-        val existingRecord = bookRecordDao.getBookRecordByIdAndDate(bookId, today)
-            ?: createRecordEntity(bookId, today)
+        statisticsWriteCoordinator.withLock {
+            val today = LocalDate.now()
+            val existingRecord = bookRecordDao.getBookRecordByIdAndDate(bookId, today)
+                ?: createRecordEntity(bookId, today)
 
-        if (!existingRecord.isFavorited) {
-            bookRecordDao.insertBookRecord(existingRecord.copy(isFavorited = true))
+            if (!existingRecord.isFavorited) {
+                bookRecordDao.insertBookRecord(existingRecord.copy(isFavorited = true))
+            }
         }
     }
 
