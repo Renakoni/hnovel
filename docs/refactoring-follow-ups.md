@@ -131,7 +131,8 @@
 - 修复语义：[ReaderReadingRecords](../app/src/main/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/ReaderReadingRecords.kt) 在同一个 `updateUserReadingData` 回调内先更新当前/历史最大章节 Map，再用更新后的历史最大值求和、除以章节数并限制在 0～1。两例现在分别为 1 和 0.125；写入完成后回读即可调用读完标记，无需第二次进度事件。
 - 回归契约：覆盖首次上报、同章更新、回读不降低历史最大值、目录未就绪时保留原总进度、总进度上限、末章完成及等待写入结束后才标记读完。重复完成事件仍交给现有仓库处理。
 - 验证结果：14 项记录测试全部通过；完整 `:app:testDebugUnitTest` 为 106 项，失败/错误/跳过均为 0；`:app:assembleDebug` 和 `git diff --check` 通过。
-- 限制：受控 `ReaderRecordStore` 验证计算与调用顺序，不证明 Room 原子性或真实导航退出时异步任务必然完成。BOOK-002 的读改写原子性与 READ-003 的会话归属仍按各自 Issue 处理；本次保持章节等权计算规则。
+- Review 与基线同步：保留 main 已合并的 PR #49 事件身份边界：入口捕获书籍 ID 和标题，写入时按该书籍读取已观察到的目录计数，写入、回读与读完检查始终使用同一书籍。PR #47 在此基础上用本次更新后的章节最大进度聚合整体值；不重新引入 UI 当前书籍计数，也不新增目录请求。
+- 限制：受控 `ReaderRecordStore` 验证计算与调用顺序，不证明真实导航退出时异步任务必然完成。本次保持章节等权计算规则，目录未就绪时保留已存整体值。
 
 ## READ-005：计时累计的是循环次数，恢复时立即计入一秒
 
