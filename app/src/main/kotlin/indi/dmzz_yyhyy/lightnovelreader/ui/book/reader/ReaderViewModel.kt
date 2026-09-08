@@ -1,6 +1,5 @@
 package indi.dmzz_yyhyy.lightnovelreader.ui.book.reader
 
-import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -11,22 +10,20 @@ import com.github.michaelbull.result.map
 import dagger.hilt.android.lifecycle.HiltViewModel
 import indi.dmzz_yyhyy.lightnovelreader.data.book.BookRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.content.ContentComponentRepository
-import indi.dmzz_yyhyy.lightnovelreader.data.statistics.ReadingStatsUpdate
+import indi.dmzz_yyhyy.lightnovelreader.data.reading.RepositoryReaderRecordStore
 import indi.dmzz_yyhyy.lightnovelreader.data.statistics.StatsRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.userdata.UserDataRepository
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ContentViewModel
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.flip.FlipPageContentViewModel
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.scroll.ScrollContentViewModel
-import io.nightfish.lightnovelreader.api.userdata.UserDataPath
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import java.time.LocalDateTime
 import javax.inject.Inject
 
 @HiltViewModel
 class ReaderViewModel @Inject constructor(
-    private val statsRepository: StatsRepository,
+    statsRepository: StatsRepository,
     private val bookRepository: BookRepository,
     userDataRepository: UserDataRepository,
     val contentComponentRepository: ContentComponentRepository
@@ -37,22 +34,27 @@ class ReaderViewModel @Inject constructor(
     private var contentViewModel: ContentViewModel? by mutableStateOf(null)
     private val _uiState = MutableReaderScreenUiState(contentViewModel?.uiState)
     val uiState: ReaderScreenUiState = _uiState
-    private val readingBookListUserData =
-        userDataRepository.stringListUserData(UserDataPath.ReadingBooks.path)
+    private val statisticsScope = CoroutineScope(Dispatchers.IO)
+    private val readingRecords = ReaderReadingRecords(
+        store = RepositoryReaderRecordStore(bookRepository, statsRepository, userDataRepository),
+        scope = viewModelScope,
+        statisticsScope = statisticsScope,
+        currentBookId = { bookId },
+        currentChapterTitle = {
+            _uiState.contentUiState?.readingChapterContent?.map { it.title }?.getOrElse { null }
+        },
+        chapterCount = {
+            _uiState.bookVolumes?.map { volumes ->
+                volumes.volumes.sumOf { it.chapters.size }
+            }?.getOrElse { 0 } ?: 0
+        },
+    )
     var bookId = ""
         set(value) {
             field = value
             _uiState.bookId = value
             contentViewModel?.changeBookId(value)
-            addToReadingBook(value)
-            viewModelScope.launch(Dispatchers.IO) {
-                statsRepository.updateReadingStatistics(
-                    ReadingStatsUpdate(
-                        bookId = value,
-                        readEventDelta = 1
-                    )
-                )
-            }
+            readingRecords.openBook(value)
 
             viewModelScope.launch(Dispatchers.IO) {
                 bookRepository.getBookVolumesFlow(value).collect {
@@ -61,7 +63,6 @@ class ReaderViewModel @Inject constructor(
             }
         }
     private var chapterId = ""
-    val coroutineScope = CoroutineScope(Dispatchers.IO)
 
     init {
         viewModelScope.launch {
@@ -102,68 +103,12 @@ class ReaderViewModel @Inject constructor(
         contentViewModel?.changeChapter(chapterId)
     }
 
-    private fun saveReadingProgress(chapterId: String, progress: Float) {
-        if (progress.isNaN() || progress <= 0f || bookId.isBlank()) return
-        val title = _uiState.contentUiState?.readingChapterContent
-            ?.map { it.title }
-            ?.getOrElse { return }
-            ?: return
-        viewModelScope.launch(Dispatchers.IO) {
-            val currentTime = LocalDateTime.now()
+    private fun saveReadingProgress(chapterId: String, progress: Float) =
+        readingRecords.saveProgress(chapterId, progress)
 
-            bookRepository.updateUserReadingData(bookId) { userReadingData ->
-                Log.v("ReaderViewModel", "$bookId/$chapterId Saving progress $progress. ($title)")
-                val total = _uiState.bookVolumes?.map { volumes ->
-                    volumes.volumes.sumOf { it.chapters.size }
-                }?.getOrElse { 0 } ?: 0
-                val readingProgress = if (total > 0) {
-                    (userReadingData.maxChapterReadingProgressMap.values.sum() / total).coerceIn(0f, 1f)
-                } else {
-                    userReadingData.readingProgress
-                }
-                userReadingData.copyWithUpdatedChapterReadingProgress(chapterId, progress)
-                    .copy(
-                        lastReadTime = currentTime,
-                        lastReadChapterId = chapterId,
-                        lastReadChapterTitle = title,
-                        readingProgress = readingProgress
-                    )
-            }
-            val readingData = bookRepository.getUserReadingData(bookId)
-            if (readingData.readingProgress >= 1f) {
-                statsRepository.markBookFinished(bookId)
-            }
-        }
-    }
+    fun updateTotalReadingTime(bookId: String, totalReadingTime: Int) =
+        readingRecords.updateTotalReadingTime(bookId, totalReadingTime)
 
-
-    fun updateTotalReadingTime(bookId: String, totalReadingTime: Int) {
-        viewModelScope.launch(Dispatchers.IO) {
-            bookRepository.updateUserReadingData(bookId) {
-                it.copy(
-                    lastReadTime = LocalDateTime.now(),
-                    totalReadTime = it.totalReadTime + totalReadingTime
-                )
-            }
-        }
-    }
-
-    private fun addToReadingBook(bookId: String) {
-        viewModelScope.launch(Dispatchers.IO) {
-            readingBookListUserData.update {
-                val newList = it.toMutableList()
-                if (it.contains(bookId))
-                    newList.remove(bookId)
-                newList.add(bookId)
-                return@update newList
-            }
-        }
-    }
-
-    fun accumulateReadingTime(bookId: String, seconds: Int) {
-        if (bookId.isBlank()) return
-        coroutineScope.launch(Dispatchers.IO) {
-            statsRepository.accumulateBookReadTime(bookId, seconds)
-        }
-    }
+    fun accumulateReadingTime(bookId: String, seconds: Int) =
+        readingRecords.accumulateReadingTime(bookId, seconds)
 }

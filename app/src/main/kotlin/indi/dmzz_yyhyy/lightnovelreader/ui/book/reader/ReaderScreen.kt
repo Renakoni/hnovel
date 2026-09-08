@@ -197,7 +197,7 @@ fun ReaderScreen(
             keepScreenOn = settingState.keepScreenOn,
         )
         ReaderReadingTimeEffects(
-            readingScreenUiState = readingScreenUiState,
+            currentBookId = { readingScreenUiState.bookId },
             updateTotalReadingTime = updateTotalReadingTime,
             accumulateReadTime = accumulateReadTime,
         )
