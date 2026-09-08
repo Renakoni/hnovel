@@ -45,10 +45,11 @@
 
 ## PAGE-002：分页测量与实时绘制没有共享完整的输入和失效条件
 
-- 状态：**源码风险，交互场景待复现**。
-- 证据：[宿主绘制][renderers] 读取实时 `LocalReaderStyle` 和字体 Flow；[TextPagination][pagination] 在 split 时读取设置，用组件创建时的 TextMeasurer 配置。[翻页宿主][flip] 的 effect key 只有 `chapterContent.content / resources / density`，没有字体设置、字体 URI、边距或布局方向；尺寸取 `resources.displayMetrics`，并非实际内容容器约束。绘制还使用 `LocalTextLocaleList`，测量没有显式使用相同 locale。
-- 影响：某些设置或容器变化可能只更新绘制，分页结果仍来自旧输入；多窗口等场景的测量区域也可能不同于绘制区域。此项不等同于已确认的真机闪烁原因。
-- 后续：在宿主侧定义一次分页所需的完整参数和失效规则，用受控设置/容器变更测试验证；与 R6 的协程所有权一起讨论，暂不修改 effect key 或调度。
+- 状态：**基线源码风险确认，修复已提交独立 PR；真实布局视觉结果仍需设备验证**。
+- 基线证据：[宿主绘制][renderers] 读取实时 `LocalReaderStyle` 和字体 Flow；[TextPagination][pagination] 在 split 时读取设置，用组件创建时的 TextMeasurer 配置。[翻页宿主][flip] 原 effect key 只有 `chapterContent.content / resources / density`，没有字体设置、字体 URI、边距、实际容器尺寸、布局方向或 locale；尺寸取 `resources.displayMetrics`，并非实际 Compose 内容容器约束。旧 effect 还在内部另起 IO Job，脱离 `LaunchedEffect` 的取消边界。
+- 修复语义：翻页宿主以实际 `onSizeChanged` 容器尺寸扣除当前边距，并把章节 ID/内容、容器尺寸、density、布局方向、ReaderStyle、字体 URI 和文本 locale 纳入分页失效键。分页请求交给可取消协调器；新请求取消旧请求，结果带请求序号，只有最新请求能更新组件列表和 Pager。移除未写回的 `contentKey` 去重状态，避免它错误跳过有效输入。
+- 回归覆盖：[FlipPaginationCoordinatorTest][pagination-coordinator-test] 验证新请求取消旧请求、关闭后不发布结果；既有 [ContentPaginationTest][text-pagination-test] 保留组件顺序、页数参数和异常传播检查。
+- 影响边界：修复保证受控任务与输入归属，不宣称解决所有真实设备残影、字体引擎差异或多窗口动画；这些仍需真机/集成验证。PAGE-001 的极小高度算法边界另行处理。
 
 ## PAGE-003：分页去重用的 contentKey 从未记录计算结果
 
@@ -72,6 +73,7 @@
 [pagination]: ../app/src/main/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/content/componet/TextPagination.kt
 [renderers]: ../app/src/main/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/content/componet/BuiltInContentRenderers.kt
 [flip]: ../app/src/main/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/content/flip/FlipPageContentComponent.kt
+[pagination-coordinator-test]: ../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/content/flip/FlipPaginationCoordinatorTest.kt
 [decode-test]: ../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/data/content/ContentDecodingContractTest.kt
 [processing-test]: ../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/data/content/TextProcessingContentContractTest.kt
 [text-page-test]: ../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/data/content/TextPaginationContractTest.kt

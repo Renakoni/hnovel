@@ -17,9 +17,9 @@ import androidx.compose.foundation.pager.PagerState
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -34,11 +34,12 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.IntSize
 import com.github.michaelbull.result.onErr
 import com.github.michaelbull.result.onOk
 import indi.dmzz_yyhyy.lightnovelreader.R
@@ -52,7 +53,8 @@ import indi.dmzz_yyhyy.lightnovelreader.utils.LocalSnackbarHost
 import indi.dmzz_yyhyy.lightnovelreader.utils.rememberReaderBackgroundPainter
 import indi.dmzz_yyhyy.lightnovelreader.utils.showSnackbar
 import io.nightfish.lightnovelreader.api.content.component.AbstractContentComponent
-import kotlinx.coroutines.Dispatchers
+import io.nightfish.lightnovelreader.api.ui.LocalReaderStyle
+import io.nightfish.lightnovelreader.api.ui.LocalTextLocaleList
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -98,30 +100,40 @@ private fun SimpleFlipPageTextComponent(
     onClickNextChapter: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
-    val resources = LocalResources.current
     val density = LocalDensity.current
     val layoutDirection = LocalLayoutDirection.current
-    var contentKey by remember { mutableIntStateOf(0) }
     var slippedContentComponentList by remember { mutableStateOf(emptyList<AbstractContentComponent<*>>()) }
-    LaunchedEffect(chapterContent.content, resources, density) {
-        scope.launch(Dispatchers.IO) {
-            val width = resources.displayMetrics
-                .widthPixels
-                .minus(
-                    with(density) {
-                        (paddingValues.calculateStartPadding(layoutDirection) + paddingValues.calculateEndPadding(layoutDirection)).toPx()
-                    }.toInt()
-                )
-            val height = resources.displayMetrics
-                .heightPixels
-                .minus(
-                    with(density) {
-                        (paddingValues.calculateTopPadding() + paddingValues.calculateBottomPadding()).toPx()
-                    }.toInt()
-                )
-            val key = chapterContent.hashCode() + width + height
-            if (key == contentKey) return@launch
-            val result = paginateComponents(chapterContent.content, height, width)
+    var contentSize by remember { mutableStateOf(IntSize.Zero) }
+    val readerStyle = LocalReaderStyle.current
+    val textLocaleList = LocalTextLocaleList.current
+    val horizontalPadding = with(density) {
+        (paddingValues.calculateStartPadding(layoutDirection) + paddingValues.calculateEndPadding(layoutDirection)).toPx()
+    }.toInt()
+    val verticalPadding = with(density) {
+        (paddingValues.calculateTopPadding() + paddingValues.calculateBottomPadding()).toPx()
+    }.toInt()
+    val pagination = remember(scope) { FlipPaginationCoordinator(scope) }
+    DisposableEffect(pagination) {
+        onDispose { pagination.close() }
+    }
+    LaunchedEffect(
+        chapterContent.id,
+        chapterContent.content,
+        contentSize,
+        horizontalPadding,
+        verticalPadding,
+        density,
+        layoutDirection,
+        readerStyle,
+        settingState.fontFamilyUri,
+        textLocaleList,
+    ) {
+        val width = contentSize.width - horizontalPadding
+        val height = contentSize.height - verticalPadding
+        if (width <= 0 || height <= 0) return@LaunchedEffect
+        slippedContentComponentList = emptyList()
+        uiState.updatePageState(PagerState { 0 })
+        pagination.submit(chapterContent.content, height, width) { result ->
             slippedContentComponentList = result
             uiState.updatePageState(PagerState { result.size })
         }
@@ -203,6 +215,7 @@ private fun SimpleFlipPageTextComponent(
     Box(
         modifier = modifier
             .fillMaxSize()
+            .onSizeChanged { contentSize = it }
             .then(
                 if (bgPainter != null)
                     Modifier.paint(
