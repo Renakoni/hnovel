@@ -49,7 +49,8 @@ class TextProcessingContentContractTest {
                 {"id":"fixture:unknown","data":{"value":2}},
                 {"data":{"text":"missing id"}},
                 {"id":"fixture:missing-data"},
-                7
+                7,
+                []
             ]
         }""").jsonObject, "previous", "next")
         val expected = chapter.copy(content = Json.parseToJsonElement("""{
@@ -60,11 +61,27 @@ class TextProcessingContentContractTest {
             {"id":"fixture:unknown","data":{"value":2}},
             {"data":{"text":"missing id"}},
             {"id":"fixture:missing-data"},
-            7
+            7,
+            []
         ]}""").jsonObject)
 
-        assertEquals(expected, processing.processChapterContent("book") { chapter })
-        assertEquals(expected, processing.coroutineProcessChapterContent("book") { chapter })
+        val decoder = ContentJsonDecoder(registry)
+        val outputs = listOf(
+            processing.processChapterContent("book") { chapter },
+            processing.coroutineProcessChapterContent("book") { chapter },
+        )
+        for (output in outputs) {
+            assertEquals(expected, output)
+            val rendered = decoder.decodeComponents(
+                output.content,
+                create = { _, _, decode -> (decode() as SimpleTextComponentData).text },
+                error = { "error" },
+            )
+            assertEquals(listOf("bodyAB", "short", "error", "error", "error", "error", "error"), rendered)
+            val exported = mutableListOf<String>()
+            decoder.getDataFromJsonObject(output.content) { exported += (it as SimpleTextComponentData).text }
+            assertEquals(listOf("bodyAB"), exported)
+        }
         assertEquals(listOf("book/A", "book/B", "book/A", "book/B"), events)
     }
 
@@ -103,6 +120,12 @@ class TextProcessingContentContractTest {
             processor.process<SimpleTextComponentData> { it.copy(text = it.text + "changed") }
 
             assertEquals(original, processor.get())
+            val decoder = ContentJsonDecoder(registry)
+            assertEquals(
+                listOf("error"),
+                decoder.decodeComponents(processor.get(), { _, _, _ -> "unexpected" }, { "error" }),
+            )
+            decoder.getDataFromJsonObject(processor.get()) { error("No valid component to export") }
         }
     }
 }
