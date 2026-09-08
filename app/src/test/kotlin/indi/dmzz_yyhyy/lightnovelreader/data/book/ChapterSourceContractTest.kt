@@ -99,14 +99,18 @@ abstract class ChapterSourceContractTest {
     }
 
     @Test
-    fun remoteFailureStillFollowsCachedSuccessForBothFlows() = runTest {
+    fun remoteFailureRetainsProcessedCachedContentForBothFlows() = runTest {
         coEvery { fixture.remote.getChapterContent(any(), any(), any()) } returns Err(error)
         coEvery { fixture.remote.getBookVolumes(any(), any()) } returns Err(error)
         val chapter = source().getChapterContentFlow("chapter", "book").toList()
         val volumes = source().getBookVolumesFlow("book").toList()
-        assertEquals(listOf(Ok(localChapter.copy(title = "processed:local")), Err(error)), chapter)
-        assertEquals(2, volumes.size)
-        assertEquals(Err(error), volumes.last())
+        assertEquals(listOf(Ok(localChapter.copy(title = "processed:local"))), chapter)
+        assertEquals(
+            listOf(Ok(BookVolumes("book", listOf(Volume("volume", "processed:local", emptyList()))))),
+            volumes,
+        )
+        coVerify(exactly = 1) { fixture.remote.getChapterContent("chapter", "book", WebDataSourcePriority.Default) }
+        coVerify(exactly = 1) { fixture.remote.getBookVolumes("book", WebDataSourcePriority.Default) }
         coVerify(exactly = 0) { fixture.local.updateChapterContent(any()) }
         coVerify(exactly = 0) { fixture.local.updateBookVolumes(any()) }
     }
@@ -146,10 +150,17 @@ abstract class ChapterSourceContractTest {
         coEvery { replacement.getChapterContent("chapter", "book", WebDataSourcePriority.Default) } returns Err(error)
         coEvery { replacement.getBookVolumes("book", WebDataSourcePriority.Default) } returns Err(error)
         fixture.activeRemote = replacement
-        assertEquals(Err(error), chapters.toList().last())
-        assertEquals(Err(error), volumes.toList().last())
-        coVerify(exactly = 2) { fixture.local.getChapterContent("chapter") }
-        coVerify(exactly = 2) { fixture.local.getBookVolumes("book") }
+        assertEquals(listOf(Ok(localChapter.copy(title = "processed:local"))), chapters.toList())
+        assertEquals(1, volumes.toList().size)
+        coVerify(exactly = 1) { replacement.getChapterContent("chapter", "book", WebDataSourcePriority.Default) }
+        coVerify(exactly = 1) { replacement.getBookVolumes("book", WebDataSourcePriority.Default) }
+        // A previous collection's cache hit must not hide this collection's cache miss.
+        coEvery { fixture.local.getChapterContent("chapter") } returns null
+        coEvery { fixture.local.getBookVolumes("book") } returns null
+        assertEquals(listOf(Err(error)), chapters.toList())
+        assertEquals(listOf(Err(error)), volumes.toList())
+        coVerify(exactly = 3) { fixture.local.getChapterContent("chapter") }
+        coVerify(exactly = 3) { fixture.local.getBookVolumes("book") }
     }
 
     @Test

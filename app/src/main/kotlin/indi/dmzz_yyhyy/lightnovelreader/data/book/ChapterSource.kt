@@ -7,10 +7,15 @@ import io.nightfish.lightnovelreader.api.error.WebRequestError
 import io.nightfish.lightnovelreader.api.web.WebDataSourcePriority
 import kotlinx.coroutines.flow.Flow
 
-/** Chapter access for the reader, without navigation or whole-book work scheduling. */
+/**
+ * Chapter access for the reader, without navigation or whole-book work scheduling.
+ *
+ * Both flows are cold: each collection emits processed local data when present, then processed
+ * remote data on success. A remote error is emitted only if that collection had no local data;
+ * a failed refresh leaves the cached success as the last emission. Benchmark builds stop at a
+ * local hit. Exceptions from storage or text processing, and coroutine cancellation, propagate.
+ */
 interface ChapterSource {
-    // Normal builds emit processed local data when present, then the remote result (including errors).
-    // Flows are cold; benchmark builds stop after a local hit.
     fun getBookVolumesFlow(
         id: String,
         priority: WebDataSourcePriority = WebDataSourcePriority.Default,

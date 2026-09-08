@@ -4,6 +4,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.BookInformationDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.BookVolumesDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.ChapterContentDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.UserReadingDataDao
+import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.UserReadingDataEntity
 import io.nightfish.lightnovelreader.api.book.BookInformation
 import io.nightfish.lightnovelreader.api.book.BookVolumes
 import io.nightfish.lightnovelreader.api.book.ChapterContent
@@ -78,29 +79,31 @@ class LocalBookDataSource @Inject constructor(
     }
 
     override suspend fun updateUserReadingData(id: String, update: (UserReadingData) -> UserReadingData) {
-        val userReadingData = userReadingDataDao.getEntity(id)?.let {
-            UserReadingData(
-                it.id,
-                it.lastReadTime,
-                it.totalReadTime,
-                it.readingProgress,
-                it.lastReadChapterId,
-                it.lastReadChapterTitle,
-                it.currentChapterReadingProgressMap,
-                it.maxChapterReadingProgressMap
+        userReadingDataDao.update(id) { entity ->
+            val userReadingData = entity?.let {
+                UserReadingData(
+                    it.id,
+                    it.lastReadTime,
+                    it.totalReadTime,
+                    it.readingProgress,
+                    it.lastReadChapterId,
+                    it.lastReadChapterTitle,
+                    it.currentChapterReadingProgressMap,
+                    it.maxChapterReadingProgressMap
+                )
+            } ?: UserReadingData(id)
+            val new = update(userReadingData)
+            UserReadingDataEntity(
+                id = new.id,
+                lastReadTime = new.lastReadTime ?: LocalDateTime.MIN,
+                totalReadTime = new.totalReadTime,
+                readingProgress = new.readingProgress,
+                lastReadChapterId = new.lastReadChapterId ?: "",
+                lastReadChapterTitle = new.lastReadChapterTitle ?: "",
+                currentChapterReadingProgressMap = new.currentChapterReadingProgressMap,
+                maxChapterReadingProgressMap = new.maxChapterReadingProgressMap
             )
-        } ?: UserReadingData(id)
-        val new = update(userReadingData)
-        userReadingDataDao.insert(
-            id = new.id,
-            lastReadTime = new.lastReadTime ?: LocalDateTime.MIN,
-            totalReadTime = new.totalReadTime,
-            readingProgress = new.readingProgress,
-            lastReadChapterId = new.lastReadChapterId ?: "",
-            lastReadChapterTitle = new.lastReadChapterTitle ?: "",
-            currentChapterReadingProgressMap = new.currentChapterReadingProgressMap,
-            maxChapterReadingProgressMap = new.maxChapterReadingProgressMap
-        )
+        }
     }
 
     override suspend fun getAllUserReadingData(): List<UserReadingData> =

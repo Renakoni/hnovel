@@ -24,10 +24,11 @@
 
 ## FLIP-002：排队恢复使用旧 Pager 的页数，却滚动当前 Pager
 
-- 状态：**受控 Pager 替身测试确认调用参数与目标对象**。
-- 证据：[FlipModeContractTest][flip-test] 的 `queuedRestorationUsesTheOldPageCountButScrollsTheCurrentPager`：先传入 5 页 Pager，再在任务执行前替换为 2 页 Pager，最终对新 Pager 调用 `scrollToPage(2)`。[FlipReadingProgress][flip-progress] 捕获参数 Pager 计算目标，再通过 `uiState.pagerState` 调用滚动。
-- 影响：布局快速重新分页时，目标页和对象可能不属于同一次分页；真实 Pager 还可能对索引作进一步限制，测试没有声称测量了最终屏幕位置。
-- 后续：把恢复输入与 Pager/章节身份一起定义，确定过期恢复是取消、忽略还是重算；本轮保留任务排队与对象读取方式。
+- 状态：**基线测试确认，修复已提交到独立 PR**。
+- 基线证据：[FlipModeContractTest][flip-test] 的 `queuedRestorationUsesTheCurrentPagerPageCountAndTarget` 先传入 5 页 Pager，再在任务执行前替换为 2 页 Pager；在原始 `main@1dd4604f` 上，验收期望新 Pager 根据自身页数得到目标 `0`，实际收到旧页数计算出的目标 `2`，测试失败。原实现捕获旧 `pagerState.pageCount`，却通过 `uiState.pagerState` 滚动。
+- 修复语义：每次 Pager 替换都会取消尚未执行的恢复任务；任务执行时重新读取被捕获 Pager 的当前页数，并确认它仍是 `uiState.pagerState`，随后在同一个 Pager 上计算和调用 `scrollToPage`。页数变为零或任务已过期时不滚动；切章会取消遗留恢复。
+- 回归覆盖：新 Pager 页数重算、空 Pager 替换、原有进度取整与 Pager 观察测试均通过。测试只证明受控 Pager/协程时序和目标调用，不覆盖真实分页测量、设备导航或最终视觉位置。
+- 后续：真实设备上仍需观察分页重建与 Compose Pager 的实际时序；FLIP-001 的晚到记录协调和其他分页语义保持独立。
 
 ## SCROLL-002：throttleLatest 不会在窗口结束时自动补发暂存值
 
