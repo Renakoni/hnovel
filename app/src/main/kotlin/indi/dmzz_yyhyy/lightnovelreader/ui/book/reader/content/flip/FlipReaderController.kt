@@ -23,6 +23,11 @@ class FlipReaderController(
     val updateReadingProgress: (String, Float) -> Unit,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : ReaderModeController {
+    private var latestRequestedChapterId: String? = null
+
+    override val requestedChapterId: String?
+        get() = latestRequestedChapterId
+
     override val uiState: MutableFlipPageContentUiState = MutableFlipPageContentUiState(
         loadPrevChapter = ::loadPrevChapter,
         loadNextChapter = ::loadNextChapter,
@@ -76,6 +81,7 @@ class FlipReaderController(
             Log.e("FlipPageContentViewModel", "a id less than 0 was transferred")
             return
         }
+        latestRequestedChapterId = id
         progress.resetForChapter()
         chapterLoadJob?.cancel()
         val requestGeneration = ++chapterRequestGeneration

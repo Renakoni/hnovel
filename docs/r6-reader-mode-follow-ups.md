@@ -38,12 +38,12 @@
 - 影响：名称容易让调用者误以为“最多每 120ms 输出最新值”。滚动模式还有独立停止观察会重新计算并写入，因此不能据此直接认定持久化一定丢进度。
 - 后续：先决定所需的是节流、采样还是带尾发射的节流，再同时审查 2500ms 写入门槛、停止与完成进度例外。可控时钟只用于证明现有行为，默认时间来源仍不变。
 
-## MODE-001：切换模式使用最后的显式跳章 ID，而非当前显示章节
+## MODE-001：切换模式使用最后的显式跳章 ID，而非当前显示章节（P1，修复已提交）
 
-- 状态：**实际 ReaderViewModel 与可移动章节的模式替身测试确认**。
-- 证据：[ReaderModeOwnershipTest][ownership-test] 先显式请求 initial，通过模式的 next 命令把显示 ID 改为 initial-next，再切换模式，新模式仍绑定 initial。[ReaderViewModel][reader] 的私有 chapterId 只在 `changeChapter` 更新，上一章/下一章和模式内连续跨章不回写该字段。
-- 影响：模式内翻到另一章节后切换阅读模式，可能重新打开旧的显式请求章节。替身测试证明了输入归属差异，未模拟真实列表/Pager 的所有交互。
-- 后续：明确“用户请求章节”和“当前阅读章节”的关系，再决定切换时读取哪一个；不要只改一处跳章回调造成两个身份不完整同步。
+- 状态：**实际 ReaderViewModel 与可移动章节的模式替身测试确认，修复已提交到独立 PR**。
+- 证据：[ReaderModeOwnershipTest][ownership-test] 先显式请求 initial，通过模式的 next 命令把显示 ID 改为 initial-next，再切换模式，原实现仍绑定 initial。[ReaderViewModel][reader] 的私有 `chapterId` 只在 `changeChapter` 更新，上一章/下一章和模式内连续跨章不回写该字段。
+- 修复语义：模式切换时由宿主优先读取当前旧模式 `ContentUiState.readingChapterId`；旧模式尚未建立有效章节时才回退到最后显式请求目标。两种模式不互相调用，模式内部的章节导航仍归各自控制器所有。
+- 影响边界：模式切换继续复用同一个 reader scope，旧模式任务生命周期、记录和进度写入策略不在本项改变；真实分页/网络完成时序仍需设备与集成验证。
 
 ## SCROLL-003：相邻订阅的 ID 检查不约束预加载
 
