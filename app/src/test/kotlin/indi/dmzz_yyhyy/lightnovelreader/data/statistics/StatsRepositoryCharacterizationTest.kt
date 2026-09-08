@@ -16,7 +16,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.time.LocalDate
 
-/** These observations document existing defects, not the desired future statistics policy. */
+/** Statistics summary precision contracts. */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [27], application = Application::class)
 class StatsRepositoryCharacterizationTest {
@@ -62,13 +62,13 @@ class StatsRepositoryCharacterizationTest {
     }
 
     @Test
-    fun twoThirtySecondSettlementsProduceSixtyBookSecondsButZeroSummaryMinutes() = runTest {
+    fun twoThirtySecondSettlementsProduceOneSummaryMinuteFromBookSeconds() = runTest {
         repeat(2) {
             repository.accumulateBookReadTime("book", 30)
             repository.accumulateBookReadTime("book", -1)
         }
 
         assertEquals(60, records.values.sumOf { it.seconds })
-        assertEquals(0, repository.getTotalReadingSummary().totalMinutes)
+        assertEquals(1, repository.getTotalReadingSummary().totalMinutes)
     }
 }
