@@ -13,6 +13,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import kotlinx.coroutines.CancellationException
 import org.dom4j.DocumentHelper
 
 // Deliberately imports only plugin APIs, not host implementation classes.
@@ -63,6 +64,18 @@ class UnresolvableFixtureComponent(data: FixtureData, val missing: Runnable) :
 
 class ThrowingFixtureComponent(data: FixtureData) : AbstractContentComponent<FixtureData>(data) {
     init { error("fixture constructor failed") }
+    override val id = data.id
+    @Composable override fun Content(modifier: Modifier) = Unit
+}
+
+class CancellationConstructorFixtureComponent(data: FixtureData) : AbstractContentComponent<FixtureData>(data) {
+    init { throw CancellationException("fixture constructor cancelled") }
+    override val id = data.id
+    @Composable override fun Content(modifier: Modifier) = Unit
+}
+
+class ErrorConstructorFixtureComponent(data: FixtureData) : AbstractContentComponent<FixtureData>(data) {
+    init { throw AssertionError("fixture constructor fatal") }
     override val id = data.id
     @Composable override fun Content(modifier: Modifier) = Unit
 }

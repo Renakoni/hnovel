@@ -13,10 +13,11 @@
 
 ## CONTENT-002：错误组件并不覆盖所有解析和构造失败，创建仍有初始化前提
 
-- 状态：**测试确认错误类型与顺序**。
-- 证据：[解码测试][decode-test] `invalidJsonTypesStillThrowAndArrayObjectsAreValidatedBeforeAnyDecode`、`serializerAndConstructorFailuresAreNotConvertedToErrorComponents`、`injectorIsRequiredBeforeTheSerializerIsInvokedForRendering`。缺字段、未知组件、无法匹配构造器可得到错误组件；错误 JSON 类型、序列化器异常、反射构造异常仍向外抛出。[工厂][factory] 仍要求 `PluginInjectorProvider.value!!` 已初始化，而且这个前提在调用序列化器之前检查。
-- 影响：损坏的一项可能终止整章组装，调用方不能将“存在错误组件回退”理解为“所有坏数据都会安全显示”。数据导出没有注入器前提，阅读创建有，两个入口不能互换。
-- 后续：确定失败粒度、错误可见性和初始化所有者，再设计统一的异常或结果契约；本轮不增加 catch、不改变失败优先级。
+- 状态：**修复已提交 PR #53；逐组件容错和取消传播测试通过**。
+- 证据：[解码测试][decode-test] 现在验证错误 JSON 类型、非对象数组项、序列化器异常、反射构造异常和未初始化注入器都只影响当前渲染组件；后续合法组件仍按原顺序创建。取消异常专门断言继续向上传播，数据导出入口仍保持严格异常。
+- 修复：渲染解码器在组件边界捕获非取消 `Exception` 并生成错误组件；根数组和数组项形状错误也转成可见错误项。工厂在注入器缺失时返回初始化失败，不再解引用 `!!`。没有捕获 `Error` 或取消异常，也没有改变导出解码策略。
+- 影响与限制：损坏组件不再终止整章渲染，错误信息可显示给读者；插件严重错误、取消和导出错误仍可被调用方观察。JVM fixture 不覆盖外部插件 DEX、真实 Compose 进程初始化、网络或设备进程终止。
+- 后续：合并 PR #53 后在真实插件加载、阅读入口和导出入口验证错误可见性；如果需要更细的错误分类，应另建协议设计 Issue，不在本次继续扩大 catch 范围。
 
 ## CONTENT-003：注册信息没有验证类型关联，也没有并发一致性边界
 
