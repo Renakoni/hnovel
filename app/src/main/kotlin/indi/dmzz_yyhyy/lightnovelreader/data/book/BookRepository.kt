@@ -31,42 +31,15 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
-import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 import javax.inject.Singleton
-
-private const val WORK_SUBMISSION_TAG_PREFIX = "lightnovelreader:work-submission:"
-private val nextWorkSubmission = AtomicLong(System.currentTimeMillis())
-
-internal fun nextWorkSubmissionTag(): String =
-    WORK_SUBMISSION_TAG_PREFIX + nextWorkSubmission.incrementAndGet()
-
-/** Selects an active work first, otherwise the terminal work with the greatest submission tag. */
-internal fun selectLatestWorkInfo(workInfos: List<WorkInfo>): WorkInfo? {
-    fun WorkInfo.isActive() = state == WorkInfo.State.ENQUEUED ||
-        state == WorkInfo.State.RUNNING ||
-        state == WorkInfo.State.BLOCKED
-
-    return workInfos.firstOrNull { it.isActive() }
-        ?: workInfos.asSequence()
-            .filterNot { it.isActive() }
-            .maxWithOrNull(
-                compareBy<WorkInfo> {
-                    it.tags.mapNotNull { tag ->
-                        tag.removePrefix(WORK_SUBMISSION_TAG_PREFIX)
-                            .takeIf { value -> tag.startsWith(WORK_SUBMISSION_TAG_PREFIX) }
-                            ?.toLongOrNull()
-                    }.maxOrNull() ?: Long.MIN_VALUE
-                }.thenBy { it.generation }
-                    .thenBy { it.runAttemptCount }
-                    .thenBy { it.id.toString() }
-            )
-}
 
 /** Start observing only after KEEP has accepted the submission or retained the active work. */
 internal fun WorkManager.observeSubmittedUniqueWork(name: String, operation: Operation): Flow<WorkInfo?> = flow {
     operation.await()
-    emitAll(getWorkInfosForUniqueWorkFlow(name).map(::selectLatestWorkInfo))
+    // These names enqueue a single KEEP request, without APPEND/dependencies. KEEP retains
+    // the active request or deletes the terminal record before inserting its replacement.
+    emitAll(getWorkInfosForUniqueWorkFlow(name).map { it.singleOrNull() })
 }
 
 @Singleton
@@ -151,7 +124,6 @@ class BookRepository @Inject constructor(
 
     fun cacheBook(bookId: String): Flow<WorkInfo?> {
         val workRequest = OneTimeWorkRequestBuilder<CacheBookWork>()
-            .addTag(nextWorkSubmissionTag())
             .setInputData(
                 workDataOf(
                     "bookId" to bookId

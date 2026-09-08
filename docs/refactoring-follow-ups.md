@@ -37,8 +37,9 @@
 
 - 状态：**修复已提交 PR #50；受控唯一工作观察测试通过**。
 - 证据：基线的 [BookRepository.cacheBook](../app/src/main/kotlin/indi/dmzz_yyhyy/lightnovelreader/data/book/BookRepository.kt) 每次构造新请求，以 `cache:<bookId>` 和 `KEEP` 入队，然后返回新请求；[DetailViewModel.cacheBook](../app/src/main/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/detail/DetailViewModel.kt) 用这个新 UUID 观察。若同名未完成任务已存在，KEEP 保留原任务，UUID 与观察对象脱离。EPUB 导出有相同的入队/按新 UUID 观察模式。
-- 修复：缓存和 EPUB 导出都按唯一工作名查询 `getWorkInfosForUniqueWorkFlow`，从唯一工作链中优先选择 `ENQUEUED`、`RUNNING` 或 `BLOCKED` 的记录，避免把被 KEEP 忽略的请求当成执行身份。缓存回归测试覆盖历史已完成记录与当前运行记录同时存在时选择活动任务。
-- 影响：详情页的完成、失败和运行提示现在跟随实际唯一任务。当前测试使用受控 WorkInfo 流和 WorkManager API 契约，未启动真实网络 worker；设备上的后台限制、进程重启和任务恢复仍需真机验证。
+- 修复：缓存和 EPUB 导出都先等待 `enqueueUniqueWork` 的 Operation 完成，再按唯一工作名查询 `getWorkInfosForUniqueWorkFlow`，避免既观察被 KEEP 忽略的新 UUID，也避免入队完成前读到上一次的终态。
+- Review 证据：项目使用的 WorkManager 2.11.2 在单请求、无依赖的 KEEP 入队事务中保留现有活动记录，或删除旧终态记录再插入新请求（`EnqueueRunnable.enqueueWorkWithPrerequisites`）。这些名称没有 APPEND 链，因此不需要对历史终态排序；已移除本 PR 先前加入的时钟标签及排序器，不引入持久序列或迁移。
+- 验证：受控 Flow/future 测试覆盖两个入口的入队等待；真实 WorkManager 入队算法与内存 WorkDatabase 测试确认活动请求保留、后退时钟下旧终态删除及新请求身份。没有启动网络 worker，也未模拟真实进程重启或设备后台限制。
 - 后续：合并 PR #50 后在真实缓存和 EPUB 导出路径验证重复点击、后台恢复及进程重启。其他使用 KEEP 的导出/书架入口若增加状态提示，应复用唯一工作名观察规则。
 
 ## BOOK-004：非空卷列表中的所有卷都没有章节时，缓存状态为 true

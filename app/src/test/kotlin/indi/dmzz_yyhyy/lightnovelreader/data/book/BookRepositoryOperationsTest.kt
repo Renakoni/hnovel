@@ -4,10 +4,17 @@ import android.app.Application
 import android.net.Uri
 import androidx.concurrent.futures.ResolvableFuture
 import androidx.navigation.NavController
+import androidx.room.Room
+import androidx.work.Clock
+import androidx.work.Configuration
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequest
 import androidx.work.Operation
 import androidx.work.WorkInfo
+import androidx.work.impl.WorkContinuationImpl
+import androidx.work.impl.WorkDatabase
+import androidx.work.impl.WorkManagerImpl
+import androidx.work.impl.utils.EnqueueRunnable
 import indi.dmzz_yyhyy.lightnovelreader.data.web.proxy.ProxyWebBookDataSource
 import indi.dmzz_yyhyy.lightnovelreader.data.work.CacheBookWork
 import indi.dmzz_yyhyy.lightnovelreader.data.work.ExportBookToEPUBWork
@@ -32,13 +39,14 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
-import java.util.UUID
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [27], application = Application::class)
@@ -47,23 +55,40 @@ class BookRepositoryOperationsTest {
     private val fixture = BookRepositoryFixture()
 
     @Test
-    fun terminalWorkSelectionUsesTheExplicitSubmissionTagInsteadOfListOrder() {
-        val older = mockk<WorkInfo>()
-        every { older.state } returns WorkInfo.State.SUCCEEDED
-        every { older.tags } returns setOf("lightnovelreader:work-submission:100")
-        every { older.generation } returns 0
-        every { older.runAttemptCount } returns 0
-        every { older.id } returns UUID.fromString("00000000-0000-0000-0000-000000000001")
+    fun singleKeepWorkRetainsActiveIdentityAndReplacesTerminalRowsAcrossClockChanges() {
+        val database = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), WorkDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        var time = 2_000L
+        val config = Configuration.Builder().setClock(object : Clock {
+            override fun currentTimeMillis() = time
+        }).build()
+        val manager = mockk<WorkManagerImpl> {
+            every { workDatabase } returns database
+            every { configuration } returns config
+            every { schedulers } returns emptyList()
+        }
+        fun enqueue(request: OneTimeWorkRequest) {
+            EnqueueRunnable.addToDatabase(WorkContinuationImpl(manager, "cache:book", ExistingWorkPolicy.KEEP, listOf(request)))
+        }
+        fun request() = androidx.work.OneTimeWorkRequestBuilder<CacheBookWork>().build()
+        try {
+            val old = request()
+            enqueue(old)
+            val ignored = request()
+            enqueue(ignored)
+            assertEquals(listOf(old.id.toString()), database.workSpecDao().getWorkSpecIdAndStatesForName("cache:book").map { it.id })
+            assertNull(database.workSpecDao().getWorkSpec(ignored.id.toString()))
 
-        val newer = mockk<WorkInfo>()
-        every { newer.state } returns WorkInfo.State.FAILED
-        every { newer.tags } returns setOf("lightnovelreader:work-submission:200")
-        every { newer.generation } returns 0
-        every { newer.runAttemptCount } returns 0
-        every { newer.id } returns UUID.fromString("00000000-0000-0000-0000-000000000002")
-
-        assertSame(newer, selectLatestWorkInfo(listOf(newer, older)))
-        assertSame(newer, selectLatestWorkInfo(listOf(older, newer)))
+            database.workSpecDao().setState(WorkInfo.State.SUCCEEDED, old.id.toString())
+            time = 1_000L
+            val replacement = request()
+            enqueue(replacement)
+            assertEquals(listOf(replacement.id.toString()), database.workSpecDao().getWorkSpecIdAndStatesForName("cache:book").map { it.id })
+            assertNull(database.workSpecDao().getWorkSpec(old.id.toString()))
+        } finally {
+            database.close()
+        }
     }
 
     @Test
@@ -81,9 +106,7 @@ class BookRepositoryOperationsTest {
 
         val existingWork = mockk<WorkInfo>()
         every { existingWork.state } returns WorkInfo.State.RUNNING
-        val completedEarlier = mockk<WorkInfo>()
-        every { completedEarlier.state } returns WorkInfo.State.SUCCEEDED
-        val workState = MutableStateFlow(listOf(completedEarlier, existingWork))
+        val workState = MutableStateFlow(listOf(existingWork))
         every { fixture.workManager.getWorkInfosForUniqueWorkFlow("cache:book") } returns workState
         completion.set(Operation.SUCCESS)
         assertSame(existingWork, observed.first())
@@ -98,15 +121,11 @@ class BookRepositoryOperationsTest {
             val completion = ResolvableFuture.create<Operation.State.SUCCESS>()
             val operation = mockk<Operation> { every { result } returns completion }
             every { env.workManager.enqueueUniqueWork(name, ExistingWorkPolicy.KEEP, any<OneTimeWorkRequest>()) } returns operation
-            fun completedWork(tag: Int) = mockk<WorkInfo> {
+            fun completedWork() = mockk<WorkInfo> {
                 every { state } returns WorkInfo.State.SUCCEEDED
-                every { tags } returns setOf("lightnovelreader:work-submission:$tag")
-                every { generation } returns 0
-                every { runAttemptCount } returns 0
-                every { id } returns UUID.randomUUID()
             }
-            val old = completedWork(1)
-            val current = completedWork(2)
+            val old = completedWork()
+            val current = completedWork()
             val infos = MutableStateFlow(listOf(old))
             every { env.workManager.getWorkInfosForUniqueWorkFlow(name) } returns infos
             val observed = if (export) {
