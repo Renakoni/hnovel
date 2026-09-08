@@ -15,6 +15,7 @@ import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ReaderModeFactory
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ReaderModeHost
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
@@ -47,6 +48,8 @@ class ReaderViewModel @Inject constructor(
         },
         chapterCount = { id -> chapterCountsByBook[id] ?: 0 },
     )
+    private var bookVolumesJob: Job? = null
+    @Volatile private var bookVolumesRequest = 0L
     var bookId = ""
         set(value) {
             field = value
@@ -54,14 +57,19 @@ class ReaderViewModel @Inject constructor(
             modeHost.changeBookId(value)
             readingRecords.openBook(value)
 
-            viewModelScope.launch(Dispatchers.IO) {
+            bookVolumesJob?.cancel()
+            val request = ++bookVolumesRequest
+            _uiState.bookVolumes = null
+            bookVolumesJob = viewModelScope.launch(Dispatchers.IO) {
                 chapterSource.getBookVolumesFlow(value).collect {
-                    it.map { volumes ->
-                        val count = volumes.volumes.sumOf { volume -> volume.chapters.size }
-                        if (count > 0) chapterCountsByBook[value] = count
-                        else chapterCountsByBook.remove(value)
+                    if (request == bookVolumesRequest) {
+                        it.map { volumes ->
+                            val count = volumes.volumes.sumOf { volume -> volume.chapters.size }
+                            if (count > 0) chapterCountsByBook[value] = count
+                            else chapterCountsByBook.remove(value)
+                        }
+                        _uiState.bookVolumes = it
                     }
-                    _uiState.bookVolumes = it
                 }
             }
     }
@@ -112,4 +120,10 @@ class ReaderViewModel @Inject constructor(
 
     fun accumulateReadingTime(bookId: String, seconds: Int) =
         readingRecords.accumulateReadingTime(bookId, seconds)
+
+    override fun onCleared() {
+        modeHost.close()
+        bookVolumesJob?.cancel()
+        super.onCleared()
+    }
 }

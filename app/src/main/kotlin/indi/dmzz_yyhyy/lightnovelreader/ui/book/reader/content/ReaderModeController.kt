@@ -14,4 +14,7 @@ interface ReaderModeController {
     fun loadNextChapter()
     fun loadPrevChapter()
     fun changeChapter(id: String)
+
+    /** Stops work owned by this mode when the reader selects another controller. */
+    fun close() = Unit
 }
