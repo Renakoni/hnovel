@@ -47,6 +47,13 @@
 - 影响：目录不完整的书籍可能显示为已缓存；也可能是对空卷的合理处理，目前缺少明确规则。
 - 后续：定义“已缓存”是否要求至少存在一个可阅读章节，再决定是否调整判断。不要仅为了统一空集合处理而修改行为。
 
+## CACHE-001：内存缓存代理的读取键与写入键不一致
+
+- 状态：**已提交修复 PR #55**。
+- 证据：[ProxyCachedWebBookDataSource](../app/src/main/kotlin/indi/dmzz_yyhyy/lightnovelreader/data/web/proxy/ProxyCachedWebBookDataSource.kt) 基线按请求 key 的 `hashCode()` 查询，却按 `origin.id.hashCode()` 写入。使用真实 [Cache](../api/src/main/kotlin/io/nightfish/lightnovelreader/api/util/Cache.kt) 的回归测试确认同一卷目录请求连续两次都会调用底层。
+- 修复：读写使用相同的完整请求键（方法、书籍 ID、章节 ID）。Cache 按完整 key 的 equality 判定命中，整数 hash 碰撞和字符串拼接歧义不会再返回别的请求的数据；类型分组、过期和容量策略保持。
+- 回归覆盖：`Aa`/`BB` 同 hash 书籍、`ab+c`/`a+bc` 章节组合、重复命中和响应类型隔离。网络传输和设备进程行为不在 JVM 测试覆盖范围内。
+
 ## READ-001：快速切换章节时，旧翻页任务可能回写新界面（P1，修复已提交）
 
 - 状态：**已由翻页模式受控测试确认，修复已提交到独立 PR**。R6 只明确了模式任务所有权，没有改变替换行为；本项是其后的行为修复。
