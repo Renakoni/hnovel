@@ -77,6 +77,17 @@ internal class FlipReadingProgress(
         uiState.readingProgress = 0f
     }
 
+    private fun enableProgressFor(pagerState: PagerState) {
+        if (pagerState.pageCount == 0 || uiState.pagerState !== pagerState) return
+        progressPagerState = pagerState
+        val progress = ((pagerState.settledPage + 1) / pagerState.pageCount.toFloat())
+            .coerceIn(0f, 1f)
+        uiState.readingProgress = progress
+        uiState.readingChapterContent?.onOk {
+            updateReadingProgress(it.id, progress)
+        }
+    }
+
     fun recoverForChapter(id: String, bookId: String = uiState.bookId) {
         restorationJob?.cancel()
         restorationJob = null
@@ -102,13 +113,14 @@ internal class FlipReadingProgress(
     ) {
         if (expectedRecoveryGeneration != null && expectedRecoveryGeneration != recoveryGeneration) return
         val pagerState = currentPagerState ?: return
-        if (pagerState.pageCount == 0 || (!allowCurrentProgress && restorationApplied)) {
-            if (pagerState.pageCount == 0 || restorationApplied) progressPagerState = pagerState
+        if (pagerState.pageCount == 0) return
+        if (!allowCurrentProgress && restorationApplied) {
+            enableProgressFor(pagerState)
             return
         }
         val hasRecoveredProgress = notRecoveredProgress > 0f
         if (!hasRecoveredProgress && (!allowCurrentProgress || uiState.readingProgress <= 0f)) {
-            progressPagerState = pagerState
+            enableProgressFor(pagerState)
             return
         }
         if (hasRecoveredProgress && initialPagerPage != null &&
@@ -118,13 +130,13 @@ internal class FlipReadingProgress(
         ) {
             notRecoveredProgress = 0f
             restorationApplied = true
-            progressPagerState = pagerState
+            enableProgressFor(pagerState)
             return
         }
         if (hasRecoveredProgress && initialPagerPage != null && pagerState.settledPage != initialPagerPage) {
             notRecoveredProgress = 0f
             restorationApplied = true
-            progressPagerState = pagerState
+            enableProgressFor(pagerState)
             return
         }
         val recovered = (if (hasRecoveredProgress) notRecoveredProgress else uiState.readingProgress)
@@ -143,7 +155,7 @@ internal class FlipReadingProgress(
                     notRecoveredProgress = 0f
                     restorationApplied = true
                 }
-                progressPagerState = pagerState
+                enableProgressFor(pagerState)
             }
         }
     }

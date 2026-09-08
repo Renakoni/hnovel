@@ -180,13 +180,16 @@ class FlipModeContractTest {
         open()
         val targets = mutableListOf<Int>()
         val page = mutableIntStateOf(0)
+        progress.clear()
         mode.updatePagerState(pager(4, page, targets))
         env.runCurrent()
+        env.emit("requested", Ok(env.chapter("requested")))
         page.intValue = 1
         env.runCurrent()
         gate.complete(Unit)
         env.runCurrent()
         assertTrue(targets.isEmpty())
+        assertEquals("progress=$progress", listOf("requested" to 0.5f), progress)
     }
 
     @Test
