@@ -16,8 +16,16 @@ import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ReaderModeHost
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.lastOrNull
+import kotlinx.coroutines.flow.filter
 import javax.inject.Inject
+
+internal suspend fun latestChapterCount(
+    chapterSource: ChapterSource,
+    bookId: String,
+): Int = chapterSource.getBookVolumesFlow(bookId).filter { it.isOk }.lastOrNull()
+    ?.map { volumes -> volumes.volumes.sumOf { it.chapters.size } }
+    ?.getOrElse { 0 } ?: 0
 
 @HiltViewModel
 class ReaderViewModel @Inject constructor(
@@ -44,11 +52,7 @@ class ReaderViewModel @Inject constructor(
         currentChapterTitle = {
             _uiState.contentUiState?.readingChapterContent?.map { it.title }?.getOrElse { null }
         },
-        chapterCount = { id ->
-            chapterSource.getBookVolumesFlow(id).firstOrNull { it.isOk }
-                ?.map { volumes -> volumes.volumes.sumOf { it.chapters.size } }
-                ?.getOrElse { 0 } ?: 0
-        },
+        chapterCount = { id -> latestChapterCount(chapterSource, id) },
     )
     var bookId = ""
         set(value) {
