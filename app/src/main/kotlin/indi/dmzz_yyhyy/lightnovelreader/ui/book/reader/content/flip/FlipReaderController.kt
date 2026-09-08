@@ -9,8 +9,11 @@ import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ReaderChapterLoad
 import io.nightfish.lightnovelreader.api.web.WebDataSourcePriority
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.time.LocalDateTime
 
 class FlipReaderController(
@@ -20,6 +23,11 @@ class FlipReaderController(
     val updateReadingProgress: (String, Float) -> Unit,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : ReaderModeController {
+    private var latestRequestedChapterId: String? = null
+
+    override val requestedChapterId: String?
+        get() = latestRequestedChapterId
+
     override val uiState: MutableFlipPageContentUiState = MutableFlipPageContentUiState(
         loadPrevChapter = ::loadPrevChapter,
         loadNextChapter = ::loadNextChapter,
@@ -31,11 +39,20 @@ class FlipReaderController(
         uiState, readingData, coroutineScope, updateReadingProgress, ioDispatcher,
     )
 
+    private var chapterLoadJob: Job? = null
+    private var chapterRequestGeneration = 0L
+    private val readingMetadataMutex = Mutex()
+
     init { progress.start() }
 
     fun updatePagerState(pagerState: PagerState) = progress.updatePagerState(pagerState)
 
     override fun changeBookId(id: String) {
+        if (uiState.bookId != id) {
+            chapterLoadJob?.cancel()
+            chapterRequestGeneration++
+            progress.resetForChapter()
+        }
         uiState.bookId = id
     }
 
@@ -64,32 +81,41 @@ class FlipReaderController(
             Log.e("FlipPageContentViewModel", "a id less than 0 was transferred")
             return
         }
+        latestRequestedChapterId = id
         progress.resetForChapter()
-        coroutineScope.launch {
+        chapterLoadJob?.cancel()
+        val requestGeneration = ++chapterRequestGeneration
+        val bookId = uiState.bookId
+        chapterLoadJob = coroutineScope.launch {
             chapters.load(
                 id,
-                uiState.bookId,
+                bookId,
                 WebDataSourcePriority.High
             ).collect { result ->
+                if (requestGeneration != chapterRequestGeneration) return@collect
                 uiState.readingChapterId = id
                 uiState.readingChapterContent = result
                 result.onOk { content ->
-                    readingData.updateUserReadingData(uiState.bookId) {
-                        it.copy(
-                            lastReadTime = LocalDateTime.now(),
-                            lastReadChapterId = id,
-                            lastReadChapterTitle = content.title
-                        )
+                    readingMetadataMutex.withLock {
+                        if (requestGeneration != chapterRequestGeneration) return@withLock
+                        readingData.updateUserReadingData(bookId) {
+                            it.copy(
+                                lastReadTime = LocalDateTime.now(),
+                                lastReadChapterId = id,
+                                lastReadChapterTitle = content.title
+                            )
+                        }
                     }
+                    if (requestGeneration != chapterRequestGeneration) return@onOk
                     content.nextChapter?.let {
                         chapters.preload(
                             it,
-                            uiState.bookId
+                            bookId
                         )
                     }
                 }
             }
         }
-        progress.recoverForChapter(id)
+        progress.recoverForChapter(id, bookId)
     }
 }

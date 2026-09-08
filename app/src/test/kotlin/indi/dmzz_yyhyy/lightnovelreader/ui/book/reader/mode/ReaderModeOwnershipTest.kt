@@ -91,10 +91,9 @@ class ReaderModeOwnershipTest {
         assertEquals("initial-next", reader.uiState.contentUiState!!.readingChapterId)
         flip.value = "false"
         scheduler.runCurrent()
-        // Mode navigation does not change the reader's last explicit chapter request.
-        assertEquals("initial", reader.uiState.contentUiState!!.readingChapterId)
+        assertEquals("initial-next", reader.uiState.contentUiState!!.readingChapterId)
         reader.changeChapter("direct")
-        assertEquals(listOf("Scroll/book/", "Scroll/chapter/initial", "Flip/book/", "Flip/chapter/initial", "Flip/next", "Scroll/book/", "Scroll/chapter/initial", "Scroll/chapter/direct"), events)
+        assertEquals(listOf("Scroll/book/", "Scroll/chapter/initial", "Flip/book/", "Flip/chapter/initial", "Flip/next", "Scroll/book/", "Scroll/chapter/initial-next", "Scroll/chapter/direct"), events)
         assertSame(states.last(), reader.uiState.contentUiState)
         assertEquals(3, tasks.size)
         assertTrue(tasks.all { it.isActive })
@@ -104,5 +103,63 @@ class ReaderModeOwnershipTest {
         assertTrue(tasks.all { it.isCancelled })
         assertEquals(3, events.count { it.startsWith("stop/") })
         assertFalse(scopes.first().coroutineContext[Job]!!.isActive)
+    }
+
+    @Test
+    fun rapidModeToggleKeepsTheDisplayedChapterWhenTheNewModeHasNotEmittedYet() {
+        val flip = MutableStateFlow<String?>(null)
+        val dao = mockk<UserDataDao> {
+            every { getFlow(any()) } returns flowOf(null)
+            every { getFlow(UserDataPath.Reader.IsUsingFlipPage.path) } returns flip
+        }
+        val events = mutableListOf<String>()
+        val factory = mockk<ReaderModeFactory> {
+            every { create(any(), any(), any(), any()) } answers {
+                val mode = firstArg<ReaderMode>()
+                var requestedChapter: String? = null
+                object : ReaderModeController {
+                    private var displayedChapter: String? = null
+                    override val requestedChapterId: String?
+                        get() = requestedChapter
+                    override val uiState = mockk<ContentUiState> {
+                        every { readingChapterId } answers { displayedChapter }
+                    }
+
+                    override fun changeBookId(id: String) = Unit
+
+                    override fun changeChapter(id: String) {
+                        events += "$mode/chapter/$id"
+                        requestedChapter = id
+                        if (mode != ReaderMode.Flip || id != "initial-next") {
+                            displayedChapter = id
+                        }
+                    }
+
+                    override fun loadNextChapter() {
+                        displayedChapter = "initial-next"
+                        requestedChapter = "initial-next"
+                        events += "$mode/next"
+                    }
+
+                    override fun loadPrevChapter() = Unit
+                }
+            }
+        }
+        val reader = ReaderViewModel(mockk(), mockk(), mockk(), UserDataRepository(dao), factory)
+        store.put("reader", reader)
+
+        reader.changeChapter("initial")
+        scheduler.runCurrent()
+        reader.nextChapter()
+        assertEquals("initial-next", reader.uiState.contentUiState!!.readingChapterId)
+
+        flip.value = "true"
+        scheduler.runCurrent()
+        assertEquals(null, reader.uiState.contentUiState!!.readingChapterId)
+        flip.value = "false"
+        scheduler.runCurrent()
+
+        assertEquals("initial-next", reader.uiState.contentUiState!!.readingChapterId)
+        assertTrue(events.contains("Scroll/chapter/initial-next"))
     }
 }
