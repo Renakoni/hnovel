@@ -9,6 +9,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 /** Scroll-mode commands and settings; the chapter window and progress observer own their tasks. */
 class ScrollReaderController(
@@ -44,7 +45,7 @@ class ScrollReaderController(
 
     init {
         coroutineScope.launch {
-            settings.getFlow().collect {
+            settings.getFlow().distinctUntilChanged().collect {
                 if (it) {
                     chaptersWindow.startContinuousObservation()
                     val hasAdjacentChapters = uiState.contentList.getOrNull(0) != null || uiState.contentList.getOrNull(2) != null
