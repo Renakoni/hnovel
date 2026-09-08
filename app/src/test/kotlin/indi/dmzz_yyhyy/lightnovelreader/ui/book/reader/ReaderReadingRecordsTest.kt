@@ -5,6 +5,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.reading.ReaderRecordStore
 import indi.dmzz_yyhyy.lightnovelreader.data.statistics.ReadingStatsUpdate
 import io.nightfish.lightnovelreader.api.book.UserReadingData
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
@@ -20,6 +21,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.time.LocalDateTime
+import kotlin.coroutines.CoroutineContext
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [27], application = Application::class)
@@ -242,6 +244,61 @@ class ReaderReadingRecordsTest {
     }
 
     @Test
+    fun accumulatedReadingTimeFlushWaitsForEarlierPositiveDelta() {
+        val gate = CompletableDeferred<Unit>()
+        store.accumulateGate = gate
+        records.accumulateReadingTime("book", 3)
+        records.accumulateReadingTime("book", -1)
+
+        scheduler.runCurrent()
+        assertEquals(listOf("accumulate:book:3"), store.events)
+
+        gate.complete(Unit)
+        scheduler.runCurrent()
+        assertEquals(
+            listOf("accumulate:book:3", "accumulate:book:-1"),
+            store.events,
+        )
+    }
+
+    @Test
+    fun accumulatedReadingTimePreservesCallOrderWhenTheDispatcherStartsFlushFirst() {
+        val pending = ArrayDeque<Runnable>()
+        val reverseDispatcher = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) {
+                pending.addLast(block)
+            }
+        }
+        val reverseRecords = ReaderReadingRecords(
+            store, scope, statisticsScope, { bookId }, { title }, { chapters },
+            ioDispatcher = reverseDispatcher,
+        )
+        reverseRecords.accumulateReadingTime("book", 3)
+        reverseRecords.accumulateReadingTime("book", -1)
+
+        pending.removeLast().run()
+        assertTrue(store.events.isEmpty())
+        while (pending.isNotEmpty()) pending.removeLast().run()
+
+        assertEquals(listOf("accumulate:book:3", "accumulate:book:-1"), store.events)
+    }
+
+    @Test
+    fun totalReadingTimeDeltasAreSerializedAroundReadModifyWrite() {
+        val gate = CompletableDeferred<Unit>()
+        store.updateGate = gate
+        records.updateTotalReadingTime("book", 60)
+        records.updateTotalReadingTime("book", 30)
+
+        scheduler.runCurrent()
+        assertEquals(listOf("update:book"), store.events)
+
+        gate.complete(Unit)
+        scheduler.runCurrent()
+        assertEquals(90, store.data.getValue("book").totalReadTime)
+    }
+
+    @Test
     fun defaultTimestampStillUsesTheSystemLocalDateTime() {
         val defaultTimeRecords = ReaderReadingRecords(
             store, scope, statisticsScope, { bookId }, { title }, { chapters },
@@ -264,6 +321,7 @@ class ReaderReadingRecordsTest {
         var recentBooks = emptyList<String>()
         var recentGate: CompletableDeferred<Unit>? = null
         var updateGate: CompletableDeferred<Unit>? = null
+        var accumulateGate: CompletableDeferred<Unit>? = null
 
         override suspend fun updateRecentBooks(update: (List<String>) -> List<String>) {
             events += "recent:start"
@@ -297,6 +355,7 @@ class ReaderReadingRecordsTest {
 
         override suspend fun accumulateBookReadTime(bookId: String, seconds: Int) {
             events += "accumulate:$bookId:$seconds"
+            accumulateGate?.await()
         }
     }
 }
