@@ -10,7 +10,7 @@ import com.github.michaelbull.result.map
 import dagger.hilt.android.lifecycle.HiltViewModel
 import indi.dmzz_yyhyy.lightnovelreader.data.book.BookReadingDataAccess
 import indi.dmzz_yyhyy.lightnovelreader.data.book.ChapterSource
-import indi.dmzz_yyhyy.lightnovelreader.data.content.ContentComponentRepository
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ContentRenderer
 import indi.dmzz_yyhyy.lightnovelreader.data.reading.RepositoryReaderRecordStore
 import indi.dmzz_yyhyy.lightnovelreader.data.statistics.StatsRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.userdata.UserDataRepository
@@ -28,7 +28,7 @@ class ReaderViewModel @Inject constructor(
     private val chapterSource: ChapterSource,
     private val readingData: BookReadingDataAccess,
     userDataRepository: UserDataRepository,
-    val contentComponentRepository: ContentComponentRepository
+    val contentRenderer: ContentRenderer
 ) : ViewModel() {
     private val settingState = SettingState(userDataRepository, viewModelScope)
     val readerSettings: ReaderSettingsEditor = settingState
@@ -75,7 +75,7 @@ class ReaderViewModel @Inject constructor(
                         readingData = readingData,
                         coroutineScope = viewModelScope,
                         updateReadingProgress = ::saveReadingProgress,
-                        contentComponentRepository = contentComponentRepository
+                        contentRenderer = contentRenderer
                     )
                     contentViewModel?.changeBookId(bookId)
                     contentViewModel?.changeChapter(chapterId)
@@ -88,7 +88,7 @@ class ReaderViewModel @Inject constructor(
                         coroutineScope = viewModelScope,
                         settingState = settingState,
                         updateReadingProgress = ::saveReadingProgress,
-                        contentComponentRepository = contentComponentRepository
+                        contentRenderer = contentRenderer
                     )
                     contentViewModel?.changeBookId(bookId)
                     contentViewModel?.changeChapter(chapterId)

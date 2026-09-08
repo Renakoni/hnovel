@@ -13,7 +13,6 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -24,11 +23,11 @@ import org.robolectric.annotation.Config
 class TextProcessingContentContractTest {
     @Test
     fun bothEntryPointsPreserveProcessorOrderJsonOutputAndChapterMetadataWithoutAnInjector() = runTest {
-        val host = ContentTestHost()
+        val registry = ContentComponentRegistry()
         val processing = TextProcessingRepository(
             mockk { every { enabled } returns false },
             mockk { every { enabled } returns false },
-            host.repository,
+            registry,
         )
         val events = mutableListOf<String>()
         fun processor(suffix: String) = object : TextProcessor {
@@ -60,20 +59,19 @@ class TextProcessingContentContractTest {
         assertEquals(expected, processing.processChapterContent("book") { chapter })
         assertEquals(expected, processing.coroutineProcessChapterContent("book") { chapter })
         assertEquals(listOf("book/A", "book/B", "book/A", "book/B"), events)
-        assertNull(host.provider.value)
     }
 
     @Test
     fun registrationsAreReadAgainForEachProcessorRatherThanFrozenAtRepositoryConstruction() {
-        val host = ContentTestHost()
+        val registry = ContentComponentRegistry()
         val processing = TextProcessingRepository(
-            mockk { every { enabled } returns false }, mockk { every { enabled } returns false }, host.repository,
+            mockk { every { enabled } returns false }, mockk { every { enabled } returns false }, registry,
         )
         processing.registerProcessors(Identifier("fixture", "register"), object : TextProcessor {
             override val enabled = true
             override fun processText(text: String) = text
             override fun processChapterContent(bookId: String, chapterContent: ChapterContent, componentProcessor: ComponentProcessor): ChapterContent {
-                host.repository.registrar.id(Identifier("fixture", "late"))
+                registry.registrar.id(Identifier("fixture", "late"))
                     .component(fixtures.content.NoArgFixtureComponent::class)
                     .data(SimpleTextComponentData::class).serializer(SimpleTextComponentData.jsonSerializer).register()
                 return chapterContent

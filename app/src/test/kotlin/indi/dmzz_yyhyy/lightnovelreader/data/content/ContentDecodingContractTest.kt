@@ -72,19 +72,19 @@ class ContentDecodingContractTest {
 
     @Test
     fun registrationOverwritesAllMappingsAndPreviouslyReadMapsStaySnapshots() {
-        val serializers = repository.serializeMap
-        val types = repository.dataKClassMap
+        val serializers = host.registry.serializeMap
+        val types = host.registry.dataKClassMap
         val api: ContentComponentRepositoryApi = repository
         val id = Identifier("fixture", "text")
         assertEquals("builder missing parameters", assertThrows(Error::class.java) { api.registrar.id(id).register() }.message)
-        assertFalse(repository.serializeMap.containsKey(id.toString()))
+        assertFalse(host.registry.serializeMap.containsKey(id.toString()))
         register()
         assertFalse(serializers.containsKey(id.toString()))
         assertFalse(types.containsKey(id.toString()))
         val replacement = FixtureSerializer()
         register(component = NoArgFixtureComponent::class, serializer = replacement)
-        assertSame(replacement, repository.serializeMap[id.toString()])
-        assertEquals(FixtureData::class, repository.dataKClassMap[id.toString()])
+        assertSame(replacement, host.registry.serializeMap[id.toString()])
+        assertEquals(FixtureData::class, host.registry.dataKClassMap[id.toString()])
         host.initializeInjector()
         assertTrue(renderOne() is NoArgFixtureComponent)
     }
@@ -111,7 +111,7 @@ class ContentDecodingContractTest {
     fun dataOnlyDecodingNeedsNoInjectorAndSkipsMissingEntriesWithoutConstructing() {
         register(component = ThrowingFixtureComponent::class)
         val data = mutableListOf<AbstractContentComponentData>()
-        repository.getDataFromJsonObject(json("""{"components":[{}, {"id":"fixture:text"}, {"id":"unknown","data":{}}, ${entry("body")}]}"""), data::add)
+        host.decoder.getDataFromJsonObject(json("""{"components":[{}, {"id":"fixture:text"}, {"id":"unknown","data":{}}, ${entry("body")}]}"""), data::add)
         assertEquals(listOf(FixtureData("body")), data)
         assertNull(host.provider.value)
     }
@@ -120,9 +120,9 @@ class ContentDecodingContractTest {
     fun shortIdsExpandOnlyInTheRenderingEntryPoint() {
         host.initializeInjector()
         val content = json("""{"components":[{"id":"simple_text","data":{"text":"short"}},{"id":"lightnovelreader:simple_text","data":{"text":"full"}}]}""")
-        assertEquals(listOf("short", "full"), repository.getContentDataFromJson(content).components.map { (it.data as SimpleTextComponentData).text })
+        assertEquals(listOf("short", "full"), host.renderer.getContentDataFromJson(content).components.map { (it.data as SimpleTextComponentData).text })
         val data = mutableListOf<AbstractContentComponentData>()
-        repository.getDataFromJsonObject(content, data::add)
+        host.decoder.getDataFromJsonObject(content, data::add)
         assertEquals(listOf(SimpleTextComponentData("full")), data)
     }
 
@@ -133,7 +133,7 @@ class ContentDecodingContractTest {
         register(serializer = FixtureSerializer { decodes++ })
         for (input in listOf("""{"components":{}}""", """{"components":[${entry("body")},1]}""", """{"components":[{"id":{},"data":{}}]}""", """{"components":[{"id":"fixture:text","data":[]}]}""")) {
             assertThrows(IllegalArgumentException::class.java) { render(input) }
-            assertThrows(IllegalArgumentException::class.java) { repository.getDataFromJsonObject(json(input)) {} }
+            assertThrows(IllegalArgumentException::class.java) { host.decoder.getDataFromJsonObject(json(input)) {} }
         }
         assertEquals(0, decodes)
     }
@@ -144,7 +144,7 @@ class ContentDecodingContractTest {
         val failure = IllegalStateException("fixture decoder failed")
         register(serializer = FixtureSerializer { throw failure })
         assertSame(failure, assertThrows(IllegalStateException::class.java) { renderOne() })
-        assertSame(failure, assertThrows(IllegalStateException::class.java) { repository.getDataFromJsonObject(json("""{"components":[${entry("body")}]}""")) {} })
+        assertSame(failure, assertThrows(IllegalStateException::class.java) { host.decoder.getDataFromJsonObject(json("""{"components":[${entry("body")}]}""")) {} })
         register(component = ThrowingFixtureComponent::class)
         val thrown = assertThrows(InvocationTargetException::class.java) { renderOne() }
         assertEquals("fixture constructor failed", thrown.cause?.message)
@@ -175,7 +175,7 @@ class ContentDecodingContractTest {
     }
 
     private fun renderOne() = render("""{"components":[${entry("body")}]}""").single()
-    private fun render(input: String) = repository.getContentDataFromJson(json(input)).components
+    private fun render(input: String) = host.renderer.getContentDataFromJson(json(input)).components
     private fun json(input: String): JsonObject = Json.parseToJsonElement(input).jsonObject
     private fun entry(text: String) = """{"id":"fixture:text","data":{"text":"$text"}}"""
 }

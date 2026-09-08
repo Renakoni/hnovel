@@ -8,7 +8,7 @@ import com.github.michaelbull.result.map
 import com.github.michaelbull.result.onOk
 import indi.dmzz_yyhyy.lightnovelreader.data.book.BookReadingDataAccess
 import indi.dmzz_yyhyy.lightnovelreader.data.book.ChapterSource
-import indi.dmzz_yyhyy.lightnovelreader.data.content.ContentComponentRepository
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ContentRenderer
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.SettingState
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentUiState
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ContentViewModel
@@ -25,7 +25,7 @@ class ScrollContentViewModel(
     private val readingData: BookReadingDataAccess,
     val coroutineScope: CoroutineScope,
     val settingState: SettingState,
-    val contentComponentRepository: ContentComponentRepository,
+    val contentRenderer: ContentRenderer,
     val updateReadingProgress: (String, Float) -> Unit
 ) : ContentViewModel {
     private var progressScrollLoadJob: Job? = null
@@ -242,7 +242,7 @@ class ScrollContentViewModel(
                     ChapterContentUiState(
                         id = it.id,
                         title = it.title,
-                        content = contentComponentRepository.getContentDataFromJson(it.content).components,
+                        content = contentRenderer.getContentDataFromJson(it.content).components,
                         prevChapter = it.prevChapter,
                         nextChapter = it.nextChapter
                     )
@@ -275,7 +275,7 @@ class ScrollContentViewModel(
                     ChapterContentUiState(
                         id = it.id,
                         title = it.title,
-                        content = contentComponentRepository.getContentDataFromJson(it.content).components,
+                        content = contentRenderer.getContentDataFromJson(it.content).components,
                         prevChapter = it.prevChapter,
                         nextChapter = it.nextChapter
                     )
@@ -327,7 +327,7 @@ class ScrollContentViewModel(
                         ChapterContentUiState(
                             id = it.id,
                             title = it.title,
-                            content = contentComponentRepository.getContentDataFromJson(it.content).components,
+                            content = contentRenderer.getContentDataFromJson(it.content).components,
                             prevChapter = it.prevChapter,
                             nextChapter = it.nextChapter
                         ).also { chapterContentUiState ->

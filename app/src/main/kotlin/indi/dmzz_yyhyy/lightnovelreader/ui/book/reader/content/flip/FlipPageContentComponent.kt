@@ -52,7 +52,6 @@ import indi.dmzz_yyhyy.lightnovelreader.utils.LocalSnackbarHost
 import indi.dmzz_yyhyy.lightnovelreader.utils.rememberReaderBackgroundPainter
 import indi.dmzz_yyhyy.lightnovelreader.utils.showSnackbar
 import io.nightfish.lightnovelreader.api.content.component.AbstractContentComponent
-import io.nightfish.lightnovelreader.api.content.component.AbstractDivisibleContentComponent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -122,14 +121,7 @@ private fun SimpleFlipPageTextComponent(
                 )
             val key = chapterContent.hashCode() + width + height
             if (key == contentKey) return@launch
-            val result = mutableListOf<AbstractContentComponent<*>>()
-            chapterContent.content.forEach {
-                if (it is AbstractDivisibleContentComponent<*, *>) {
-                    result.addAll(it.split(height, width))
-                } else {
-                    result.add(it)
-                }
-            }
+            val result = paginateComponents(chapterContent.content, height, width)
             slippedContentComponentList = result
             uiState.updatePageState(PagerState { result.size })
         }

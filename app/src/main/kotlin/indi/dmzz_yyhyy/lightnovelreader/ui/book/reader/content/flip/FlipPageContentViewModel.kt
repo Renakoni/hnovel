@@ -7,7 +7,7 @@ import com.github.michaelbull.result.map
 import com.github.michaelbull.result.onOk
 import indi.dmzz_yyhyy.lightnovelreader.data.book.BookReadingDataAccess
 import indi.dmzz_yyhyy.lightnovelreader.data.book.ChapterSource
-import indi.dmzz_yyhyy.lightnovelreader.data.content.ContentComponentRepository
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ContentRenderer
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentUiState
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ContentViewModel
 import io.nightfish.lightnovelreader.api.web.WebDataSourcePriority
@@ -24,7 +24,7 @@ class FlipPageContentViewModel(
     private val readingData: BookReadingDataAccess,
     val coroutineScope: CoroutineScope,
     val updateReadingProgress: (String, Float) -> Unit,
-    val contentComponentRepository: ContentComponentRepository
+    val contentRenderer: ContentRenderer
 ) : ContentViewModel {
     private var notRecoveredProgress = 0f
     private var collectProgressJob: Job? = null
@@ -110,7 +110,7 @@ class FlipPageContentViewModel(
                     ChapterContentUiState(
                         id = it.id,
                         title = it.title,
-                        content = contentComponentRepository.getContentDataFromJson(it.content).components,
+                        content = contentRenderer.getContentDataFromJson(it.content).components,
                         prevChapter = it.prevChapter,
                         nextChapter = it.nextChapter
                     )
