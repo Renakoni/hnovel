@@ -20,11 +20,11 @@ import kotlinx.coroutines.withContext
 class StatsRepository @Inject constructor(
     private val bookRecordDao: BookRecordDao,
     private val dailyCountDao: DailyCountDao,
-    private val bookRepository: BookRepository
+    private val bookRepository: BookRepository,
+    private val statisticsWriteCoordinator: StatisticsWriteCoordinator
 ) {
     private val bookReadTimeBuffer = mutableMapOf<String, Pair<LocalTime, Int>>()
     private val bookReadTimeBufferMutex = Mutex()
-    private val statisticsWriteMutex = Mutex()
 
     suspend fun accumulateBookReadTime(bookId: String, seconds: Int) {
         bookReadTimeBufferMutex.withLock {
@@ -94,7 +94,7 @@ class StatsRepository @Inject constructor(
     }
 
     suspend fun updateReadingStatistics(update: ReadingStatsUpdate) {
-        statisticsWriteMutex.withLock {
+        statisticsWriteCoordinator.withLock {
             val today = LocalDate.now()
             val existingDailyCount = dailyCountDao.getByDate(today)
             val dailyCount = existingDailyCount ?: DailyCountEntity(today, Count())
@@ -188,7 +188,9 @@ class StatsRepository @Inject constructor(
     }
 
     suspend fun clear() {
-        bookRecordDao.clear()
-        dailyCountDao.clear()
+        statisticsWriteCoordinator.withLock {
+            bookRecordDao.clear()
+            dailyCountDao.clear()
+        }
     }
 }

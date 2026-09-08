@@ -48,7 +48,12 @@ class StatsRepositoryCharacterizationTest {
         }
         coEvery { getAll() } answers { dailyCounts.values.toList() }
     }
-    private val repository = StatsRepository(recordDao, dailyDao, mockk())
+    private val repository = StatsRepository(
+        recordDao,
+        dailyDao,
+        mockk(),
+        StatisticsWriteCoordinator()
+    )
 
     @Test
     fun recordingAnEntryPreservesSecondsAlreadyBufferedForThatBook() = runTest {
