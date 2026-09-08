@@ -129,16 +129,18 @@ class ContentDecodingContractTest {
     }
 
     @Test
-    fun invalidJsonTypesBecomeRenderingErrorsButExportRemainsStrict() {
+    fun invalidJsonShapesBecomeRenderingErrorsAndExportSkipsThem() {
         host.initializeInjector()
         var decodes = 0
+        val exported = mutableListOf<AbstractContentComponentData>()
         register(serializer = FixtureSerializer { decodes++ })
         for (input in listOf("""{"components":{}}""", """{"components":[${entry("body")},1]}""", """{"components":[{"id":{},"data":{}}]}""", """{"components":[{"id":"fixture:text","data":[]}]}""")) {
             val rendered = render(input)
             assertTrue(rendered.all { it is ErrorContentComponent || it is InjectedFixtureComponent })
-            assertThrows(IllegalArgumentException::class.java) { host.decoder.getDataFromJsonObject(json(input)) {} }
+            host.decoder.getDataFromJsonObject(json(input), exported::add)
         }
-        assertEquals(1, decodes)
+        assertEquals(listOf(FixtureData("body")), exported)
+        assertEquals(2, decodes)
     }
 
     @Test
