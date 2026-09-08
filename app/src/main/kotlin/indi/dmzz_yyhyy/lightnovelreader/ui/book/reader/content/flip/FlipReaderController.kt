@@ -9,6 +9,7 @@ import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ReaderChapterLoad
 import io.nightfish.lightnovelreader.api.web.WebDataSourcePriority
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.time.LocalDateTime
@@ -31,11 +32,19 @@ class FlipReaderController(
         uiState, readingData, coroutineScope, updateReadingProgress, ioDispatcher,
     )
 
+    private var chapterLoadJob: Job? = null
+    private var chapterRequestGeneration = 0L
+
     init { progress.start() }
 
     fun updatePagerState(pagerState: PagerState) = progress.updatePagerState(pagerState)
 
     override fun changeBookId(id: String) {
+        if (uiState.bookId != id) {
+            chapterLoadJob?.cancel()
+            chapterRequestGeneration++
+            progress.resetForChapter()
+        }
         uiState.bookId = id
     }
 
@@ -65,31 +74,36 @@ class FlipReaderController(
             return
         }
         progress.resetForChapter()
-        coroutineScope.launch {
+        chapterLoadJob?.cancel()
+        val requestGeneration = ++chapterRequestGeneration
+        val bookId = uiState.bookId
+        chapterLoadJob = coroutineScope.launch {
             chapters.load(
                 id,
-                uiState.bookId,
+                bookId,
                 WebDataSourcePriority.High
             ).collect { result ->
+                if (requestGeneration != chapterRequestGeneration) return@collect
                 uiState.readingChapterId = id
                 uiState.readingChapterContent = result
                 result.onOk { content ->
-                    readingData.updateUserReadingData(uiState.bookId) {
+                    readingData.updateUserReadingData(bookId) {
                         it.copy(
                             lastReadTime = LocalDateTime.now(),
                             lastReadChapterId = id,
                             lastReadChapterTitle = content.title
                         )
                     }
+                    if (requestGeneration != chapterRequestGeneration) return@onOk
                     content.nextChapter?.let {
                         chapters.preload(
                             it,
-                            uiState.bookId
+                            bookId
                         )
                     }
                 }
             }
         }
-        progress.recoverForChapter(id)
+        progress.recoverForChapter(id, bookId)
     }
 }

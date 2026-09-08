@@ -21,6 +21,8 @@ internal class FlipReadingProgress(
     private var notRecoveredProgress = 0f
     private var collectProgressJob: Job? = null
     private var restorationJob: Job? = null
+    private var recoveryJob: Job? = null
+    private var recoveryGeneration = 0L
 
     fun start() {
         coroutineScope.launch(ioDispatcher) {
@@ -68,15 +70,21 @@ internal class FlipReadingProgress(
     fun resetForChapter() {
         restorationJob?.cancel()
         restorationJob = null
+        recoveryJob?.cancel()
+        recoveryGeneration++
         notRecoveredProgress = 0f
         uiState.readingProgress = 0f
     }
 
-    fun recoverForChapter(id: String) {
-        coroutineScope.launch(ioDispatcher) {
-            readingData.getUserReadingData(uiState.bookId).let {
-                notRecoveredProgress = it.currentChapterReadingProgressMap[id] ?: 0f
+    fun recoverForChapter(id: String, bookId: String = uiState.bookId) {
+        recoveryJob?.cancel()
+        val requestedGeneration = ++recoveryGeneration
+        recoveryJob = coroutineScope.launch(ioDispatcher) {
+            val data = readingData.getUserReadingData(bookId)
+            if (requestedGeneration == this@FlipReadingProgress.recoveryGeneration) {
+                notRecoveredProgress = data.currentChapterReadingProgressMap[id] ?: 0f
             }
         }
     }
+
 }
