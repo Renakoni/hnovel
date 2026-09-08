@@ -5,6 +5,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.graphics.Color
 import indi.dmzz_yyhyy.lightnovelreader.data.setting.AbstractSettingState
 import indi.dmzz_yyhyy.lightnovelreader.data.userdata.UserDataRepository
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.scroll.ContinuousScrollSettings
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.scroll.UserDataContinuousScrollSettings
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.data.MenuOptions
 import io.nightfish.lightnovelreader.api.userdata.UserDataPath
 import kotlinx.coroutines.CoroutineScope
@@ -24,6 +26,8 @@ class SettingState(
     override val isUsingFlipPageUserData = userDataRepository.booleanUserData(UserDataPath.Reader.IsUsingFlipPage.path)
     override val isUsingClickFlipPageUserData = userDataRepository.booleanUserData(UserDataPath.Reader.IsUsingClickFlipPage.path)
     override val isUsingContinuousScrollingUserData = userDataRepository.booleanUserData(UserDataPath.Reader.IsUsingContinuousScrolling.path)
+    val continuousScrollSettings: ContinuousScrollSettings =
+        UserDataContinuousScrollSettings(isUsingContinuousScrollingUserData)
     override val isUsingVolumeKeyFlipUserData = userDataRepository.booleanUserData(UserDataPath.Reader.IsUsingVolumeKeyFlip.path)
     override val volumeKeyContinuousFlipIntervalUserData = userDataRepository.floatUserData(UserDataPath.Reader.VolumeKeyContinuousFlipInterval.path)
     override val flipAnimeUserData = userDataRepository.stringUserData(UserDataPath.Reader.FlipAnime.path)

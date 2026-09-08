@@ -1,0 +1,95 @@
+package indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.flip
+
+import android.util.Log
+import androidx.compose.foundation.pager.PagerState
+import com.github.michaelbull.result.onOk
+import indi.dmzz_yyhyy.lightnovelreader.data.book.BookReadingDataAccess
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ReaderModeController
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ReaderChapterLoader
+import io.nightfish.lightnovelreader.api.web.WebDataSourcePriority
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import java.time.LocalDateTime
+
+class FlipReaderController(
+    private val chapters: ReaderChapterLoader,
+    private val readingData: BookReadingDataAccess,
+    val coroutineScope: CoroutineScope,
+    val updateReadingProgress: (String, Float) -> Unit,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+) : ReaderModeController {
+    override val uiState: MutableFlipPageContentUiState = MutableFlipPageContentUiState(
+        loadPrevChapter = ::loadPrevChapter,
+        loadNextChapter = ::loadNextChapter,
+        changeChapter = ::changeChapter,
+        updatePageState = ::updatePagerState
+    )
+
+    private val progress = FlipReadingProgress(
+        uiState, readingData, coroutineScope, updateReadingProgress, ioDispatcher,
+    )
+
+    init { progress.start() }
+
+    fun updatePagerState(pagerState: PagerState) = progress.updatePagerState(pagerState)
+
+    override fun changeBookId(id: String) {
+        uiState.bookId = id
+    }
+
+    override fun loadNextChapter() {
+        uiState.readingChapterContent?.onOk {
+            it.nextChapter?.let { id ->
+                changeChapter(
+                    id = id
+                )
+            }
+        }
+    }
+
+    override fun loadPrevChapter() {
+        uiState.readingChapterContent?.onOk {
+            it.prevChapter?.let { id ->
+                changeChapter(
+                    id = id
+                )
+            }
+        }
+    }
+
+    override fun changeChapter(id: String) {
+        if (id.isBlank()) {
+            Log.e("FlipPageContentViewModel", "a id less than 0 was transferred")
+            return
+        }
+        progress.resetForChapter()
+        coroutineScope.launch {
+            chapters.load(
+                id,
+                uiState.bookId,
+                WebDataSourcePriority.High
+            ).collect { result ->
+                uiState.readingChapterId = id
+                uiState.readingChapterContent = result
+                result.onOk { content ->
+                    readingData.updateUserReadingData(uiState.bookId) {
+                        it.copy(
+                            lastReadTime = LocalDateTime.now(),
+                            lastReadChapterId = id,
+                            lastReadChapterTitle = content.title
+                        )
+                    }
+                    content.nextChapter?.let {
+                        chapters.preload(
+                            it,
+                            uiState.bookId
+                        )
+                    }
+                }
+            }
+        }
+        progress.recoverForChapter(id)
+    }
+}

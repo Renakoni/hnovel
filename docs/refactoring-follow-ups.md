@@ -47,10 +47,11 @@
 
 ## READ-001：快速切换章节时，旧翻页任务可能回写新界面
 
-- 状态：**设计风险，待模式级测试复现**。
-- 证据：[FlipPageContentViewModel.changeChapter](../app/src/main/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/content/flip/FlipPageContentViewModel.kt) 每次启动章节收集和进度恢复协程，未记录/取消上一章的这两个任务，也没有在写状态前检查事件所属章节。章节 Flow 可能先发本地、再较晚发远端。
+- 状态：**R6 独立模式测试已确认旧结果覆盖；真实导航/网络交互仍待验证**。
+- R6 补充：独立翻页模式测试已确认 A/B 发射交错能够使旧 A 覆盖 B，详见 [R6 证据记录](r6-reader-mode-follow-ups.md)。本轮只明确职责和所有权，未改变取消策略。
+- 证据：[FlipReaderController.changeChapter](../app/src/main/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/content/flip/FlipReaderController.kt) 每次启动章节收集和进度恢复协程，未记录/取消上一章的这两个任务，也没有在写状态前检查事件所属章节。章节 Flow 可能先发本地、再较晚发远端。
 - 影响：先请求 A 再切换 B 时，A 的较晚结果可能覆盖 B 的显示状态，或影响进度恢复。滚动模式有不同的 Job 管理，不能直接假定两者应套用同一算法。
-- 后续：R6 中用独立 `ChapterSource` fake 控制 A/B 的发射和完成顺序，记录 UI、进度、预加载和持久化；确定任务所有权后再修改取消或结果归属规则。
+- 后续：基于已有 A/B 交错测试，继续覆盖记录恢复与真实导航/网络交互；明确请求替换规则后再修改取消或结果归属校验。
 
 ## READ-002：直接移除仍处于 RESUMED 的阅读器会重复提交剩余时长
 
@@ -127,7 +128,8 @@
 
 ## READ-006：目录收集与阅读模式缺少明确的替换/销毁边界
 
-- 状态：**源码确认生命周期边界不完整；旧任务干扰待复现**。
-- 证据：[ReaderViewModel](../app/src/main/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/ReaderViewModel.kt) 的 bookId setter 每次启动目录收集而未保存/取消前一任务；模式切换创建新控制器时，旧控制器仍使用同一个 `viewModelScope`。[ContentViewModel](../app/src/main/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/content/ContentViewModel.kt) 没有释放契约。独立统计 scope 也没有随 ViewModel 关闭；R4 为保持行为未改变它。
+- 状态：**R6 测试已确认模式替换后任务继续活动、宿主清理时取消；目录与旧模式的实际干扰仍待验证**。
+- R6 补充：已明确模式选择由 ReaderModeHost 管理、任务寿命由 reader scope 提供。实际 ReaderViewModel 与模式替身测试确认切换不取消旧任务、清理 ViewModel 会取消全部模式任务，详见 [R6 证据记录](r6-reader-mode-follow-ups.md)。目录和独立统计 scope 的规则仍待后续讨论。
+- 证据：[ReaderViewModel](../app/src/main/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/ReaderViewModel.kt) 的 bookId setter 每次启动目录收集而未保存/取消前一任务；模式切换创建新控制器时，旧控制器仍使用同一个 `viewModelScope`。[ReaderModeController](../app/src/main/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/content/ReaderModeController.kt) 没有释放契约。独立统计 scope 也没有随 ViewModel 关闭；R4 为保持行为未改变它。
 - 影响：旧目录请求可能较晚回写；旧模式的设置/滚动观察可能持续到宿主 scope 结束。接口变窄并不会自动建立任务所有权或取消策略。
-- 后续：R6 中控制旧/新模式、目录请求的完成顺序，确认替换后的任务是否仍有写入；分别定义模式任务、目录任务与需要完成退出结算的统计任务寿命，不宜全部套用同一种 cancel 策略。
+- 后续：在已确认的模式任务寿命基础上，继续控制真实旧/新模式与目录请求的完成顺序，确认替换后的写入；分别定义模式任务、目录任务与需要完成退出结算的统计任务寿命，不宜全部套用同一种 cancel 策略。

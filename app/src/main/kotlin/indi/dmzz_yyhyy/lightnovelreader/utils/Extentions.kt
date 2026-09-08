@@ -55,11 +55,14 @@ fun Modifier.fadingEdge(brush: Brush) = this
         drawRect(brush = brush, blendMode = BlendMode.DstIn)
     }
 
-fun <T> Flow<T>.throttleLatest(periodMillis: Long): Flow<T> = flow {
+fun <T> Flow<T>.throttleLatest(
+    periodMillis: Long,
+    currentTimeMillis: () -> Long = System::currentTimeMillis,
+): Flow<T> = flow {
     var lastTime = 0L
     var pendingValue: T? = null
     collect { value ->
-        val currentTime = System.currentTimeMillis()
+        val currentTime = currentTimeMillis()
         if (currentTime - lastTime >= periodMillis) {
             lastTime = currentTime
             pendingValue = null
