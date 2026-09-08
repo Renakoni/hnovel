@@ -68,7 +68,7 @@ class ReaderViewModel @Inject constructor(
         viewModelScope.launch {
             settingState.isUsingFlipPageUserData.getFlowWithDefault(false).collect { flip ->
                 val mode = if (flip) ReaderMode.Flip else ReaderMode.Scroll
-                if (modeHost.select(mode, { bookId }, { chapterId })) {
+                if (modeHost.select(mode, { bookId }, ::currentChapterIdForModeSwitch)) {
                     _uiState.contentUiState = modeHost.uiState
                 }
             }
@@ -83,6 +83,11 @@ class ReaderViewModel @Inject constructor(
         this.chapterId = chapterId
         modeHost.changeChapter(chapterId)
     }
+
+    private fun currentChapterIdForModeSwitch(): String =
+        _uiState.contentUiState?.readingChapterId
+            ?.takeIf { it.isNotBlank() }
+            ?: chapterId
 
     private fun saveReadingProgress(chapterId: String, progress: Float) =
         readingRecords.saveProgress(chapterId, progress)

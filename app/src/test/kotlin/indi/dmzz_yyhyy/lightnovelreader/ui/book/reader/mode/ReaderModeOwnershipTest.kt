@@ -91,10 +91,9 @@ class ReaderModeOwnershipTest {
         assertEquals("initial-next", reader.uiState.contentUiState!!.readingChapterId)
         flip.value = "false"
         scheduler.runCurrent()
-        // Mode navigation does not change the reader's last explicit chapter request.
-        assertEquals("initial", reader.uiState.contentUiState!!.readingChapterId)
+        assertEquals("initial-next", reader.uiState.contentUiState!!.readingChapterId)
         reader.changeChapter("direct")
-        assertEquals(listOf("Scroll/book/", "Scroll/chapter/initial", "Flip/book/", "Flip/chapter/initial", "Flip/next", "Scroll/book/", "Scroll/chapter/initial", "Scroll/chapter/direct"), events)
+        assertEquals(listOf("Scroll/book/", "Scroll/chapter/initial", "Flip/book/", "Flip/chapter/initial", "Flip/next", "Scroll/book/", "Scroll/chapter/initial-next", "Scroll/chapter/direct"), events)
         assertSame(states.last(), reader.uiState.contentUiState)
         assertEquals(3, tasks.size)
         assertTrue(tasks.all { it.isActive })
