@@ -17,12 +17,14 @@
 
 此次新增 6 项验证：真实 `StatsRepository` 配合可记录的 DAO 替身（3 项）、真实窗口效果的 SDK 27 Compose/Robolectric 测试（2 项）、真实设置观察/解析链配合非法值输入（1 项）。旧的 R1 枚举测试不覆盖窗口恢复，旧的 R4 协调测试不进入统计仓库缓冲；这些覆盖范围的差别不能用“已有测试通过”代替。
 
-## BOOK-001：本地缓存之后的远端错误与 API 注释不一致
+## BOOK-001：缓存刷新失败覆盖已成功读取的内容（P1，已修复）
 
-- 状态：**已证实的契约差异**。
-- 证据：[BookRepositoryApi](../api/src/main/kotlin/io/nightfish/lightnovelreader/api/book/BookRepositoryApi.kt) 的目录/章节 Flow 注释说，远端失败而本地存在时只发射本地值。实际 [ChapterRepository](../app/src/main/kotlin/indi/dmzz_yyhyy/lightnovelreader/data/book/ChapterRepository.kt) 仍发射远端 `Err`；提取前后的 `remoteFailureStillFollowsCachedSuccessForBothFlows` [契约测试](../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/data/book/ChapterSourceContractTest.kt) 均证明这一点。
-- 影响：按文档编写的消费者可能错误地假设缓存成功后不会再收到错误。阅读模式目前逐次替换章节结果；缓存成功之后的错误有覆盖显示状态的风险，用户界面结果尚未单独复现。
-- 后续：先决定刷新失败是否应该覆盖缓存内容，再同步实现、API 文档和消费者测试；如仅修正文档，也应明确正常构建与 benchmark 分支的差异。书籍详情 Flow 的同类注释也需要一起核对。
+- 跟踪：[issue #11](https://github.com/Renakoni/hnovel/issues/11)。修复基线为当前 main `1dd4604f`（R6 合并后），历史拆分只保留行为，本次独立修正语义。
+- 原因与复现：正文、目录及书籍详情均先发射本地 `Ok`，再无条件发射远端 `Err`。在未修改的基线上，25 项相关测试有 8 项失败；真实 ChapterRepository → ReaderChapterLoader → 两种阅读控制器的受控集成测试确认，延迟到达的错误会撤销已经显示的缓存内容。这是可用内容丢失，超出注释偏差；测试没有模拟网络或设备绘制。
+- 修复规则：遵循 [BookRepositoryApi](../api/src/main/kotlin/io/nightfish/lightnovelreader/api/book/BookRepositoryApi.kt) 原有契约。每次收集先判断该请求的本地值；有本地值且远端返回 `Err` 时只保留第一次本地成功发射，继续记录错误日志；无本地值时仍发射 `Err`；成功刷新仍先保存原始数据，再发射经文本处理的远端结果。书籍详情的书架更新时间/更新标记仍在远端成功时按原顺序执行。
+- 责任边界：规则位于仓库，阅读模式继续消费章节结果。缓存命中不跨请求、章节、书籍或收集保存；切换到未缓存章节失败仍显示新章节错误。没有增加错误状态 API、重试策略或重复本地发射，避免重复渲染、记录和预加载。`BENCHMARK` 命中本地即返回的路径保持原样。
+- 回归证据：[章节及兼容门面契约测试](../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/data/book/ChapterSourceContractTest.kt)、[详情流测试](../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/data/book/BookInformationFlowTest.kt) 覆盖成功/失败与有/无缓存、冷流、重新收集、当前书源、优先级、存储/处理顺序；[缓存阅读契约测试](../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/mode/CachedChapterReaderContractTest.kt) 由翻页和滚动各自实例化，覆盖延迟错误后保留显示对象、不重复渲染/写入及未缓存章节错误。
+- 范围限制：这里的“失败”是书源返回的 `Err<WebRequestError>`；存储、文本处理或其他直接抛出的异常和协程取消继续传播。独立模式特征测试仍可注入 `Ok → Err` 验证消费者的替换行为，但生产仓库在本地命中后的远端请求错误不再产生这个序列。损坏的缓存内容、全新章节错误、跨章节旧任务回写（READ-001）仍有各自的问题边界。
 
 ## BOOK-002：阅读数据的读改写没有覆盖整个操作的原子边界
 
