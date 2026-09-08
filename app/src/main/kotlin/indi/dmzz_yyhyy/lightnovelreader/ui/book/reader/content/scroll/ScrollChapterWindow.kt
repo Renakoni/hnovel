@@ -104,6 +104,10 @@ internal class ScrollChapterWindow(
 
     fun stopContinuousObservation() {
         progressScrollLoadJob?.cancel()
+        collectPrevChapterJob?.cancel()
+        collectPrevChapterJob = null
+        collectNextChapterJob?.cancel()
+        collectNextChapterJob = null
     }
 
     private fun resetContentList() {

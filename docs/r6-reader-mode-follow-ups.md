@@ -8,12 +8,13 @@
 - [所有权测试][ownership-test] 使用实际 ReaderViewModel 和模式替身，确认切换模式时传递同一个 scope；旧模式任务仍活动，ViewModelStore.clear 后它们全部被取消。R6 明确了这一生命周期归属，但没有增加停用旧模式的行为。
 - 这两项证据不等同于完整真实导航/网络环境中的复现；目录任务、独立统计 scope 的问题继续留在[原记录](refactoring-follow-ups.md)。后续需要分别决定会话切换、模式停用、旧请求结果归属与退出结算规则。
 
-## SCROLL-001：关闭连续滚动后，旧相邻订阅仍可回写三槽
+## SCROLL-001：关闭连续滚动后，旧相邻订阅仍可回写三槽（P1，修复已提交）
 
-- 状态：**原实现与拆分后测试确认**。
-- 证据：[ScrollModeContractTest][scroll-test] 的 `turningOffContinuousScrollingLeavesOldAdjacentSubscriptionsAliveUntilReaderExit`：连续模式订阅当前/前/后章，切换为非连续后槽位被清空，但旧前后章订阅仍在；让旧后章继续发射，槽 2 再次出现数据。[ScrollChapterWindow][window] 直接跳章只取消 current Job；停止连续观察也不等同于取消两个相邻 Job。
-- 影响：非连续界面可能再次收到旧相邻内容；跨章节重新加载也存在类似交错路径，需要进一步覆盖具体布局影响。
-- 后续：定义三槽订阅的会话身份与关闭顺序，再决定取消点或结果归属校验。保留在首次当前章节成功后才创建相邻订阅的因果顺序。
+- 状态：**原实现与拆分后测试确认，修复已提交到独立 PR**。
+- 对照证据：在保留新增断言、强制重新编译并恢复 main 生产代码时，[ScrollModeContractTest][scroll-test] 10 项中 1 项失败。连续模式先订阅当前/前/后章，切换为非连续后，`ScrollChapterWindow.stopContinuousObservation()` 只取消布局观察 Job，前/后章 Job 仍活动；旧后章晚到发射会重新填充槽 2。
+- 修复语义：停止连续观察时同时取消并清空 `collectPrevChapterJob` 与 `collectNextChapterJob`。当前章由既有 `changeChapter` 重载流程负责，前后章不会继续以邻章身份回写；重新打开连续模式仍按当前章成功后的顺序创建新的相邻订阅。
+- 影响边界：取消使用 Kotlin 结构化 Job 生命周期，未增加全局过滤或吞掉章节结果。合法连续滚动的三槽顺序、预加载和跨章替换保持原实现；非合作的外部 Flow/真实网络生命周期仍需真机和集成环境观察。
+- 后续：跨章节窗口切换、模式切换身份和分页问题继续由 MODE-001、READ-001、PAGE-* 独立跟踪。
 
 ## FLIP-001：进度读取晚于 Pager 创建时，不会立即应用恢复
 

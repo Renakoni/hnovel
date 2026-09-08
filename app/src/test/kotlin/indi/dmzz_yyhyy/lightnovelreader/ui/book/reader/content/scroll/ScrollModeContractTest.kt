@@ -188,16 +188,16 @@ class ScrollModeContractTest {
     }
 
     @Test
-    fun turningOffContinuousScrollingLeavesOldAdjacentSubscriptionsAliveUntilReaderExit() {
+    fun turningOffContinuousScrollingCancelsOldAdjacentSubscriptions() {
         open(continuousScrolling = true)
         env.emit("requested", Ok(env.chapter("requested", "prev", "next")))
         env.emit("prev", Ok(env.chapter("prev")))
         continuous.value = false
         env.runCurrent()
         assertNull(mode.uiState.contentList[0])
-        assertEquals(listOf("prev", "next", "requested"), env.chapters.active.map { it.chapterId })
+        assertEquals(listOf("requested"), env.chapters.active.map { it.chapterId })
         env.emit("next", Ok(env.chapter("next")))
-        assertNotNull(mode.uiState.contentList[2])
+        assertNull(mode.uiState.contentList[2])
         env.close()
         assertTrue(env.chapters.active.isEmpty())
     }
