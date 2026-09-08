@@ -37,6 +37,7 @@ class ReaderReadingTimeEffectsTest {
     private val visible = mutableStateOf(true)
     private val state = MutableReaderScreenUiState(null).apply { bookId = "book" }
     private val calls = mutableListOf<Call>()
+    private var elapsedRealtime = 0L
 
     @Before
     fun setUp() {
@@ -50,6 +51,7 @@ class ReaderReadingTimeEffectsTest {
                         currentBookId = { state.bookId },
                         updateTotalReadingTime = { id, seconds -> calls += Call("total", id, seconds) },
                         accumulateReadTime = { id, seconds -> calls += Call("stats", id, seconds) },
+                        nowMillis = { elapsedRealtime },
                     )
                 }
             }
@@ -71,77 +73,68 @@ class ReaderReadingTimeEffectsTest {
     }
 
     @Test
-    fun resumeTicksImmediatelyAndTotalIsWrittenOnTheSixtyFirstTick() {
-        compose.runOnIdle { assertEquals(listOf(Call("stats", "book", 1)), calls) }
-        compose.mainClock.advanceTimeBy(59_000, ignoreFrameDuration = true)
-        compose.runOnIdle {
-            assertEquals(List(60) { Call("stats", "book", 1) }, calls)
-        }
+    fun resumeDoesNotInventTimeAndDelayedTicksRecordElapsedSeconds() {
+        compose.runOnIdle { assertEquals(emptyList<Call>(), calls) }
+        elapsedRealtime = 3_500
         compose.mainClock.advanceTimeBy(1_000, ignoreFrameDuration = true)
+        compose.waitForIdle()
+
+        assertEquals(listOf(Call("stats", "book", 3)), calls.filter { it.channel == "stats" })
+        assertEquals(emptyList<Call>(), calls.filter { it.channel == "total" })
+
+        pause()
         compose.runOnIdle {
             assertEquals(
-                List(60) { Call("stats", "book", 1) } +
-                    listOf(Call("total", "book", 61), Call("stats", "book", 1)),
-                calls,
+                listOf(Call("stats", "book", 3), Call("stats", "book", -1)),
+                calls.filter { it.channel == "stats" },
             )
+            assertEquals(listOf(Call("total", "book", 3)), calls.filter { it.channel == "total" })
         }
     }
 
     @Test
     fun pauseFlushesBeforeSettlementAndResumeStartsANewCounter() {
-        compose.mainClock.advanceTimeBy(2_000, ignoreFrameDuration = true)
+        advanceReadingTime(2_500)
         pause()
         compose.runOnIdle {
             assertEquals(
-                List(3) { Call("stats", "book", 1) } +
-                    listOf(Call("stats", "book", -1), Call("total", "book", 3)),
-                calls,
+                listOf(Call("stats", "book", 2), Call("stats", "book", -1)),
+                calls.filter { it.channel == "stats" },
             )
+            assertEquals(listOf(Call("total", "book", 2)), calls.filter { it.channel == "total" })
         }
         compose.mainClock.advanceTimeBy(10_000, ignoreFrameDuration = true)
-        compose.runOnIdle { assertEquals(5, calls.size) }
+        compose.runOnIdle { assertEquals(3, calls.size) }
+        elapsedRealtime += 100
         compose.runOnIdle {
             owner.lifecycle.currentState = Lifecycle.State.RESUMED
             Snapshot.sendApplyNotifications()
         }
-        compose.mainClock.advanceTimeBy(100, ignoreFrameDuration = true)
+        compose.waitForIdle()
         pause()
         compose.runOnIdle {
             assertEquals(
-                listOf(Call("stats", "book", 1), Call("stats", "book", -1), Call("total", "book", 1)),
-                calls.takeLast(3),
+                listOf(Call("stats", "book", -1)),
+                calls.filter { it.channel == "stats" }.takeLast(1),
             )
+            assertEquals(listOf(Call("total", "book", 0)), calls.filter { it.channel == "total" }.takeLast(1))
         }
     }
 
     @Test
-    fun leavingWhileResumedSettlesTheRemainderOnce() {
+    fun leavingWhileResumedDoesNotInventASecond() {
         removeReader()
         compose.runOnIdle {
-            assertEquals(
-                listOf(
-                    Call("stats", "book", 1),
-                    Call("stats", "book", -1),
-                    Call("total", "book", 1),
-                ),
-                calls,
-            )
+            assertEquals(emptyList<Call>(), calls.filter { it.seconds > 0 })
         }
     }
 
     @Test
-    fun leavingAfterPauseDoesNotSettleAgain() {
+    fun leavingAfterPauseDoesNotInventASecond() {
         pause()
         removeReader()
         compose.runOnIdle {
-            assertEquals(
-                listOf(
-                    Call("stats", "book", 1),
-                    Call("stats", "book", -1),
-                    Call("total", "book", 1),
-                ),
-                calls,
-            )
+            assertEquals(emptyList<Call>(), calls.filter { it.seconds > 0 })
         }
     }
 
@@ -150,14 +143,12 @@ class ReaderReadingTimeEffectsTest {
         compose.runOnIdle { state.bookId = "next" }
         pause()
         compose.runOnIdle {
-            assertEquals(
-                listOf(Call("stats", "book", 1), Call("stats", "next", -1), Call("total", "next", 1)),
-                calls,
-            )
+            assertEquals(listOf(Call("stats", "next", -1)), calls.filter { it.channel == "stats" })
+            assertEquals(listOf(Call("total", "next", 0)), calls.filter { it.channel == "total" }.takeLast(1))
             state.bookId = null
         }
         removeReader()
-        compose.runOnIdle { assertEquals(3, calls.size) }
+        compose.runOnIdle { assertEquals(2, calls.size) }
     }
 
     private fun pause() {
@@ -166,6 +157,12 @@ class ReaderReadingTimeEffectsTest {
             Snapshot.sendApplyNotifications()
         }
         compose.mainClock.advanceTimeBy(100, ignoreFrameDuration = true)
+        compose.waitForIdle()
+    }
+
+    private fun advanceReadingTime(milliseconds: Long) {
+        elapsedRealtime += milliseconds
+        compose.mainClock.advanceTimeBy(milliseconds, ignoreFrameDuration = true)
         compose.waitForIdle()
     }
 

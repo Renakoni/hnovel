@@ -125,10 +125,11 @@
 
 ## READ-005：计时累计的是循环次数，恢复时立即计入一秒
 
-- 状态：**R4 既有虚拟时间测试已证实计数规则；暂停频繁时的实际偏差未测量**。
-- 证据：[ReaderReadingTimeEffectsTest](../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/ReaderReadingTimeEffectsTest.kt) 验证恢复后立即产生 1 秒回调，第 61 次计数提交 61 秒；循环在计数后 `delay(1.seconds)`。两条循环不是由同一份实际经过时间派生。
-- 影响：短暂恢复后立即暂停也可能记入 1 秒；主线程调度延迟又可能造成少计。R4 注入的 `LocalDateTime` 只控制记录时间戳，不控制这些循环，也不控制统计仓库的 `LocalTime`/日期。
-- 后续：先明确产品是否需要实际可见阅读时长，再考虑单调时间源和统一的时间区间结算；保留暂停/退出重复结算的专门用例，避免仅修正阈值而遗漏 READ-002。
+- 状态：**已修复，受控 Compose/Lifecycle 回归测试通过**。
+- 基线证据：`main@1dd4604f` 的 [ReaderReadingTimeEffectsTest](../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/ReaderReadingTimeEffectsTest.kt) 原有契约确认恢复后立即产生 1 秒回调，第 61 次循环提交 61 秒；两条循环按回调次数累积，并非按实际经过时间累积。
+- 修复语义：计时开始和每次调度都读取单调 `SystemClock.elapsedRealtime`（测试注入可控时钟），累计从上次测量点到当前的完整秒数；暂停/销毁前再补一次测量。小于一秒的恢复/暂停不产生秒数，调度延迟会在下一次测量补齐；总时长每 60 秒结算，剩余秒数在退出时结算。
+- 验证：覆盖立即恢复/暂停、调度延迟、暂停后恢复、直接移除和书籍 ID 变化；计时测试 5 项通过，完整 `:app:testDebugUnitTest` 共 103 项通过，`:app:assembleDebug` 成功。
+- 限制：本 PR 不处理 READ-002 的重复生命周期结算入口；退出路径仍需真机验证异步持久化是否完成。`LocalDateTime` 记录时间戳和统计仓库的书籍归属仍由其他 Issue 负责。
 
 ## READ-006：目录收集与阅读模式缺少明确的替换/销毁边界
 
