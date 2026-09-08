@@ -20,7 +20,10 @@ import indi.dmzz_yyhyy.lightnovelreader.data.book.ChapterSource
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
@@ -30,6 +33,7 @@ import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withContext
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Before
@@ -116,7 +120,50 @@ class ReaderDirectoryOwnershipTest {
 
     private fun await(condition: () -> Boolean) = runBlocking {
         withTimeout(2_000) {
-            while (!condition()) delay(5)
+            while (!condition()) {
+                scheduler.runCurrent()
+                delay(5)
+            }
+        }
+    }
+
+    @Test
+    fun nonCooperativeOldDirectoryCannotPublishAfterTheNewBook() {
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val finished = CompletableDeferred<Unit>()
+        val staleFlow = object : Flow<Result<BookVolumes, WebRequestError>> {
+            override suspend fun collect(collector: FlowCollector<Result<BookVolumes, WebRequestError>>) {
+                withContext(NonCancellable) {
+                    started.complete(Unit)
+                    release.await()
+                    collector.emit(Ok(BookVolumes("first", emptyList())))
+                    finished.complete(Unit)
+                }
+            }
+        }
+        val chapters = mockk<ChapterSource> {
+            every { getBookVolumesFlow("first", any()) } returns staleFlow
+            every { getBookVolumesFlow("second", any()) } returns kotlinx.coroutines.flow.flowOf(Ok(BookVolumes("second", emptyList())))
+        }
+        val dao = mockk<UserDataDao>(relaxed = true) {
+            every { getFlow(any()) } returns kotlinx.coroutines.flow.flowOf(null)
+        }
+        val factory = mockk<ReaderModeFactory> {
+            every { create(any(), any(), any(), any()) } returns mockk(relaxed = true)
+        }
+        val reader = ReaderViewModel(mockk(relaxed = true), chapters, mockk(relaxed = true), UserDataRepository(dao), factory)
+        store.put("reader", reader)
+        try {
+            reader.bookId = "first"
+            await { started.isCompleted }
+            reader.bookId = "second"
+            await { reader.uiState.bookVolumes?.get()?.bookId == "second" }
+            release.complete(Unit)
+            await { finished.isCompleted }
+            assertEquals("second", reader.uiState.bookVolumes?.get()?.bookId)
+        } finally {
+            release.complete(Unit)
         }
     }
 }
