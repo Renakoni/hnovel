@@ -122,7 +122,9 @@ private fun SimpleFlipPageTextComponent(
         verticalPadding = verticalPadding,
         density = density,
         layoutDirection = layoutDirection,
-        readerStyle = readerStyle,
+        fontSize = readerStyle.fontSize,
+        fontLineHeight = readerStyle.fontLineHeight,
+        fontWeight = readerStyle.fontWeight,
         fontFamilyUri = settingState.fontFamilyUri,
         textLocaleList = textLocaleList,
     )
@@ -138,7 +140,9 @@ private fun SimpleFlipPageTextComponent(
         verticalPadding,
         density,
         layoutDirection,
-        readerStyle,
+        readerStyle.fontSize,
+        readerStyle.fontLineHeight,
+        readerStyle.fontWeight,
         settingState.fontFamilyUri,
         textLocaleList,
     ) {

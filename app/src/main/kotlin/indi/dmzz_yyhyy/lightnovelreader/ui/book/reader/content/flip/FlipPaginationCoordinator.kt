@@ -6,7 +6,6 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import io.nightfish.lightnovelreader.api.content.component.AbstractContentComponent
-import io.nightfish.lightnovelreader.api.ui.ReaderStyle
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -22,7 +21,9 @@ internal data class FlipPaginationInput(
     val verticalPadding: Int,
     val density: Density,
     val layoutDirection: LayoutDirection,
-    val readerStyle: ReaderStyle,
+    val fontSize: Float,
+    val fontLineHeight: Float,
+    val fontWeight: Float,
     val fontFamilyUri: Uri,
     val textLocaleList: LocaleList,
 )
