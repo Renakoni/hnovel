@@ -6,6 +6,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.statistics.ReadingStatsUpdate
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -23,7 +24,8 @@ internal class ReaderReadingRecords(
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
     private val totalReadingTimeMutex = Mutex()
-    private val accumulatedReadingTimeMutex = Mutex()
+    private val accumulatedReadingTimeLock = Any()
+    private var accumulatedReadingTimeJob: Job? = null
 
     fun openBook(bookId: String) {
         scope.launch(ioDispatcher) {
@@ -83,8 +85,10 @@ internal class ReaderReadingRecords(
 
     fun accumulateReadingTime(bookId: String, seconds: Int) {
         if (bookId.isBlank()) return
-        statisticsScope.launch(ioDispatcher) {
-            accumulatedReadingTimeMutex.withLock {
+        synchronized(accumulatedReadingTimeLock) {
+            val previous = accumulatedReadingTimeJob
+            accumulatedReadingTimeJob = statisticsScope.launch(ioDispatcher) {
+                previous?.join()
                 // Negative values remain the statistics repository's existing flush command.
                 store.accumulateBookReadTime(bookId, seconds)
             }

@@ -5,6 +5,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.reading.ReaderRecordStore
 import indi.dmzz_yyhyy.lightnovelreader.data.statistics.ReadingStatsUpdate
 import io.nightfish.lightnovelreader.api.book.UserReadingData
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
@@ -20,6 +21,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.time.LocalDateTime
+import kotlin.coroutines.CoroutineContext
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [27], application = Application::class)
@@ -257,6 +259,28 @@ class ReaderReadingRecordsTest {
             listOf("accumulate:book:3", "accumulate:book:-1"),
             store.events,
         )
+    }
+
+    @Test
+    fun accumulatedReadingTimePreservesCallOrderWhenTheDispatcherStartsFlushFirst() {
+        val pending = ArrayDeque<Runnable>()
+        val reverseDispatcher = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) {
+                pending.addLast(block)
+            }
+        }
+        val reverseRecords = ReaderReadingRecords(
+            store, scope, statisticsScope, { bookId }, { title }, { chapters },
+            ioDispatcher = reverseDispatcher,
+        )
+        reverseRecords.accumulateReadingTime("book", 3)
+        reverseRecords.accumulateReadingTime("book", -1)
+
+        pending.removeLast().run()
+        assertTrue(store.events.isEmpty())
+        while (pending.isNotEmpty()) pending.removeLast().run()
+
+        assertEquals(listOf("accumulate:book:3", "accumulate:book:-1"), store.events)
     }
 
     @Test
