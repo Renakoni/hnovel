@@ -28,10 +28,12 @@ internal class ScrollChapterWindow(
     private var collectCurrentChapterJob: Job? = null
     private var collectNextChapterJob: Job? = null
     private var continuousObservationGeneration = 0L
+    private var continuousObservationActive = false
     private val observationLock = Any()
 
     fun startContinuousObservation() {
         val observationGeneration = synchronized(observationLock) {
+            continuousObservationActive = true
             continuousObservationGeneration++
             continuousObservationGeneration
         }
@@ -116,6 +118,7 @@ internal class ScrollChapterWindow(
 
     fun stopContinuousObservation() {
         synchronized(observationLock) {
+            continuousObservationActive = false
             continuousObservationGeneration++
             progressScrollLoadJob?.cancel()
             collectPrevChapterJob?.cancel()
@@ -138,14 +141,16 @@ internal class ScrollChapterWindow(
         uiState.readingProgress = 0f
         uiState.lazyListState = LazyListState()
         coroutineScope.launch (ioDispatcher) {
-            val isUsingContinuousScrolling = settings.isEnabled()
-            collectRequestedChapter(id, isUsingContinuousScrolling)
+            val configuredForContinuousScrolling = settings.isEnabled()
+            val (isUsingContinuousScrolling, observationGeneration) = synchronized(observationLock) {
+                Pair(configuredForContinuousScrolling && continuousObservationActive, continuousObservationGeneration)
+            }
+            collectRequestedChapter(id, isUsingContinuousScrolling, observationGeneration)
         }
     }
 
-    private fun collectRequestedChapter(id: String, continuousScrolling: Boolean) {
+    private fun collectRequestedChapter(id: String, continuousScrolling: Boolean, observationGeneration: Long) {
         collectCurrentChapterJob?.cancel()
-        val observationGeneration = continuousObservationGeneration
         collectCurrentChapterJob = coroutineScope.launch(ioDispatcher) {
             chapters.load(id, uiState.bookId).collect { result ->
                 uiState.contentList[1] = id to result
