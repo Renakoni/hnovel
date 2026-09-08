@@ -51,13 +51,31 @@ class TextPaginationContractTest {
     }
 
     @Test
-    fun aViewportShorterThanOneLineAttemptsANegativeLineIndex() {
+    fun aViewportShorterThanOneLineStillConsumesOneLine() {
         val component = component("A")
         val layout = layout(listOf("A"))
-        assertThrows(IllegalArgumentException::class.java) {
-            with(component) { layout.getSlipString(data.text, 100, 5) }
-        }
-        verify { layout.getLineBottom(-1) }
+        assertEquals(listOf("A"), with(component) {
+            layout.getSlipString(data.text, 100, 5)
+        })
+        verify(exactly = 0) { layout.getLineBottom(-1) }
+    }
+
+    @Test
+    fun zeroViewportStillMakesForwardProgress() {
+        val component = component("A")
+        val layout = layout(listOf("A"))
+        assertEquals(listOf("A"), with(component) {
+            layout.getSlipString(data.text, 0, 0)
+        })
+    }
+
+    @Test
+    fun negativeViewportStillMakesForwardProgress() {
+        val component = component("A")
+        val layout = layout(listOf("A"))
+        assertEquals(listOf("A"), with(component) {
+            layout.getSlipString(data.text, -1, -1)
+        })
     }
 
     @Test

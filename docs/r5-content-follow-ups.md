@@ -34,10 +34,11 @@
 
 ## PAGE-001：可用高度不足一行时，切片算法会递减到负行号
 
-- 状态：**固定行度量测试确认算法访问越界**。
-- 证据：[TextPagination.pageText][pagination] 在 `getLineBottom(checkLine)` 溢出时不断执行 `checkLine--`，没有下界。[分页测试][text-page-test] `aViewportShorterThanOneLineAttemptsANegativeLineIndex` 用单行 10px、可用高度 5px 验证调用 `getLineBottom(-1)`。
-- 影响：极小视口、大字体或过大边距可能使分页失败；测试确认了无下界的算法路径，并未确认普通设备布局能否到达该组合。
-- 后续：定义“一行也放不下”时应溢出、单独成页还是反馈非法布局，再增加相应输出测试；不要直接 clamp 后引入不前进的循环。
+- 状态：**已修复，固定行度量回归测试通过**。
+- 基线证据：[TextPagination.pageText][pagination] 原先在 `getLineBottom(checkLine)` 溢出时不断执行 `checkLine--`，没有下界；基线测试在单行 10px、可用高度 5px 时确认了 `getLineBottom(-1)`。同一契约在零视口输入下也会失败。
+- 修复语义：分页尺寸在测量和切片入口统一归一化到至少 1；候选行限制在当前页起始行到最后一行之间，只在候选行仍晚于起始行时回退。若首行本身放不下，则首行单独成页，从而保证每轮至少消费一行且不访问负行号。
+- 验证：[分页测试][text-page-test] 覆盖短于一行、零尺寸、负尺寸和正常多页文本；完整 `:app:testDebugUnitTest` 共 105 项通过，`:app:assembleDebug` 成功。
+- 限制：测试使用固定行度量，未替代真实字体引擎、设备 Insets 或 Compose 测量；真实设备仍需验证大字号、极小窗口和动态边距下的视觉分页结果。
 
 ## PAGE-002：分页测量与实时绘制没有共享完整的输入和失效条件
 

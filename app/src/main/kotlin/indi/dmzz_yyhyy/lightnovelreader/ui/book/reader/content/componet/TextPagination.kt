@@ -40,6 +40,8 @@ internal class TextPagination(userDataRepositoryApi: UserDataRepositoryApi, cont
     )
 
     suspend fun split(text: String, height: Int, width: Int): List<String> {
+        val safeHeight = height.coerceAtLeast(1)
+        val safeWidth = width.coerceAtLeast(1)
         val fontSize = fontSizeUserData.getOrDefault(15f)
         val fontLineHeight = fontLineHeightUserData.getOrDefault(7f)
         val fontWeigh = fontWeightUserData.getOrDefault(500f)
@@ -51,8 +53,8 @@ internal class TextPagination(userDataRepositoryApi: UserDataRepositoryApi, cont
                 fontWeight = FontWeight(fontWeigh.toInt()),
                 fontFamily = readerFontFamily(fontFamilyUriUserData),
             ),
-            constraints = Constraints(maxHeight = height, maxWidth = width),
-        ).pageText(text, width, height)
+            constraints = Constraints(maxHeight = safeHeight, maxWidth = safeWidth),
+        ).pageText(text, safeWidth, safeHeight)
     }
 
     suspend fun readerFontFamily(fontFamilyUriUserData: UriUserData): FontFamily? {
@@ -63,23 +65,25 @@ internal class TextPagination(userDataRepositoryApi: UserDataRepositoryApi, cont
 }
 
 internal fun TextLayoutResult.pageText(text: String, width: Int, height: Int): List<String> {
+    val safeWidth = width.coerceAtLeast(1)
+    val safeHeight = height.coerceAtLeast(1)
     val result: MutableList<String> = mutableListOf()
     var lastLine = 0
     fun getNotOverflowText(startLine: Int): String {
         fun getNotOverflowLine(): Int {
             val startHeight = getLineTop(startLine)
             fun isLineOverflow(line: Int): Boolean =
-                getLineBottom(line) > height + startHeight
+                getLineBottom(line) > safeHeight + startHeight
 
             var checkLine = getLineForOffset(
                 getOffsetForPosition(
                     Offset(
-                        width.toFloat(),
-                        startHeight + height
+                        safeWidth.toFloat(),
+                        startHeight + safeHeight
                     )
                 )
-            )
-            while (isLineOverflow(checkLine)) checkLine--
+            ).coerceIn(startLine, lineCount - 1)
+            while (checkLine > startLine && isLineOverflow(checkLine)) checkLine--
             return checkLine
         }
 
