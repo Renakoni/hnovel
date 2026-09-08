@@ -36,7 +36,8 @@ class ChapterRepository @Inject constructor(
         id: String,
         priority: WebDataSourcePriority
     ): Flow<Result<BookVolumes, WebRequestError>> = flow {
-        localBookDataSource.getBookVolumes(id)?.also {
+        val local = localBookDataSource.getBookVolumes(id)
+        local?.also {
             emit(Ok(it))
             if (BuildConfig.BENCHMARK) return@flow
         }
@@ -48,7 +49,7 @@ class ChapterRepository @Inject constructor(
                 it.throwable?.printStackTrace()
             }
             .also {
-                emit(it)
+                if (it.isOk || local == null) emit(it)
             }
     }.map { result ->
         result.map {
@@ -61,7 +62,8 @@ class ChapterRepository @Inject constructor(
         bookId: String,
         priority: WebDataSourcePriority
     ): Flow<Result<ChapterContent, WebRequestError>> = flow {
-        localBookDataSource.getChapterContent(chapterId)?.also {
+        val local = localBookDataSource.getChapterContent(chapterId)
+        local?.also {
             emit(Ok(it))
             if (BuildConfig.BENCHMARK) return@flow
         }
@@ -73,7 +75,7 @@ class ChapterRepository @Inject constructor(
                 it.throwable?.printStackTrace()
             }
             .also {
-                emit(it)
+                if (it.isOk || local == null) emit(it)
             }
     }.map { result ->
         result.map {
