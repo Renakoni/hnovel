@@ -2,7 +2,6 @@ package indi.dmzz_yyhyy.lightnovelreader.ui.book.reader
 
 import android.util.Log
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -67,15 +66,4 @@ internal fun ReaderReadingTimeEffects(
         }
     }
 
-    DisposableEffect(Unit) {
-        onDispose {
-            if (totalReadingTime <= 60) {
-                currentBookId()?.let {
-                    updateTotalReadingTime(it, totalReadingTime)
-                }
-            } else {
-                Log.e("ReaderScreen", "time counter error, time now is $totalReadingTime over 60s")
-            }
-        }
-    }
 }
