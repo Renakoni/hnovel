@@ -77,9 +77,10 @@ class StatsRepository @Inject constructor(
     }
 
     suspend fun getTotalReadingSummary(): TotalReadingSummary {
-        val dailyCounts = dailyCountDao.getAll()
         val records = bookRecordDao.getAllBookRecords()
-        val totalMinutes = dailyCounts.sumOf { it.timeCount.getTotalMinutes() }
+        val totalMinutes = (records.sumOf { it.seconds.toLong() } / 60L)
+            .coerceAtMost(Int.MAX_VALUE.toLong())
+            .toInt()
         val totalReadCount = records.sumOf { it.reads }
         return TotalReadingSummary(
             totalMinutes = totalMinutes,
