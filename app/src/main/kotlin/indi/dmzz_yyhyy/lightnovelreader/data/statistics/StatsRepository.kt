@@ -10,34 +10,39 @@ import java.time.LocalDate
 import java.time.LocalTime
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 
 @Suppress("unused")
 @Singleton
 class StatsRepository @Inject constructor(
     private val bookRecordDao: BookRecordDao,
     private val dailyCountDao: DailyCountDao,
-    private val bookRepository: BookRepository
+    private val bookRepository: BookRepository,
+    private val statisticsWriteCoordinator: StatisticsWriteCoordinator
 ) {
     private val bookReadTimeBuffer = mutableMapOf<String, Pair<LocalTime, Int>>()
+    private val bookReadTimeBufferMutex = Mutex()
 
     suspend fun accumulateBookReadTime(bookId: String, seconds: Int) {
-        if (seconds < 0) {
-            bookReadTimeBuffer.keys.toList().forEach { _ ->
-                clearBookReadTimeBuffer(bookId)
-                bookReadTimeBuffer.remove(bookId)
+        bookReadTimeBufferMutex.withLock {
+            if (seconds < 0) {
+                clearBookReadTimeBufferLocked(bookId)
+                return
             }
-            return
-        }
-        val current = bookReadTimeBuffer[bookId] ?: Pair(LocalTime.now(), 0)
-        val newTotal = current.second + seconds
-        bookReadTimeBuffer[bookId] = current.copy(second = newTotal)
+            val current = bookReadTimeBuffer[bookId] ?: Pair(LocalTime.now(), 0)
+            val newTotal = current.second + seconds
+            bookReadTimeBuffer[bookId] = current.copy(second = newTotal)
 
-        if (newTotal >= 60 || Duration.between(current.first, LocalTime.now()).seconds >= 60) {
-            clearBookReadTimeBuffer(bookId)
+            if (newTotal >= 60 || Duration.between(current.first, LocalTime.now()).seconds >= 60) {
+                clearBookReadTimeBufferLocked(bookId)
+            }
         }
     }
 
-    private suspend fun clearBookReadTimeBuffer(bookId: String) {
+    private suspend fun clearBookReadTimeBufferLocked(bookId: String) {
         val (startTime, totalSeconds) = bookReadTimeBuffer[bookId] ?: return
 
         updateReadingStatistics(
@@ -49,7 +54,7 @@ class StatsRepository @Inject constructor(
             )
         )
 
-        bookReadTimeBuffer.clear()
+        bookReadTimeBuffer.remove(bookId)
     }
 
     suspend fun getBookRecords(
@@ -89,44 +94,63 @@ class StatsRepository @Inject constructor(
     }
 
     suspend fun updateReadingStatistics(update: ReadingStatsUpdate) {
-        val today = LocalDate.now()
+        statisticsWriteCoordinator.withLock {
+            val today = LocalDate.now()
+            val existingDailyCount = dailyCountDao.getByDate(today)
+            val dailyCount = existingDailyCount ?: DailyCountEntity(today, Count())
+            val updatedDailyCount = dailyCount.copy(
+                timeCount = updateCount(dailyCount.timeCount.copy(), update)
+            )
 
-        val existingDailyCount = dailyCountDao.getByDate(today)
-            ?: DailyCountEntity(today, Count())
-        val updatedDailyCount = existingDailyCount.copy(
-            timeCount = updateCount(existingDailyCount.timeCount, update)
-        )
-        dailyCountDao.insert(updatedDailyCount)
-
-        val existingRecord = bookRecordDao.getBookRecordByIdAndDate(update.bookId, today)
-            ?: createRecordEntity(update.bookId, today)
-
-        val updatedRecord = existingRecord.copy(
-            reads = existingRecord.reads + update.readEventDelta,
-            seconds = existingRecord.seconds + update.secondDelta,
-            lastSeen = update.localTime,
-        )
-        bookRecordDao.insertBookRecord(updatedRecord)
-        bookReadTimeBuffer.clear()
+            try {
+                dailyCountDao.insert(updatedDailyCount)
+                val existingRecord = bookRecordDao.getBookRecordByIdAndDate(update.bookId, today)
+                    ?: createRecordEntity(update.bookId, today)
+                val updatedRecord = existingRecord.copy(
+                    reads = existingRecord.reads + update.readEventDelta,
+                    seconds = existingRecord.seconds + update.secondDelta,
+                    lastSeen = update.localTime,
+                )
+                bookRecordDao.insertBookRecord(updatedRecord)
+            } catch (failure: Throwable) {
+                // Keep a failed retry from counting the daily delta twice. Room's
+                // production implementation should eventually move this pair of
+                // writes into one database transaction; restoring the prior row
+                // keeps the current DAO boundary idempotent while preserving the
+                // buffered book seconds for the caller to retry.
+                withContext(NonCancellable) {
+                    if (existingDailyCount == null) {
+                        dailyCountDao.deleteByDate(today)
+                    } else {
+                        dailyCountDao.insert(existingDailyCount)
+                    }
+                }
+                throw failure
+            }
+        }
     }
 
     suspend fun markBookFinished(bookId: String) {
-        val today = LocalDate.now()
-        val existingRecord = bookRecordDao.getBookRecordByIdAndDate(bookId, today)
-            ?: createRecordEntity(bookId, today)
+        statisticsWriteCoordinator.withLock {
+            val today = LocalDate.now()
+            val existingRecord = bookRecordDao.getBookRecordByIdAndDate(bookId, today)
+                ?: createRecordEntity(bookId, today)
 
-        if (!existingRecord.isFinished) {
-            bookRecordDao.insertBookRecord(existingRecord.copy(isFinished = true))
+            if (!existingRecord.isFinished) {
+                bookRecordDao.insertBookRecord(existingRecord.copy(isFinished = true))
+            }
         }
     }
 
     suspend fun markBookFavorited(bookId: String) {
-        val today = LocalDate.now()
-        val existingRecord = bookRecordDao.getBookRecordByIdAndDate(bookId, today)
-            ?: createRecordEntity(bookId, today)
+        statisticsWriteCoordinator.withLock {
+            val today = LocalDate.now()
+            val existingRecord = bookRecordDao.getBookRecordByIdAndDate(bookId, today)
+                ?: createRecordEntity(bookId, today)
 
-        if (!existingRecord.isFavorited) {
-            bookRecordDao.insertBookRecord(existingRecord.copy(isFavorited = true))
+            if (!existingRecord.isFavorited) {
+                bookRecordDao.insertBookRecord(existingRecord.copy(isFavorited = true))
+            }
         }
     }
 
@@ -168,7 +192,18 @@ class StatsRepository @Inject constructor(
     }
 
     suspend fun clear() {
-        bookRecordDao.clear()
-        dailyCountDao.clear()
+        withStatisticsResetLock {
+            bookRecordDao.clear()
+            dailyCountDao.clear()
+        }
+    }
+
+    suspend fun withStatisticsResetLock(block: suspend () -> Unit) {
+        bookReadTimeBufferMutex.withLock {
+            statisticsWriteCoordinator.withLock {
+                bookReadTimeBuffer.clear()
+                block()
+            }
+        }
     }
 }

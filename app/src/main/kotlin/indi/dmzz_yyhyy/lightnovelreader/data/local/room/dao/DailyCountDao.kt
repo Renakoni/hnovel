@@ -27,6 +27,9 @@ interface DailyCountDao {
     @Query("SELECT * FROM daily_count WHERE date = :date")
     suspend fun getEntity(date: LocalDate): DailyCountEntity?
 
+    @Query("DELETE FROM daily_count WHERE date = :date")
+    suspend fun deleteByDate(date: LocalDate)
+
     @Query("DELETE FROM daily_count")
     suspend fun clear()
 }

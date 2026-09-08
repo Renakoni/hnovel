@@ -113,10 +113,11 @@
 
 ## STATS-001：入书统计和单本书结算会清除不属于该次写入的缓冲
 
-- 状态：**真实统计仓库的受控 DAO 测试已证实；R4 之前已有**。
-- 证据：[StatsRepositoryCharacterizationTest](../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/data/statistics/StatsRepositoryCharacterizationTest.kt) 验证两个序列：缓存某书 10 秒 → 写入该书入书次数 → flush，最后仅有 1 次阅读、0 秒；缓存 A 的 10 秒和 B 的 20 秒 → flush B → flush A，最后仅有 B 的 20 秒。[StatsRepository](../app/src/main/kotlin/indi/dmzz_yyhyy/lightnovelreader/data/statistics/StatsRepository.kt) 在 `updateReadingStatistics` 和缓冲结算中对整个 Map 调用 `clear()`；负数命令遍历所有 key，却始终处理传入的同一个 bookId。
-- 影响：未结算时间可能丢失，即使没有同时操作同一行数据库。入书记录与每秒累积来自不同协程，因此应同时审查事件顺序和缓冲的归属；其设备触发频率尚未测量。
-- 后续：区分入书事件与时间结算的缓冲责任，明确单书 flush 和全部 flush；仅移除已成功结算的缓冲，并用原有两个序列验证秒数完整保留。
+- 状态：**已修复，真实统计仓库的受控 DAO 回归测试通过**。
+- 基线证据：[StatsRepositoryCharacterizationTest](../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/data/statistics/StatsRepositoryCharacterizationTest.kt) 在 `main` 上确认两个序列失败：缓存某书 10 秒后写入该书入书次数会丢失缓冲；缓存 A 的 10 秒和 B 的 20 秒后只结算 B 会丢失 A。[StatsRepository](../app/src/main/kotlin/indi/dmzz_yyhyy/lightnovelreader/data/statistics/StatsRepository.kt) 原先在统计写入后对整个 Map 调用 `clear()`，负数结算也会遍历所有 key 却始终处理传入的同一个 `bookId`。
+- 修复语义：阅读事件写入不再触碰时间缓冲；负数命令只结算传入的 `bookId`，成功写入后只移除该 key；缓冲表的累积和结算由 `Mutex` 串行化，写入失败时保留缓冲供重试。统计更新、完成/收藏标记、导入和清库共享写入协调器；清库会在删除 Room 行前清除内存缓冲，避免迟到结算复活已清除的统计。
+- 验证：覆盖入书事件、单书结算、多个书籍缓冲、失败重试、每日行写入后取消、清库后的迟到结算，以及完成标记与阅读更新的并发保留；完整 `:app:testDebugUnitTest` 共 104 项通过，`:app:assembleDebug` 成功。
+- 限制：测试使用受控 DAO 替身，未覆盖真实 Room 事务和设备生命周期调度；这些范围仍需真机/数据库集成验证。
 
 ## STATS-002：每次结算独立取整，导致短阅读时间永远不进入总览分钟数
 

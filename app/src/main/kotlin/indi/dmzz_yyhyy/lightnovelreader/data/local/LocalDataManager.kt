@@ -21,7 +21,9 @@ import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.FormattingRuleDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.UserDataDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.UserReadingDataDao
 import indi.dmzz_yyhyy.lightnovelreader.data.storage.StorageUsageRepository
+import indi.dmzz_yyhyy.lightnovelreader.data.statistics.StatsRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.web.WebBookDataSourceProvider
+import indi.dmzz_yyhyy.lightnovelreader.data.statistics.StatisticsWriteCoordinator
 import indi.dmzz_yyhyy.lightnovelreader.utils.readAppLocalData
 import io.nightfish.lightnovelreader.api.userdata.UserDataPath
 import kotlinx.coroutines.runBlocking
@@ -45,7 +47,9 @@ class LocalDataManager @Inject constructor(
     private val formattingRuleDao: FormattingRuleDao,
     private val userReadingDataDao: UserReadingDataDao,
     private val userDataDao: UserDataDao,
-    private val storageUsageRepository: StorageUsageRepository
+    private val storageUsageRepository: StorageUsageRepository,
+    private val statisticsWriteCoordinator: StatisticsWriteCoordinator,
+    private val statsRepository: StatsRepository
 ) {
     companion object {
         const val TAG = "LocalDataManager"
@@ -280,82 +284,86 @@ class LocalDataManager @Inject constructor(
     }
 
     suspend fun importLocalDataToDatabase(localData: LocalData): Result<Unit, Throwable> {
-        for (entity in localData.bookInformationEntities) {
+        return statisticsWriteCoordinator.withLock {
+          for (entity in localData.bookInformationEntities) {
             bookBookInformationDao.insert(
                 bookBookInformationDao.getEntity(entity.id)?.let(entity::merge) ?: entity
             )
-        }
-        for (entity in localData.bookRecordEntities) {
+          }
+          for (entity in localData.bookRecordEntities) {
             val merged = bookRecordDao
                 .getBookRecordByIdAndDate(entity.bookId, entity.date)
                 ?.merge(entity)
                 ?: entity
             bookRecordDao.insertBookRecord(merged)
-        }
-        for (entity in localData.dailyCountEntities) {
+          }
+          for (entity in localData.dailyCountEntities) {
             val merged = dailyCountDao.getEntity(entity.date)?.merge(entity) ?: entity
             dailyCountDao.insert(merged)
-        }
-        for (entity in localData.bookshelfEntities) {
+          }
+          for (entity in localData.bookshelfEntities) {
             bookshelfDao.insertBookshelf(
                 bookshelfDao.getBookshelf(entity.id)?.let(entity::merge) ?: entity
             )
-        }
-        for (entity in localData.bookshelfBookMetadataEntities) {
+          }
+          for (entity in localData.bookshelfBookMetadataEntities) {
             bookshelfDao.insertBookshelfBookMetadata(
                 bookshelfDao.getBookshelfBookMetadataEntity(
                     entity.id
                 )?.let(entity::merge) ?: entity
             )
-        }
-        for (entity in localData.chapterContentEntities) {
+          }
+          for (entity in localData.chapterContentEntities) {
             chapterContentDao.update(chapterContentDao.get(entity.id)?.let(entity::merge) ?: entity)
-        }
-        for (entity in localData.chapterInformationEntities) {
+          }
+          for (entity in localData.chapterInformationEntities) {
             bookVolumesDao.insertChapterInformationEntities(
                 bookVolumesDao.getChapterInformationEntity(
                     entity.id
                 )?.let(entity::merge) ?: entity
             )
-        }
-        for (entity in localData.volumeEntities) {
+          }
+          for (entity in localData.volumeEntities) {
             bookVolumesDao.insertVolume(
                 bookVolumesDao.getVolumeEntity(entity.volumeId)?.let(entity::merge) ?: entity
             )
-        }
-        for (entity in localData.formattingRuleEntities) {
+          }
+          for (entity in localData.formattingRuleEntities) {
             formattingRuleDao.update(
                 formattingRuleDao.getBookRuleEntity(entity.id)?.let(entity::merge) ?: entity
             )
-        }
-        for (entity in localData.userReadingDataEntities) {
+          }
+          for (entity in localData.userReadingDataEntities) {
             userReadingDataDao.insert(
                 userReadingDataDao.getEntity(entity.id)?.let(entity::merge) ?: entity
             )
-        }
-        for (entity in localData.userDataEntities) {
+          }
+          for (entity in localData.userDataEntities) {
             userDataDao.insert(userDataDao.getEntity(entity.path)?.let(entity::merge) ?: entity)
+          }
+          storageUsageRepository.invalidateSnapshot()
+          Ok(Unit)
         }
-        storageUsageRepository.invalidateSnapshot()
-        return Ok(Unit)
     }
 
     suspend fun cleanDatabaseWithoutGlobalUserData() {
-        bookBookInformationDao.clear()
-        bookRecordDao.clear()
-        dailyCountDao.clear()
-        bookshelfDao.clear()
-        bookVolumesDao.clear()
-        chapterContentDao.clear()
-        formattingRuleDao.clear()
-        userReadingDataDao.clear()
+        statsRepository.withStatisticsResetLock {
+          bookBookInformationDao.clear()
+          bookRecordDao.clear()
+          dailyCountDao.clear()
+          bookshelfDao.clear()
+          bookVolumesDao.clear()
+          chapterContentDao.clear()
+          formattingRuleDao.clear()
+          userReadingDataDao.clear()
 
-        for (entity in userDataDao.getAllEntities()) {
-            if (!webDataSourceUserDataPathSet.contains(entity.path)) continue
-            userDataDao.remove(entity.path)
-        }
-        runCatching {
-            storageUsageRepository.invalidateSnapshot()
+          for (entity in userDataDao.getAllEntities()) {
+              if (!webDataSourceUserDataPathSet.contains(entity.path)) continue
+              userDataDao.remove(entity.path)
+          }
+          runCatching {
+              storageUsageRepository.invalidateSnapshot()
+          }
         }
     }
 
