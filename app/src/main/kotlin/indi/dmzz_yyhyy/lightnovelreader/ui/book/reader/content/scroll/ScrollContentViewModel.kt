@@ -14,6 +14,7 @@ import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentUiS
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ContentViewModel
 import indi.dmzz_yyhyy.lightnovelreader.utils.throttleLatest
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -26,7 +27,9 @@ class ScrollContentViewModel(
     val coroutineScope: CoroutineScope,
     val settingState: SettingState,
     val contentRenderer: ContentRenderer,
-    val updateReadingProgress: (String, Float) -> Unit
+    val updateReadingProgress: (String, Float) -> Unit,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val mainDispatcher: CoroutineDispatcher = Dispatchers.Main,
 ) : ContentViewModel {
     private var progressScrollLoadJob: Job? = null
     private var lazyColumnSize = IntSize(0, 0)
@@ -52,7 +55,7 @@ class ScrollContentViewModel(
                     progressScrollLoad()
                     val hasAdjacentChapters = uiState.contentList.getOrNull(0) != null || uiState.contentList.getOrNull(2) != null
                     if (!hasAdjacentChapters) {
-                        coroutineScope.launch(Dispatchers.Main) {
+                        coroutineScope.launch(mainDispatcher) {
                             uiState.readingChapterId?.let { id -> changeChapter(id) }
                         }
                     }
@@ -60,14 +63,14 @@ class ScrollContentViewModel(
                     progressScrollLoadJob?.cancel()
                     val hasAdjacentChapters = uiState.contentList.getOrNull(0) != null || uiState.contentList.getOrNull(2) != null
                     if (hasAdjacentChapters) {
-                        coroutineScope.launch(Dispatchers.Main) {
+                        coroutineScope.launch(mainDispatcher) {
                             uiState.readingChapterId?.let { id -> changeChapter(id) }
                         }
                     }
                 }
             }
         }
-        coroutineScope.launch(Dispatchers.Main) {
+        coroutineScope.launch(mainDispatcher) {
             snapshotFlow { uiState.lazyListState.firstVisibleItemScrollOffset }
                 .throttleLatest(120L)
                 .collect {
@@ -85,11 +88,11 @@ class ScrollContentViewModel(
                     if (scrolling && now - lastWriteReadingProgress < 2500 && newProgress < 1f) return@collect
                     lastWriteReadingProgress = now
 
-                    coroutineScope.launch(Dispatchers.IO) { updateReadingProgress(chapterId, newProgress) }
+                    coroutineScope.launch(ioDispatcher) { updateReadingProgress(chapterId, newProgress) }
                 }
         }
 
-        coroutineScope.launch(Dispatchers.Main) {
+        coroutineScope.launch(mainDispatcher) {
             snapshotFlow { uiState.lazyListState.isScrollInProgress }
                 .distinctUntilChanged()
                 .collect { scrolling ->
@@ -103,7 +106,7 @@ class ScrollContentViewModel(
                         if (uiState.readingProgress != finalProgress) {
                             uiState.readingProgress = finalProgress
                         }
-                        coroutineScope.launch(Dispatchers.IO) { updateReadingProgress(chapterId, uiState.readingProgress) }
+                        coroutineScope.launch(ioDispatcher) { updateReadingProgress(chapterId, uiState.readingProgress) }
                         lastWriteReadingProgress = System.currentTimeMillis()
                     }
                 }
@@ -227,7 +230,7 @@ class ScrollContentViewModel(
         uiState.readingChapterId = id
         uiState.readingProgress = 0f
         uiState.lazyListState = LazyListState()
-        coroutineScope.launch (Dispatchers.IO) {
+        coroutineScope.launch (ioDispatcher) {
             val isUsingContinuousScrolling = settingState.isUsingContinuousScrollingUserData.getOrDefault(true)
             if (isUsingContinuousScrolling) changeChapterWithContinuousScrolling(id)
             else changeChapterWithoutContinuousScrolling(id)
@@ -236,7 +239,7 @@ class ScrollContentViewModel(
 
     private fun changeChapterWithoutContinuousScrolling(id: String) {
         collectCurrentChapterJob?.cancel()
-        collectCurrentChapterJob = coroutineScope.launch(Dispatchers.IO) {
+        collectCurrentChapterJob = coroutineScope.launch(ioDispatcher) {
             chapterSource.getChapterContentFlow(id, uiState.bookId).collect { result ->
                 uiState.contentList[1] = id to result.map {
                     ChapterContentUiState(
@@ -269,7 +272,7 @@ class ScrollContentViewModel(
 
     private fun changeChapterWithContinuousScrolling(id: String) {
         collectCurrentChapterJob?.cancel()
-        collectCurrentChapterJob = coroutineScope.launch(Dispatchers.IO) {
+        collectCurrentChapterJob = coroutineScope.launch(ioDispatcher) {
             chapterSource.getChapterContentFlow(id, uiState.bookId).collect { result ->
                 uiState.contentList[1] = id to result.map {
                     ChapterContentUiState(

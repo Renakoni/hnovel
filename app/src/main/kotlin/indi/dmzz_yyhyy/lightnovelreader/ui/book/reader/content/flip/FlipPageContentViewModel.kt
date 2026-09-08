@@ -12,6 +12,7 @@ import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentUiS
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ContentViewModel
 import io.nightfish.lightnovelreader.api.web.WebDataSourcePriority
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.map
@@ -24,7 +25,8 @@ class FlipPageContentViewModel(
     private val readingData: BookReadingDataAccess,
     val coroutineScope: CoroutineScope,
     val updateReadingProgress: (String, Float) -> Unit,
-    val contentRenderer: ContentRenderer
+    val contentRenderer: ContentRenderer,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : ContentViewModel {
     private var notRecoveredProgress = 0f
     private var collectProgressJob: Job? = null
@@ -36,10 +38,10 @@ class FlipPageContentViewModel(
     )
 
     init {
-        coroutineScope.launch(Dispatchers.IO) {
+        coroutineScope.launch(ioDispatcher) {
             snapshotFlow { uiState.pagerState }.collect { pagerState ->
                 collectProgressJob?.cancel()
-                collectProgressJob = coroutineScope.launch(Dispatchers.IO) {
+                collectProgressJob = coroutineScope.launch(ioDispatcher) {
                     snapshotFlow { pagerState.settledPage }.collect { page ->
                         val progress = if (pagerState.pageCount == 0) 0f
                         else ((page + 1) / pagerState.pageCount.toFloat()).coerceIn(0f, 1f)
@@ -135,7 +137,7 @@ class FlipPageContentViewModel(
                 }
             }
         }
-        coroutineScope.launch(Dispatchers.IO) {
+        coroutineScope.launch(ioDispatcher) {
             readingData.getUserReadingData(uiState.bookId).let {
                 notRecoveredProgress = it.currentChapterReadingProgressMap[id] ?: 0f
             }
