@@ -69,6 +69,23 @@ class FlipModeContractTest {
     }
 
     @Test
+    fun aSuspendedOlderMetadataWriteCannotOverwriteTheNewerChapter() {
+        open("first")
+        val firstWriteGate = CompletableDeferred<Unit>()
+        env.records.nonCancellableWriteGates += firstWriteGate
+
+        env.emit("first", Ok(env.chapter("first")))
+        mode.changeChapter("second")
+        env.runCurrent()
+        env.emit("second", Ok(env.chapter("second")))
+        firstWriteGate.complete(Unit)
+        env.runCurrent()
+
+        assertEquals("second", env.records.data.lastReadChapterId)
+        assertEquals(listOf("first", "second"), env.records.writes.map { it.lastReadChapterId })
+    }
+
+    @Test
     fun aLaterErrorReplacesCachedContentWithoutAnotherWriteOrPreload() {
         open()
         env.emit("requested", Ok(env.chapter("requested", next = "next")))

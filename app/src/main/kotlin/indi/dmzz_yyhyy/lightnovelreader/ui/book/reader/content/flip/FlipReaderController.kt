@@ -12,6 +12,8 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.time.LocalDateTime
 
 class FlipReaderController(
@@ -34,6 +36,7 @@ class FlipReaderController(
 
     private var chapterLoadJob: Job? = null
     private var chapterRequestGeneration = 0L
+    private val readingMetadataMutex = Mutex()
 
     init { progress.start() }
 
@@ -87,12 +90,15 @@ class FlipReaderController(
                 uiState.readingChapterId = id
                 uiState.readingChapterContent = result
                 result.onOk { content ->
-                    readingData.updateUserReadingData(bookId) {
-                        it.copy(
-                            lastReadTime = LocalDateTime.now(),
-                            lastReadChapterId = id,
-                            lastReadChapterTitle = content.title
-                        )
+                    readingMetadataMutex.withLock {
+                        if (requestGeneration != chapterRequestGeneration) return@withLock
+                        readingData.updateUserReadingData(bookId) {
+                            it.copy(
+                                lastReadTime = LocalDateTime.now(),
+                                lastReadChapterId = id,
+                                lastReadChapterTitle = content.title
+                            )
+                        }
                     }
                     if (requestGeneration != chapterRequestGeneration) return@onOk
                     content.nextChapter?.let {
