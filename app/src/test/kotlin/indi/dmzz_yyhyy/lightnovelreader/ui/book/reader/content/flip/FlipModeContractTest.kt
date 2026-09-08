@@ -163,8 +163,10 @@ class FlipModeContractTest {
         env.records.data = env.records.data.copy(currentChapterReadingProgressMap = mapOf("requested" to 0.75f))
         open()
         val targets = mutableListOf<Int>()
+        progress.clear()
         mode.updatePagerState(pager(4, targets = targets))
         env.runCurrent()
+        assertTrue(progress.isEmpty())
         gate.complete(Unit)
         env.runCurrent()
         assertEquals(listOf(2), targets)
@@ -178,13 +180,16 @@ class FlipModeContractTest {
         open()
         val targets = mutableListOf<Int>()
         val page = mutableIntStateOf(0)
+        progress.clear()
         mode.updatePagerState(pager(4, page, targets))
         env.runCurrent()
+        env.emit("requested", Ok(env.chapter("requested")))
         page.intValue = 1
         env.runCurrent()
         gate.complete(Unit)
         env.runCurrent()
         assertTrue(targets.isEmpty())
+        assertEquals("progress=$progress", listOf("requested" to 0.5f), progress)
     }
 
     @Test
@@ -239,6 +244,36 @@ class FlipModeContractTest {
         env.runCurrent()
         assertTrue(oldTargets.isEmpty())
         assertEquals(listOf(0), newTargets)
+    }
+
+    @Test
+    fun emptyPagerDuringRepaginationPreservesProgressUntilTheNewPagesAreReady() {
+        open()
+        env.emit("requested", Ok(env.chapter("requested")))
+        mode.updatePagerState(pager(10, mutableIntStateOf(5)))
+        env.runCurrent()
+        assertEquals(0.6f, mode.uiState.readingProgress)
+        progress.clear()
+
+        mode.updatePagerState(pager(0))
+        env.runCurrent()
+        assertEquals(0.6f, mode.uiState.readingProgress)
+        assertTrue(progress.isEmpty())
+
+        val page = mutableIntStateOf(0)
+        val targets = mutableListOf<Int>()
+        val rebuilt = pager(20, page, targets)
+        coEvery { rebuilt.scrollToPage(any(), any()) } answers {
+            val target = firstArg<Int>()
+            targets += target
+            page.intValue = target
+        }
+        mode.updatePagerState(rebuilt)
+        env.runCurrent()
+        assertEquals(listOf(11), targets)
+        assertEquals(0.6f, mode.uiState.readingProgress)
+        assertTrue(progress.isNotEmpty())
+        assertTrue(progress.all { it == "requested" to 0.6f })
     }
 
     @Test

@@ -26,15 +26,21 @@ internal class FlipReadingProgress(
     private var restorationApplied = false
     private var recoveryJob: Job? = null
     private var recoveryGeneration = 0L
+    @Volatile private var progressPagerState: PagerState? = null
+    @Volatile private var recoveryPending = false
 
     fun start() {
         coroutineScope.launch(ioDispatcher) {
             snapshotFlow { uiState.pagerState }.collect { pagerState ->
                 collectProgressJob?.cancel()
                 collectProgressJob = coroutineScope.launch(ioDispatcher) {
-                    snapshotFlow { pagerState.settledPage }.collect { page ->
-                        val progress = if (pagerState.pageCount == 0) 0f
-                        else ((page + 1) / pagerState.pageCount.toFloat()).coerceIn(0f, 1f)
+                    snapshotFlow { pagerState.settledPage }.collect progress@{ page ->
+                        // An empty pager is a layout transition, not a new reading position.
+                        val pageCount = pagerState.pageCount
+                        if (pageCount == 0 || uiState.pagerState !== pagerState ||
+                            progressPagerState !== pagerState
+                        ) return@progress
+                        val progress = ((page + 1) / pageCount.toFloat()).coerceIn(0f, 1f)
                         uiState.readingProgress = progress
                         uiState.readingChapterContent?.onOk {
                             updateReadingProgress(it.id, progress)
@@ -46,13 +52,14 @@ internal class FlipReadingProgress(
     }
 
     fun updatePagerState(pagerState: PagerState) {
+        progressPagerState = null
         currentPagerState = pagerState
         uiState.pagerState = pagerState
         restorationJob?.cancel()
         restorationJob = null
         if (pagerState.pageCount > 0 && initialPagerPage == null)
             initialPagerPage = pagerState.settledPage
-        restorePendingProgress(allowCurrentProgress = true)
+        if (!recoveryPending) restorePendingProgress(allowCurrentProgress = true)
     }
 
     fun resetForChapter() {
@@ -61,6 +68,8 @@ internal class FlipReadingProgress(
         recoveryJob?.cancel()
         recoveryJob = null
         recoveryGeneration++
+        recoveryPending = false
+        progressPagerState = null
         notRecoveredProgress = 0f
         currentPagerState = null
         initialPagerPage = null
@@ -68,15 +77,29 @@ internal class FlipReadingProgress(
         uiState.readingProgress = 0f
     }
 
+    private fun enableProgressFor(pagerState: PagerState) {
+        if (pagerState.pageCount == 0 || uiState.pagerState !== pagerState) return
+        progressPagerState = pagerState
+        val progress = ((pagerState.settledPage + 1) / pagerState.pageCount.toFloat())
+            .coerceIn(0f, 1f)
+        uiState.readingProgress = progress
+        uiState.readingChapterContent?.onOk {
+            updateReadingProgress(it.id, progress)
+        }
+    }
+
     fun recoverForChapter(id: String, bookId: String = uiState.bookId) {
         restorationJob?.cancel()
         restorationJob = null
         recoveryJob?.cancel()
         val generation = ++recoveryGeneration
+        recoveryPending = true
+        progressPagerState = null
         recoveryJob = coroutineScope.launch(ioDispatcher) {
             readingData.getUserReadingData(bookId).let {
                 if (generation != recoveryGeneration) return@let
                 notRecoveredProgress = it.currentChapterReadingProgressMap[id] ?: 0f
+                recoveryPending = false
                 coroutineScope.launch {
                     restorePendingProgress(expectedRecoveryGeneration = generation)
                 }
@@ -90,9 +113,16 @@ internal class FlipReadingProgress(
     ) {
         if (expectedRecoveryGeneration != null && expectedRecoveryGeneration != recoveryGeneration) return
         val pagerState = currentPagerState ?: return
-        if (pagerState.pageCount == 0 || (!allowCurrentProgress && restorationApplied)) return
+        if (pagerState.pageCount == 0) return
+        if (!allowCurrentProgress && restorationApplied) {
+            enableProgressFor(pagerState)
+            return
+        }
         val hasRecoveredProgress = notRecoveredProgress > 0f
-        if (!hasRecoveredProgress && (!allowCurrentProgress || uiState.readingProgress <= 0f)) return
+        if (!hasRecoveredProgress && (!allowCurrentProgress || uiState.readingProgress <= 0f)) {
+            enableProgressFor(pagerState)
+            return
+        }
         if (hasRecoveredProgress && initialPagerPage != null &&
             (pagerState.isScrollInProgress ||
                 pagerState.currentPage != initialPagerPage ||
@@ -100,11 +130,13 @@ internal class FlipReadingProgress(
         ) {
             notRecoveredProgress = 0f
             restorationApplied = true
+            enableProgressFor(pagerState)
             return
         }
         if (hasRecoveredProgress && initialPagerPage != null && pagerState.settledPage != initialPagerPage) {
             notRecoveredProgress = 0f
             restorationApplied = true
+            enableProgressFor(pagerState)
             return
         }
         val recovered = (if (hasRecoveredProgress) notRecoveredProgress else uiState.readingProgress)
@@ -123,6 +155,7 @@ internal class FlipReadingProgress(
                     notRecoveredProgress = 0f
                     restorationApplied = true
                 }
+                enableProgressFor(pagerState)
             }
         }
     }
