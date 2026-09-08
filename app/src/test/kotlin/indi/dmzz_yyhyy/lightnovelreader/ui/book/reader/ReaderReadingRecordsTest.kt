@@ -254,6 +254,50 @@ class ReaderReadingRecordsTest {
     }
 
     @Test
+    fun zeroChapterCountsAreRetriedInsteadOfCached() {
+        var countReads = 0
+        val retryingRecords = ReaderReadingRecords(
+            store = store,
+            scope = scope,
+            statisticsScope = statisticsScope,
+            currentBookId = { bookId },
+            currentChapterTitle = { title },
+            chapterCount = { countReads++; 0 },
+            now = { time },
+            ioDispatcher = dispatcher,
+        )
+
+        retryingRecords.cacheChapterCount("book", 0)
+        retryingRecords.saveProgress("chapter", 0.5f)
+        retryingRecords.saveProgress("chapter", 0.75f)
+        scheduler.runCurrent()
+
+        assertEquals(2, countReads)
+    }
+
+    @Test
+    fun chapterCountFailureStillPersistsTheProgressEvent() {
+        val failingRecords = ReaderReadingRecords(
+            store = store,
+            scope = scope,
+            statisticsScope = statisticsScope,
+            currentBookId = { bookId },
+            currentChapterTitle = { title },
+            chapterCount = { error("directory unavailable") },
+            now = { time },
+            ioDispatcher = dispatcher,
+        )
+        store.data["book"] = UserReadingData(id = "book", readingProgress = 0.4f)
+
+        failingRecords.saveProgress("chapter", 0.5f)
+        scheduler.runCurrent()
+
+        assertEquals(0.4f, store.data.getValue("book").readingProgress)
+        assertEquals(mapOf("chapter" to 0.5f), store.data.getValue("book").currentChapterReadingProgressMap)
+        assertEquals(listOf("update:book", "write:book", "read:book"), store.events)
+    }
+
+    @Test
     fun completionCheckUsesTheCapturedBookAfterPersistenceSuspension() {
         val gate = CompletableDeferred<Unit>()
         store.updateGate = gate

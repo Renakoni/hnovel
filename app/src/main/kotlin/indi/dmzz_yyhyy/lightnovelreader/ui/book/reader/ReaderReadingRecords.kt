@@ -5,6 +5,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.reading.ReaderRecordStore
 import indi.dmzz_yyhyy.lightnovelreader.data.statistics.ReadingStatsUpdate
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -30,6 +31,7 @@ internal class ReaderReadingRecords(
     private val chapterCountCache = mutableMapOf<String, Int>()
 
     fun cacheChapterCount(bookId: String, count: Int) {
+        if (bookId.isBlank() || count <= 0) return
         synchronized(chapterCountCache) {
             chapterCountCache[bookId] = count
         }
@@ -58,7 +60,13 @@ internal class ReaderReadingRecords(
             val currentTime = now()
             // Resolve the count after the event has been queued and bind it to the
             // captured book. The UI's current-book state may have changed by now.
-            val total = chapterCountForBook(bookId)
+            val total = try {
+                chapterCountForBook(bookId)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                0
+            }
 
             store.updateUserReadingData(bookId) { userReadingData ->
                 Log.v("ReaderViewModel", "$bookId/$chapterId Saving progress $progress. ($title)")
