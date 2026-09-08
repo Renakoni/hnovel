@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import androidx.room.TypeConverters
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.converter.ChapterReadingProgressMapConverter
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.converter.LocalDateTimeConverter
@@ -29,6 +30,12 @@ interface UserReadingDataDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(userReading: UserReadingDataEntity)
+
+    /** Keep the read and transformation inside the same transaction as the replacement write. */
+    @Transaction
+    suspend fun update(id: String, transform: (UserReadingDataEntity?) -> UserReadingDataEntity) {
+        insert(transform(getEntity(id)))
+    }
 
     @Query("select * from user_reading_data where id = :id")
     suspend fun getEntity(id: String): UserReadingDataEntity?
