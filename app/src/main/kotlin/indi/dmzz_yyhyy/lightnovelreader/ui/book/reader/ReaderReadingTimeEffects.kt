@@ -24,6 +24,13 @@ internal fun ReaderReadingTimeEffects(
     var isRunning by remember { mutableStateOf(false) }
     var totalReadingTime by remember { mutableIntStateOf(0) }
     var lastMeasuredAtMillis by remember { mutableLongStateOf(0L) }
+    var measuredBookId by remember { mutableStateOf<String?>(null) }
+    var pauseCallbacksRemaining by remember { mutableIntStateOf(0) }
+
+    fun finishPauseCallback() {
+        pauseCallbacksRemaining -= 1
+        if (pauseCallbacksRemaining <= 0) measuredBookId = null
+    }
 
     fun recordElapsedTime() {
         val now = nowMillis()
@@ -32,7 +39,7 @@ internal fun ReaderReadingTimeEffects(
         if (elapsedSeconds == 0L) return
         lastMeasuredAtMillis += elapsedSeconds * 1_000L
 
-        val bookId = currentBookId() ?: return
+        val bookId = measuredBookId ?: return
         val seconds = elapsedSeconds.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
         accumulateReadTime(bookId, seconds)
         totalReadingTime = (totalReadingTime.toLong() + elapsedSeconds)
@@ -46,18 +53,21 @@ internal fun ReaderReadingTimeEffects(
 
     LifecycleResumeEffect(Unit) {
         lastMeasuredAtMillis = nowMillis()
+        measuredBookId = currentBookId()
+        pauseCallbacksRemaining = 2
         isRunning = true
         onPauseOrDispose {
             recordElapsedTime()
             isRunning = false
             if (totalReadingTime <= 60) {
-                currentBookId()?.let {
+                measuredBookId?.let {
                     updateTotalReadingTime(it, totalReadingTime)
                 }
             } else {
                 Log.e("ReaderScreen", "time counter error, time now is $totalReadingTime over 60s")
             }
             totalReadingTime = 0
+            finishPauseCallback()
         }
     }
 
@@ -70,9 +80,10 @@ internal fun ReaderReadingTimeEffects(
 
     LifecycleResumeEffect(Unit) {
         onPauseOrDispose {
-            currentBookId()?.let {
+            measuredBookId?.let {
                 accumulateReadTime(it, -1)
             }
+            finishPauseCallback()
         }
     }
 

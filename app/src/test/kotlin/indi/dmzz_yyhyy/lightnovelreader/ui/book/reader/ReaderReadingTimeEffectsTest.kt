@@ -130,6 +130,19 @@ class ReaderReadingTimeEffectsTest {
     }
 
     @Test
+    fun delayedElapsedBatchUsesTheBookAtTheStartOfTheInterval() {
+        elapsedRealtime = 3_500
+        compose.runOnIdle {
+            state.bookId = "next"
+            Snapshot.sendApplyNotifications()
+        }
+        compose.mainClock.advanceTimeBy(1_000, ignoreFrameDuration = true)
+        compose.waitForIdle()
+
+        assertEquals(listOf(Call("stats", "book", 3)), calls.filter { it.channel == "stats" })
+    }
+
+    @Test
     fun leavingAfterPauseDoesNotInventASecond() {
         pause()
         removeReader()
@@ -139,12 +152,12 @@ class ReaderReadingTimeEffectsTest {
     }
 
     @Test
-    fun settlementReadsCurrentBookAndNullBookSuppressesCallbacks() {
+    fun settlementUsesIntervalBookAndNullBookSuppressesCallbacks() {
         compose.runOnIdle { state.bookId = "next" }
         pause()
         compose.runOnIdle {
-            assertEquals(listOf(Call("stats", "next", -1)), calls.filter { it.channel == "stats" })
-            assertEquals(listOf(Call("total", "next", 0)), calls.filter { it.channel == "total" }.takeLast(1))
+            assertEquals(listOf(Call("stats", "book", -1)), calls.filter { it.channel == "stats" })
+            assertEquals(listOf(Call("total", "book", 0)), calls.filter { it.channel == "total" }.takeLast(1))
             state.bookId = null
         }
         removeReader()
