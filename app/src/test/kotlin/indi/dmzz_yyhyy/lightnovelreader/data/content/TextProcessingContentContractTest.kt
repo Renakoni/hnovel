@@ -22,7 +22,7 @@ import org.robolectric.annotation.Config
 @Config(sdk = [27], application = Application::class)
 class TextProcessingContentContractTest {
     @Test
-    fun bothEntryPointsPreserveProcessorOrderJsonOutputAndChapterMetadataWithoutAnInjector() = runTest {
+    fun bothEntryPointsPreserveProcessorOrderMetadataExtensionsAndIncompleteItems() = runTest {
         val registry = ContentComponentRegistry()
         val processing = TextProcessingRepository(
             mockk { every { enabled } returns false },
@@ -42,18 +42,25 @@ class TextProcessingContentContractTest {
         processing.registerProcessors(Identifier("fixture", "first"), processor("ignored"))
         processing.registerProcessors(Identifier("fixture", "second"), processor("B"))
         val chapter = ChapterContent("chapter", "title", Json.parseToJsonElement("""{
-            "metadata":"currently discarded",
+            "metadata":"root-extension",
             "components":[
                 {"id":"lightnovelreader:simple_text","data":{"text":"body"},"extra":1},
                 {"id":"simple_text","data":{"text":"short"}},
                 {"id":"fixture:unknown","data":{"value":2}},
-                {"data":{"text":"missing id"}}
+                {"data":{"text":"missing id"}},
+                {"id":"fixture:missing-data"},
+                7
             ]
         }""").jsonObject, "previous", "next")
-        val expected = chapter.copy(content = Json.parseToJsonElement("""{"components":[
-            {"id":"lightnovelreader:simple_text","data":{"text":"bodyAB"}},
+        val expected = chapter.copy(content = Json.parseToJsonElement("""{
+            "metadata":"root-extension",
+            "components":[
+            {"id":"lightnovelreader:simple_text","data":{"text":"bodyAB"},"extra":1},
             {"id":"simple_text","data":{"text":"short"}},
-            {"id":"fixture:unknown","data":{"value":2}}
+            {"id":"fixture:unknown","data":{"value":2}},
+            {"data":{"text":"missing id"}},
+            {"id":"fixture:missing-data"},
+            7
         ]}""").jsonObject)
 
         assertEquals(expected, processing.processChapterContent("book") { chapter })
@@ -84,5 +91,18 @@ class TextProcessingContentContractTest {
         val chapter = ChapterContent("chapter", "title", Json.parseToJsonElement("""{"components":[{"id":"fixture:late","data":{"text":"body"}}]}""").jsonObject)
         val expected = Json.parseToJsonElement("""{"components":[{"id":"fixture:late","data":{"text":"BODY"}}]}""").jsonObject
         assertEquals(expected, processing.processChapterContent("book") { chapter }.content)
+    }
+
+    @Test
+    fun missingOrNonArrayComponentsLeaveTheRootJsonUnchanged() {
+        val registry = ContentComponentRegistry()
+        for (input in listOf("""{"metadata":"missing"}""", """{"metadata":"wrong","components":{}}""")) {
+            val original = Json.parseToJsonElement(input).jsonObject
+            val processor = ComponentProcessor(registry.serializeMap, registry.dataKClassMap, original)
+
+            processor.process<SimpleTextComponentData> { it.copy(text = it.text + "changed") }
+
+            assertEquals(original, processor.get())
+        }
     }
 }
