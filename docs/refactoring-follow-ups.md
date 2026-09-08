@@ -47,13 +47,13 @@
 - 影响：目录不完整的书籍可能显示为已缓存；也可能是对空卷的合理处理，目前缺少明确规则。
 - 后续：定义“已缓存”是否要求至少存在一个可阅读章节，再决定是否调整判断。不要仅为了统一空集合处理而修改行为。
 
-## READ-001：快速切换章节时，旧翻页任务可能回写新界面
+## READ-001：快速切换章节时，旧翻页任务可能回写新界面（P1，修复已提交）
 
-- 状态：**R6 独立模式测试已确认旧结果覆盖；真实导航/网络交互仍待验证**。
-- R6 补充：独立翻页模式测试已确认 A/B 发射交错能够使旧 A 覆盖 B，详见 [R6 证据记录](r6-reader-mode-follow-ups.md)。本轮只明确职责和所有权，未改变取消策略。
-- 证据：[FlipReaderController.changeChapter](../app/src/main/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/content/flip/FlipReaderController.kt) 每次启动章节收集和进度恢复协程，未记录/取消上一章的这两个任务，也没有在写状态前检查事件所属章节。章节 Flow 可能先发本地、再较晚发远端。
-- 影响：先请求 A 再切换 B 时，A 的较晚结果可能覆盖 B 的显示状态，或影响进度恢复。滚动模式有不同的 Job 管理，不能直接假定两者应套用同一算法。
-- 后续：基于已有 A/B 交错测试，继续覆盖记录恢复与真实导航/网络交互；明确请求替换规则后再修改取消或结果归属校验。
+- 状态：**已由翻页模式受控测试确认，修复已提交到独立 PR**。R6 只明确了模式任务所有权，没有改变替换行为；本项是其后的行为修复。
+- 证据：原有 [FlipModeContractTest](../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/content/flip/FlipModeContractTest.kt) 先启动 A 再启动 B，让 B 先成功、A 后成功，最终章节 ID 回到 A；A/B 两个订阅直到 reader scope 退出仍活动。`FlipReaderController.changeChapter` 也没有保存/取消上一章的收集和恢复任务，异步写入期间继续从 `uiState` 读取书籍 ID。
+- 修复语义：翻页控制器为每次章节请求保存 `Job`、请求代次和请求开始时的 book ID。切章或换书取消旧章节收集及旧进度恢复；每个结果在更新 UI、完成阅读记录后续操作前检查当前代次，不能依赖书源 Flow 一定及时响应取消。恢复进度在 `FlipReadingProgress` 内同样按代次校验，旧读取完成不能污染新章节的待恢复页。
+- 滚动模式保持自己的 `ScrollChapterWindow` 订阅所有权，本 PR 不把连续滚动的三槽替换算法改成翻页模式的单任务算法。
+- 后续限制：测试使用可控 Flow、挂起的阅读记录和协程调度器，覆盖仓库/加载器以外的章节请求交错；未宣称覆盖每种真实网络、导航动画或设备生命周期组合。若发现滚动窗口在关闭连续模式后继续回写，继续由 SCROLL-001 单独处理。
 
 ## READ-002：直接移除仍处于 RESUMED 的阅读器会重复提交剩余时长
 
