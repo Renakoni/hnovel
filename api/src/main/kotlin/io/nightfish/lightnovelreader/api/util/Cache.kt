@@ -34,7 +34,7 @@ class Cache(
      *
      * @since Api 2
      */
-    val cacheMap = mutableMapOf<KClass<*>, MutableMap<Int, CacheData<Any>>>()
+    val cacheMap = mutableMapOf<KClass<*>, MutableMap<Any, CacheData<Any>>>()
 
     /**
      * 将数据写入缓存
@@ -47,6 +47,11 @@ class Cache(
      * @since Api 2
      */
     inline fun <reified T> cache(id: Int, t: T) {
+        cache(id as Any, t)
+    }
+
+    /** Caches by the complete immutable key; hash collisions are resolved by key equality. */
+    inline fun <reified T> cache(id: Any, t: T) {
         t ?: return
         val tClass = T::class
         if (cacheMap.contains(tClass)) {
@@ -71,6 +76,11 @@ class Cache(
      * @since Api 2
      */
     inline fun <reified T> getCache(id: Int): T? {
+        return getCache(id as Any)
+    }
+
+    /** Reads the same full key used for writing, within the requested response type. */
+    inline fun <reified T> getCache(id: Any): T? {
         val tClass = T::class
         if (!cacheMap.contains(tClass)) return null
         val map = cacheMap[tClass] ?: return null

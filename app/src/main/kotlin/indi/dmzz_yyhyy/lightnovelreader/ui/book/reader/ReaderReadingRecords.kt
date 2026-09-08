@@ -5,8 +5,12 @@ import indi.dmzz_yyhyy.lightnovelreader.data.reading.ReaderRecordStore
 import indi.dmzz_yyhyy.lightnovelreader.data.statistics.ReadingStatsUpdate
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.time.LocalDateTime
 
 /** Records reader events; the owner supplies the existing scopes and live progress inputs. */
@@ -16,10 +20,14 @@ internal class ReaderReadingRecords(
     private val statisticsScope: CoroutineScope,
     private val currentBookId: () -> String,
     private val currentChapterTitle: () -> String?,
-    private val chapterCount: () -> Int,
+    private val chapterCount: suspend (String) -> Int,
     private val now: () -> LocalDateTime = LocalDateTime::now,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
+    private val totalReadingTimeMutex = Mutex()
+    private val accumulatedReadingTimeLock = Any()
+    private var accumulatedReadingTimeJob: Job? = null
+
     fun openBook(bookId: String) {
         scope.launch(ioDispatcher) {
             store.updateRecentBooks {
@@ -36,49 +44,62 @@ internal class ReaderReadingRecords(
     }
 
     fun saveProgress(chapterId: String, progress: Float) {
-        if (progress.isNaN() || progress <= 0f || currentBookId().isBlank()) return
+        val bookId = currentBookId()
+        if (progress.isNaN() || progress <= 0f || bookId.isBlank()) return
         val title = currentChapterTitle() ?: return
         scope.launch(ioDispatcher) {
             val currentTime = now()
+            // Resolve the count after the event has been queued and bind it to the
+            // captured book. The UI's current-book state may have changed by now.
+            val total = try {
+                chapterCount(bookId)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                0
+            }
 
-            // Read the live book ID here, as the original queued ViewModel write did.
-            store.updateUserReadingData(currentBookId()) { userReadingData ->
-                Log.v("ReaderViewModel", "${currentBookId()}/$chapterId Saving progress $progress. ($title)")
-                val total = chapterCount()
-                // Overall progress intentionally uses the map from before this chapter update.
+            store.updateUserReadingData(bookId) { userReadingData ->
+                Log.v("ReaderViewModel", "$bookId/$chapterId Saving progress $progress. ($title)")
+                val updatedData = userReadingData.copyWithUpdatedChapterReadingProgress(chapterId, progress)
                 val readingProgress = if (total > 0) {
-                    (userReadingData.maxChapterReadingProgressMap.values.sum() / total).coerceIn(0f, 1f)
+                    (updatedData.maxChapterReadingProgressMap.values.sum() / total).coerceIn(0f, 1f)
                 } else {
                     userReadingData.readingProgress
                 }
-                userReadingData.copyWithUpdatedChapterReadingProgress(chapterId, progress)
-                    .copy(
-                        lastReadTime = currentTime,
-                        lastReadChapterId = chapterId,
-                        lastReadChapterTitle = title,
-                        readingProgress = readingProgress,
-                    )
+                updatedData.copy(
+                    lastReadTime = currentTime,
+                    lastReadChapterId = chapterId,
+                    lastReadChapterTitle = title,
+                    readingProgress = readingProgress,
+                )
             }
-            val readingData = store.getUserReadingData(currentBookId())
+            val readingData = store.getUserReadingData(bookId)
             if (readingData.readingProgress >= 1f) {
-                store.markBookFinished(currentBookId())
+                store.markBookFinished(bookId)
             }
         }
     }
 
     fun updateTotalReadingTime(bookId: String, seconds: Int) {
         scope.launch(ioDispatcher) {
-            store.updateUserReadingData(bookId) {
-                it.copy(lastReadTime = now(), totalReadTime = it.totalReadTime + seconds)
+            totalReadingTimeMutex.withLock {
+                store.updateUserReadingData(bookId) {
+                    it.copy(lastReadTime = now(), totalReadTime = it.totalReadTime + seconds)
+                }
             }
         }
     }
 
     fun accumulateReadingTime(bookId: String, seconds: Int) {
         if (bookId.isBlank()) return
-        statisticsScope.launch(ioDispatcher) {
-            // Negative values remain the statistics repository's existing flush command.
-            store.accumulateBookReadTime(bookId, seconds)
+        synchronized(accumulatedReadingTimeLock) {
+            val previous = accumulatedReadingTimeJob
+            accumulatedReadingTimeJob = statisticsScope.launch(ioDispatcher) {
+                previous?.join()
+                // Negative values remain the statistics repository's existing flush command.
+                store.accumulateBookReadTime(bookId, seconds)
+            }
         }
     }
 }

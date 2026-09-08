@@ -35,10 +35,12 @@
 
 ## BOOK-003：KEEP 策略下返回的新请求 ID 可能不是正在运行的任务
 
-- 状态：**机制风险，待 WorkManager 集成测试验证**。
-- 证据：[BookRepository.cacheBook](../app/src/main/kotlin/indi/dmzz_yyhyy/lightnovelreader/data/book/BookRepository.kt) 每次构造新请求，以 `cache:<bookId>` 和 `KEEP` 入队，然后返回新请求。[DetailViewModel.cacheBook](../app/src/main/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/detail/DetailViewModel.kt) 用返回请求的 ID 观察任务完成。若同名未完成任务已存在，KEEP 会保留原任务。
-- 影响：被忽略的新请求 ID 可能没有对应的运行记录，详情页对这个 ID 的观察可能收不到原任务完成结果。当前 R3 测试验证参数保持，没有启动实际 worker，尚未验证重复请求场景。
-- 后续：在受控 WorkManager 环境连续提交同一书籍，核对实际工作记录、返回 ID 和完成观察；再决定按唯一任务名观察还是显式返回已存在的任务身份。
+- 状态：**修复已提交 PR #50；受控唯一工作观察测试通过**。
+- 证据：基线的 [BookRepository.cacheBook](../app/src/main/kotlin/indi/dmzz_yyhyy/lightnovelreader/data/book/BookRepository.kt) 每次构造新请求，以 `cache:<bookId>` 和 `KEEP` 入队，然后返回新请求；[DetailViewModel.cacheBook](../app/src/main/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/detail/DetailViewModel.kt) 用这个新 UUID 观察。若同名未完成任务已存在，KEEP 保留原任务，UUID 与观察对象脱离。EPUB 导出有相同的入队/按新 UUID 观察模式。
+- 修复：缓存和 EPUB 导出都先等待 `enqueueUniqueWork` 的 Operation 完成，再按唯一工作名查询 `getWorkInfosForUniqueWorkFlow`，避免既观察被 KEEP 忽略的新 UUID，也避免入队完成前读到上一次的终态。
+- Review 证据：项目使用的 WorkManager 2.11.2 在单请求、无依赖的 KEEP 入队事务中保留现有活动记录，或删除旧终态记录再插入新请求（`EnqueueRunnable.enqueueWorkWithPrerequisites`）。这些名称没有 APPEND 链，因此不需要对历史终态排序；已移除本 PR 先前加入的时钟标签及排序器，不引入持久序列或迁移。
+- 验证：受控 Flow/future 测试覆盖两个入口的入队等待；真实 WorkManager 入队算法与内存 WorkDatabase 测试确认活动请求保留、后退时钟下旧终态删除及新请求身份。没有启动网络 worker，也未模拟真实进程重启或设备后台限制。
+- 后续：合并 PR #50 后在真实缓存和 EPUB 导出路径验证重复点击、后台恢复及进程重启。其他使用 KEEP 的导出/书架入口若增加状态提示，应复用唯一工作名观察规则。
 
 ## BOOK-004：非空卷列表中的所有卷都没有章节时，缓存状态为 true
 
@@ -46,6 +48,13 @@
 - 证据：[BookRepositoryOperationsTest](../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/data/book/BookRepositoryOperationsTest.kt) 的 `cacheStatusKeepsMissingEmptyAndPartiallyCachedVolumeSemantics` 验证：无目录和空卷列表返回 false；存在一个没有章节的卷时返回 true。
 - 影响：目录不完整的书籍可能显示为已缓存；也可能是对空卷的合理处理，目前缺少明确规则。
 - 后续：定义“已缓存”是否要求至少存在一个可阅读章节，再决定是否调整判断。不要仅为了统一空集合处理而修改行为。
+
+## CACHE-001：内存缓存代理的读取键与写入键不一致
+
+- 状态：**已提交修复 PR #55**。
+- 证据：[ProxyCachedWebBookDataSource](../app/src/main/kotlin/indi/dmzz_yyhyy/lightnovelreader/data/web/proxy/ProxyCachedWebBookDataSource.kt) 基线按请求 key 的 `hashCode()` 查询，却按 `origin.id.hashCode()` 写入。使用真实 [Cache](../api/src/main/kotlin/io/nightfish/lightnovelreader/api/util/Cache.kt) 的回归测试确认同一卷目录请求连续两次都会调用底层。
+- 修复：读写使用相同的完整请求键（方法、书籍 ID、章节 ID）。Cache 按完整 key 的 equality 判定命中，整数 hash 碰撞和字符串拼接歧义不会再返回别的请求的数据；类型分组、过期和容量策略保持。
+- 回归覆盖：`Aa`/`BB` 同 hash 书籍、`ab+c`/`a+bc` 章节组合、重复命中和响应类型隔离。网络传输和设备进程行为不在 JVM 测试覆盖范围内。
 
 ## READ-001：快速切换章节时，旧翻页任务可能回写新界面（P1，修复已提交）
 
@@ -65,10 +74,11 @@
 
 ## READ-003：进度事件的标题与书籍 ID 在不同时间读取
 
-- 状态：**R4 的受控调度测试已证实输入读取时机**。
-- 证据：[ReaderReadingRecordsTest](../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/ReaderReadingRecordsTest.kt) 的 `queuedProgressCapturesTheTitleButReadsTheBookCountAndTimeWhenWriting` 和 `completionCheckWaitsForPersistenceAndReadsTheLiveBookAfterSuspension`。标题在接收事件时捕获，书籍 ID 在异步写入及挂起恢复之后读取。
-- 影响：若书籍在排队或写入期间改变，旧章节事件可能使用新书 ID，写入目标与完成检查目标也可能不同。实际导航是否允许触发该交错仍需确认。
-- 后续：用跨书籍切换事件验证会话归属，决定是否在事件入口捕获完整身份或采用会话标识。该修正会改变当前写入目标，应该独立于接口拆分。
+- 状态：**修复已提交 PR #49；受控调度回归测试通过**。
+- 证据：[ReaderReadingRecordsTest](../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/ReaderReadingRecordsTest.kt) 覆盖事件排队及存储挂起后切书；写入与完成检查固定使用事件入口捕获的书籍 ID 和标题。章节总数按捕获的书籍 ID 查询已加载目录计数，避免读取另一书的 UI 分母。
+- 目录计数由 ViewModel 的现有目录订阅持续更新，记录层不另开冷 Flow、不永久缓存首次计数、不等待网络。目录未加载或为空时仍保存章节进度，保留已存整体值；后续有效发射自动更新计数。[ReaderDirectoryProgressTest](../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/ReaderDirectoryProgressTest.kt) 用真实 ViewModel 验证目录挂起时可写进度、空目录和多次刷新均使用同一个订阅。
+- 影响：旧实现可能把旧章节写入新书，或把完成检查发给新书。修复限制了异步任务的身份漂移；真实导航是否产生同一交错仍需设备验证。
+- 后续：合并 PR #49 后验证真实导航、后台切换和进程终止路径。READ-004 继续单独处理总体进度公式的滞后问题，BOOK-002 继续负责仓库读改写的原子边界。
 
 ## WIN-001：窗口恢复的责任范围超过阅读器实际拥有的状态
 
@@ -80,11 +90,11 @@
 
 ## SET-001：safeAsState 名称没有对应的解析失败保护
 
-- 状态：**受控设置链测试已证实；R2 之前已有**。
-- 证据：[SettingObservationFailureTest](../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/SettingObservationFailureTest.kt) 使用真实 [AbstractSettingState](../app/src/main/kotlin/indi/dmzz_yyhyy/lightnovelreader/data/setting/AbstractSettingState.kt) 和 [FloatUserData](../api/src/main/kotlin/io/nightfish/lightnovelreader/api/userdata/FloatUserData.kt)：输入 `malformed` 产生 `NumberFormatException`，订阅结束；测试捕获异常后改成 `22.0`，该实例仍停在初始 `15f`。`safeAsState` 与 `asState` 当前实现相同；颜色解析也使用会抛异常的转换。
-- 影响：非法存储值或上游 Flow 异常可以终止观察。生产没有在该观察链捕获异常；[MainActivity](../app/src/main/kotlin/indi/dmzz_yyhyy/lightnovelreader/MainActivity.kt) 安装的 [LogUtils](../app/src/main/kotlin/indi/dmzz_yyhyy/lightnovelreader/utils/LogUtils.kt) 会对未捕获异常记录日志并退出进程，因此不能把实际后果仅描述为“设置不刷新”。测试自行捕获异常，没有执行退出进程。
-- 限制：未发现普通字体大小滑块会生成该非法字符串；触发条件是数据无效或观察失败，并非所有正常设置操作都会出错。
-- 后续：明确解析失败、存储失败各自的回退与恢复策略，校正 `safe` 的语义；用“错误输入 → 后续有效输入”验证恢复。这个问题与保留旧版本兼容性无关。
+- 状态：**修复已提交 PR #51；受控设置链回归测试通过**。
+- 证据：[SettingObservationFailureTest](../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/SettingObservationFailureTest.kt) 在旧 main 上确认 Float 的 `malformed` 值抛出 `NumberFormatException` 并终止订阅；修复后覆盖非法 Float/Color 值回退默认、后续合法值恢复，以及底层观察异常不逃逸。`safeAsState` 现在与 `asState` 具有明确不同的异常语义。
+- 修复：`FloatUserData` 和 `ColorUserData` 使用可空解析，让逐值格式错误转换为 null 并由默认值处理；`safeAsState` 捕获非取消的底层 Flow 异常、记录日志并发射一次默认值，取消异常继续传播。
+- 影响与限制：设置页面不会因损坏的 Float/Color 存储值退出或停止后续合法值观察。底层 DAO 失败会保留默认值并结束该订阅，不能凭 JVM 测试保证存储层之后自动重连；正常滑块写入路径和真机进程行为仍需设备验证。
+- 后续：合并 PR #51 后验证真实损坏设置值、主题加载和底层存储失败路径；其他未使用 `safeAsState` 的状态仍保留其原有异常策略。
 
 ## SET-002：R2 已收窄读取接口，但状态与副作用归属尚未完整拆开
 
@@ -96,10 +106,10 @@
 
 ## TEST-001：R2 设置测试的替身与断言不足以覆盖真实编辑传播
 
-- 状态：**R2 新增测试的静态并发风险；本次未复现偶发失败**。
-- 证据：[ReaderSettingsBoundaryTest](../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/ReaderSettingsBoundaryTest.kt) 的内存 DAO 使用普通 `mutableMapOf` 和 `getOrPut`；测试 scope 虽采用 `Dispatchers.Unconfined`，但生产 `safeAsState` 明确在 `Dispatchers.IO` 启动多个观察任务，因此这些 Map 仍会被并发访问。
-- 影响：替身存在非线程安全访问；两个现有测试仅覆盖代表性默认值/路径和实例身份，不能证明保存后刷新、两个状态实例同步或字体清理不会覆盖更新的值。全部测试通过也无法消除这些覆盖缺口。
-- 后续：改用线程安全替身或受控存储，再测试实际编辑 → 持久化 → 多个观察者更新的链路。修复测试可独立进行，无需改变生产调度以迁就测试。
+- 状态：**测试改进已提交 PR #52；生产实现未发现新增故障**。
+- 证据：[ReaderSettingsBoundaryTest](../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/ReaderSettingsBoundaryTest.kt) 现在使用并发安全、共享 Flow 的内存 DAO，并验证一个 `FloatUserData` 写入后两个独立 `SettingState` 观察者都收到持久化值。旧实现的普通 `mutableMapOf`/`getOrPut` 只构成测试替身风险，没有复现生产行为失败。
+- 影响：CI 对“编辑 → 持久化 → 多观察者传播”的覆盖更接近真实设置链，替身不再因生产 `Dispatchers.IO` 观察任务而产生数据竞争。该 PR 只修改测试，不改变生产调度。
+- 限制与后续：测试仍不是 Room 真机并发测试，也不覆盖进程终止或设备存储故障；合并 PR #52 后保留为测试边界记录，若未来发现真实 DAO 并发问题再独立建生产 Issue。
 
 ## STATS-001：入书统计和单本书结算会清除不属于该次写入的缓冲
 
@@ -119,17 +129,21 @@
 
 ## READ-004：总体进度和读完标记滞后一次章节进度写入
 
-- 状态：**R4 既有测试已证实；提取前公式相同**。
-- 证据：[ReaderReadingRecords](../app/src/main/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/ReaderReadingRecords.kt) 先用旧最大进度 Map 计算总体进度，再更新当前章节。[ReaderReadingRecordsTest](../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/ReaderReadingRecordsTest.kt) 的 `finishingUsesTheReadAfterWriteResultAndStillCallsTheRepositoryForRepeatedEvents` 验证：两章原最大进度 0.5 和 1，当前章写到 1 后总体仍是 0.75；下一次再写才成为 1 并调用读完标记。
-- 影响：最终章节进度已完成却未必立即表现为整本读完。如果没有下一次进度事件，该状态可能一直滞后。
-- 后续：明确总体进度应基于本次更新后的数据计算，并结合结束阅读时最后一次进度事件验证读完标记；与并发写入问题 BOOK-002 一起评估。
+- 状态：**本分支已修复计算顺序；基线问题由受控仓库测试复现**，对应 [Issue #24](https://github.com/Renakoni/hnovel/issues/24)。
+- 基线证据：在 `main@1dd4604f` 生产代码上运行调整后的 [ReaderReadingRecordsTest](../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/ReaderReadingRecordsTest.kt)，14 项中 6 项因旧 Map 计算失败。两章最大进度为 0.5 和 1 时，将前者写为 1，整体仍为 0.75；首次上报四章之一的 0.5 进度时，整体仍为 0。
+- 修复语义：[ReaderReadingRecords](../app/src/main/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/ReaderReadingRecords.kt) 在同一个 `updateUserReadingData` 回调内先更新当前/历史最大章节 Map，再用更新后的历史最大值求和、除以章节数并限制在 0～1。两例现在分别为 1 和 0.125；写入完成后回读即可调用读完标记，无需第二次进度事件。
+- 回归契约：覆盖首次上报、同章更新、回读不降低历史最大值、目录未就绪时保留原总进度、总进度上限、末章完成及等待写入结束后才标记读完。重复完成事件仍交给现有仓库处理。
+- 验证结果：14 项记录测试全部通过；完整 `:app:testDebugUnitTest` 为 106 项，失败/错误/跳过均为 0；`:app:assembleDebug` 和 `git diff --check` 通过。
+- Review 与基线同步：保留 main 已合并的 PR #49 事件身份边界：入口捕获书籍 ID 和标题，写入时按该书籍读取已观察到的目录计数，写入、回读与读完检查始终使用同一书籍。PR #47 在此基础上用本次更新后的章节最大进度聚合整体值；不重新引入 UI 当前书籍计数，也不新增目录请求。
+- 限制：受控 `ReaderRecordStore` 验证计算与调用顺序，不证明真实导航退出时异步任务必然完成。本次保持章节等权计算规则，目录未就绪时保留已存整体值。
 
 ## READ-005：计时累计的是循环次数，恢复时立即计入一秒
 
-- 状态：**R4 既有虚拟时间测试已证实计数规则；暂停频繁时的实际偏差未测量**。
-- 证据：[ReaderReadingTimeEffectsTest](../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/ReaderReadingTimeEffectsTest.kt) 验证恢复后立即产生 1 秒回调，第 61 次计数提交 61 秒；循环在计数后 `delay(1.seconds)`。两条循环不是由同一份实际经过时间派生。
-- 影响：短暂恢复后立即暂停也可能记入 1 秒；主线程调度延迟又可能造成少计。R4 注入的 `LocalDateTime` 只控制记录时间戳，不控制这些循环，也不控制统计仓库的 `LocalTime`/日期。
-- 后续：先明确产品是否需要实际可见阅读时长，再考虑单调时间源和统一的时间区间结算；保留暂停/退出重复结算的专门用例，避免仅修正阈值而遗漏 READ-002。
+- 状态：**已修复，受控 Compose/Lifecycle 回归测试通过**。
+- 基线证据：`main@1dd4604f` 的 [ReaderReadingTimeEffectsTest](../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/ReaderReadingTimeEffectsTest.kt) 原有契约确认恢复后立即产生 1 秒回调，第 61 次循环提交 61 秒；两条循环按回调次数累积，并非按实际经过时间累积。
+- 修复语义：计时开始和每次调度都读取单调 `SystemClock.elapsedRealtime`（测试注入可控时钟），累计从上次测量点到当前的完整秒数；暂停/销毁前再补一次测量。小于一秒的恢复/暂停不产生秒数，调度延迟会在下一次测量补齐；总时长每 60 秒结算，剩余秒数在退出时结算。
+- 验证：覆盖立即恢复/暂停、调度延迟、暂停后恢复、直接移除和书籍 ID 变化；计时测试 5 项通过，完整 `:app:testDebugUnitTest` 共 103 项通过，`:app:assembleDebug` 成功。
+- 限制：本 PR 不处理 READ-002 的重复生命周期结算入口；退出路径仍需真机验证异步持久化是否完成。`LocalDateTime` 记录时间戳和统计仓库的书籍归属仍由其他 Issue 负责。
 
 ## READ-006：目录收集与阅读模式缺少明确的替换/销毁边界
 

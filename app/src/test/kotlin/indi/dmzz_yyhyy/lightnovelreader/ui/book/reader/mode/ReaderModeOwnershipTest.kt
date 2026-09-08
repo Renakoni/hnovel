@@ -50,7 +50,7 @@ class ReaderModeOwnershipTest {
     }
 
     @Test
-    fun modeReplacementKeepsTheReaderScopeAndViewModelClearCancelsAllItsModeTasks() {
+    fun modeReplacementClosesPreviousTasksAndViewModelClearClosesTheCurrentMode() {
         val flip = MutableStateFlow<String?>(null)
         val dao = mockk<UserDataDao> {
             every { getFlow(any()) } returns flowOf(null)
@@ -65,9 +65,10 @@ class ReaderModeOwnershipTest {
                 val mode = firstArg<ReaderMode>()
                 val scope = secondArg<CoroutineScope>()
                 scopes += scope
-                tasks += scope.launch {
+                val task = scope.launch {
                     try { awaitCancellation() } finally { events += "stop/$mode" }
                 }
+                tasks += task
                 object : ReaderModeController {
                     private var displayedChapter: String? = null
                     override val uiState = mockk<ContentUiState> {
@@ -77,6 +78,7 @@ class ReaderModeOwnershipTest {
                     override fun changeChapter(id: String) { displayedChapter = id; events += "$mode/chapter/$id" }
                     override fun loadNextChapter() { displayedChapter = "$displayedChapter-next"; events += "$mode/next" }
                     override fun loadPrevChapter() { events += "$mode/prev" }
+                    override fun close() { task.cancel() }
                 }
             }
         }
@@ -93,10 +95,15 @@ class ReaderModeOwnershipTest {
         scheduler.runCurrent()
         assertEquals("initial-next", reader.uiState.contentUiState!!.readingChapterId)
         reader.changeChapter("direct")
-        assertEquals(listOf("Scroll/book/", "Scroll/chapter/initial", "Flip/book/", "Flip/chapter/initial", "Flip/next", "Scroll/book/", "Scroll/chapter/initial-next", "Scroll/chapter/direct"), events)
+        assertEquals(
+            listOf("Scroll/book/", "Scroll/chapter/initial", "Flip/book/", "Flip/chapter/initial", "Flip/next", "Scroll/book/", "Scroll/chapter/initial-next", "Scroll/chapter/direct"),
+            events.filterNot { it.startsWith("stop/") }
+        )
         assertSame(states.last(), reader.uiState.contentUiState)
         assertEquals(3, tasks.size)
-        assertTrue(tasks.all { it.isActive })
+        assertTrue(tasks[0].isCancelled)
+        assertTrue(tasks[1].isCancelled)
+        assertTrue(tasks[2].isActive)
         scopes.forEach { assertSame(scopes.first(), it) }
         store.clear()
         scheduler.runCurrent()

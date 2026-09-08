@@ -13,10 +13,11 @@
 
 ## CONTENT-002：错误组件并不覆盖所有解析和构造失败，创建仍有初始化前提
 
-- 状态：**测试确认错误类型与顺序**。
-- 证据：[解码测试][decode-test] `invalidJsonTypesStillThrowAndArrayObjectsAreValidatedBeforeAnyDecode`、`serializerAndConstructorFailuresAreNotConvertedToErrorComponents`、`injectorIsRequiredBeforeTheSerializerIsInvokedForRendering`。缺字段、未知组件、无法匹配构造器可得到错误组件；错误 JSON 类型、序列化器异常、反射构造异常仍向外抛出。[工厂][factory] 仍要求 `PluginInjectorProvider.value!!` 已初始化，而且这个前提在调用序列化器之前检查。
-- 影响：损坏的一项可能终止整章组装，调用方不能将“存在错误组件回退”理解为“所有坏数据都会安全显示”。数据导出没有注入器前提，阅读创建有，两个入口不能互换。
-- 后续：确定失败粒度、错误可见性和初始化所有者，再设计统一的异常或结果契约；本轮不增加 catch、不改变失败优先级。
+- 状态：**修复已提交 PR #53；逐组件容错和取消传播测试通过**。
+- 证据：[解码测试][decode-test] 现在验证错误 JSON 类型、非对象数组项、序列化器异常、反射构造异常和未初始化注入器都只影响当前渲染组件；后续合法组件仍按原顺序创建。取消异常专门断言继续向上传播，数据导出入口仍保持严格异常。
+- 修复：渲染解码器在组件边界捕获非取消 `Exception` 并生成错误组件；根数组和数组项形状错误也转成可见错误项。工厂在注入器缺失时返回初始化失败，不再解引用 `!!`。没有捕获 `Error` 或取消异常，也没有改变导出解码策略。
+- 影响与限制：损坏组件不再终止整章渲染，错误信息可显示给读者；插件严重错误、取消和导出错误仍可被调用方观察。JVM fixture 不覆盖外部插件 DEX、真实 Compose 进程初始化、网络或设备进程终止。
+- 后续：合并 PR #53 后在真实插件加载、阅读入口和导出入口验证错误可见性；如果需要更细的错误分类，应另建协议设计 Issue，不在本次继续扩大 catch 范围。
 
 ## CONTENT-003：注册信息没有验证类型关联，也没有并发一致性边界
 
@@ -27,10 +28,12 @@
 
 ## CONTENT-004：文本变换会丢弃 JSON 扩展字段和不完整条目
 
-- 状态：**测试确认**。
-- 证据：[ComponentProcessor.process][processor] 重建根对象与组件对象，仅写 `components`、`id`、`data`；缺 ID/data 的条目跳过。[处理测试][processing-test] 使用根 `metadata`、组件 `extra`、短 ID 和未知类型，断言完整输出。
-- 影响：即使某个组件未匹配当前变换类型，其外层扩展字段也不会原样保留。这与“不匹配类型的组件将原样保留”的 API 注释存在差异，未来扩展可能因此丢数据。
-- 后续：明确哪些字段属于可扩展协议，再决定保留策略并同时更新 API 文档与测试。
+- 状态：**修复已提交 PR**。
+- 证据：基线中的 [ComponentProcessor.process][processor] 重建根对象与组件对象，仅写 `components`、`id`、`data`；缺 ID/data 的条目跳过。回归测试使用根 `metadata`、目标组件 `extra`、短 ID、未知类型、缺字段条目和非对象数组项，确认同步/协程两个入口均保留未修改 JSON。
+- 修复：处理器现在先复制根对象，再复制每个组件对象；仅对注册且类型匹配的组件替换 `data`。缺失/未知/不匹配项和非对象数组元素原样保留；根 `components` 缺失或不是数组时保持原对象，不伪造空数组。API 注释明确这一契约。
+- 下游连接：当前 main 的 CONTENT-002 已将渲染中的非对象条目转成错误组件；本 PR 同时让导出遍历跳过结构无效的根/条目，避免保留下来的原始 JSON 中断导出。合法目标的序列化器异常仍传播。同步/协程文本处理后再渲染和导出的连接测试均覆盖这些输入。
+- 影响与限制：文本变换不再丢弃扩展字段或无法识别的条目，后续解码仍可按原始数据观察这些内容。目标组件的序列化器或变换函数异常传播语义未改变；本 PR 不处理短 ID 规范化（CONTENT-001）或注册并发（CONTENT-003）。
+- 后续：合并后在真实插件内容导入/导出链验证扩展字段的持久化；若协议需要筛选特定扩展字段，应另建 API 设计 Issue。
 
 ## PAGE-001：可用高度不足一行时，切片算法会递减到负行号
 
@@ -42,10 +45,11 @@
 
 ## PAGE-002：分页测量与实时绘制没有共享完整的输入和失效条件
 
-- 状态：**源码风险，交互场景待复现**。
-- 证据：[宿主绘制][renderers] 读取实时 `LocalReaderStyle` 和字体 Flow；[TextPagination][pagination] 在 split 时读取设置，用组件创建时的 TextMeasurer 配置。[翻页宿主][flip] 的 effect key 只有 `chapterContent.content / resources / density`，没有字体设置、字体 URI、边距或布局方向；尺寸取 `resources.displayMetrics`，并非实际内容容器约束。绘制还使用 `LocalTextLocaleList`，测量没有显式使用相同 locale。
-- 影响：某些设置或容器变化可能只更新绘制，分页结果仍来自旧输入；多窗口等场景的测量区域也可能不同于绘制区域。此项不等同于已确认的真机闪烁原因。
-- 后续：在宿主侧定义一次分页所需的完整参数和失效规则，用受控设置/容器变更测试验证；与 R6 的协程所有权一起讨论，暂不修改 effect key 或调度。
+- 状态：**基线源码风险确认，修复已提交独立 PR；真实布局视觉结果仍需设备验证**。
+- 基线证据：[宿主绘制][renderers] 读取实时 `LocalReaderStyle` 和字体 Flow；[TextPagination][pagination] 在 split 时读取设置，用组件创建时的 TextMeasurer 配置。[翻页宿主][flip] 原 effect key 只有 `chapterContent.content / resources / density`，没有字体设置、字体 URI、边距、实际容器尺寸、布局方向或 locale；尺寸取 `resources.displayMetrics`，并非实际 Compose 内容容器约束。旧 effect 还在内部另起 IO Job，脱离 `LaunchedEffect` 的取消边界。
+- 修复语义：翻页宿主以实际 `onSizeChanged` 容器尺寸扣除当前边距，并把章节 ID/内容、容器尺寸、density、布局方向、ReaderStyle、字体 URI 和文本 locale 纳入分页失效键。分页请求交给可取消协调器；新请求取消旧请求，结果带请求序号，只有最新请求能更新组件列表和 Pager。移除未写回的 `contentKey` 去重状态，避免它错误跳过有效输入。
+- 回归覆盖：[FlipPaginationCoordinatorTest][pagination-coordinator-test] 验证新请求取消旧请求、关闭后不发布结果；既有 [ContentPaginationTest][text-pagination-test] 保留组件顺序、页数参数和异常传播检查。
+- 影响边界：修复保证受控任务与输入归属，不宣称解决所有真实设备残影、字体引擎差异或多窗口动画；这些仍需真机/集成验证。PAGE-001 的极小高度算法边界另行处理。
 
 ## PAGE-003：分页去重用的 contentKey 从未记录计算结果
 
@@ -69,6 +73,7 @@
 [pagination]: ../app/src/main/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/content/componet/TextPagination.kt
 [renderers]: ../app/src/main/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/content/componet/BuiltInContentRenderers.kt
 [flip]: ../app/src/main/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/content/flip/FlipPageContentComponent.kt
+[pagination-coordinator-test]: ../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/content/flip/FlipPaginationCoordinatorTest.kt
 [decode-test]: ../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/data/content/ContentDecodingContractTest.kt
 [processing-test]: ../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/data/content/TextProcessingContentContractTest.kt
 [text-page-test]: ../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/data/content/TextPaginationContractTest.kt

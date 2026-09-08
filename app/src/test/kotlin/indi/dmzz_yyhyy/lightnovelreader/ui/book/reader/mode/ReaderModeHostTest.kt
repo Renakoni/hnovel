@@ -45,6 +45,29 @@ class ReaderModeHostTest {
     }
 
     @Test
+    fun replacingModeCapturesItsRequestedChapterBeforeClosingIt() {
+        var requested: String? = "requested"
+        val bindings = mutableListOf<String>()
+        val host = ReaderModeHost { mode ->
+            object : ReaderModeController {
+                override val uiState = mockk<ContentUiState>()
+                override val requestedChapterId: String?
+                    get() = if (mode == ReaderMode.Scroll) requested else null
+                override fun changeBookId(id: String) = Unit
+                override fun changeChapter(id: String) { bindings += id }
+                override fun loadNextChapter() = Unit
+                override fun loadPrevChapter() = Unit
+                override fun close() { requested = null }
+            }
+        }
+        host.select(ReaderMode.Scroll, { "book" }, { "initial" })
+        host.select(ReaderMode.Flip, { "book" }, { host.requestedChapterId ?: "missing" })
+
+        assertEquals(listOf("initial", "requested"), bindings)
+        assertEquals(null, requested)
+    }
+
+    @Test
     fun sessionValuesAreReadAfterConstructionAndBetweenBindingCalls() {
         var book = "before"
         var chapter = "before"

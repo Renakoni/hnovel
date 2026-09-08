@@ -16,11 +16,13 @@ class ContentComponentFactory @Inject constructor(
         componentClass: KClass<out AbstractContentComponent<out AbstractContentComponentData>>,
         dataClass: KClass<out AbstractContentComponentData>,
         decodeData: () -> AbstractContentComponentData,
-    ): AbstractContentComponent<out AbstractContentComponentData>? =
-        pluginInjectorProvider.value!!.provide(
+    ): AbstractContentComponent<out AbstractContentComponentData>? {
+        val injector = pluginInjectorProvider.value ?: return null
+        return injector.provide(
             componentClass.java,
-            pluginInjectorProvider.value!!.injectMap.toMutableMap().apply {
+            injector.injectMap.toMutableMap().apply {
                 put(dataClass.java, decodeData())
             },
         )
+    }
 }

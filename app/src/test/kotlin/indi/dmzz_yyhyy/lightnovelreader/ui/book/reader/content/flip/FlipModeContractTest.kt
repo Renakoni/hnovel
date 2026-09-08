@@ -157,20 +157,61 @@ class FlipModeContractTest {
     }
 
     @Test
-    fun lateStoredProgressWaitsForAnotherPagerUpdate() {
+    fun lateStoredProgressRestoresTheAlreadyCreatedPagerImmediately() {
+        val gate = CompletableDeferred<Unit>()
+        env.records.readGates += gate
+        env.records.data = env.records.data.copy(currentChapterReadingProgressMap = mapOf("requested" to 0.75f))
+        open()
+        val targets = mutableListOf<Int>()
+        progress.clear()
+        mode.updatePagerState(pager(4, targets = targets))
+        env.runCurrent()
+        assertTrue(progress.isEmpty())
+        gate.complete(Unit)
+        env.runCurrent()
+        assertEquals(listOf(2), targets)
+    }
+
+    @Test
+    fun lateStoredProgressDoesNotOverrideAUserPageChange() {
         val gate = CompletableDeferred<Unit>()
         env.records.readGate = gate
         env.records.data = env.records.data.copy(currentChapterReadingProgressMap = mapOf("requested" to 0.75f))
         open()
         val targets = mutableListOf<Int>()
-        mode.updatePagerState(pager(4, targets = targets))
+        val page = mutableIntStateOf(0)
+        progress.clear()
+        mode.updatePagerState(pager(4, page, targets))
+        env.runCurrent()
+        env.emit("requested", Ok(env.chapter("requested")))
+        page.intValue = 1
         env.runCurrent()
         gate.complete(Unit)
         env.runCurrent()
         assertTrue(targets.isEmpty())
-        mode.updatePagerState(pager(4, targets = targets))
+        assertEquals("progress=$progress", listOf("requested" to 0.5f), progress)
+    }
+
+    @Test
+    fun lateStoredProgressDoesNotOverrideAnInFlightPageChange() {
+        val gate = CompletableDeferred<Unit>()
+        env.records.readGate = gate
+        env.records.data = env.records.data.copy(currentChapterReadingProgressMap = mapOf("requested" to 0.75f))
+        open()
+        val targets = mutableListOf<Int>()
+        val pager = mockk<PagerState> {
+            every { pageCount } returns 4
+            every { settledPage } returns 0
+            every { currentPage } returns 1
+            every { targetPage } returns 1
+            every { isScrollInProgress } returns true
+            coEvery { scrollToPage(any(), any()) } answers { targets += firstArg<Int>() }
+        }
+        mode.updatePagerState(pager)
         env.runCurrent()
-        assertEquals(listOf(2), targets)
+        gate.complete(Unit)
+        env.runCurrent()
+        assertTrue(targets.isEmpty())
     }
 
     @Test
@@ -206,6 +247,36 @@ class FlipModeContractTest {
     }
 
     @Test
+    fun emptyPagerDuringRepaginationPreservesProgressUntilTheNewPagesAreReady() {
+        open()
+        env.emit("requested", Ok(env.chapter("requested")))
+        mode.updatePagerState(pager(10, mutableIntStateOf(5)))
+        env.runCurrent()
+        assertEquals(0.6f, mode.uiState.readingProgress)
+        progress.clear()
+
+        mode.updatePagerState(pager(0))
+        env.runCurrent()
+        assertEquals(0.6f, mode.uiState.readingProgress)
+        assertTrue(progress.isEmpty())
+
+        val page = mutableIntStateOf(0)
+        val targets = mutableListOf<Int>()
+        val rebuilt = pager(20, page, targets)
+        coEvery { rebuilt.scrollToPage(any(), any()) } answers {
+            val target = firstArg<Int>()
+            targets += target
+            page.intValue = target
+        }
+        mode.updatePagerState(rebuilt)
+        env.runCurrent()
+        assertEquals(listOf(11), targets)
+        assertEquals(0.6f, mode.uiState.readingProgress)
+        assertTrue(progress.isNotEmpty())
+        assertTrue(progress.all { it == "requested" to 0.6f })
+    }
+
+    @Test
     fun replacingQueuedRestorationWithAnEmptyPagerDoesNotScrollTheOldPager() {
         env.records.data = env.records.data.copy(currentChapterReadingProgressMap = mapOf("requested" to 0.6f))
         open()
@@ -219,6 +290,9 @@ class FlipModeContractTest {
     private fun pager(count: Int, page: androidx.compose.runtime.MutableIntState = mutableIntStateOf(0), targets: MutableList<Int> = mutableListOf()): PagerState = mockk {
         every { pageCount } returns count
         every { settledPage } answers { page.intValue }
+        every { currentPage } answers { page.intValue }
+        every { targetPage } answers { page.intValue }
+        every { isScrollInProgress } returns false
         coEvery { scrollToPage(any(), any()) } answers { targets += firstArg<Int>() }
     }
 }
