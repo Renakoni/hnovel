@@ -14,6 +14,7 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.CancellationException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -33,6 +34,7 @@ class StatsRepositoryCharacterizationTest {
     private var recordWriteGate: CompletableDeferred<Unit>? = null
     private var recordWriteStarted: CompletableDeferred<Unit>? = null
     private var recordWriteCalls = 0
+    private var cancelDailyWriteAfterCommit = false
     private val recordDao = mockk<BookRecordDao> {
         coEvery { getBookRecordByIdAndDate(any(), any()) } answers { records[firstArg<String>() to secondArg<LocalDate>()] }
         coEvery { insertBookRecord(any()) } coAnswers {
@@ -53,6 +55,10 @@ class StatsRepositoryCharacterizationTest {
         coEvery { insert(any()) } answers {
             val record = firstArg<DailyCountEntity>()
             dailyCounts[record.date] = record
+            if (cancelDailyWriteAfterCommit) {
+                cancelDailyWriteAfterCommit = false
+                throw CancellationException("daily write cancelled after commit")
+            }
         }
         coEvery { deleteByDate(any()) } answers {
             dailyCounts.remove(firstArg<LocalDate>())
@@ -189,6 +195,23 @@ class StatsRepositoryCharacterizationTest {
         val record = records.getValue("book" to LocalDate.now())
         assertEquals(1, record.reads)
         assertTrue(record.isFinished)
+    }
+
+    @Test
+    fun cancellationAfterDailyCountCommitStillRollsBackBeforeRetry() = runTest {
+        cancelDailyWriteAfterCommit = true
+
+        try {
+            repository.accumulateBookReadTime("book", 60)
+        } catch (_: CancellationException) {
+            // The daily row was committed before cancellation was reported.
+        }
+
+        assertEquals(0, dailyCounts[LocalDate.now()]?.timeCount?.getTotalMinutes() ?: 0)
+
+        repository.accumulateBookReadTime("book", -1)
+
+        assertEquals(1, dailyCounts.getValue(LocalDate.now()).timeCount.getTotalMinutes())
     }
 
     @Test

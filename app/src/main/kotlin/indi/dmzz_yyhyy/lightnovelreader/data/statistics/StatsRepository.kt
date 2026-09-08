@@ -101,9 +101,9 @@ class StatsRepository @Inject constructor(
             val updatedDailyCount = dailyCount.copy(
                 timeCount = updateCount(dailyCount.timeCount.copy(), update)
             )
-            dailyCountDao.insert(updatedDailyCount)
 
             try {
+                dailyCountDao.insert(updatedDailyCount)
                 val existingRecord = bookRecordDao.getBookRecordByIdAndDate(update.bookId, today)
                     ?: createRecordEntity(update.bookId, today)
                 val updatedRecord = existingRecord.copy(
