@@ -22,12 +22,12 @@ import io.nightfish.lightnovelreader.api.identifier.Identifier
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
+import kotlinx.coroutines.CancellationException
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
-import java.lang.reflect.InvocationTargetException
 import kotlin.reflect.KClass
 
 @RunWith(RobolectricTestRunner::class)
@@ -127,35 +127,48 @@ class ContentDecodingContractTest {
     }
 
     @Test
-    fun invalidJsonTypesStillThrowAndArrayObjectsAreValidatedBeforeAnyDecode() {
+    fun invalidJsonTypesBecomeRenderingErrorsButExportRemainsStrict() {
         host.initializeInjector()
         var decodes = 0
         register(serializer = FixtureSerializer { decodes++ })
         for (input in listOf("""{"components":{}}""", """{"components":[${entry("body")},1]}""", """{"components":[{"id":{},"data":{}}]}""", """{"components":[{"id":"fixture:text","data":[]}]}""")) {
-            assertThrows(IllegalArgumentException::class.java) { render(input) }
+            val rendered = render(input)
+            assertTrue(rendered.all { it is ErrorContentComponent || it is InjectedFixtureComponent })
             assertThrows(IllegalArgumentException::class.java) { host.decoder.getDataFromJsonObject(json(input)) {} }
         }
-        assertEquals(0, decodes)
+        assertEquals(1, decodes)
     }
 
     @Test
-    fun serializerAndConstructorFailuresAreNotConvertedToErrorComponents() {
+    fun serializerAndConstructorFailuresBecomeVisibleErrorsAndDoNotStopLaterComponents() {
         host.initializeInjector()
+        register(serializer = FixtureSerializer { text ->
+            if (text == "bad") throw IllegalStateException("fixture decoder failed")
+        })
+        val rendered = render("""{"components":[${entry("bad")},${entry("body")}]}""")
+        assertEquals("failed to create component", (rendered[0] as ErrorContentComponent).data.message)
+        assertEquals(FixtureData("body"), rendered[1].data)
+
         val failure = IllegalStateException("fixture decoder failed")
         register(serializer = FixtureSerializer { throw failure })
-        assertSame(failure, assertThrows(IllegalStateException::class.java) { renderOne() })
         assertSame(failure, assertThrows(IllegalStateException::class.java) { host.decoder.getDataFromJsonObject(json("""{"components":[${entry("body")}]}""")) {} })
         register(component = ThrowingFixtureComponent::class)
-        val thrown = assertThrows(InvocationTargetException::class.java) { renderOne() }
-        assertEquals("fixture constructor failed", thrown.cause?.message)
+        assertEquals("failed to create component", (renderOne() as ErrorContentComponent).data.message)
     }
 
     @Test
     fun injectorIsRequiredBeforeTheSerializerIsInvokedForRendering() {
         var decodes = 0
         register(serializer = FixtureSerializer { decodes++ })
-        assertThrows(NullPointerException::class.java) { renderOne() }
+        assertEquals("failed to init component", (renderOne() as ErrorContentComponent).data.message)
         assertEquals(0, decodes)
+    }
+
+    @Test
+    fun cancellationIsNotConvertedToAnErrorComponent() {
+        host.initializeInjector()
+        register(serializer = FixtureSerializer { throw CancellationException("cancelled") })
+        assertThrows(CancellationException::class.java) { renderOne() }
     }
 
     @Test
