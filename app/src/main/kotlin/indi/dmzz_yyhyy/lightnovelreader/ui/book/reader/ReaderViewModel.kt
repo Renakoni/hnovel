@@ -127,6 +127,7 @@ class ReaderViewModel @Inject constructor(
         readingRecords.accumulateReadingTime(bookId, seconds)
 
     override fun onCleared() {
+        bookVolumesRequest++
         modeHost.close()
         bookVolumesJob?.cancel()
         super.onCleared()

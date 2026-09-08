@@ -36,7 +36,7 @@
 - 状态：**目录替换与模式停用已修复并提交独立 PR；统计 scope 的退出结算仍单独跟踪**。
 - 基线证据：新增 `ReaderDirectoryOwnershipTest.replacingBookCancelsThePreviousDirectoryCollection`。测试先订阅 `first`，再切换到 `second`；原始 `main@1dd4604f` 没有保存/取消旧 Job，旧 Flow 的取消信号不会到达，测试超时。修复后旧订阅在新书请求建立时被取消，并以请求序号拒绝迟到结果。
 - 修复语义：`ReaderViewModel` 保存目录收集 Job，切书时取消并清空旧目录状态。目录读取在 IO，请求序号检查与结果发布一起回到主线程，与导航切书重置串行，消除跨线程检查后再写入的竞态。`ReaderModeController` 增加关闭契约，`ReaderModeHost` 保存旧模式请求章节后再关闭并绑定新模式；工厂为每个内置模式建立父 scope 下的可取消子 scope，ViewModel 清理时关闭当前模式。
-- 回归覆盖：[ReaderModeOwnershipTest][ownership-test] 验证模式替换会取消旧模式任务、清理会取消当前任务；目录测试验证旧书迟到不会覆盖新书。真实导航网络和设备退出结算仍不由 JVM 测试覆盖。
+- 回归覆盖：[ReaderModeOwnershipTest][ownership-test] 验证模式替换会取消旧模式任务、清理会取消当前任务；目录测试验证旧书迟到不会覆盖新书，且非合作 Flow 在 ViewModel 销毁后仍返回时也不会发布结果。清理先使目录请求序号失效，再取消任务。同步 main 的 READ-003 后，目录计数更新与 UI 发布共同经过请求检查，仍只使用已有目录订阅。真实导航网络和设备退出结算仍不由 JVM 测试覆盖。
 - 限制与后续：`ReaderReadingRecords` 使用的独立 `statisticsScope` 仍需定义“退出前完成写入”与取消的顺序，本 PR 不粗暴取消它；统计结算对应 READ-002/READ-003 的后续修复。
 
 ## SCROLL-002：throttleLatest 不会在窗口结束时自动补发暂存值

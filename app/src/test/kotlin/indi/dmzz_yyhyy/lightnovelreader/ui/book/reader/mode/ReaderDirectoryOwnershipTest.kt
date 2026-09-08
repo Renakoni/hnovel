@@ -36,6 +36,7 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withContext
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -128,7 +129,14 @@ class ReaderDirectoryOwnershipTest {
     }
 
     @Test
-    fun nonCooperativeOldDirectoryCannotPublishAfterTheNewBook() {
+    fun nonCooperativeOldDirectoryCannotPublishAfterTheNewBook() =
+        assertNonCooperativeDirectoryCannotPublish(clearOwner = false)
+
+    @Test
+    fun nonCooperativeDirectoryCannotPublishAfterTheOwnerIsCleared() =
+        assertNonCooperativeDirectoryCannotPublish(clearOwner = true)
+
+    private fun assertNonCooperativeDirectoryCannotPublish(clearOwner: Boolean) {
         val started = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
         val finished = CompletableDeferred<Unit>()
@@ -157,11 +165,16 @@ class ReaderDirectoryOwnershipTest {
         try {
             reader.bookId = "first"
             await { started.isCompleted }
-            reader.bookId = "second"
-            await { reader.uiState.bookVolumes?.get()?.bookId == "second" }
+            if (clearOwner) {
+                store.clear()
+            } else {
+                reader.bookId = "second"
+                await { reader.uiState.bookVolumes?.get()?.bookId == "second" }
+            }
             release.complete(Unit)
             await { finished.isCompleted }
-            assertEquals("second", reader.uiState.bookVolumes?.get()?.bookId)
+            if (clearOwner) assertNull(reader.uiState.bookVolumes)
+            else assertEquals("second", reader.uiState.bookVolumes?.get()?.bookId)
         } finally {
             release.complete(Unit)
         }
