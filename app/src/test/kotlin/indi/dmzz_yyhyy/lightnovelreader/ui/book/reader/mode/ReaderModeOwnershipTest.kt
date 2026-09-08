@@ -104,4 +104,57 @@ class ReaderModeOwnershipTest {
         assertEquals(3, events.count { it.startsWith("stop/") })
         assertFalse(scopes.first().coroutineContext[Job]!!.isActive)
     }
+
+    @Test
+    fun rapidModeToggleKeepsTheDisplayedChapterWhenTheNewModeHasNotEmittedYet() {
+        val flip = MutableStateFlow<String?>(null)
+        val dao = mockk<UserDataDao> {
+            every { getFlow(any()) } returns flowOf(null)
+            every { getFlow(UserDataPath.Reader.IsUsingFlipPage.path) } returns flip
+        }
+        val events = mutableListOf<String>()
+        val factory = mockk<ReaderModeFactory> {
+            every { create(any(), any(), any(), any()) } answers {
+                val mode = firstArg<ReaderMode>()
+                object : ReaderModeController {
+                    private var displayedChapter: String? = null
+                    override val uiState = mockk<ContentUiState> {
+                        every { readingChapterId } answers { displayedChapter }
+                    }
+
+                    override fun changeBookId(id: String) = Unit
+
+                    override fun changeChapter(id: String) {
+                        events += "$mode/chapter/$id"
+                        if (mode != ReaderMode.Flip || id != "initial-next") {
+                            displayedChapter = id
+                        }
+                    }
+
+                    override fun loadNextChapter() {
+                        displayedChapter = "initial-next"
+                        events += "$mode/next"
+                    }
+
+                    override fun loadPrevChapter() = Unit
+                }
+            }
+        }
+        val reader = ReaderViewModel(mockk(), mockk(), mockk(), UserDataRepository(dao), factory)
+        store.put("reader", reader)
+
+        reader.changeChapter("initial")
+        scheduler.runCurrent()
+        reader.nextChapter()
+        assertEquals("initial-next", reader.uiState.contentUiState!!.readingChapterId)
+
+        flip.value = "true"
+        scheduler.runCurrent()
+        assertEquals(null, reader.uiState.contentUiState!!.readingChapterId)
+        flip.value = "false"
+        scheduler.runCurrent()
+
+        assertEquals("initial-next", reader.uiState.contentUiState!!.readingChapterId)
+        assertTrue(events.contains("Scroll/chapter/initial-next"))
+    }
 }

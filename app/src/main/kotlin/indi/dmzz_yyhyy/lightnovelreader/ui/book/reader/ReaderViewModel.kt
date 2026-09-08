@@ -61,8 +61,9 @@ class ReaderViewModel @Inject constructor(
                     _uiState.bookVolumes = it
                 }
             }
-        }
+    }
     private var chapterId = ""
+    private var lastModeChapterId: String? = null
 
     init {
         viewModelScope.launch {
@@ -81,13 +82,18 @@ class ReaderViewModel @Inject constructor(
 
     fun changeChapter(chapterId: String) {
         this.chapterId = chapterId
+        lastModeChapterId = chapterId
         modeHost.changeChapter(chapterId)
     }
 
-    private fun currentChapterIdForModeSwitch(): String =
-        _uiState.contentUiState?.readingChapterId
+    private fun currentChapterIdForModeSwitch(): String {
+        val displayedChapterId = _uiState.contentUiState?.readingChapterId
             ?.takeIf { it.isNotBlank() }
-            ?: chapterId
+        if (displayedChapterId != null) {
+            lastModeChapterId = displayedChapterId
+        }
+        return displayedChapterId ?: lastModeChapterId ?: chapterId
+    }
 
     private fun saveReadingProgress(chapterId: String, progress: Float) =
         readingRecords.saveProgress(chapterId, progress)
