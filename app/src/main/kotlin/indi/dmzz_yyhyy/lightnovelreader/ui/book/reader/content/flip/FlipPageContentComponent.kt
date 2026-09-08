@@ -146,6 +146,8 @@ private fun SimpleFlipPageTextComponent(
         val height = contentSize.height - verticalPadding
         if (width <= 0 || height <= 0) {
             pagination.cancelPending()
+            slippedContentComponentList = emptyList()
+            uiState.updatePageState(PagerState { 0 })
             return@LaunchedEffect
         }
         slippedContentComponentList = emptyList()
