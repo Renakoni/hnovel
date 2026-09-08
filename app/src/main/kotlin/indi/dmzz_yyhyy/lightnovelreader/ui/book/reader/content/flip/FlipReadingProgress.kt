@@ -21,6 +21,9 @@ internal class FlipReadingProgress(
     private var notRecoveredProgress = 0f
     private var collectProgressJob: Job? = null
     private var restorationJob: Job? = null
+    private var currentPagerState: PagerState? = null
+    private var initialPagerPage: Int? = null
+    private var restorationApplied = false
     private var recoveryJob: Job? = null
     private var recoveryGeneration = 0L
 
@@ -43,48 +46,84 @@ internal class FlipReadingProgress(
     }
 
     fun updatePagerState(pagerState: PagerState) {
+        currentPagerState = pagerState
         uiState.pagerState = pagerState
         restorationJob?.cancel()
         restorationJob = null
-        if (pagerState.pageCount == 0) return
-        val progressToRestore = when {
-            notRecoveredProgress > 0f -> notRecoveredProgress
-            uiState.readingProgress > 0f -> uiState.readingProgress
-            else -> return
-        }
-        restorationJob = coroutineScope.launch {
-            if (uiState.pagerState !== pagerState) return@launch
-            val pageCount = pagerState.pageCount
-            if (pageCount == 0 || uiState.pagerState !== pagerState) return@launch
-            val recovered = progressToRestore.coerceIn(0f, 1f)
-            val target = ((pageCount * recovered).roundToInt() - 1)
-                .coerceIn(0, pageCount - 1)
-            if (uiState.pagerState !== pagerState) return@launch
-            pagerState.scrollToPage(target)
-            if (notRecoveredProgress == progressToRestore) {
-                notRecoveredProgress = 0f
-            }
-        }
+        if (pagerState.pageCount > 0 && initialPagerPage == null)
+            initialPagerPage = pagerState.settledPage
+        restorePendingProgress(allowCurrentProgress = true)
     }
 
     fun resetForChapter() {
         restorationJob?.cancel()
         restorationJob = null
         recoveryJob?.cancel()
+        recoveryJob = null
         recoveryGeneration++
         notRecoveredProgress = 0f
+        currentPagerState = null
+        initialPagerPage = null
+        restorationApplied = false
         uiState.readingProgress = 0f
     }
 
     fun recoverForChapter(id: String, bookId: String = uiState.bookId) {
+        restorationJob?.cancel()
+        restorationJob = null
         recoveryJob?.cancel()
-        val requestedGeneration = ++recoveryGeneration
+        val generation = ++recoveryGeneration
         recoveryJob = coroutineScope.launch(ioDispatcher) {
-            val data = readingData.getUserReadingData(bookId)
-            if (requestedGeneration == this@FlipReadingProgress.recoveryGeneration) {
-                notRecoveredProgress = data.currentChapterReadingProgressMap[id] ?: 0f
+            readingData.getUserReadingData(bookId).let {
+                if (generation != recoveryGeneration) return@let
+                notRecoveredProgress = it.currentChapterReadingProgressMap[id] ?: 0f
+                coroutineScope.launch {
+                    restorePendingProgress(expectedRecoveryGeneration = generation)
+                }
             }
         }
     }
 
+    private fun restorePendingProgress(
+        allowCurrentProgress: Boolean = false,
+        expectedRecoveryGeneration: Long? = null,
+    ) {
+        if (expectedRecoveryGeneration != null && expectedRecoveryGeneration != recoveryGeneration) return
+        val pagerState = currentPagerState ?: return
+        if (pagerState.pageCount == 0 || (!allowCurrentProgress && restorationApplied)) return
+        val hasRecoveredProgress = notRecoveredProgress > 0f
+        if (!hasRecoveredProgress && (!allowCurrentProgress || uiState.readingProgress <= 0f)) return
+        if (hasRecoveredProgress && initialPagerPage != null &&
+            (pagerState.isScrollInProgress ||
+                pagerState.currentPage != initialPagerPage ||
+                pagerState.targetPage != initialPagerPage)
+        ) {
+            notRecoveredProgress = 0f
+            restorationApplied = true
+            return
+        }
+        if (hasRecoveredProgress && initialPagerPage != null && pagerState.settledPage != initialPagerPage) {
+            notRecoveredProgress = 0f
+            restorationApplied = true
+            return
+        }
+        val recovered = (if (hasRecoveredProgress) notRecoveredProgress else uiState.readingProgress)
+            .coerceIn(0f, 1f)
+        restorationJob?.cancel()
+        restorationJob = coroutineScope.launch {
+            if (expectedRecoveryGeneration != null && expectedRecoveryGeneration != recoveryGeneration) return@launch
+            if (uiState.pagerState !== pagerState || pagerState.pageCount == 0) return@launch
+            val target = ((pagerState.pageCount * recovered).roundToInt() - 1)
+                .coerceIn(0, pagerState.pageCount - 1)
+            if (expectedRecoveryGeneration != null && expectedRecoveryGeneration != recoveryGeneration) return@launch
+            if (uiState.pagerState === pagerState) {
+                pagerState.scrollToPage(target)
+                if (expectedRecoveryGeneration != null && expectedRecoveryGeneration != recoveryGeneration) return@launch
+                if (hasRecoveredProgress && notRecoveredProgress == recovered) {
+                    notRecoveredProgress = 0f
+                    restorationApplied = true
+                }
+            }
+        }
+    }
 }

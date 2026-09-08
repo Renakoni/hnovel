@@ -105,13 +105,14 @@ internal class ModeTestEnvironment {
         var data = UserReadingData("book")
         val writes = mutableListOf<UserReadingData>()
         var readGate: CompletableDeferred<Unit>? = null
+        val readGates = ArrayDeque<CompletableDeferred<Unit>>()
         var writeGate: CompletableDeferred<Unit>? = null
         val writeGates = ArrayDeque<CompletableDeferred<Unit>>()
         val nonCancellableWriteGates = ArrayDeque<CompletableDeferred<Unit>>()
 
         override suspend fun getUserReadingData(bookId: String): UserReadingData {
             events += "read/start/$bookId"
-            readGate?.await()
+            readGates.removeFirstOrNull()?.await() ?: readGate?.await()
             events += "read/end/$bookId"
             return data
         }
