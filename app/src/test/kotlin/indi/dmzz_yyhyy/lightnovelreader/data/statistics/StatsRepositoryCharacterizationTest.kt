@@ -9,22 +9,23 @@ import io.mockk.coEvery
 import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.time.LocalDate
 
-/** Statistics summary precision contracts. */
+/** Statistics buffer ownership, settlement, and summary precision contracts. */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [27], application = Application::class)
 class StatsRepositoryCharacterizationTest {
     private val records = mutableMapOf<Pair<String, LocalDate>, BookRecordEntity>()
     private val dailyCounts = mutableMapOf<LocalDate, DailyCountEntity>()
+    private var failRecordWrite = false
     private val recordDao = mockk<BookRecordDao> {
         coEvery { getBookRecordByIdAndDate(any(), any()) } answers { records[firstArg<String>() to secondArg<LocalDate>()] }
         coEvery { insertBookRecord(any()) } answers {
+            if (failRecordWrite) throw IllegalStateException("record write failed")
             val record = firstArg<BookRecordEntity>()
             records[record.bookId to record.date] = record
         }
@@ -41,24 +42,44 @@ class StatsRepositoryCharacterizationTest {
     private val repository = StatsRepository(recordDao, dailyDao, mockk())
 
     @Test
-    fun recordingAnEntryDiscardsSecondsAlreadyBufferedForThatBook() = runTest {
+    fun recordingAnEntryPreservesSecondsAlreadyBufferedForThatBook() = runTest {
         repository.accumulateBookReadTime("book", 10)
         repository.updateReadingStatistics(ReadingStatsUpdate(bookId = "book", readEventDelta = 1))
         repository.accumulateBookReadTime("book", -1)
 
         assertEquals(1, records.values.sumOf { it.reads })
-        assertEquals(0, records.values.sumOf { it.seconds })
+        assertEquals(10, records.values.sumOf { it.seconds })
     }
 
     @Test
-    fun flushingOneBookDiscardsAnotherBooksUnflushedSeconds() = runTest {
+    fun flushingOneBookPreservesAnotherBooksUnflushedSeconds() = runTest {
         repository.accumulateBookReadTime("first", 10)
         repository.accumulateBookReadTime("second", 20)
         repository.accumulateBookReadTime("second", -1)
         repository.accumulateBookReadTime("first", -1)
 
-        assertEquals(20, records.values.sumOf { it.seconds })
-        assertFalse(records.values.any { it.bookId == "first" })
+        assertEquals(30, records.values.sumOf { it.seconds })
+        assertEquals(10, records.getValue("first" to LocalDate.now()).seconds)
+        assertEquals(20, records.getValue("second" to LocalDate.now()).seconds)
+    }
+
+    @Test
+    fun failedFlushRetainsBufferedSecondsForRetry() = runTest {
+        repository.accumulateBookReadTime("book", 10)
+        failRecordWrite = true
+
+        var failed = false
+        try {
+            repository.accumulateBookReadTime("book", -1)
+        } catch (_: IllegalStateException) {
+            failed = true
+        }
+        assertEquals(true, failed)
+
+        failRecordWrite = false
+        repository.accumulateBookReadTime("book", -1)
+
+        assertEquals(10, records.getValue("book" to LocalDate.now()).seconds)
     }
 
     @Test

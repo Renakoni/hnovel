@@ -10,6 +10,8 @@ import java.time.LocalDate
 import java.time.LocalTime
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 @Suppress("unused")
 @Singleton
@@ -19,25 +21,25 @@ class StatsRepository @Inject constructor(
     private val bookRepository: BookRepository
 ) {
     private val bookReadTimeBuffer = mutableMapOf<String, Pair<LocalTime, Int>>()
+    private val bookReadTimeBufferMutex = Mutex()
 
     suspend fun accumulateBookReadTime(bookId: String, seconds: Int) {
-        if (seconds < 0) {
-            bookReadTimeBuffer.keys.toList().forEach { _ ->
-                clearBookReadTimeBuffer(bookId)
-                bookReadTimeBuffer.remove(bookId)
+        bookReadTimeBufferMutex.withLock {
+            if (seconds < 0) {
+                clearBookReadTimeBufferLocked(bookId)
+                return
             }
-            return
-        }
-        val current = bookReadTimeBuffer[bookId] ?: Pair(LocalTime.now(), 0)
-        val newTotal = current.second + seconds
-        bookReadTimeBuffer[bookId] = current.copy(second = newTotal)
+            val current = bookReadTimeBuffer[bookId] ?: Pair(LocalTime.now(), 0)
+            val newTotal = current.second + seconds
+            bookReadTimeBuffer[bookId] = current.copy(second = newTotal)
 
-        if (newTotal >= 60 || Duration.between(current.first, LocalTime.now()).seconds >= 60) {
-            clearBookReadTimeBuffer(bookId)
+            if (newTotal >= 60 || Duration.between(current.first, LocalTime.now()).seconds >= 60) {
+                clearBookReadTimeBufferLocked(bookId)
+            }
         }
     }
 
-    private suspend fun clearBookReadTimeBuffer(bookId: String) {
+    private suspend fun clearBookReadTimeBufferLocked(bookId: String) {
         val (startTime, totalSeconds) = bookReadTimeBuffer[bookId] ?: return
 
         updateReadingStatistics(
@@ -49,7 +51,7 @@ class StatsRepository @Inject constructor(
             )
         )
 
-        bookReadTimeBuffer.clear()
+        bookReadTimeBuffer.remove(bookId)
     }
 
     suspend fun getBookRecords(
@@ -107,7 +109,6 @@ class StatsRepository @Inject constructor(
             lastSeen = update.localTime,
         )
         bookRecordDao.insertBookRecord(updatedRecord)
-        bookReadTimeBuffer.clear()
     }
 
     suspend fun markBookFinished(bookId: String) {
