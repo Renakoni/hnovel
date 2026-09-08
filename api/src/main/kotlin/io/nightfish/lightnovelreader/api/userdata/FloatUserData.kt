@@ -20,10 +20,10 @@ class FloatUserData (
     }
 
     override suspend fun get(): Float? {
-        return userDataDao.get(path)?.toFloat()
+        return userDataDao.get(path)?.toFloatOrNull()
     }
 
     override fun getFlow(): Flow<Float?> {
-        return userDataDao.getFlow(path).map { it?.toFloat() }
+        return userDataDao.getFlow(path).map { it?.toFloatOrNull() }
     }
 }
