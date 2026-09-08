@@ -11,6 +11,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
@@ -19,6 +22,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import java.util.concurrent.ConcurrentHashMap
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [27], application = Application::class)
@@ -65,13 +69,27 @@ class ReaderSettingsBoundaryTest {
         assertEquals(state.darkModeKey, themeSettings.darkModeKey)
     }
 
+    @Test
+    fun editingOneSharedSettingPropagatesToBothObservedStates() = runBlocking {
+        val dao = InMemoryUserDataDao()
+        val first = SettingState(UserDataRepository(dao), scope)
+        val second = SettingState(UserDataRepository(dao), scope)
+
+        first.fontSizeUserData.set(22f)
+
+        withTimeout(5_000) {
+            while (first.fontSize != 22f || second.fontSize != 22f) delay(1)
+        }
+        assertEquals("22.0", dao.get(UserDataPath.Reader.FontSize.path))
+    }
+
     private class InMemoryUserDataDao : UserDataDao {
-        private val values = mutableMapOf<String, UserDataEntity>()
-        private val flows = mutableMapOf<String, MutableStateFlow<String?>>()
+        private val values = ConcurrentHashMap<String, UserDataEntity>()
+        private val flows = ConcurrentHashMap<String, MutableStateFlow<String?>>()
 
         override suspend fun insert(path: String, group: String, type: String, value: String) {
             values[path] = UserDataEntity(path, group, type, value)
-            flows.getOrPut(path) { MutableStateFlow(null) }.value = value
+            flows.computeIfAbsent(path) { MutableStateFlow(values[path]?.value) }.value = value
         }
 
         override suspend fun insert(userDataEntity: UserDataEntity) {
@@ -86,7 +104,7 @@ class ReaderSettingsBoundaryTest {
         override suspend fun get(path: String): String? = values[path]?.value
 
         override fun getFlow(path: String): Flow<String?> =
-            flows.getOrPut(path) { MutableStateFlow(values[path]?.value) }
+            flows.computeIfAbsent(path) { MutableStateFlow(values[path]?.value) }
 
         override fun getEntity(path: String): UserDataEntity? = values[path]
 
@@ -95,7 +113,7 @@ class ReaderSettingsBoundaryTest {
 
         override suspend fun remove(path: String) {
             values.remove(path)
-            flows.getOrPut(path) { MutableStateFlow(null) }.value = null
+            flows.computeIfAbsent(path) { MutableStateFlow(null) }.value = null
         }
 
         override fun getAllEntities(): List<UserDataEntity> = values.values.toList()
