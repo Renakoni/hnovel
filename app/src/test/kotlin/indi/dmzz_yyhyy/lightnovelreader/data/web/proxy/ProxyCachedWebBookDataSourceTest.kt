@@ -64,7 +64,32 @@ class ProxyCachedWebBookDataSourceTest {
         coVerify(exactly = 1) { remote.getBookVolumes("book-a", WebDataSourcePriority.Default) }
         coVerify(exactly = 1) { remote.getBookVolumes("book-b", WebDataSourcePriority.Default) }
         coVerify(exactly = 1) { remote.getChapterContent("", "same", WebDataSourcePriority.Default) }
-        assertEquals(volumes, cache.getCache<BookVolumes>("same".hashCode()))
-        assertEquals(chapter, cache.getCache<ChapterContent>("same".hashCode()))
+    }
+
+    @Test
+    fun collidingHashesAndAmbiguousChapterPairsRemainIndependent() = runTest {
+        val origin = mockk<WebBookDataSource>(relaxed = true)
+        every { origin.cache } returns Cache()
+        val remote = mockk<ProxyWebBookDataSource>()
+        every { remote.origin } returns origin
+        val cached = ProxyCachedWebBookDataSource(remote)
+        assertEquals("Aa".hashCode(), "BB".hashCode())
+        coEvery { remote.getBookVolumes(any(), any()) } answers { Ok(BookVolumes(firstArg(), emptyList())) }
+        coEvery { remote.getChapterContent(any(), any(), any()) } answers {
+            Ok(ChapterContent(firstArg(), secondArg(), Json.parseToJsonElement("""{"components":[]}""").jsonObject))
+        }
+
+        repeat(2) {
+            assertEquals(Ok(BookVolumes("Aa", emptyList())), cached.getBookVolumes("Aa", WebDataSourcePriority.Default))
+            assertEquals(Ok(BookVolumes("BB", emptyList())), cached.getBookVolumes("BB", WebDataSourcePriority.Default))
+            for ((chapterId, bookId) in listOf("ab" to "c", "a" to "bc")) {
+                val result = cached.getChapterContent(chapterId, bookId, WebDataSourcePriority.Default)
+                assertEquals(Ok(ChapterContent(chapterId, bookId, Json.parseToJsonElement("""{"components":[]}""").jsonObject)), result)
+            }
+        }
+        coVerify(exactly = 1) { remote.getBookVolumes("Aa", WebDataSourcePriority.Default) }
+        coVerify(exactly = 1) { remote.getBookVolumes("BB", WebDataSourcePriority.Default) }
+        coVerify(exactly = 1) { remote.getChapterContent("ab", "c", WebDataSourcePriority.Default) }
+        coVerify(exactly = 1) { remote.getChapterContent("a", "bc", WebDataSourcePriority.Default) }
     }
 }
