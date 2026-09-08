@@ -157,7 +157,7 @@ class FlipModeContractTest {
     }
 
     @Test
-    fun lateStoredProgressWaitsForAnotherPagerUpdate() {
+    fun lateStoredProgressRestoresTheAlreadyCreatedPagerImmediately() {
         val gate = CompletableDeferred<Unit>()
         env.records.readGate = gate
         env.records.data = env.records.data.copy(currentChapterReadingProgressMap = mapOf("requested" to 0.75f))
@@ -167,10 +167,24 @@ class FlipModeContractTest {
         env.runCurrent()
         gate.complete(Unit)
         env.runCurrent()
-        assertTrue(targets.isEmpty())
-        mode.updatePagerState(pager(4, targets = targets))
-        env.runCurrent()
         assertEquals(listOf(2), targets)
+    }
+
+    @Test
+    fun lateStoredProgressDoesNotOverrideAUserPageChange() {
+        val gate = CompletableDeferred<Unit>()
+        env.records.readGate = gate
+        env.records.data = env.records.data.copy(currentChapterReadingProgressMap = mapOf("requested" to 0.75f))
+        open()
+        val targets = mutableListOf<Int>()
+        val page = mutableIntStateOf(0)
+        mode.updatePagerState(pager(4, page, targets))
+        env.runCurrent()
+        page.intValue = 1
+        env.runCurrent()
+        gate.complete(Unit)
+        env.runCurrent()
+        assertTrue(targets.isEmpty())
     }
 
     @Test
