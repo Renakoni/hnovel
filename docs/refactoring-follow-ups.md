@@ -126,10 +126,12 @@
 
 ## READ-004：总体进度和读完标记滞后一次章节进度写入
 
-- 状态：**R4 既有测试已证实；提取前公式相同**。
-- 证据：[ReaderReadingRecords](../app/src/main/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/ReaderReadingRecords.kt) 先用旧最大进度 Map 计算总体进度，再更新当前章节。[ReaderReadingRecordsTest](../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/ReaderReadingRecordsTest.kt) 的 `finishingUsesTheReadAfterWriteResultAndStillCallsTheRepositoryForRepeatedEvents` 验证：两章原最大进度 0.5 和 1，当前章写到 1 后总体仍是 0.75；下一次再写才成为 1 并调用读完标记。
-- 影响：最终章节进度已完成却未必立即表现为整本读完。如果没有下一次进度事件，该状态可能一直滞后。
-- 后续：明确总体进度应基于本次更新后的数据计算，并结合结束阅读时最后一次进度事件验证读完标记；与并发写入问题 BOOK-002 一起评估。
+- 状态：**本分支已修复计算顺序；基线问题由受控仓库测试复现**，对应 [Issue #24](https://github.com/Renakoni/hnovel/issues/24)。
+- 基线证据：在 `main@1dd4604f` 生产代码上运行调整后的 [ReaderReadingRecordsTest](../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/ReaderReadingRecordsTest.kt)，14 项中 6 项因旧 Map 计算失败。两章最大进度为 0.5 和 1 时，将前者写为 1，整体仍为 0.75；首次上报四章之一的 0.5 进度时，整体仍为 0。
+- 修复语义：[ReaderReadingRecords](../app/src/main/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/ReaderReadingRecords.kt) 在同一个 `updateUserReadingData` 回调内先更新当前/历史最大章节 Map，再用更新后的历史最大值求和、除以章节数并限制在 0～1。两例现在分别为 1 和 0.125；写入完成后回读即可调用读完标记，无需第二次进度事件。
+- 回归契约：覆盖首次上报、同章更新、回读不降低历史最大值、目录未就绪时保留原总进度、总进度上限、末章完成及等待写入结束后才标记读完。重复完成事件仍交给现有仓库处理。
+- 验证结果：14 项记录测试全部通过；完整 `:app:testDebugUnitTest` 为 106 项，失败/错误/跳过均为 0；`:app:assembleDebug` 和 `git diff --check` 通过。
+- 限制：受控 `ReaderRecordStore` 验证计算与调用顺序，不证明 Room 原子性或真实导航退出时异步任务必然完成。BOOK-002 的读改写原子性与 READ-003 的会话归属仍按各自 Issue 处理；本次保持章节等权计算规则。
 
 ## READ-005：计时累计的是循环次数，恢复时立即计入一秒
 
