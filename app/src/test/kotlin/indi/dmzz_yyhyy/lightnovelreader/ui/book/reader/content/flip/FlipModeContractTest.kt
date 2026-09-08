@@ -157,7 +157,7 @@ class FlipModeContractTest {
     }
 
     @Test
-    fun queuedRestorationUsesTheOldPageCountButScrollsTheCurrentPager() {
+    fun queuedRestorationUsesTheCurrentPagerPageCountAndTarget() {
         env.records.data = env.records.data.copy(currentChapterReadingProgressMap = mapOf("requested" to 0.6f))
         open()
         val oldTargets = mutableListOf<Int>()
@@ -166,7 +166,18 @@ class FlipModeContractTest {
         mode.updatePagerState(pager(2, targets = newTargets))
         env.runCurrent()
         assertTrue(oldTargets.isEmpty())
-        assertEquals(listOf(2), newTargets)
+        assertEquals(listOf(0), newTargets)
+    }
+
+    @Test
+    fun replacingQueuedRestorationWithAnEmptyPagerDoesNotScrollTheOldPager() {
+        env.records.data = env.records.data.copy(currentChapterReadingProgressMap = mapOf("requested" to 0.6f))
+        open()
+        val oldTargets = mutableListOf<Int>()
+        mode.updatePagerState(pager(5, targets = oldTargets))
+        mode.updatePagerState(pager(0))
+        env.runCurrent()
+        assertTrue(oldTargets.isEmpty())
     }
 
     private fun pager(count: Int, page: androidx.compose.runtime.MutableIntState = mutableIntStateOf(0), targets: MutableList<Int> = mutableListOf()): PagerState = mockk {
