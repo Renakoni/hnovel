@@ -9,6 +9,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.userdata.UserDataRepository
 import io.mockk.every
 import io.mockk.mockk
 import io.nightfish.lightnovelreader.api.userdata.UserDataPath
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -17,6 +18,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
@@ -75,14 +77,43 @@ class SettingObservationFailureTest {
                 throw IllegalStateException("storage unavailable")
             }
         }
-        var uncaught = false
+        val uncaught = CompletableDeferred<Throwable>()
+        val job = SupervisorJob()
         val scope = CoroutineScope(
-            SupervisorJob() + Dispatchers.Unconfined + CoroutineExceptionHandler { _, _ -> uncaught = true }
+            job + Dispatchers.Unconfined + CoroutineExceptionHandler { _, error -> uncaught.complete(error) }
         )
         try {
             val settings = FontSettings(UserDataRepository(dao), scope)
+            withTimeout(5_000) { job.children.toList().joinAll() }
             assertEquals(15f, settings.fontSize)
-            assertTrue(!uncaught)
+            assertTrue(!uncaught.isCompleted)
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun synchronousFlowConstructionFailureKeepsTheDefaultWithoutEscaping() = runBlocking {
+        val attempted = CompletableDeferred<Unit>()
+        val dao = mockk<UserDataDao> {
+            every { getFlow(UserDataPath.Reader.FontSize.path) } answers {
+                attempted.complete(Unit)
+                throw IllegalStateException("query flow unavailable")
+            }
+        }
+        val uncaught = CompletableDeferred<Throwable>()
+        val job = SupervisorJob()
+        val scope = CoroutineScope(
+            job + Dispatchers.Unconfined + CoroutineExceptionHandler { _, error -> uncaught.complete(error) }
+        )
+        try {
+            val settings = FontSettings(UserDataRepository(dao), scope)
+            withTimeout(5_000) {
+                attempted.await()
+                job.children.toList().joinAll()
+            }
+            assertEquals(15f, settings.fontSize)
+            assertTrue(!uncaught.isCompleted)
         } finally {
             scope.cancel()
         }

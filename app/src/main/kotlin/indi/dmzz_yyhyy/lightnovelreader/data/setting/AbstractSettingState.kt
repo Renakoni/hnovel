@@ -9,6 +9,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 
 abstract class AbstractSettingState(
@@ -33,7 +35,7 @@ abstract class AbstractSettingState(
     protected fun <T> UserData<T>.safeAsState(initial: T): State<T> {
         val state = mutableStateOf(initial)
         coroutineScope.launch(Dispatchers.IO) {
-            getFlowWithDefault(initial)
+            flow { emitAll(getFlowWithDefault(initial)) }
                 .catch { error ->
                     if (error is CancellationException) throw error
                     Log.e(TAG, "Failed to observe setting $path", error)
