@@ -27,15 +27,6 @@ internal class ReaderReadingRecords(
     private val totalReadingTimeMutex = Mutex()
     private val accumulatedReadingTimeLock = Any()
     private var accumulatedReadingTimeJob: Job? = null
-    private val chapterCountMutex = Mutex()
-    private val chapterCountCache = mutableMapOf<String, Int>()
-
-    fun cacheChapterCount(bookId: String, count: Int) {
-        if (bookId.isBlank() || count <= 0) return
-        synchronized(chapterCountCache) {
-            chapterCountCache[bookId] = count
-        }
-    }
 
     fun openBook(bookId: String) {
         scope.launch(ioDispatcher) {
@@ -61,7 +52,7 @@ internal class ReaderReadingRecords(
             // Resolve the count after the event has been queued and bind it to the
             // captured book. The UI's current-book state may have changed by now.
             val total = try {
-                chapterCountForBook(bookId)
+                chapterCount(bookId)
             } catch (error: CancellationException) {
                 throw error
             } catch (_: Exception) {
@@ -88,15 +79,6 @@ internal class ReaderReadingRecords(
             }
         }
     }
-
-    private suspend fun chapterCountForBook(bookId: String): Int =
-        chapterCountMutex.withLock {
-            synchronized(chapterCountCache) {
-                chapterCountCache[bookId]
-            } ?: chapterCount(bookId).also {
-                if (it > 0) cacheChapterCount(bookId, it)
-            }
-        }
 
     fun updateTotalReadingTime(bookId: String, seconds: Int) {
         scope.launch(ioDispatcher) {

@@ -232,47 +232,54 @@ class ReaderReadingRecordsTest {
     }
 
     @Test
-    fun progressEventsReuseTheChapterCountForEachBook() {
+    fun progressEventsObserveRefreshedChapterCounts() {
         var countReads = 0
+        var count = 2
         val cachedRecords = ReaderReadingRecords(
             store = store,
             scope = scope,
             statisticsScope = statisticsScope,
             currentBookId = { bookId },
             currentChapterTitle = { title },
-            chapterCount = { countReads++; 2 },
+            chapterCount = { countReads++; count },
             now = { time },
             ioDispatcher = dispatcher,
         )
 
         cachedRecords.saveProgress("chapter", 0.5f)
+        scheduler.runCurrent()
+        count = 4
         cachedRecords.saveProgress("chapter", 0.75f)
         scheduler.runCurrent()
 
-        assertEquals(1, countReads)
+        assertEquals(2, countReads)
         assertEquals(2, store.writes.size)
+        assertEquals(0.125f, store.writes.last().readingProgress)
     }
 
     @Test
-    fun zeroChapterCountsAreRetriedInsteadOfCached() {
+    fun missingChapterCountsDoNotBlockLaterDirectoryUpdates() {
         var countReads = 0
+        var count = 0
         val retryingRecords = ReaderReadingRecords(
             store = store,
             scope = scope,
             statisticsScope = statisticsScope,
             currentBookId = { bookId },
             currentChapterTitle = { title },
-            chapterCount = { countReads++; 0 },
+            chapterCount = { countReads++; count },
             now = { time },
             ioDispatcher = dispatcher,
         )
 
-        retryingRecords.cacheChapterCount("book", 0)
         retryingRecords.saveProgress("chapter", 0.5f)
+        scheduler.runCurrent()
+        count = 2
         retryingRecords.saveProgress("chapter", 0.75f)
         scheduler.runCurrent()
 
         assertEquals(2, countReads)
+        assertEquals(0.25f, store.writes.last().readingProgress)
     }
 
     @Test

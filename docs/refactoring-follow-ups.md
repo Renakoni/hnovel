@@ -73,7 +73,8 @@
 ## READ-003：进度事件的标题与书籍 ID 在不同时间读取
 
 - 状态：**修复已提交 PR #49；受控调度回归测试通过**。
-- 证据：[ReaderReadingRecordsTest](../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/ReaderReadingRecordsTest.kt) 的 `queuedProgressCapturesTheCompleteProgressIdentityAtTheEventBoundary` 和 `completionCheckUsesTheCapturedBookAfterPersistenceSuspension` 在旧 main 上失败：标题在接收事件时捕获，书籍 ID 在异步写入及挂起恢复之后读取。修复后两项交错均固定使用事件入口捕获的书籍 ID、标题和章节总数。
+- 证据：[ReaderReadingRecordsTest](../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/ReaderReadingRecordsTest.kt) 覆盖事件排队及存储挂起后切书；写入与完成检查固定使用事件入口捕获的书籍 ID 和标题。章节总数按捕获的书籍 ID 查询已加载目录计数，避免读取另一书的 UI 分母。
+- 目录计数由 ViewModel 的现有目录订阅持续更新，记录层不另开冷 Flow、不永久缓存首次计数、不等待网络。目录未加载或为空时仍保存章节进度，保留已存整体值；后续有效发射自动更新计数。[ReaderDirectoryProgressTest](../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/ReaderDirectoryProgressTest.kt) 用真实 ViewModel 验证目录挂起时可写进度、空目录和多次刷新均使用同一个订阅。
 - 影响：旧实现可能把旧章节写入新书，或把完成检查发给新书。修复限制了异步任务的身份漂移；真实导航是否产生同一交错仍需设备验证。
 - 后续：合并 PR #49 后验证真实导航、后台切换和进程终止路径。READ-004 继续单独处理总体进度公式的滞后问题，BOOK-002 继续负责仓库读改写的原子边界。
 

@@ -16,16 +16,8 @@ import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ReaderModeHost
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.flow.lastOrNull
-import kotlinx.coroutines.flow.filter
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
-
-internal suspend fun latestChapterCount(
-    chapterSource: ChapterSource,
-    bookId: String,
-): Int = chapterSource.getBookVolumesFlow(bookId).filter { it.isOk }.lastOrNull()
-    ?.map { volumes -> volumes.volumes.sumOf { it.chapters.size } }
-    ?.getOrElse { 0 } ?: 0
 
 @HiltViewModel
 class ReaderViewModel @Inject constructor(
@@ -44,6 +36,7 @@ class ReaderViewModel @Inject constructor(
     private val _uiState = MutableReaderScreenUiState(modeHost.uiState)
     val uiState: ReaderScreenUiState = _uiState
     private val statisticsScope = CoroutineScope(Dispatchers.IO)
+    private val chapterCountsByBook = ConcurrentHashMap<String, Int>()
     private val readingRecords = ReaderReadingRecords(
         store = RepositoryReaderRecordStore(readingData, statsRepository, userDataRepository),
         scope = viewModelScope,
@@ -52,7 +45,7 @@ class ReaderViewModel @Inject constructor(
         currentChapterTitle = {
             _uiState.contentUiState?.readingChapterContent?.map { it.title }?.getOrElse { null }
         },
-        chapterCount = { id -> latestChapterCount(chapterSource, id) },
+        chapterCount = { id -> chapterCountsByBook[id] ?: 0 },
     )
     var bookId = ""
         set(value) {
@@ -63,13 +56,12 @@ class ReaderViewModel @Inject constructor(
 
             viewModelScope.launch(Dispatchers.IO) {
                 chapterSource.getBookVolumesFlow(value).collect {
-                    _uiState.bookVolumes = it
                     it.map { volumes ->
-                        readingRecords.cacheChapterCount(
-                            value,
-                            volumes.volumes.sumOf { volume -> volume.chapters.size },
-                        )
+                        val count = volumes.volumes.sumOf { volume -> volume.chapters.size }
+                        if (count > 0) chapterCountsByBook[value] = count
+                        else chapterCountsByBook.remove(value)
                     }
+                    _uiState.bookVolumes = it
                 }
             }
     }
