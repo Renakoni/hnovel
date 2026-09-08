@@ -176,7 +176,11 @@ class ReaderReadingRecordsTest {
     }
 
     @Test
-    fun queuedProgressCapturesTheTitleButReadsTheBookCountAndTimeWhenWriting() {
+    fun queuedProgressCapturesBookAndTitleAndResolvesCountWhenWriting() {
+        store.data["book"] = UserReadingData(
+            id = "book",
+            maxChapterReadingProgressMap = mapOf("chapter" to 0.5f),
+        )
         store.data["next"] = UserReadingData(id = "next", maxChapterReadingProgressMap = mapOf("other" to 1f))
         records.saveProgress("chapter", 0.5f)
         bookId = "next"
@@ -185,16 +189,123 @@ class ReaderReadingRecordsTest {
         time = time.plusMinutes(1)
         scheduler.runCurrent()
 
-        val data = store.data.getValue("next")
-        assertEquals(listOf("update:next", "write:next", "read:next"), store.events)
+        val data = store.data.getValue("book")
+        assertEquals(listOf("update:book", "write:book", "read:book"), store.events)
         assertEquals("Chapter title", data.lastReadChapterTitle)
-        assertEquals(0.25f, data.readingProgress)
+        assertEquals(0.125f, data.readingProgress)
         assertEquals(time, data.lastReadTime)
-        assertEquals(UserReadingData("book"), store.data.getValue("book"))
+        assertEquals(
+            UserReadingData(id = "next", maxChapterReadingProgressMap = mapOf("other" to 1f)),
+            store.data.getValue("next"),
+        )
     }
 
     @Test
-    fun completionCheckWaitsForPersistenceAndReadsTheLiveBookAfterSuspension() {
+    fun progressResolvesChapterCountForTheCapturedBookWhenWriting() {
+        val count = CompletableDeferred<Int>()
+        val identityRecords = ReaderReadingRecords(
+            store = store,
+            scope = scope,
+            statisticsScope = statisticsScope,
+            currentBookId = { bookId },
+            currentChapterTitle = { title },
+            chapterCount = {
+                assertEquals("book", it)
+                count.await()
+            },
+            now = { time },
+            ioDispatcher = dispatcher,
+        )
+        store.data["book"] = UserReadingData(
+            id = "book",
+            maxChapterReadingProgressMap = mapOf("chapter" to 0.5f, "other" to 0.5f),
+        )
+
+        identityRecords.saveProgress("chapter", 0.5f)
+        scheduler.runCurrent()
+        assertTrue(store.events.isEmpty())
+        bookId = "next"
+        count.complete(2)
+        scheduler.runCurrent()
+
+        assertEquals(0.5f, store.data.getValue("book").readingProgress)
+    }
+
+    @Test
+    fun progressEventsObserveRefreshedChapterCounts() {
+        var countReads = 0
+        var count = 2
+        val cachedRecords = ReaderReadingRecords(
+            store = store,
+            scope = scope,
+            statisticsScope = statisticsScope,
+            currentBookId = { bookId },
+            currentChapterTitle = { title },
+            chapterCount = { countReads++; count },
+            now = { time },
+            ioDispatcher = dispatcher,
+        )
+
+        cachedRecords.saveProgress("chapter", 0.5f)
+        scheduler.runCurrent()
+        count = 4
+        cachedRecords.saveProgress("chapter", 0.75f)
+        scheduler.runCurrent()
+
+        assertEquals(2, countReads)
+        assertEquals(2, store.writes.size)
+        assertEquals(0.125f, store.writes.last().readingProgress)
+    }
+
+    @Test
+    fun missingChapterCountsDoNotBlockLaterDirectoryUpdates() {
+        var countReads = 0
+        var count = 0
+        val retryingRecords = ReaderReadingRecords(
+            store = store,
+            scope = scope,
+            statisticsScope = statisticsScope,
+            currentBookId = { bookId },
+            currentChapterTitle = { title },
+            chapterCount = { countReads++; count },
+            now = { time },
+            ioDispatcher = dispatcher,
+        )
+
+        retryingRecords.saveProgress("chapter", 0.5f)
+        scheduler.runCurrent()
+        count = 2
+        retryingRecords.saveProgress("chapter", 0.75f)
+        scheduler.runCurrent()
+
+        assertEquals(2, countReads)
+        assertEquals(0.25f, store.writes.last().readingProgress)
+    }
+
+    @Test
+    fun chapterCountFailureStillPersistsTheProgressEvent() {
+        val failingRecords = ReaderReadingRecords(
+            store = store,
+            scope = scope,
+            statisticsScope = statisticsScope,
+            currentBookId = { bookId },
+            currentChapterTitle = { title },
+            chapterCount = { error("directory unavailable") },
+            now = { time },
+            ioDispatcher = dispatcher,
+        )
+        store.data["book"] = UserReadingData(id = "book", readingProgress = 0.4f)
+
+        failingRecords.saveProgress("chapter", 0.5f)
+        scheduler.runCurrent()
+
+        assertEquals(0.4f, store.data.getValue("book").readingProgress)
+        assertEquals(mapOf("chapter" to 0.5f), store.data.getValue("book").currentChapterReadingProgressMap)
+        assertEquals(listOf("update:book", "write:book", "read:book"), store.events)
+    }
+
+    @Test
+    fun completionCheckUsesTheCapturedBookAfterPersistenceSuspension() {
         val gate = CompletableDeferred<Unit>()
         store.updateGate = gate
         records.saveProgress("chapter", 0.5f)
@@ -205,7 +316,7 @@ class ReaderReadingRecordsTest {
         store.data["next"] = UserReadingData(id = "next", readingProgress = 1f)
         gate.complete(Unit)
         scheduler.runCurrent()
-        assertEquals(listOf("update:book", "write:book", "read:next", "finished:next"), store.events)
+        assertEquals(listOf("update:book", "write:book", "read:book"), store.events)
     }
 
     @Test
