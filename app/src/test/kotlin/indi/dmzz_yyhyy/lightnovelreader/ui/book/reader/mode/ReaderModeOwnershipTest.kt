@@ -137,6 +137,7 @@ class ReaderModeOwnershipTest {
 
                     override fun loadNextChapter() {
                         displayedChapter = "initial-next"
+                        requestedChapter = "initial-next"
                         events += "$mode/next"
                     }
 
