@@ -15,7 +15,7 @@ class ProxyCachedWebBookDataSource(
     ): Result<T, WebRequestError> {
         val value = origin.cache?.getCache<T>(key.hashCode()) ?: return block.invoke()
             .onOk {
-                origin.cache?.cache(id.hashCode(), it)
+                origin.cache?.cache(key.hashCode(), it)
             }
         return Ok(value)
     }
