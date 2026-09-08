@@ -9,6 +9,10 @@ import kotlinx.coroutines.flow.Flow
 /**
  * 书本相关的Api
  *
+ * 书籍详情、卷目录与章节内容的流在每次收集时独立判断本地数据是否存在。
+ * 本地成功后的远端请求错误不再作为内容结果发射，也不重复发射本地值；
+ * 成功刷新仍发射远端数据。此规则只针对返回的请求错误，不吞掉存储、文本处理异常或协程取消。
+ *
  * @since Api 2
  */
 interface BookRepositoryApi {
