@@ -18,6 +18,7 @@ import dagger.assisted.AssistedInject
 import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.data.bookshelf.BookshelfRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.book.BookRepository
+import indi.dmzz_yyhyy.lightnovelreader.data.book.BookIdentity
 import indi.dmzz_yyhyy.lightnovelreader.data.book.SourceBookId
 import androidx.work.workDataOf
 import kotlinx.serialization.json.buildJsonObject
@@ -54,7 +55,8 @@ class CheckUpdateWork @AssistedInject constructor(
             if (metadata.id !in needRemindBookIdSet) return@forEach
             delay(3000.milliseconds)
             var status = "unchanged"
-            val book = runCatching { SourceBookId.fromStorageKey(metadata.id) }.getOrNull()
+            // Preserve legacy Wenku8 bare IDs while canonicalizing new source-qualified keys.
+            val book = runCatching { BookIdentity.book(metadata.id) }.getOrNull()
             if (book == null) {
                 status = "invalid_book_identity"
             } else try {

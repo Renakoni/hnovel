@@ -86,11 +86,11 @@ class BookRepository @Inject constructor(
         sourceRegistry.request(book) { it.getBookInformation(book.remoteId, priority) }.map(book::bind)
             .onOk { remote ->
                 localBookDataSource.updateBookInformation(remote)
-                val bookshelfBookMetadata = bookshelfRepository.getBookshelfBookMetadata(remote.id) ?: return@onOk
+                val bookshelfBookMetadata = bookshelfRepository.getBookshelfBookMetadata(book.storageKey) ?: return@onOk
                 if (bookshelfBookMetadata.lastUpdate.isBefore(remote.lastUpdated))
                     bookshelfBookMetadata.bookShelfIds.forEach {
                         bookshelfRepository.updateBookshelfBookMetadataLastUpdateTime(
-                            remote.id,
+                            book.storageKey,
                             remote.lastUpdated
                         )
                         bookshelfRepository.addUpdatedBooksIntoBookShelf(it, book.storageKey)
