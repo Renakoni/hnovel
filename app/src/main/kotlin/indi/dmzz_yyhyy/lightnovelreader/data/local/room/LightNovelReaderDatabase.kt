@@ -69,6 +69,8 @@ abstract class LightNovelReaderDatabase : RoomDatabase() {
     abstract fun storageStatsDao(): StorageStatsDao
 
     companion object {
+        const val NAME = "light_novel_reader_source_database"
+
         @Volatile
         private var INSTANCE: LightNovelReaderDatabase? = null
 
@@ -79,7 +81,7 @@ abstract class LightNovelReaderDatabase : RoomDatabase() {
                     instance = Room.databaseBuilder(
                         context.applicationContext,
                         LightNovelReaderDatabase::class.java,
-                        "light_novel_reader_database"
+                        NAME
                     )
                         .addMigrations(
                             MIGRATION_6_7,

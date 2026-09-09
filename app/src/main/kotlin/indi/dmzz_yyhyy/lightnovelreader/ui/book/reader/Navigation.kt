@@ -27,6 +27,7 @@ import androidx.navigation.compose.dialog
 import androidx.navigation.toRoute
 import com.github.michaelbull.result.onErr
 import com.github.michaelbull.result.onOk
+import indi.dmzz_yyhyy.lightnovelreader.data.book.BookIdentity
 import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.imageview.ImageViewerScreen
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.imageview.ImageViewerViewModel
@@ -80,8 +81,9 @@ fun NavController.navigateToBookReaderDestination(bookId: String, chapterId: Str
             delegateFactory = entry.defaultViewModelProviderFactory
         ),
     )[ReaderViewModel::class.java]
-    viewModel.bookId = bookId
-    viewModel.changeChapter(chapterId)
+    val book = BookIdentity.book(bookId)
+    viewModel.bookId = book.storageKey
+    viewModel.changeChapter(BookIdentity.chapter(chapterId, book).storageKey)
     this.navigate(Route.Book.Reader)
 }
 

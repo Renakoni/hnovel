@@ -69,7 +69,7 @@ class BookRepositoryOperationsTest {
             every { schedulers } returns emptyList()
         }
         fun enqueue(request: OneTimeWorkRequest) {
-            EnqueueRunnable.addToDatabase(WorkContinuationImpl(manager, "cache:book", ExistingWorkPolicy.KEEP, listOf(request)))
+            EnqueueRunnable.addToDatabase(WorkContinuationImpl(manager, CacheBookWork.ofId(BookIdentity.bookKey("book")), ExistingWorkPolicy.KEEP, listOf(request)))
         }
         fun request() = androidx.work.OneTimeWorkRequestBuilder<CacheBookWork>().build()
         try {
@@ -77,14 +77,14 @@ class BookRepositoryOperationsTest {
             enqueue(old)
             val ignored = request()
             enqueue(ignored)
-            assertEquals(listOf(old.id.toString()), database.workSpecDao().getWorkSpecIdAndStatesForName("cache:book").map { it.id })
+            assertEquals(listOf(old.id.toString()), database.workSpecDao().getWorkSpecIdAndStatesForName(CacheBookWork.ofId(BookIdentity.bookKey("book"))).map { it.id })
             assertNull(database.workSpecDao().getWorkSpec(ignored.id.toString()))
 
             database.workSpecDao().setState(WorkInfo.State.SUCCEEDED, old.id.toString())
             time = 1_000L
             val replacement = request()
             enqueue(replacement)
-            assertEquals(listOf(replacement.id.toString()), database.workSpecDao().getWorkSpecIdAndStatesForName("cache:book").map { it.id })
+            assertEquals(listOf(replacement.id.toString()), database.workSpecDao().getWorkSpecIdAndStatesForName(CacheBookWork.ofId(BookIdentity.bookKey("book"))).map { it.id })
             assertNull(database.workSpecDao().getWorkSpec(old.id.toString()))
         } finally {
             database.close()
@@ -96,28 +96,28 @@ class BookRepositoryOperationsTest {
         val submitted = slot<OneTimeWorkRequest>()
         val completion = ResolvableFuture.create<Operation.State.SUCCESS>()
         val operation = mockk<Operation> { every { result } returns completion }
-        every { fixture.workManager.enqueueUniqueWork("cache:book", ExistingWorkPolicy.KEEP, capture(submitted)) } returns operation
+        every { fixture.workManager.enqueueUniqueWork(CacheBookWork.ofId(BookIdentity.bookKey("book")), ExistingWorkPolicy.KEEP, capture(submitted)) } returns operation
         val repository = fixture.repository()
         val observed = repository.cacheBook("book")
         val work = submitted.captured
         assertEquals(CacheBookWork::class.java.name, work.workSpec.workerClassName)
-        assertEquals(mapOf("bookId" to "book"), work.workSpec.input.keyValueMap)
-        verify(exactly = 1) { fixture.workManager.enqueueUniqueWork("cache:book", ExistingWorkPolicy.KEEP, work) }
+        assertEquals(mapOf("bookId" to BookIdentity.bookKey("book")), work.workSpec.input.keyValueMap)
+        verify(exactly = 1) { fixture.workManager.enqueueUniqueWork(CacheBookWork.ofId(BookIdentity.bookKey("book")), ExistingWorkPolicy.KEEP, work) }
 
         val existingWork = mockk<WorkInfo>()
         every { existingWork.state } returns WorkInfo.State.RUNNING
         val workState = MutableStateFlow(listOf(existingWork))
-        every { fixture.workManager.getWorkInfosForUniqueWorkFlow("cache:book") } returns workState
+        every { fixture.workManager.getWorkInfosForUniqueWorkFlow(CacheBookWork.ofId(BookIdentity.bookKey("book"))) } returns workState
         completion.set(Operation.SUCCESS)
         assertSame(existingWork, observed.first())
-        verify(exactly = 1) { fixture.workManager.getWorkInfosForUniqueWorkFlow("cache:book") }
+        verify(exactly = 1) { fixture.workManager.getWorkInfosForUniqueWorkFlow(CacheBookWork.ofId(BookIdentity.bookKey("book"))) }
     }
 
     @Test
     fun cacheAndExportWaitForEnqueueBeforeReadingTerminalRecords() = runTest {
         for (export in listOf(false, true)) {
             val env = BookRepositoryFixture()
-            val name = if (export) ExportBookToEPUBWork.ofId("book") else CacheBookWork.ofId("book")
+            val name = if (export) ExportBookToEPUBWork.ofId("book") else CacheBookWork.ofId(BookIdentity.bookKey("book"))
             val completion = ResolvableFuture.create<Operation.State.SUCCESS>()
             val operation = mockk<Operation> { every { result } returns completion }
             every { env.workManager.enqueueUniqueWork(name, ExistingWorkPolicy.KEEP, any<OneTimeWorkRequest>()) } returns operation

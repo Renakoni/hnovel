@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.map
 import dagger.hilt.android.lifecycle.HiltViewModel
+import indi.dmzz_yyhyy.lightnovelreader.data.book.BookIdentity
 import indi.dmzz_yyhyy.lightnovelreader.data.book.BookRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.userdata.UserDataRepository
 import io.nightfish.lightnovelreader.api.error.WebRequestError
@@ -87,7 +88,7 @@ class ReadingHomeViewModel @Inject constructor(
     fun addToReadingList(bookId: String) {
         viewModelScope.launch(Dispatchers.IO) {
             readingBooksUserData.update {
-                it + listOf(bookId)
+                (it + BookIdentity.bookKey(bookId)).distinct()
             }
         }
     }

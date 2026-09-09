@@ -18,14 +18,13 @@ import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadProgressRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadType
 import indi.dmzz_yyhyy.lightnovelreader.data.download.MutableDownloadItem
 import indi.dmzz_yyhyy.lightnovelreader.data.local.LocalBookDataSource
-import indi.dmzz_yyhyy.lightnovelreader.data.web.WebBookDataSourceProvider
+import kotlinx.coroutines.flow.last
 
 @HiltWorker
 class CacheBookWork @AssistedInject constructor(
     @Assisted appContext: Context,
     @Assisted workerParams: WorkerParameters,
     private val localBookDataSource: LocalBookDataSource,
-    private val webBookDataSourceProvider: WebBookDataSourceProvider,
     private val downloadProgressRepository: DownloadProgressRepository,
     private val bookRepository: BookRepository
 ) : CoroutineWorker(appContext, workerParams) {
@@ -44,7 +43,7 @@ class CacheBookWork @AssistedInject constructor(
             bookRepository.getBookInformationFlow(bookId)
         )
         downloadProgressRepository.addExportItem(downloadItem)
-        webBookDataSourceProvider.value.getBookVolumes(bookId)
+        bookRepository.getBookVolumesFlow(bookId).last()
             .andThen { bookVolumes ->
                 coroutineBinding {
                     var count = 0
@@ -52,10 +51,7 @@ class CacheBookWork @AssistedInject constructor(
                     localBookDataSource.updateBookVolumes(bookVolumes)
                     bookVolumes.volumes.forEach { volume ->
                         volume.chapters.map { it.id }.forEach { chapterId ->
-                            val chapter = webBookDataSourceProvider.value.getChapterContent(
-                                chapterId = chapterId,
-                                bookId = bookId
-                            ).bind()
+                            val chapter = bookRepository.getChapterContentFlow(chapterId, bookId).last().bind()
                             localBookDataSource.updateChapterContent(chapter)
                             count ++
                             downloadItem.progress = count.toFloat() / total
@@ -65,7 +61,7 @@ class CacheBookWork @AssistedInject constructor(
             }
             .andThen {
                 coroutineBinding {
-                    val bookInformation = webBookDataSourceProvider.value.getBookInformation(bookId).bind()
+                    val bookInformation = bookRepository.getBookInformationFlow(bookId).last().bind()
                     localBookDataSource.updateBookInformation(bookInformation)
                 }
             }

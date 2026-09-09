@@ -5,6 +5,10 @@ import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.BookVolumesDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.ChapterContentDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.UserReadingDataDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.UserReadingDataEntity
+import indi.dmzz_yyhyy.lightnovelreader.data.book.BookIdentity
+import indi.dmzz_yyhyy.lightnovelreader.data.book.bindReadingData
+import indi.dmzz_yyhyy.lightnovelreader.data.book.SourceBookId
+import indi.dmzz_yyhyy.lightnovelreader.data.book.SourceChapterId
 import io.nightfish.lightnovelreader.api.book.BookInformation
 import io.nightfish.lightnovelreader.api.book.BookVolumes
 import io.nightfish.lightnovelreader.api.book.ChapterContent
@@ -22,13 +26,21 @@ class LocalBookDataSource @Inject constructor(
     private val chapterContentDao: ChapterContentDao,
     private val userReadingDataDao: UserReadingDataDao
 ): LocalBookDataSourceApi {
-    override suspend fun getBookInformation(id: String): BookInformation? = bookInformationDao.get(id)
-    override suspend fun updateBookInformation(info: BookInformation) = bookInformationDao.insert(info)
-    override suspend fun getBookVolumes(id: String): BookVolumes? = bookVolumesDao.getBookVolumes(id)
-    override suspend fun updateBookVolumes(bookVolumes: BookVolumes) =
+    override suspend fun getBookInformation(id: String): BookInformation? = bookInformationDao.get(BookIdentity.bookKey(id))
+    override suspend fun updateBookInformation(info: BookInformation) = bookInformationDao.insert(info.copy(id = BookIdentity.bookKey(info.id)))
+    override suspend fun getBookVolumes(id: String): BookVolumes? = bookVolumesDao.getBookVolumes(BookIdentity.bookKey(id))
+    override suspend fun updateBookVolumes(bookVolumes: BookVolumes) {
+        val book = SourceBookId.fromStorageKey(bookVolumes.bookId)
+        bookVolumes.volumes.forEach { volume ->
+            BookIdentity.volumeRemoteId(volume.volumeId, book)
+            volume.chapters.forEach { require(SourceChapterId.fromStorageKey(it.id).book == book) }
+        }
         bookVolumesDao.insertVolume(bookVolumes.bookId, bookVolumes)
+    }
 
-    override suspend fun getChapterContent(id: String) = chapterContentDao.get(id)?.let {
+    override suspend fun getChapterContent(id: String) = chapterContentDao.get(
+        SourceChapterId.fromStorageKey(id).storageKey
+    )?.let {
         ChapterContent(
             it.id,
             it.title,
@@ -37,11 +49,16 @@ class LocalBookDataSource @Inject constructor(
             it.nextChapter.ifEmpty { null }
         )
     }
-    override suspend fun updateChapterContent(chapterContent: ChapterContent) =
+    override suspend fun updateChapterContent(chapterContent: ChapterContent) {
+        val chapter = SourceChapterId.fromStorageKey(chapterContent.id)
+        listOfNotNull(chapterContent.prevChapter, chapterContent.nextChapter).forEach {
+            require(SourceChapterId.fromStorageKey(it).book == chapter.book)
+        }
         chapterContentDao.update(chapterContent)
+    }
 
-    override suspend fun getUserReadingData(id: String) = userReadingDataDao.getEntity(id).let {
-        it ?: return@let UserReadingData(id)
+    override suspend fun getUserReadingData(id: String) = userReadingDataDao.getEntity(BookIdentity.bookKey(id)).let {
+        it ?: return@let UserReadingData(BookIdentity.bookKey(id))
         UserReadingData(
             it.id,
             if (it.lastReadTime == LocalDateTime.MIN) null else it.lastReadTime,
@@ -55,9 +72,9 @@ class LocalBookDataSource @Inject constructor(
         )
     }
 
-    fun getUserReadingDataFlow(id: String) = userReadingDataDao.getEntityFlow(id).map {
+    fun getUserReadingDataFlow(id: String) = userReadingDataDao.getEntityFlow(BookIdentity.bookKey(id)).map {
         it ?: return@map UserReadingData(
-            id,
+            BookIdentity.bookKey(id),
             null,
             0,
             0f,
@@ -79,20 +96,21 @@ class LocalBookDataSource @Inject constructor(
     }
 
     override suspend fun updateUserReadingData(id: String, update: (UserReadingData) -> UserReadingData) {
-        userReadingDataDao.update(id) { entity ->
+        userReadingDataDao.update(BookIdentity.bookKey(id)) { entity ->
             val userReadingData = entity?.let {
                 UserReadingData(
                     it.id,
-                    it.lastReadTime,
+                    it.lastReadTime.takeUnless { time -> time == LocalDateTime.MIN },
                     it.totalReadTime,
                     it.readingProgress,
-                    it.lastReadChapterId,
-                    it.lastReadChapterTitle,
+                    it.lastReadChapterId.ifEmpty { null },
+                    it.lastReadChapterTitle.ifEmpty { null },
                     it.currentChapterReadingProgressMap,
                     it.maxChapterReadingProgressMap
                 )
-            } ?: UserReadingData(id)
-            val new = update(userReadingData)
+            } ?: UserReadingData(BookIdentity.bookKey(id))
+            val updated = update(userReadingData)
+            val new = BookIdentity.book(id).bindReadingData(updated)
             UserReadingDataEntity(
                 id = new.id,
                 lastReadTime = new.lastReadTime ?: LocalDateTime.MIN,

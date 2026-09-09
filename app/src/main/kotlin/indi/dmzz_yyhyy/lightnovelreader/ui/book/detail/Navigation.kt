@@ -20,6 +20,7 @@ import androidx.work.WorkInfo
 import com.github.michaelbull.result.map
 import com.github.michaelbull.result.onErr
 import com.github.michaelbull.result.onOk
+import indi.dmzz_yyhyy.lightnovelreader.data.book.BookIdentity
 import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.navigateToBookReaderDestination
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.navigateToImageViewerDialog
@@ -40,7 +41,7 @@ import kotlinx.coroutines.launch
 fun NavGraphBuilder.bookDetailDestination() {
     composable<Route.Book.Detail> { entry ->
         val navController = LocalNavController.current
-        val bookId = entry.toRoute<Route.Book.Detail>().bookId
+        val bookId = BookIdentity.bookKey(entry.toRoute<Route.Book.Detail>().bookId)
         val viewModel = hiltViewModel<DetailViewModel>(entry)
         val context = LocalContext.current
         val coroutineScope = rememberCoroutineScope()
@@ -173,7 +174,7 @@ fun NavGraphBuilder.bookDetailDestination() {
 
 fun NavController.navigateToBookDetailDestination(bookId: String) {
     if (!this.isResumed()) return
-    navigate(Route.Book.Detail(bookId))
+    navigate(Route.Book.Detail(BookIdentity.bookKey(bookId)))
 }
 
 @Suppress("DuplicatedCode")
