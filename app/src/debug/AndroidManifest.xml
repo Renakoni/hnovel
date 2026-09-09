@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <service
+            android:name=".sourceexecution.ForeignExecutionProbeService"
+            android:exported="false"
+            android:isolatedProcess="true"
+            android:process=":execution_auth_probe" />
+    </application>
+</manifest>

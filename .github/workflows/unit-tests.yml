@@ -33,7 +33,7 @@ jobs:
       - name: Make Gradle wrapper executable
         run: chmod +x ./gradlew
       - name: Run JVM unit tests
-        run: ./gradlew :app:testDebugUnitTest :source-rules:test :source-network:test :source-import:test :source-rhino:test :source-compatibility:test --console=plain --stacktrace --max-workers=2
+        run: ./gradlew :app:testDebugUnitTest :source-rules:test :source-network:test :source-import:test :source-execution:test :source-compatibility:test --console=plain --stacktrace --max-workers=2
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -46,11 +46,48 @@ jobs:
             source-rules/build/test-results/test
             source-network/build/reports/tests/test
             source-network/build/test-results/test
-            source-rhino/build/reports/tests/test
-            source-rhino/build/test-results/test
+            source-execution/build/reports/tests/test
+            source-execution/build/test-results/test
             source-import/build/reports/tests/test
             source-import/build/test-results/test
             source-compatibility/build/reports/tests/test
             source-compatibility/build/test-results/test
             source-compatibility/build/reports/source-compatibility
+          if-no-files-found: ignore
+
+  execution-platform:
+    name: Isolated execution (API ${{ matrix.api }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [24, 35]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '22'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - run: chmod +x ./gradlew
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          script: ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=indi.dmzz_yyhyy.lightnovelreader.sourceexecution.IsolatedExecutionInstrumentedTest --console=plain --stacktrace --max-workers=2
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: execution-platform-api-${{ matrix.api }}
+          path: |
+            app/build/reports/androidTests/connected
+            app/build/outputs/androidTest-results/connected
           if-no-files-found: ignore
