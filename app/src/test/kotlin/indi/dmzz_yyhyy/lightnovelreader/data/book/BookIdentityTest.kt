@@ -45,4 +45,12 @@ class BookIdentityTest {
         org.junit.Assert.assertThrows(IllegalArgumentException::class.java) { SourceBookId(sourceA, "") }
         org.junit.Assert.assertThrows(IllegalArgumentException::class.java) { SourceChapterId(SourceBookId(sourceA, "123"), "") }
     }
+
+    @Test
+    fun legacyIdsBeginningWithLnrRemainLegacyIds() {
+        val book = BookIdentity.book("lnr123")
+        assertEquals("lnr123", book.remoteId)
+        assertEquals("Wenku8", book.sourceId.id)
+        assertEquals("lnr-chapter", BookIdentity.chapter("lnr-chapter", book).remoteId)
+    }
 }
