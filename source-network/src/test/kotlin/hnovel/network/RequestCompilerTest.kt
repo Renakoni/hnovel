@@ -24,6 +24,8 @@ class RequestCompilerTest {
         val form = request("""search,{"method":"POST","charset":"GB2312","body":"q={{key}}&p={{page}}"}""", "校园&role=admin")
         assertEquals("q=%D0%A3%D4%B0%26role%3Dadmin&p=2", form.body)
         assertTrue(form.headers["Content-Type"]!!.startsWith("application/x-www-form-urlencoded"))
+        val declared = request("""search,{"method":"POST","headers":{"Content-Type":"application/x-www-form-urlencoded; charset=UTF-8"},"body":"q={{key}}&p={{page}}"}""", "a&b=c")
+        assertEquals("q=a%26b%3Dc&p=2", declared.body)
         val json = request("""search,{"method":"POST","body":{"q":"{{key}}","p":"{{page}}"}}""", "a\"b")
         assertEquals("""{"q":"a\"b","p":"2"}""", json.body)
         assertEquals("POST", json.method)

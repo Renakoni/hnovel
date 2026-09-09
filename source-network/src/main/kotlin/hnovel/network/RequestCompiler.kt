@@ -52,8 +52,10 @@ class RequestCompiler {
             }
             val rawBody = options["body"]?.let { if (it is JsonPrimitive) it.content else it.toString() }
             val contentType = mergedHeaders.entries.firstOrNull { it.key.equals("Content-Type", true) }?.value
-            val isForm = rawBody != null && contentType == null && !rawBody.trimStart().startsWith('{') &&
-                !rawBody.trimStart().startsWith('[') && !rawBody.trimStart().startsWith('<')
+            val isForm = rawBody != null && (contentType == null ||
+                contentType.startsWith("application/x-www-form-urlencoded", ignoreCase = true)) &&
+                !rawBody.trimStart().startsWith('{') && !rawBody.trimStart().startsWith('[') &&
+                !rawBody.trimStart().startsWith('<')
             fun expandJson(element: JsonElement): JsonElement = when (element) {
                 is JsonObject -> JsonObject(element.mapValues { expandJson(it.value) })
                 is JsonArray -> JsonArray(element.map(::expandJson))
