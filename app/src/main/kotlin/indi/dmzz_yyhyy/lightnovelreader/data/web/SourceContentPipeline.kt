@@ -23,6 +23,10 @@ interface SourcePipelineExecutor {
 data class Page<T>(val items: List<T>, val nextCursor: String?)
 sealed interface PipelineResult<out T> { data class Success<T>(val value: T): PipelineResult<T>; data class Failure(val error: PipelineFailure): PipelineResult<Nothing> }
 
+fun resolveSourceLink(base: String, link: String): String? = try {
+    java.net.URI(base).resolve(link).takeIf { it.scheme == "http" || it.scheme == "https" }?.toString()
+} catch (_: Exception) { null }
+
 /** Keeps source/session identity attached to every stage and rejects stale results. */
 class SourceContentPipeline(private val executor: SourcePipelineExecutor) {
     suspend fun search(context: PipelineContext, keyword: String) = executor.search(context, keyword)

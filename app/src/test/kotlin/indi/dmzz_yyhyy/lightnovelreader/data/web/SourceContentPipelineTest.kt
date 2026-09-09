@@ -6,6 +6,11 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SourceContentPipelineTest {
+    @Test fun resolvesRelativeLinksButRejectsNonHttpSchemes() {
+        assertEquals("https://example.test/books/2?x=1#c", resolveSourceLink("https://example.test/books/1", "2?x=1#c"))
+        assertNull(resolveSourceLink("https://example.test/books/1", "javascript:alert(1)"))
+    }
+
     @Test fun directoryFollowsCursorsDeduplicatesAndSorts() = runBlocking {
         val calls = mutableListOf<String?>()
         val executor = object : SourcePipelineExecutor {
