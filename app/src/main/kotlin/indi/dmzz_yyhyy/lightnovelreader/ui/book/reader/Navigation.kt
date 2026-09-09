@@ -10,15 +10,16 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.CompositionLocalProvider
+import indi.dmzz_yyhyy.lightnovelreader.ui.LocalReaderBookId
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.net.toUri
-import androidx.hilt.lifecycle.viewmodel.HiltViewModelFactory
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import androidx.navigation.NavGraphBuilder
@@ -30,7 +31,6 @@ import com.github.michaelbull.result.onOk
 import indi.dmzz_yyhyy.lightnovelreader.data.book.BookIdentity
 import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.imageview.ImageViewerScreen
-import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.imageview.ImageViewerViewModel
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.ColorPickerDialog
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.theme.navigateToSettingsThemeDestination
 import indi.dmzz_yyhyy.lightnovelreader.utils.ImageUtils.saveBitmapAsPng
@@ -50,41 +50,38 @@ fun NavGraphBuilder.bookReaderDestination(onReaderActiveChanged: (Boolean) -> Un
             onDispose { onReaderActiveChanged(false) }
         }
         val navController = LocalNavController.current
-        val parentEntry = remember(navBackStackEntry) {
-            navBackStackEntry.destination.parent?.route
-                ?.let(navController::getBackStackEntry)
+        val parentEntry = remember(navBackStackEntry) { navController.getBackStackEntry<Route.Book>() }
+        // Keep the existing Book-graph lifetime for queued recording writes, while each
+        // restored reader entry owns a separate session during navigation transitions.
+        val viewModel = hiltViewModel<ReaderViewModel>(parentEntry, key = navBackStackEntry.id)
+        val route = navBackStackEntry.toRoute<Route.Book.Reader>()
+        LaunchedEffect(navBackStackEntry) {
+            viewModel.openBook(route.bookId, route.chapterId)
         }
-        val viewModel = hiltViewModel<ReaderViewModel>(parentEntry ?: navBackStackEntry)
-        ReaderScreen(
-            readingScreenUiState = viewModel.uiState,
-            settingState = viewModel.readerSettings,
-            fontFamilySettings = viewModel.fontFamilySettings,
-            onClickBackButton = navController::popBackStackIfResumed,
-            updateTotalReadingTime = viewModel::updateTotalReadingTime,
-            accumulateReadTime = viewModel::accumulateReadingTime,
-            onClickPrevChapter = viewModel::prevChapter,
-            onClickNextChapter = viewModel::nextChapter,
-            onChangeChapter = viewModel::changeChapter,
-            onClickThemeSettings = navController::navigateToSettingsThemeDestination
-        )
+        if (viewModel.uiState.bookId == route.bookId) {
+            CompositionLocalProvider(LocalReaderBookId provides route.bookId) {
+                ReaderScreen(
+                    readingScreenUiState = viewModel.uiState,
+                    settingState = viewModel.readerSettings,
+                    fontFamilySettings = viewModel.fontFamilySettings,
+                    onClickBackButton = navController::popBackStackIfResumed,
+                    updateTotalReadingTime = viewModel::updateTotalReadingTime,
+                    accumulateReadTime = viewModel::accumulateReadingTime,
+                    onClickPrevChapter = viewModel::prevChapter,
+                    onClickNextChapter = viewModel::nextChapter,
+                    onChangeChapter = viewModel::changeChapter,
+                    onClickThemeSettings = navController::navigateToSettingsThemeDestination
+                )
+            }
+        }
     }
     colorPickerDialog()
     imageViewerDialog()
 }
 
 fun NavController.navigateToBookReaderDestination(bookId: String, chapterId: String, context: Context) {
-    val entry = this.getBackStackEntry<Route.Book>()
-    val viewModel = ViewModelProvider.create(
-        entry,
-        HiltViewModelFactory(
-            context = context,
-            delegateFactory = entry.defaultViewModelProviderFactory
-        ),
-    )[ReaderViewModel::class.java]
     val book = BookIdentity.book(bookId)
-    viewModel.bookId = book.storageKey
-    viewModel.changeChapter(BookIdentity.chapter(chapterId, book).storageKey)
-    this.navigate(Route.Book.Reader)
+    navigate(Route.Book.Reader(book.storageKey, BookIdentity.chapter(chapterId, book).storageKey))
 }
 
 private fun NavGraphBuilder.colorPickerDialog() {
@@ -120,7 +117,6 @@ private fun NavGraphBuilder.imageViewerDialog() {
     ) { entry ->
         val navController = LocalNavController.current
         val route = entry.toRoute<Route.Book.ImageViewerDialog>()
-        val viewModel = hiltViewModel<ImageViewerViewModel>()
 
         val context = LocalContext.current
         val coroutineScope = rememberCoroutineScope()
@@ -138,7 +134,7 @@ private fun NavGraphBuilder.imageViewerDialog() {
                     uriToBitmap(
                         imageUri = route.imageUri.toUri(),
                         context = context,
-                        header = viewModel.imageHeader
+                        bookId = route.bookId
                     ).onOk { bitmap ->
                         val result = runCatching {
                             context.contentResolver.openOutputStream(targetUri)?.use { out ->
@@ -182,7 +178,7 @@ private fun NavGraphBuilder.imageViewerDialog() {
                     uriToBitmap(
                         imageUri = route.imageUri.toUri(),
                         context = context,
-                        header = viewModel.imageHeader
+                        bookId = route.bookId
                     ).onOk {
                         coroutineScope.launch {
                             saveBitmapAsPng(context, it)
@@ -215,17 +211,19 @@ private fun NavGraphBuilder.imageViewerDialog() {
                 val defaultName = "lnr_${System.currentTimeMillis()}.png"
                 createDocumentLauncher.launch(defaultName)
             },
-            header = viewModel.imageHeader
+            bookId = route.bookId
         )
     }
 }
 
 fun NavController.navigateToImageViewerDialog(
-    imageUri: Uri
+    imageUri: Uri,
+    bookId: String
 ) {
     navigate(
         Route.Book.ImageViewerDialog(
-            imageUri = imageUri.toString()
+            imageUri = imageUri.toString(),
+            bookId = BookIdentity.bookKey(bookId)
         )
     )
 }

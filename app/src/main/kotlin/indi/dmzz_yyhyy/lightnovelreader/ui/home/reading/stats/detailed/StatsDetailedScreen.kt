@@ -298,6 +298,7 @@ fun BookStack(
                 val result by pair.second.collectAsStateWithLifecycle(null)
                 result?.onOk {
                     Cover(
+                        bookId = it.id,
                         width = 63.dp * scale,
                         height = 90.dp * scale,
                         uri = it.coverUri,

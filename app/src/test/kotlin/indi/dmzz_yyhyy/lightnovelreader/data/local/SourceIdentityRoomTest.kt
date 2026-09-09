@@ -76,6 +76,20 @@ class SourceIdentityRoomTest {
         }
     }
 
+    @Test fun identicalTitleAndAuthorAreTwoBooksInOneShelf() = runBlocking {
+        save(a, "Same title"); save(b, "Same title")
+        shelves.addBookshelf(Bookshelf(id = 1, name = "mixed"))
+        shelves.addBookIntoBookShelf(1, info(a, "Same title"))
+        shelves.addBookIntoBookShelf(1, info(b, "Same title"))
+        val ids = shelves.getBookshelf(1)!!.allBookIds
+        assertEquals(2, ids.size)
+        assertEquals(setOf(a.storageKey, b.storageKey), ids.toSet())
+        assertEquals("author", local.getBookInformation(a.storageKey)!!.author)
+        assertEquals("author", local.getBookInformation(b.storageKey)!!.author)
+        local.updateUserReadingData(a.storageKey) { it.copy(totalReadTime = 99) }
+        assertEquals(30, local.getUserReadingData(b.storageKey).totalReadTime)
+    }
+
     @Test fun sameIdsKeepBooksVolumesChaptersAndDeletionIndependent() = runBlocking {
         for ((book, title) in listOf(a to "A", b to "B", other to "Other")) save(book, title)
         for ((book, title) in listOf(a to "A", b to "B", other to "Other")) {

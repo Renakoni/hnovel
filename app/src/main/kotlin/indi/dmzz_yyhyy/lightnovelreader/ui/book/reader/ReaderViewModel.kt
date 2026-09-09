@@ -81,6 +81,13 @@ class ReaderViewModel @Inject constructor(
     private var chapterId = ""
     private var lastModeChapterId: String? = null
 
+    /** A restored route can reconstruct the session; returning from dialogs keeps progress. */
+    fun openBook(id: String, chapter: String) {
+        if (bookId == id && chapterId.isNotEmpty()) return
+        bookId = id
+        changeChapter(chapter)
+    }
+
     init {
         viewModelScope.launch {
             settingState.isUsingFlipPageUserData.getFlowWithDefault(false).collect { flip ->

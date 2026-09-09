@@ -7,9 +7,9 @@ import android.net.Uri
 import android.os.Environment
 import android.provider.MediaStore
 import coil3.BitmapImage
-import coil3.ImageLoader
-import coil3.network.NetworkHeaders
-import coil3.network.httpHeaders
+import coil3.SingletonImageLoader
+import indi.dmzz_yyhyy.lightnovelreader.data.image.SourceImage
+import indi.dmzz_yyhyy.lightnovelreader.data.book.BookIdentity
 import coil3.request.ErrorResult
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
@@ -23,18 +23,13 @@ object ImageUtils {
     suspend fun uriToBitmap(
         imageUri: Uri,
         context: Context,
-        header: Map<String, String> = emptyMap()
+        bookId: String? = null
     ):  Result<Bitmap, Throwable> = withContext(Dispatchers.IO) {
         try {
-            val loader = ImageLoader(context)
+            val loader = SingletonImageLoader.get(context)
             val request = ImageRequest.Builder(context)
-                .data(imageUri)
+                .data(bookId?.let { SourceImage(BookIdentity.book(it), imageUri.toString()) } ?: imageUri)
                 .interceptorCoroutineContext(Dispatchers.IO)
-                .httpHeaders(
-                    NetworkHeaders.Builder().apply {
-                        header.forEach { (key, value) -> add(key, value) }
-                    }.build()
-                )
                 .build()
 
             val result = loader.execute(request)

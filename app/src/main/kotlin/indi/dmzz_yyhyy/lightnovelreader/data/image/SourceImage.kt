@@ -1,0 +1,71 @@
+package indi.dmzz_yyhyy.lightnovelreader.data.image
+
+import coil3.intercept.Interceptor
+import coil3.network.NetworkHeaders
+import coil3.network.httpHeaders
+import coil3.request.ImageResult
+import coil3.request.CachePolicy
+import coil3.request.SuccessResult
+import indi.dmzz_yyhyy.lightnovelreader.data.book.BookIdentity
+import indi.dmzz_yyhyy.lightnovelreader.data.book.SourceBookId
+import indi.dmzz_yyhyy.lightnovelreader.data.web.SourceResolution
+import indi.dmzz_yyhyy.lightnovelreader.data.web.WebSourceRegistry
+import java.security.MessageDigest
+import javax.inject.Inject
+
+/** Safe to pass through UI/navigation. Credentials are resolved only during execution. */
+data class SourceImage(val book: SourceBookId, val uri: String)
+
+/** Runs before Coil's memory/disk lookup, so URL equality never implies source equality. */
+class SourceImageInterceptor @Inject constructor(
+    private val registry: WebSourceRegistry,
+    @dagger.hilt.android.qualifiers.ApplicationContext context: android.content.Context,
+) : Interceptor {
+    // Only opaque cache keys are persisted. A removed source may read its last cached image,
+    // but cannot start a network request or borrow another source's credentials.
+    private val cacheKeys = context.getSharedPreferences("source_image_cache_keys", android.content.Context.MODE_PRIVATE)
+
+    override suspend fun intercept(chain: Interceptor.Chain): ImageResult {
+        val image = chain.request.data as? SourceImage ?: return chain.proceed()
+        if (android.net.Uri.parse(image.uri).scheme in setOf("file", "content", "android.resource")) {
+            return chain.withRequest(chain.request.newBuilder().data(image.uri).build()).proceed()
+        }
+        val indexKey = sourceImageCacheKey(image, "", 0, emptyMap())
+        val runtime = when (val result = registry.resolve(image.book.sourceId)) {
+            is SourceResolution.Ready -> result.runtime
+            is SourceResolution.Missing -> {
+                val cachedKey = cacheKeys.getString(indexKey, null) ?: error("Image source is not registered")
+                // Use only the opaque cache key as request data. Keeping the original HTTP URI
+                // would let a cache miss fall through to a network fetch without a runtime.
+                return chain.withRequest(chain.request.newBuilder().data(cachedKey)
+                    .memoryCacheKey(cachedKey).diskCacheKey(cachedKey)
+                    .networkCachePolicy(CachePolicy.DISABLED).build()).proceed()
+            }
+            is SourceResolution.Unavailable -> throw result.cause
+        }
+        val result = runtime.execute {
+            val headers = runtime.imageHeaders()
+            val key = sourceImageCacheKey(image, runtime.metadata.revision, runtime.metadata.accountGeneration, headers)
+            val result = chain.withRequest(chain.request.newBuilder()
+                .data(image.uri)
+                .memoryCacheKey(key)
+                .diskCacheKey(key)
+                .httpHeaders(NetworkHeaders.Builder().apply {
+                    headers.forEach { (name, value) -> add(name, value) }
+                }.build())
+                .build()).proceed()
+            result to key
+        }
+        if (result.first is SuccessResult) cacheKeys.edit().putString(indexKey, result.second).apply()
+        return result.first
+    }
+}
+
+internal fun sourceImageCacheKey(image: SourceImage, revision: String, accountGeneration: Long,
+    headers: Map<String, String>): String {
+    // Length-safe encoding; never include credentials or URLs in a printable cache key.
+    val fields = listOf(image.book.sourceId.namespace, image.book.sourceId.id, revision,
+        accountGeneration.toString(), image.uri) + headers.toSortedMap().flatMap { listOf(it.key, it.value) }
+    val bytes = BookIdentity.encode("image", fields).toByteArray(Charsets.UTF_8)
+    return "source-image-" + MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+}

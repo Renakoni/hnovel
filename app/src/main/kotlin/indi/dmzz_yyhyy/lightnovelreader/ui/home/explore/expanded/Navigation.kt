@@ -13,7 +13,6 @@ import androidx.navigation.toRoute
 import io.nightfish.lightnovelreader.api.ui.LocalNavController
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.detail.navigateToBookDetailDestination
 import indi.dmzz_yyhyy.lightnovelreader.ui.dialog.navigateToAddBookToBookshelfDialog
-import indi.dmzz_yyhyy.lightnovelreader.ui.home.explore.ExploreViewModel
 import io.nightfish.lightnovelreader.api.Route
 import indi.dmzz_yyhyy.lightnovelreader.utils.isResumed
 import indi.dmzz_yyhyy.lightnovelreader.utils.popBackStackIfResumed
@@ -21,17 +20,16 @@ import indi.dmzz_yyhyy.lightnovelreader.utils.popBackStackIfResumed
 fun NavGraphBuilder.exploreExpandDestination() {
     composable<Route.Main.Explore.Expanded> { entry ->
         val navController = LocalNavController.current
-        val parentEntry = remember(entry) { navController.getBackStackEntry(Route.Main) }
-        val exploreViewModel = hiltViewModel<ExploreViewModel>(parentEntry)
+        val route = entry.toRoute<Route.Main.Explore.Expanded>()
         val exploreExpandedPageHomeViewModel = hiltViewModel<ExpandedPageViewModel>()
         var dialog : @Composable () -> Unit by remember { mutableStateOf(@Composable {}) }
         ExpandedPageScreen(
-            exploreUiState = exploreViewModel.uiState,
+            exploreUiState = exploreExpandedPageHomeViewModel.exploreUiState,
             expandedPageUiState = exploreExpandedPageHomeViewModel.uiState,
-            refresh = exploreViewModel::refresh,
+            refresh = exploreExpandedPageHomeViewModel::refresh,
             dialog = { newDialog -> dialog = newDialog },
-            expandedPageDataSourceId = entry.toRoute<Route.Main.Explore.Expanded>().expandedPageDataSourceId,
-            init = exploreExpandedPageHomeViewModel::init,
+            expandedPageDataSourceId = route.expandedPageDataSourceId,
+            init = { exploreExpandedPageHomeViewModel.init(it, route.sourceBookKey) },
             loadMore = exploreExpandedPageHomeViewModel::loadMore,
             refreshResult = exploreExpandedPageHomeViewModel::loadBookResult,
             requestAddBookToBookshelf = {

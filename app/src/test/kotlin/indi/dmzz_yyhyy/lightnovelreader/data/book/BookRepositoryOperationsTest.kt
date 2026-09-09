@@ -3,7 +3,6 @@ package indi.dmzz_yyhyy.lightnovelreader.data.book
 import android.app.Application
 import android.net.Uri
 import androidx.concurrent.futures.ResolvableFuture
-import androidx.navigation.NavController
 import androidx.room.Room
 import androidx.work.Clock
 import androidx.work.Configuration
@@ -15,7 +14,6 @@ import androidx.work.impl.WorkContinuationImpl
 import androidx.work.impl.WorkDatabase
 import androidx.work.impl.WorkManagerImpl
 import androidx.work.impl.utils.EnqueueRunnable
-import indi.dmzz_yyhyy.lightnovelreader.data.web.proxy.ProxyWebBookDataSource
 import indi.dmzz_yyhyy.lightnovelreader.data.work.CacheBookWork
 import indi.dmzz_yyhyy.lightnovelreader.data.work.ExportBookToEPUBWork
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.detail.DetailViewModel
@@ -145,17 +143,23 @@ class BookRepositoryOperationsTest {
     }
 
     @Test
-    fun tagsAreForwardedUnchangedToTheCurrentProviderWithTheSameController() {
-        val controller = mockk<NavController>()
-        val replacement = mockk<ProxyWebBookDataSource>()
-        every { fixture.remote.progressBookTagClick(any(), any()) } just Runs
-        every { replacement.progressBookTagClick(any(), any()) } just Runs
+    fun tagsUseTheBookSourceAndReturnDataForHostNavigation() = runTest {
+        val bookA = SourceBookId(io.nightfish.lightnovelreader.api.identifier.Identifier("fixture", "a"), "same")
+        val bookB = SourceBookId(io.nightfish.lightnovelreader.api.identifier.Identifier("fixture", "b"), "same")
+        val a = mockk<indi.dmzz_yyhyy.lightnovelreader.data.web.SourceRuntime>()
+        val b = mockk<indi.dmzz_yyhyy.lightnovelreader.data.web.SourceRuntime>()
+        every { a.bookTagPage("tag") } returns "page-a"
+        every { b.bookTagPage("tag") } returns "page-b"
+        coEvery { fixture.registry.resolve(bookA.sourceId) } returns indi.dmzz_yyhyy.lightnovelreader.data.web.SourceResolution.Ready(a)
+        coEvery { fixture.registry.resolve(bookB.sourceId) } returns indi.dmzz_yyhyy.lightnovelreader.data.web.SourceResolution.Ready(b)
         val repository = fixture.repository()
-        repository.progressBookTagClick("tag / value", controller)
-        fixture.activeRemote = replacement
-        repository.progressBookTagClick("next", controller)
-        verify(exactly = 1) { fixture.remote.progressBookTagClick("tag / value", controller) }
-        verify(exactly = 1) { replacement.progressBookTagClick("next", controller) }
+        assertEquals(com.github.michaelbull.result.Ok("page-a"), repository.bookTagPage(bookA, "tag"))
+        assertEquals(com.github.michaelbull.result.Ok("page-b"), repository.bookTagPage(bookB, "tag"))
+        assertEquals(com.github.michaelbull.result.Ok("page-a"), repository.bookTagPage(bookA, "tag"))
+        coEvery { fixture.registry.resolve(bookA.sourceId) } returns indi.dmzz_yyhyy.lightnovelreader.data.web.SourceResolution.Missing(bookA.sourceId)
+        assertTrue(repository.bookTagPage(bookA, "tag").isErr)
+        verify(exactly = 2) { a.bookTagPage("tag") }
+        verify(exactly = 1) { b.bookTagPage("tag") }
     }
 
     @Test

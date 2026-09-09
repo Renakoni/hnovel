@@ -5,7 +5,13 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import indi.dmzz_yyhyy.lightnovelreader.data.book.BookRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.bookshelf.BookshelfRepository
-import indi.dmzz_yyhyy.lightnovelreader.data.explore.ExploreRepository
+import indi.dmzz_yyhyy.lightnovelreader.data.web.WebSourceRegistry
+import indi.dmzz_yyhyy.lightnovelreader.data.web.WebBookDataSourceProvider
+import indi.dmzz_yyhyy.lightnovelreader.data.web.SourceResolution
+import indi.dmzz_yyhyy.lightnovelreader.data.book.BookIdentity
+import indi.dmzz_yyhyy.lightnovelreader.data.book.SourceBookId
+import indi.dmzz_yyhyy.lightnovelreader.ui.home.explore.MutableExploreUiState
+import io.nightfish.lightnovelreader.api.identifier.Identifier
 import indi.dmzz_yyhyy.lightnovelreader.data.text.TextProcessingRepository
 import io.nightfish.lightnovelreader.api.web.explore.ExploreExpandedPageDataSource
 import io.nightfish.lightnovelreader.api.web.explore.ExplorePageProvider
@@ -18,7 +24,8 @@ import javax.inject.Inject
 
 @HiltViewModel
 class ExpandedPageViewModel @Inject constructor(
-    private val exploreRepository: ExploreRepository,
+    private val sourceRegistry: WebSourceRegistry,
+    private val sourceProvider: WebBookDataSourceProvider,
     private val bookshelfRepository: BookshelfRepository,
     private val textProcessingRepository: TextProcessingRepository,
     private val bookRepository: BookRepository
@@ -29,33 +36,46 @@ class ExpandedPageViewModel @Inject constructor(
     private val _uiState = MutableExpandedPageUiState()
     val uiState: ExpandedPageUiState = _uiState
 
-    fun init(expandedPageDataSourceId: String) {
-        if (exploreRepository.explorePageProvider !is ExplorePageProvider.DefaultExplorePageProvider) return
-        val explorePageProvider = exploreRepository.explorePageProvider as ExplorePageProvider.DefaultExplorePageProvider
-        if (expandedPageDataSourceId == lastExpandedPageDataSourceId) return
-        lastExpandedPageDataSourceId = expandedPageDataSourceId
+    val exploreUiState = MutableExploreUiState()
+    private var sourceId: Identifier? = null
+    private var initialization: Job? = null
 
-        expandedPageDataSource = explorePageProvider.exploreExpandedPageDataSourceMap[expandedPageDataSourceId]
-
-        viewModelScope.launch(Dispatchers.IO) {
-            expandedPageDataSource?.let { dataSource ->
-                val processedTitle = withContext(Dispatchers.IO) {
-                    textProcessingRepository.processText { dataSource.title }
-                }
-                val filters = withContext(Dispatchers.IO) {
-                    dataSource.filters
-                }
-                _uiState.pageTitle = processedTitle
-                _uiState.filters.clear()
-                _uiState.filters.addAll(filters)
-            }
-        }
+    init {
         viewModelScope.launch {
             bookshelfRepository.getAllBookshelfBookIdsFlow().collect { ids ->
                 _uiState.allBookshelfBookIds = ids.toList()
             }
         }
-        loadBookResult()
+    }
+
+    fun init(expandedPageDataSourceId: String, sourceBookKey: String? = null) {
+        if (expandedPageDataSourceId == lastExpandedPageDataSourceId) return
+        lastExpandedPageDataSourceId = expandedPageDataSourceId
+        // Legacy browsing ingress captures the selection once. Book tags supply their source.
+        val id = sourceId ?: sourceBookKey?.let { BookIdentity.book(it).sourceId }
+            ?: sourceProvider.value.id
+        sourceId = id
+        initialization?.cancel()
+        initialization = viewModelScope.launch {
+            exploreUiState.isRefreshing = true
+            try {
+                val resolution = sourceRegistry.resolve(id)
+                val runtime = (resolution as? SourceResolution.Ready)?.runtime
+                val provider = runtime?.explorePages as? ExplorePageProvider.DefaultExplorePageProvider
+                expandedPageDataSource = provider?.exploreExpandedPageDataSourceMap?.get(expandedPageDataSourceId)
+                exploreUiState.isOffLine = expandedPageDataSource == null
+                expandedPageDataSource?.let { dataSource ->
+                    _uiState.pageTitle = withContext(Dispatchers.IO) {
+                        textProcessingRepository.processText { dataSource.title }
+                    }
+                    _uiState.filters.clear()
+                    _uiState.filters.addAll(dataSource.filters)
+                    loadBookResult()
+                }
+            } finally {
+                exploreUiState.isRefreshing = false
+            }
+        }
     }
 
     fun loadBookResult() {
@@ -65,13 +85,18 @@ class ExpandedPageViewModel @Inject constructor(
             expandedPageDataSource?.let { dataSource ->
                 dataSource.getResultFlow().collect { rawResult ->
                     when(rawResult) {
-                        is SearchResult.SingleBook -> _uiState.bookList.add(rawResult.bookId to bookRepository.getBookInformationFlow(rawResult.bookId))
-                        is SearchResult.MultipleBook -> _uiState.bookList.add(rawResult.bookId to bookRepository.getBookInformationFlow(rawResult.bookId))
+                        is SearchResult.SingleBook -> addBook(rawResult.bookId)
+                        is SearchResult.MultipleBook -> addBook(rawResult.bookId)
                         else -> {}
                     }
                 }
             }
         }
+    }
+
+    private fun addBook(remoteId: String) {
+        val book = SourceBookId(requireNotNull(sourceId), remoteId)
+        _uiState.bookList.add(book.storageKey to bookRepository.getBookInformationFlow(book))
     }
 
     fun loadMore() {
@@ -83,6 +108,8 @@ class ExpandedPageViewModel @Inject constructor(
     }
 
     fun refresh() {
-        init(lastExpandedPageDataSourceId)
+        val page = lastExpandedPageDataSourceId
+        lastExpandedPageDataSourceId = ""
+        init(page)
     }
 }

@@ -443,6 +443,7 @@ private fun ExploreBookCard(
             modifier = Modifier.padding(horizontal = 4.dp)
         ) {
             Cover(
+                bookId = book.id,
                 width = 98.dp,
                 height = 138.dp,
                 uri = book.coverUri,

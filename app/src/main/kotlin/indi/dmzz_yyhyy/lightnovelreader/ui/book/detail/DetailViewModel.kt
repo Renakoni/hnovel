@@ -8,7 +8,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.navigation.NavController
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkInfo
@@ -37,7 +36,7 @@ class DetailViewModel @Inject constructor(
 ) : ViewModel() {
     private val _uiState = MutableDetailUiState()
     var exportSettings = ExportSettings()
-    var navController: NavController? = null
+    private var book: indi.dmzz_yyhyy.lightnovelreader.data.book.SourceBookId? = null
     val uiState: DetailUiState = _uiState
 
     var isInitialized by mutableStateOf(false)
@@ -46,6 +45,7 @@ class DetailViewModel @Inject constructor(
     fun init(bookId: String) {
         Log.d("DetailViewModel", "Init bookId = $bookId")
         if (isInitialized) return
+        book = indi.dmzz_yyhyy.lightnovelreader.data.book.BookIdentity.book(bookId)
         isInitialized = true
         viewModelScope.launch(Dispatchers.IO) {
             bookRepository.getBookInformationFlow(bookId, WebDataSourcePriority.High).collect { result ->
@@ -96,10 +96,7 @@ class DetailViewModel @Inject constructor(
         return isCachedFlow
     }
 
-    fun onClickTag(tag: String) {
-        if (navController == null) return
-        bookRepository.progressBookTagClick(tag, navController!!)
-    }
+    suspend fun tagPage(tag: String) = book?.let { bookRepository.bookTagPage(it, tag) }
 
 
     fun exportToEpub(uri: Uri, bookId: String, title: String): Flow<WorkInfo?> {

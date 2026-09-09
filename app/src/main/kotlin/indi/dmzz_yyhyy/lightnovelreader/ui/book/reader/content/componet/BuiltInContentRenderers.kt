@@ -18,7 +18,7 @@ import indi.dmzz_yyhyy.lightnovelreader.utils.rememberReaderFontFamily
 import io.nightfish.lightnovelreader.api.ui.LocalNavController
 import io.nightfish.lightnovelreader.api.ui.LocalReaderStyle
 import io.nightfish.lightnovelreader.api.userdata.UriUserData
-import io.nightfish.lightnovelreader.api.web.WebBookDataSourceManagerApi
+import indi.dmzz_yyhyy.lightnovelreader.ui.LocalReaderBookId
 
 @Composable
 internal fun ReaderTextContent(text: String, fontFamilyUriUserData: UriUserData, modifier: Modifier) {
@@ -53,16 +53,16 @@ private fun readerTextColor(textColor: Color, textDarkColor: Color): Color {
 }
 
 @Composable
-internal fun ReaderImageContent(uri: Uri, webBookDataSourceManagerApi: WebBookDataSourceManagerApi, modifier: Modifier) {
-    val imageHeader = remember(webBookDataSourceManagerApi.getWebDataSource()) { webBookDataSourceManagerApi.getWebDataSource().imageHeader }
+internal fun ReaderImageContent(uri: Uri, modifier: Modifier) {
+    val bookId = requireNotNull(LocalReaderBookId.current) { "Reader image has no book identity" }
     val navController = LocalNavController.current
     ZoomableImage(
         imageUri = uri,
         modifier = modifier.fillMaxSize(),
         onViewImage = {
-            navController.navigateToImageViewerDialog(uri)
+            navController.navigateToImageViewerDialog(uri, bookId)
         },
-        header = imageHeader
+        bookId = bookId
     )
 }
 

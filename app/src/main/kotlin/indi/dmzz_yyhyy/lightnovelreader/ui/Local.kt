@@ -21,6 +21,4 @@ val LocalBottomBarController = staticCompositionLocalOf<(Boolean) -> Unit> {
     {}
 }
 
-val LocalImageHeaderGetter = staticCompositionLocalOf<() -> Map<String, String>> {
-    error("No LocalImageHeaderGetter provided")
-}
+val LocalReaderBookId = staticCompositionLocalOf<String?> { null }

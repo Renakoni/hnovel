@@ -411,6 +411,7 @@ private fun ReadingBookCard(
                     .padding(4.dp)
             ) {
                 Cover(
+                    bookId = bookInformation.id,
                     width = 94.dp,
                     height = 144.dp,
                     uri = bookInformation.coverUri,
@@ -623,6 +624,7 @@ private fun ReadingHeaderCardPage(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Cover(
+            bookId = info.id,
             height = 172.dp,
             width = 118.dp,
             uri = info.coverUri,

@@ -20,7 +20,6 @@ fun LightNovelReaderApp(
     onBuildNavHost: NavGraphBuilder.() -> Unit,
     onReaderActiveChanged: (Boolean) -> Unit,
     readerStyle: ReaderStyle,
-    imageHeaderGetter: () -> Map<String, String>,
     intentFlow: Flow<Intent>,
     webBookDataSourceFoundedFlow: Flow<Boolean>,
 ) {
@@ -46,7 +45,6 @@ fun LightNovelReaderApp(
         onBuildNavHost = onBuildNavHost,
         onReaderActiveChanged = onReaderActiveChanged,
         readerStyle = readerStyle,
-        imageHeaderGetter = imageHeaderGetter,
         webBookDataSourceFoundedFlow = webBookDataSourceFoundedFlow
     )
 }

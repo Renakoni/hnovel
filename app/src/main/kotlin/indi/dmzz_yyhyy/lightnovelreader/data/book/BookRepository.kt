@@ -1,7 +1,6 @@
 package indi.dmzz_yyhyy.lightnovelreader.data.book
 
 import android.util.Log
-import androidx.navigation.NavController
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.Operation
@@ -18,7 +17,6 @@ import indi.dmzz_yyhyy.lightnovelreader.BuildConfig
 import indi.dmzz_yyhyy.lightnovelreader.data.bookshelf.BookshelfRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.local.LocalBookDataSource
 import indi.dmzz_yyhyy.lightnovelreader.data.text.TextProcessingRepository
-import indi.dmzz_yyhyy.lightnovelreader.data.web.WebBookDataSourceProvider
 import indi.dmzz_yyhyy.lightnovelreader.data.work.CacheBookWork
 import io.nightfish.lightnovelreader.api.book.BookInformation
 import io.nightfish.lightnovelreader.api.book.BookRepositoryApi
@@ -44,7 +42,6 @@ internal fun WorkManager.observeSubmittedUniqueWork(name: String, operation: Ope
 
 @Singleton
 class BookRepository @Inject constructor(
-    private val webBookDataSourceProvider: WebBookDataSourceProvider,
     private val localBookDataSource: LocalBookDataSource,
     private val bookshelfRepository: BookshelfRepository,
     private val textProcessingRepository: TextProcessingRepository,
@@ -57,7 +54,6 @@ class BookRepository @Inject constructor(
         private const val TAG = "BookRepository"
     }
 
-    private val webBookDataSource get() = webBookDataSourceProvider.value
 
     fun getBookInformationFlow(book: SourceBookId, priority: WebDataSourcePriority = WebDataSourcePriority.Default) =
         getBookInformationFlow(book.storageKey, priority)
@@ -158,6 +154,6 @@ class BookRepository @Inject constructor(
         return true
     }
 
-    override fun progressBookTagClick(tag: String, navController: NavController) =
-        webBookDataSource.progressBookTagClick(tag, navController)
+    suspend fun bookTagPage(book: SourceBookId, tag: String): Result<String?, WebRequestError> =
+        sourceRegistry.request(book) { Ok(it.bookTagPage(tag)) }
 }

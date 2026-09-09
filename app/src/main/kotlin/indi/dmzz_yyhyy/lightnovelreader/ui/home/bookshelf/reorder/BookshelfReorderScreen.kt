@@ -196,6 +196,7 @@ fun BookshelfReorderContent(
                                         .clip(RoundedCornerShape(6.dp))
                                 ) {
                                     Cover(
+                                        bookId = item.bookInformation.id,
                                         width = 60.dp,
                                         height = 88.dp,
                                         uri = item.bookInformation.coverUri,
