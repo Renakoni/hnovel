@@ -50,11 +50,17 @@ class WebBookDataSourceManager @Inject constructor (
 
     fun loadWebDataSourcesFromClassLoader(classLoader: PathClassLoader, injector: PluginInjector, packageName: String, webDataSourceClassNames: List<String>) {
         val items = mutableListOf<SourceRegistration>()
-        webDataSourceClassNames.forEach { className ->
-            val clazz = runCatching { classLoader.loadClass(className) }.getOrNull() ?: return@forEach
-            if (!WebBookDataSource::class.java.isAssignableFrom(clazz)) return@forEach
-            val instance = injector.provide<WebBookDataSource>(clazz)
-            if (instance is WebBookDataSource) items.add(loadWebDataSourceClass(instance))
+        try {
+            webDataSourceClassNames.forEach { className ->
+                val clazz = runCatching { classLoader.loadClass(className) }.getOrNull() ?: return@forEach
+                if (!WebBookDataSource::class.java.isAssignableFrom(clazz)) return@forEach
+                val instance = injector.provide<WebBookDataSource>(clazz)
+                if (instance is WebBookDataSource) items.add(loadWebDataSourceClass(instance))
+            }
+        } catch (failure: Throwable) {
+            items.asReversed().forEach { it.unregister() }
+            onWebDataSourceListChange()
+            throw failure
         }
         registrationsByPackage[packageName] = items
     }
