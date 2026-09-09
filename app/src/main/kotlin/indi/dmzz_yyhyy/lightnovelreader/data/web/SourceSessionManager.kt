@@ -18,14 +18,14 @@ class SourceSessionManager {
 
     @Synchronized fun setCookies(session: SourceSession, cookies: Map<String, String>): Boolean {
         val state = sessions[session.source] ?: return false
-        if (state.generation != session.generation || !state.active) return false
+        if (state.generation != session.generation || state.nonce != session.nonce || !state.active) return false
         state.cookies = cookies.toMap()
         return true
     }
 
     @Synchronized fun logout(session: SourceSession): SourceSession {
         val state = sessions[session.source]
-        if (state == null || state.generation != session.generation) return current(session.source)
+        if (state == null || state.generation != session.generation || state.nonce != session.nonce) return current(session.source)
         val next = State(generation = state.generation + 1)
         sessions[session.source] = next
         return snapshot(session.source, next)
