@@ -105,12 +105,13 @@ class CheckUpdateWork @AssistedInject constructor(
         // and status fields, and return bounded summary counts plus a report filename.
         val report = appContext.filesDir.resolve("book-update-results").apply { mkdirs() }.resolve("$id.json")
         val atomic = android.util.AtomicFile(report)
-        val output = atomic.startWrite()
+        var output: java.io.FileOutputStream? = null
         try {
-            output.write(JsonArray(outcomes).toString().toByteArray(Charsets.UTF_8))
-            atomic.finishWrite(output)
+            output = atomic.startWrite()
+            output!!.write(JsonArray(outcomes).toString().toByteArray(Charsets.UTF_8))
+            atomic.finishWrite(output!!)
         } catch (failure: Exception) {
-            atomic.failWrite(output)
+            output?.let(atomic::failWrite)
             return Result.failure(workDataOf("reason" to "report_write_failed"))
         }
         return Result.success(workDataOf(
