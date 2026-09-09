@@ -69,7 +69,6 @@ fun NavGraphBuilder.bookDetailDestination() {
             }
             navController.popBackStack()
         }
-        viewModel.navController = navController
         val snackbarHostState = LocalSnackbarHost.current
 
         LaunchedEffect(bookId) {
@@ -163,8 +162,14 @@ fun NavGraphBuilder.bookDetailDestination() {
                 }
             },
             requestAddBookToBookshelf = navController::navigateToAddBookToBookshelfDialog,
-            onClickTag = viewModel::onClickTag,
-            onClickCover = navController::navigateToImageViewerDialog,
+            onClickTag = { tag ->
+                coroutineScope.launch {
+                    viewModel.tagPage(tag)?.onOk { page ->
+                        if (page != null) navController.navigate(Route.Main.Explore.Expanded(page, bookId))
+                    }?.onErr { error -> snackbarHostState.showSnackbar(error.title) }
+                }
+            },
+            onClickCover = { uri -> navController.navigateToImageViewerDialog(uri, bookId) },
             onClickMarkAsRead = {
                 navController.navigateToMarkAllChaptersAsReadDialog(bookId)
             }

@@ -76,6 +76,13 @@ class SourceRuntime internal constructor(
         return CoroutineScope(parent.coroutineContext + child)
     }
 
+    fun bookTagPage(tag: String): String? {
+        checkAvailable()
+        return source.bookTagPage(tag)
+    }
+
+    internal val explorePages get() = run { checkAvailable(); legacyExplore }
+
     fun imageHeaders(): Map<String, String> {
         checkAvailable()
         return source.imageHeader.toMap()
@@ -109,6 +116,7 @@ class SourceRuntime internal constructor(
         override val cache get() = null
         override val searchProvider get() = search
         override val imageHeader get() = imageHeaders()
+        override fun bookTagPage(tag: String) = this@SourceRuntime.bookTagPage(tag)
         override val explorePageProvider get() = run { checkAvailable(); legacyExplore }
         override val offLine get() = !isAvailable || source.offLine
         override val isOffLineFlow get() = source.isOffLineFlow.also { checkAvailable() }

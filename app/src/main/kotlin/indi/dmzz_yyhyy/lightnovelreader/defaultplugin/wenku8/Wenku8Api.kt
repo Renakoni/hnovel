@@ -251,6 +251,8 @@ class Wenku8Api : WebBookDataSource, AutoCloseable {
     override val explorePageProvider: ExplorePageProvider = Wenku8ExplorePageProvider(host, this)
 
 
+    override fun bookTagPage(tag: String): String? = tag.takeIf { it in tagList }
+
     override fun progressBookTagClick(tag: String, navController: NavController) {
         if (tagList.contains(tag))
             navController.navigateToExploreExpandDestination(tag)

@@ -149,6 +149,9 @@ interface WebBookDataSource {
      */
     fun progressBookTagClick(tag: String, navController: NavController) {  }
 
+    /** Data-only tag target within this source; the host owns navigation. */
+    fun bookTagPage(tag: String): String? = null
+
     /**
      * 根据卷获取该卷封面的Uri, 用于EPUB分卷导出
      * 如无则返回null

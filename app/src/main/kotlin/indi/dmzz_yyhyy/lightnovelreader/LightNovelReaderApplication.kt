@@ -24,7 +24,13 @@ import kotlinx.serialization.ExperimentalSerializationApi
 import javax.inject.Inject
 
 @HiltAndroidApp
-class LightNovelReaderApplication : Application(), Configuration.Provider {
+class LightNovelReaderApplication : Application(), Configuration.Provider, coil3.SingletonImageLoader.Factory {
+    @Inject lateinit var sourceImageInterceptor: indi.dmzz_yyhyy.lightnovelreader.data.image.SourceImageInterceptor
+
+    override fun newImageLoader(context: Context): coil3.ImageLoader = coil3.ImageLoader.Builder(context)
+        .components { add(sourceImageInterceptor) }
+        .build()
+
     private val coroutineScope = CoroutineScope(Dispatchers.IO)
     @Inject lateinit var workerFactory: HiltWorkerFactory
     @Inject lateinit var loggerRepository: LoggerRepository

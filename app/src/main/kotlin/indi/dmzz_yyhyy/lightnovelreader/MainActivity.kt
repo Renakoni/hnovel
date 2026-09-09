@@ -150,7 +150,6 @@ class MainActivity : ComponentActivity() {
                         }
                     },
                     onReaderActiveChanged = ::setReaderActive,
-                    imageHeaderGetter = { webBookDataSourceProvider.value.imageHeader },
                     webBookDataSourceFoundedFlow = webBookDataSourceFoundedFlow
                 )
             }

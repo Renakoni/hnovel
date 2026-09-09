@@ -18,19 +18,18 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import coil3.compose.SubcomposeAsyncImage
-import coil3.network.NetworkHeaders
-import coil3.network.httpHeaders
 import coil3.request.CachePolicy
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import coil3.request.transformations
 import indi.dmzz_yyhyy.lightnovelreader.data.image.ImageTransPostProcessingViewModel
-import indi.dmzz_yyhyy.lightnovelreader.ui.LocalImageHeaderGetter
+import indi.dmzz_yyhyy.lightnovelreader.data.book.BookIdentity
+import indi.dmzz_yyhyy.lightnovelreader.data.image.SourceImage
 import io.nightfish.lightnovelreader.api.image.ImagePostProcessingPipeline
 import kotlinx.coroutines.Dispatchers
 
 @Composable
-fun Cover(width: Dp, height: Dp, uri: Uri, title: String, rounded: Dp = 8.dp) {
+fun Cover(bookId: String, width: Dp, height: Dp, uri: Uri, title: String, rounded: Dp = 8.dp) {
     Box(
         modifier = Modifier
             .size(width, height)
@@ -42,33 +41,26 @@ fun Cover(width: Dp, height: Dp, uri: Uri, title: String, rounded: Dp = 8.dp) {
         if (uri == Uri.EMPTY) {
             DefaultBookCover(title = title, width = width, height = height)
         } else {
-            RemoteBookCover(width = width, height = height, uri = uri)
+            RemoteBookCover(bookId = bookId, width = width, height = height, uri = uri)
         }
     }
 }
 
 @Composable
-private fun RemoteBookCover(width: Dp, height: Dp, uri: Uri) {
-    val imageHeaderGetter = LocalImageHeaderGetter.current
+private fun RemoteBookCover(bookId: String, width: Dp, height: Dp, uri: Uri) {
     val context = LocalContext.current
-    val headers = imageHeaderGetter()
     val imageTransPostProcessingViewModel = hiltViewModel<ImageTransPostProcessingViewModel>()
-    val request = remember(uri, headers) {
+    val request = remember(uri, bookId) {
         val transformations = imageTransPostProcessingViewModel
             .imageTransPostProcessingManager
             .getCoil3Transformations(ImagePostProcessingPipeline.bookCover, uri)
         ImageRequest.Builder(context)
-            .data(uri)
+            .data(SourceImage(BookIdentity.book(bookId), uri.toString()))
             .transformations(transformations)
             .crossfade(true)
             .memoryCachePolicy(CachePolicy.ENABLED)
             .networkCachePolicy(CachePolicy.ENABLED)
             .interceptorCoroutineContext(Dispatchers.Default)
-            .httpHeaders(
-                NetworkHeaders.Builder().apply {
-                    headers.forEach { (key, value) -> add(key, value) }
-                }.build()
-            )
             .build()
 
     }

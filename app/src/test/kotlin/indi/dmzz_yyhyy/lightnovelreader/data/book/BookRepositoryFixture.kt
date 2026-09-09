@@ -35,7 +35,7 @@ internal class BookRepositoryFixture {
     fun chapterRepository() = ChapterRepository(registry, local, text)
 
     fun repository() = BookRepository(
-        provider, local, bookshelves, text, workManager,
+        local, bookshelves, text, workManager,
         chapterRepository(), BookReadingDataRepository(local), registry,
     )
 }

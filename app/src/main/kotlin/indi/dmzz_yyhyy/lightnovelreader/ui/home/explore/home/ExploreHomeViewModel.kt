@@ -20,7 +20,8 @@ class ExploreHomeViewModel @Inject constructor(
     private var workingExplorePageJob: Job? = null
     private var workingExploreBooksRowsJob: Job? = null
     val uiState: ExploreHomeUiState = _uiState
-    private val explorePageProvider = exploreRepository.explorePageProvider
+    private val source = exploreRepository.sourceSnapshot
+    private val explorePageProvider = source.explorePageProvider
     var customExplorePageProvider: ExplorePageProvider.CustomExplorePageProvider<*>? = null
 
     init {
@@ -65,7 +66,9 @@ class ExploreHomeViewModel @Inject constructor(
                         .map { exploreBooksRow ->
                             exploreBooksRow.copy(
                                 bookList = exploreBooksRow.bookList.map {
-                                    textProcessingRepository.processExploreBooksRow(it)
+                                    textProcessingRepository.processExploreBooksRow(it.copy(
+                                        id = indi.dmzz_yyhyy.lightnovelreader.data.book.SourceBookId(source.id, it.id).storageKey
+                                    ))
                                 }
                             )
                         }

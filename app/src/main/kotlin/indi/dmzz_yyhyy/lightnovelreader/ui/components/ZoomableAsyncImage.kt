@@ -36,8 +36,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import coil3.compose.SubcomposeAsyncImage
 import coil3.compose.SubcomposeAsyncImageContent
-import coil3.network.NetworkHeaders
-import coil3.network.httpHeaders
+import indi.dmzz_yyhyy.lightnovelreader.data.book.BookIdentity
+import indi.dmzz_yyhyy.lightnovelreader.data.image.SourceImage
 import coil3.request.CachePolicy
 import coil3.request.ImageRequest
 import coil3.request.crossfade
@@ -54,28 +54,23 @@ fun ZoomableImage(
     modifier: Modifier = Modifier,
     onViewImage: () -> Unit,
     placeholderHeight: Dp = 200.dp,
-    header: Map<String, String>
+    bookId: String
 ) {
     val context = LocalContext.current
     var retryKey by remember { mutableIntStateOf(0) }
     var lastError by remember { mutableStateOf<String?>(null) }
     val imageTransPostProcessingViewModel = hiltViewModel<ImageTransPostProcessingViewModel>()
-    val request = remember(imageUri, header) {
+    val request = remember(imageUri, bookId) {
         val transformations = imageTransPostProcessingViewModel
             .imageTransPostProcessingManager
             .getCoil3Transformations(ImagePostProcessingPipeline.imageComponent, imageUri)
         ImageRequest.Builder(context)
-            .data(imageUri)
+            .data(SourceImage(BookIdentity.book(bookId), imageUri.toString()))
             .transformations(transformations)
             .crossfade(true)
             .memoryCachePolicy(CachePolicy.ENABLED)
             .networkCachePolicy(CachePolicy.ENABLED)
             .interceptorCoroutineContext(Dispatchers.Default)
-            .httpHeaders(
-                NetworkHeaders.Builder().apply {
-                    header.forEach { (key, value) -> add(key, value) }
-                }.build()
-            )
             .build()
 
     }

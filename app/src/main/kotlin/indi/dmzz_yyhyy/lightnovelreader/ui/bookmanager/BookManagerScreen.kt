@@ -427,6 +427,7 @@ private fun Card(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Cover(
+                bookId = bookInformation.id,
                 width = 64.dp,
                 height = 93.dp,
                 uri = bookInformation.coverUri,

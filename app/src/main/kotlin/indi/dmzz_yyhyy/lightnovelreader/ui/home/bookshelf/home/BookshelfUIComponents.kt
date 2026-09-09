@@ -81,6 +81,7 @@ fun BookCardContent(
                     modifier = Modifier.graphicsLayer(alpha = alpha)
                 ) {
                     Cover(
+                        bookId = bookInformation.id,
                         width = 94.dp,
                         height = 144.dp,
                         uri = bookInformation.coverUri,

@@ -482,6 +482,7 @@ private fun LocalBookRow(
             val result by item.bookInformationFlow.collectAsStateWithLifecycle(null)
             result?.onOk {
                 Cover(
+                    bookId = it.id,
                     width = 64.dp,
                     height = 93.dp,
                     uri = it.coverUri,
@@ -623,6 +624,7 @@ private fun LocalBookInfoCard(
                 val result by item.bookInformationFlow.collectAsStateWithLifecycle(null)
                 result?.onOk {
                     Cover(
+                        bookId = it.id,
                         width = 64.dp,
                         height = 93.dp,
                         uri = it.coverUri,

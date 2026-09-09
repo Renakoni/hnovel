@@ -22,8 +22,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
-import coil3.network.NetworkHeaders
-import coil3.network.httpHeaders
+import indi.dmzz_yyhyy.lightnovelreader.data.book.BookIdentity
+import indi.dmzz_yyhyy.lightnovelreader.data.image.SourceImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import coil3.request.transformations
@@ -39,24 +39,19 @@ fun ImageViewerScreen(
     onDismissRequest: () -> Unit,
     onClickSave: () -> Unit,
     onLongClickSave: () -> Unit,
-    header: Map<String, String> = emptyMap()
+    bookId: String
 ) {
     val context = LocalContext.current
     val imageTransPostProcessingViewModel = hiltViewModel<ImageTransPostProcessingViewModel>()
-    val request = remember(imageUri, header) {
+    val request = remember(imageUri, bookId) {
         val transformations = imageTransPostProcessingViewModel
             .imageTransPostProcessingManager
             .getCoil3Transformations(ImagePostProcessingPipeline.imageComponent, imageUri)
         ImageRequest.Builder(context)
-            .data(imageUri)
+            .data(SourceImage(BookIdentity.book(bookId), imageUri.toString()))
             .transformations(transformations)
             .crossfade(true)
             .interceptorCoroutineContext(Dispatchers.Default)
-            .httpHeaders(
-                NetworkHeaders.Builder().apply {
-                    header.forEach { (key, value) -> add(key, value) }
-                }.build()
-            )
             .build()
     }
 

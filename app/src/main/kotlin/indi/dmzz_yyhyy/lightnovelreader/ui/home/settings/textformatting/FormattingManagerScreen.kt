@@ -161,6 +161,7 @@ private fun Group(
         val bookInformationResult by bookInformationFlow.collectAsStateWithLifecycle(null)
         bookInformationResult?.onOk {
             Cover(
+                bookId = it.id,
                 width = 60.dp,
                 height = 87.dp,
                 uri = it.coverUri,

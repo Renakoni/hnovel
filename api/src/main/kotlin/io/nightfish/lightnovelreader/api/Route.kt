@@ -100,7 +100,8 @@ object Route {
              */
             @Serializable
             data class Expanded(
-                val expandedPageDataSourceId: String
+                val expandedPageDataSourceId: String,
+                val sourceBookKey: String? = null
             )
         }
         /** 设置界面路由组 */
@@ -203,7 +204,7 @@ object Route {
         )
         /** 书本阅读界面路由 */
         @Serializable
-        data object Reader
+        data class Reader(val bookId: String, val chapterId: String)
 
         /**
          * 颜色选择器调色盘用途
@@ -275,7 +276,8 @@ object Route {
          */
         @Serializable
         data class ImageViewerDialog(
-            val imageUri: String
+            val imageUri: String,
+            val bookId: String
         )
     }
     /** 有可用更新提示对话框路由 */

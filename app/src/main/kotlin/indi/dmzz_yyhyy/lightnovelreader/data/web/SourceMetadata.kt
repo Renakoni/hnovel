@@ -11,6 +11,8 @@ data class SourceMetadata(
     val item: WebDataSourceItem,
     val capabilities: Set<SourceCapability>,
     val builtIn: Boolean = false,
+    val revision: String = "1",
+    val accountGeneration: Long = 0,
 ) {
     val id: Identifier get() = item.id
 }

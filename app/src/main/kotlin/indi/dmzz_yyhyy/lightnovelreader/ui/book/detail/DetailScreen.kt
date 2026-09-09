@@ -754,6 +754,7 @@ private fun BookCardBlock(
                 )
         ) {
             Cover(
+                bookId = bookInformation.id,
                 height = 178.dp,
                 width = 122.dp,
                 uri = bookInformation.coverUri,
