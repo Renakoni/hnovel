@@ -14,7 +14,7 @@ class SourceSessionManager {
         return snapshot(source, next)
     }
 
-    fun current(source: Identifier): SourceSession = snapshot(source, sessions[source] ?: State())
+    @Synchronized fun current(source: Identifier): SourceSession = snapshot(source, sessions[source] ?: State())
 
     @Synchronized fun setCookies(session: SourceSession, cookies: Map<String, String>): Boolean {
         val state = sessions[session.source] ?: return false
