@@ -1,0 +1,1 @@
+{"books":[{"title":"Alpha","available":true,"kind":"novel"},{"title":"Beta","available":false,"kind":"novel"},{"title":"Gamma","available":true,"kind":"novel"}],"fallback":["Fallback"],"short":["A"],"long":["1","2","3"]}
