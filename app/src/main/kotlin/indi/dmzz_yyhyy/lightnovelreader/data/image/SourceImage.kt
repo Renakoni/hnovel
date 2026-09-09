@@ -35,7 +35,9 @@ class SourceImageInterceptor @Inject constructor(
             is SourceResolution.Ready -> result.runtime
             is SourceResolution.Missing -> {
                 val cachedKey = cacheKeys.getString(indexKey, null) ?: error("Image source is not registered")
-                return chain.withRequest(chain.request.newBuilder().data(image.uri)
+                // Use only the opaque cache key as request data. Keeping the original HTTP URI
+                // would let a cache miss fall through to a network fetch without a runtime.
+                return chain.withRequest(chain.request.newBuilder().data(cachedKey)
                     .memoryCacheKey(cachedKey).diskCacheKey(cachedKey)
                     .networkCachePolicy(CachePolicy.DISABLED).build()).proceed()
             }
