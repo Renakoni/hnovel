@@ -93,8 +93,7 @@ class RuleParser {
             when {
                 text.regionMatches(index, "</js>", 0, 5, true) -> return index
                 text[index] in "\"'`" -> index = skipUnit(text, index, location, budget)
-                text.startsWith("//", index) -> index = text.indexOf('
-', index).takeIf { it >= 0 } ?: text.length
+                text.startsWith("//", index) -> index = text.indexOf('\\n', index).takeIf { it >= 0 } ?: text.length
                 text.startsWith("/*", index) -> index = text.indexOf("*/", index + 2).takeIf { it >= 0 }?.plus(2)
                     ?: fail(location, index, "UnclosedComment")
                 text[index] == '/' && previous in "=([{,:;!?&|" -> {
@@ -129,5 +128,6 @@ class RuleParser {
     private fun fail(location: RuleLocation, offset: Int, code: String): Nothing =
         throw RuleFailure(RuleError(RuleStage.Parse, location.copy(offset = location.offset + offset), code))
 }
+
 
 
