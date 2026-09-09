@@ -93,7 +93,8 @@ class RuleParser {
             when {
                 text.regionMatches(index, "</js>", 0, 5, true) -> return index
                 text[index] in "\"'`" -> index = skipUnit(text, index, location, budget)
-                text.startsWith("//", index) -> index = text.indexOf('\n', index).takeIf { it >= 0 } ?: text.length
+                text.startsWith("//", index) -> index = text.indexOf('
+', index).takeIf { it >= 0 } ?: text.length
                 text.startsWith("/*", index) -> index = text.indexOf("*/", index + 2).takeIf { it >= 0 }?.plus(2)
                     ?: fail(location, index, "UnclosedComment")
                 text[index] == '/' && previous in "=([{,:;!?&|" -> {
@@ -115,6 +116,18 @@ class RuleParser {
         fail(location, start, "UnclosedScript")
     }
 
+    private fun regexCanStart(text: String, index: Int, previous: Char): Boolean {
+        if (previous in "=([{,:;!?&|") return true
+        if (previous == ')' || previous == '>') return true
+        var end = index - 1
+        while (end >= 0 && text[end].isWhitespace()) end--
+        val wordEnd = end + 1
+        while (end >= 0 && text[end].isLetter()) end--
+        return text.substring(end + 1, wordEnd) in setOf("return", "throw", "case", "delete", "void", "typeof", "instanceof", "in", "of")
+    }
+
     private fun fail(location: RuleLocation, offset: Int, code: String): Nothing =
         throw RuleFailure(RuleError(RuleStage.Parse, location.copy(offset = location.offset + offset), code))
 }
+
+
