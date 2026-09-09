@@ -252,6 +252,22 @@ class SourceBrokerTest {
         }
     }
 
+    @Test fun sameNameCookiesWithDifferentPathsAreBothSentInPathOrder() = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            SourceBroker(directory.root).use { broker ->
+                val session = broker.open(scope(), listOf(grant(server.url("/"))))
+                server.enqueue(MockResponse().addHeader("Set-Cookie", "session=root; Path=/")
+                    .addHeader("Set-Cookie", "session=admin; Path=/admin"))
+                success(session.execute(request(server.url("/login"))))
+                server.recorded()
+                server.enqueue(MockResponse().setBody("ok"))
+                success(session.execute(request(server.url("/admin/page"))))
+                assertEquals("session=admin; session=root", server.recorded().getHeader("Cookie"))
+            }
+        }
+    }
+
     @Test fun cookiesPersistOnlyInTheirAccountAndCannotBeOverwrittenThroughKv() = runBlocking {
         MockWebServer().use { server ->
             server.start()

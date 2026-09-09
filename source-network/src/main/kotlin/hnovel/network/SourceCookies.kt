@@ -25,15 +25,22 @@ internal class SourceCookies(private val storage: SourceStorage, private val inv
 
     @Synchronized fun header(url: HttpUrl, explicit: String?): String {
         if (cookies.entries.removeAll { it.value.second.expiresAt <= System.currentTimeMillis() }) invalidateCache()
-        val values = linkedMapOf<String, String>()
-        cookies.values.map { it.second }.filter { it.expiresAt > System.currentTimeMillis() && it.matches(url) }
-            .sortedBy { it.path.length }.forEach { values[it.name] = it.value }
-        // Explicit rule/account cookies override same-name jar cookies only for this destination.
+        val matching = cookies.values.map { it.second }
+            .filter { it.expiresAt > System.currentTimeMillis() && it.matches(url) }
+            .sortedByDescending { it.path.length }
+            .toMutableList()
+        // Explicit rule/account cookies override every same-name jar cookie for this destination.
+        val explicitValues = linkedMapOf<String, String>()
         explicit?.split(';')?.forEach { part ->
             val pair = part.trim().split('=', limit = 2)
-            if (pair.size == 2) values[pair[0]] = pair[1]
+            if (pair.size == 2) explicitValues[pair[0]] = pair[1]
         }
-        return values.entries.joinToString("; ") { "${it.key}=${it.value}" }
+        if (explicitValues.isNotEmpty()) {
+            matching.removeAll { it.name in explicitValues }
+            return (matching.map { "${it.name}=${it.value}" } + explicitValues.map { "${it.key}=${it.value}" })
+                .joinToString("; ")
+        }
+        return matching.joinToString("; ") { "${it.name}=${it.value}" }
     }
 
     @Synchronized fun save(url: HttpUrl, headers: okhttp3.Headers) {
