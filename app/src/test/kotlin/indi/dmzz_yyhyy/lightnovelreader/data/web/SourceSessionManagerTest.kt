@@ -29,4 +29,12 @@ class SourceSessionManagerTest {
         assertFalse(redacted.contains("hunter2"))
         assertTrue(redacted.contains("<redacted>"))
     }
+
+    @Test fun sessionsFromAnotherManagerCannotWriteCookies() {
+        val first = SourceSessionManager()
+        val second = SourceSessionManager()
+        val foreign = second.begin(source)
+        assertFalse(first.setCookies(foreign, mapOf("sid" to "forged")))
+        assertTrue(first.current(source).cookies.isEmpty())
+    }
 }
