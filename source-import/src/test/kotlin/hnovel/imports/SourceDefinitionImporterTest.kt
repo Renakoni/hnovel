@@ -72,6 +72,14 @@ class SourceDefinitionImporterTest {
         assertEquals(1, store.list().size)
     }
 
+    @Test fun concurrentRateUsesLegadoNumericRepresentation() {
+        val importer = SourceDefinitionImporter(SourceDefinitionStore(temp.newFolder().toPath()))
+        assertTrue(importer.preview(json(extra = ",\"concurrentRate\":2")).issues.isEmpty())
+        val invalid = importer.preview(json(extra = ",\"concurrentRate\":[]"))
+        assertEquals(ImportCode.InvalidField, invalid.issues.single().code)
+        assertEquals("concurrentRate", invalid.issues.single().field)
+    }
+
     @Test fun complexFieldsAreValidationErrorsAndCannotOverwriteExistingDefinition() {
         val root = temp.newFolder().toPath()
         val store = SourceDefinitionStore(root)

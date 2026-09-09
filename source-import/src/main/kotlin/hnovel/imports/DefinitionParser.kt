@@ -84,11 +84,11 @@ class LegadoSourceAdapter : SourceFormatAdapter {
         val enabled = boolean("enabled", true)
         val explore = boolean("enabledExplore", true)
         boolean("enabledCookieJar", true)
-        val strings = setOf("bookSourceGroup", "bookUrlPattern", "jsLib", "concurrentRate", "header",
+        val strings = setOf("bookSourceGroup", "bookUrlPattern", "jsLib", "header",
             "loginUrl", "loginUi", "loginCheckJs", "coverDecodeJs", "bookSourceComment", "variableComment",
             "exploreUrl", "exploreScreen", "searchUrl")
         strings.forEach(::string)
-        val numbers = setOf("customOrder", "lastUpdateTime", "respondTime", "weight")
+        val numbers = setOf("concurrentRate", "customOrder", "lastUpdateTime", "respondTime", "weight")
         numbers.forEach(::number)
         val rules = setOf("ruleExplore", "ruleSearch", "ruleBookInfo", "ruleToc", "ruleContent", "ruleReview")
         rules.forEach { field ->
