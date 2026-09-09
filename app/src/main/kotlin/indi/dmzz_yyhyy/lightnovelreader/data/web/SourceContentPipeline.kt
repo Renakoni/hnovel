@@ -33,7 +33,10 @@ class SourceContentPipeline(private val executor: SourcePipelineExecutor) {
             when (val page = executor.directory(context, bookId, cursor)) {
                 is PipelineResult.Failure -> return page
                 is PipelineResult.Success -> {
-                    if (!seen.addAll(page.value.items.map { it.id })) return PipelineResult.Failure(PipelineFailure.Failed("repeated directory page"))
+                    val ids = page.value.items.map { it.id }
+                    if (ids.size != ids.toSet().size || ids.any { it in seen })
+                        return PipelineResult.Failure(PipelineFailure.Failed("repeated directory page"))
+                    seen.addAll(ids)
                     all += page.value.items
                     cursor = page.value.nextCursor ?: return PipelineResult.Success(all.sortedBy { it.order })
                 }
