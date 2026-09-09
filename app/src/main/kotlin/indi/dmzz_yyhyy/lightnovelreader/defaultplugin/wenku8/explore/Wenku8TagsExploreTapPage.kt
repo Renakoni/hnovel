@@ -17,7 +17,7 @@ class Wenku8TagsExploreTapPage(
         val soup = wenku8Api.getWithWenku8Cookie("$host/modules/article/tags.php").component1()
             ?: return@flow
         // The legacy tab also exposes the directory without fetching every preview.
-        emit(Wenku8DiscoveryParser.categories(soup).map {
+        emit(Wenku8DiscoveryParser.categories(soup).filter { wenku8Api.bookTagPage(it.target.removePrefix("tag:")) != null }.map {
             ExploreBooksRow(it.title, emptyList(), true, it.target.removePrefix("tag:"))
         })
     }
