@@ -49,9 +49,12 @@ class CorpusIntegrityTest {
             assertTrue(feature.string("requirement").isNotBlank())
             assertTrue(feature.string("evidence").isNotBlank())
             assertTrue(testIds.add(feature.string("testId")))
-            // No product engine exists yet. Change this gate together with the first
-            // real differential adapter, never because an oracle test is green.
-            assertEquals("planned", feature.string("implementation"))
+            val implemented = featureIdsImplemented.contains(feature.string("id"))
+            assertEquals(if (implemented) "implemented" else "planned", feature.string("implementation"))
+            if (implemented) {
+                assertTrue(feature.getAsJsonArray("productTests").size() > 0)
+                assertTrue(feature.string("verification").startsWith("product-"))
+            }
             val fixtures = feature.getAsJsonArray("fixtures").map { it.asString }
             if (feature.string("verification") == "reference-fixture") assertTrue(fixtures.isNotEmpty())
             for (fixture in fixtures) {
@@ -60,6 +63,7 @@ class CorpusIntegrityTest {
             }
         }
         assertEquals(caseIds, referencedCases)
+        assertEquals(featureIdsImplemented.size, manifest.get("productImplementedCount").asInt)
         for (case in cases) {
             assertTrue(case.string("evidence").isNotBlank())
             assertTrue(case.string("oracle") in setOf("pinned-selector", "rhino-contract", "mixed-contract"))
@@ -69,6 +73,8 @@ class CorpusIntegrityTest {
         report.parentFile.mkdirs()
         report.writeText(FixtureCorpus.gson.toJson(manifest) + "\n")
     }
+
+    private val featureIdsImplemented = setOf("HTML", "JSON", "XPATH", "REGEX", "COMPOSITION", "REPLACEMENT")
 
     @Test
     fun syntheticSourcesCoverTheRequiredFamiliesWithoutPluginPackages() {
