@@ -255,7 +255,7 @@ class SourceBrokerTest {
     @Test fun sameNameCookiesWithDifferentPathsAreBothSentInPathOrder() = runBlocking {
         MockWebServer().use { server ->
             server.start()
-            SourceBroker(directory.root).use { broker ->
+            SourceBroker(directory.root.toPath()).use { broker ->
                 val session = broker.open(scope(), listOf(grant(server.url("/"))))
                 server.enqueue(MockResponse().addHeader("Set-Cookie", "session=root; Path=/")
                     .addHeader("Set-Cookie", "session=admin; Path=/admin"))
