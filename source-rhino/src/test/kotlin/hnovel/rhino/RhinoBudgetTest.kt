@@ -44,6 +44,17 @@ class RhinoBudgetTest {
         assertEquals("{\"ok\":1}", (engine.evaluate("({ok:1})", frame) as ScriptResult.Success).json)
     }
 
+    @Test fun interruptionAfterEvaluationIsCancelledBeforeSerialization() {
+        val engine = RhinoScriptEngine(object : HostBridge {
+            override fun call(name: String, args: List<Any?>): Any? {
+                Thread.currentThread().interrupt()
+                return "ok"
+            }
+        })
+        try { assertEquals(FailureCode.Cancelled, (engine.evaluate("host.call('interrupt')", frame) as ScriptResult.Failure).code) }
+        finally { Thread.interrupted() }
+    }
+
     @Test fun limitCountsEscapesKeysAndPunctuationAndReturnsOnlySerializedData() {
         val script = "({key:'\\n\\\\\\\"', list:[1,true,null]})"
         val roomy = RhinoScriptEngine(bridge).evaluate(script, frame) as ScriptResult.Success

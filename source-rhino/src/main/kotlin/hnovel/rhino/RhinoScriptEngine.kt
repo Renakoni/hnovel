@@ -67,15 +67,16 @@ class RhinoScriptEngine(private val bridge: HostBridge, private val limits: Scri
                 scope.put("result", scope, Context.javaToJS(frame.variables["result"], scope))
                 scope.put("host", scope, HostBridgeObject(bridge))
                 val value = context.evaluateString(scope, source, "source-script", 1, null)
+                if (Thread.currentThread().isInterrupted) throw ScriptCancelled()
                 ScriptResult.Success(BoundedJsonResult(limits.maxResultChars).encode(value))
             }
         } catch (_: ScriptBudgetExceeded) { ScriptResult.Failure(FailureCode.Timeout, "instruction budget exceeded") }
           catch (_: ScriptCancelled) { ScriptResult.Failure(FailureCode.Cancelled, "script cancelled") }
           catch (_: ResultTooLarge) { ScriptResult.Failure(FailureCode.ResultTooLarge, "result too large") }
           catch (_: UnsupportedResult) { ScriptResult.Failure(FailureCode.UnsupportedResult, "result is not JSON data") }
+          catch (_: WrappedException) { ScriptResult.Failure(FailureCode.BridgeDenied, "host bridge denied") }
           catch (_: EvaluatorException) { ScriptResult.Failure(FailureCode.Syntax, "syntax error") }
           catch (_: JavaScriptException) { ScriptResult.Failure(FailureCode.Runtime, "script failed") }
-          catch (_: WrappedException) { ScriptResult.Failure(FailureCode.BridgeDenied, "host bridge denied") }
           catch (_: Exception) { ScriptResult.Failure(FailureCode.Runtime, "script failed") }
     }
 }
