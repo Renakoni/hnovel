@@ -37,7 +37,7 @@ internal class SourceCookies(private val storage: SourceStorage, private val inv
         }
         if (explicitValues.isNotEmpty()) {
             matching.removeAll { it.name in explicitValues }
-            return (matching.map { "${it.name}=${it.value}" } + explicitValues.map { "${it.key}=${it.value}" })
+            return (explicitValues.map { "${it.key}=${it.value}" } + matching.map { "${it.name}=${it.value}" })
                 .joinToString("; ")
         }
         return matching.joinToString("; ") { "${it.name}=${it.value}" }
@@ -63,3 +63,4 @@ internal class SourceCookies(private val storage: SourceStorage, private val inv
 
     private fun key(cookie: Cookie) = "${cookie.name}\n${cookie.domain}\n${cookie.path}"
 }
+
