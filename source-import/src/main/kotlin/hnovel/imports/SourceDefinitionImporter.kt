@@ -149,7 +149,7 @@ class SourceDefinitionImporter(private val store: SourceDefinitionStore,
         if (exact != null && exact != old) return rejected(ImportCode.Conflict)
         val sourceId = old?.sourceId ?: newSourceId(source.profile, source.importKey)
         if (old == null && stored.any { it.sourceId == sourceId }) return rejected(ImportCode.Conflict)
-        if (old != null && old.rawJson == source.rawJson && old.profile == source.profile && old.origin == source.origin) {
+        if (old != null && old.rawJson == source.rawJson && old.profile == source.profile) {
             return ImportItemResult(source.index, ImportOutcome.Unchanged, old.reference())
         }
         val definition = SourceDefinition(sourceId, source.format, source.profile, source.importKey, source.displayName,
