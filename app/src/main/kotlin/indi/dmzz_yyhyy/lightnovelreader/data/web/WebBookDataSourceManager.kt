@@ -18,68 +18,74 @@ import javax.inject.Singleton
 
 @Singleton
 class WebBookDataSourceManager @Inject constructor (
-    val userDataRepository: UserDataRepository
+    val userDataRepository: UserDataRepository,
+    val registry: WebSourceRegistry,
 ): WebBookDataSourceManagerApi {
-    private val _webDataSourceItems = mutableListOf<WebDataSourceItem>()
-    private val webDataSourceItemListMap = mutableMapOf<String, List<WebDataSourceItem>>()
-    val webDataSourceItems: List<WebDataSourceItem> get() = _webDataSourceItems
+    private val registrationsByPackage = mutableMapOf<String, List<SourceRegistration>>()
+    private val bindingLock = Any()
+    private var bindingGeneration = 0L
+    val webDataSourceItems: List<WebDataSourceItem> get() = registry.sources.value.map { it.metadata.item }
 
     private val mutableWebDataSourceProvider = MutableWebDataSourceProvider()
-    private val webBookDataSources = mutableListOf<WebBookDataSource>()
 
     override fun registerWebDataSource(webBookDataSource: WebBookDataSource, webDataSourceItem: WebDataSourceItem) {
-        if (_webDataSourceItems.any { it.id == webDataSourceItem.id }) return
-        _webDataSourceItems.add(webDataSourceItem)
-        webBookDataSources.add(webBookDataSource)
+        register(webBookDataSource, webDataSourceItem, builtIn = false)
+    }
+
+    private fun register(source: WebBookDataSource, item: WebDataSourceItem, builtIn: Boolean): SourceRegistration {
+        val registration = registry.register(source, SourceMetadata(item, setOf(
+            SourceCapability.Search, SourceCapability.BookInformation, SourceCapability.Directory,
+            SourceCapability.ChapterContent, SourceCapability.Explore, SourceCapability.Images,
+        ), builtIn))
         onWebDataSourceListChange()
+        return registration
     }
 
     override fun unregisterWebDataSource(webDataSourceId: Identifier) {
-        _webDataSourceItems.removeAll { it.id == webDataSourceId }
-        webBookDataSources.removeAll { it.id == webDataSourceId }
+        registry.unregister(webDataSourceId)
         onWebDataSourceListChange()
     }
 
     override fun getWebDataSource(): WebBookDataSource = mutableWebDataSourceProvider.value.origin
 
     fun loadWebDataSourcesFromClassLoader(classLoader: PathClassLoader, injector: PluginInjector, packageName: String, webDataSourceClassNames: List<String>) {
-        val items = mutableListOf<WebDataSourceItem>()
+        val items = mutableListOf<SourceRegistration>()
         webDataSourceClassNames.forEach { className ->
             val clazz = runCatching { classLoader.loadClass(className) }.getOrNull() ?: return@forEach
             if (!WebBookDataSource::class.java.isAssignableFrom(clazz)) return@forEach
             val instance = injector.provide<WebBookDataSource>(clazz)
             if (instance is WebBookDataSource) items.add(loadWebDataSourceClass(instance))
         }
-        webDataSourceItemListMap[packageName] = items
+        registrationsByPackage[packageName] = items
     }
 
     fun <T: WebBookDataSource>loadWebDataSourceFromClass(clazz: Class<T>, injector: PluginInjector) {
         if (!WebBookDataSource::class.java.isAssignableFrom(clazz)) return
         val instance = injector.provide<WebBookDataSource>(clazz)
         if (instance is WebBookDataSource) {
-            val item = loadWebDataSourceClass(instance)
+            val item = loadWebDataSourceClass(instance, builtIn = true)
             val packageName = clazz.`package`?.name ?: return
-            if (webDataSourceItemListMap.contains(packageName)) {
-                webDataSourceItemListMap[packageName] = webDataSourceItemListMap[packageName]!! + listOf(item)
+            if (registrationsByPackage.contains(packageName)) {
+                registrationsByPackage[packageName] = registrationsByPackage[packageName]!! + listOf(item)
             } else {
-                webDataSourceItemListMap[packageName] = listOf(item)
+                registrationsByPackage[packageName] = listOf(item)
             }
         }
     }
 
-    fun loadWebDataSourceClass(instance: WebBookDataSource): WebDataSourceItem {
+    private fun loadWebDataSourceClass(instance: WebBookDataSource, builtIn: Boolean = false): SourceRegistration {
         val info = instance.javaClass.getAnnotationsByType(WebDataSource::class.java)
         val item = WebDataSourceItem(
             instance.id,
             info.first().name,
             info.first().provider,
         )
-        registerWebDataSource(instance, item)
-        return item
+        return register(instance, item, builtIn)
     }
 
     fun unloadWebDataSourcesFromClassLoader(packageName: String) {
-        webDataSourceItemListMap[packageName]?.let { _webDataSourceItems.removeAll(it) }
+        registrationsByPackage.remove(packageName)?.forEach { it.unregister() }
+        onWebDataSourceListChange()
     }
 
     fun getWebDataSourceProvider(): WebBookDataSourceProvider {
@@ -87,16 +93,20 @@ class WebBookDataSourceManager @Inject constructor (
     }
 
     fun onWebDataSourceListChange() = runBlocking {
+        val generation = synchronized(bindingLock) { ++bindingGeneration }
         val webDataSourcesId = userDataRepository
             .stringUserData(UserDataPath.Settings.Data.WebDataSourceId.path)
             .get()
             ?.convertOldId() ?: "Wenku8".ofId()
-        mutableWebDataSourceProvider.update(
-            webBookDataSources
-                .find { it.id == webDataSourcesId }
-                .also {
-                    it?.onLoad()
-                } ?: NotFoundWebDataSource(webDataSourcesId)
-        )
+        // Temporary single-source binding. Browsing/import code must resolve the
+        // registry by ID instead; refreshing this facade does not reload a runtime.
+        val resolved = registry.resolve(webDataSourcesId)
+        synchronized(bindingLock) {
+            if (generation == bindingGeneration) when (resolved) {
+                is SourceResolution.Ready -> mutableWebDataSourceProvider.bind(resolved.runtime)
+                is SourceResolution.Missing -> mutableWebDataSourceProvider.unavailable(NotFoundWebDataSource(webDataSourcesId))
+                is SourceResolution.Unavailable -> mutableWebDataSourceProvider.unavailable(NotFoundWebDataSource(webDataSourcesId, initializationFailed = true))
+            }
+        }
     }
 }

@@ -49,6 +49,7 @@ import io.nightfish.lightnovelreader.api.web.search.SearchProvider
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -81,7 +82,7 @@ private val WENKU8_CHARSET: Charset = Charset.forName("GB18030")
     "Wenku8",
     "LightNovelReader from wenku8.net"
 )
-class Wenku8Api : WebBookDataSource {
+class Wenku8Api : WebBookDataSource, AutoCloseable {
     private val tagList = listOf(
         "校园", "青春", "恋爱", "治愈", "群像",
         "竞技", "音乐", "美食", "旅行", "欢乐向",
@@ -161,6 +162,11 @@ class Wenku8Api : WebBookDataSource {
                 delay((if (offLine) 3000 else 100000).milliseconds)
             }
         }
+    }
+
+    override fun close() {
+        coroutineScope.cancel()
+        ktorClient.close()
     }
 
     override var offLine: Boolean = true
