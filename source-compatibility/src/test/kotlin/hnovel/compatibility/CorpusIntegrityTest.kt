@@ -49,12 +49,19 @@ class CorpusIntegrityTest {
             assertTrue(feature.string("requirement").isNotBlank())
             assertTrue(feature.string("evidence").isNotBlank())
             assertTrue(testIds.add(feature.string("testId")))
+            val implemented = featureIdsImplemented.contains(feature.string("id"))
             val brokerBackend = feature.string("id") in setOf("URL", "HTTP", "STORAGE")
-            // The broker backend is implemented; script entry points and process binding are later owners.
-            assertEquals(if (brokerBackend) "partial" else "planned", feature.string("implementation"))
-            if (brokerBackend) {
-                assertEquals("product-contract", feature.string("verification"))
+            // Broker entry points and process binding remain owned by later issues.
+            val implementation = when {
+                implemented -> "implemented"
+                brokerBackend -> "partial"
+                else -> "planned"
+            }
+            assertEquals(implementation, feature.string("implementation"))
+            if (brokerBackend) assertEquals("product-contract", feature.string("verification"))
+            if (implemented || brokerBackend) {
                 assertTrue(feature.getAsJsonArray("productTests").size() > 0)
+                assertTrue(feature.string("verification").startsWith("product-"))
             }
             val fixtures = feature.getAsJsonArray("fixtures").map { it.asString }
             if (feature.string("verification") == "reference-fixture") assertTrue(fixtures.isNotEmpty())
@@ -64,6 +71,7 @@ class CorpusIntegrityTest {
             }
         }
         assertEquals(caseIds, referencedCases)
+        assertEquals(featureIdsImplemented.size, manifest.get("productImplementedCount").asInt)
         for (case in cases) {
             assertTrue(case.string("evidence").isNotBlank())
             assertTrue(case.string("oracle") in setOf("pinned-selector", "rhino-contract", "mixed-contract"))
@@ -73,6 +81,8 @@ class CorpusIntegrityTest {
         report.parentFile.mkdirs()
         report.writeText(FixtureCorpus.gson.toJson(manifest) + "\n")
     }
+
+    private val featureIdsImplemented = setOf("HTML", "JSON", "XPATH", "REGEX", "COMPOSITION", "REPLACEMENT")
 
     @Test
     fun syntheticSourcesCoverTheRequiredFamiliesWithoutPluginPackages() {

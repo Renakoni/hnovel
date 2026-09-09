@@ -1,6 +1,6 @@
 # Source compatibility reference tests
 
-This is a **test-only JVM module**, delivering [VNR-10 / #82](https://github.com/Renakoni/hnovel/issues/82). It has no production sources and the Android app does not depend on it. It neither imports user sources into the app nor loads APK plugins.
+This is a **test-only JVM module**, delivering [VNR-10 / #82](https://github.com/Renakoni/hnovel/issues/82). It has no production sources and the Android app does not depend on it. Its tests now depend on the production `source-rules` module to verify #84. It neither imports user sources into the app nor loads APK plugins.
 
 ```powershell
 .\gradlew.bat :source-compatibility:test --console=plain --max-workers=2
@@ -14,7 +14,7 @@ The existing `JVM unit tests` CI job runs this task alongside the app tests. It 
 - `rhino-contract`: Rhino executes a synthetic script against a recording **host double**. This validates the test contract, not the real Legado Java bridge, login implementation, or browser.
 - `mixed-contract`: a pinned HTML selector feeds a synthetic script. This does not exercise upstream `AnalyzeRule` routing or the complete `WebBook` pipeline.
 
-The first corpus has 21 executable cases and six synthetic source definitions. `coverage.json` maps the broader target to implementation Issues and future test IDs. **URL/HTTP/storage have tested production broker backends and remain `partial` for the full script-facing profile; other statuses remain `planned`.** No skipped test is used to make missing product functionality look green. Browser and process isolation explicitly require future Android emulator tests.
+The first corpus has 21 executable cases and six synthetic source definitions. `coverage.json` maps the broader target to implementation Issues and future test IDs. **Six #84 feature statuses now have product evidence. URL/HTTP/storage have tested production broker backends and remain `partial` for the full script-facing profile; all other features remain `planned`.** No skipped test is used to make missing product functionality look green. Browser and process isolation explicitly require future Android emulator tests.
 
 `ReferenceRunner` calls the pinned selectors directly. It intentionally does not reimplement the whole rule interpreter as a supposedly independent oracle. The three small JVM shims replace only an Android shrinker annotation, `TextUtils.join`, and disabled debug logging. They do not supply fake parser results.
 
@@ -27,7 +27,7 @@ The first corpus has 21 executable cases and six synthetic source definitions. `
 - `src/test/resources/advanced-inventory.json`: only field shapes and member names observed during private-sample research. No original script body, private endpoint, authentication value, or `.lnrp` is included.
 - `reference/provenance.json`: upstream revision, paths, and SHA-256 checksums of the vendored files.
 
-Results are in `build/reports/tests/test` and `build/test-results/test`. The coverage inventory is copied to `build/reports/source-compatibility/coverage.json`; this is a status inventory, **not a report that all product features passed**. All three are uploaded by the existing CI job.
+Results are in `build/reports/tests/test` and `build/test-results/test`. The coverage inventory is copied to `build/reports/source-compatibility/coverage.json`; this is a per-feature status inventory, **not a report that all product features passed**. All three, plus source-rules test reports, are uploaded by the existing CI job.
 
 ## Updating the corpus and adding the product adapter
 
@@ -42,6 +42,10 @@ Mismatch, unknown-operation, missing-resource, duplicate-ID, and broken ownershi
 The synthetic Rhino runner applies an instruction limit to stop accidental fixture loops. This is **not** the future Android execution sandbox, and this task is not an entry point for evaluating untrusted user scripts.
 
 See [the baseline and known limits](../docs/source-compatibility-baseline.md) and [reference licensing](reference/NOTICE.md).
+
+## Production rule evidence (#84)
+
+`ProductRuleFixtureTest` executes all 16 pinned-selector cases through the production evaluator and compares them with both reviewed expectations and the unchanged oracle. `source-rules` also tests the routing, replacement, context and budget contracts. The transplanted selectors share upstream ancestry with the oracle; this is explicitly not an independent algorithmic implementation. Full upstream AnalyzeRule, JS, network and browser compatibility are not inferred from these selector tests.
 
 ## Broker backend evidence (#85)
 

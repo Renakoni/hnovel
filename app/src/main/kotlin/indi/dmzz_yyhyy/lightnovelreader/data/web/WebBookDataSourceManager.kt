@@ -33,10 +33,14 @@ class WebBookDataSourceManager @Inject constructor (
     }
 
     private fun register(source: WebBookDataSource, item: WebDataSourceItem, builtIn: Boolean): SourceRegistration {
-        val registration = registry.register(source, SourceMetadata(item, setOf(
+        val registration = registry.register(source, SourceMetadata(item, buildSet {
+            addAll(setOf(
             SourceCapability.Search, SourceCapability.BookInformation, SourceCapability.Directory,
-            SourceCapability.ChapterContent, SourceCapability.Explore, SourceCapability.Images,
-        ), builtIn))
+            SourceCapability.ChapterContent, SourceCapability.Images,
+            ))
+            if (source.discoveryProvider?.hasFeed == true) add(SourceCapability.Explore)
+            if (source.discoveryProvider?.hasCategories == true) add(SourceCapability.Categories)
+        }, builtIn))
         onWebDataSourceListChange()
         return registration
     }

@@ -250,6 +250,10 @@ class Wenku8Api : WebBookDataSource, AutoCloseable {
     override val searchProvider: SearchProvider = Wenku8SearchProvider(bookRequestDispatcher)
     override val explorePageProvider: ExplorePageProvider = Wenku8ExplorePageProvider(host, this)
 
+    override val discoveryProvider = indi.dmzz_yyhyy.lightnovelreader.defaultplugin.wenku8.explore.Wenku8Discovery(host) { url ->
+        getWithWenku8Cookie(url).getOrElse { throw it }
+    }
+
 
     override fun bookTagPage(tag: String): String? = tag.takeIf { it in tagList }
 

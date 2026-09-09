@@ -18,7 +18,7 @@
       "scope": "Must report unknown fields/API explicitly; cannot auto-label as supported."
     }
   ],
-  "productImplementedCount": 0,
+  "productImplementedCount": 6,
   "features": [
     {
       "id": "FORMAT",
@@ -35,63 +35,79 @@
       "owner": "https://github.com/Renakoni/hnovel/issues/84",
       "requirement": "Jsoup 默认链、CSS、属性/text/html/ownText、索引/排除与空结果。",
       "testId": "CONFORMANCE-HTML",
-      "implementation": "planned",
-      "verification": "reference-fixture",
+      "implementation": "implemented",
+      "verification": "product-differential",
       "fixtures": [
         "HTML-CSS",
         "HTML-DEFAULT",
         "HTML-EMPTY"
       ],
-      "evidence": "Pinned reference source inspection; production implementation pending."
+      "evidence": "Production source-rules evaluator tested; pinned selector cases compare with hand-derived expectations and unchanged reference. Routing/replacement tests are explicit contracts, not a full upstream AnalyzeRule oracle. Execution-process hard termination remains #86.",
+      "productTests": [
+        "hnovel.rules.RuleEvaluatorTest",
+        "hnovel.compatibility.ProductRuleFixtureTest"
+      ]
     },
     {
       "id": "JSON",
       "owner": "https://github.com/Renakoni/hnovel/issues/84",
       "requirement": "JSONPath、列表/标量转换、模板及嵌套布尔过滤。",
       "testId": "CONFORMANCE-JSON",
-      "implementation": "planned",
-      "verification": "reference-fixture",
+      "implementation": "implemented",
+      "verification": "product-differential",
       "fixtures": [
         "JSON-LIST",
         "JSON-FILTER",
         "JSON-SCALAR-JOIN"
       ],
-      "evidence": "Pinned reference source inspection; production implementation pending."
+      "evidence": "Production source-rules evaluator tested; pinned selector cases compare with hand-derived expectations and unchanged reference. Routing/replacement tests are explicit contracts, not a full upstream AnalyzeRule oracle. Execution-process hard termination remains #86.",
+      "productTests": [
+        "hnovel.rules.RuleEvaluatorTest",
+        "hnovel.compatibility.ProductRuleFixtureTest"
+      ]
     },
     {
       "id": "XPATH",
       "owner": "https://github.com/Renakoni/hnovel/issues/84",
       "requirement": "XPath 选择和 XML/HTML 上下文。",
       "testId": "CONFORMANCE-XPATH",
-      "implementation": "planned",
-      "verification": "reference-fixture",
+      "implementation": "implemented",
+      "verification": "product-differential",
       "fixtures": [
         "XPATH-TEXT"
       ],
-      "evidence": "Pinned reference source inspection; production implementation pending."
+      "evidence": "Production source-rules evaluator tested; pinned selector cases compare with hand-derived expectations and unchanged reference. Routing/replacement tests are explicit contracts, not a full upstream AnalyzeRule oracle. Execution-process hard termination remains #86.",
+      "productTests": [
+        "hnovel.rules.RuleEvaluatorTest",
+        "hnovel.compatibility.ProductRuleFixtureTest"
+      ]
     },
     {
       "id": "REGEX",
       "owner": "https://github.com/Renakoni/hnovel/issues/84",
       "requirement": "AllInOne/OnlyOne、捕获组/未匹配组、链接规则；记录参考空组差异。",
       "testId": "CONFORMANCE-REGEX",
-      "implementation": "planned",
-      "verification": "reference-fixture",
+      "implementation": "implemented",
+      "verification": "product-differential",
       "fixtures": [
         "REGEX-ALL",
         "REGEX-FIRST",
         "REGEX-OPTIONAL-ALL",
         "REGEX-OPTIONAL-FIRST"
       ],
-      "evidence": "Pinned reference source inspection; production implementation pending."
+      "evidence": "Production source-rules evaluator tested; pinned selector cases compare with hand-derived expectations and unchanged reference. Routing/replacement tests are explicit contracts, not a full upstream AnalyzeRule oracle. Execution-process hard termination remains #86.",
+      "productTests": [
+        "hnovel.rules.RuleEvaluatorTest",
+        "hnovel.compatibility.ProductRuleFixtureTest"
+      ]
     },
     {
       "id": "COMPOSITION",
       "owner": "https://github.com/Renakoni/hnovel/issues/84",
       "requirement": "&& 合并、|| 首个非空、%% 交错及不等长列表；嵌套分隔符不误拆。",
       "testId": "CONFORMANCE-COMPOSITION",
-      "implementation": "planned",
-      "verification": "reference-fixture",
+      "implementation": "implemented",
+      "verification": "product-differential",
       "fixtures": [
         "HTML-CONCAT",
         "HTML-FALLBACK",
@@ -99,17 +115,24 @@
         "JSON-INTERLEAVE-TAIL",
         "RULE-NESTED"
       ],
-      "evidence": "Pinned reference source inspection; production implementation pending."
+      "evidence": "Production source-rules evaluator tested; pinned selector cases compare with hand-derived expectations and unchanged reference. Routing/replacement tests are explicit contracts, not a full upstream AnalyzeRule oracle. Execution-process hard termination remains #86.",
+      "productTests": [
+        "hnovel.rules.RuleEvaluatorTest",
+        "hnovel.compatibility.ProductRuleFixtureTest"
+      ]
     },
     {
       "id": "REPLACEMENT",
       "owner": "https://github.com/Renakoni/hnovel/issues/84",
       "requirement": "## 替换、仅一次替换、模板/get/put、转义、SourceRule 阶段顺序。",
       "testId": "CONFORMANCE-REPLACEMENT",
-      "implementation": "planned",
-      "verification": "future-fixture",
+      "implementation": "implemented",
+      "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Pinned reference source inspection; production implementation pending."
+      "evidence": "Production source-rules evaluator tested; pinned selector cases compare with hand-derived expectations and unchanged reference. Routing/replacement tests are explicit contracts, not a full upstream AnalyzeRule oracle. Execution-process hard termination remains #86.",
+      "productTests": [
+        "hnovel.rules.RuleEvaluatorTest"
+      ]
     },
     {
       "id": "VARIABLES",
