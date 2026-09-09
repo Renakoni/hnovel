@@ -43,6 +43,6 @@ internal fun SourceBookId.remoteVolume(volume: Volume): Volume = volume.copy(
 
 internal fun SourceBookId.remoteContent(content: ChapterContent): ChapterContent = content.copy(
     id = BookIdentity.chapter(content.id, this).remoteId,
-    prevChapter = content.prevChapter?.let { BookIdentity.chapter(it, this).remoteId },
-    nextChapter = content.nextChapter?.let { BookIdentity.chapter(it, this).remoteId },
+    prevChapter = content.prevChapter?.takeIf(String::isNotEmpty)?.let { BookIdentity.chapter(it, this).remoteId },
+    nextChapter = content.nextChapter?.takeIf(String::isNotEmpty)?.let { BookIdentity.chapter(it, this).remoteId },
 )
