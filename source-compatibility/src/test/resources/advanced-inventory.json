@@ -1,0 +1,318 @@
+{
+  "profile": "advanced-sample-20260908",
+  "method": "Static member-name/field-shape inventory only. No private source contents, account data, endpoint strings or execution results. Presence is not reachability or availability proof.",
+  "members": [
+    {
+      "member": "java.ajax",
+      "classification": "reference-member",
+      "feature": "HTTP",
+      "evidence": "JsExtensions.kt or AnalyzeRule.kt at pinned revision."
+    },
+    {
+      "member": "java.ajaxAll",
+      "classification": "reference-member",
+      "feature": "HTTP",
+      "evidence": "JsExtensions.kt or AnalyzeRule.kt at pinned revision."
+    },
+    {
+      "member": "java.androidId",
+      "classification": "reference-member",
+      "feature": "IDENTIFIERS",
+      "evidence": "JsExtensions.kt or AnalyzeRule.kt at pinned revision."
+    },
+    {
+      "member": "java.base64Decode",
+      "classification": "reference-member",
+      "feature": "ENCODING",
+      "evidence": "JsExtensions.kt or AnalyzeRule.kt at pinned revision."
+    },
+    {
+      "member": "java.base64DecodeToByteArray",
+      "classification": "reference-member",
+      "feature": "ENCODING",
+      "evidence": "JsExtensions.kt or AnalyzeRule.kt at pinned revision."
+    },
+    {
+      "member": "java.base64Encode",
+      "classification": "reference-member",
+      "feature": "ENCODING",
+      "evidence": "JsExtensions.kt or AnalyzeRule.kt at pinned revision."
+    },
+    {
+      "member": "java.connect",
+      "classification": "reference-member",
+      "feature": "HTTP",
+      "evidence": "JsExtensions.kt or AnalyzeRule.kt at pinned revision."
+    },
+    {
+      "member": "java.get",
+      "classification": "reference-member",
+      "feature": "HTTP",
+      "evidence": "JsExtensions.kt or AnalyzeRule.kt at pinned revision."
+    },
+    {
+      "member": "java.getCookie",
+      "classification": "reference-member",
+      "feature": "COOKIE",
+      "evidence": "JsExtensions.kt or AnalyzeRule.kt at pinned revision."
+    },
+    {
+      "member": "java.getReadBookConfigMap",
+      "classification": "extension-or-unresolved",
+      "feature": "EXTENSION-UI",
+      "evidence": "Observed member access only; exact overload/action contract requires extension host evidence."
+    },
+    {
+      "member": "java.getString",
+      "classification": "reference-member",
+      "feature": "VARIABLES",
+      "evidence": "JsExtensions.kt or AnalyzeRule.kt at pinned revision."
+    },
+    {
+      "member": "java.getThemeConfigMap",
+      "classification": "extension-or-unresolved",
+      "feature": "EXTENSION-UI",
+      "evidence": "Observed member access only; exact overload/action contract requires extension host evidence."
+    },
+    {
+      "member": "java.getThemeMode",
+      "classification": "extension-or-unresolved",
+      "feature": "EXTENSION-UI",
+      "evidence": "Observed member access only; exact overload/action contract requires extension host evidence."
+    },
+    {
+      "member": "java.getVerificationCode",
+      "classification": "reference-member",
+      "feature": "WEBVIEW",
+      "evidence": "JsExtensions.kt or AnalyzeRule.kt at pinned revision."
+    },
+    {
+      "member": "java.hexDecodeToString",
+      "classification": "reference-member",
+      "feature": "ENCODING",
+      "evidence": "JsExtensions.kt or AnalyzeRule.kt at pinned revision."
+    },
+    {
+      "member": "java.log",
+      "classification": "reference-member",
+      "feature": "DIAGNOSTICS",
+      "evidence": "JsExtensions.kt or AnalyzeRule.kt at pinned revision."
+    },
+    {
+      "member": "java.longToast",
+      "classification": "reference-member",
+      "feature": "DIAGNOSTICS",
+      "evidence": "JsExtensions.kt or AnalyzeRule.kt at pinned revision."
+    },
+    {
+      "member": "java.md5Encode",
+      "classification": "inherited-member-to-verify",
+      "feature": "ENCODING",
+      "evidence": "JsExtensions inherits JsEncodeUtils; declaration/overload must be checked, not assumed from name."
+    },
+    {
+      "member": "java.md5Encode16",
+      "classification": "inherited-member-to-verify",
+      "feature": "ENCODING",
+      "evidence": "JsExtensions inherits JsEncodeUtils; declaration/overload must be checked, not assumed from name."
+    },
+    {
+      "member": "java.open",
+      "classification": "extension-or-unresolved",
+      "feature": "EXTENSION-UI",
+      "evidence": "Observed member access only; exact overload/action contract requires extension host evidence."
+    },
+    {
+      "member": "java.put",
+      "classification": "reference-member",
+      "feature": "VARIABLES",
+      "evidence": "JsExtensions.kt or AnalyzeRule.kt at pinned revision."
+    },
+    {
+      "member": "java.reLoginView",
+      "classification": "extension-or-unresolved",
+      "feature": "EXTENSION-UI",
+      "evidence": "Observed member access only; exact overload/action contract requires extension host evidence."
+    },
+    {
+      "member": "java.refreshExplore",
+      "classification": "extension-or-unresolved",
+      "feature": "EXTENSION-UI",
+      "evidence": "Observed member access only; exact overload/action contract requires extension host evidence."
+    },
+    {
+      "member": "java.removeCookie",
+      "classification": "extension-or-unresolved",
+      "feature": "EXTENSION-UI",
+      "evidence": "Observed member access only; exact overload/action contract requires extension host evidence."
+    },
+    {
+      "member": "java.searchBook",
+      "classification": "extension-or-unresolved",
+      "feature": "EXTENSION-UI",
+      "evidence": "Observed member access only; exact overload/action contract requires extension host evidence."
+    },
+    {
+      "member": "java.showBrowser",
+      "classification": "extension-or-unresolved",
+      "feature": "EXTENSION-UI",
+      "evidence": "Observed member access only; exact overload/action contract requires extension host evidence."
+    },
+    {
+      "member": "java.startBrowserAwait",
+      "classification": "reference-member",
+      "feature": "WEBVIEW",
+      "evidence": "JsExtensions.kt or AnalyzeRule.kt at pinned revision."
+    },
+    {
+      "member": "java.timeFormat",
+      "classification": "reference-member",
+      "feature": "ENCODING",
+      "evidence": "JsExtensions.kt or AnalyzeRule.kt at pinned revision."
+    },
+    {
+      "member": "java.timeFormatUTC",
+      "classification": "reference-member",
+      "feature": "ENCODING",
+      "evidence": "JsExtensions.kt or AnalyzeRule.kt at pinned revision."
+    },
+    {
+      "member": "java.toast",
+      "classification": "reference-member",
+      "feature": "DIAGNOSTICS",
+      "evidence": "JsExtensions.kt or AnalyzeRule.kt at pinned revision."
+    },
+    {
+      "member": "java.upConfig",
+      "classification": "extension-or-unresolved",
+      "feature": "EXTENSION-UI",
+      "evidence": "Observed member access only; exact overload/action contract requires extension host evidence."
+    },
+    {
+      "member": "java.upLoginData",
+      "classification": "extension-or-unresolved",
+      "feature": "EXTENSION-UI",
+      "evidence": "Observed member access only; exact overload/action contract requires extension host evidence."
+    },
+    {
+      "member": "source.bookSourceName",
+      "classification": "reference-member",
+      "feature": "STORAGE",
+      "evidence": "BaseSource.kt / BookSource.kt at pinned revision."
+    },
+    {
+      "member": "source.getKey",
+      "classification": "reference-member",
+      "feature": "STORAGE",
+      "evidence": "BaseSource.kt / BookSource.kt at pinned revision."
+    },
+    {
+      "member": "source.getLoginInfo",
+      "classification": "reference-member",
+      "feature": "LOGIN",
+      "evidence": "BaseSource.kt / BookSource.kt at pinned revision."
+    },
+    {
+      "member": "source.getLoginInfoMap",
+      "classification": "reference-member",
+      "feature": "LOGIN",
+      "evidence": "BaseSource.kt / BookSource.kt at pinned revision."
+    },
+    {
+      "member": "source.getVariable",
+      "classification": "reference-member",
+      "feature": "STORAGE",
+      "evidence": "BaseSource.kt / BookSource.kt at pinned revision."
+    },
+    {
+      "member": "source.loginUrl",
+      "classification": "reference-member",
+      "feature": "LOGIN",
+      "evidence": "BaseSource.kt / BookSource.kt at pinned revision."
+    },
+    {
+      "member": "source.putLoginInfo",
+      "classification": "reference-member",
+      "feature": "LOGIN",
+      "evidence": "BaseSource.kt / BookSource.kt at pinned revision."
+    },
+    {
+      "member": "source.refreshExplore",
+      "classification": "extension-or-unresolved",
+      "feature": "EXTENSION-UI",
+      "evidence": "Observed member access only; exact overload/action contract requires extension host evidence."
+    },
+    {
+      "member": "source.removeLoginHeader",
+      "classification": "reference-member",
+      "feature": "LOGIN",
+      "evidence": "BaseSource.kt / BookSource.kt at pinned revision."
+    },
+    {
+      "member": "source.setVariable",
+      "classification": "reference-member",
+      "feature": "STORAGE",
+      "evidence": "BaseSource.kt / BookSource.kt at pinned revision."
+    },
+    {
+      "member": "cache.delete",
+      "classification": "reference-family",
+      "feature": "STORAGE",
+      "evidence": "Observed member access only; exact overload/action contract requires extension host evidence."
+    },
+    {
+      "member": "cache.get",
+      "classification": "reference-family",
+      "feature": "STORAGE",
+      "evidence": "Observed member access only; exact overload/action contract requires extension host evidence."
+    },
+    {
+      "member": "cache.put",
+      "classification": "reference-family",
+      "feature": "STORAGE",
+      "evidence": "Observed member access only; exact overload/action contract requires extension host evidence."
+    },
+    {
+      "member": "cookie.getKey",
+      "classification": "reference-family",
+      "feature": "COOKIE",
+      "evidence": "Observed member access only; exact overload/action contract requires extension host evidence."
+    },
+    {
+      "member": "cookie.removeCookie",
+      "classification": "reference-family",
+      "feature": "COOKIE",
+      "evidence": "Observed member access only; exact overload/action contract requires extension host evidence."
+    },
+    {
+      "member": "infoMap.save",
+      "classification": "extension-or-unresolved",
+      "feature": "EXTENSION-INFOMAP",
+      "evidence": "Observed member access only; exact overload/action contract requires extension host evidence."
+    },
+    {
+      "member": "infoMap.set",
+      "classification": "extension-or-unresolved",
+      "feature": "EXTENSION-INFOMAP",
+      "evidence": "Observed member access only; exact overload/action contract requires extension host evidence."
+    },
+    {
+      "member": "customButton",
+      "classification": "extension-target",
+      "feature": "EXTENSION-FLAGS",
+      "evidence": "Observed field shape: boolean; values and script body intentionally omitted."
+    },
+    {
+      "member": "eventListener",
+      "classification": "extension-target",
+      "feature": "EXTENSION-FLAGS",
+      "evidence": "Observed field shape: boolean; values and script body intentionally omitted."
+    },
+    {
+      "member": "loginUi",
+      "classification": "extension-target",
+      "feature": "EXTENSION-LOGIN-UI",
+      "evidence": "Observed field shape: @js: script; values and script body intentionally omitted."
+    }
+  ]
+}

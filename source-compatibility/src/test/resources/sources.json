@@ -1,0 +1,158 @@
+{
+  "sources": [
+    {
+      "bookSourceType": 0,
+      "enabled": true,
+      "enabledExplore": true,
+      "searchUrl": "https://reader.invalid/search?q={{key}}&page={{page}}",
+      "ruleSearch": {
+        "bookList": "@css:a.book",
+        "name": "@css:a.book@text",
+        "bookUrl": "@css:a.book@href"
+      },
+      "ruleBookInfo": {
+        "name": "tag.h1@text"
+      },
+      "ruleToc": {
+        "chapterList": "class.chapter",
+        "chapterName": "text",
+        "chapterUrl": "href"
+      },
+      "ruleContent": {
+        "content": "class.content@text"
+      },
+      "bookSourceUrl": "https://reader.invalid/#html",
+      "bookSourceName": "Synthetic html"
+    },
+    {
+      "bookSourceType": 0,
+      "enabled": true,
+      "enabledExplore": true,
+      "searchUrl": "https://reader.invalid/search?q={{key}}&page={{page}}",
+      "ruleSearch": {
+        "bookList": "$.books[*]",
+        "name": "$.books[*].title",
+        "bookUrl": "$.url"
+      },
+      "ruleBookInfo": {
+        "name": "tag.h1@text"
+      },
+      "ruleToc": {
+        "chapterList": "class.chapter",
+        "chapterName": "text",
+        "chapterUrl": "href"
+      },
+      "ruleContent": {
+        "content": "class.content@text"
+      },
+      "bookSourceUrl": "https://reader.invalid/#json",
+      "bookSourceName": "Synthetic json"
+    },
+    {
+      "bookSourceType": 0,
+      "enabled": true,
+      "enabledExplore": true,
+      "searchUrl": "https://reader.invalid/search?q={{key}}&page={{page}}",
+      "ruleSearch": {
+        "bookList": "@css:a.book",
+        "name": "@css:a.book@text",
+        "bookUrl": "@css:a.book@href"
+      },
+      "ruleBookInfo": {
+        "name": "tag.h1@text"
+      },
+      "ruleToc": {
+        "chapterList": "class.chapter",
+        "chapterName": "text",
+        "chapterUrl": "href"
+      },
+      "ruleContent": {
+        "content": "class.content@text@js:result.toUpperCase()"
+      },
+      "bookSourceUrl": "https://reader.invalid/#mixed",
+      "bookSourceName": "Synthetic mixed"
+    },
+    {
+      "bookSourceType": 0,
+      "enabled": true,
+      "enabledExplore": true,
+      "searchUrl": "https://reader.invalid/search?q={{key}}&page={{page}}",
+      "ruleSearch": {
+        "bookList": "@css:a.book",
+        "name": "@css:a.book@text",
+        "bookUrl": "@css:a.book@href"
+      },
+      "ruleBookInfo": {
+        "name": "tag.h1@text"
+      },
+      "ruleToc": {
+        "chapterList": "class.chapter",
+        "chapterName": "text",
+        "chapterUrl": "href"
+      },
+      "ruleContent": {
+        "content": "class.content@text"
+      },
+      "bookSourceUrl": "https://reader.invalid/#shared-state",
+      "bookSourceName": "Synthetic shared-state",
+      "jsLib": "var calls = 0;\nfunction normalize(value) { calls++; return value.trim().toUpperCase(); }\n"
+    },
+    {
+      "bookSourceType": 0,
+      "enabled": true,
+      "enabledExplore": true,
+      "searchUrl": "https://reader.invalid/search?q={{key}}&page={{page}}",
+      "ruleSearch": {
+        "bookList": "@css:a.book",
+        "name": "@css:a.book@text",
+        "bookUrl": "@css:a.book@href"
+      },
+      "ruleBookInfo": {
+        "name": "tag.h1@text"
+      },
+      "ruleToc": {
+        "chapterList": "class.chapter",
+        "chapterName": "text",
+        "chapterUrl": "href"
+      },
+      "ruleContent": {
+        "content": "class.content@text"
+      },
+      "bookSourceUrl": "https://reader.invalid/#login",
+      "bookSourceName": "Synthetic login",
+      "loginUrl": "@js:function login() {\n    var result = JSON.parse(java.ajax(\"https://reader.invalid/login\"));\n    if (!result.ok) throw new Error(\"Login rejected\");\n    source.putLoginInfo(JSON.stringify({name: result.name}));\n    cache.put(\"logged-in\", true);\n}\n",
+      "loginUi": "[{\"name\":\"user\",\"type\":\"text\"},{\"name\":\"password\",\"type\":\"password\"}]",
+      "enabledCookieJar": true
+    },
+    {
+      "bookSourceType": 0,
+      "enabled": true,
+      "enabledExplore": true,
+      "searchUrl": "https://reader.invalid/search?q={{key}}&page={{page}}",
+      "ruleSearch": {
+        "bookList": "@css:a.book",
+        "name": "@css:a.book@text",
+        "bookUrl": "@css:a.book@href"
+      },
+      "ruleBookInfo": {
+        "name": "tag.h1@text"
+      },
+      "ruleToc": {
+        "chapterList": "class.chapter",
+        "chapterName": "text",
+        "chapterUrl": "href"
+      },
+      "ruleContent": {
+        "content": "class.content@text"
+      },
+      "bookSourceUrl": "https://reader.invalid/#dynamic",
+      "bookSourceName": "Synthetic dynamic",
+      "exploreUrl": "@js:JSON.parse(source.getVariable()).map(function(category) {\n    return {title: category.title, url: \"https://reader.invalid\" + category.url};\n});",
+      "ruleExplore": {
+        "bookList": "@css:a.book",
+        "name": "@css:a.book@text",
+        "bookUrl": "@css:a.book@href"
+      }
+    }
+  ]
+}

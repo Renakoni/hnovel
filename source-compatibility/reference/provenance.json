@@ -1,0 +1,32 @@
+{
+  "repository": "https://github.com/hectorqin/legado",
+  "revision": "da17bb2bed44f30b12a524c2457e32a20b16fa41",
+  "license": "GPL-3.0",
+  "files": [
+    {
+      "path": "reference/kotlin/io/legado/app/model/analyzeRule/AnalyzeByJSoup.kt",
+      "upstreamPath": "app/src/main/java/io/legado/app/model/analyzeRule/AnalyzeByJSoup.kt",
+      "sha256": "3116897cb5bbdb5632092ba355cce698b6ad1fa6eeca98b2fb375ff7fc33238d"
+    },
+    {
+      "path": "reference/kotlin/io/legado/app/model/analyzeRule/AnalyzeByJSonPath.kt",
+      "upstreamPath": "app/src/main/java/io/legado/app/model/analyzeRule/AnalyzeByJSonPath.kt",
+      "sha256": "4d9e99a41586a27e21c329474702a65a2da26029a1739f22b156ac4ba1c71d59"
+    },
+    {
+      "path": "reference/kotlin/io/legado/app/model/analyzeRule/AnalyzeByXPath.kt",
+      "upstreamPath": "app/src/main/java/io/legado/app/model/analyzeRule/AnalyzeByXPath.kt",
+      "sha256": "c3e779b09593888c029d027c404f80ff4fae77027fff60369444a1b898319e44"
+    },
+    {
+      "path": "reference/kotlin/io/legado/app/model/analyzeRule/AnalyzeByRegex.kt",
+      "upstreamPath": "app/src/main/java/io/legado/app/model/analyzeRule/AnalyzeByRegex.kt",
+      "sha256": "b3d8e3266516415ecd0709cca952965704898682ef61179ddff383ef27e0c321"
+    },
+    {
+      "path": "reference/kotlin/io/legado/app/model/analyzeRule/RuleAnalyzer.kt",
+      "upstreamPath": "app/src/main/java/io/legado/app/model/analyzeRule/RuleAnalyzer.kt",
+      "sha256": "74ab0152bce9d5e014cc69d9c6974cbb093d8353200f1452066f7d05102265a7"
+    }
+  ]
+}
