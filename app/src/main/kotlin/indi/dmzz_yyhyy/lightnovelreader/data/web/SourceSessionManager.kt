@@ -25,7 +25,8 @@ class SourceSessionManager {
 
     @Synchronized fun logout(session: SourceSession): SourceSession {
         val state = sessions[session.source]
-        if (state == null || state.generation != session.generation || state.nonce != session.nonce) return current(session.source)
+        if (state == null || state.generation != session.generation || state.nonce != session.nonce)
+            return SourceSession(session.source, session.generation, false, emptyMap(), session.nonce)
         val next = State(generation = state.generation + 1)
         sessions[session.source] = next
         return snapshot(session.source, next)

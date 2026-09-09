@@ -21,6 +21,10 @@ class SourceSessionManagerTest {
         assertTrue(manager.accepts(b))
         assertNotEquals(a.generation, next.generation)
         assertTrue(next.cookies.isEmpty())
+        val invalidLogout = manager.logout(a)
+        assertFalse(invalidLogout.active)
+        assertTrue(invalidLogout.cookies.isEmpty())
+        assertFalse(manager.accepts(invalidLogout))
     }
 
     @Test fun logsRedactCredentialLikeQueryValues() {
