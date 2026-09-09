@@ -276,7 +276,7 @@ class Wenku8Api : WebBookDataSource, AutoCloseable {
                     ?.forEach {
                         val uri = it["data"]?.jsonObject["uri"]?.jsonPrimitive?.content?.toUri()
                             ?: return null
-                        val bitmap = ImageUtils.uriToBitmap(uri, context).get() ?: return@forEach
+                        val bitmap = ImageUtils.uriToBitmap(uri, context, indi.dmzz_yyhyy.lightnovelreader.data.book.SourceBookId(id, bookId).storageKey).get() ?: return@forEach
                         if (bitmap.height > bitmap.width) return uri
                     }
                 return null

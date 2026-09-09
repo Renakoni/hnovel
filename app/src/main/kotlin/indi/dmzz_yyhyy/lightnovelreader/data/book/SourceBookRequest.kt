@@ -6,6 +6,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.web.SourceResolution
 import indi.dmzz_yyhyy.lightnovelreader.data.web.SourceRuntime
 import indi.dmzz_yyhyy.lightnovelreader.data.web.WebSourceRegistry
 import io.nightfish.lightnovelreader.api.error.WebRequestError
+import io.nightfish.lightnovelreader.api.error.WebRequestErrorKind
 
 /** Missing sources retain their local namespace; requests never fall back to another source. */
 internal suspend fun <T> WebSourceRegistry.request(
@@ -13,6 +14,6 @@ internal suspend fun <T> WebSourceRegistry.request(
     block: suspend (SourceRuntime) -> Result<T, WebRequestError>,
 ): Result<T, WebRequestError> = when (val resolution = resolve(book.sourceId)) {
     is SourceResolution.Ready -> block(resolution.runtime)
-    is SourceResolution.Missing -> Err(WebRequestError("Data source not found", "Source is not registered (${book.sourceId})"))
-    is SourceResolution.Unavailable -> Err(WebRequestError("Data source unavailable", "Source initialization failed (${book.sourceId})", resolution.cause))
+    is SourceResolution.Missing -> Err(WebRequestError("Data source not found", "Source is not registered (${book.sourceId})", kind = WebRequestErrorKind.SourceUnavailable))
+    is SourceResolution.Unavailable -> Err(WebRequestError("Data source unavailable", "Source initialization failed (${book.sourceId})", resolution.cause, WebRequestErrorKind.SourceUnavailable))
 }

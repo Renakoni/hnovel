@@ -1,5 +1,7 @@
 package indi.dmzz_yyhyy.lightnovelreader.data.book
 
+import android.content.Context
+import android.net.Uri
 import android.util.Log
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
@@ -23,6 +25,7 @@ import io.nightfish.lightnovelreader.api.book.BookRepositoryApi
 import io.nightfish.lightnovelreader.api.book.BookVolumes
 import io.nightfish.lightnovelreader.api.book.ChapterContent
 import io.nightfish.lightnovelreader.api.book.UserReadingData
+import io.nightfish.lightnovelreader.api.book.Volume
 import io.nightfish.lightnovelreader.api.error.WebRequestError
 import io.nightfish.lightnovelreader.api.web.WebDataSourcePriority
 import kotlinx.coroutines.flow.Flow
@@ -68,22 +71,7 @@ class BookRepository @Inject constructor(
             emit(Ok(it))
             if (BuildConfig.BENCHMARK) return@flow
         }
-        sourceRegistry.request(book) { it.getBookInformation(book.remoteId, priority) }.map(book::bind)
-            .onOk { remote ->
-                localBookDataSource.updateBookInformation(remote)
-                val bookshelfBookMetadata = bookshelfRepository.getBookshelfBookMetadata(remote.id) ?: return@onOk
-                if (bookshelfBookMetadata.lastUpdate.isBefore(remote.lastUpdated))
-                    bookshelfBookMetadata.bookShelfIds.forEach {
-                        bookshelfRepository.updateBookshelfBookMetadataLastUpdateTime(
-                            remote.id,
-                            remote.lastUpdated
-                        )
-                        bookshelfRepository.addUpdatedBooksIntoBookShelf(it, book.storageKey)
-                    }
-            }.onErr {
-                Log.e(TAG, "Failed to request web data (title=${it.title}, message=${it.message})")
-                it.throwable?.printStackTrace()
-            }
+        refreshBookInformation(book, priority)
             .also {
                 if (it.isOk || local == null) emit(it)
             }
@@ -92,6 +80,24 @@ class BookRepository @Inject constructor(
             textProcessingRepository.processBookInformation { it }
         }
     }
+
+    /** Remote-only refresh reports failure even when a local copy exists (background checks). */
+    suspend fun refreshBookInformation(book: SourceBookId, priority: WebDataSourcePriority = WebDataSourcePriority.Low): Result<BookInformation, WebRequestError> =
+        sourceRegistry.request(book) { it.getBookInformation(book.remoteId, priority) }.map(book::bind)
+            .onOk { remote ->
+                localBookDataSource.updateBookInformation(remote)
+                val bookshelfBookMetadata = bookshelfRepository.getBookshelfBookMetadata(book.storageKey) ?: return@onOk
+                if (bookshelfBookMetadata.lastUpdate.isBefore(remote.lastUpdated))
+                    bookshelfBookMetadata.bookShelfIds.forEach {
+                        bookshelfRepository.updateBookshelfBookMetadataLastUpdateTime(
+                            book.storageKey,
+                            remote.lastUpdated
+                        )
+                        bookshelfRepository.addUpdatedBooksIntoBookShelf(it, book.storageKey)
+                    }
+            }.onErr {
+                Log.e(TAG, "Source request failed for ${book.fileKey}: ${it.kind}")
+            }
 
     override fun getBookVolumesFlow(
         id: String,
@@ -156,4 +162,14 @@ class BookRepository @Inject constructor(
 
     suspend fun bookTagPage(book: SourceBookId, tag: String): Result<String?, WebRequestError> =
         sourceRegistry.request(book) { Ok(it.bookTagPage(tag)) }
+
+    suspend fun volumeCover(
+        book: SourceBookId,
+        volume: Volume,
+        chapters: Map<String, ChapterContent>,
+        context: Context,
+    ): Result<Uri?, WebRequestError> = sourceRegistry.request(book) { runtime ->
+        val remoteChapters = chapters.values.map(book::remoteContent).associateBy { it.id }.toMutableMap()
+        Ok(runtime.volumeCover(book.remoteId, book.remoteVolume(volume), remoteChapters, context))
+    }
 }

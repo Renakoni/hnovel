@@ -1,7 +1,10 @@
 package indi.dmzz_yyhyy.lightnovelreader.data.local
 
 import android.app.Application
+import android.net.Uri
 import androidx.room.Room
+import androidx.work.ListenableWorker
+import androidx.work.workDataOf
 import indi.dmzz_yyhyy.lightnovelreader.data.book.*
 import indi.dmzz_yyhyy.lightnovelreader.data.bookshelf.BookshelfRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.local.cbor.AppLocalData
@@ -9,6 +12,9 @@ import indi.dmzz_yyhyy.lightnovelreader.data.local.room.LightNovelReaderDatabase
 import indi.dmzz_yyhyy.lightnovelreader.data.statistics.StatisticsWriteCoordinator
 import indi.dmzz_yyhyy.lightnovelreader.data.statistics.StatsRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.statistics.ReadingStatsUpdate
+import indi.dmzz_yyhyy.lightnovelreader.data.work.SaveBookshelfWork
+import indi.dmzz_yyhyy.lightnovelreader.data.work.workerParameters
+import indi.dmzz_yyhyy.lightnovelreader.utils.readAppLocalData
 import com.github.michaelbull.result.get
 import io.mockk.mockk
 import io.nightfish.lightnovelreader.api.book.*
@@ -165,5 +171,27 @@ class SourceIdentityRoomTest {
         } catch (_: IllegalArgumentException) { }
         assertEquals("A", local.getBookInformation(a.storageKey)!!.title)
         assertEquals("B", local.getBookInformation(b.storageKey)!!.title)
+    }
+
+    @Test fun bookshelfWorkerWritesMixedSourceReferencesThatRestoreIndependently() = runBlocking {
+        save(a, "Same title"); save(b, "Same title")
+        shelves.addBookshelf(Bookshelf(id = 1, name = "mixed"))
+        for (book in listOf(a, b)) shelves.addBookIntoBookShelf(1, info(book, "Same title"))
+        val context = RuntimeEnvironment.getApplication()
+        val file = context.filesDir.resolve("mixed-bookshelf.lnr")
+        val uri = Uri.parse("content://fixture/mixed-bookshelf.lnr")
+        org.robolectric.Shadows.shadowOf(context.contentResolver).registerOutputStream(uri, file.outputStream())
+        try {
+            val worker = SaveBookshelfWork(context, workerParameters(workDataOf(
+                "bookshelfId" to 1, "uri" to uri.toString())), backup, db.bookshelfDao())
+            assertEquals(ListenableWorker.Result.success(), worker.doWork())
+            val restored = Cbor.decodeFromByteArray<AppLocalData>(file.inputStream().readAppLocalData())
+            assertEquals(setOf(a.storageKey, b.storageKey), restored.localDataList.single()
+                .bookshelfBookMetadataEntities.map { it.id }.toSet())
+            db.bookshelfDao().clear()
+            assertTrue(backup.importAppLocalData(restored).isOk)
+            shelves.deleteBookFromBookshelf(1, a.storageKey)
+            assertEquals(listOf(b.storageKey), shelves.getBookshelf(1)!!.allBookIds)
+        } finally { file.delete() }
     }
 }

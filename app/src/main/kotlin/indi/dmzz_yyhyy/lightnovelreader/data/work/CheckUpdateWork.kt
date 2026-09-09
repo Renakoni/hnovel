@@ -6,7 +6,6 @@ import android.app.NotificationManager
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
-import android.util.Log
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -16,10 +15,18 @@ import androidx.work.WorkerParameters
 import com.github.michaelbull.result.onOk
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
-import indi.dmzz_yyhyy.lightnovelreader.LightNovelReaderApplication
 import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.data.bookshelf.BookshelfRepository
-import indi.dmzz_yyhyy.lightnovelreader.data.web.WebBookDataSourceProvider
+import indi.dmzz_yyhyy.lightnovelreader.data.book.BookRepository
+import indi.dmzz_yyhyy.lightnovelreader.data.book.BookIdentity
+import indi.dmzz_yyhyy.lightnovelreader.data.book.SourceBookId
+import androidx.work.workDataOf
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.JsonArray
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import io.nightfish.lightnovelreader.api.book.BookInformation
 import io.nightfish.lightnovelreader.api.web.WebDataSourcePriority
 import kotlinx.coroutines.delay
@@ -29,12 +36,11 @@ import kotlin.time.Duration.Companion.milliseconds
 class CheckUpdateWork @AssistedInject constructor(
     @Assisted private val appContext: Context,
     @Assisted workerParams: WorkerParameters,
-    private val webBookDataSourceProvider: WebBookDataSourceProvider,
+    private val bookRepository: BookRepository,
     private val bookshelfRepository: BookshelfRepository
 ) : CoroutineWorker(appContext, workerParams) {
 
     override suspend fun doWork(): Result {
-        if (appContext !is LightNovelReaderApplication) return Result.failure()
         val reminderBookMap = mutableMapOf<String, BookInformation>()
         val needRemindBookIdSet = mutableSetOf<String>()
         bookshelfRepository
@@ -43,24 +49,36 @@ class CheckUpdateWork @AssistedInject constructor(
             .forEach {
                 needRemindBookIdSet.addAll(it.allBookIds)
             }
-        bookshelfRepository.getAllBookshelfBooksMetadata().forEach { bookshelfBookMetadata ->
+        var failedCount = 0
+        val outcomes = mutableListOf<kotlinx.serialization.json.JsonObject>()
+        bookshelfRepository.getAllBookshelfBooksMetadata().forEach { metadata ->
+            if (metadata.id !in needRemindBookIdSet) return@forEach
             delay(3000.milliseconds)
-            if (!needRemindBookIdSet.contains(bookshelfBookMetadata.id)) return@forEach
-            Log.d("CheckUpdateWork", "Updating book id=${bookshelfBookMetadata.id}")
-            webBookDataSourceProvider.value.getBookInformation(
-                bookshelfBookMetadata.id,
-                WebDataSourcePriority.Low
-            ).onOk { bookInformation ->
-                val webBookLastUpdate = bookInformation.lastUpdated
-                if (webBookLastUpdate.isAfter(bookshelfBookMetadata.lastUpdate)) {
-                    bookshelfBookMetadata.bookShelfIds.forEach {
-                        bookshelfRepository.addUpdatedBooksIntoBookShelf(it, bookshelfBookMetadata.id)
-                        val bookshelf = bookshelfRepository.getBookshelf(it)
-                        if (bookshelf != null && bookshelf.systemUpdateReminder)
-                            reminderBookMap[bookshelfBookMetadata.id] = bookInformation
+            var status = "unchanged"
+            // Preserve legacy Wenku8 bare IDs while canonicalizing new source-qualified keys.
+            val book = runCatching { BookIdentity.book(metadata.id) }.getOrNull()
+            if (book == null) {
+                status = "invalid_book_identity"
+            } else try {
+                val result = bookRepository.refreshBookInformation(book, WebDataSourcePriority.Low)
+                if (result.isErr) status = bookWorkFailureReason(result.component2())
+                result.onOk { information ->
+                    if (information.lastUpdated.isAfter(metadata.lastUpdate)) {
+                        // Repository refresh already updated metadata and bookshelf markers.
+                        reminderBookMap[book.storageKey] = information
+                        status = "updated"
                     }
-                    bookshelfRepository.updateBookshelfBookMetadataLastUpdateTime(bookInformation.id, webBookLastUpdate)
                 }
+            } catch (failure: CancellationException) {
+                currentCoroutineContext().ensureActive()
+                status = "source_unavailable"
+            } catch (failure: Exception) {
+                status = "source_request_failed"
+            }
+            if (status != "updated" && status != "unchanged") failedCount++
+            outcomes += buildJsonObject {
+                put("bookId", metadata.id)
+                put("status", status)
             }
         }
         reminderBookMap.values.forEach {
@@ -74,7 +92,8 @@ class CheckUpdateWork @AssistedInject constructor(
                 }
                 createNotificationChannel()
                 notify(
-                    it.id.hashCode(),
+                    "book_update:${it.id}",
+                    0,
                     NotificationCompat.Builder(appContext, "BookUpdate")
                         .setSmallIcon(R.drawable.icon_foreground)
                         .setContentTitle(appContext.getString(R.string.app_name))
@@ -84,7 +103,25 @@ class CheckUpdateWork @AssistedInject constructor(
                 )
             }
         }
-        return Result.success()
+        // Per-target results can exceed Work Data's 10 KB limit. Persist only safe identity
+        // and status fields, and return bounded summary counts plus a report filename.
+        val report = appContext.filesDir.resolve("book-update-results").apply { mkdirs() }.resolve("$id.json")
+        val atomic = android.util.AtomicFile(report)
+        var output: java.io.FileOutputStream? = null
+        try {
+            output = atomic.startWrite()
+            output!!.write(JsonArray(outcomes).toString().toByteArray(Charsets.UTF_8))
+            atomic.finishWrite(output!!)
+        } catch (failure: Exception) {
+            output?.let(atomic::failWrite)
+            return Result.failure(workDataOf("reason" to "report_write_failed"))
+        }
+        return Result.success(workDataOf(
+            "checkedCount" to outcomes.size,
+            "updatedCount" to reminderBookMap.size,
+            "failedCount" to failedCount,
+            "report" to report.name,
+        ))
     }
 
     private fun createNotificationChannel() {

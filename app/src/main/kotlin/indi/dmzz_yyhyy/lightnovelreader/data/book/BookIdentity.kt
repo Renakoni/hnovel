@@ -62,13 +62,13 @@ object BookIdentity {
     }
 
     /** Temporary legacy host ingress: bare IDs mean Wenku8, never the browsing selection. */
-    fun book(id: String): SourceBookId = if (id.startsWith("lnr")) SourceBookId.fromStorageKey(id)
+    fun book(id: String): SourceBookId = if (id.startsWith("lnr1.")) SourceBookId.fromStorageKey(id)
         else SourceBookId(wenku8, id)
 
     fun bookKey(id: String): String = book(id).storageKey
 
     fun chapter(id: String, book: SourceBookId): SourceChapterId =
-        if (id.startsWith("lnr")) SourceChapterId.fromStorageKey(id).also {
+        if (id.startsWith("lnr1.")) SourceChapterId.fromStorageKey(id).also {
             require(it.book == book) { "Chapter belongs to another book" }
         } else SourceChapterId(book, id)
 

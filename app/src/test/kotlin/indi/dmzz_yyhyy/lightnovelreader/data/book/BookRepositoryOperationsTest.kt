@@ -113,9 +113,10 @@ class BookRepositoryOperationsTest {
 
     @Test
     fun cacheAndExportWaitForEnqueueBeforeReadingTerminalRecords() = runTest {
-        for (export in listOf(false, true)) {
+        for ((source, export) in listOf("a" to false, "b" to false, "a" to true, "b" to true)) {
+            val book = SourceBookId(io.nightfish.lightnovelreader.api.identifier.Identifier("fixture", source), "same")
             val env = BookRepositoryFixture()
-            val name = if (export) ExportBookToEPUBWork.ofId("book") else CacheBookWork.ofId(BookIdentity.bookKey("book"))
+            val name = if (export) ExportBookToEPUBWork.ofId(book.storageKey) else CacheBookWork.ofId(book.storageKey)
             val completion = ResolvableFuture.create<Operation.State.SUCCESS>()
             val operation = mockk<Operation> { every { result } returns completion }
             every { env.workManager.enqueueUniqueWork(name, ExistingWorkPolicy.KEEP, any<OneTimeWorkRequest>()) } returns operation
@@ -128,8 +129,8 @@ class BookRepositoryOperationsTest {
             every { env.workManager.getWorkInfosForUniqueWorkFlow(name) } returns infos
             val observed = if (export) {
                 DetailViewModel(env.repository(), mockk(), mockk(), env.workManager)
-                    .exportToEpub(Uri.parse("content://exports/new.epub"), "book", "Title")
-            } else env.repository().cacheBook("book")
+                    .exportToEpub(Uri.parse("content://exports/new.epub"), book.storageKey, "Title")
+            } else env.repository().cacheBook(book.storageKey)
             val first = async { observed.first() }
             runCurrent()
             assertFalse(first.isCompleted)
@@ -140,6 +141,27 @@ class BookRepositoryOperationsTest {
             runCurrent()
             assertSame(current, first.await())
         }
+    }
+
+    @Test
+    fun volumeCoverCallbackReceivesOnlyItsSourcesRemoteIds() = runTest {
+        val repository = fixture.repository()
+        for (source in listOf("a", "b")) {
+            val book = SourceBookId(io.nightfish.lightnovelreader.api.identifier.Identifier("fixture", source), "same")
+            val runtime = mockk<indi.dmzz_yyhyy.lightnovelreader.data.web.SourceRuntime>()
+            coEvery { fixture.registry.resolve(book.sourceId) } returns indi.dmzz_yyhyy.lightnovelreader.data.web.SourceResolution.Ready(runtime)
+            val remoteVolume = Volume("volume", "Same title", listOf(ChapterInformation("chapter", "Chapter")))
+            val remoteContent = io.nightfish.lightnovelreader.api.book.ChapterContent("chapter", "Chapter",
+                kotlinx.serialization.json.JsonObject(emptyMap()), nextChapter = "next")
+            val volume = book.bind(BookVolumes(book.remoteId, listOf(remoteVolume))).volumes.single()
+            val chapter = SourceChapterId(book, "chapter").bind(remoteContent)
+            val context = RuntimeEnvironment.getApplication()
+            val cover = Uri.parse("https://fixture.invalid/$source.jpg")
+            coEvery { runtime.volumeCover("same", remoteVolume, mutableMapOf("chapter" to remoteContent), context) } returns cover
+            assertEquals(com.github.michaelbull.result.Ok(cover), repository.volumeCover(book, volume, mapOf(chapter.id to chapter), context))
+            coVerify(exactly = 1) { runtime.volumeCover("same", remoteVolume, mutableMapOf("chapter" to remoteContent), context) }
+        }
+        verify(exactly = 0) { fixture.provider.value }
     }
 
     @Test

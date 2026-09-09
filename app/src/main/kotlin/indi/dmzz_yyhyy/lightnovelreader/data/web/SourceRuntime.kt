@@ -81,6 +81,10 @@ class SourceRuntime internal constructor(
         return source.bookTagPage(tag)
     }
 
+    suspend fun volumeCover(bookId: String, volume: Volume,
+        chapters: MutableMap<String, ChapterContent>, context: Context) =
+        execute { source.getCoverUriInVolume(bookId, volume, chapters, context) }
+
     internal val explorePages get() = run { checkAvailable(); legacyExplore }
 
     fun imageHeaders(): Map<String, String> {

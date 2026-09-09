@@ -1,6 +1,7 @@
 package indi.dmzz_yyhyy.lightnovelreader.data.book
 
 import io.nightfish.lightnovelreader.api.identifier.Identifier
+import io.nightfish.lightnovelreader.api.book.ChapterContent
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Test
@@ -44,5 +45,22 @@ class BookIdentityTest {
         assertEquals(SourceBookId(sourceA, "123"), SourceBookId(sourceA, "123"))
         org.junit.Assert.assertThrows(IllegalArgumentException::class.java) { SourceBookId(sourceA, "") }
         org.junit.Assert.assertThrows(IllegalArgumentException::class.java) { SourceChapterId(SourceBookId(sourceA, "123"), "") }
+    }
+
+    @Test
+    fun legacyIdsBeginningWithLnrRemainLegacyIds() {
+        val book = BookIdentity.book("lnr123")
+        assertEquals("lnr123", book.remoteId)
+        assertEquals("Wenku8", book.sourceId.id)
+        assertEquals("lnr-chapter", BookIdentity.chapter("lnr-chapter", book).remoteId)
+    }
+
+    @Test
+    fun reverseContentMappingPreservesEmptyChapterLinkSentinels() {
+        val book = SourceBookId(sourceA, "123")
+        val content = ChapterContent("chapter", "title", kotlinx.serialization.json.JsonObject(emptyMap()), "", "")
+        val remote = book.remoteContent(content)
+        assertEquals(null, remote.prevChapter)
+        assertEquals(null, remote.nextChapter)
     }
 }

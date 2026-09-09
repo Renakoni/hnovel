@@ -100,10 +100,11 @@ class DetailViewModel @Inject constructor(
 
 
     fun exportToEpub(uri: Uri, bookId: String, title: String): Flow<WorkInfo?> {
+        val key = indi.dmzz_yyhyy.lightnovelreader.data.book.BookIdentity.bookKey(bookId)
         val workRequest = OneTimeWorkRequestBuilder<ExportBookToEPUBWork>()
             .setInputData(
                 workDataOf(
-                    "bookId" to bookId,
+                    "bookId" to key,
                     "uri" to uri.toString(),
                     "title" to title,
                     "includeImages" to exportSettings.includeImages,
@@ -113,10 +114,10 @@ class DetailViewModel @Inject constructor(
             )
             .build()
         val operation = workManager.enqueueUniqueWork(
-            ExportBookToEPUBWork.ofId(bookId),
+            ExportBookToEPUBWork.ofId(key),
             ExistingWorkPolicy.KEEP,
             workRequest
         )
-        return workManager.observeSubmittedUniqueWork(ExportBookToEPUBWork.ofId(bookId), operation)
+        return workManager.observeSubmittedUniqueWork(ExportBookToEPUBWork.ofId(key), operation)
     }
 }

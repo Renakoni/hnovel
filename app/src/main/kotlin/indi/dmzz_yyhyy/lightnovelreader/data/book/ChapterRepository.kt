@@ -45,8 +45,7 @@ class ChapterRepository @Inject constructor(
             .onOk { remote ->
                 localBookDataSource.updateBookVolumes(remote)
             }.onErr {
-                Log.e(TAG, "Failed to request web data (title=${it.title}, message=${it.message})")
-                it.throwable?.printStackTrace()
+                Log.e(TAG, "Source request failed for ${book.fileKey}: ${it.kind}")
             }
             .also {
                 if (it.isOk || local == null) emit(it)
@@ -72,8 +71,7 @@ class ChapterRepository @Inject constructor(
             .onOk { remote ->
                 localBookDataSource.updateChapterContent(remote)
             }.onErr {
-                Log.e(TAG, "Failed to request web data (title=${it.title}, message=${it.message})")
-                it.throwable?.printStackTrace()
+                Log.e(TAG, "Source request failed for ${chapter.book.fileKey}: ${it.kind}")
             }
             .also {
                 if (it.isOk || local == null) emit(it)
@@ -94,8 +92,7 @@ class ChapterRepository @Inject constructor(
             .onOk { remote ->
                 localBookDataSource.updateChapterContent(remote)
             }.onErr {
-                Log.e(TAG, "Failed to request web data (title=${it.title}, message=${it.message})")
-                it.throwable?.printStackTrace()
+                Log.e(TAG, "Source request failed for ${chapter.book.fileKey}: ${it.kind}")
             }
     }
 }
