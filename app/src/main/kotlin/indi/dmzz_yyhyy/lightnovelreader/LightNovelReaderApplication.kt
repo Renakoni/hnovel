@@ -11,7 +11,6 @@ import dagger.hilt.android.HiltAndroidApp
 import indi.dmzz_yyhyy.lightnovelreader.data.logging.LogLevel
 import indi.dmzz_yyhyy.lightnovelreader.data.logging.LoggerRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.plugin.PluginManager
-import indi.dmzz_yyhyy.lightnovelreader.data.plugin.store.PluginUpdateCheckRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.userdata.UserDataRepository
 import indi.dmzz_yyhyy.lightnovelreader.utils.analytics.MatomoAnalytics
 import io.nightfish.lightnovelreader.api.userdata.UserDataPath
@@ -31,7 +30,6 @@ class LightNovelReaderApplication : Application(), Configuration.Provider {
     @Inject lateinit var loggerRepository: LoggerRepository
     @Inject lateinit var userDataRepository: UserDataRepository
     @Inject lateinit var pluginManager: PluginManager
-    @Inject lateinit var pluginUpdateCheckRepository: PluginUpdateCheckRepository
     @Inject lateinit var matomoAnalytics: MatomoAnalytics
 
     override val workManagerConfiguration: Configuration

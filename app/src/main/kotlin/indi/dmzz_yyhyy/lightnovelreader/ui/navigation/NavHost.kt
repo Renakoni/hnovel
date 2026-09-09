@@ -41,7 +41,6 @@ import indi.dmzz_yyhyy.lightnovelreader.ui.components.LnrSnackbar
 import indi.dmzz_yyhyy.lightnovelreader.ui.dialog.addBookToBookshelfDialog
 import indi.dmzz_yyhyy.lightnovelreader.ui.dialog.markAllChaptersAsReadDialog
 import indi.dmzz_yyhyy.lightnovelreader.ui.dialog.pluginInstallerDialog
-import indi.dmzz_yyhyy.lightnovelreader.ui.dialog.pluginStoreInstallBottomSheet
 import indi.dmzz_yyhyy.lightnovelreader.ui.dialog.updatesAvailableDialog
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.homeNavigation
 import indi.dmzz_yyhyy.lightnovelreader.ui.storagemanager.storageManager
@@ -140,7 +139,6 @@ fun LightNovelReaderNavHost(
                         storageManager()
                         pluginInstallerDialog()
                         markAllChaptersAsReadDialog()
-                        pluginStoreInstallBottomSheet()
                         onBuildNavHost.invoke(this)
                     }
                 }
