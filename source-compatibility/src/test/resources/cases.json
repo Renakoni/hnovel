@@ -1,0 +1,295 @@
+{
+  "revision": "da17bb2bed44f30b12a524c2457e32a20b16fa41",
+  "cases": [
+    {
+      "id": "HTML-CSS",
+      "operation": "html",
+      "input": "fixtures/search.html",
+      "expected": [
+        "Alpha",
+        "Beta"
+      ],
+      "oracle": "pinned-selector",
+      "evidence": "Pinned selector at da17bb2bed44f30b12a524c2457e32a20b16fa41; expectation hand-derived from the small fixture, then checked by reference execution.",
+      "source": 0,
+      "field": "ruleSearch.name"
+    },
+    {
+      "id": "HTML-DEFAULT",
+      "operation": "html",
+      "rule": "class.book@href",
+      "input": "fixtures/search.html",
+      "expected": [
+        "/books/1",
+        "/books/2"
+      ],
+      "oracle": "pinned-selector",
+      "evidence": "Pinned selector at da17bb2bed44f30b12a524c2457e32a20b16fa41; expectation hand-derived from the small fixture, then checked by reference execution."
+    },
+    {
+      "id": "HTML-FALLBACK",
+      "operation": "html",
+      "rule": "class.missing@text||class.book@text",
+      "input": "fixtures/search.html",
+      "expected": [
+        "Alpha",
+        "Beta"
+      ],
+      "oracle": "pinned-selector",
+      "evidence": "Pinned selector at da17bb2bed44f30b12a524c2457e32a20b16fa41; expectation hand-derived from the small fixture, then checked by reference execution."
+    },
+    {
+      "id": "HTML-CONCAT",
+      "operation": "html",
+      "rule": "class.book@text&&tag.h1@text",
+      "input": "fixtures/search.html",
+      "expected": [
+        "Alpha",
+        "Beta",
+        "Library"
+      ],
+      "oracle": "pinned-selector",
+      "evidence": "Pinned selector at da17bb2bed44f30b12a524c2457e32a20b16fa41; expectation hand-derived from the small fixture, then checked by reference execution."
+    },
+    {
+      "id": "HTML-EMPTY",
+      "operation": "html-scalar",
+      "rule": "class.missing@text",
+      "input": "fixtures/search.html",
+      "expected": null,
+      "oracle": "pinned-selector",
+      "evidence": "Pinned selector at da17bb2bed44f30b12a524c2457e32a20b16fa41; expectation hand-derived from the small fixture, then checked by reference execution."
+    },
+    {
+      "id": "JSON-LIST",
+      "operation": "json",
+      "input": "fixtures/search.json",
+      "expected": [
+        "Alpha",
+        "Beta",
+        "Gamma"
+      ],
+      "oracle": "pinned-selector",
+      "evidence": "Pinned selector at da17bb2bed44f30b12a524c2457e32a20b16fa41; expectation hand-derived from the small fixture, then checked by reference execution.",
+      "source": 1,
+      "field": "ruleSearch.name"
+    },
+    {
+      "id": "JSON-FILTER",
+      "operation": "json",
+      "rule": "$.books[?(@.available == true && @.kind == 'novel')].title",
+      "input": "fixtures/search.json",
+      "expected": [
+        "Alpha",
+        "Gamma"
+      ],
+      "oracle": "pinned-selector",
+      "evidence": "Pinned selector at da17bb2bed44f30b12a524c2457e32a20b16fa41; expectation hand-derived from the small fixture, then checked by reference execution."
+    },
+    {
+      "id": "JSON-FALLBACK",
+      "operation": "json",
+      "rule": "$.missing||$.fallback",
+      "input": "fixtures/search.json",
+      "expected": [
+        "Fallback"
+      ],
+      "oracle": "pinned-selector",
+      "evidence": "Pinned selector at da17bb2bed44f30b12a524c2457e32a20b16fa41; expectation hand-derived from the small fixture, then checked by reference execution."
+    },
+    {
+      "id": "JSON-INTERLEAVE-TAIL",
+      "operation": "json",
+      "rule": "$.short%%$.long",
+      "input": "fixtures/search.json",
+      "expected": [
+        "A",
+        "1"
+      ],
+      "oracle": "pinned-selector",
+      "evidence": "AnalyzeByJSonPath iterates indices of the first result in %%: excess tail of later lists is dropped. Observational quirk QREF-001; future production policy must be explicit."
+    },
+    {
+      "id": "JSON-SCALAR-JOIN",
+      "operation": "json-scalar",
+      "rule": "$.books[*].title",
+      "input": "fixtures/search.json",
+      "expected": "Alpha\nBeta\nGamma",
+      "oracle": "pinned-selector",
+      "evidence": "Pinned selector at da17bb2bed44f30b12a524c2457e32a20b16fa41; expectation hand-derived from the small fixture, then checked by reference execution."
+    },
+    {
+      "id": "XPATH-TEXT",
+      "operation": "xpath",
+      "rule": "//a[@class='book']/text()",
+      "input": "fixtures/search.html",
+      "expected": [
+        "Alpha",
+        "Beta"
+      ],
+      "oracle": "pinned-selector",
+      "evidence": "Pinned selector at da17bb2bed44f30b12a524c2457e32a20b16fa41; expectation hand-derived from the small fixture, then checked by reference execution."
+    },
+    {
+      "id": "REGEX-ALL",
+      "operation": "regex",
+      "rule": "(\\d+):(\\w+)",
+      "input": "fixtures/regex.txt",
+      "expected": [
+        [
+          "1:Alpha",
+          "1",
+          "Alpha"
+        ],
+        [
+          "2:Beta",
+          "2",
+          "Beta"
+        ]
+      ],
+      "oracle": "pinned-selector",
+      "evidence": "Pinned selector at da17bb2bed44f30b12a524c2457e32a20b16fa41; expectation hand-derived from the small fixture, then checked by reference execution."
+    },
+    {
+      "id": "REGEX-FIRST",
+      "operation": "regex-first",
+      "rule": "(\\d+):(\\w+)",
+      "input": "fixtures/regex.txt",
+      "expected": [
+        "1:Alpha",
+        "1",
+        "Alpha"
+      ],
+      "oracle": "pinned-selector",
+      "evidence": "Pinned selector at da17bb2bed44f30b12a524c2457e32a20b16fa41; expectation hand-derived from the small fixture, then checked by reference execution."
+    },
+    {
+      "id": "REGEX-OPTIONAL-ALL",
+      "operation": "regex",
+      "rule": "A(B)?",
+      "input": "fixtures/optional.txt",
+      "expected": [
+        [
+          "A",
+          ""
+        ]
+      ],
+      "oracle": "pinned-selector",
+      "evidence": "Pinned selector at da17bb2bed44f30b12a524c2457e32a20b16fa41; expectation hand-derived from the small fixture, then checked by reference execution."
+    },
+    {
+      "id": "REGEX-OPTIONAL-FIRST",
+      "operation": "regex-first",
+      "rule": "A(B)?",
+      "input": "fixtures/optional.txt",
+      "oracle": "pinned-selector",
+      "evidence": "AnalyzeByRegex.getElement force-unwraps unmatched optional group, unlike getElements. Observational quirk QREF-002, not a requested production crash.",
+      "expectedError": "NullPointerException"
+    },
+    {
+      "id": "RULE-NESTED",
+      "operation": "split",
+      "rule": "$.books[?(@.available == true && @.kind == 'novel')].title||$.fallback",
+      "expected": [
+        "$.books[?(@.available == true && @.kind == 'novel')].title",
+        "$.fallback"
+      ],
+      "oracle": "pinned-selector",
+      "evidence": "Pinned selector at da17bb2bed44f30b12a524c2457e32a20b16fa41; expectation hand-derived from the small fixture, then checked by reference execution."
+    },
+    {
+      "id": "JS-SHARED-STATE",
+      "operation": "script",
+      "expected": {
+        "values": [
+          "ALPHA",
+          "BETA"
+        ],
+        "calls": 2
+      },
+      "oracle": "rhino-contract",
+      "evidence": "Synthetic contract expectation executed using pinned Rhino 1.8.1. Host double is not upstream JsExtensions; upstream host/browser behavior remains pending.",
+      "library": "fixtures/library.js",
+      "script": "fixtures/shared-state.js"
+    },
+    {
+      "id": "MIXED-HTML-JS",
+      "operation": "html-script",
+      "rule": "class.book@text",
+      "input": "fixtures/search.html",
+      "expected": [
+        "ALPHA",
+        "BETA"
+      ],
+      "oracle": "mixed-contract",
+      "evidence": "Synthetic contract expectation executed using pinned Rhino 1.8.1. Host double is not upstream JsExtensions; upstream host/browser behavior remains pending.",
+      "library": "fixtures/library.js",
+      "script": "fixtures/mixed.js"
+    },
+    {
+      "id": "LOGIN-CONTRACT",
+      "operation": "script",
+      "expected": {
+        "name": "fixture-reader",
+        "cached": true,
+        "events": [
+          [
+            "request",
+            "https://reader.invalid/login"
+          ],
+          [
+            "login",
+            "fixture-reader"
+          ],
+          [
+            "cache",
+            "logged-in"
+          ]
+        ]
+      },
+      "oracle": "rhino-contract",
+      "evidence": "Synthetic contract expectation executed using pinned Rhino 1.8.1. Host double is not upstream JsExtensions; upstream host/browser behavior remains pending.",
+      "host": "fixtures/host.json",
+      "script": "fixtures/login.js"
+    },
+    {
+      "id": "DISCOVERY-CONTRACT",
+      "operation": "script",
+      "expected": [
+        {
+          "title": "New",
+          "url": "https://reader.invalid/new"
+        },
+        {
+          "title": "Complete",
+          "url": "https://reader.invalid/complete"
+        }
+      ],
+      "oracle": "rhino-contract",
+      "evidence": "Synthetic contract expectation executed using pinned Rhino 1.8.1. Host double is not upstream JsExtensions; upstream host/browser behavior remains pending.",
+      "host": "fixtures/host.json",
+      "script": "fixtures/discovery.js"
+    },
+    {
+      "id": "PAGES-CONTRACT",
+      "operation": "script",
+      "expected": {
+        "content": "First paragraph.\nSecond paragraph.",
+        "events": [
+          [
+            "request",
+            "https://reader.invalid/chapter/1?page=1"
+          ],
+          [
+            "request",
+            "https://reader.invalid/chapter/1?page=2"
+          ]
+        ]
+      },
+      "oracle": "rhino-contract",
+      "evidence": "Synthetic contract expectation executed using pinned Rhino 1.8.1. Host double is not upstream JsExtensions; upstream host/browser behavior remains pending.",
+      "host": "fixtures/host.json",
+      "script": "fixtures/pagination.js"
+    }
+  ]
+}

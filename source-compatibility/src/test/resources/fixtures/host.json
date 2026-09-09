@@ -1,0 +1,1 @@
+{"sourceId":"https://reader.invalid/#fixture","variable":"[{\"title\":\"New\",\"url\":\"/new\"},{\"title\":\"Complete\",\"url\":\"/complete\"}]","responses":{"https://reader.invalid/login":"{\"ok\":true,\"name\":\"fixture-reader\"}","https://reader.invalid/chapter/1?page=1":"First paragraph.","https://reader.invalid/chapter/1?page=2":"Second paragraph."}}

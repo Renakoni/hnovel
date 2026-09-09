@@ -1,0 +1,384 @@
+{
+  "schemaVersion": 1,
+  "profiles": [
+    {
+      "id": "legado-text-da17bb2",
+      "kind": "reference",
+      "scope": "Pinned text source semantics; selection tests cover only named methods, not whole engine.",
+      "revision": "da17bb2bed44f30b12a524c2457e32a20b16fa41"
+    },
+    {
+      "id": "advanced-sample-20260908",
+      "kind": "extension-target",
+      "scope": "Static capability inventory of a private sample; extension host provenance unresolved. Not an official Legado version and not a claim the live source works."
+    },
+    {
+      "id": "unknown",
+      "kind": "unclassified",
+      "scope": "Must report unknown fields/API explicitly; cannot auto-label as supported."
+    }
+  ],
+  "productImplementedCount": 0,
+  "features": [
+    {
+      "id": "FORMAT",
+      "owner": "https://github.com/Renakoni/hnovel/issues/83",
+      "requirement": "单对象/集合、类型、未知字段、启用标记、身份键片段和重复导入；识别不等于可执行。",
+      "testId": "CONFORMANCE-FORMAT",
+      "implementation": "planned",
+      "verification": "future-fixture",
+      "fixtures": [],
+      "evidence": "Pinned reference source inspection; production implementation pending."
+    },
+    {
+      "id": "HTML",
+      "owner": "https://github.com/Renakoni/hnovel/issues/84",
+      "requirement": "Jsoup 默认链、CSS、属性/text/html/ownText、索引/排除与空结果。",
+      "testId": "CONFORMANCE-HTML",
+      "implementation": "planned",
+      "verification": "reference-fixture",
+      "fixtures": [
+        "HTML-CSS",
+        "HTML-DEFAULT",
+        "HTML-EMPTY"
+      ],
+      "evidence": "Pinned reference source inspection; production implementation pending."
+    },
+    {
+      "id": "JSON",
+      "owner": "https://github.com/Renakoni/hnovel/issues/84",
+      "requirement": "JSONPath、列表/标量转换、模板及嵌套布尔过滤。",
+      "testId": "CONFORMANCE-JSON",
+      "implementation": "planned",
+      "verification": "reference-fixture",
+      "fixtures": [
+        "JSON-LIST",
+        "JSON-FILTER",
+        "JSON-SCALAR-JOIN"
+      ],
+      "evidence": "Pinned reference source inspection; production implementation pending."
+    },
+    {
+      "id": "XPATH",
+      "owner": "https://github.com/Renakoni/hnovel/issues/84",
+      "requirement": "XPath 选择和 XML/HTML 上下文。",
+      "testId": "CONFORMANCE-XPATH",
+      "implementation": "planned",
+      "verification": "reference-fixture",
+      "fixtures": [
+        "XPATH-TEXT"
+      ],
+      "evidence": "Pinned reference source inspection; production implementation pending."
+    },
+    {
+      "id": "REGEX",
+      "owner": "https://github.com/Renakoni/hnovel/issues/84",
+      "requirement": "AllInOne/OnlyOne、捕获组/未匹配组、链接规则；记录参考空组差异。",
+      "testId": "CONFORMANCE-REGEX",
+      "implementation": "planned",
+      "verification": "reference-fixture",
+      "fixtures": [
+        "REGEX-ALL",
+        "REGEX-FIRST",
+        "REGEX-OPTIONAL-ALL",
+        "REGEX-OPTIONAL-FIRST"
+      ],
+      "evidence": "Pinned reference source inspection; production implementation pending."
+    },
+    {
+      "id": "COMPOSITION",
+      "owner": "https://github.com/Renakoni/hnovel/issues/84",
+      "requirement": "&& 合并、|| 首个非空、%% 交错及不等长列表；嵌套分隔符不误拆。",
+      "testId": "CONFORMANCE-COMPOSITION",
+      "implementation": "planned",
+      "verification": "reference-fixture",
+      "fixtures": [
+        "HTML-CONCAT",
+        "HTML-FALLBACK",
+        "JSON-FALLBACK",
+        "JSON-INTERLEAVE-TAIL",
+        "RULE-NESTED"
+      ],
+      "evidence": "Pinned reference source inspection; production implementation pending."
+    },
+    {
+      "id": "REPLACEMENT",
+      "owner": "https://github.com/Renakoni/hnovel/issues/84",
+      "requirement": "## 替换、仅一次替换、模板/get/put、转义、SourceRule 阶段顺序。",
+      "testId": "CONFORMANCE-REPLACEMENT",
+      "implementation": "planned",
+      "verification": "future-fixture",
+      "fixtures": [],
+      "evidence": "Pinned reference source inspection; production implementation pending."
+    },
+    {
+      "id": "VARIABLES",
+      "owner": "https://github.com/Renakoni/hnovel/issues/87",
+      "requirement": "result/book/chapter/key/page/baseUrl 与请求/书籍/来源变量作用域，java.getString/getElement/put/get。",
+      "testId": "CONFORMANCE-VARIABLES",
+      "implementation": "planned",
+      "verification": "future-fixture",
+      "fixtures": [],
+      "evidence": "Pinned reference source inspection; production implementation pending."
+    },
+    {
+      "id": "JS",
+      "owner": "https://github.com/Renakoni/hnovel/issues/87",
+      "requirement": "@js:/<js>、jsLib、Rhino 类型和异常、同步宿主桥接；引擎使用固定版本 1.8.1。",
+      "testId": "CONFORMANCE-JS",
+      "implementation": "planned",
+      "verification": "reference-fixture",
+      "fixtures": [
+        "JS-SHARED-STATE",
+        "MIXED-HTML-JS"
+      ],
+      "evidence": "Rhino language + synthetic/mixed host contract execution, NOT full upstream AnalyzeRule/JsExtensions execution."
+    },
+    {
+      "id": "URL",
+      "owner": "https://github.com/Renakoni/hnovel/issues/85",
+      "requirement": "URL 模板/相对路径、页面参数、编码/charset、方法/body/header/重定向与 retry。",
+      "testId": "CONFORMANCE-URL",
+      "implementation": "planned",
+      "verification": "future-fixture",
+      "fixtures": [],
+      "evidence": "Pinned reference source inspection; production implementation pending."
+    },
+    {
+      "id": "HTTP",
+      "owner": "https://github.com/Renakoni/hnovel/issues/85",
+      "requirement": "java.ajax/ajaxAll/connect/get/head/post，响应体/头、来源限流、取消、授权与真实请求目标检查。",
+      "testId": "CONFORMANCE-HTTP",
+      "implementation": "planned",
+      "verification": "future-fixture",
+      "fixtures": [],
+      "evidence": "Pinned reference source inspection; production implementation pending."
+    },
+    {
+      "id": "COOKIE",
+      "owner": "https://github.com/Renakoni/hnovel/issues/88",
+      "requirement": "enabledCookieJar、cookie/getCookie、请求头优先级、同域不同来源账号隔离。",
+      "testId": "CONFORMANCE-COOKIE",
+      "implementation": "planned",
+      "verification": "future-fixture",
+      "fixtures": [],
+      "evidence": "Pinned reference source inspection; production implementation pending."
+    },
+    {
+      "id": "STORAGE",
+      "owner": "https://github.com/Renakoni/hnovel/issues/85",
+      "requirement": "cache get/put/delete、source 变量/配置与受限存储、TTL/配额；不得访问宿主仓库。",
+      "testId": "CONFORMANCE-STORAGE",
+      "implementation": "planned",
+      "verification": "future-fixture",
+      "fixtures": [],
+      "evidence": "Pinned reference source inspection; production implementation pending."
+    },
+    {
+      "id": "ENCODING",
+      "owner": "https://github.com/Renakoni/hnovel/issues/87",
+      "requirement": "JsEncodeUtils 和 JsExtensions 的 base64/hex/hash/字节/charset、时间/URL/HTML 与繁简转换。",
+      "testId": "CONFORMANCE-ENCODING",
+      "implementation": "planned",
+      "verification": "future-fixture",
+      "fixtures": [],
+      "evidence": "Pinned reference source inspection; production implementation pending."
+    },
+    {
+      "id": "FILES",
+      "owner": "https://github.com/Renakoni/hnovel/issues/87",
+      "requirement": "importScript/cacheFile/downloadFile、读取/解压/目录和字体工具通过受控资源服务实现。",
+      "testId": "CONFORMANCE-FILES",
+      "implementation": "planned",
+      "verification": "future-fixture",
+      "fixtures": [],
+      "evidence": "Pinned reference source inspection; production implementation pending."
+    },
+    {
+      "id": "LOGIN",
+      "owner": "https://github.com/Renakoni/hnovel/issues/88",
+      "requirement": "loginUrl/login()、loginUi 表单、loginCheckJs、登录头/信息和账号代次。",
+      "testId": "CONFORMANCE-LOGIN",
+      "implementation": "planned",
+      "verification": "reference-fixture",
+      "fixtures": [
+        "LOGIN-CONTRACT"
+      ],
+      "evidence": "Hand-authored login contract under Rhino with a recording host double; Android account/Cookie implementations pending."
+    },
+    {
+      "id": "WEBVIEW",
+      "owner": "https://github.com/Renakoni/hnovel/issues/89",
+      "requirement": "WebView 渲染/DOM 返回、startBrowserAwait/验证码和会话同步。",
+      "testId": "CONFORMANCE-WEBVIEW",
+      "implementation": "planned",
+      "verification": "android-required",
+      "fixtures": [],
+      "evidence": "Pinned reference source inspection; production implementation pending."
+    },
+    {
+      "id": "WEBVIEW-ISOLATION",
+      "owner": "https://github.com/Renakoni/hnovel/issues/89",
+      "requirement": "Cookie/localStorage/Service Worker/子资源网络和迟到回调隔离，最低系统版本验证。",
+      "testId": "CONFORMANCE-WEBVIEW-ISOLATION",
+      "implementation": "planned",
+      "verification": "android-required",
+      "fixtures": [],
+      "evidence": "Pinned reference source inspection; production implementation pending."
+    },
+    {
+      "id": "SANDBOX",
+      "owner": "https://github.com/Renakoni/hnovel/issues/86",
+      "requirement": "可终止进程、IPC 来源身份、CPU/内存/输出/文件/网络预算，反射/类加载边界。",
+      "testId": "CONFORMANCE-SANDBOX",
+      "implementation": "planned",
+      "verification": "android-required",
+      "fixtures": [],
+      "evidence": "Pinned reference source inspection; production implementation pending."
+    },
+    {
+      "id": "SEARCH",
+      "owner": "https://github.com/Renakoni/hnovel/issues/90",
+      "requirement": "ruleSearch、bookUrlPattern 直链、详情与搜索上下文/缓存语义。",
+      "testId": "CONFORMANCE-SEARCH",
+      "implementation": "planned",
+      "verification": "future-fixture",
+      "fixtures": [],
+      "evidence": "Pinned reference source inspection; production implementation pending."
+    },
+    {
+      "id": "DETAIL",
+      "owner": "https://github.com/Renakoni/hnovel/issues/90",
+      "requirement": "ruleBookInfo、init/预处理、元数据与目录缓存、登录响应转换。",
+      "testId": "CONFORMANCE-DETAIL",
+      "implementation": "planned",
+      "verification": "future-fixture",
+      "fixtures": [],
+      "evidence": "Pinned reference source inspection; production implementation pending."
+    },
+    {
+      "id": "TOC",
+      "owner": "https://github.com/Renakoni/hnovel/issues/90",
+      "requirement": "ruleToc、目录多页/分卷/顺序/重复防护和章节身份。",
+      "testId": "CONFORMANCE-TOC",
+      "implementation": "planned",
+      "verification": "future-fixture",
+      "fixtures": [],
+      "evidence": "Pinned reference source inspection; production implementation pending."
+    },
+    {
+      "id": "CONTENT",
+      "owner": "https://github.com/Renakoni/hnovel/issues/90",
+      "requirement": "ruleContent、正文多页/前后处理/替换；保留段落和图片顺序。",
+      "testId": "CONFORMANCE-CONTENT",
+      "implementation": "planned",
+      "verification": "reference-fixture",
+      "fixtures": [
+        "PAGES-CONTRACT"
+      ],
+      "evidence": "Hand-derived logical chapter assembly contract, not upstream WebBook pipeline execution."
+    },
+    {
+      "id": "IMAGES",
+      "owner": "https://github.com/Renakoni/hnovel/issues/90",
+      "requirement": "coverDecodeJs、正文图片转换与来源/会话专用 headers/cache。",
+      "testId": "CONFORMANCE-IMAGES",
+      "implementation": "planned",
+      "verification": "future-fixture",
+      "fixtures": [],
+      "evidence": "Pinned reference source inspection; production implementation pending."
+    },
+    {
+      "id": "DISCOVERY",
+      "owner": "https://github.com/Renakoni/hnovel/issues/91",
+      "requirement": "exploreUrl/ruleExplore/exploreScreen 的动态分类、过滤和单层 feed 映射。",
+      "testId": "CONFORMANCE-DISCOVERY",
+      "implementation": "planned",
+      "verification": "reference-fixture",
+      "fixtures": [
+        "DISCOVERY-CONTRACT"
+      ],
+      "evidence": "Rhino evaluation with synthetic source variables, not the upstream discovery host."
+    },
+    {
+      "id": "EXTENSION-FLAGS",
+      "owner": "https://github.com/Renakoni/hnovel/issues/91",
+      "requirement": "样本 customButton/eventListener 是布尔标记；识别扩展并实现已确认事件/按钮协议，不能当作 JS 字段直接 eval。",
+      "testId": "CONFORMANCE-EXTENSION-FLAGS",
+      "implementation": "planned",
+      "verification": "future-fixture",
+      "fixtures": [],
+      "evidence": "Pinned reference source inspection; production implementation pending."
+    },
+    {
+      "id": "EXTENSION-LOGIN-UI",
+      "owner": "https://github.com/Renakoni/hnovel/issues/88",
+      "requirement": "样本 loginUi 为 @js: 脚本，与固定 BaseSource.loginUi() 直接解析 JSON 不同；需明确扩展方言执行与表单协议。",
+      "testId": "CONFORMANCE-EXTENSION-LOGIN-UI",
+      "implementation": "planned",
+      "verification": "future-fixture",
+      "fixtures": [],
+      "evidence": "Pinned reference source inspection; production implementation pending."
+    },
+    {
+      "id": "EXTENSION-INFOMAP",
+      "owner": "https://github.com/Renakoni/hnovel/issues/91",
+      "requirement": "infoMap.set/save 的状态保存/动作上下文：观察到成员使用，构造和持久化语义仍需扩展宿主证据，不能凭名称宣称等价。",
+      "testId": "CONFORMANCE-EXTENSION-INFOMAP",
+      "implementation": "planned",
+      "verification": "future-fixture",
+      "fixtures": [],
+      "evidence": "Pinned reference source inspection; production implementation pending."
+    },
+    {
+      "id": "EXTENSION-UI",
+      "owner": "https://github.com/Renakoni/hnovel/issues/91",
+      "requirement": "java.upConfig/upLoginData/reLoginView/refreshExplore/showBrowser/open/searchBook 及配置/theme 快照等扩展动作；逐项定义受控协议。",
+      "testId": "CONFORMANCE-EXTENSION-UI",
+      "implementation": "planned",
+      "verification": "future-fixture",
+      "fixtures": [],
+      "evidence": "Pinned reference source inspection; production implementation pending."
+    },
+    {
+      "id": "IDENTIFIERS",
+      "owner": "https://github.com/Renakoni/hnovel/issues/86",
+      "requirement": "androidId/randomUUID 等标识工具的权限和来源边界；跨设备稳定性及与外部认证契约的差异必须明示。",
+      "testId": "CONFORMANCE-IDENTIFIERS",
+      "implementation": "planned",
+      "verification": "future-fixture",
+      "fixtures": [],
+      "evidence": "Pinned reference source inspection; production implementation pending."
+    },
+    {
+      "id": "DIAGNOSTICS",
+      "owner": "https://github.com/Renakoni/hnovel/issues/93",
+      "requirement": "java.log/logType/toast/longToast、阶段/位置/版本错误、取消和脱敏，未知 API 不静默成功。",
+      "testId": "CONFORMANCE-DIAGNOSTICS",
+      "implementation": "planned",
+      "verification": "future-fixture",
+      "fixtures": [],
+      "evidence": "Pinned reference source inspection; production implementation pending."
+    },
+    {
+      "id": "REVISIONS",
+      "owner": "https://github.com/Renakoni/hnovel/issues/94",
+      "requirement": "规则身份与版本/profile 分离，更新原子激活、回退、权限新增、并发请求修订校验。",
+      "testId": "CONFORMANCE-REVISIONS",
+      "implementation": "planned",
+      "verification": "future-fixture",
+      "fixtures": [],
+      "evidence": "Pinned reference source inspection; production implementation pending."
+    },
+    {
+      "id": "INTEGRATION",
+      "owner": "https://github.com/Renakoni/hnovel/issues/95",
+      "requirement": "内置+标准+目标扩展直接导入后搜索/阅读/任务/模式/离线闭环，必需能力不得静默降为非目标。",
+      "testId": "CONFORMANCE-INTEGRATION",
+      "implementation": "planned",
+      "verification": "future-fixture",
+      "fixtures": [],
+      "evidence": "Pinned reference source inspection; production implementation pending."
+    }
+  ]
+}
