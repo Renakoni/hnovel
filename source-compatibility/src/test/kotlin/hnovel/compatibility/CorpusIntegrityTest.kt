@@ -50,8 +50,16 @@ class CorpusIntegrityTest {
             assertTrue(feature.string("evidence").isNotBlank())
             assertTrue(testIds.add(feature.string("testId")))
             val implemented = featureIdsImplemented.contains(feature.string("id"))
-            assertEquals(if (implemented) "implemented" else "planned", feature.string("implementation"))
-            if (implemented) {
+            val brokerBackend = feature.string("id") in setOf("URL", "HTTP", "STORAGE")
+            // Broker entry points and process binding remain owned by later issues.
+            val implementation = when {
+                implemented -> "implemented"
+                brokerBackend -> "partial"
+                else -> "planned"
+            }
+            assertEquals(implementation, feature.string("implementation"))
+            if (brokerBackend) assertEquals("product-contract", feature.string("verification"))
+            if (implemented || brokerBackend) {
                 assertTrue(feature.getAsJsonArray("productTests").size() > 0)
                 assertTrue(feature.string("verification").startsWith("product-"))
             }

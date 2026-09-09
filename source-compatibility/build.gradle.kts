@@ -11,6 +11,7 @@ kotlin {
 
 dependencies {
     testImplementation(project(":source-rules"))
+    testImplementation(project(":source-network"))
     testImplementation(libs.junit)
     // Keep oracle dependencies at the reference revision's versions, not the app's.
     testImplementation("org.jsoup:jsoup:1.16.2")
