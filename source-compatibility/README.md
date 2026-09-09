@@ -14,7 +14,7 @@ The existing `JVM unit tests` CI job runs this task alongside the app tests. It 
 - `rhino-contract`: Rhino executes a synthetic script against a recording **host double**. This validates the test contract, not the real Legado Java bridge, login implementation, or browser.
 - `mixed-contract`: a pinned HTML selector feeds a synthetic script. This does not exercise upstream `AnalyzeRule` routing or the complete `WebBook` pipeline.
 
-The first corpus has 21 executable cases and six synthetic source definitions. `coverage.json` maps the broader target to implementation Issues and future test IDs. **Six #84 feature statuses now have product evidence. URL/HTTP/storage have tested production broker backends and remain `partial` for the full script-facing profile; all other features remain `planned`.** No skipped test is used to make missing product functionality look green. Browser and process isolation explicitly require future Android emulator tests.
+The first corpus has 21 executable cases and six synthetic source definitions. `coverage.json` maps the broader target to implementation Issues and future test IDs. **FORMAT (#83) and six #84 feature statuses now have product evidence. URL/HTTP/storage have tested production broker backends and remain `partial` for the full script-facing profile; all other features remain `planned`.** No skipped test is used to make missing product functionality look green. Browser and process isolation explicitly require future Android emulator tests.
 
 `ReferenceRunner` calls the pinned selectors directly. It intentionally does not reimplement the whole rule interpreter as a supposedly independent oracle. The three small JVM shims replace only an Android shrinker annotation, `TextUtils.join`, and disabled debug logging. They do not supply fake parser results.
 
@@ -50,3 +50,7 @@ See [the baseline and known limits](../docs/source-compatibility-baseline.md) an
 ## Broker backend evidence (#85)
 
 Tests now depend on production `source-network`. `ProductRequestContractTest` compiles the six existing synthetic search URLs without network access; `SourceBrokerTest` separately exercises real local MockWebServer requests, policy and state isolation. This is backend contract evidence, not a full upstream AnalyzeUrl/JavaScript/browser oracle. Process binding and script entry points remain pending under #86/#87/#89.
+
+## Production import evidence (#83)
+
+`ProductImportFixtureTest` previews and explicitly commits the six existing synthetic definitions through `source-import`. Its tests also cover indexed validation errors, selection/conflict decisions, identity preservation, flags, disk snapshots and local broker downloads. Unknown fields and external customOrder are retained; customOrder does not change the host tab order. Importing a definition does not execute its rules or establish runtime compatibility.
