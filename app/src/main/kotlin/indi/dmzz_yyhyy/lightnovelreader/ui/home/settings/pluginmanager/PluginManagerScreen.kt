@@ -54,7 +54,6 @@ import java.io.File
 fun PluginManagerScreen(
     enabledPluginList: List<String>,
     errorMessageMap: Map<String, String>,
-    updateVersionNames: Map<String, String>,
     getPluginFile: (String) -> File,
     onClickInstall: () -> Unit,
     onClickBack: () -> Unit,
@@ -65,7 +64,6 @@ fun PluginManagerScreen(
     onClickKeyAlert: () -> Unit,
     onClickErrorAlert: () -> Unit,
     onClickIncompatibleAlert: () -> Unit,
-    onClickCheckUpdate: (String) -> Unit,
     pluginInfoList: List<PluginMetadata>,
     onClickShowSignatures: (String) -> Unit
 ) {
@@ -113,7 +111,6 @@ fun PluginManagerScreen(
                 Column(
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    GetPluginsFromStoreTips()
                     EmptyPage(
                         modifier = Modifier.fillMaxSize().navigationBarsPadding(),
                         icon = painterResource(R.drawable.deployed_code_update_24px),
@@ -128,7 +125,6 @@ fun PluginManagerScreen(
                         .weight(1f)
                 ) {
                     item {
-                        GetPluginsFromStoreTips()
                     }
                     item {
                         ThirdPartyPluginTips()
@@ -138,13 +134,11 @@ fun PluginManagerScreen(
                             modifier = Modifier.animateItem(),
                             pluginInfo = plugin,
                             pluginFile = getPluginFile(plugin.packageName),
-                            updateVersionName = updateVersionNames[plugin.packageName],
                             onClickDetail = onClickDetail,
                             enabledPluginList = enabledPluginList,
                             isErrorDisabled = errorMessageMap.containsKey(plugin.packageName),
                             onClickSwitch = onClickSwitch,
                             onClickDelete = onClickDelete,
-                            onClickCheckUpdate = onClickCheckUpdate,
                             onClickKeyAlert = onClickKeyAlert,
                             onClickErrorAlert = onClickErrorAlert,
                             onClickIncompatibleAlert = onClickIncompatibleAlert,
@@ -192,38 +186,6 @@ private fun ThirdPartyPluginTips() {
     }
 }
 
-@Composable
-fun GetPluginsFromStoreTips() {
-    val context = LocalContext.current
-    Row(
-        modifier = Modifier.fillMaxWidth()
-            .clickable(onClick = {
-                val intent = Intent(Intent.ACTION_VIEW, "https://plugins.nariko.org".toUri())
-                context.startActivity(intent, null)
-            })
-            .padding(horizontal = 24.dp, vertical = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            painter = painterResource(id = R.drawable.archive_24px),
-            contentDescription = "archive"
-        )
-        Text(
-            modifier = Modifier.weight(1f),
-            text = stringResource(R.string.plugin_store_get_plugins),
-            style = typography.titleSmall,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        Icon(
-            modifier = Modifier.size(18.dp),
-            painter = painterResource(id = R.drawable.open_in_new_24px),
-            contentDescription = "open",
-            tint = colorScheme.onSurfaceVariant
-        )
-    }
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
