@@ -28,8 +28,9 @@ class SourceContentPipeline(private val executor: SourcePipelineExecutor) {
     suspend fun search(context: PipelineContext, keyword: String) = executor.search(context, keyword)
     suspend fun information(context: PipelineContext, bookId: String) = executor.information(context, bookId)
     suspend fun directory(context: PipelineContext, bookId: String): PipelineResult<List<PipelineChapter>> {
-        val all = mutableListOf<PipelineChapter>(); val seen = mutableSetOf<String>(); var cursor: String? = null
+        val all = mutableListOf<PipelineChapter>(); val seen = mutableSetOf<String>(); val cursors = mutableSetOf<String?>(); var cursor: String? = null
         while (true) {
+            if (!cursors.add(cursor)) return PipelineResult.Failure(PipelineFailure.Failed("repeated directory cursor"))
             when (val page = executor.directory(context, bookId, cursor)) {
                 is PipelineResult.Failure -> return page
                 is PipelineResult.Success -> {
