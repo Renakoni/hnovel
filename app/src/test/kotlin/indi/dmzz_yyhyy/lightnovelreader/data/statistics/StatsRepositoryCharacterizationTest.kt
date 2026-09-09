@@ -1,5 +1,6 @@
 package indi.dmzz_yyhyy.lightnovelreader.data.statistics
 
+import indi.dmzz_yyhyy.lightnovelreader.data.book.BookIdentity
 import android.app.Application
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.BookRecordDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.DailyCountDao
@@ -75,9 +76,9 @@ class StatsRepositoryCharacterizationTest {
 
     @Test
     fun recordingAnEntryPreservesSecondsAlreadyBufferedForThatBook() = runTest {
-        repository.accumulateBookReadTime("book", 10)
-        repository.updateReadingStatistics(ReadingStatsUpdate(bookId = "book", readEventDelta = 1))
-        repository.accumulateBookReadTime("book", -1)
+        repository.accumulateBookReadTime(BookIdentity.bookKey("book"), 10)
+        repository.updateReadingStatistics(ReadingStatsUpdate(bookId = BookIdentity.bookKey("book"), readEventDelta = 1))
+        repository.accumulateBookReadTime(BookIdentity.bookKey("book"), -1)
 
         assertEquals(1, records.values.sumOf { it.reads })
         assertEquals(10, records.values.sumOf { it.seconds })
@@ -85,61 +86,61 @@ class StatsRepositoryCharacterizationTest {
 
     @Test
     fun flushingOneBookPreservesAnotherBooksUnflushedSeconds() = runTest {
-        repository.accumulateBookReadTime("first", 10)
-        repository.accumulateBookReadTime("second", 20)
-        repository.accumulateBookReadTime("second", -1)
-        repository.accumulateBookReadTime("first", -1)
+        repository.accumulateBookReadTime(BookIdentity.bookKey("first"), 10)
+        repository.accumulateBookReadTime(BookIdentity.bookKey("second"), 20)
+        repository.accumulateBookReadTime(BookIdentity.bookKey("second"), -1)
+        repository.accumulateBookReadTime(BookIdentity.bookKey("first"), -1)
 
         assertEquals(30, records.values.sumOf { it.seconds })
-        assertEquals(10, records.getValue("first" to LocalDate.now()).seconds)
-        assertEquals(20, records.getValue("second" to LocalDate.now()).seconds)
+        assertEquals(10, records.getValue(BookIdentity.bookKey("first") to LocalDate.now()).seconds)
+        assertEquals(20, records.getValue(BookIdentity.bookKey("second") to LocalDate.now()).seconds)
     }
 
     @Test
     fun failedFlushRetainsBufferedSecondsForRetry() = runTest {
-        repository.accumulateBookReadTime("book", 10)
+        repository.accumulateBookReadTime(BookIdentity.bookKey("book"), 10)
         failRecordWrite = true
 
         var failed = false
         try {
-            repository.accumulateBookReadTime("book", -1)
+            repository.accumulateBookReadTime(BookIdentity.bookKey("book"), -1)
         } catch (_: IllegalStateException) {
             failed = true
         }
         assertEquals(true, failed)
 
         failRecordWrite = false
-        repository.accumulateBookReadTime("book", -1)
+        repository.accumulateBookReadTime(BookIdentity.bookKey("book"), -1)
 
-        assertEquals(10, records.getValue("book" to LocalDate.now()).seconds)
+        assertEquals(10, records.getValue(BookIdentity.bookKey("book") to LocalDate.now()).seconds)
     }
 
     @Test
     fun failedRecordWriteRollsBackDailyCountBeforeRetry() = runTest {
-        repository.accumulateBookReadTime("book", 59)
+        repository.accumulateBookReadTime(BookIdentity.bookKey("book"), 59)
         failRecordWrite = true
 
         try {
-            repository.accumulateBookReadTime("book", 1)
+            repository.accumulateBookReadTime(BookIdentity.bookKey("book"), 1)
         } catch (_: IllegalStateException) {
             // The buffer and the daily row must both remain retryable.
         }
 
         assertEquals(0, repository.getTotalReadingSummary().totalMinutes)
         failRecordWrite = false
-        repository.accumulateBookReadTime("book", -1)
+        repository.accumulateBookReadTime(BookIdentity.bookKey("book"), -1)
 
         assertEquals(1, repository.getTotalReadingSummary().totalMinutes)
     }
 
     @Test
     fun failedRecordWriteRestoresAnExistingDailyCountWithoutTheFailedDelta() = runTest {
-        repository.accumulateBookReadTime("book", 60)
-        repository.accumulateBookReadTime("book", -1)
+        repository.accumulateBookReadTime(BookIdentity.bookKey("book"), 60)
+        repository.accumulateBookReadTime(BookIdentity.bookKey("book"), -1)
         failRecordWrite = true
 
         try {
-            repository.accumulateBookReadTime("book", 60)
+            repository.accumulateBookReadTime(BookIdentity.bookKey("book"), 60)
         } catch (_: IllegalStateException) {
             // The pre-existing daily count must remain intact for the retry.
         }
@@ -149,11 +150,11 @@ class StatsRepositoryCharacterizationTest {
 
     @Test
     fun cancelledRecordWriteStillRollsBackTheDailyCount() = runTest {
-        repository.accumulateBookReadTime("book", 59)
+        repository.accumulateBookReadTime(BookIdentity.bookKey("book"), 59)
         recordWriteGate = CompletableDeferred()
 
         val job = launch {
-            repository.accumulateBookReadTime("book", 1)
+            repository.accumulateBookReadTime(BookIdentity.bookKey("book"), 1)
         }
         runCurrent()
         job.cancelAndJoin()
@@ -163,9 +164,9 @@ class StatsRepositoryCharacterizationTest {
 
     @Test
     fun clearingStatisticsDiscardsBufferedSecondsBeforeALateSettlement() = runTest {
-        repository.accumulateBookReadTime("book", 10)
+        repository.accumulateBookReadTime(BookIdentity.bookKey("book"), 10)
         repository.clear()
-        repository.accumulateBookReadTime("book", -1)
+        repository.accumulateBookReadTime(BookIdentity.bookKey("book"), -1)
 
         assertEquals(0, records.values.sumOf { it.seconds })
     }
@@ -179,12 +180,12 @@ class StatsRepositoryCharacterizationTest {
 
         val readingJob = launch {
             repository.updateReadingStatistics(
-                ReadingStatsUpdate(bookId = "book", readEventDelta = 1)
+                ReadingStatsUpdate(bookId = BookIdentity.bookKey("book"), readEventDelta = 1)
             )
         }
         writeStarted.await()
 
-        val finishingJob = launch { repository.markBookFinished("book") }
+        val finishingJob = launch { repository.markBookFinished(BookIdentity.bookKey("book")) }
         runCurrent()
         assertFalse(finishingJob.isCompleted)
 
@@ -192,7 +193,7 @@ class StatsRepositoryCharacterizationTest {
         readingJob.join()
         finishingJob.join()
 
-        val record = records.getValue("book" to LocalDate.now())
+        val record = records.getValue(BookIdentity.bookKey("book") to LocalDate.now())
         assertEquals(1, record.reads)
         assertTrue(record.isFinished)
     }
@@ -202,14 +203,14 @@ class StatsRepositoryCharacterizationTest {
         cancelDailyWriteAfterCommit = true
 
         try {
-            repository.accumulateBookReadTime("book", 60)
+            repository.accumulateBookReadTime(BookIdentity.bookKey("book"), 60)
         } catch (_: CancellationException) {
             // The daily row was committed before cancellation was reported.
         }
 
         assertEquals(0, dailyCounts[LocalDate.now()]?.timeCount?.getTotalMinutes() ?: 0)
 
-        repository.accumulateBookReadTime("book", -1)
+        repository.accumulateBookReadTime(BookIdentity.bookKey("book"), -1)
 
         assertEquals(1, dailyCounts.getValue(LocalDate.now()).timeCount.getTotalMinutes())
     }
@@ -217,8 +218,8 @@ class StatsRepositoryCharacterizationTest {
     @Test
     fun twoThirtySecondSettlementsProduceOneSummaryMinuteFromBookSeconds() = runTest {
         repeat(2) {
-            repository.accumulateBookReadTime("book", 30)
-            repository.accumulateBookReadTime("book", -1)
+            repository.accumulateBookReadTime(BookIdentity.bookKey("book"), 30)
+            repository.accumulateBookReadTime(BookIdentity.bookKey("book"), -1)
         }
 
         assertEquals(60, records.values.sumOf { it.seconds })

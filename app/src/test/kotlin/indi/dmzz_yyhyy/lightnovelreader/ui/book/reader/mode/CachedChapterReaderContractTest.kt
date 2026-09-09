@@ -1,5 +1,6 @@
 package indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.mode
 
+import indi.dmzz_yyhyy.lightnovelreader.data.book.BookIdentity
 import android.app.Application
 import com.github.michaelbull.result.Err
 import com.github.michaelbull.result.get
@@ -58,7 +59,7 @@ abstract class CachedChapterReaderContractTest {
         val mode = openCachedChapter(remote)
         remote.complete(Unit)
         env.runCurrent()
-        coEvery { fixture.local.getChapterContent("uncached") } returns null
+        coEvery { fixture.local.getChapterContent(BookIdentity.chapter("uncached", BookIdentity.book("book")).storageKey) } returns null
         coEvery { fixture.remote.getChapterContent("uncached", "book", any()) } returns Err(error)
 
         mode.changeChapter("uncached")
@@ -71,12 +72,12 @@ abstract class CachedChapterReaderContractTest {
     }
 
     private fun openCachedChapter(remote: CompletableDeferred<Unit>): ReaderModeController {
-        coEvery { fixture.local.getChapterContent("cached") } returns env.chapter("cached")
+        coEvery { fixture.local.getChapterContent(BookIdentity.chapter("cached", BookIdentity.book("book")).storageKey) } returns env.chapter("cached")
         coEvery { fixture.remote.getChapterContent("cached", "book", any()) } coAnswers {
             remote.await()
             Err(error)
         }
-        every { fixture.text.processChapterContent("book", any()) } answers {
+        every { fixture.text.processChapterContent(BookIdentity.bookKey("book"), any()) } answers {
             val chapter = secondArg<() -> ChapterContent>()()
             chapter.copy(title = "processed:${chapter.title}")
         }

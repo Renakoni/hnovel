@@ -1,5 +1,8 @@
 package indi.dmzz_yyhyy.lightnovelreader.data.local
 
+import indi.dmzz_yyhyy.lightnovelreader.data.book.BookIdentity
+import indi.dmzz_yyhyy.lightnovelreader.data.book.SourceChapterId
+import io.nightfish.lightnovelreader.api.identifier.Identifier
 import android.app.Application
 import androidx.room.Room
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.LightNovelReaderDatabase
@@ -71,10 +74,10 @@ class UserReadingDataTransactionTest {
         }
         val saved = source.getUserReadingData("book")
         assertEquals(660, saved.totalReadTime)
-        val expected = (0 until 20).associate { "chapter-$it" to 0.8f }
+        val expected = (0 until 20).associate { BookIdentity.chapter("chapter-$it", BookIdentity.book("book")).storageKey to 0.8f }
         assertEquals(expected, saved.currentChapterReadingProgressMap)
         assertEquals(expected, saved.maxChapterReadingProgressMap)
-        assertEquals("Chapter ${saved.lastReadChapterId!!.substringAfter('-')}", saved.lastReadChapterTitle)
+        assertEquals("Chapter ${SourceChapterId.fromStorageKey(saved.lastReadChapterId!!).remoteId.substringAfter('-')}", saved.lastReadChapterTitle)
     }
 
     @Test
@@ -101,7 +104,7 @@ class UserReadingDataTransactionTest {
             listOf("first", "second").mapIndexed { index, id ->
                 launch {
                     source.updateUserReadingData(id) {
-                        assertEquals(id, it.id)
+                        assertEquals(BookIdentity.bookKey(id), it.id)
                         assertTrue(it.currentChapterReadingProgressMap.isEmpty())
                         it.copyWithUpdatedChapterReadingProgress("$id-chapter", 0.5f)
                             .copy(totalReadTime = index + 1, lastReadTime = readAt, lastReadChapterTitle = id)
@@ -112,9 +115,23 @@ class UserReadingDataTransactionTest {
         for ((index, id) in listOf("first", "second").withIndex()) {
             val saved = source.getUserReadingData(id)
             assertEquals(index + 1, saved.totalReadTime)
-            assertEquals(mapOf("$id-chapter" to 0.5f), saved.currentChapterReadingProgressMap)
+            assertEquals(mapOf(BookIdentity.chapter("$id-chapter", BookIdentity.book(id)).storageKey to 0.5f), saved.currentChapterReadingProgressMap)
             assertEquals(readAt, saved.lastReadTime)
             assertEquals(id, saved.lastReadChapterTitle)
         }
+    }
+
+    @Test
+    fun sameRemoteIdsFromDifferentSourcesKeepIndependentReadingRows() = runBlocking {
+        val sourceA = indi.dmzz_yyhyy.lightnovelreader.data.book.SourceBookId(Identifier("site", "a"), "123")
+        val sourceB = indi.dmzz_yyhyy.lightnovelreader.data.book.SourceBookId(Identifier("site", "b"), "123")
+        source.updateUserReadingData(sourceA.storageKey) {
+            it.copyWithUpdatedChapterReadingProgress(SourceChapterId(sourceA, "9").storageKey, 0.25f)
+        }
+        source.updateUserReadingData(sourceB.storageKey) {
+            it.copyWithUpdatedChapterReadingProgress(SourceChapterId(sourceB, "9").storageKey, 0.75f)
+        }
+        assertEquals(0.25f, source.getUserReadingData(sourceA.storageKey).currentChapterReadingProgressMap.values.single())
+        assertEquals(0.75f, source.getUserReadingData(sourceB.storageKey).currentChapterReadingProgressMap.values.single())
     }
 }

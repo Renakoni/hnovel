@@ -22,7 +22,7 @@ class StorageUsageRepository @Inject constructor(
     private val userDataRepository: UserDataRepository
 ) {
     companion object {
-        private const val DB_NAME = "light_novel_reader_database"
+        private const val DB_NAME = LightNovelReaderDatabase.NAME
     }
 
     private val snapshotUserData = userDataRepository.stringUserData(UserDataPath.Settings.Data.StorageUsageSnapshot.path)

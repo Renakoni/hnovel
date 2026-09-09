@@ -155,7 +155,8 @@ class ExportBookToEPUBWork @AssistedInject constructor(
         val selectedVolumes = selectedVolumeRaw?.split(",")
         Log.d(TAG, "start export bookId=$bookId type=$exportType includeImages=$includeImages selectedVolume=$selectedVolumeRaw")
         val fileUri = inputData.getString("uri")?.let(Uri::parse) ?: return@withContext Result.failure()
-        val tempDir = applicationContext.cacheDir.resolve("epub").resolve(bookId)
+        val tempDir = applicationContext.cacheDir.resolve("epub")
+            .resolve(indi.dmzz_yyhyy.lightnovelreader.data.book.BookIdentity.book(bookId).fileKey)
         val cover = tempDir.resolve("cover.jpg")
             .also {
                 if (it.exists()) it.delete()

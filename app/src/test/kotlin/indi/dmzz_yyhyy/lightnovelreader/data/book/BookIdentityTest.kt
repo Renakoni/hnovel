@@ -4,6 +4,9 @@ import io.nightfish.lightnovelreader.api.identifier.Identifier
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Test
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.decodeFromString
 
 class BookIdentityTest {
     private val sourceA = Identifier("site", "a")
@@ -20,12 +23,20 @@ class BookIdentityTest {
     }
 
     @Test
-    fun lengthPrefixHandlesSeparatorsAndRoundTripsChapterRemoteId() {
-        val book = SourceBookId(Identifier("site:with", "id:with"), "book:42")
-        val chapter = SourceChapterId(book, "chapter:7")
-        val value = StorageKey.decode(book.sourceId, chapter.storageKey)!!
-        assertEquals(book.remoteId to chapter.remoteId, StorageKey.decodePair(value))
-        assertEquals(null, StorageKey.decodePair(value.dropLast(1)))
+    fun structuredKeysHandleSeparatorsAndRoundTripCompleteIdentities() {
+        val book = SourceBookId(Identifier("site:with", "id:with"), "https://example.invalid/book?a=1,b=2#分卷")
+        val chapter = SourceChapterId(book, "chapter:7/../,章")
+        assertEquals(book, SourceBookId.fromStorageKey(book.storageKey))
+        assertEquals(chapter, SourceChapterId.fromStorageKey(chapter.storageKey))
+        assertEquals(book, Json.decodeFromString<SourceBookId>(Json.encodeToString(book)))
+        assertEquals(chapter, Json.decodeFromString<SourceChapterId>(Json.encodeToString(chapter)))
+        assertEquals("volume,1", BookIdentity.volumeRemoteId(BookIdentity.volumeKey(book, "volume,1"), book))
+        org.junit.Assert.assertFalse(book.storageKey.contains(','))
+        org.junit.Assert.assertFalse(book.storageKey.contains('/'))
+        assertEquals(64, book.fileKey.length)
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+            SourceChapterId.fromStorageKey(chapter.storageKey.dropLast(1))
+        }
     }
 
     @Test

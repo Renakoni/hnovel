@@ -32,19 +32,21 @@ import org.robolectric.annotation.Config
 @Config(sdk = [27], application = Application::class)
 abstract class ChapterSourceContractTest {
     internal val fixture = BookRepositoryFixture()
+    private val book = BookIdentity.book("book")
+    private val chapter = SourceChapterId(book, "chapter")
     private val events = mutableListOf<String>()
-    private val localChapter = ChapterContent("chapter", "local", JsonObject(emptyMap()))
-    private val remoteChapter = localChapter.copy(title = "remote", nextChapter = "next")
-    private val localVolumes = BookVolumes("book", listOf(Volume("volume", "local", emptyList())))
-    private val remoteVolumes = localVolumes.copy(volumes = listOf(Volume("volume", "remote", emptyList())))
+    private val localChapter = ChapterContent(chapter.storageKey, "local", JsonObject(emptyMap()))
+    private val remoteChapter = localChapter.copy(id = "chapter", title = "remote", nextChapter = "next")
+    private val localVolumes = BookVolumes(book.storageKey, listOf(Volume(BookIdentity.volumeKey(book, "volume"), "local", emptyList())))
+    private val remoteVolumes = BookVolumes("book", listOf(Volume("volume", "remote", emptyList())))
     private val error = WebRequestError("offline", "request failed")
 
     protected abstract fun source(): ChapterSource
 
     @Before
     fun setUp() {
-        coEvery { fixture.local.getChapterContent("chapter") } answers { events += "local"; localChapter }
-        coEvery { fixture.local.getBookVolumes("book") } answers { events += "local"; localVolumes }
+        coEvery { fixture.local.getChapterContent(chapter.storageKey) } answers { events += "local"; localChapter }
+        coEvery { fixture.local.getBookVolumes(book.storageKey) } answers { events += "local"; localVolumes }
         coEvery { fixture.remote.getChapterContent("chapter", "book", any()) } answers {
             events += "remote"; Ok(remoteChapter)
         }
@@ -55,7 +57,7 @@ abstract class ChapterSourceContractTest {
         coEvery { fixture.local.updateBookVolumes(any()) } answers {
             events += "store:${firstArg<BookVolumes>().volumes.single().volumeTitle}"
         }
-        every { fixture.text.processChapterContent("book", any()) } answers {
+        every { fixture.text.processChapterContent(book.storageKey, any()) } answers {
             val chapter = secondArg<() -> ChapterContent>()()
             events += "process:${chapter.title}"
             chapter.copy(title = "processed:${chapter.title}")
@@ -75,10 +77,10 @@ abstract class ChapterSourceContractTest {
             actual += it
             events += "emit"
         }
-        assertEquals(listOf(Ok(localChapter.copy(title = "processed:local")), Ok(remoteChapter.copy(title = "processed:remote"))), actual)
+        assertEquals(listOf(Ok(localChapter.copy(title = "processed:local")), Ok(chapter.bind(remoteChapter).copy(title = "processed:remote"))), actual)
         assertEquals(listOf("local", "process:local", "emit", "remote", "store:remote", "process:remote", "emit"), events)
         coVerify(exactly = 1) { fixture.remote.getChapterContent("chapter", "book", WebDataSourcePriority.High) }
-        coVerify(exactly = 1) { fixture.local.updateChapterContent(remoteChapter) }
+        coVerify(exactly = 1) { fixture.local.updateChapterContent(chapter.bind(remoteChapter)) }
     }
 
     @Test
@@ -89,13 +91,13 @@ abstract class ChapterSourceContractTest {
             events += "emit"
         }
         assertEquals(
-            listOf(Ok(BookVolumes("book", listOf(Volume("volume", "processed:local", emptyList())))),
-                Ok(BookVolumes("book", listOf(Volume("volume", "processed:remote", emptyList()))))),
+            listOf(Ok(BookVolumes(book.storageKey, listOf(Volume(BookIdentity.volumeKey(book, "volume"), "processed:local", emptyList())))),
+                Ok(BookVolumes(book.storageKey, listOf(Volume(BookIdentity.volumeKey(book, "volume"), "processed:remote", emptyList()))))),
             actual,
         )
         assertEquals(listOf("local", "process:local", "emit", "remote", "store:remote", "process:remote", "emit"), events)
         coVerify(exactly = 1) { fixture.remote.getBookVolumes("book", WebDataSourcePriority.High) }
-        coVerify(exactly = 1) { fixture.local.updateBookVolumes(remoteVolumes) }
+        coVerify(exactly = 1) { fixture.local.updateBookVolumes(book.bind(remoteVolumes)) }
     }
 
     @Test
@@ -106,7 +108,7 @@ abstract class ChapterSourceContractTest {
         val volumes = source().getBookVolumesFlow("book").toList()
         assertEquals(listOf(Ok(localChapter.copy(title = "processed:local"))), chapter)
         assertEquals(
-            listOf(Ok(BookVolumes("book", listOf(Volume("volume", "processed:local", emptyList()))))),
+            listOf(Ok(BookVolumes(book.storageKey, listOf(Volume(BookIdentity.volumeKey(book, "volume"), "processed:local", emptyList()))))),
             volumes,
         )
         coVerify(exactly = 1) { fixture.remote.getChapterContent("chapter", "book", WebDataSourcePriority.Default) }
@@ -119,7 +121,7 @@ abstract class ChapterSourceContractTest {
     fun missingCacheEmitsOnlyTheRemoteResult() = runTest {
         coEvery { fixture.local.getChapterContent(any()) } returns null
         coEvery { fixture.local.getBookVolumes(any()) } returns null
-        assertEquals(listOf(Ok(remoteChapter.copy(title = "processed:remote"))), source().getChapterContentFlow("chapter", "book").toList())
+        assertEquals(listOf(Ok(chapter.bind(remoteChapter).copy(title = "processed:remote"))), source().getChapterContentFlow("chapter", "book").toList())
         assertEquals(1, source().getBookVolumesFlow("book").toList().size)
 
         coEvery { fixture.remote.getChapterContent(any(), any(), any()) } returns Err(error)
@@ -139,7 +141,7 @@ abstract class ChapterSourceContractTest {
     }
 
     @Test
-    fun flowsStayColdAndRecollectionUsesTheCurrentProvider() = runTest {
+    fun flowsStayColdAndRecollectionResolvesTheSameSourceAgain() = runTest {
         val source = source()
         val chapters = source.getChapterContentFlow("chapter", "book")
         val volumes = source.getBookVolumesFlow("book")
@@ -155,12 +157,12 @@ abstract class ChapterSourceContractTest {
         coVerify(exactly = 1) { replacement.getChapterContent("chapter", "book", WebDataSourcePriority.Default) }
         coVerify(exactly = 1) { replacement.getBookVolumes("book", WebDataSourcePriority.Default) }
         // A previous collection's cache hit must not hide this collection's cache miss.
-        coEvery { fixture.local.getChapterContent("chapter") } returns null
-        coEvery { fixture.local.getBookVolumes("book") } returns null
+        coEvery { fixture.local.getChapterContent(chapter.storageKey) } returns null
+        coEvery { fixture.local.getBookVolumes(book.storageKey) } returns null
         assertEquals(listOf(Err(error)), chapters.toList())
         assertEquals(listOf(Err(error)), volumes.toList())
-        coVerify(exactly = 3) { fixture.local.getChapterContent("chapter") }
-        coVerify(exactly = 3) { fixture.local.getBookVolumes("book") }
+        coVerify(exactly = 3) { fixture.local.getChapterContent(chapter.storageKey) }
+        coVerify(exactly = 3) { fixture.local.getBookVolumes(book.storageKey) }
     }
 
     @Test

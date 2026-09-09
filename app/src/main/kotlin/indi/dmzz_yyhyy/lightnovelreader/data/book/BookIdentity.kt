@@ -1,73 +1,96 @@
 package indi.dmzz_yyhyy.lightnovelreader.data.book
 
 import io.nightfish.lightnovelreader.api.identifier.Identifier
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.Json
+import java.util.Base64
 
-/** Stable host identity for a book. The remote id is meaningful only inside sourceId. */
+/** Stable identity, independent of source name, revision, registration and account. */
 @Serializable
 data class SourceBookId(
-    val sourceId: Identifier,
+    @Serializable(with = BookSourceIdSerializer::class) val sourceId: Identifier,
     val remoteId: String,
 ) {
-    init { require(remoteId.isNotEmpty()) { "remote book id must not be empty" } }
+    init { require(remoteId.isNotEmpty()) { "Remote book ID must not be empty" } }
+    val storageKey: String get() = BookIdentity.encode("b", listOf(sourceId.namespace, sourceId.id, remoteId))
+    /** Bounded directory component even when a remote ID is an entire URL. */
+    val fileKey: String get() = java.security.MessageDigest.getInstance("SHA-256")
+        .digest(storageKey.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
 
-    val storageKey: String get() = StorageKey.encode(sourceId, remoteId)
+    companion object {
+        fun fromStorageKey(key: String): SourceBookId {
+            val fields = BookIdentity.decode(key, "b", 3)
+            return SourceBookId(Identifier(fields[0], fields[1]), fields[2])
+        }
+    }
 }
 
-/** A chapter is owned by its source-qualified book, not by a globally unique chapter id. */
 @Serializable
-data class SourceChapterId(
-    val book: SourceBookId,
-    val remoteId: String,
-) {
-    init { require(remoteId.isNotEmpty()) { "remote chapter id must not be empty" } }
+data class SourceChapterId(val book: SourceBookId, val remoteId: String) {
+    init { require(remoteId.isNotEmpty()) { "Remote chapter ID must not be empty" } }
+    val storageKey: String get() = BookIdentity.encode("c", listOf(book.sourceId.namespace, book.sourceId.id, book.remoteId, remoteId))
 
-    val storageKey: String get() = StorageKey.encode(book.sourceId, StorageKey.encodePair(book.remoteId, remoteId))
+    companion object {
+        fun fromStorageKey(key: String): SourceChapterId {
+            val fields = BookIdentity.decode(key, "c", 4)
+            return SourceChapterId(SourceBookId(Identifier(fields[0], fields[1]), fields[2]), fields[3])
+        }
+    }
 }
 
-/** Length-prefix encoding avoids collisions from delimiters in user/source supplied ids. */
-internal object StorageKey {
-    fun encodePair(first: String, second: String): String = buildString {
-        append(first.length).append(':').append(first)
-        append(second.length).append(':').append(second)
+/** Versioned, reversible internal keys. URL-safe Base64 also survives list and route transport. */
+object BookIdentity {
+    private val strings = ListSerializer(String.serializer())
+    private val wenku8 = Identifier("lightnovelreader", "Wenku8")
+
+    internal fun encode(kind: String, fields: List<String>): String =
+        "lnr1.$kind." + Base64.getUrlEncoder().withoutPadding()
+            .encodeToString(Json.encodeToString(strings, fields).toByteArray(Charsets.UTF_8))
+
+    internal fun decode(key: String, kind: String, count: Int): List<String> {
+        val prefix = "lnr1.$kind."
+        require(key.startsWith(prefix)) { "Expected a source-qualified $kind key" }
+        val fields = Json.decodeFromString(strings, Base64.getUrlDecoder()
+            .decode(key.removePrefix(prefix)).toString(Charsets.UTF_8))
+        require(fields.size == count && encode(kind, fields) == key) { "Invalid identity encoding" }
+        return fields
     }
 
-    fun decodePair(value: String): Pair<String, String>? {
-        var offset = 0
-        fun read(): String? {
-            val separator = value.indexOf(':', offset)
-            if (separator < offset) return null
-            val length = value.substring(offset, separator).toIntOrNull() ?: return null
-            val start = separator + 1
-            val end = start + length
-            if (length < 0 || end > value.length) return null
-            offset = end
-            return value.substring(start, end)
-        }
-        val first = read() ?: return null
-        val second = read() ?: return null
-        return (first to second).takeIf { offset == value.length }
-    }
+    /** Temporary legacy host ingress: bare IDs mean Wenku8, never the browsing selection. */
+    fun book(id: String): SourceBookId = if (id.startsWith("lnr")) SourceBookId.fromStorageKey(id)
+        else SourceBookId(wenku8, id)
 
-    fun encode(source: Identifier, value: String): String = buildString {
-        append(source.namespace.length).append(':').append(source.namespace)
-        append(source.id.length).append(':').append(source.id)
-        append(value.length).append(':').append(value)
-    }
+    fun bookKey(id: String): String = book(id).storageKey
 
-    fun decode(source: Identifier, key: String): String? {
-        var offset = 0
-        fun read(): String? {
-            val separator = key.indexOf(':', offset)
-            if (separator <= offset) return null
-            val length = key.substring(offset, separator).toIntOrNull() ?: return null
-            val start = separator + 1
-            val end = start + length
-            if (end > key.length) return null
-            offset = end
-            return key.substring(start, end)
-        }
-        if (read() != source.namespace || read() != source.id) return null
-        return read()?.takeIf { offset == key.length }
+    fun chapter(id: String, book: SourceBookId): SourceChapterId =
+        if (id.startsWith("lnr")) SourceChapterId.fromStorageKey(id).also {
+            require(it.book == book) { "Chapter belongs to another book" }
+        } else SourceChapterId(book, id)
+
+    fun volumeKey(book: SourceBookId, remoteId: String): String =
+        encode("v", listOf(book.sourceId.namespace, book.sourceId.id, book.remoteId, remoteId))
+
+    fun volumeRemoteId(key: String, book: SourceBookId): String {
+        val fields = decode(key, "v", 4)
+        require(fields.take(3) == listOf(book.sourceId.namespace, book.sourceId.id, book.remoteId))
+        return fields[3]
+    }
+}
+
+/** Identifier's legacy colon serializer is unsuitable for arbitrary imported identity fields. */
+object BookSourceIdSerializer : KSerializer<Identifier> {
+    private val strings = ListSerializer(String.serializer())
+    override val descriptor = strings.descriptor
+    override fun serialize(encoder: Encoder, value: Identifier) =
+        encoder.encodeSerializableValue(strings, listOf(value.namespace, value.id))
+    override fun deserialize(decoder: Decoder): Identifier {
+        val fields = decoder.decodeSerializableValue(strings)
+        require(fields.size == 2)
+        return Identifier(fields[0], fields[1])
     }
 }

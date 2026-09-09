@@ -42,6 +42,12 @@ class ImportDataWork @AssistedInject constructor(
             e.printStackTrace()
             return Result.failure()
         } ?: return Result.failure()
+        try {
+            localDataManager.validateBackup(appLocalData)
+        } catch (failure: IllegalArgumentException) {
+            Log.e(TAG, "Invalid backup identities", failure)
+            return Result.failure()
+        }
         if (overwrite) {
             localDataManager.cleanDatabaseWithoutGlobalUserData()
         }

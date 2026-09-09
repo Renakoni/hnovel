@@ -9,7 +9,7 @@ import com.github.michaelbull.result.onOk
 import indi.dmzz_yyhyy.lightnovelreader.BuildConfig
 import indi.dmzz_yyhyy.lightnovelreader.data.local.LocalBookDataSource
 import indi.dmzz_yyhyy.lightnovelreader.data.text.TextProcessingRepository
-import indi.dmzz_yyhyy.lightnovelreader.data.web.WebBookDataSourceProvider
+import indi.dmzz_yyhyy.lightnovelreader.data.web.WebSourceRegistry
 import io.nightfish.lightnovelreader.api.book.BookVolumes
 import io.nightfish.lightnovelreader.api.book.ChapterContent
 import io.nightfish.lightnovelreader.api.error.WebRequestError
@@ -22,7 +22,7 @@ import javax.inject.Singleton
 
 @Singleton
 class ChapterRepository @Inject constructor(
-    private val webBookDataSourceProvider: WebBookDataSourceProvider,
+    private val sourceRegistry: WebSourceRegistry,
     private val localBookDataSource: LocalBookDataSource,
     private val textProcessingRepository: TextProcessingRepository,
 ) : ChapterSource {
@@ -30,18 +30,18 @@ class ChapterRepository @Inject constructor(
         private const val TAG = "BookRepository"
     }
 
-    private val webBookDataSource get() = webBookDataSourceProvider.value
 
     override fun getBookVolumesFlow(
         id: String,
         priority: WebDataSourcePriority
     ): Flow<Result<BookVolumes, WebRequestError>> = flow {
-        val local = localBookDataSource.getBookVolumes(id)
+        val book = BookIdentity.book(id)
+        val local = localBookDataSource.getBookVolumes(book.storageKey)
         local?.also {
             emit(Ok(it))
             if (BuildConfig.BENCHMARK) return@flow
         }
-        webBookDataSource.getBookVolumes(id, priority)
+        sourceRegistry.request(book) { it.getBookVolumes(book.remoteId, priority) }.map(book::bind)
             .onOk { remote ->
                 localBookDataSource.updateBookVolumes(remote)
             }.onErr {
@@ -62,12 +62,13 @@ class ChapterRepository @Inject constructor(
         bookId: String,
         priority: WebDataSourcePriority
     ): Flow<Result<ChapterContent, WebRequestError>> = flow {
-        val local = localBookDataSource.getChapterContent(chapterId)
+        val chapter = BookIdentity.chapter(chapterId, BookIdentity.book(bookId))
+        val local = localBookDataSource.getChapterContent(chapter.storageKey)
         local?.also {
             emit(Ok(it))
             if (BuildConfig.BENCHMARK) return@flow
         }
-        webBookDataSource.getChapterContent(chapterId, bookId, priority)
+        sourceRegistry.request(chapter.book) { it.getChapterContent(chapter.remoteId, chapter.book.remoteId, priority) }.map(chapter::bind)
             .onOk { remote ->
                 localBookDataSource.updateChapterContent(remote)
             }.onErr {
@@ -79,7 +80,7 @@ class ChapterRepository @Inject constructor(
             }
     }.map { result ->
         result.map {
-            textProcessingRepository.processChapterContent(bookId) { it }
+            textProcessingRepository.processChapterContent(BookIdentity.bookKey(bookId)) { it }
         }
     }
 
@@ -88,7 +89,8 @@ class ChapterRepository @Inject constructor(
         bookId: String,
         priority: WebDataSourcePriority
     ) {
-        webBookDataSource.getChapterContent(chapterId, bookId, priority)
+        val chapter = BookIdentity.chapter(chapterId, BookIdentity.book(bookId))
+        sourceRegistry.request(chapter.book) { it.getChapterContent(chapter.remoteId, chapter.book.remoteId, priority) }.map(chapter::bind)
             .onOk { remote ->
                 localBookDataSource.updateChapterContent(remote)
             }.onErr {
