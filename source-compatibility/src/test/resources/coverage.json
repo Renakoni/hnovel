@@ -18,17 +18,22 @@
       "scope": "Must report unknown fields/API explicitly; cannot auto-label as supported."
     }
   ],
-  "productImplementedCount": 6,
+  "productImplementedCount": 7,
   "features": [
     {
       "id": "FORMAT",
       "owner": "https://github.com/Renakoni/hnovel/issues/83",
       "requirement": "单对象/集合、类型、未知字段、启用标记、身份键片段和重复导入；识别不等于可执行。",
       "testId": "CONFORMANCE-FORMAT",
-      "implementation": "planned",
-      "verification": "future-fixture",
+      "implementation": "implemented",
+      "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Pinned reference source inspection; production implementation pending."
+      "evidence": "Production JSON definition parser/store: object/array, indexed errors, explicit conflict decisions, raw key fragments, enable flags and unknown fields are tested. customOrder is retained but not applied to host tab ordering. Import recognition is not execution compatibility; unknown members remain unclassified and scripts are never evaluated here.",
+      "productTests": [
+        "hnovel.imports.SourceDefinitionImporterTest",
+        "hnovel.imports.SourceImportDownloadTest",
+        "hnovel.compatibility.ProductImportFixtureTest"
+      ]
     },
     {
       "id": "HTML",
