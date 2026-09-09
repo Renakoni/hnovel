@@ -18,17 +18,17 @@ class Wenku8AllExploreTapPage(
     override fun getRowsFlow(): Flow<List<ExploreBooksRow>> = flow {
         val rows = mutableListOf<ExploreBooksRow>()
         rows.add(getAllBookBooksRow().copy(expandable = true, expandedPageDataSourceId = "allBook"))
-        emit(rows)
+        emit(rows.toList())
         rows.add(getTopListBookBooksRow("热门轻小说", "allvisit"))
-        emit(rows)
+        emit(rows.toList())
         rows.add(getTopListBookBooksRow("动画化作品", "anime"))
-        emit(rows)
+        emit(rows.toList())
         rows.add(getTopListBookBooksRow("今日更新", "lastupdate"))
-        emit(rows)
+        emit(rows.toList())
         rows.add(getTopListBookBooksRow("新书一览", "postdate"))
-        emit(rows)
+        emit(rows.toList())
         rows.add(getCompletedBooksRow().copy(expandable = true, expandedPageDataSourceId = "allCompletedBook"))
-        emit(rows)
+        emit(rows.toList())
     }
 
     private suspend fun getCompletedBooksRow(): ExploreBooksRow {
@@ -53,29 +53,12 @@ class Wenku8AllExploreTapPage(
     }
 
     private fun getBooksRow(soup: Document?, title: String): ExploreBooksRow {
-        val idlList = soup?.select("#content > table.grid > tbody > tr > td > div > div:nth-child(1) > a")
-            ?.slice(0..5)
-            ?.map { it.attr("href").replace("/book/", "").replace(".htm", "") }
-        val titleList = soup?.select("#content > table.grid > tbody > tr > td > div > div:nth-child(2) > b > a")
-            ?.slice(0..5)
-            ?.map { it.text().split("(").getOrNull(0) ?: "" } ?: emptyList()
-        val authorList = soup?.select("#content > table.grid > tbody > tr > td > div > div:nth-child(2) > p:nth-child(2)")
-            ?.slice(0..5)
-            ?.map { it.text().split("/").getOrNull(0)?.split(":")?.get(1) ?: ""} ?: emptyList()
-        val coverUrlList = soup?.select("#content > table.grid > tbody > tr > td > div > div:nth-child(1) > a > img")
-            ?.slice(0..5)
-            ?.map { it.attr("src") } ?: emptyList()
         return ExploreBooksRow(
             title = title,
-            bookList = idlList?.indices?.map {
-                ExploreDisplayBook(
-                    id = idlList[it],
-                    title = titleList[it],
-                    author = authorList[it],
-                    coverUri = coverUrlList[it].toUri(),
-                )
-            } ?: emptyList(),
-            expandable = false
+            bookList = Wenku8DiscoveryParser.cards(soup, host).take(6).map { card ->
+                val book = card.book
+                ExploreDisplayBook(book.remoteId, book.title, book.author, book.coverUrl.toUri())
+            },
         )
     }
 }

@@ -87,6 +87,8 @@ class SourceRuntime internal constructor(
 
     internal val explorePages get() = run { checkAvailable(); legacyExplore }
 
+    val discovery: SourceDiscovery? by lazy { source.discoveryProvider?.let { SourceDiscovery(this, it) } }
+
     fun imageHeaders(): Map<String, String> {
         checkAvailable()
         return source.imageHeader.toMap()
@@ -116,6 +118,8 @@ class SourceRuntime internal constructor(
 
     /** Temporary synchronous API facade. onLoad cannot restart a source-owned poller. */
     private val legacySource = object : WebBookDataSource by source {
+        // Data consumers must use the source-binding facade above, not the legacy raw API.
+        override val discoveryProvider get() = null
         override fun onLoad() = checkAvailable()
         override val cache get() = null
         override val searchProvider get() = search
