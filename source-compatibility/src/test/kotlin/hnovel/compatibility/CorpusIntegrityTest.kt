@@ -82,7 +82,7 @@ class CorpusIntegrityTest {
         report.writeText(FixtureCorpus.gson.toJson(manifest) + "\n")
     }
 
-    private val featureIdsImplemented = setOf("HTML", "JSON", "XPATH", "REGEX", "COMPOSITION", "REPLACEMENT")
+    private val featureIdsImplemented = setOf("FORMAT", "HTML", "JSON", "XPATH", "REGEX", "COMPOSITION", "REPLACEMENT")
 
     @Test
     fun syntheticSourcesCoverTheRequiredFamiliesWithoutPluginPackages() {
