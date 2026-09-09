@@ -26,6 +26,7 @@ class SourceContentPipelineTest {
 
     @Test fun resolvesRelativeLinksButRejectsNonHttpSchemes() {
         assertEquals("https://example.test/books/2?x=1#c", resolveSourceLink("https://example.test/books/1", "2?x=1#c"))
+        assertEquals("https://example.test/books/2", resolveSourceLink("HTTP://example.test/books/1", "HTTPS://example.test/books/2"))
         assertNull(resolveSourceLink("https://example.test/books/1", "javascript:alert(1)"))
     }
 
