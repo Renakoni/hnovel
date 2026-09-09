@@ -10,6 +10,7 @@ kotlin {
 }
 
 dependencies {
+    testImplementation(project(":source-import"))
     testImplementation(project(":source-rules"))
     testImplementation(project(":source-network"))
     testImplementation(libs.junit)
