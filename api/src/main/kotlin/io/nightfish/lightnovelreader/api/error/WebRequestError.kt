@@ -13,8 +13,12 @@ import com.github.michaelbull.result.mapError
 data class WebRequestError(
     val title: String,
     val message: String,
-    val throwable: Throwable? = null
+    val throwable: Throwable? = null,
+    val kind: WebRequestErrorKind = WebRequestErrorKind.Other,
 )
+
+/** Background callers can report a recoverable user action without launching an Activity. */
+enum class WebRequestErrorKind { Other, SourceUnavailable, AuthenticationRequired }
 
 /**
  * 快速转化Result封装的工具函数

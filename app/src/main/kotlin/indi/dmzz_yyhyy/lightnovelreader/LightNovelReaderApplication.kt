@@ -6,7 +6,6 @@ import androidx.compose.foundation.ComposeFoundationFlags
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
-import androidx.work.WorkManager
 import dagger.hilt.android.HiltAndroidApp
 import indi.dmzz_yyhyy.lightnovelreader.data.logging.LogLevel
 import indi.dmzz_yyhyy.lightnovelreader.data.logging.LoggerRepository
@@ -69,6 +68,5 @@ class LightNovelReaderApplication : Application(), Configuration.Provider, coil3
             loggerRepository.startLogging()
             ProxyPool.enable = userDataRepository.booleanUserData(UserDataPath.Settings.Data.IsUseProxy.path).getOrDefault(false)
         }
-        WorkManager.getInstance(this).cancelAllWork()
     }
 }

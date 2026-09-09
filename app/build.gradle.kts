@@ -132,6 +132,11 @@ kotlin {
     jvmToolchain(21)
 }
 
+// PotatoEPUB ships Java 22 bytecode. Exercise real exports on the JDK already used by CI.
+tasks.withType<Test>().configureEach {
+    javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(22)) })
+}
+
 composeCompiler {
     includeSourceInformation = true
 }

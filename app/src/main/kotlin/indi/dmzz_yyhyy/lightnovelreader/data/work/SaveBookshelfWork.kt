@@ -16,7 +16,6 @@ import indi.dmzz_yyhyy.lightnovelreader.utils.writeAppLocalData
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.cbor.Cbor
 import kotlinx.serialization.encodeToByteArray
-import java.io.FileOutputStream
 
 @HiltWorker
 class SaveBookshelfWork @AssistedInject constructor(
@@ -64,11 +63,9 @@ class SaveBookshelfWork @AssistedInject constructor(
             globalLocalData = LocalData.empty()
         )
         try {
-            applicationContext.contentResolver.openFileDescriptor(uri, "w")
-                ?.use { parcelFileDescriptor ->
-                    FileOutputStream(parcelFileDescriptor.fileDescriptor).use {
-                        it.writeAppLocalData(Cbor.encodeToByteArray(appLocalData))
-                    }
+            requireNotNull(applicationContext.contentResolver.openOutputStream(uri, "wt")) { "Cannot open backup destination" }
+                .use {
+                    it.writeAppLocalData(Cbor.encodeToByteArray(appLocalData))
                 }
             return Result.success()
         } catch (e: Exception) {

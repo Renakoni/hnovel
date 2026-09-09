@@ -16,7 +16,6 @@ import indi.dmzz_yyhyy.lightnovelreader.utils.writeAppLocalData
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.cbor.Cbor
 import kotlinx.serialization.encodeToByteArray
-import java.io.FileOutputStream
 
 @HiltWorker
 class ExportDataWork @AssistedInject constructor(
@@ -42,11 +41,9 @@ class ExportDataWork @AssistedInject constructor(
             settings = exportSetting
         ).andThen { appLocalData ->
             runCatching {
-                applicationContext.contentResolver.openFileDescriptor(fileUri, "w")
-                    ?.use { parcelFileDescriptor ->
-                        FileOutputStream(parcelFileDescriptor.fileDescriptor).use {
-                            it.writeAppLocalData(Cbor.encodeToByteArray(appLocalData))
-                        }
+                requireNotNull(applicationContext.contentResolver.openOutputStream(fileUri, "wt")) { "Cannot open backup destination" }
+                    .use {
+                        it.writeAppLocalData(Cbor.encodeToByteArray(appLocalData))
                     }
             }
         }.onErr {

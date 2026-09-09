@@ -9,6 +9,7 @@ import com.github.michaelbull.result.Err
 import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.onErr
 import com.github.michaelbull.result.onOk
+import indi.dmzz_yyhyy.lightnovelreader.data.book.SourceBookId
 import indi.dmzz_yyhyy.lightnovelreader.utils.ImageUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -19,6 +20,7 @@ import java.net.SocketTimeoutException
 
 class ImageDownloader(
     private val context: Context,
+    private val book: SourceBookId,
     private val tasks: List<Task>,
     val onProgress: (Int, Int) -> Unit,
 ) {
@@ -50,8 +52,7 @@ class ImageDownloader(
                 .onErr { t ->
                     Log.e(
                         "ImageDownloader",
-                        "task $count failed, uri=${task.uri}",
-                        t
+                        "task $count failed for ${book.fileKey}: ${t.javaClass.simpleName}"
                     )
                     return@withContext ListenableWorker.Result.failure()
                 }
@@ -70,7 +71,7 @@ class ImageDownloader(
         var lastError: Throwable? = null
 
         repeat(maxRetry) { attempt ->
-            val result = ImageUtils.uriToBitmap(task.uri, context)
+            val result = ImageUtils.uriToBitmap(task.uri, context, book.storageKey)
             var shouldRetry = false
 
             result
@@ -83,7 +84,7 @@ class ImageDownloader(
                         shouldRetry = true
                         Log.w(
                             "ImageDownloader",
-                            "retry ${attempt + 1}/$maxRetry for ${task.uri} (cause: ${error.cause}"
+                            "retry ${attempt + 1}/$maxRetry for ${book.fileKey}"
                         )
                     } else {
                         return result

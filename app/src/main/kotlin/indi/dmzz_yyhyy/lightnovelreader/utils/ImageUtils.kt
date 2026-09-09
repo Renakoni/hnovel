@@ -23,12 +23,12 @@ object ImageUtils {
     suspend fun uriToBitmap(
         imageUri: Uri,
         context: Context,
-        bookId: String? = null
+        bookId: String
     ):  Result<Bitmap, Throwable> = withContext(Dispatchers.IO) {
         try {
             val loader = SingletonImageLoader.get(context)
             val request = ImageRequest.Builder(context)
-                .data(bookId?.let { SourceImage(BookIdentity.book(it), imageUri.toString()) } ?: imageUri)
+                .data(SourceImage(BookIdentity.book(bookId), imageUri.toString()))
                 .interceptorCoroutineContext(Dispatchers.IO)
                 .build()
 
@@ -46,6 +46,8 @@ object ImageUtils {
             } else {
                 return@withContext Err(Throwable("Unknown result type"))
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Throwable) {
             withContext(Dispatchers.Main) {
                 return@withContext Err(Throwable("Failed to cast drawable to BitmapDrawable"))
