@@ -39,7 +39,8 @@ class SourceContentPipelineTest {
         val executor = object : SourcePipelineExecutor {
             override suspend fun search(c: PipelineContext, k: String) = PipelineResult.Success(emptyList<PipelineBook>())
             override suspend fun information(c: PipelineContext, id: String) = PipelineResult.Failure(PipelineFailure.LoginRequired)
-            override suspend fun directory(c: PipelineContext, id: String, cursor: String?) = PipelineResult.Success(Page(emptyList(), "same"))
+            override suspend fun directory(c: PipelineContext, id: String, cursor: String?) =
+                PipelineResult.Success(Page<PipelineChapter>(emptyList(), "same"))
             override suspend fun content(c: PipelineContext, ch: PipelineChapter) = PipelineResult.Success(PipelineContent(ch.id, "body"))
         }
         assertTrue(SourceContentPipeline(executor).directory(PipelineContext(Identifier("x", "s"), "r", 0), "b") is PipelineResult.Failure)
