@@ -19,7 +19,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flow
 
-class NotFoundWebDataSource(override val id: Identifier): WebBookDataSource {
+class NotFoundWebDataSource(override val id: Identifier, initializationFailed: Boolean = false): WebBookDataSource {
+    private val error = if (initializationFailed) {
+        WebRequestError("Data source unavailable", "Source initialization failed ($id)")
+    } else {
+        WebRequestError("Data source not found", "Source is not registered ($id)")
+    }
     override suspend fun isOffLine(): Boolean = true
 
     override val offLine: Boolean = true
@@ -40,11 +45,11 @@ class NotFoundWebDataSource(override val id: Identifier): WebBookDataSource {
 
     }
     override suspend fun getBookInformation(id: String): Result<BookInformation, WebRequestError> =
-        Err(WebRequestError("Data source not founded", "Did not found the current data source($id) from plugins. Please check your plugin settings"))
+        Err(error)
 
     override suspend fun getBookVolumes(id: String): Result<BookVolumes, WebRequestError> =
-        Err(WebRequestError("Data source not founded", "Did not found the current data source($id) from plugins. Please check your plugin settings"))
+        Err(error)
 
     override suspend fun getChapterContent(chapterId: String, bookId: String): Result<ChapterContent, WebRequestError> =
-        Err(WebRequestError("Data source not founded", "Did not found the current data source($id) from plugins. Please check your plugin settings"))
+        Err(error)
 }

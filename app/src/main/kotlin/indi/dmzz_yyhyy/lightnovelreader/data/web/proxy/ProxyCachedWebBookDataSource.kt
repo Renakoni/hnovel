@@ -5,9 +5,11 @@ import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.onOk
 import io.nightfish.lightnovelreader.api.error.WebRequestError
 import io.nightfish.lightnovelreader.api.web.WebDataSourcePriority
+import io.nightfish.lightnovelreader.api.util.Cache
 
 class ProxyCachedWebBookDataSource(
-    override val proxiedWebBookDataSource: ProxyWebBookDataSource
+    override val proxiedWebBookDataSource: ProxyWebBookDataSource,
+    private val requestCache: Cache? = proxiedWebBookDataSource.origin.cache,
 ) : ProxyWebBookDataSource {
     private enum class RequestType { Information, Volumes, Chapter }
 
@@ -21,10 +23,9 @@ class ProxyCachedWebBookDataSource(
         key: RequestKey,
         block: () -> Result<T, WebRequestError>
     ): Result<T, WebRequestError> {
-        val value = origin.cache?.getCache<T>(key) ?: return block.invoke()
-            .onOk {
-                origin.cache?.cache(key, it)
-            }
+        val cache = requestCache ?: return block()
+        val value = synchronized(cache) { cache.getCache<T>(key) } ?: return block.invoke()
+            .onOk { value -> synchronized(cache) { cache.cache(key, value) } }
         return Ok(value)
     }
 

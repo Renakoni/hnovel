@@ -1,0 +1,152 @@
+package indi.dmzz_yyhyy.lightnovelreader.data.web
+
+import android.util.Log
+import io.nightfish.lightnovelreader.api.identifier.Identifier
+import io.nightfish.lightnovelreader.api.web.WebBookDataSource
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import java.util.Collections
+import javax.inject.Inject
+import javax.inject.Singleton
+
+/** Owns registration generations; enumerating sources never constructs or loads one. */
+@Singleton
+class WebSourceRegistry internal constructor(private val dispatcher: CoroutineDispatcher) {
+    @Inject constructor() : this(Dispatchers.IO)
+
+    private val lock = Any()
+    private val entries = mutableMapOf<Identifier, Entry>()
+    private val cleanupScope = CoroutineScope(SupervisorJob() + dispatcher)
+    private val mutableSources = MutableStateFlow<List<SourceListing>>(emptyList())
+    val sources = mutableSources.asStateFlow()
+
+    fun register(metadata: SourceMetadata, create: () -> WebBookDataSource): SourceRegistration =
+        add(metadata, create, preconstructed = null)
+
+    private fun add(metadata: SourceMetadata, create: () -> WebBookDataSource, preconstructed: WebBookDataSource?): SourceRegistration {
+        val snapshot = metadata.copy(capabilities = Collections.unmodifiableSet(metadata.capabilities.toSet()))
+        val entry = synchronized(lock) {
+            require(snapshot.id !in entries) { "Duplicate source identity: ${snapshot.id}" }
+            Entry(snapshot, create, preconstructed).also {
+                entries[snapshot.id] = it
+                publish()
+            }
+        }
+        return SourceRegistration(snapshot) { remove(entry) }
+    }
+
+    fun register(source: WebBookDataSource, metadata: SourceMetadata): SourceRegistration {
+        require(source.id == metadata.id) { "Source and metadata identities must match" }
+        return add(metadata, { source }, preconstructed = source)
+    }
+
+    fun unregister(id: Identifier) {
+        val entry = synchronized(lock) {
+            entries.remove(id).also { publish() }
+        }
+        entry?.retire()
+    }
+
+    private fun remove(entry: Entry) {
+        val removed = synchronized(lock) {
+            if (entries[entry.metadata.id] !== entry) false
+            else {
+                entries.remove(entry.metadata.id)
+                publish()
+                true
+            }
+        }
+        if (removed) entry.retire()
+    }
+
+    suspend fun resolve(id: Identifier): SourceResolution {
+        val entry = synchronized(lock) { entries[id] } ?: return SourceResolution.Missing(id)
+        return try {
+            val runtime = entry.initialization.await()
+            synchronized(lock) {
+                if (entries[id] === entry && runtime.isAvailable) SourceResolution.Ready(runtime)
+                else SourceResolution.Missing(id)
+            }
+        } catch (failure: Exception) {
+            // A cancelled caller remains cancelled. Retiring a source instead invalidates
+            // its generation; it must not silently resolve a replacement with the same ID.
+            currentCoroutineContext().ensureActive()
+            synchronized(lock) {
+                if (entries[id] !== entry) SourceResolution.Missing(id)
+                else SourceResolution.Unavailable(id, failure)
+            }
+        }
+    }
+
+    private fun publish() {
+        mutableSources.value = Collections.unmodifiableList(entries.values
+            .map { SourceListing(it.metadata, it.status) }
+            .sortedWith(compareBy({ !it.metadata.builtIn }, { it.metadata.id.namespace }, { it.metadata.id.id })))
+    }
+
+    private fun update(entry: Entry, status: SourceStatus) = synchronized(lock) {
+        if (entries[entry.metadata.id] === entry) {
+            entry.status = status
+            publish()
+        }
+    }
+
+    private inner class Entry(val metadata: SourceMetadata, create: () -> WebBookDataSource,
+        private val preconstructed: WebBookDataSource?) {
+        private val lifetime = CoroutineScope(SupervisorJob() + dispatcher)
+        private val ownership = Any()
+        private var retired = false
+        private var started = false
+        private var runtime: SourceRuntime? = null
+        var status = SourceStatus.Registered
+
+        val initialization = lifetime.async(start = CoroutineStart.LAZY) {
+            update(this@Entry, SourceStatus.Initializing)
+            var source: WebBookDataSource? = null
+            try {
+                synchronized(ownership) {
+                    if (retired) throw SourceUnavailableException(metadata.id)
+                    started = true
+                }
+                source = create()
+                require(source.id == metadata.id) { "Source and metadata identities must match" }
+                source.onLoad()
+                currentCoroutineContext().ensureActive()
+                synchronized(ownership) {
+                    check(!retired) { "Source was removed during initialization" }
+                    SourceRuntime(metadata, source, lifetime, cleanupScope).also { runtime = it }
+                }.also { update(this@Entry, SourceStatus.Ready) }
+            } catch (failure: Throwable) {
+                // A constructed source which never reaches Ready is still our resource.
+                if (runtime == null) runCatching { (source as? AutoCloseable)?.close() }
+                    .exceptionOrNull()?.let(failure::addSuppressed)
+                if (failure !is CancellationException) update(this@Entry, SourceStatus.Failed)
+                throw failure
+            }
+        }
+
+        fun retire() = synchronized(ownership) {
+            retired = true
+            lifetime.cancel()
+            runtime?.retire()
+            if (!started && preconstructed is AutoCloseable) {
+                cleanupScope.launch {
+                    runCatching { preconstructed.close() }.onFailure {
+                        Log.w("WebSourceRegistry", "Could not close unloaded source ${metadata.id}", it)
+                    }
+                }
+            }
+        }
+    }
+}

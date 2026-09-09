@@ -1,0 +1,37 @@
+package indi.dmzz_yyhyy.lightnovelreader.data.web
+
+import io.nightfish.lightnovelreader.api.identifier.Identifier
+import io.nightfish.lightnovelreader.api.web.WebDataSourceItem
+
+enum class SourceCapability {
+    Search, BookInformation, Directory, ChapterContent, Explore, Categories, Login, Images
+}
+
+data class SourceMetadata(
+    val item: WebDataSourceItem,
+    val capabilities: Set<SourceCapability>,
+    val builtIn: Boolean = false,
+) {
+    val id: Identifier get() = item.id
+}
+
+enum class SourceStatus { Registered, Initializing, Ready, Failed }
+
+data class SourceListing(val metadata: SourceMetadata, val status: SourceStatus)
+
+/** Removing an old owner must not unregister a newer source with the same ID. */
+class SourceRegistration internal constructor(
+    val metadata: SourceMetadata,
+    private val removeRegistration: () -> Unit,
+) {
+    fun unregister() = removeRegistration()
+}
+
+sealed interface SourceResolution {
+    data class Ready(val runtime: SourceRuntime) : SourceResolution
+    data class Missing(val id: Identifier) : SourceResolution
+    data class Unavailable(val id: Identifier, val cause: Exception) : SourceResolution
+}
+
+class SourceUnavailableException(val sourceId: Identifier) :
+    IllegalStateException("Source is no longer available: $sourceId")
