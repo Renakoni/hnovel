@@ -31,7 +31,8 @@ class BrowserSessionRegistry {
     }
 
     private fun profileName(source: Identifier): String {
-        val digest = MessageDigest.getInstance("SHA-256").digest(source.toString().toByteArray())
+        val input = "${source.namespace.length}:${source.namespace}${source.id.length}:${source.id}"
+        val digest = MessageDigest.getInstance("SHA-256").digest(input.toByteArray())
         return "source-" + digest.take(12).joinToString("") { "%02x".format(it) }
     }
 }
