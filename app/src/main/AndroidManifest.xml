@@ -97,7 +97,7 @@
         android:name=".sourceexecution.IsolatedExecutionService"
         android:exported="false"
         android:isolatedProcess="true"
-        android:process=":source-execution" />
+        android:process=":source_execution" />
   </application>
 
 </manifest>

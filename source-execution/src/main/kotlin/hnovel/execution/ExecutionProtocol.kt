@@ -18,7 +18,7 @@ import java.util.concurrent.ConcurrentHashMap
  @Serializable data class Success(val output: String): ExecutionResult
  @Serializable data class Failure(val code: FailureCode): ExecutionResult
 }
-@Serializable enum class FailureCode { Timeout, ProcessExited, InvalidIdentity, OutputLimit, InvalidTask, Cancelled, Revoked }
+@Serializable enum class FailureCode { Timeout, ProcessExited, InvalidIdentity, OutputLimit, InvalidTask, Cancelled, Revoked, Busy, InputLimit }
 
 /** Host authority for source identities. The worker never gets a method to issue or change a ticket. */
 class ExecutionAuthority {
@@ -27,7 +27,7 @@ class ExecutionAuthority {
   ExecutionIdentity(sourceId, profile, revision, UUID.randomUUID().toString()).also { active[it.nonce] = it }
  fun revoke(identity: ExecutionIdentity) { active.remove(identity.nonce, identity) }
  fun revokeSource(sourceId: String) { active.entries.removeIf { it.value.sourceId == sourceId } }
- internal fun accepts(identity: ExecutionIdentity) = active[identity.nonce] == identity
+ fun accepts(identity: ExecutionIdentity) = active[identity.nonce] == identity
 }
 
 /** Host-side boundary. Each invocation receives a fresh process and a host-issued identity. */
@@ -68,6 +68,16 @@ class IsolatedExecutor(private val javaCommand: String = javaHome(), private val
  }
 }
 @Serializable private data class Wire(val identity: ExecutionIdentity, val task: ExecutionTask, val limits: ExecutionLimits)
+
+/** Shared Android/JVM wire encoding; the authority stays in the host. */
+object ExecutionWire {
+ fun encode(identity: ExecutionIdentity, task: ExecutionTask, limits: ExecutionLimits): ByteArray =
+  kotlinx.serialization.json.Json.encodeToString(Wire.serializer(), Wire(identity, task, limits)).toByteArray(Charsets.UTF_8)
+ fun encodeResult(result: ExecutionResult): ByteArray =
+  kotlinx.serialization.json.Json.encodeToString(ExecutionResult.serializer(), result).toByteArray(Charsets.UTF_8)
+ fun decodeResult(bytes: ByteArray): ExecutionResult =
+  kotlinx.serialization.json.Json.decodeFromString(ExecutionResult.serializer(), bytes.toString(Charsets.UTF_8))
+}
 
 /** Untrusted-side worker. It receives only the bound DTO and has no host repository/client references. */
 object WorkerMain {

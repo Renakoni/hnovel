@@ -90,6 +90,7 @@ android {
         targetCompatibility = JavaVersion.VERSION_21
     }
     buildFeatures {
+        aidl = true
         compose = true
         buildConfig = true
     }
@@ -177,6 +178,8 @@ dependencies {
     implementation(libs.compose.ui.tooling.preview)
     debugImplementation(libs.compose.ui.tooling)
     testImplementation(libs.junit)
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
     testImplementation(libs.robolectric)
     testImplementation(libs.compose.ui.test.junit4)
     testImplementation(libs.kotlinx.coroutines.test)
