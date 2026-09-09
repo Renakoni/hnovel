@@ -1,5 +1,6 @@
 package indi.dmzz_yyhyy.lightnovelreader.data.statistics
 
+import indi.dmzz_yyhyy.lightnovelreader.data.book.BookIdentity
 import indi.dmzz_yyhyy.lightnovelreader.data.book.BookRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.BookRecordDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.DailyCountDao
@@ -27,34 +28,35 @@ class StatsRepository @Inject constructor(
     private val bookReadTimeBufferMutex = Mutex()
 
     suspend fun accumulateBookReadTime(bookId: String, seconds: Int) {
+        val key = BookIdentity.bookKey(bookId)
         bookReadTimeBufferMutex.withLock {
             if (seconds < 0) {
-                clearBookReadTimeBufferLocked(bookId)
+                clearBookReadTimeBufferLocked(key)
                 return
             }
-            val current = bookReadTimeBuffer[bookId] ?: Pair(LocalTime.now(), 0)
+            val current = bookReadTimeBuffer[key] ?: Pair(LocalTime.now(), 0)
             val newTotal = current.second + seconds
-            bookReadTimeBuffer[bookId] = current.copy(second = newTotal)
+            bookReadTimeBuffer[key] = current.copy(second = newTotal)
 
             if (newTotal >= 60 || Duration.between(current.first, LocalTime.now()).seconds >= 60) {
-                clearBookReadTimeBufferLocked(bookId)
+                clearBookReadTimeBufferLocked(key)
             }
         }
     }
 
-    private suspend fun clearBookReadTimeBufferLocked(bookId: String) {
-        val (startTime, totalSeconds) = bookReadTimeBuffer[bookId] ?: return
+    private suspend fun clearBookReadTimeBufferLocked(key: String) {
+        val (startTime, totalSeconds) = bookReadTimeBuffer[key] ?: return
 
         updateReadingStatistics(
             ReadingStatsUpdate(
-                bookId = bookId,
+                bookId = key,
                 secondDelta = totalSeconds,
                 localTime = startTime,
                 readEventDelta = 0
             )
         )
 
-        bookReadTimeBuffer.remove(bookId)
+        bookReadTimeBuffer.remove(key)
     }
 
     suspend fun getBookRecords(
@@ -94,6 +96,7 @@ class StatsRepository @Inject constructor(
     }
 
     suspend fun updateReadingStatistics(update: ReadingStatsUpdate) {
+        val key = BookIdentity.bookKey(update.bookId)
         statisticsWriteCoordinator.withLock {
             val today = LocalDate.now()
             val existingDailyCount = dailyCountDao.getByDate(today)
@@ -104,8 +107,8 @@ class StatsRepository @Inject constructor(
 
             try {
                 dailyCountDao.insert(updatedDailyCount)
-                val existingRecord = bookRecordDao.getBookRecordByIdAndDate(update.bookId, today)
-                    ?: createRecordEntity(update.bookId, today)
+                val existingRecord = bookRecordDao.getBookRecordByIdAndDate(key, today)
+                    ?: createRecordEntity(key, today)
                 val updatedRecord = existingRecord.copy(
                     reads = existingRecord.reads + update.readEventDelta,
                     seconds = existingRecord.seconds + update.secondDelta,
@@ -131,10 +134,11 @@ class StatsRepository @Inject constructor(
     }
 
     suspend fun markBookFinished(bookId: String) {
+        val key = BookIdentity.bookKey(bookId)
         statisticsWriteCoordinator.withLock {
             val today = LocalDate.now()
-            val existingRecord = bookRecordDao.getBookRecordByIdAndDate(bookId, today)
-                ?: createRecordEntity(bookId, today)
+            val existingRecord = bookRecordDao.getBookRecordByIdAndDate(key, today)
+                ?: createRecordEntity(key, today)
 
             if (!existingRecord.isFinished) {
                 bookRecordDao.insertBookRecord(existingRecord.copy(isFinished = true))
@@ -143,10 +147,11 @@ class StatsRepository @Inject constructor(
     }
 
     suspend fun markBookFavorited(bookId: String) {
+        val key = BookIdentity.bookKey(bookId)
         statisticsWriteCoordinator.withLock {
             val today = LocalDate.now()
-            val existingRecord = bookRecordDao.getBookRecordByIdAndDate(bookId, today)
-                ?: createRecordEntity(bookId, today)
+            val existingRecord = bookRecordDao.getBookRecordByIdAndDate(key, today)
+                ?: createRecordEntity(key, today)
 
             if (!existingRecord.isFavorited) {
                 bookRecordDao.insertBookRecord(existingRecord.copy(isFavorited = true))
@@ -155,10 +160,10 @@ class StatsRepository @Inject constructor(
     }
 
     suspend fun getBookFirstReadDate(bookId: String): LocalDate? =
-        bookRecordDao.getFirstReadDate(bookId)
+        bookRecordDao.getFirstReadDate(BookIdentity.bookKey(bookId))
 
     suspend fun getBookFinishedDate(bookId: String): LocalDate? =
-        bookRecordDao.getFirstFinishedDate(bookId)
+        bookRecordDao.getFirstFinishedDate(BookIdentity.bookKey(bookId))
 
     suspend fun getBookFirstReadDateMap(): Map<String, LocalDate> =
         bookRecordDao.getFirstReadDates().associate { it.bookId to it.date }

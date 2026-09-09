@@ -12,7 +12,6 @@ import indi.dmzz_yyhyy.lightnovelreader.data.local.LocalDataManager
 import indi.dmzz_yyhyy.lightnovelreader.data.local.cbor.AppLocalData
 import indi.dmzz_yyhyy.lightnovelreader.data.local.cbor.LocalData
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.BookshelfDao
-import indi.dmzz_yyhyy.lightnovelreader.data.web.WebBookDataSourceProvider
 import indi.dmzz_yyhyy.lightnovelreader.utils.writeAppLocalData
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.cbor.Cbor
@@ -23,7 +22,6 @@ import java.io.FileOutputStream
 class SaveBookshelfWork @AssistedInject constructor(
     @Assisted private val appContext: Context,
     @Assisted workerParams: WorkerParameters,
-    private val webBookDataSourceProvider: WebBookDataSourceProvider,
     private val localDataManager: LocalDataManager,
     private val bookshelfDao: BookshelfDao
 ) : CoroutineWorker(appContext, workerParams) {
@@ -59,7 +57,6 @@ class SaveBookshelfWork @AssistedInject constructor(
             version = localDataManager.currentAppDataVersion,
             localDataList = listOf(
                 LocalData.empty().copy(
-                    webBookDataSourceId = webBookDataSourceProvider.value.id,
                     bookshelfEntities = bookshelfEntityList,
                     bookshelfBookMetadataEntities = bookshelfBookMetadataEntities
                 )

@@ -30,26 +30,26 @@ class BookInformationFlowTest {
     private val fixture = BookRepositoryFixture()
     private val events = mutableListOf<String>()
     private val local = BookInformation(
-        id = "book", title = "local", author = "author", description = "description",
+        id = BookIdentity.bookKey("book"), title = "local", author = "author", description = "description",
         publishingHouse = "publisher", wordCount = WordCount(100),
         lastUpdated = LocalDateTime.of(2026, 9, 1, 0, 0), isComplete = false,
     )
-    private val remote = local.copy(title = "remote", lastUpdated = local.lastUpdated.plusDays(1))
+    private val remote = local.copy(id = "book", title = "remote", lastUpdated = local.lastUpdated.plusDays(1))
     private val error = WebRequestError("offline", "request failed")
 
     @Before
     fun setUp() {
-        coEvery { fixture.local.getBookInformation("book") } answers { events += "local"; local }
+        coEvery { fixture.local.getBookInformation(BookIdentity.bookKey("book")) } answers { events += "local"; local }
         coEvery { fixture.remote.getBookInformation("book", any()) } answers { events += "remote"; Ok(remote) }
         coEvery { fixture.local.updateBookInformation(any()) } answers { events += "store" }
-        coEvery { fixture.bookshelves.getBookshelfBookMetadata("book") } returns mockk {
+        coEvery { fixture.bookshelves.getBookshelfBookMetadata(BookIdentity.bookKey("book")) } returns mockk {
             every { lastUpdate } returns local.lastUpdated
             every { bookShelfIds } returns listOf(1)
         }
-        coEvery { fixture.bookshelves.updateBookshelfBookMetadataLastUpdateTime("book", remote.lastUpdated) } answers {
+        coEvery { fixture.bookshelves.updateBookshelfBookMetadataLastUpdateTime(BookIdentity.bookKey("book"), remote.lastUpdated) } answers {
             events += "metadata"
         }
-        coEvery { fixture.bookshelves.addUpdatedBooksIntoBookShelf(1, "book") } answers { events += "mark-updated" }
+        coEvery { fixture.bookshelves.addUpdatedBooksIntoBookShelf(1, BookIdentity.bookKey("book")) } answers { events += "mark-updated" }
         every { fixture.text.processBookInformation(any()) } answers {
             val book = firstArg<() -> BookInformation>()()
             events += "process:${book.title}"
@@ -64,13 +64,13 @@ class BookInformationFlowTest {
             actual += it
             events += "emit"
         }
-        assertEquals(listOf(Ok(local.copy(title = "processed:local")), Ok(remote.copy(title = "processed:remote"))), actual)
+        assertEquals(listOf(Ok(local.copy(title = "processed:local")), Ok(remote.copy(id = BookIdentity.bookKey("book"), title = "processed:remote"))), actual)
         assertEquals(
             listOf("local", "process:local", "emit", "remote", "store", "metadata", "mark-updated", "process:remote", "emit"),
             events,
         )
         coVerify(exactly = 1) { fixture.remote.getBookInformation("book", WebDataSourcePriority.High) }
-        coVerify(exactly = 1) { fixture.local.updateBookInformation(remote) }
+        coVerify(exactly = 1) { fixture.local.updateBookInformation(remote.copy(id = BookIdentity.bookKey("book"))) }
     }
 
     @Test
@@ -89,12 +89,12 @@ class BookInformationFlowTest {
 
     @Test
     fun missingCacheEmitsTheRemoteSuccessOrError() = runTest {
-        coEvery { fixture.local.getBookInformation("book") } returns null
+        coEvery { fixture.local.getBookInformation(BookIdentity.bookKey("book")) } returns null
         val flow = fixture.repository().getBookInformationFlow("book")
-        assertEquals(listOf(Ok(remote.copy(title = "processed:remote"))), flow.toList())
+        assertEquals(listOf(Ok(remote.copy(id = BookIdentity.bookKey("book"), title = "processed:remote"))), flow.toList())
         coEvery { fixture.remote.getBookInformation(any(), any()) } returns Err(error)
         assertEquals(listOf(Err(error)), flow.toList())
-        coVerify(exactly = 1) { fixture.local.updateBookInformation(remote) }
+        coVerify(exactly = 1) { fixture.local.updateBookInformation(remote.copy(id = BookIdentity.bookKey("book"))) }
     }
 
     @Test
@@ -107,16 +107,16 @@ class BookInformationFlowTest {
     }
 
     @Test
-    fun recollectionUsesCurrentProviderAndDoesNotRetainAPreviousCacheHit() = runTest {
+    fun recollectionResolvesTheSameSourceAgainAndDoesNotRetainAPreviousCacheHit() = runTest {
         val flow = fixture.repository().getBookInformationFlow("book")
         assertEquals(2, flow.toList().size)
         val replacement = mockk<indi.dmzz_yyhyy.lightnovelreader.data.web.proxy.ProxyWebBookDataSource>()
         coEvery { replacement.getBookInformation("book", WebDataSourcePriority.Default) } returns Err(error)
         fixture.activeRemote = replacement
         assertEquals(listOf(Ok(local.copy(title = "processed:local"))), flow.toList())
-        coEvery { fixture.local.getBookInformation("book") } returns null
+        coEvery { fixture.local.getBookInformation(BookIdentity.bookKey("book")) } returns null
         assertEquals(listOf(Err(error)), flow.toList())
-        coVerify(exactly = 3) { fixture.local.getBookInformation("book") }
+        coVerify(exactly = 3) { fixture.local.getBookInformation(BookIdentity.bookKey("book")) }
         coVerify(exactly = 2) { replacement.getBookInformation("book", WebDataSourcePriority.Default) }
     }
 }

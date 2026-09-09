@@ -13,6 +13,9 @@ class BookReadingDataRepository @Inject constructor(
     override suspend fun getUserReadingData(bookId: String): UserReadingData =
         localBookDataSource.getUserReadingData(bookId)
 
+    suspend fun getUserReadingData(book: SourceBookId): UserReadingData =
+        localBookDataSource.getUserReadingData(book.storageKey)
+
     fun getUserReadingDataFlow(bookId: String): Flow<UserReadingData> =
         localBookDataSource.getUserReadingDataFlow(bookId)
 
@@ -21,5 +24,9 @@ class BookReadingDataRepository @Inject constructor(
 
     override suspend fun updateUserReadingData(id: String, update: (UserReadingData) -> UserReadingData) {
         localBookDataSource.updateUserReadingData(id, update)
+    }
+
+    suspend fun updateUserReadingData(book: SourceBookId, update: (UserReadingData) -> UserReadingData) {
+        localBookDataSource.updateUserReadingData(book.storageKey, update)
     }
 }

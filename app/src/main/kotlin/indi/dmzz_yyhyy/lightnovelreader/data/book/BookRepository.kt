@@ -50,7 +50,8 @@ class BookRepository @Inject constructor(
     private val textProcessingRepository: TextProcessingRepository,
     private val workManager: WorkManager,
     private val chapterRepository: ChapterRepository,
-    private val readingDataRepository: BookReadingDataRepository
+    private val readingDataRepository: BookReadingDataRepository,
+    private val sourceRegistry: indi.dmzz_yyhyy.lightnovelreader.data.web.WebSourceRegistry,
 ): BookRepositoryApi {
     companion object {
         private const val TAG = "BookRepository"
@@ -58,16 +59,20 @@ class BookRepository @Inject constructor(
 
     private val webBookDataSource get() = webBookDataSourceProvider.value
 
+    fun getBookInformationFlow(book: SourceBookId, priority: WebDataSourcePriority = WebDataSourcePriority.Default) =
+        getBookInformationFlow(book.storageKey, priority)
+
     override fun getBookInformationFlow(
         id: String,
         priority: WebDataSourcePriority
     ): Flow<Result<BookInformation, WebRequestError>> = flow {
-        val local = localBookDataSource.getBookInformation(id)
+        val book = BookIdentity.book(id)
+        val local = localBookDataSource.getBookInformation(book.storageKey)
         local?.also {
             emit(Ok(it))
             if (BuildConfig.BENCHMARK) return@flow
         }
-        webBookDataSource.getBookInformation(id, priority)
+        sourceRegistry.request(book) { it.getBookInformation(book.remoteId, priority) }.map(book::bind)
             .onOk { remote ->
                 localBookDataSource.updateBookInformation(remote)
                 val bookshelfBookMetadata = bookshelfRepository.getBookshelfBookMetadata(remote.id) ?: return@onOk
@@ -77,7 +82,7 @@ class BookRepository @Inject constructor(
                             remote.id,
                             remote.lastUpdated
                         )
-                        bookshelfRepository.addUpdatedBooksIntoBookShelf(it, id)
+                        bookshelfRepository.addUpdatedBooksIntoBookShelf(it, book.storageKey)
                     }
             }.onErr {
                 Log.e(TAG, "Failed to request web data (title=${it.title}, message=${it.message})")
@@ -123,19 +128,20 @@ class BookRepository @Inject constructor(
         readingDataRepository.updateUserReadingData(id, update)
 
     fun cacheBook(bookId: String): Flow<WorkInfo?> {
+        val key = BookIdentity.bookKey(bookId)
         val workRequest = OneTimeWorkRequestBuilder<CacheBookWork>()
             .setInputData(
                 workDataOf(
-                    "bookId" to bookId
+                    "bookId" to key
                 )
             )
             .build()
         val operation = workManager.enqueueUniqueWork(
-            CacheBookWork.ofId(bookId),
+            CacheBookWork.ofId(key),
             ExistingWorkPolicy.KEEP,
             workRequest
         )
-        return workManager.observeSubmittedUniqueWork(CacheBookWork.ofId(bookId), operation)
+        return workManager.observeSubmittedUniqueWork(CacheBookWork.ofId(key), operation)
     }
 
     override suspend fun getIsBookCached(bookId: String): Boolean {
