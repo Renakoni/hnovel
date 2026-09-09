@@ -91,6 +91,9 @@ interface WebBookDataSource {
      */
     val explorePageProvider: ExplorePageProvider
 
+    /** Independent feed/category capabilities; legacy native pages are not a data capability. */
+    val discoveryProvider: io.nightfish.lightnovelreader.api.web.discovery.DiscoveryProvider? get() = null
+
     /**
      * 请求图片时附带的请求头Map
      *
