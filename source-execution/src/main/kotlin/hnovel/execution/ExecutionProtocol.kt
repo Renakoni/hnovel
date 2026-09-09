@@ -19,7 +19,7 @@ import kotlinx.serialization.Serializable
 @Serializable enum class FailureCode { Timeout, ProcessExited, InvalidIdentity, OutputLimit, InvalidTask, Cancelled }
 
 /** Host-side boundary. Each invocation receives a fresh process and a host-issued identity. */
-class IsolatedExecutor(private val javaCommand: String = javaHome(), private val classPath: String = System.getProperty("java.class.path")) {
+class IsolatedExecutor(private val javaCommand: String = javaHome(), private val classPath: String = workerClassPath()) {
  fun execute(identity: ExecutionIdentity, task: ExecutionTask, limits: ExecutionLimits = ExecutionLimits()): ExecutionResult {
   if (identity.sourceId.isBlank()) return ExecutionResult.Failure(FailureCode.InvalidIdentity)
   val process = try { ProcessBuilder(javaCommand, "-cp", classPath, WorkerMain::class.java.name).start() }
@@ -36,7 +36,19 @@ class IsolatedExecutor(private val javaCommand: String = javaHome(), private val
     catch (_: Exception) { process.destroyForcibly(); return ExecutionResult.Failure(FailureCode.ProcessExited) }
   finally { if (process.isAlive) process.destroyForcibly() }
  }
- companion object { private fun javaHome() = java.nio.file.Path.of(System.getProperty("java.home"),"bin",if(System.getProperty("os.name").startsWith("Windows"))"java.exe" else "java").toString() }
+ companion object {
+  private fun javaHome() = java.nio.file.Path.of(System.getProperty("java.home"),"bin",if(System.getProperty("os.name").startsWith("Windows"))"java.exe" else "java").toString()
+
+  // Gradle/plugin hosts can load these classes outside java.class.path. Locate the actual worker
+  // and its runtime dependencies; callers with non-file classloaders must pass a packaged classpath.
+  private fun workerClassPath(): String = listOf(WorkerMain::class.java, Unit::class.java,
+   kotlinx.serialization.KSerializer::class.java, kotlinx.serialization.json.Json::class.java)
+   .map { type ->
+    val location = requireNotNull(type.protectionDomain?.codeSource?.location) { "Supply a worker runtime classpath" }
+    require(location.protocol == "file") { "Supply a packaged worker runtime classpath" }
+    java.nio.file.Paths.get(location.toURI()).toString()
+   }.distinct().joinToString(java.io.File.pathSeparator)
+ }
 }
 @Serializable private data class Wire(val identity: ExecutionIdentity, val task: ExecutionTask, val limits: ExecutionLimits)
 
