@@ -271,3 +271,8 @@ tasks.register("printVersionCode") {
         println(android.defaultConfig.versionCode)
     }
 }
+
+
+dependencies {
+    implementation(project(":source-execution"))
+}

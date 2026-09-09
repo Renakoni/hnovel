@@ -1,6 +1,8 @@
 package hnovel.execution
 
 import kotlinx.serialization.Serializable
+import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 
 @Serializable data class ExecutionIdentity(val sourceId: String, val profile: String, val revision: String, val nonce: String) {
  init { require(sourceId.isNotBlank() && profile.isNotBlank() && revision.isNotBlank() && nonce.isNotBlank()) }
@@ -16,21 +18,36 @@ import kotlinx.serialization.Serializable
  @Serializable data class Success(val output: String): ExecutionResult
  @Serializable data class Failure(val code: FailureCode): ExecutionResult
 }
-@Serializable enum class FailureCode { Timeout, ProcessExited, InvalidIdentity, OutputLimit, InvalidTask, Cancelled }
+@Serializable enum class FailureCode { Timeout, ProcessExited, InvalidIdentity, OutputLimit, InvalidTask, Cancelled, Revoked }
+
+/** Host authority for source identities. The worker never gets a method to issue or change a ticket. */
+class ExecutionAuthority {
+ private val active = ConcurrentHashMap<String, ExecutionIdentity>()
+ fun issue(sourceId: String, profile: String, revision: String): ExecutionIdentity =
+  ExecutionIdentity(sourceId, profile, revision, UUID.randomUUID().toString()).also { active[it.nonce] = it }
+ fun revoke(identity: ExecutionIdentity) { active.remove(identity.nonce, identity) }
+ fun revokeSource(sourceId: String) { active.entries.removeIf { it.value.sourceId == sourceId } }
+ internal fun accepts(identity: ExecutionIdentity) = active[identity.nonce] == identity
+}
 
 /** Host-side boundary. Each invocation receives a fresh process and a host-issued identity. */
-class IsolatedExecutor(private val javaCommand: String = javaHome(), private val classPath: String = workerClassPath()) {
+class IsolatedExecutor(private val javaCommand: String = javaHome(), private val classPath: String = workerClassPath(),
+ private val authority: ExecutionAuthority? = null) {
  fun execute(identity: ExecutionIdentity, task: ExecutionTask, limits: ExecutionLimits = ExecutionLimits()): ExecutionResult {
-  if (identity.sourceId.isBlank()) return ExecutionResult.Failure(FailureCode.InvalidIdentity)
+  if (identity.sourceId.isBlank() || (authority != null && !authority.accepts(identity))) return ExecutionResult.Failure(FailureCode.InvalidIdentity)
   val process = try { ProcessBuilder(javaCommand, "-cp", classPath, WorkerMain::class.java.name).start() }
     catch (_: Exception) { return ExecutionResult.Failure(FailureCode.ProcessExited) }
   try {
    val request = Wire(identity, task, limits)
    process.outputStream.bufferedWriter().use { it.write(kotlinx.serialization.json.Json.encodeToString(Wire.serializer(), request)); it.newLine(); it.flush() }
    val deadline = System.nanoTime() + limits.timeoutMillis * 1_000_000
-   while (process.isAlive && System.nanoTime() < deadline) Thread.sleep(5)
+   while (process.isAlive && System.nanoTime() < deadline) {
+    if (authority != null && !authority.accepts(identity)) { process.destroyForcibly(); process.waitFor(); return ExecutionResult.Failure(FailureCode.Revoked) }
+    Thread.sleep(5)
+   }
    if (process.isAlive) { process.destroyForcibly(); process.waitFor(); return ExecutionResult.Failure(FailureCode.Timeout) }
    val line = process.inputStream.bufferedReader().readLine() ?: return ExecutionResult.Failure(FailureCode.ProcessExited)
+   if (authority != null && !authority.accepts(identity)) return ExecutionResult.Failure(FailureCode.Revoked)
    return kotlinx.serialization.json.Json.decodeFromString(ExecutionResult.serializer(), line)
   } catch (_: InterruptedException) { process.destroyForcibly(); Thread.currentThread().interrupt(); return ExecutionResult.Failure(FailureCode.Cancelled) }
     catch (_: Exception) { process.destroyForcibly(); return ExecutionResult.Failure(FailureCode.ProcessExited) }
@@ -54,11 +71,17 @@ class IsolatedExecutor(private val javaCommand: String = javaHome(), private val
 
 /** Untrusted-side worker. It receives only the bound DTO and has no host repository/client references. */
 object WorkerMain {
+ fun executeSerialized(input: String): String {
+  val wire = try { kotlinx.serialization.json.Json.decodeFromString(Wire.serializer(), input) }
+    catch (_: Exception) { return kotlinx.serialization.json.Json.encodeToString(ExecutionResult.serializer(), ExecutionResult.Failure(FailureCode.InvalidTask)) }
+  val result = when (val task = wire.task) {
+   is ExecutionTask.Echo -> if (task.value.toByteArray().size > wire.limits.maxOutputBytes) ExecutionResult.Failure(FailureCode.OutputLimit) else ExecutionResult.Success(task.value)
+   is ExecutionTask.Sleep -> { Thread.sleep(task.millis); ExecutionResult.Success("slept") }
+  }
+  return kotlinx.serialization.json.Json.encodeToString(ExecutionResult.serializer(), result)
+ }
  @JvmStatic fun main(args: Array<String>) {
   val input = generateSequence { readLine() }.firstOrNull() ?: return
-  val wire = try { kotlinx.serialization.json.Json.decodeFromString(Wire.serializer(), input) } catch (_: Exception) { print(kotlinx.serialization.json.Json.encodeToString(ExecutionResult.serializer(), ExecutionResult.Failure(FailureCode.InvalidTask))); return }
-  val result = when (val task = wire.task) { is ExecutionTask.Echo -> if (task.value.toByteArray().size > wire.limits.maxOutputBytes) ExecutionResult.Failure(FailureCode.OutputLimit) else ExecutionResult.Success(task.value)
-   is ExecutionTask.Sleep -> { Thread.sleep(task.millis); ExecutionResult.Success("slept") } }
-  print(kotlinx.serialization.json.Json.encodeToString(ExecutionResult.serializer(), result))
+  print(executeSerialized(input))
  }
 }

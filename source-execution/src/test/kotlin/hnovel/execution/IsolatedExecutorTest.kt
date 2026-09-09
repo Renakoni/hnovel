@@ -2,6 +2,14 @@ package hnovel.execution
 import org.junit.Assert.*
 import org.junit.Test
 class IsolatedExecutorTest {
+ @Test fun hostIssuedIdentityRejectsForgeryAndRevocationKillsLateWorker() {
+  val authority = ExecutionAuthority(); val issued = authority.issue("source-a", "legado", "r1")
+  val executor = IsolatedExecutor(authority = authority)
+  assertEquals(FailureCode.InvalidIdentity, (executor.execute(issued.copy(sourceId = "source-b"), ExecutionTask.Echo("x")) as ExecutionResult.Failure).code)
+  val thread = kotlin.concurrent.thread { Thread.sleep(40); authority.revoke(issued) }
+  assertEquals(FailureCode.Revoked, (executor.execute(issued, ExecutionTask.Sleep(10000), ExecutionLimits(1000,1000,1)) as ExecutionResult.Failure).code)
+  thread.join()
+ }
  @Test fun workerDoesNotDependOnTheHostsBootstrapClasspath() {
   val original = System.getProperty("java.class.path")
   try {
