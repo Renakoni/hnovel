@@ -139,20 +139,30 @@
       "owner": "https://github.com/Renakoni/hnovel/issues/85",
       "requirement": "URL 模板/相对路径、页面参数、编码/charset、方法/body/header/重定向与 retry。",
       "testId": "CONFORMANCE-URL",
-      "implementation": "planned",
-      "verification": "future-fixture",
+      "implementation": "partial",
+      "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Pinned reference source inspection; production implementation pending."
+      "evidence": "Source-network broker backend implemented and tested offline. Static URL compiler, scoped network/storage and quotas are production code; process-bound IPC (#86), JavaScript entry points (#87) and browser calls (#89) remain pending. Not a full upstream bridge oracle.",
+      "productTests": [
+        "hnovel.network.SourceBrokerTest",
+        "hnovel.network.RequestCompilerTest",
+        "hnovel.compatibility.ProductRequestContractTest"
+      ]
     },
     {
       "id": "HTTP",
       "owner": "https://github.com/Renakoni/hnovel/issues/85",
       "requirement": "java.ajax/ajaxAll/connect/get/head/post，响应体/头、来源限流、取消、授权与真实请求目标检查。",
       "testId": "CONFORMANCE-HTTP",
-      "implementation": "planned",
-      "verification": "future-fixture",
+      "implementation": "partial",
+      "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Pinned reference source inspection; production implementation pending."
+      "evidence": "Source-network broker backend implemented and tested offline. Static URL compiler, scoped network/storage and quotas are production code; process-bound IPC (#86), JavaScript entry points (#87) and browser calls (#89) remain pending. Not a full upstream bridge oracle.",
+      "productTests": [
+        "hnovel.network.SourceBrokerTest",
+        "hnovel.network.RequestCompilerTest",
+        "hnovel.compatibility.ProductRequestContractTest"
+      ]
     },
     {
       "id": "COOKIE",
@@ -169,10 +179,15 @@
       "owner": "https://github.com/Renakoni/hnovel/issues/85",
       "requirement": "cache get/put/delete、source 变量/配置与受限存储、TTL/配额；不得访问宿主仓库。",
       "testId": "CONFORMANCE-STORAGE",
-      "implementation": "planned",
-      "verification": "future-fixture",
+      "implementation": "partial",
+      "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Pinned reference source inspection; production implementation pending."
+      "evidence": "Source-network broker backend implemented and tested offline. Static URL compiler, scoped network/storage and quotas are production code; process-bound IPC (#86), JavaScript entry points (#87) and browser calls (#89) remain pending. Not a full upstream bridge oracle.",
+      "productTests": [
+        "hnovel.network.SourceBrokerTest",
+        "hnovel.network.RequestCompilerTest",
+        "hnovel.compatibility.ProductRequestContractTest"
+      ]
     },
     {
       "id": "ENCODING",

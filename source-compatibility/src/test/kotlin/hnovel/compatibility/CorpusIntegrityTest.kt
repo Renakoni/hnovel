@@ -49,9 +49,13 @@ class CorpusIntegrityTest {
             assertTrue(feature.string("requirement").isNotBlank())
             assertTrue(feature.string("evidence").isNotBlank())
             assertTrue(testIds.add(feature.string("testId")))
-            // No product engine exists yet. Change this gate together with the first
-            // real differential adapter, never because an oracle test is green.
-            assertEquals("planned", feature.string("implementation"))
+            val brokerBackend = feature.string("id") in setOf("URL", "HTTP", "STORAGE")
+            // The broker backend is implemented; script entry points and process binding are later owners.
+            assertEquals(if (brokerBackend) "partial" else "planned", feature.string("implementation"))
+            if (brokerBackend) {
+                assertEquals("product-contract", feature.string("verification"))
+                assertTrue(feature.getAsJsonArray("productTests").size() > 0)
+            }
             val fixtures = feature.getAsJsonArray("fixtures").map { it.asString }
             if (feature.string("verification") == "reference-fixture") assertTrue(fixtures.isNotEmpty())
             for (fixture in fixtures) {

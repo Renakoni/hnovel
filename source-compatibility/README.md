@@ -14,7 +14,7 @@ The existing `JVM unit tests` CI job runs this task alongside the app tests. It 
 - `rhino-contract`: Rhino executes a synthetic script against a recording **host double**. This validates the test contract, not the real Legado Java bridge, login implementation, or browser.
 - `mixed-contract`: a pinned HTML selector feeds a synthetic script. This does not exercise upstream `AnalyzeRule` routing or the complete `WebBook` pipeline.
 
-The first corpus has 21 executable cases and six synthetic source definitions. `coverage.json` maps the broader target to implementation Issues and future test IDs. **All product implementation statuses are `planned`.** No skipped test is used to make missing product functionality look green. Browser and process isolation explicitly require future Android emulator tests.
+The first corpus has 21 executable cases and six synthetic source definitions. `coverage.json` maps the broader target to implementation Issues and future test IDs. **URL/HTTP/storage have tested production broker backends and remain `partial` for the full script-facing profile; other statuses remain `planned`.** No skipped test is used to make missing product functionality look green. Browser and process isolation explicitly require future Android emulator tests.
 
 `ReferenceRunner` calls the pinned selectors directly. It intentionally does not reimplement the whole rule interpreter as a supposedly independent oracle. The three small JVM shims replace only an Android shrinker annotation, `TextUtils.join`, and disabled debug logging. They do not supply fake parser results.
 
@@ -42,3 +42,7 @@ Mismatch, unknown-operation, missing-resource, duplicate-ID, and broken ownershi
 The synthetic Rhino runner applies an instruction limit to stop accidental fixture loops. This is **not** the future Android execution sandbox, and this task is not an entry point for evaluating untrusted user scripts.
 
 See [the baseline and known limits](../docs/source-compatibility-baseline.md) and [reference licensing](reference/NOTICE.md).
+
+## Broker backend evidence (#85)
+
+Tests now depend on production `source-network`. `ProductRequestContractTest` compiles the six existing synthetic search URLs without network access; `SourceBrokerTest` separately exercises real local MockWebServer requests, policy and state isolation. This is backend contract evidence, not a full upstream AnalyzeUrl/JavaScript/browser oracle. Process binding and script entry points remain pending under #86/#87/#89.
