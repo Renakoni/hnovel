@@ -252,7 +252,10 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
                 size += java.util.Base64.getDecoder().decode(value.jsonPrimitive.content).size
                 require(size <= BridgeWire.MAX_BYTES)
             }
-            val directory = "archives/" + path.substringAfter('/').substringBefore('.')
+            // Each extraction owns a distinct record, even for the same downloaded URL.
+            val directory = "archives/" + java.security.MessageDigest.getInstance("SHA-256")
+                .digest(java.util.UUID.randomUUID().toString().toByteArray(Charsets.UTF_8))
+                .joinToString("") { "%02x".format(it.toInt() and 255) }
             val record = buildJsonObject {
                 put("url", original.getValue("url")); put("finalUrl", original.getValue("finalUrl")); put("files", files)
             }

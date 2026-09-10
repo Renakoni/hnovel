@@ -10,6 +10,7 @@ fun interface HostBridge { fun call(name: String, args: List<JsonElement>): Json
 private class BridgeRejected(value: Any) : JavaScriptException(value, "host-bridge", 1)
 
 internal val bridgeLimitKey = Any()
+internal val scriptLibraryKey = Any()
 
 private class ScriptBridge(private val bridge: HostBridge, private val rules: ScriptRuleHelpers, private val requests: ScriptRequestTemplates, archives: ArchiveDecoder) {
     private val resources = ScriptResources(bridge, requests, archives)
@@ -146,6 +147,7 @@ class RhinoScriptEngine(private val bridge: HostBridge, private val limits: Scri
                 if (Thread.currentThread().isInterrupted) throw ScriptCancelled()
                 val realm = library?.realm ?: ScriptRealm(context)
                 ScriptRealm.install(context, realm)
+                if (library != null) context.putThreadLocal(scriptLibraryKey, library)
                 val scope = if (library == null) realm.global else {
                     val shared = library.scope ?: NativeObject().apply {
                         prototype = realm.global

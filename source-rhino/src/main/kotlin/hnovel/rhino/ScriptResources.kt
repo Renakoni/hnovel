@@ -47,7 +47,8 @@ internal class ScriptResources(private val bridge: HostBridge, private val reque
                 bytes.toString(Charset.forName(ScriptText.charset(bytes, fileSample = true)))
             }
             val value = JsonPrimitive(result)
-            if (value.toString().length > limit) throw ResultTooLarge()
+            // Use the actual bridge serializer before the destructive consume step.
+            BoundedJsonResult(limit).encode(result)
             bridge.call("java.deleteFile", args)
             return value
         }

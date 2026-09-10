@@ -430,6 +430,29 @@ class IsolatedExecutionInstrumentedTest {
         } finally { executor.close() }
     }
 
+    @Test fun oversizedDomMutationDiscardsRetainedLibraryStateAcrossBinderCalls() = runBlocking {
+        val authority = ExecutionAuthority()
+        val executor = AndroidIsolatedExecutor(context, authority)
+        val id = authority.issue("dom-reset", "legado", "1")
+        val limits = ExecutionLimits(timeoutMillis = 15000)
+        val library = "var saved={};var counter={value:0};"
+        fun task(code: String) = ExecutionTask.Script(code, libraryCode = library,
+            result = JsonPrimitive("<p>A</p>"))
+        try {
+            repeat(2) {
+                assertEquals(ExecutionResult.Success("1"), executor.execute(id, task("""
+                    saved.node=java.getElements('p').first();saved.alias=saved.node;
+                    saved.node.append(new Array(60001).join('x'));++counter.value
+                """), limits))
+                assertEquals(ExecutionResult.Failure(FailureCode.OutputLimit), executor.execute(id, task("""
+                    try{saved.node.append(new Array(10001).join('x'))}catch(e){}
+                """), limits))
+                assertEquals(ExecutionResult.Success("[\"undefined\",\"undefined\",0]"), executor.execute(id,
+                    task("[typeof saved.node,typeof saved.alias,counter.value]"), limits))
+            }
+        } finally { executor.close() }
+    }
+
     @Test fun sharedJsLibrarySurvivesBinderCallsAndResetsAfterRetirement() = runBlocking {
         val authority = ExecutionAuthority()
         val executor = AndroidIsolatedExecutor(context, authority)

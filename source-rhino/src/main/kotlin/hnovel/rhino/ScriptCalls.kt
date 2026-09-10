@@ -9,9 +9,16 @@ internal object ScriptCalls {
             try {
                 val limit = cx.getThreadLocal(bridgeLimitKey) as Int
                 BoundedJsonResult(limit).encode(ScriptRealm.current(cx).arrayIn(active, args))
-                val result = action(cx, active, args)
-                BoundedJsonResult(limit).encode(result)
-                result
+                try {
+                    val result = action(cx, active, args)
+                    BoundedJsonResult(limit).encode(result)
+                    result
+                } catch (large: ResultTooLarge) {
+                    // Once native data code has run, aliases may refer to a mutated tree.
+                    // Discard its entire realm, including when a nested rule catches the error.
+                    (cx.getThreadLocal(scriptLibraryKey) as? ScriptLibrary)?.discardState()
+                    throw large
+                }
             } catch (large: ResultTooLarge) { throw large }
             catch (unsupported: UnsupportedResult) { throw unsupported }
             catch (cancelled: java.util.concurrent.CancellationException) { throw cancelled }

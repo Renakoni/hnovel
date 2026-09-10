@@ -11,6 +11,33 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 class ResourceBridgeTest {
+    @Test fun consumingAnExtractionCannotDeleteAnotherPublishedBetweenReadAndDelete() = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            val base = server.url("/").toString()
+            SourceBroker(folder.root.toPath()).use { sessions ->
+                val session = sessions.open(SourceScope("fixture","archive","legado"),listOf(NetworkGrant(base,true)))
+                SourceExecutionBroker(authority.issue("archive","legado","1","fixture"),authority,session,ExecutionLimits(),base).use { first ->
+                    SourceExecutionBroker(authority.issue("archive","legado","1","fixture"),authority,session,ExecutionLimits(),base).use { second ->
+                        val path = first.call("java.downloadFile",listOf(JsonPrimitive("4142"),JsonPrimitive("${base}data,{\"type\":\"zip\"}")))
+                        val directory = first.call("resource.storeArchive",listOf(path,buildJsonObject { put("a.txt","QQ==") }))
+                        var newer: JsonElement = JsonNull
+                        val wire = ExecutionWire.encode(first.identity,ExecutionTask.Script("java.getTxtInFolder($directory)",baseUrl=base),first.limits)
+                        val result = WorkerMain.executeSerialized(wire.toString(Charsets.UTF_8),HostBridge { name,args -> runBlocking {
+                            first.call(name,args).also { if(name=="resource.readArchive") {
+                                newer=second.call("resource.storeArchive",listOf(path,buildJsonObject { put("a.txt","Qg==") }))
+                            } }
+                        } })
+                        assertEquals(ExecutionResult.Success("\"A\""),ExecutionWire.decodeResult(result.toByteArray()))
+                        assertNotEquals(directory,newer)
+                        assertEquals(JsonNull,first.call("resource.readArchive",listOf(directory)))
+                        assertEquals(buildJsonObject { put("a.txt","Qg==") },second.call("resource.readArchive",listOf(newer)))
+                        assertEquals(ExecutionResult.Success("\"B\""),script(second,"java.getTxtInFolder($newer)",base))
+                    }
+                }
+            }
+        }
+    }
     @Test fun extractedDirectoriesAreScopedAtomicAndConsumedAfterTextRead() = runBlocking {
         MockWebServer().use { server ->
             server.start()

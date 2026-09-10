@@ -13,7 +13,7 @@ not unrestricted access to the reference application's Java/Android objects.
 | Text conversion | t2s/s2t use quick-transfer-core 0.2.16 and the pinned exclusion dictionary | ScriptTextTest; native Android fixture |
 | File encodings | Worker-local pinned ICU detection; readTxtFile explicit charset wins, omitted charset uses the reference file sample | ScriptTextTest; ResourceBridgeTest |
 | Fonts | queryTTF/queryBase64TTF accept byte arrays, Base64 and HTTP(S) URLs; five QueryTTF data methods and replaceFont support supplementary codepoints and filtering | ScriptFontsTest: generated triangle fonts and invalid handles; native Android fixture |
-| Archives | ZIP/RAR/7z byte/string entry extraction, unzipFile/unrarFile/un7zFile/unArchiveFile and getTxtInFolder | ArchiveDecoderTest, ResourceBridgeTest; real isolated libarchive on API 24/35 |
+| Archives | ZIP/RAR/7z byte/string entry extraction, unzipFile/unrarFile/un7zFile/unArchiveFile and getTxtInFolder | ArchiveDecoderTest, ResourceBridgeTest, ScriptResourceConsumptionTest; real isolated libarchive on API 24/35 |
 | Metadata | Field getters/setters, lazy variableMap, 10,000-character small/big store split, explicit nullable writes, metadata changes across script stages and wire, author/display/kind/filename/URL helpers and detached conversion snapshots | MetadataContractTest, ScriptMetadataTest, MetadataWireTest, WorkerRuleTest; real Binder fixture |
 | Responses | Original signed bytes, in-memory streams, all Connection.Response method names and data overloads, mutable headers/cookies, parse/buffer/consumption state, declared vs detected charset, consumed StrResponse raw body and response metadata | ResponseContractTest compares pinned Jsoup with MockWebServer; ScriptResponseTest; real Binder fixture |
 | DOM | Pinned Node/Element/Document/Elements data and mutation methods, scalar/collection/DOM overloads, callbacks, attributes/dataset, parser/output settings, forms/key-values, tracked ranges and node kinds | DomContractTest compares Jsoup mutations, callbacks and form data; ScriptDomTest, ScriptRuleHelpersTest; real Binder fixture |
@@ -46,13 +46,17 @@ Absolute paths, traversal, backslashes, drive prefixes, duplicates and oversized
 content fail. Android also rejects links, special entries and encrypted entries.
 The portable ZIP decoder treats entries as data, with no filesystem extraction.
 
-Extraction publishes one account-storage record under `/archives/<digest>`.
+Extraction publishes one account-storage record under `/archives/<unique-token>`.
+Each extraction gets its own opaque token, even for the same resource URL;
+consuming one cannot delete another extraction published between its read and delete.
 Quota failure cannot commit a directory prefix. Individual child paths are
 logical keys within that record. Reads recheck original and final origin grants;
 the execution authority guards all commits. Neither a path nor metadata can
 change source/profile/account identity. getTxtInFolder joins immediate files with
 newlines and deletes the directory only after successful decoding and size
-checks. Nested folders fail visibly, matching the nonrecursive reference helper.
+checks using the actual bridge serializer, including Unicode escaping. Consumption
+is not rolled back if later script execution or final result serialization fails.
+Nested folders fail visibly, matching the nonrecursive reference helper.
 
 readTxtFile intentionally preserves the pinned file detector's unusual sample:
 up to 8000 negative bytes with ASCII skipped. Entry-string helpers detect the
@@ -73,11 +77,20 @@ rule tasks also return changed `book`/`chapter` JSON snapshots (null means no
 metadata change). The host decides when to persist these outputs; source and
 book identity still come from its execution ticket. A standalone script retains its existing
 JSON-result contract; it does not implicitly persist metadata or variables.
+toSearchBook/toBook copies inherit big values into independent maps and own their
+write sets. Changing a converted object cannot emit persistence writes for the
+original book. This detached snapshot contract intentionally differs from the
+reference application's URL-keyed shared big-variable storage.
 
 DOM handles serialize as markup through bounded JSON and can feed subsequent
 selectors. Other JSON objects retain their original data types. Worker-owned
 Jsoup/OkHttp/stream values stay behind native JS facades; no Java wrapper,
 host client, descriptor, socket or reflection object is exposed.
+If a native data method exceeds its size budget after entering the operation,
+its owning library drops the complete scope/realm, including retained aliases;
+the next invocation reinitializes the library scripts. Individual native mutations
+are not rolled back. Pre-argument validation failures and pure crypto budget
+failures preserve the existing valid library state.
 
 ## Data interface semantics and explicit exclusions
 
@@ -128,6 +141,7 @@ fixture was run. The generated fonts/archives are public synthetic data; their
 generator is recorded alongside the files. Tests establish these concrete
 contracts, not universal Legado compatibility or an absolute sandbox.
 
-Publication validation: 89 Rhino, 40 execution, 10 rules, 20 network and 43
-compatibility JVM tests pass (202 total). Debug and AndroidTest APKs build;
-the real isolated-service suite passes 20 tests on each of API 24 and API 35.
+Publication validation: 92 Rhino, 41 execution, 10 rules, 20 network and 43
+compatibility JVM tests pass (206 total). Debug and AndroidTest APKs build;
+the real isolated-service suite passes 21 tests on each of API 24 and API 35,
+including retained-library recovery after an oversized DOM mutation.

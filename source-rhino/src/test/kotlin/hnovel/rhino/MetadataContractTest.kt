@@ -12,6 +12,20 @@ class MetadataContractTest {
         assertTrue(result.toString(), result is ScriptResult.Success)
         return (result as ScriptResult.Success).json
     }
+
+    @Test fun convertedBooksHaveIndependentBigValuesAndPersistenceWrites() {
+        val context = RuleContext("a", bookBigVariables=mapOf("kept" to "original"))
+        val frame = ScriptFrame("a", "legado", ruleContext=context)
+        assertEquals("[\"original\",\"original\",\"search\",\"copy\",\"\"]", run("""
+            var search=book.toSearchBook(),copy=book.toBook(),inherited=search.getBigVariable('kept');
+            search.putBigVariable('kept','search');copy.putBigVariable('kept','copy');
+            search.putVariable('large',new Array(10001).join('x'));
+            [inherited,book.getBigVariable('kept'),search.getBigVariable('kept'),copy.getBigVariable('kept'),book.getVariable('large')]
+        """,frame))
+        assertEquals(mapOf("kept" to "original"), context.bookBigValues)
+        assertTrue(context.bookBigWrites.isEmpty())
+        assertTrue(context.bookWrites.isEmpty())
+    }
     @Test fun smallBigVariablesMoveDeleteAndInitializeLazilyAcrossStages() {
         val context = RuleContext("a")
         val frame = ScriptFrame("a", "legado", ruleContext=context,

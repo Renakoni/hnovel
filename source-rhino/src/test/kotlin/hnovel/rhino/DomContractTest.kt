@@ -54,6 +54,22 @@ class DomContractTest {
         }
     }
 
+    @Test fun failedNativeMutationDiscardsAllRetainedAliasesAndReinitializesLibrary() {
+        val initial = frame.copy(variables=mapOf("result" to JsonPrimitive("<p>A</p>")))
+        ScriptLibrary("a", "legado", "var saved={};var counter={value:0};").use { library ->
+            repeat(2) {
+                assertEquals(ScriptResult.Success("1"), engine.evaluate(
+                    "saved.node=java.getElements('p').first();saved.alias=saved.node;counter.value++;1", initial, library))
+                val small = RhinoScriptEngine(HostBridge { _, _ -> error("No host") }, ScriptLimits(maxBridgeChars=128))
+                // The argument fits; the resulting DOM (including its document) does not.
+                assertEquals(FailureCode.ResultTooLarge, (small.evaluate(
+                    "try{saved.node.append(new Array(111).join('x'))}catch(e){}", initial.copy(variables=emptyMap()), library) as ScriptResult.Failure).code)
+                assertEquals(ScriptResult.Success("[\"undefined\",\"undefined\",0]"), engine.evaluate(
+                    "[typeof saved.node,typeof saved.alias,counter.value]", initial, library))
+            }
+        }
+    }
+
     @Test fun formDataAndTrackedRangesHaveUsableDataFacades() {
         check(buildJsonArray { add("chapter");add("one");add(true);add(1);add("undefined") }, """
             var parser=java.getElements('section').first().ownerDocument().parser().setTrackPosition(true);

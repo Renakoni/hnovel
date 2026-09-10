@@ -122,7 +122,7 @@ internal object ScriptMetadata {
                 require(a.isEmpty())
                 val fields = "name author kind bookUrl origin originName type wordCount latestChapterTitle coverUrl intro tocUrl originOrder variable infoHtml tocHtml".split(' ')
                 val snapshot = buildJsonObject { fields.forEach { key -> put(key, Json.parseToJsonElement(BoundedJsonResult(context.getThreadLocal(bridgeLimitKey) as Int).encode(ScriptableObject.getProperty(result, key)))) } }
-                create(context, active, snapshot, null, false, mutableMapOf(), mutableMapOf(), bigVariables, bigWrites, chineseConverter)
+                create(context, active, snapshot, null, false, mutableMapOf(), mutableMapOf(), bigVariables.toMutableMap(), mutableMapOf(), chineseConverter)
             }, ScriptableObject.DONTENUM)
             method("getCustomVariable") { a -> require(a.isEmpty()); map; JsonPrimitive((variables["custom"] ?: bigVariables["custom"]).orEmpty()) }
             method("putCustomVariable") { a -> require(a.size == 1); put("custom", a[0].takeUnless { it == JsonNull }?.jsonPrimitive?.content); JsonNull }
