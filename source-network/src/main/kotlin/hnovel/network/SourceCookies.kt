@@ -62,5 +62,12 @@ internal class SourceCookies(private val storage: SourceStorage, private val inv
     }
 
     private fun key(cookie: Cookie) = "${cookie.name}\n${cookie.domain}\n${cookie.path}"
+
+    @Synchronized fun snapshot(): List<Pair<String, Cookie>> = cookies.values.toList()
+    @Synchronized fun restoreMemory(snapshot: List<Pair<String, Cookie>>) {
+        cookies.clear()
+        snapshot.forEach { cookies[key(it.second)] = it }
+        invalidateCache()
+    }
 }
 

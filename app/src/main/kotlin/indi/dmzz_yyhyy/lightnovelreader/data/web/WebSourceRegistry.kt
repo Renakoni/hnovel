@@ -45,7 +45,28 @@ class WebSourceRegistry internal constructor(private val dispatcher: CoroutineDi
                 publish()
             }
         }
-        return SourceRegistration(snapshot) { remove(entry) }
+        return SourceRegistration(snapshot) { remove(entry) }.also { it.owner = entry }
+    }
+
+    /** Durable commit precedes publication under the same lock as resolve/remove. No missing-source gap. */
+    internal fun replace(expected: SourceRegistration, source: WebBookDataSource, metadata: SourceMetadata,
+        ticket: hnovel.execution.ExecutionIdentity, persist: () -> Unit): SourceRegistration {
+        require(source.id == metadata.id && metadata.id == expected.metadata.id)
+        require(ticket.sourceId == metadata.id.id && ticket.namespace == metadata.id.namespace &&
+            ticket.revision == metadata.revision && ticket.accountGeneration == metadata.accountGeneration)
+        val snapshot = metadata.copy(capabilities = Collections.unmodifiableSet(metadata.capabilities.toSet()))
+        val previous: Entry
+        val next: Entry
+        synchronized(lock) {
+            previous = checkNotNull(entries[metadata.id])
+            check(previous === expected.owner) { "Source registration changed" }
+            next = Entry(snapshot, { source }, source)
+            executionAuthority.replaceSource(ticket) { persist() }
+            entries[metadata.id] = next
+            publish()
+        }
+        previous.retire()
+        return SourceRegistration(snapshot) { remove(next) }.also { it.owner = next }
     }
 
     fun register(source: WebBookDataSource, metadata: SourceMetadata): SourceRegistration {

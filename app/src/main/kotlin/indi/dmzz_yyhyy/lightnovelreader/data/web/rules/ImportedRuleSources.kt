@@ -31,7 +31,6 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
     private val directory = File(context.filesDir, "rule-sources")
     val definitions by lazy { SourceDefinitionStore(File(directory, "definitions").toPath()) }
     val importer by lazy { SourceDefinitionImporter(definitions) }
-    private val broker by lazy { SourceBroker(File(directory, "runtime").toPath()) }
     private val committed = AtomicFile(File(directory, "active.json"))
     private val lock = Mutex()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -47,7 +46,7 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
                     val current = active[id] ?: continue
                     if (current.registration.metadata.accountGeneration != generation) {
                         current.registration.unregister()
-                        current.session?.close()
+                        current.broker?.close()
                         active[id] = restoreBinding(current.installed)
                     }
                 }
@@ -107,8 +106,48 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
         val old = active[source] ?: return@withLock
         save(active.filterKeys { it != source }.values.map { it.installed })
         old.registration.unregister()
-        old.session?.close()
+        old.broker?.close()
         active.remove(source)
+    } }
+
+    suspend fun installedSources(): List<InstalledRuleSource> = withContext(Dispatchers.IO) {
+        restore()
+        lock.withLock { active.values.map { InstalledRuleSource(it.installed.definition,
+            it.installed.origins, it.installed.previous?.definition) } }
+    }
+
+    /** Validated candidate is compared again at commit; remove/account changes cannot resurrect it. */
+    internal suspend fun replaceRevision(expected: SourceDefinition, next: SourceDefinition, origins: List<NetworkGrant>,
+        generation: Long) = withContext(Dispatchers.IO) { lock.withLock {
+        check(!restorationFailed)
+        val id = id(expected)
+        val old = checkNotNull(active[id]) { "Source is not installed" }
+        check(old.installed.definition == expected) { "Installed revision changed" }
+        require(next.sourceId == expected.sourceId && next.profile == expected.profile && next.enabled)
+        require(origins.isNotEmpty() && origins.size <= 32)
+        val installed = InstalledSource(next, origins.map { it.copy(headers = it.headers.toMap()) },
+            if (next == expected) old.installed.previous else SavedRevision(expected, old.installed.origins))
+        accounts.withCurrent(id) { account ->
+            check(account.generation == generation) { "Account changed during validation" }
+            val broker = SourceBroker(File(directory, "runtime").toPath())
+            val session = try { broker.open(SourceScope(id.namespace, id.id, next.profile, generation), installed.origins) }
+                catch (failure: Exception) { broker.close(); throw failure }
+            val ticket = authority.issue(id.id, next.profile, next.contentDigest, id.namespace, generation)
+            try {
+                val source = RuleSource(next, ticket, authority, session, runner)
+                val metadata = old.registration.metadata.copy(item = old.registration.metadata.item.copy(name = next.displayName),
+                    revision = next.contentDigest, capabilities = old.registration.metadata.capabilities.let {
+                        if (source.canSearch) it + SourceCapability.Search else it - SourceCapability.Search
+                    })
+                val registration = registry.replace(old.registration, RuleWebBookDataSource(id, source), metadata, ticket) {
+                    // This runs under the authority fence: old Cookie commits cannot land after the snapshot.
+                    old.session?.let(session::inheritCookies)
+                    save(active.values.map { if (it === old) installed else it.installed })
+                }
+                active[id] = Binding(installed, registration, broker, session)
+                old.broker?.close()
+            } catch (failure: Exception) { authority.revoke(ticket); broker.close(); throw failure }
+        }
     } }
 
     private fun restoreBinding(installed: InstalledSource): Binding = try { bind(installed) }
@@ -123,17 +162,19 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
         require(definition.enabled && definition.profile in setOf(LEGADO_PROFILE, EXTENSION_PROFILE))
         val id = id(definition)
         val generation = account.generation
-        val session = broker.open(SourceScope(id.namespace, id.id, definition.profile, generation), installed.origins)
+        val broker = SourceBroker(File(directory, "runtime").toPath())
+        val session = try { broker.open(SourceScope(id.namespace, id.id, definition.profile, generation), installed.origins) }
+            catch (failure: Exception) { broker.close(); throw failure }
         val ticket = authority.issue(id.id, definition.profile, definition.contentDigest, id.namespace, generation)
         val source = try { RuleSource(definition, ticket, authority, session, runner) }
-            catch (failure: Exception) { authority.revoke(ticket); session.close(); throw failure }
+            catch (failure: Exception) { authority.revoke(ticket); broker.close(); throw failure }
         val metadata = SourceMetadata(WebDataSourceItem(id, definition.displayName, "Imported source"), buildSet {
             addAll(listOf(SourceCapability.BookInformation, SourceCapability.Directory, SourceCapability.ChapterContent, SourceCapability.Images))
             if (source.canSearch) add(SourceCapability.Search)
         }, revision = definition.contentDigest, accountGeneration = generation)
         val registration = try { beforePublish(); registry.register(RuleWebBookDataSource(id, source), metadata) }
-            catch (failure: Exception) { source.close(); session.close(); throw failure }
-        Binding(installed, registration, session)
+            catch (failure: Exception) { source.close(); broker.close(); throw failure }
+        Binding(installed, registration, broker, session)
     }
 
     private fun save(installed: List<InstalledSource>) {
@@ -149,15 +190,18 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
     /** Stop process-owned registrations without changing the durable activation snapshot. */
     internal suspend fun stop() = lock.withLock {
         scope.cancel()
-        active.values.forEach { it.registration.unregister() }
+        active.values.forEach { it.registration.unregister(); it.broker?.close() }
         active.clear()
-        broker.close()
     }
 
-    @Serializable private data class InstalledSource(val definition: SourceDefinition, val origins: List<NetworkGrant>)
-    private data class Binding(val installed: InstalledSource, val registration: SourceRegistration, val session: hnovel.network.SourceSession?)
+    @Serializable private data class SavedRevision(val definition: SourceDefinition, val origins: List<NetworkGrant>)
+    @Serializable private data class InstalledSource(val definition: SourceDefinition, val origins: List<NetworkGrant>, val previous: SavedRevision? = null)
+    private data class Binding(val installed: InstalledSource, val registration: SourceRegistration, val broker: SourceBroker?,
+        val session: hnovel.network.SourceSession? = null)
     companion object {
         private const val MAX_SNAPSHOT_BYTES = 16 * 1024 * 1024
         fun id(definition: SourceDefinition) = Identifier("rules", definition.sourceId)
     }
 }
+
+data class InstalledRuleSource(val definition: SourceDefinition, val origins: List<NetworkGrant>, val previous: SourceDefinition?)
