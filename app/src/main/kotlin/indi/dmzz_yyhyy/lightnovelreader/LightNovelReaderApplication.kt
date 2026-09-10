@@ -25,9 +25,10 @@ import javax.inject.Inject
 @HiltAndroidApp
 class LightNovelReaderApplication : Application(), Configuration.Provider, coil3.SingletonImageLoader.Factory {
     @Inject lateinit var sourceImageInterceptor: indi.dmzz_yyhyy.lightnovelreader.data.image.SourceImageInterceptor
+    @Inject lateinit var importedRuleSources: indi.dmzz_yyhyy.lightnovelreader.data.web.rules.ImportedRuleSources
 
     override fun newImageLoader(context: Context): coil3.ImageLoader = coil3.ImageLoader.Builder(context)
-        .components { add(sourceImageInterceptor) }
+        .components { add(sourceImageInterceptor); add(indi.dmzz_yyhyy.lightnovelreader.data.image.SourceImageFetcher.Factory()) }
         .build()
 
     private val coroutineScope = CoroutineScope(Dispatchers.IO)
@@ -63,6 +64,7 @@ class LightNovelReaderApplication : Application(), Configuration.Provider, coil3
         // We have to ensure the plugin load before the activity start up, so we use run blocking here though it will block the main thread
         runBlocking {
             pluginManager.initAllPlugin()
+            importedRuleSources.restore()
         }
         coroutineScope.launch(Dispatchers.IO) {
             matomoAnalytics.initialize()

@@ -18,7 +18,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 internal class IsolatedWorkerConnection(private val context: Context, val authority: ExecutionAuthority) {
     val connected = CompletableDeferred<IIsolatedExecutionService>()
     val died = CompletableDeferred<Unit>()
-    var retainsLibraries = false
+    var lastIdentity: ExecutionIdentity? = null
     // Inspected only under AndroidIsolatedExecutor.workerLock. Keep the most recent ticket per
     // source lifetime so invalidated sessions cannot leave reusable library state in the worker.
     private val libraryTickets = LinkedHashMap<List<String>, ExecutionIdentity>(16, 0.75f, true)
@@ -27,7 +27,8 @@ internal class IsolatedWorkerConnection(private val context: Context, val author
             identity.accountGeneration.toString())] = identity
         if (libraryTickets.size > 16) libraryTickets.entries.iterator().apply { next(); remove() }
     }
-    fun hasRevokedLibrary() = libraryTickets.values.any { !authority.accepts(it) }
+    fun hasRevokedOwner() = lastIdentity?.let { !authority.accepts(it) } == true ||
+        libraryTickets.values.any { !authority.accepts(it) }
     private val closed = AtomicBoolean()
     @Volatile var remote: IIsolatedExecutionService? = null
         private set

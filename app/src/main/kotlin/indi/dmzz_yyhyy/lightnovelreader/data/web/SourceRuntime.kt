@@ -1,5 +1,7 @@
 package indi.dmzz_yyhyy.lightnovelreader.data.web
 
+import io.nightfish.lightnovelreader.api.image.SourceImageProvider
+
 import android.content.Context
 import android.util.Log
 import androidx.navigation.NavController
@@ -92,6 +94,12 @@ class SourceRuntime internal constructor(
     fun imageHeaders(): Map<String, String> {
         checkAvailable()
         return source.imageHeader.toMap()
+    }
+
+    val hasImageProvider get() = source is SourceImageProvider
+
+    suspend fun imageBytes(bookId: String, url: String, cover: Boolean) = execute {
+        (source as SourceImageProvider).getImage(bookId, url, cover)
     }
 
     suspend fun getBookInformation(bookId: String, priority: WebDataSourcePriority = WebDataSourcePriority.Default) =

@@ -169,7 +169,7 @@ fun NavGraphBuilder.bookDetailDestination() {
                     }?.onErr { error -> snackbarHostState.showSnackbar(error.title) }
                 }
             },
-            onClickCover = { uri -> navController.navigateToImageViewerDialog(uri, bookId) },
+            onClickCover = { uri -> navController.navigateToImageViewerDialog(uri, bookId, cover = true) },
             onClickMarkAsRead = {
                 navController.navigateToMarkAllChaptersAsReadDialog(bookId)
             }

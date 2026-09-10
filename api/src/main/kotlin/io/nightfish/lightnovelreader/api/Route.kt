@@ -277,7 +277,8 @@ object Route {
         @Serializable
         data class ImageViewerDialog(
             val imageUri: String,
-            val bookId: String
+            val bookId: String,
+            val cover: Boolean = false
         )
     }
     /** 有可用更新提示对话框路由 */

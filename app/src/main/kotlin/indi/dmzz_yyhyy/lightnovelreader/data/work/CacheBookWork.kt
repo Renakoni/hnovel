@@ -1,5 +1,15 @@
 package indi.dmzz_yyhyy.lightnovelreader.data.work
 
+import android.net.Uri
+import coil3.SingletonImageLoader
+import coil3.request.ImageRequest
+import coil3.request.CachePolicy
+import coil3.request.ErrorResult
+import indi.dmzz_yyhyy.lightnovelreader.data.book.SourceBookId
+import indi.dmzz_yyhyy.lightnovelreader.data.image.SourceImage
+import indi.dmzz_yyhyy.lightnovelreader.data.content.ContentJsonDecoder
+import io.nightfish.lightnovelreader.api.content.component.ImageComponentData
+
 import android.content.Context
 import android.util.Log
 import androidx.hilt.work.HiltWorker
@@ -26,7 +36,8 @@ class CacheBookWork @AssistedInject constructor(
     @Assisted workerParams: WorkerParameters,
     private val localBookDataSource: LocalBookDataSource,
     private val downloadProgressRepository: DownloadProgressRepository,
-    private val bookRepository: BookRepository
+    private val bookRepository: BookRepository,
+    private val contentDecoder: ContentJsonDecoder,
 ) : CoroutineWorker(appContext, workerParams) {
     companion object {
         private const val TAG = "CacheBookWork"
@@ -54,6 +65,11 @@ class CacheBookWork @AssistedInject constructor(
                             volume.chapters.map { it.id }.forEach { chapterId ->
                                 val chapter = bookRepository.getChapterContentFlow(chapterId, bookId).last().bind()
                                 localBookDataSource.updateChapterContent(chapter)
+                                val images = mutableListOf<Uri>()
+                                contentDecoder.getDataFromJsonObject(chapter.content) { component ->
+                                    if (component is ImageComponentData) images += component.uri
+                                }
+                                for (image in images.distinct()) cacheImage(book, image)
                                 count ++
                                 downloadItem.progress = count.toFloat() / total
                             }
@@ -64,6 +80,7 @@ class CacheBookWork @AssistedInject constructor(
                     coroutineBinding {
                         val bookInformation = bookRepository.getBookInformationFlow(bookId).last().bind()
                         localBookDataSource.updateBookInformation(bookInformation)
+                        if (bookInformation.coverUri != Uri.EMPTY) cacheImage(book, bookInformation.coverUri, cover = true)
                     }
                 }
             if (result.isErr) {
@@ -81,5 +98,15 @@ class CacheBookWork @AssistedInject constructor(
             Log.e(TAG, "Cache failed for ${book.fileKey}: ${failure.javaClass.simpleName}")
             return bookWorkFailure("cache_failed", book)
         }
+    }
+
+    private suspend fun cacheImage(book: SourceBookId, uri: Uri, cover: Boolean = false) {
+        val request = ImageRequest.Builder(applicationContext)
+            .data(SourceImage(book, uri.toString(), cover))
+            .memoryCachePolicy(CachePolicy.DISABLED)
+            .diskCachePolicy(CachePolicy.ENABLED)
+            .build()
+        val result = SingletonImageLoader.get(applicationContext).execute(request)
+        if (result is ErrorResult) throw result.throwable
     }
 }

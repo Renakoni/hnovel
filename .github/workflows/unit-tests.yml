@@ -33,7 +33,7 @@ jobs:
       - name: Make Gradle wrapper executable
         run: chmod +x ./gradlew
       - name: Run JVM unit tests
-        run: ./gradlew :app:testDebugUnitTest :source-rules:test :source-network:test :source-import:test :source-execution:test :source-compatibility:test :source-rhino:test --console=plain --stacktrace --max-workers=2
+        run: ./gradlew :app:testDebugUnitTest :source-rules:test :source-network:test :source-import:test :source-execution:test :source-compatibility:test :source-rhino:test :source-content:test --console=plain --stacktrace --max-workers=2
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -54,6 +54,8 @@ jobs:
             source-compatibility/build/test-results/test
             source-compatibility/build/reports/source-compatibility
             source-rhino/build/reports/tests/test
+            source-content/build/test-results/test
+            source-content/build/reports/tests/test
             source-rhino/build/test-results/test
           if-no-files-found: ignore
 

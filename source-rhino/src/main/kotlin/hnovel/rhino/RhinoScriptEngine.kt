@@ -25,10 +25,16 @@ private class ScriptBridge(private val bridge: HostBridge, private val rules: Sc
                     return fonts.call(cx, scope, name.substringAfter("java."), args)
                 val data = BoundedJsonResult(maxChars).encode(realm.arrayIn(scope, args.copyOf()))
                 val arguments = Json.parseToJsonElement(data).jsonArray
+                if (name == "response.view") {
+                    require(arguments.size == 1)
+                    ScriptResponses.validate(arguments.single(), maxChars)
+                    return ScriptResponses.create(cx, scope, arguments.single().jsonObject, false)
+                }
                 if (name == "java.toURL") return ScriptUrls.create(cx, scope, arguments)
                 if (name.removePrefix("java.") in ScriptCryptoObjects.factories && name.startsWith("java."))
                     return ScriptCryptoObjects.create(cx, scope, name.removePrefix("java."), arguments)
-                val result = if (name == "java.readTxtFile") resources.text(cx, arguments)
+                val result = if (name == "request.prepare") JsonArray(requests.prepare(cx, "java.connect", arguments))
+                else if (name == "java.readTxtFile") resources.text(cx, arguments)
                 else if (name.startsWith("java.") && name.substringAfter("java.") in resources.methods) resources.archive(cx, name.substringAfter("java."), arguments)
                 else if (rules.supports(name, arguments)) rules.call(cx, name, arguments)
                 else if (pureTool) ScriptTools.call(name.removePrefix("java."), arguments) else bridge.call(name, requests.prepare(cx, name, arguments))

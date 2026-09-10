@@ -27,7 +27,7 @@ class ImageDownloader(
     var count = 0
         private set
 
-    data class Task(val file: File, val uri: Uri)
+    data class Task(val file: File, val uri: Uri, val cover: Boolean = false)
 
     suspend fun run(): ListenableWorker.Result = withContext(Dispatchers.IO) {
         Log.i("ImageDownloader", "total tasks: ${tasks.size}")
@@ -71,7 +71,7 @@ class ImageDownloader(
         var lastError: Throwable? = null
 
         repeat(maxRetry) { attempt ->
-            val result = ImageUtils.uriToBitmap(task.uri, context, book.storageKey)
+            val result = ImageUtils.uriToBitmap(task.uri, context, book.storageKey, task.cover)
             var shouldRetry = false
 
             result

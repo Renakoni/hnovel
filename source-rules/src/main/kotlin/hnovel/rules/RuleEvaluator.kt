@@ -175,10 +175,11 @@ class RuleEvaluator(private val unescapeHtml: Boolean = true, private val script
                     }
                 }
                 else -> {
-                    val selector = AnalyzeByJSoup(body)
+                    val selector = AnalyzeByJSoup(if (input is RuleValue.Node && input.kind == InputKind.Html)
+                        input.htmlElement() else body)
                     val expression = if (mode == "css") "@CSS:$local" else local
                     when {
-                        elements -> RuleValue.Items(selector.getElements(expression).map { RuleValue.Node(it.outerHtml(), InputKind.Html) })
+                        elements -> RuleValue.Items(selector.getElements(expression).map { RuleValue.Node(it.outerHtml(), InputKind.Html, it.parent()?.tagName()) })
                         list -> RuleValue.Items(selector.getStringList(expression).map(RuleValue::Text))
                         output == OutputKind.Url -> RuleValue.Text(selector.getString0(expression))
                         else -> selector.getString(expression)?.let(RuleValue::Text) ?: RuleValue.Empty
