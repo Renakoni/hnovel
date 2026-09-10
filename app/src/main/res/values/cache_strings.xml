@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sources_import_partial">Some sources could not be activated. Successfully activated sources are kept; preview the import again to retry.</string>
+    <string name="settings_clear_reading_cache">Clear reading cache</string>
+    <string name="settings_clear_reading_cache_desc">Delete downloaded chapters and images. Bookshelves, reading history, catalogs and login remain saved. Reading may download content again.</string>
+    <string name="settings_cache_cleared">Reading cache cleared</string>
+    <string name="settings_cache_clear_failed">Could not finish clearing the cache</string>
+</resources>
