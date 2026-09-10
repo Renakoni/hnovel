@@ -61,9 +61,9 @@ class AndroidSourceBrowser @Inject constructor(@ApplicationContext private val c
                                 val key = "browser/storage/$origin"
                                 var stored: StorageResult? = null
                                 current {
-                                    stored = if ("value" in args) session.write(StorageRequest(StorageArea.Account, key,
+                                    stored = if ("value" in args) session.write(StorageRequest(StorageArea.Config, key,
                                         args.getValue("value").toString().also { require(it.length <= 32768) }))
-                                    else session.read(StorageRequest(StorageArea.Account, key))
+                                    else session.read(StorageRequest(StorageArea.Config, key))
                                 }
                                 check(stored is StorageResult.Value)
                                 (stored as StorageResult.Value).value ?: "{}"
@@ -96,7 +96,9 @@ class AndroidSourceBrowser @Inject constructor(@ApplicationContext private val c
         var bound = false
         try {
             current()
-            bound = context.bindService(Intent(context, SourceBrowserService::class.java), connection, Context.BIND_AUTO_CREATE)
+            val flags = Context.BIND_AUTO_CREATE or
+                if (options.interactive && Build.VERSION.SDK_INT >= 34) Context.BIND_ALLOW_ACTIVITY_STARTS else 0
+            bound = context.bindService(Intent(context, SourceBrowserService::class.java), connection, flags)
             check(bound)
             remote = withTimeout(15000) { connected.await() }
             remote.start(Json.encodeToString(BrowserJob(request, options)), host)

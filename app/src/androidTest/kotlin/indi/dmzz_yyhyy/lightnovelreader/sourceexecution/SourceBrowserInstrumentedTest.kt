@@ -62,11 +62,15 @@ class SourceBrowserInstrumentedTest {
                 assertTrue(render(a).startsWith("empty:ok:"))
                 assertTrue(render(b).startsWith("empty:ok:"))
                 assertTrue(render(a, "/redirect").startsWith("persisted:ok:"))
-                assertEquals(3, seen.size)
+                a.clearAccount()
+                val next = broker.open(SourceScope("browser-fixture", "A", "legado", 2), grants)
+                assertEquals("", next.cookie(server.url("/").toString()))
+                assertTrue(render(next).startsWith("persisted:ok:"))
+                assertEquals(4, seen.size)
                 assertTrue(seen.elementAt(0).contains("account=alice"))
                 assertTrue(seen.elementAt(1).contains("account=bob"))
-                assertFalse(a.browserCookie(server.url("/").toString()).contains("hidden"))
-                assertTrue(a.cookie(server.url("/").toString()).contains("hidden=server"))
+                assertFalse(next.browserCookie(server.url("/").toString()).contains("hidden"))
+                assertTrue(next.cookie(server.url("/").toString()).contains("hidden=server"))
                 assertEquals(0, denied.requestCount)
                 val name = if (android.os.Build.VERSION.SDK_INT >= 28) "app_webview_source_browser" else "app_webview"
                 assertFalse(File(context.applicationInfo.dataDir, name).exists())
@@ -103,6 +107,10 @@ class SourceBrowserInstrumentedTest {
     @Test fun foregroundLoginPreservesPostResponseAndCommitsOnlyItsOwnCookies(): Unit = runBlocking {
         context.startActivity(android.content.Intent(context, indi.dmzz_yyhyy.lightnovelreader.sourcebrowser.BrowserTestHostActivity::class.java)
             .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+        withTimeout(10000) {
+            val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+            while (automation.rootInActiveWindow?.findAccessibilityNodeInfosByText("Browser test host").orEmpty().isEmpty()) delay(100)
+        }
         MockWebServer().use { server ->
             val posted = CompletableDeferred<Unit>()
             server.dispatcher = object : Dispatcher() {

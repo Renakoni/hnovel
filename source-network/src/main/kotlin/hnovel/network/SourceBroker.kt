@@ -148,7 +148,7 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
             var stage = RequestStage.Queue
             try {
                 validate(snapshot)
-                withTimeout(snapshot.timeoutMillis) {
+                withTimeout(if (snapshot.browser?.interactive == true) 300000 else snapshot.timeoutMillis) {
                     if (snapshot.browser != null) {
                         policy.check(snapshot.url.toHttpUrlOrNull() ?: throw BrokerFailure(RequestStage.Parse, FailureCode.InvalidRequest))
                         browser?.execute(this@SourceSession, snapshot.copy(browser = null), snapshot.browser, guard)
