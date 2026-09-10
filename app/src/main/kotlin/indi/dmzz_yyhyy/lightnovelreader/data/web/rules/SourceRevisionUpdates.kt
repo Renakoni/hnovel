@@ -62,6 +62,12 @@ class SourceRevisionUpdates @Inject constructor(@ApplicationContext context: Con
         replace(before, next, approvedOrigins)
     }
 
+    /** Permissions apply to the installed snapshot, including after rollback or a rejected import. */
+    suspend fun updatePermissions(source: Identifier, approvedOrigins: List<NetworkGrant>) = withContext(Dispatchers.IO) {
+        val before = installed(source)
+        replace(before, before.definition, approvedOrigins)
+    }
+
     suspend fun rollback(source: Identifier, approvedOrigins: List<NetworkGrant>) = withContext(Dispatchers.IO) {
         val before = installed(source)
         val previous = before.previous ?: throw RevisionException(RevisionError.NoPreviousRevision)
