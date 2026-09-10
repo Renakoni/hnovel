@@ -103,7 +103,7 @@ class SourceIdentityRoomTest {
         shelves.addBookIntoBookShelf(1, info(a, "Same title"))
         shelves.addBookIntoBookShelf(1, info(b, "Same title"))
         val reading = local.getUserReadingData(a.storageKey)
-        val context = RuntimeEnvironment.getApplication<Application>()
+        val context = RuntimeEnvironment.getApplication()
         val data = indi.dmzz_yyhyy.lightnovelreader.data.userdata.UserDataRepository(db.userDataDao())
         data.stringUserData("fixture/login").set("retained-login")
         val cache = coil3.disk.DiskCache.Builder().directory(okio.Path.Companion.run {
