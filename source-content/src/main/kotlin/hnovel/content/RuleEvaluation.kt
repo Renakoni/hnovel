@@ -12,22 +12,33 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
     private val session: SourceSession, private val runner: RuleTaskRunner, private val library: String?,
     var bookId: String? = null, var chapterId: String? = null, var book: ScriptState = ScriptState(),
     var chapter: ScriptState = ScriptState(), var baseUrl: String, val keyword: String = "", var page: Int = 1,
-    private val calls: java.util.concurrent.atomic.AtomicInteger = java.util.concurrent.atomic.AtomicInteger()) {
+    private val calls: java.util.concurrent.atomic.AtomicInteger = java.util.concurrent.atomic.AtomicInteger(),
+    private val headerRule: String = "") {
     private val limits = ExecutionLimits(timeoutMillis = 5000, maxOutputBytes = 196608)
 
     fun fork(bookId: String? = this.bookId, chapterId: String? = this.chapterId) =
-        RuleEvaluation(identity, authority, session, runner, library, bookId, chapterId, book.copy(), chapter.copy(), baseUrl, keyword, page, calls)
+        RuleEvaluation(identity, authority, session, runner, library, bookId, chapterId, book.copy(), chapter.copy(), baseUrl, keyword, page, calls, headerRule)
+
+    suspend fun headers(): Map<String, String> {
+        if (headerRule.isBlank()) return emptyMap()
+        val value = if (headerRule.trimStart().startsWith('{')) Json.parseToJsonElement(headerRule)
+            else Json.parseToJsonElement(script(headerRule, RuleValue.Empty, "header").text())
+        return value.jsonObject.mapValues { it.value.jsonPrimitive.content }
+    }
 
     suspend fun value(rule: String, input: RuleValue, field: String, output: OutputKind = OutputKind.Text,
         unescape: Boolean = true): RuleValue {
         currentCoroutineContext().ensureActive()
         if (!authority.accepts(identity)) throw SourceContentException(ContentError.Unavailable, field)
         if (calls.incrementAndGet() > 4096) throw SourceContentException(ContentError.Limit, field)
+        // Resolve before starting the worker; reverse HTTP calls must not re-enter a busy worker.
+        // A header script cannot inherit the header value it is still computing.
+        val requestHeaders = if (field == "header") emptyMap() else headers()
         val task = ExecutionTask.Rule(rule, input, output, RuleLocation(field), bookId, chapterId,
             keyword, page, baseUrl, library, book.inherited + chapter.inherited, book.variables,
             chapter.variables, book.metadata, chapter.metadata, book.bigVariables, chapter.bigVariables,
             unescapeHtml = unescape)
-        val result = SourceExecutionBroker(identity, authority, session, limits, baseUrl, keyword, page).use {
+        val result = SourceExecutionBroker(identity, authority, session, limits, baseUrl, keyword, page, sourceHeaders = requestHeaders).use {
             runner.execute(identity, task, limits, it)
         }
         currentCoroutineContext().ensureActive()
