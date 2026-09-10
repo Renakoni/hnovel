@@ -10,6 +10,7 @@ import kotlinx.serialization.json.*
 class SourceExecutionBroker(val identity: ExecutionIdentity, private val authority: ExecutionAuthority,
     private val session: SourceSession, val limits: ExecutionLimits,
     private val baseUrl: String = "", private val keyword: String = "", private val page: Int = 1,
+    private val sourceHeaders: Map<String, String> = emptyMap(),
     private val allowInteraction: Boolean = false) : AutoCloseable {
     private val lifetime = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var requests = 0
@@ -125,7 +126,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
                         check(it is JsonPrimitive && it.isString)
                         // Use the same bounded JSON parser as other reverse IPC input.
                         headerMap(BridgeWire.arguments("[${it.content}]".toByteArray()).single())
-                    }.orEmpty()
+                    } ?: sourceHeaders
                     val request = compiled(requestNumber, args[0].jsonPrimitive.content, headers)
                     fetch(request, hnovel.rhino.ScriptLimits.DEFAULT_BRIDGE_CHARS).scriptSnapshot(false)
                 }
@@ -184,7 +185,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
         }
     }
 
-    private fun compiled(number: Int, rule: String, headers: Map<String, String> = emptyMap()): BrokerRequest {
+    private fun compiled(number: Int, rule: String, headers: Map<String, String> = sourceHeaders): BrokerRequest {
         val compiled = RequestCompiler().compile("script-$number", rule, baseUrl, keyword, page, headers)
         check(compiled is CompiledRequest.Ready) { "Request requires an unsupported option" }
         return compiled.request
