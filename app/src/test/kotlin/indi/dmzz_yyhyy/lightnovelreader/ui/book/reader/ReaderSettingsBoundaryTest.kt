@@ -60,6 +60,36 @@ class ReaderSettingsBoundaryTest {
         assertEquals(UserDataPath.Reader.FontSize.path, state.fontSizeUserData.path)
         assertEquals(UserDataPath.Reader.EnableHideStatusBar.path, state.enableHideStatusBarUserData.path)
         assertEquals(UserDataPath.Settings.Display.DarkMode.path, state.darkModeKeyUserData.path)
+        assertEquals(false, state.isUsingVolumeKeyFlip)
+        assertEquals(-1f, state.volumeKeyContinuousFlipInterval)
+        assertEquals(0.25f, state.volumeKeyScrollFraction)
+        assertEquals("reader.isUsingVolumeKeyFlip", state.isUsingVolumeKeyFlipUserData.path)
+        assertEquals("reader.volumeKeyScrollFraction", state.volumeKeyScrollFractionUserData.path)
+    }
+
+    @Test
+    fun volumeScrollSettingPersistsAndInvalidStoredValuesFallBack() = runBlocking {
+        val dao = InMemoryUserDataDao()
+        val first = SettingState(UserDataRepository(dao), scope)
+        first.isUsingVolumeKeyFlipUserData.set(true)
+        first.volumeKeyScrollFractionUserData.set(0.6f)
+        val restored = SettingState(UserDataRepository(dao), scope)
+        withTimeout(5_000) {
+            while (!restored.isUsingVolumeKeyFlip || restored.volumeKeyScrollFraction != 0.6f) delay(1)
+        }
+        assertEquals("0.6", dao.get("reader.volumeKeyScrollFraction"))
+        for (raw in listOf("NaN", "Infinity", "-Infinity", "0", "-1", "1.1", "invalid")) {
+            dao.insert("reader.volumeKeyScrollFraction", "reader", "Float", raw)
+            val invalid = SettingState(UserDataRepository(dao), scope)
+            withTimeout(5_000) {
+                while (first.volumeKeyScrollFraction != 0.25f) delay(1)
+            }
+            assertEquals(0.25f, invalid.volumeKeyScrollFraction)
+            first.volumeKeyScrollFractionUserData.set(0.6f)
+            withTimeout(5_000) {
+                while (first.volumeKeyScrollFraction != 0.6f) delay(1)
+            }
+        }
     }
 
     @Test
