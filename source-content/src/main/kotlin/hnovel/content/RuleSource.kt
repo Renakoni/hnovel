@@ -35,7 +35,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         authority.authorized(identity) { check(session.write(StorageRequest(StorageArea.Account, StorageRequestKey.LOGIN_INFO, info)) is StorageResult.Value) }
         val context = evaluation(interactive = true)
         if (form.browserUrl != null) {
-            val response = session.execute(BrokerRequest("login", form.browserUrl,
+            val response = session.execute(BrokerRequest("login", form.browserUrl, headers = context.headers(),
                 timeoutMillis = 60000, browser = BrowserOptions(interactive = true)),
                 RequestCommitGuard { authority.authorized(identity, it) })
             if (response !is BrokerResult.Success) throw SourceContentException(ContentError.LoginRequired, "loginUrl")
@@ -309,7 +309,8 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
     }
     private fun evaluation(book: RuleBook? = null, chapter: RuleChapter? = null, keyword: String = "", page: Int = 1, interactive: Boolean = false): RuleEvaluation {
         val result = RuleEvaluation(identity, authority, session, runner, spec.library, book?.id, chapter?.id,
-            book?.state ?: ScriptState(), chapter?.state ?: ScriptState(), book?.id ?: spec.baseUrl, keyword, page, interactive = interactive, trace = trace)
+            book?.state ?: ScriptState(), chapter?.state ?: ScriptState(), book?.id ?: spec.baseUrl, keyword, page,
+            headerRule = spec.header, interactive = interactive, trace = trace)
         book?.let {
             result.bookField("bookUrl", it.id)
             if ("name" !in result.book.metadata) result.bookField("name", it.title)
@@ -318,16 +319,10 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         chapter?.let { result.chapterField("url", JsonPrimitive(it.id)); result.chapterField("title", JsonPrimitive(it.title)); result.chapterField("bookUrl", JsonPrimitive(book!!.id)) }
         return result
     }
-    private suspend fun headers(context: RuleEvaluation): Map<String, String> {
-        if (spec.header.isBlank()) return emptyMap()
-        val value = if (spec.header.trimStart().startsWith('{')) Json.parseToJsonElement(spec.header)
-            else Json.parseToJsonElement(context.script(spec.header, RuleValue.Empty, "header").text())
-        return value.jsonObject.mapValues { it.value.jsonPrimitive.content }
-    }
     private suspend fun request(context: RuleEvaluation, url: String, field: String, kind: ResourceKind = ResourceKind.Document,
         browser: BrowserOptions? = null): BrokerResponse {
         val prepared = context.script("host.call('request.prepare',result)[0]", RuleValue.Text(url), field).text()
-        val compiled = RequestCompiler().compile("content", prepared, context.baseUrl, context.keyword, context.page, headers(context), kind)
+        val compiled = RequestCompiler().compile("content", prepared, context.baseUrl, context.keyword, context.page, context.headers(), kind)
         val request = when (compiled) {
             is CompiledRequest.Ready -> compiled.request
             is CompiledRequest.Rejected -> throw SourceContentException(if (compiled.code == hnovel.network.FailureCode.BrowserRequired)
