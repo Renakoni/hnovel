@@ -2,7 +2,10 @@ package indi.dmzz_yyhyy.lightnovelreader.sourceexecution
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import hnovel.execution.*
 import hnovel.network.*
+import hnovel.rules.OutputKind
+import hnovel.rules.RuleValue
 import indi.dmzz_yyhyy.lightnovelreader.sourcebrowser.AndroidSourceBrowser
 import kotlinx.coroutines.*
 import okhttp3.mockwebserver.*
@@ -16,6 +19,45 @@ import java.util.concurrent.ConcurrentLinkedQueue
 @RunWith(AndroidJUnit4::class)
 class SourceBrowserInstrumentedTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
+
+    @Test fun ruleWebViewPassesDynamicHeadersThroughWorkerAndChromium(): Unit = runBlocking {
+        MockWebServer().use { server ->
+            val seen = ConcurrentLinkedQueue<RecordedRequest>()
+            server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse {
+                    seen += request
+                    if (request.path == "/token") return MockResponse().setBody("browser-token")
+                    val accepted = request.getHeader("Authorization") == "browser-token" &&
+                        request.getHeader("User-Agent") == "rule-browser-agent" && request.getHeader("Cookie") == "source=rule"
+                    return MockResponse().setHeader("Content-Type", "text/html").setBody(
+                        "<html><head><link rel='icon' href='data:,'><title>${if (accepted) "accepted" else "missing header"}</title></head></html>")
+                }
+            }
+            server.start()
+            val base = server.url("/").toString()
+            val root = File(context.cacheDir, "rule-browser-header-${System.nanoTime()}")
+            val authority = ExecutionAuthority()
+            val executor = AndroidIsolatedExecutor(context, authority)
+            try {
+                SourceBroker(root.toPath(), browser = AndroidSourceBrowser(context)).use { sessions ->
+                    val session = sessions.open(SourceScope("browser-header", "A", "legado"), listOf(NetworkGrant(base, true)))
+                    val identity = authority.issue("A", "legado", "1", "browser-header")
+                    val limits = ExecutionLimits(timeoutMillis = 60000)
+                    SourceExecutionBroker(identity, authority, session, limits, base).use { bridge ->
+                        val task = ExecutionTask.Rule("@js:java.webView(null,baseUrl+'protected','document.title')",
+                            RuleValue.Empty, OutputKind.Text, baseUrl = base,
+                            sourceHeaderRule = "@js:JSON.stringify({Authorization:java.ajax('/token'),'User-Agent':'rule-browser-agent',Cookie:'source=rule'})")
+                        val result = executor.execute(identity, task, limits, bridge)
+                        assertTrue(result.toString(), result is ExecutionResult.Success)
+                        val value = kotlinx.serialization.json.Json.decodeFromString(ExecutedRule.serializer(), (result as ExecutionResult.Success).output).value
+                        assertEquals(RuleValue.Text("accepted"), value)
+                    }
+                }
+                assertEquals(listOf("/token", "/protected"), seen.map { it.path })
+                assertNull(seen.first().getHeader("Authorization"))
+            } finally { executor.close(); root.deleteRecursively() }
+        }
+    }
 
     @Test fun rendersThroughBrokerAndKeepsSameDomainAccountsAndBrowserStorageSeparate(): Unit = runBlocking {
         val seen = ConcurrentLinkedQueue<String>()
