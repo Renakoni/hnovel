@@ -28,7 +28,8 @@ import javax.inject.Singleton
 class ImportedRuleSources @Inject constructor(@ApplicationContext context: Context,
     private val registry: WebSourceRegistry, private val authority: ExecutionAuthority,
     private val accounts: SourceSessionManager, private val runner: RuleTaskRunner,
-    private val storageCipher: hnovel.network.StorageCipher = hnovel.network.StorageCipher.Plain) {
+    private val storageCipher: hnovel.network.StorageCipher = hnovel.network.StorageCipher.Plain,
+    private val imageCache: indi.dmzz_yyhyy.lightnovelreader.data.image.SourceImageAccountCache? = null) {
     private val directory = File(context.filesDir, "rule-sources")
     val definitions by lazy { SourceDefinitionStore(File(directory, "definitions").toPath()) }
     val importer by lazy { SourceDefinitionImporter(definitions) }
@@ -51,6 +52,9 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
                             android.util.Log.w("ImportedRuleSources", "Retired account cleanup failed")
                         }
                         current.broker?.close()
+                        runCatching { imageCache?.purge(id, current.registration.metadata.accountGeneration) }.onFailure {
+                            android.util.Log.w("ImportedRuleSources", "Retired image cleanup failed")
+                        }
                         active[id] = restoreBinding(current.installed)
                     }
                 }
@@ -200,7 +204,10 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
             if (expectedGeneration != null) check(accounts.current(id).generation == expectedGeneration) { "Login attempt is stale" }
             accounts.begin(id)
             current.registration.unregister()
-            try { current.session?.clearAccount() } finally {
+            try {
+                current.session?.clearAccount()
+                imageCache?.purge(id, current.registration.metadata.accountGeneration)
+            } finally {
                 current.broker?.close()
                 active[id] = restoreBinding(current.installed)
             }

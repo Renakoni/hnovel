@@ -13,7 +13,8 @@ import okio.Buffer
 import java.io.IOException
 
 /** A missing runtime is an explicit cache-only request, never an HTTP URL fallback. */
-internal data class BoundSourceImage(val image: SourceImage, val key: String, val runtime: SourceRuntime?)
+internal data class BoundSourceImage(val image: SourceImage, val key: String, val runtime: SourceRuntime?,
+    val accountCache: SourceImageAccountCache? = null, val commit: (() -> Unit) -> Unit = { it() })
 
 internal class SourceImageFetcher(private val request: BoundSourceImage, private val options: Options,
     private val cache: DiskCache?) : Fetcher {
@@ -24,7 +25,7 @@ internal class SourceImageFetcher(private val request: BoundSourceImage, private
         val runtime = request.runtime ?: throw IOException("Source image is not cached")
         val result = runtime.imageBytes(request.image.book.remoteId, request.image.uri, request.image.cover)
         val bytes = result.getOrElse { throw it.throwable ?: IOException(it.message) }
-        if (options.diskCachePolicy.writeEnabled && cache != null) {
+        if (options.diskCachePolicy.writeEnabled && cache != null) request.commit {
             cache.openEditor(request.key)?.let { editor ->
                 try {
                     cache.fileSystem.write(editor.metadata) { }
@@ -37,7 +38,9 @@ internal class SourceImageFetcher(private val request: BoundSourceImage, private
     }
 
     class Factory : Fetcher.Factory<BoundSourceImage> {
-        override fun create(data: BoundSourceImage, options: Options, imageLoader: ImageLoader): Fetcher =
-            SourceImageFetcher(data, options, imageLoader.diskCache)
+        override fun create(data: BoundSourceImage, options: Options, imageLoader: ImageLoader): Fetcher {
+            data.accountCache?.attach(imageLoader)
+            return SourceImageFetcher(data, options, imageLoader.diskCache)
+        }
     }
 }

@@ -23,6 +23,7 @@ class SourceImageInterceptor @Inject constructor(
     private val registry: WebSourceRegistry,
     @dagger.hilt.android.qualifiers.ApplicationContext context: android.content.Context,
     private val accounts: SourceSessionManager,
+    private val accountCache: SourceImageAccountCache = SourceImageAccountCache(context, accounts),
 ) : Interceptor {
     // Only opaque cache keys are persisted. A removed source may read its last cached image,
     // but cannot start a network request or borrow another source's credentials.
@@ -54,8 +55,11 @@ class SourceImageInterceptor @Inject constructor(
         val result = runtime.execute {
             val headers = runtime.imageHeaders()
             val key = sourceImageCacheKey(image, runtime.metadata.revision, runtime.metadata.accountGeneration, headers)
+            accountCache.remember(image.book.sourceId, account, key)
             val result = chain.withRequest(chain.request.newBuilder()
-                .data(if (runtime.hasImageProvider) BoundSourceImage(image, key, runtime) else image.uri)
+                .data(if (runtime.hasImageProvider) BoundSourceImage(image, key, runtime, accountCache) { action ->
+                    accountCache.commit(image.book.sourceId, account, action)
+                } else image.uri)
                 .memoryCacheKey(key)
                 .diskCacheKey(key)
                 .httpHeaders(NetworkHeaders.Builder().apply {
@@ -64,8 +68,10 @@ class SourceImageInterceptor @Inject constructor(
                 .build()).proceed()
             result to key
         }
-        check(account == accounts.current(image.book.sourceId).generation) { "Image account changed" }
-        if (result.first is SuccessResult) cacheKeys.edit().putString(indexKey, result.second).putLong("$indexKey.account", account).apply()
+        accounts.withCurrent(image.book.sourceId) {
+            if (account != it.generation) { accountCache.purgeKey(result.second); error("Image account changed") }
+            if (result.first is SuccessResult) cacheKeys.edit().putString(indexKey, result.second).putLong("$indexKey.account", account).apply()
+        }
         return result.first
     }
 }
