@@ -6,6 +6,7 @@ import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.text.selection.SelectionState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
@@ -15,13 +16,13 @@ import androidx.compose.ui.input.pointer.pointerInput
 import kotlinx.coroutines.withTimeoutOrNull
 
 internal class ReaderSelectionState {
-    private val selections = mutableSetOf<SelectionState>()
+    private val selections = mutableStateListOf<SelectionState>()
 
     val hasSelection: Boolean
         get() = selections.any { state -> state.selectedTexts.any { it.isNotEmpty() } }
 
     fun register(state: SelectionState) {
-        selections.add(state)
+        if (state !in selections) selections.add(state)
     }
 
     fun unregister(state: SelectionState) {
