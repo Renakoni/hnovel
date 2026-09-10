@@ -9,8 +9,7 @@ import kotlinx.serialization.json.*
 /** Host-owned per-invocation capability. A script cannot choose its session, identity or grants. */
 class SourceExecutionBroker(val identity: ExecutionIdentity, private val authority: ExecutionAuthority,
     private val session: SourceSession, val limits: ExecutionLimits,
-    private val baseUrl: String = "", private val keyword: String = "", private val page: Int = 1,
-    private val sourceHeaders: Map<String, String> = emptyMap()) : AutoCloseable {
+    private val baseUrl: String = "", private val keyword: String = "", private val page: Int = 1) : AutoCloseable {
     private val lifetime = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var requests = 0
     private var closed = false
@@ -37,6 +36,14 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
     }
 
     suspend fun call(name: String, args: List<JsonElement>): JsonElement {
+        if (name != "request.withHeaders") return callWithHeaders(name, args, emptyMap())
+        require(args.size == 3)
+        val operation = args[0].jsonPrimitive.content
+        require(operation in setOf("java.ajax", "java.ajaxAll", "java.connect", "java.cacheFile", "java.downloadFile", "java.importScript"))
+        return callWithHeaders(operation, args[1].jsonArray, headerMap(args[2]))
+    }
+
+    private suspend fun callWithHeaders(name: String, args: List<JsonElement>, sourceHeaders: Map<String, String>): JsonElement {
         val requestNumber = reserveRequest()
         return ownedWork {
             when (name) {
@@ -81,7 +88,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
                 }
                 "resource.storeArchive", "resource.readArchive" -> archiveResource(name, args)
                 "java.importScript", "java.cacheFile", "java.downloadFile", "java.readFile", "java.readTxtFile", "java.deleteFile" ->
-                    resource(name, args, requestNumber)
+                    resource(name, args, requestNumber, sourceHeaders)
                 "java.androidId" -> authorized {
                     require(args.isEmpty())
                     val value = session.installationIdentifier()
@@ -91,7 +98,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
                 "java.ajax" -> {
                     require(args.size == 1)
                     val url = (args[0] as? JsonArray)?.firstOrNull() ?: args[0]
-                    JsonPrimitive(fetch(compiled(requestNumber, url.jsonPrimitive.content)).text())
+                    JsonPrimitive(fetch(compiled(requestNumber, url.jsonPrimitive.content, sourceHeaders)).text())
                 }
                 "java.connect" -> {
                     require(args.size in 1..2)
@@ -107,7 +114,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
                     require(args.size == 1)
                     val urls = args[0].jsonArray
                     val requests = urls.mapIndexed { index, url ->
-                        compiled(if (index == 0) requestNumber else reserveRequest(), url.jsonPrimitive.content)
+                        compiled(if (index == 0) requestNumber else reserveRequest(), url.jsonPrimitive.content, sourceHeaders)
                     }
                     // Reserve and compile the complete batch before dispatch; a rejected budget
                     // cannot send a prefix. Session permits bound actual network concurrency.
@@ -158,7 +165,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
         }
     }
 
-    private fun compiled(number: Int, rule: String, headers: Map<String, String> = sourceHeaders): BrokerRequest {
+    private fun compiled(number: Int, rule: String, headers: Map<String, String>): BrokerRequest {
         val compiled = RequestCompiler().compile("script-$number", rule, baseUrl, keyword, page, headers)
         check(compiled is CompiledRequest.Ready) { "Request requires an unsupported option" }
         return compiled.request
@@ -176,7 +183,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
     }
 
     /** Logical source/account resources. A script path is never passed to the host filesystem. */
-    private suspend fun resource(name: String, args: List<JsonElement>, number: Int): JsonElement {
+    private suspend fun resource(name: String, args: List<JsonElement>, number: Int, sourceHeaders: Map<String, String>): JsonElement {
         require(args.size in 1..if (name in setOf("java.downloadFile", "java.cacheFile", "java.readTxtFile")) 2 else 1)
         val first = args[0].jsonPrimitive.content
         if (first.removePrefix("/").startsWith("archives/") && name in setOf("java.readFile", "java.readTxtFile", "java.deleteFile"))
@@ -220,7 +227,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
         val suffix = type ?: rawUrl.substring(0, optionStart?.range?.first ?: rawUrl.length).substringBefore('?').substringAfterLast('/', "").substringAfterLast('.', "bin")
         require(suffix.matches(Regex("[a-zA-Z0-9]{1,12}"))) { "Invalid resource type" }
         val rule = if (options != null) rawUrl.substring(0, optionStart!!.range.first) + "," + JsonObject(options - "type") else rawUrl
-        val request = compiled(number, rule).copy(kind = ResourceKind.Script)
+        val request = compiled(number, rule, sourceHeaders).copy(kind = ResourceKind.Script)
         authorized { check(session.permissionFailure(request.url) == null) { "Resource origin denied" } }
         val hash = java.security.MessageDigest.getInstance("SHA-256").digest(rawUrl.toByteArray())
             .joinToString("") { "%02x".format(it.toInt() and 255) }

@@ -9,6 +9,44 @@ import java.net.URL
 internal class ScriptRequestTemplates(private val scope: Scriptable, private val frame: ScriptFrame) {
     private val parser = RuleParser()
     private var depth = 0
+    private var resolvingHeaders = false
+
+    /** Local URL preparation stays pure; only an actual broker operation requests source headers. */
+    fun call(cx: Context, bridge: HostBridge, name: String, args: List<JsonElement>): JsonElement {
+        val prepared = prepare(cx, name, args)
+        val inherits = name in setOf("java.ajax", "java.ajaxAll", "java.connect", "java.cacheFile", "java.downloadFile", "java.importScript") &&
+            !(name == "java.connect" && args.getOrNull(1)?.let { it != JsonNull } == true) &&
+            !(name == "java.ajaxAll" && prepared[0].jsonArray.isEmpty()) &&
+            !(name == "java.importScript" && !prepared[0].jsonPrimitive.content.startsWith("http", true)) &&
+            !(name == "java.downloadFile" && args.size == 2)
+        if (!inherits || resolvingHeaders || frame.sourceHeaderRule.isBlank()) return bridge.call(name, prepared)
+        val arguments = listOf(JsonPrimitive(name), JsonArray(prepared), headers(cx))
+        if (JsonArray(arguments).toString().length > cx.getThreadLocal(bridgeLimitKey) as Int) throw ResultTooLarge()
+        return bridge.call("request.withHeaders", arguments)
+    }
+
+    private fun headers(cx: Context): JsonObject {
+        val limit = cx.getThreadLocal(bridgeLimitKey) as Int
+        val rule = frame.sourceHeaderRule.trim()
+        if (rule.length > limit) throw ResultTooLarge()
+        resolvingHeaders = true
+        try {
+            val text = if (rule.startsWith('{')) rule else {
+                val code = when {
+                    rule.startsWith("@js:", true) -> rule.substring(4)
+                    rule.startsWith("<js>", true) && rule.endsWith("</js>", true) -> rule.substring(4, rule.length - 5)
+                    else -> rule
+                }
+                // Header locals and `result` must not replace the caller's parsing state.
+                val headerScope = NativeObject().apply { prototype = scope; put("result", this, null) }
+                val value = evaluateGlobal(cx, headerScope, code, "source-header")
+                val result = Json.parseToJsonElement(BoundedJsonResult(limit).encode(value))
+                if (result is JsonPrimitive) result.content else result.toString()
+            }
+            if (text.length > limit) throw ResultTooLarge()
+            return JsonObject(Json.parseToJsonElement(text).jsonObject.mapValues { JsonPrimitive(it.value.jsonPrimitive.content) })
+        } finally { resolvingHeaders = false }
+    }
 
     fun prepare(cx: Context, name: String, args: List<JsonElement>): List<JsonElement> {
         if (name !in setOf("java.ajax", "java.ajaxAll", "java.connect", "java.cacheFile", "java.downloadFile", "java.importScript")) return args
