@@ -8,6 +8,20 @@ import org.mozilla.javascript.Context
 class RhinoBridgeTest {
     private val frame = ScriptFrame("source-a", "legado", key = "query", page = 3, baseUrl = "https://fixture.invalid/")
 
+    @Test fun interruptedBridgeFailureRemainsCancellationEvenWhenScriptCatchesErrors() {
+        val engine = RhinoScriptEngine(HostBridge { _, _ ->
+            Thread.currentThread().interrupt()
+            throw java.io.IOException("interrupted host request")
+        })
+        try {
+            val result = engine.evaluate("try{java.ajax(baseUrl)}catch(e){'recovered'}", frame)
+            assertEquals(FailureCode.Cancelled, (result as ScriptResult.Failure).code)
+            assertTrue(Thread.currentThread().isInterrupted)
+        } finally { Thread.interrupted() }
+        assertNull(Context.getCurrentContext())
+        assertEquals("42", (engine.evaluate("21*2", frame) as ScriptResult.Success).json)
+    }
+
     @Test fun nestedArgumentsAndResultsKeepTheirJsTypes() {
         val engine = RhinoScriptEngine(HostBridge { name, args ->
             assertEquals("echo", name)
