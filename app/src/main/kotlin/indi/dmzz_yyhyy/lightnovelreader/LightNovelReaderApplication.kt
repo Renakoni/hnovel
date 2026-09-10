@@ -50,6 +50,9 @@ class LightNovelReaderApplication : Application(), Configuration.Provider, coil3
     @OptIn(ExperimentalCoroutinesApi::class, ExperimentalFoundationApi::class)
     @ExperimentalSerializationApi
     override fun onCreate() {
+        // Hilt's generated super.onCreate injects host repositories. An isolated service has
+        // a different UID and must not initialize app files, WorkManager, plugins or analytics.
+        if (android.os.Process.myUid() != applicationInfo.uid) return
         super.onCreate()
         // The new Compose text context menu asks MIUI's action mode to treat the
         // Compose root as a TextView, which leaves a stale "Select all" toolbar.

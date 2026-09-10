@@ -93,6 +93,11 @@
         android:value="androidx.startup"
         tools:node="remove" />
     </provider>
+    <service
+        android:name=".sourceexecution.IsolatedExecutionService"
+        android:exported="false"
+        android:isolatedProcess="true"
+        android:process=":source_execution" />
   </application>
 
 </manifest>
