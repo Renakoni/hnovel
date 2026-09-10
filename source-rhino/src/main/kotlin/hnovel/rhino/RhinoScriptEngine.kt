@@ -72,6 +72,7 @@ class RhinoScriptEngine(private val bridge: HostBridge, private val limits: Scri
             }
         } catch (_: ScriptBudgetExceeded) { ScriptResult.Failure(FailureCode.Timeout, "instruction budget exceeded") }
           catch (_: ScriptCancelled) { ScriptResult.Failure(FailureCode.Cancelled, "script cancelled") }
+          catch (_: SerializationCancelled) { ScriptResult.Failure(FailureCode.Cancelled, "script cancelled") }
           catch (_: ResultTooLarge) { ScriptResult.Failure(FailureCode.ResultTooLarge, "result too large") }
           catch (_: UnsupportedResult) { ScriptResult.Failure(FailureCode.UnsupportedResult, "result is not JSON data") }
           catch (_: WrappedException) { ScriptResult.Failure(FailureCode.BridgeDenied, "host bridge denied") }

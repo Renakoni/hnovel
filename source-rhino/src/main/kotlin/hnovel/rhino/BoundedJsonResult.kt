@@ -5,6 +5,7 @@ import java.util.IdentityHashMap
 
 internal class ResultTooLarge : RuntimeException()
 internal class UnsupportedResult : RuntimeException()
+internal class SerializationCancelled : RuntimeException()
 
 /** Checks the actual wire representation as it is produced, including keys and JSON escapes. */
 internal class BoundedJsonResult(private val maxChars: Int) {
@@ -17,6 +18,7 @@ internal class BoundedJsonResult(private val maxChars: Int) {
     }
 
     private fun append(value: CharSequence) {
+        if (Thread.currentThread().isInterrupted) throw SerializationCancelled()
         if (value.length > maxChars - output.length) throw ResultTooLarge()
         output.append(value)
     }
@@ -33,6 +35,7 @@ internal class BoundedJsonResult(private val maxChars: Int) {
     }
 
     private fun write(value: Any?, depth: Int) {
+        if (Thread.currentThread().isInterrupted) throw SerializationCancelled()
         if (depth > 64) throw UnsupportedResult()
         when (value) {
             null, Undefined.instance, Scriptable.NOT_FOUND -> append("null")
