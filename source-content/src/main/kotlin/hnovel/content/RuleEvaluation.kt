@@ -31,16 +31,13 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
         currentCoroutineContext().ensureActive()
         if (!authority.accepts(identity)) throw SourceContentException(ContentError.Unavailable, field)
         if (calls.incrementAndGet() > 4096) throw SourceContentException(ContentError.Limit, field)
-        // Resolve before starting the worker; reverse HTTP calls must not re-enter a busy worker.
-        // A header script cannot inherit the header value it is still computing.
-        val requestHeaders = if (field == "header") emptyMap() else headers()
         val task = ExecutionTask.Rule(rule, input, output, RuleLocation(field), bookId, chapterId,
             keyword, page, baseUrl, library, book.inherited + chapter.inherited, book.variables,
             chapter.variables, book.metadata, chapter.metadata, book.bigVariables, chapter.bigVariables,
-            unescapeHtml = unescape)
+            unescapeHtml = unescape, sourceHeaderRule = if (field == "header") "" else headerRule)
         val started = System.nanoTime()
         val result = SourceExecutionBroker(identity, authority, session, limits, baseUrl, keyword, page,
-            sourceHeaders = requestHeaders, allowInteraction = interactive).use {
+            allowInteraction = interactive).use {
             runner.execute(identity, task, limits, it).also { _ ->
                 if (it.interactionRequired) throw SourceContentException(ContentError.LoginRequired, field)
             }
