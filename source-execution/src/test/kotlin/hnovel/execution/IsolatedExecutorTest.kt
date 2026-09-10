@@ -2,6 +2,10 @@ package hnovel.execution
 import org.junit.Assert.*
 import org.junit.Test
 class IsolatedExecutorTest {
+ @Test fun cryptoAndNestedRulesLoadInsideTheChildClasspath() {
+  val task=ExecutionTask.Script("var c=java.createSymmetricCrypto('AES/ECB/PKCS5Padding','0123456789abcdef');java.getString('@js:c.decryptStr(c.encrypt(\"chapter\"))')")
+  assertEquals(ExecutionResult.Success("\"chapter\""),IsolatedExecutor().execute(id,task,ExecutionLimits(timeoutMillis=15000)))
+ }
  @Test fun pipeSizedRepliesDoNotDeadlockAndBothWireDirectionsAreBounded() {
   val executor = IsolatedExecutor()
   val text = "x".repeat(100_000)

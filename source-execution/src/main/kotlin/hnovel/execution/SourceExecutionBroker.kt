@@ -39,6 +39,8 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
         val requestNumber = reserveRequest()
         return ownedWork {
             when (name) {
+                "java.importScript", "java.cacheFile", "java.downloadFile", "java.readFile", "java.readTxtFile", "java.deleteFile" ->
+                    resource(name, args, requestNumber)
                 "java.androidId" -> authorized {
                     require(args.isEmpty())
                     val value = session.installationIdentifier()
@@ -137,6 +139,82 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
         put("status", response.status)
         put("message", response.message)
         put("headers", JsonObject(response.headers.mapValues { (_, values) -> JsonArray(values.map(::JsonPrimitive)) }))
+    }
+
+    /** Logical source/account resources. A script path is never passed to the host filesystem. */
+    private suspend fun resource(name: String, args: List<JsonElement>, number: Int): JsonElement {
+        require(args.size in 1..if (name in setOf("java.downloadFile", "java.cacheFile", "java.readTxtFile")) 2 else 1)
+        val first = args[0].jsonPrimitive.content
+        fun key(path: String): String {
+            require(path.matches(Regex("/?resources/[0-9a-f]{64}\\.[a-zA-Z0-9]{1,12}"))) { "Invalid resource path" }
+            return "resource:" + path.removePrefix("/")
+        }
+        fun read(path: String): JsonObject? = authorized {
+            val stored = session.read(StorageRequest(StorageArea.Account, key(path)))
+            check(stored is StorageResult.Value) { "Resource storage unavailable" }
+            stored.value?.let { Json.parseToJsonElement(it).jsonObject }
+        }
+        fun checkGrants(record: JsonObject) = authorized {
+            for (field in listOf("url", "finalUrl")) check(session.permissionFailure(record.getValue(field).jsonPrimitive.content) == null) { "Resource origin denied" }
+        }
+        fun bytes(record: JsonObject) = java.util.Base64.getDecoder().decode(record.getValue("bytes").jsonPrimitive.content)
+        fun text(record: JsonObject, charset: String? = null): String = bytes(record).toString(java.nio.charset.Charset.forName(
+            charset ?: record.getValue("charset").jsonPrimitive.content))
+        if (name in setOf("java.readFile", "java.readTxtFile", "java.deleteFile") || name == "java.importScript" && !first.startsWith("http", true)) {
+            val record = read(first)
+            if (name == "java.deleteFile") return authorized {
+                check(session.write(StorageRequest(StorageArea.Account, key(first))) is StorageResult.Value)
+                JsonPrimitive(record != null)
+            }
+            if (record == null) {
+                check(name != "java.importScript") { "Script resource missing" }
+                return if (name == "java.readFile") JsonNull else JsonPrimitive("")
+            }
+            checkGrants(record)
+            if (name == "java.readFile") return JsonArray(bytes(record).map { JsonPrimitive(it.toInt()) })
+            return JsonPrimitive(text(record, args.getOrNull(1)?.jsonPrimitive?.content).also {
+                check(name != "java.importScript" || it.isNotBlank()) { "Script resource empty" }
+            })
+        }
+        val rawUrl = if (name == "java.downloadFile" && args.size == 2) args[1].jsonPrimitive.content else first
+        val optionStart = Regex(",\\s*(?=\\{)").find(rawUrl)
+        val options = optionStart?.let { BridgeWire.arguments(("[" + rawUrl.substring(it.range.last + 1) + "]").toByteArray()).single().jsonObject }
+        val type = options?.get("type")?.jsonPrimitive?.content
+        if (name == "java.downloadFile" && args.size == 2 && type == null) return JsonPrimitive("")
+        val suffix = type ?: rawUrl.substring(0, optionStart?.range?.first ?: rawUrl.length).substringBefore('?').substringAfterLast('/', "").substringAfterLast('.', "bin")
+        require(suffix.matches(Regex("[a-zA-Z0-9]{1,12}"))) { "Invalid resource type" }
+        val rule = if (options != null) rawUrl.substring(0, optionStart!!.range.first) + "," + JsonObject(options - "type") else rawUrl
+        val request = compiled(number, rule).copy(kind = ResourceKind.Script)
+        authorized { check(session.permissionFailure(request.url) == null) { "Resource origin denied" } }
+        val hash = java.security.MessageDigest.getInstance("SHA-256").digest(rawUrl.toByteArray())
+            .joinToString("") { "%02x".format(it.toInt() and 255) }
+        val path = "/resources/$hash.$suffix"
+        val cache = name == "java.cacheFile" || name == "java.importScript"
+        val seconds = if (name == "java.cacheFile") args.getOrNull(1)?.jsonPrimitive?.long ?: 0 else 0
+        require(seconds >= 0)
+        val cacheDuration = Math.multiplyExact(seconds, 1000)
+        if (cache) read(path)?.let { record ->
+            val until = record["cacheUntil"]?.jsonPrimitive?.long
+            if (until != null && (until == 0L || until > System.currentTimeMillis())) {
+                checkGrants(record)
+                return JsonPrimitive(text(record).also { check(name != "java.importScript" || it.isNotBlank()) })
+            }
+        }
+        val response = if (name == "java.downloadFile" && args.size == 2) {
+            val hex = first
+            require(hex.length % 2 == 0 && hex.length <= BridgeWire.MAX_BYTES * 2)
+            val data = ByteArray(hex.length / 2) { hex.substring(it * 2, it * 2 + 2).toInt(16).toByte() }
+            BrokerResponse(200, request.url, emptyMap(), data, "UTF-8", 0)
+        } else fetch(request).also { check(it.status in 200..299) { "Resource download failed" } }
+        val record = buildJsonObject {
+            put("url", request.url); put("finalUrl", response.finalUrl); put("charset", response.charset)
+            put("bytes", java.util.Base64.getEncoder().encodeToString(response.body))
+            if (cache) put("cacheUntil", if (seconds == 0L) 0 else Math.addExact(System.currentTimeMillis(), cacheDuration))
+        }
+        authorized { check(session.write(StorageRequest(StorageArea.Account, key(path), record.toString())) is StorageResult.Value) { "Resource quota exceeded" } }
+        return if (name == "java.downloadFile") JsonPrimitive(path) else JsonPrimitive(response.text().also {
+            check(name != "java.importScript" || it.isNotBlank()) { "Script resource empty" }
+        })
     }
 
     /** Downloads data only; library code is evaluated exclusively in the isolated worker. */

@@ -18,13 +18,8 @@ internal object WorkerRuleEvaluator {
         val evaluator = RuleEvaluator { request, current, budget ->
             budget.check()
             val frame = ScriptFrame(identity.sourceId, identity.profile, task.bookId, task.chapterId,
-                mapOf("result" to input(request.input)), task.key, task.page, task.baseUrl)
-            val localBridge = HostBridge { name, args -> when (name) {
-                "java.get" -> if (args.size == 1) JsonPrimitive(current.get(args[0].jsonPrimitive.content)) else bridge.call(name, args)
-                "java.put" -> { require(args.size == 2); JsonPrimitive(current.put(args[0].jsonPrimitive.content, args[1].jsonPrimitive.content)) }
-                else -> bridge.call(name, args)
-            } }
-            when (val result = RhinoScriptEngine(localBridge, ScriptLimits(maxResultChars = limits.maxOutputBytes))
+                mapOf("result" to input(request.input)), task.key, task.page, task.baseUrl, current, task.input, budget)
+            when (val result = RhinoScriptEngine(bridge, ScriptLimits(maxResultChars = limits.maxOutputBytes))
                 .evaluate(request.script, frame, library)) {
                 is ScriptResult.Success -> value(Json.parseToJsonElement(result.json))
                 is ScriptResult.Failure -> { scriptFailure = result.code; throw RuleScriptFailure(result.code.name) }

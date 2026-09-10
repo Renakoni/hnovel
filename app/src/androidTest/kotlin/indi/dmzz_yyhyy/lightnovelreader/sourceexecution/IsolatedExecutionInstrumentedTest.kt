@@ -43,6 +43,50 @@ import org.junit.runner.RunWith
 class IsolatedExecutionInstrumentedTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
 
+    @Test fun cryptoNestedRulesTemplatesAndSourceResourcesExecuteInIsolatedWorker() = runBlocking {
+        val authority=ExecutionAuthority()
+        val executor=AndroidIsolatedExecutor(context,authority)
+        val id=authority.issue("tools","legado","1","fixture")
+        val limits=ExecutionLimits(timeoutMillis=20000,maxRequests=20)
+        val root=java.io.File(context.cacheDir,"tools-${java.util.UUID.randomUUID()}").toPath()
+        try {
+            MockWebServer().use { server ->
+                server.start()
+                val base=server.url("/").toString()
+                SourceBroker(root).use { sessions ->
+                    val session=sessions.open(SourceScope("fixture","tools","legado"),listOf(NetworkGrant(base,true)))
+                    server.enqueue(MockResponse().setBody("network"))
+                    server.enqueue(MockResponse().setBody("40+2"))
+                    val code="""
+                        var c=java.createSymmetricCrypto('AES/ECB/PKCS5Padding','0123456789abcdef');
+                        var s=java.createSign('SHA256withRSA');
+                        var r=java.createAsymmetricCrypto('RSA');
+                        var net=java.ajax('/find/{{page+1}},'+JSON.stringify({js:'result+"?ok=1"'}));
+                        var path=java.downloadFile('/script.js');
+                        java.put('value',java.getString('@js:c.decryptStr(c.encrypt("chapter"))'));
+                        [java.getString('a@text'),java.get('value'),s.verify(java.strToBytes('chapter'),s.sign('chapter')),
+                         r.decryptStr(r.encrypt('rsa'),false),net,java.importScript(path),java.readFile(path).length]
+                    """.trimIndent()
+                    SourceExecutionBroker(id,authority,session,limits,base,page=2).use { broker ->
+                        val result=executor.execute(id,ExecutionTask.Rule("@js:$code",RuleValue.Text("<a>One</a>"),
+                            baseUrl=base,page=2),limits,broker)
+                        assertTrue(result.toString(),result is ExecutionResult.Success)
+                        val rule=Json.decodeFromString(ExecutedRule.serializer(),(result as ExecutionResult.Success).output)
+                        assertEquals(RuleValue.Items(listOf("One","chapter","true","rsa","network","40+2","4").map(RuleValue::Text)),rule.value)
+                        assertEquals(mapOf("value" to "chapter"),rule.writes)
+                    }
+                    assertEquals("/find/3?ok=1",server.takeRequest(3,TimeUnit.SECONDS)?.path)
+                    assertEquals("/script.js",server.takeRequest(3,TimeUnit.SECONDS)?.path)
+                    val html="<p>First</p><p>Second</p>"
+                    val expected=html.replace(Regex("</?p>"),"\n").replace(Regex("\\s*\\n+\\s*"),"\n\u3000\u3000")
+                        .replace(Regex("^[\\n\\s]+"),"\u3000\u3000").replace(Regex("[\\n\\s]+$"),"")
+                    val formatted=executor.execute(id,ExecutionTask.Script("java.htmlFormat(${JsonPrimitive(html)})"),limits) as ExecutionResult.Success
+                    assertEquals(expected,Json.parseToJsonElement(formatted.output).jsonPrimitive.content)
+                }
+            }
+        } finally { executor.close() }
+    }
+
     @Test fun networkResponseViewsCrossBinderAndKeepRuleGetOverloadsDistinct() = runBlocking {
         val authority = ExecutionAuthority()
         val executor = AndroidIsolatedExecutor(context, authority)

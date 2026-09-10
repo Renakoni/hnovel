@@ -147,10 +147,11 @@
       "implementation": "partial",
       "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Typed invocation globals and rule variable snapshots are implemented; java.get/put share request-local RuleContext with chapter/book/source precedence. Broader metadata and nested getString/getElement APIs remain pending.",
+      "evidence": "Invocation globals, original rule input and nested getString/getStringList/getElement/getElements share RuleContext, writes, depth and instruction budgets. JSON nodes retain structure; HTML/XML nodes are markup data. Broader book/chapter metadata and raw DOM methods remain pending.",
       "productTests": [
         "hnovel.execution.WorkerRuleTest",
-        "hnovel.rhino.ScriptLibraryTest"
+        "hnovel.rhino.ScriptLibraryTest",
+        "hnovel.rhino.ScriptRuleHelpersTest"
       ]
     },
     {
@@ -179,11 +180,12 @@
       "implementation": "partial",
       "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Static RequestCompiler behavior is tested. Real Ajax and external-library requests cross authenticated Android Binder to the source broker. Dynamic URL templates/option scripts and browser request paths remain pending.",
+      "evidence": "Static request compiler and scoped broker plus worker-only @js/<js>, @result, balanced expression templates and URL-option js are implemented. Whole expanded batches and nested option/header/body JSON are bounded. Static placeholders preserve charset-aware field escaping. Browser options remain deferred.",
       "productTests": [
         "hnovel.network.RequestCompilerTest",
         "hnovel.execution.SourceLibraryTest",
-        "hnovel.compatibility.ProductRequestContractTest"
+        "hnovel.compatibility.ProductRequestContractTest",
+        "hnovel.rhino.ScriptRequestTemplatesTest"
       ]
     },
     {
@@ -232,10 +234,12 @@
       "implementation": "partial",
       "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Thirty-six worker-local byte/encoding/hash/time/legacy-cipher/UUID helpers have fixed vectors, Hutool differential tests and Android provider tests. HTML/traditional-simplified conversion and modern crypto factories remain pending.",
+      "evidence": "37 pure helpers plus three modern crypto facades cover bytes/encoding/hash/legacy and modern ciphers/signatures, dates, URI and HTML formatting. Hutool 5.8.22 is pinned behind explicit data-only facades; fixed vectors and JCE/native provider tests complement dependency comparisons. Traditional/simplified conversion remains pending.",
       "productTests": [
         "hnovel.rhino.ScriptCryptoTest",
-        "indi.dmzz_yyhyy.lightnovelreader.sourceexecution.IsolatedExecutionInstrumentedTest"
+        "indi.dmzz_yyhyy.lightnovelreader.sourceexecution.IsolatedExecutionInstrumentedTest",
+        "hnovel.rhino.ScriptCryptoObjectsTest",
+        "hnovel.rhino.ScriptHtmlTest"
       ]
     },
     {
@@ -243,10 +247,14 @@
       "owner": "https://github.com/Renakoni/hnovel/issues/87",
       "requirement": "importScript/cacheFile/downloadFile、读取/解压/目录和字体工具通过受控资源服务实现。",
       "testId": "CONFORMANCE-FILES",
-      "implementation": "planned",
-      "verification": "future-fixture",
+      "implementation": "partial",
+      "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Pinned reference source inspection; production implementation pending."
+      "evidence": "Source/account logical resources implement downloadFile/cacheFile/importScript/readFile/readTxtFile/deleteFile with origin rechecks, cache TTL, quotas and guarded commits. No host File/path is exposed. Archives, directory/font tools and arbitrary-file charset detection remain pending.",
+      "productTests": [
+        "hnovel.execution.ResourceBridgeTest",
+        "indi.dmzz_yyhyy.lightnovelreader.sourceexecution.IsolatedExecutionInstrumentedTest"
+      ]
     },
     {
       "id": "LOGIN",

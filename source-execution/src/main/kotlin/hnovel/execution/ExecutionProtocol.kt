@@ -137,7 +137,8 @@ class IsolatedExecutor(private val javaCommand: String = javaHome(), private val
    RhinoScriptEngine::class.java, org.mozilla.javascript.Context::class.java, RuleEvaluator::class.java) +
    listOf("org.jsoup.Jsoup", "com.jayway.jsonpath.JsonPath", "net.minidev.json.JSONValue", "net.minidev.asm.BeansAccess",
     "org.objectweb.asm.ClassReader", "org.slf4j.LoggerFactory", "org.seimicrawler.xpath.JXDocument",
-    "org.apache.commons.lang3.StringUtils", "org.antlr.v4.runtime.Parser", "com.google.gson.Gson").map { Class.forName(it) })
+    "org.apache.commons.lang3.StringUtils", "org.antlr.v4.runtime.Parser", "com.google.gson.Gson",
+    "cn.hutool.crypto.KeyUtil", "cn.hutool.core.util.HexUtil").map { Class.forName(it) })
    .map { type ->
     val location = requireNotNull(type.protectionDomain?.codeSource?.location) { "Supply a worker runtime classpath" }
     require(location.protocol == "file") { "Supply a packaged worker runtime classpath" }

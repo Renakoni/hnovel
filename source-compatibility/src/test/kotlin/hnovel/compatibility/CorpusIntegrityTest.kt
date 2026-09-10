@@ -50,7 +50,7 @@ class CorpusIntegrityTest {
             assertTrue(feature.string("evidence").isNotBlank())
             assertTrue(testIds.add(feature.string("testId")))
             val implemented = featureIdsImplemented.contains(feature.string("id"))
-            val partial = feature.string("id") in setOf("URL", "HTTP", "STORAGE", "VARIABLES", "JS", "ENCODING")
+            val partial = feature.string("id") in setOf("URL", "HTTP", "STORAGE", "VARIABLES", "JS", "ENCODING", "FILES")
             // Real entry points exist, but these feature groups still have incomplete acceptance.
             val implementation = when {
                 implemented -> "implemented"
