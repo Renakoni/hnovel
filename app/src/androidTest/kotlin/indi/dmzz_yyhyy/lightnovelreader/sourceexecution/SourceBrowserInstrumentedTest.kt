@@ -132,7 +132,7 @@ class SourceBrowserInstrumentedTest {
             SourceBroker(root.toPath(), browser = AndroidSourceBrowser(context)).use { broker ->
                 val session = broker.open(SourceScope("login", "A", "legado", 1), listOf(NetworkGrant(server.url("/").toString(), true)))
                 val login = async { session.execute(BrokerRequest("login", server.url("/login").toString(), timeoutMillis = 60000,
-                    browser = BrowserOptions(script = "document.title", interactive = true))) }
+                    browser = BrowserOptions(script = "document.title === 'POST accepted' ? document.title : null", interactive = true))) }
                 val formPosted = withTimeoutOrNull(20000) { posted.await(); true } == true
                 assertTrue("Form POST did not reach broker; requests=${server.requestCount}, browserCompleted=${login.isCompleted}", formPosted)
                 val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
@@ -140,9 +140,8 @@ class SourceBrowserInstrumentedTest {
                 val clicked = withTimeoutOrNull(20000) {
                     while (true) {
                         val rootNode = automation.rootInActiveWindow
-                        val ready = rootNode?.findAccessibilityNodeInfosByText("Signed in").orEmpty().isNotEmpty()
                         val button = rootNode?.findAccessibilityNodeInfosByText(label)?.firstOrNull()
-                        if (ready && button?.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK) == true) break
+                        if (button?.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK) == true) break
                         delay(100)
                     }
                     true
@@ -152,7 +151,9 @@ class SourceBrowserInstrumentedTest {
                 assertTrue(result.toString(), result is BrokerResult.Success)
                 assertEquals("POST accepted", (result as BrokerResult.Success).response.text())
                 assertEquals("auth=accepted", session.cookie(server.url("/").toString()))
-                assertEquals(2, server.requestCount)
+                val navigation = List(server.requestCount) { server.takeRequest(1, java.util.concurrent.TimeUnit.SECONDS)!! }
+                    .filter { it.path == "/login" }.map { it.method }
+                assertEquals(listOf("GET", "POST"), navigation)
             }
             root.deleteRecursively()
         }

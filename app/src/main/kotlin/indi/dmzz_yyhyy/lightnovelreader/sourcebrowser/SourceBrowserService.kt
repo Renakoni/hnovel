@@ -21,6 +21,7 @@ class SourceBrowserService : Service() {
     private lateinit var bootstrap: String
     internal var webView: WebView? = null
     internal var activity: SourceBrowserActivity? = null
+    internal val pageTitle get() = job.options.title
     @Volatile private var mainResponse: BrokerResponse? = null
     @Volatile private var mainUrl = ""
     private var firstRequest = true

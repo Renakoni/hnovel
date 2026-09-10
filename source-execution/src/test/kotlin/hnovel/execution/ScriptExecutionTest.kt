@@ -15,6 +15,39 @@ import java.util.concurrent.TimeUnit
 class ScriptExecutionTest {
     @get:Rule val directory = TemporaryFolder()
 
+    @Test fun browserVerificationRequiresForegroundAndReturnsTheRequestedResponse() = runBlocking {
+        val authority = ExecutionAuthority()
+        val opened = mutableListOf<String>()
+        val browser = BrowserExecutor { _, request, options, guard ->
+            assertTrue(options.interactive)
+            guard.commit { opened += options.title }
+            BrokerResult.Success(BrokerResponse(200, request.url, emptyMap(), "rendered".toByteArray(), "UTF-8", 0))
+        }
+        MockWebServer().use { server ->
+            server.start()
+            SourceBroker(directory.root.toPath(), browser = browser).use { sessions ->
+                val id = authority.issue("a", "legado", "1", "fixture")
+                val session = sessions.open(SourceScope("fixture", "a", "legado"), listOf(NetworkGrant(server.url("/").toString(), true)))
+                val url = JsonPrimitive(server.url("/verify").toString())
+                SourceExecutionBroker(id, authority, session, ExecutionLimits()).use { bridge ->
+                    assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied), runScript(id, bridge, "java.startBrowser($url,'verify')"))
+                    assertTrue(bridge.interactionRequired)
+                    assertTrue(opened.isEmpty())
+                }
+                SourceExecutionBroker(id, authority, session, ExecutionLimits(), allowInteraction = true).use { bridge ->
+                    assertEquals(ExecutionResult.Success("\"rendered\""), runScript(id, bridge,
+                        "java.startBrowserAwait($url,'verify',false).body()"))
+                    assertEquals(0, server.requestCount)
+                    server.enqueue(MockResponse().setBody("refetched"))
+                    assertEquals(ExecutionResult.Success("\"refetched\""), runScript(id, bridge,
+                        "java.startBrowserAwait($url,'verify').body()"))
+                    assertEquals(1, server.requestCount)
+                    assertEquals(listOf("verify", "verify"), opened)
+                }
+            }
+        }
+    }
+
     @Test fun deeplyNestedWorkerPayloadIsRejectedBeforeHostParsing() {
         assertThrows(IllegalArgumentException::class.java) {
             BridgeWire.arguments(("[".repeat(10000) + "]".repeat(10000)).toByteArray())
