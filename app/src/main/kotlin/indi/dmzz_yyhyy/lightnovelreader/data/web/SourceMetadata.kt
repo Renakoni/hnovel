@@ -26,6 +26,7 @@ class SourceRegistration internal constructor(
     val metadata: SourceMetadata,
     private val removeRegistration: () -> Unit,
 ) {
+    internal var owner: Any? = null
     fun unregister() = removeRegistration()
 }
 

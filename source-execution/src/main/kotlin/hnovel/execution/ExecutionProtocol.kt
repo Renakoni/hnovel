@@ -67,6 +67,12 @@ class ExecutionAuthority {
  @Synchronized fun revokeSource(sourceId: String, namespace: String) {
   active.values.filter { it.sourceId == sourceId && it.namespace == namespace }.forEach(::revoke)
  }
+ /** Atomically retain the host-prepared replacement ticket while retiring the old registration. */
+ @Synchronized fun replaceSource(replacement: ExecutionIdentity, commit: () -> Unit) {
+  check(accepts(replacement))
+  commit()
+  active.values.filter { it.sourceId == replacement.sourceId && it.namespace == replacement.namespace && it != replacement }.forEach(::revoke)
+ }
  @Synchronized internal fun bindSession(identity: ExecutionIdentity, session: hnovel.network.SourceSession) {
   check(accepts(identity) && !session.closed)
   val previous = sessions.putIfAbsent(identity.nonce, session)

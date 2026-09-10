@@ -148,7 +148,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
     }
 
     private suspend fun information(id: String, old: BookRecord?, supplied: PageDocument? = null): BookRecord {
-        val initial = old?.book ?: RuleBook(id)
+        val initial = old?.book?.let { if (old.revision == identity.revision) it else it.copy(state = ScriptState()) } ?: RuleBook(id)
         val context = evaluation(initial)
         val document = supplied ?: fetch(context, id, "ruleBookInfo")
         context.baseUrl = document.url
@@ -162,7 +162,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val changed = old?.informationLoaded != true || initial.latestChapter != book.latestChapter || initial.updateTime != book.updateTime
         book = book.copy(tocUrl = tocUrl, state = context.book,
             observedUpdate = if (changed) System.currentTimeMillis() else initial.observedUpdate)
-        return BookRecord(identity.revision, book, true, document, old?.chapters.orEmpty())
+        return BookRecord(identity.revision, book, true, document, old?.takeIf { it.revision == identity.revision }?.chapters.orEmpty())
     }
 
     private suspend fun bookFields(context: RuleEvaluation, input: RuleValue, rules: JsonObject, prefix: String, seed: RuleBook): RuleBook {
