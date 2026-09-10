@@ -64,6 +64,9 @@ class ScriptCryptoObjectsTest {
             s.sign('chapter')
         """).jsonArray.map { it.jsonPrimitive.int.toByte() }.toByteArray()
         assertEquals(expected, Base64.getEncoder().encodeToString(signed))
+        assertTrue(java.security.Signature.getInstance("SHA256withRSA").apply {
+            initVerify(oracle.publicKey); update("chapter".toByteArray())
+        }.verify(signed))
         assertEquals(JsonPrimitive(true), run("""
             var s=java.createSign('SHA256withRSA');
             s.setPublicKey(java.base64DecodeToByteArray('${oracle.publicKeyBase64}'));
