@@ -126,6 +126,8 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             val browser = if (spec.content.string("webJs").isNotBlank() || spec.content.string("sourceRegex").isNotBlank())
                 BrowserOptions(script = spec.content.string("webJs"), sourceRegex = spec.content.string("sourceRegex")) else null
             val document = fetch(context, url, "ruleContent.content", browser)
+            // Redirects cannot turn a continuation (or the first page) into the next logical chapter.
+            if (document.url == next) continue
             if (document.url != url && !visited.add(document.url)) throw SourceContentException(ContentError.RepeatedPage, "ruleContent.nextContentUrl")
             if (pages.isEmpty()) context.text(spec.content.string("title"), document.input(), "ruleContent.title")
                 .takeIf { it.isNotBlank() }?.let { title = it; context.chapterField("title", JsonPrimitive(it)) }
@@ -141,6 +143,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             following.filter { it != next }.forEach(queue::addLast)
             context.page++
         }
+        if (pages.isEmpty()) throw SourceContentException(ContentError.EmptyContent, "ruleContent.content")
         var merged = pages.joinToString("\n")
         val replacement = spec.content.string("replaceRegex")
         if (replacement.isNotBlank()) merged = context.text(replacement, RuleValue.Text(merged), "ruleContent.replaceRegex", unescape = false)
