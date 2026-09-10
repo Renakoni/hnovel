@@ -38,6 +38,7 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
     val state = mutable.asStateFlow()
     private var operation: Job? = null
     private var attempt: LoginAttempt? = null
+    private var operationGeneration = 0
 
     init {
         viewModelScope.launch { registry.sources.collect { list -> mutable.update { it.copy(registry = list) } } }
@@ -46,6 +47,7 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
 
     private fun launch(block: suspend () -> Unit) {
         if (mutable.value.busy) return
+        val generation = ++operationGeneration
         mutable.update { it.copy(busy = true, message = null) }
         operation = viewModelScope.launch {
             try { withContext(Dispatchers.IO) { block() } }
@@ -63,7 +65,7 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
                 }
                 else -> R.string.sources_action_failed
             }) } }
-            finally { mutable.update { it.copy(busy = false) } }
+            finally { if (generation == operationGeneration) mutable.update { it.copy(busy = false) } }
         }
     }
 
@@ -77,7 +79,8 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
         if (id != null && mutable.value.installed.any { ImportedRuleSources.id(it.definition) == id }) {
             val target = sources.loginTarget(id)
             val variable = target.session.read(StorageRequest(StorageArea.Config, "variable")) as StorageResult.Value
-            mutable.update { it.copy(loginStatus = login.status(id), variable = variable.value.orEmpty()) }
+            val status = login.status(id)
+            mutable.update { it.copy(loginStatus = status, variable = variable.value.orEmpty()) }
         }
     }
 
@@ -140,9 +143,9 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
         mutable.update { it.copy(message = R.string.sources_saved) }
     }
     fun saveConfiguration(id: Identifier, variable: String, permissions: String) = launch {
+        require(variable.length <= 32768)
         val installed = sources.installedSources().single { ImportedRuleSources.id(it.definition) == id }
         updates.apply(id, installed.definition.reference(), grants(permissions))
-        require(variable.length <= 32768)
         check(sources.loginTarget(id).session.write(StorageRequest(StorageArea.Config, "variable", variable)) is StorageResult.Value)
         reload(); mutable.update { it.copy(variable = variable, message = R.string.sources_saved) }
     }
@@ -165,10 +168,12 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
     fun logout(id: Identifier) = launch { login.logout(id); mutable.update { it.copy(loginStatus = LoginStatus.LoggedOut) } }
     fun cancelLogin() {
         operation?.cancel()
+        val generation = ++operationGeneration
+        mutable.update { it.copy(busy = true) }
         val active = attempt; attempt = null
         viewModelScope.launch {
             withContext(NonCancellable) { if (active != null) login.cancel(active) }
-            mutable.update { it.copy(loginForm = null, busy = false) }
+            if (generation == operationGeneration) mutable.update { it.copy(loginForm = null, busy = false) }
         }
     }
     fun cancel() { operation?.cancel() }
