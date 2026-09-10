@@ -14,10 +14,21 @@ import hnovel.execution.ExecutionResult
 import hnovel.execution.ExecutionTask
 import hnovel.execution.ExecutionWire
 import hnovel.execution.FailureCode
+import hnovel.execution.SourceExecutionBroker
+import hnovel.network.SourceBroker
+import hnovel.network.SourceScope
+import hnovel.network.NetworkGrant
+import hnovel.network.BrokerLimits
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.SocketPolicy
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.*
 import org.junit.Test
@@ -27,6 +38,76 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class IsolatedExecutionInstrumentedTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
+
+    @Test fun rhinoCallsAuthenticatedHostBrokerAcrossIsolatedBinder() = runBlocking {
+        val authority = ExecutionAuthority()
+        val executor = AndroidIsolatedExecutor(context, authority)
+        val id = authority.issue("source-a", "legado", "1", "fixture")
+        val limits = ExecutionLimits(timeoutMillis = 15000)
+        val root = java.io.File(context.cacheDir, "execution-${java.util.UUID.randomUUID()}").toPath()
+        MockWebServer().use { server ->
+            server.start()
+            SourceBroker(root).use { sessions ->
+                val session = sessions.open(SourceScope("fixture", "source-a", "legado"),
+                    listOf(NetworkGrant(server.url("/").toString(), true)))
+                SourceExecutionBroker(id, authority, session, limits, server.url("/").toString()).use { broker ->
+                    server.enqueue(MockResponse().setBody("isolated chapter"))
+                    val result = executor.execute(id, ExecutionTask.Script(
+                        "source.put('result',java.ajax('/chapter?page={{page}}')); [source.id,source.get('result')]"), limits, broker)
+                    assertEquals(ExecutionResult.Success("[\"source-a\",\"isolated chapter\"]"), result)
+                    assertEquals("/chapter?page=1", server.takeRequest(3, TimeUnit.SECONDS)?.path)
+                }
+                val b = authority.issue("source-b", "legado", "1", "fixture")
+                val other = sessions.open(SourceScope("fixture", "source-b", "legado"), emptyList())
+                SourceExecutionBroker(b, authority, other, limits).use { broker ->
+                    assertEquals(ExecutionResult.Success("\"\""), executor.execute(b,
+                        ExecutionTask.Script("source.get('result')"), limits, broker))
+                }
+            }
+        }
+    }
+
+    @Test fun runawayRhinoScriptDoesNotPreventTheNextSourceFromExecuting() = runBlocking {
+        val authority = ExecutionAuthority()
+        val executor = AndroidIsolatedExecutor(context, authority)
+        val a = authority.issue("source-a", "legado", "1")
+        val limits = ExecutionLimits(timeoutMillis = 15000)
+        assertEquals(ExecutionResult.Failure(FailureCode.Timeout), executor.execute(a,
+            ExecutionTask.Script("while(true){}"), limits))
+        assertEquals(ExecutionResult.Failure(FailureCode.Timeout), executor.execute(a,
+            ExecutionTask.Script("/(a+)+$/.test('a'.repeat(40)+'!')"), ExecutionLimits(timeoutMillis = 4000)))
+        val b = authority.issue("source-b", "legado", "1")
+        assertEquals(ExecutionResult.Success("42"), executor.execute(b, ExecutionTask.Script("21*2"), limits))
+        assertEquals(ExecutionResult.Failure(FailureCode.ScriptRuntime), executor.execute(b,
+            ExecutionTask.Script("Packages.java.lang.System.exit(0)"), limits))
+    }
+
+    @Test fun cancellingAjaxReleasesBrokerPermitForTheNextInvocation() = runBlocking {
+        val authority = ExecutionAuthority()
+        val executor = AndroidIsolatedExecutor(context, authority)
+        val id = authority.issue("source-a", "legado", "1", "fixture")
+        val limits = ExecutionLimits(timeoutMillis = 15000)
+        val root = java.io.File(context.cacheDir, "cancel-${java.util.UUID.randomUUID()}").toPath()
+        MockWebServer().use { server ->
+            server.start()
+            SourceBroker(root, limits = BrokerLimits(concurrency = 1)).use { sessions ->
+                val session = sessions.open(SourceScope("fixture", "source-a", "legado"),
+                    listOf(NetworkGrant(server.url("/").toString(), true)))
+                val broker = SourceExecutionBroker(id, authority, session, limits, server.url("/").toString())
+                server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE))
+                val pending = async { executor.execute(id, ExecutionTask.Script("java.ajax('/slow')"), limits, broker) }
+                assertNotNull(withContext(Dispatchers.IO) { server.takeRequest(10, TimeUnit.SECONDS) })
+                pending.cancel()
+                withTimeout(5000) { pending.join() }
+                server.enqueue(MockResponse().setBody("next"))
+                SourceExecutionBroker(id, authority, session, limits, server.url("/").toString()).use { next ->
+                    assertEquals(ExecutionResult.Success("\"next\""), executor.execute(id,
+                        ExecutionTask.Script("java.ajax('/next')"), limits, next))
+                }
+                assertEquals("/next", server.takeRequest(3, TimeUnit.SECONDS)?.path)
+            }
+        }
+    }
 
     @Test fun remoteBinderUsesIsolatedUidAndEnforcesWireLimits() = runBlocking {
         val connected = CompletableDeferred<IIsolatedExecutionService>()
@@ -47,7 +128,7 @@ class IsolatedExecutionInstrumentedTest {
             val result = CompletableDeferred<ExecutionResult>()
             service.execute(ByteArray(IsolatedExecutionService.MAX_IPC_BYTES + 1), object : IExecutionCallback.Stub() {
                 override fun onResult(bytes: ByteArray) { result.complete(ExecutionWire.decodeResult(bytes)) }
-            })
+            }, null)
             assertEquals(ExecutionResult.Failure(FailureCode.InputLimit), withTimeout(5000) { result.await() })
             service.terminate()
             withTimeout(5000) { death.await() }

@@ -15,6 +15,12 @@ import hnovel.execution.ExecutionResult
 import hnovel.execution.ExecutionTask
 import hnovel.execution.ExecutionWire
 import hnovel.execution.FailureCode
+import hnovel.execution.SourceExecutionBroker
+import hnovel.execution.BridgeWire
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -33,7 +39,8 @@ class AndroidIsolatedExecutor(context: Context, private val authority: Execution
     private val context = context.applicationContext
 
     suspend fun execute(identity: ExecutionIdentity, task: ExecutionTask,
-        limits: ExecutionLimits = ExecutionLimits()): ExecutionResult = withContext(Dispatchers.IO) {
+        limits: ExecutionLimits = ExecutionLimits(), broker: SourceExecutionBroker? = null): ExecutionResult = withContext(Dispatchers.IO) {
+        if (broker != null && (broker.identity != identity || broker.limits != limits)) return@withContext failure(FailureCode.InvalidIdentity)
         if (!authority.accepts(identity)) return@withContext failure(FailureCode.InvalidIdentity)
         val request = ExecutionWire.encode(identity, task, limits)
         if (request.size > IsolatedExecutionService.MAX_IPC_BYTES) return@withContext failure(FailureCode.InputLimit)
@@ -41,18 +48,19 @@ class AndroidIsolatedExecutor(context: Context, private val authority: Execution
         try {
             // A new bind must never reuse a worker whose previous shutdown has not completed.
             if (retiringBinder?.isBinderAlive == true) return@withContext failure(FailureCode.ProcessExited)
-            invoke(identity, request, limits)
+            invoke(identity, request, limits, broker)
         } finally {
             workerLock.unlock()
         }
     }
 
     private suspend fun invoke(identity: ExecutionIdentity, request: ByteArray,
-        limits: ExecutionLimits): ExecutionResult = coroutineScope {
+        limits: ExecutionLimits, broker: SourceExecutionBroker?): ExecutionResult = coroutineScope {
         val connected = CompletableDeferred<IIsolatedExecutionService>()
         val result = CompletableDeferred<ExecutionResult>()
         val died = CompletableDeferred<Unit>()
         val finished = AtomicBoolean()
+        val callingBroker = AtomicBoolean()
         var remote: IIsolatedExecutionService? = null
         val connection = object : ServiceConnection {
             override fun onServiceConnected(name: ComponentName, binder: IBinder) {
@@ -88,6 +96,7 @@ class AndroidIsolatedExecutor(context: Context, private val authority: Execution
         }
         val bound = context.bindService(Intent(context, IsolatedExecutionService::class.java), connection, Context.BIND_AUTO_CREATE)
         if (!bound) return@coroutineScope failure(FailureCode.ProcessExited)
+        val brokerCalls = SupervisorJob(coroutineContext[Job])
         val revocations = launch {
             while (!result.isCompleted) {
                 if (!authority.accepts(identity)) {
@@ -106,6 +115,22 @@ class AndroidIsolatedExecutor(context: Context, private val authority: Execution
                 val workerUid = service.workerUid()
                 if (workerUid == Process.myUid()) return@withTimeoutOrNull failure(FailureCode.InvalidIdentity)
                 if (!authority.accepts(identity)) return@withTimeoutOrNull failure(FailureCode.Revoked)
+                val brokerBinder = object : IExecutionBroker.Stub() {
+                    override fun call(operation: String, arguments: ByteArray): ByteArray {
+                        if (Binder.getCallingUid() != workerUid || finished.get() || !authority.accepts(identity))
+                            throw SecurityException("Invalid worker invocation")
+                        check(operation.length <= 256 && arguments.size <= IsolatedExecutionService.MAX_IPC_BYTES)
+                        check(callingBroker.compareAndSet(false, true)) { "Concurrent bridge call" }
+                        try {
+                            val host = checkNotNull(broker) { "No broker capability" }
+                            val args = BridgeWire.arguments(arguments)
+                            val value = runBlocking { withContext(Dispatchers.IO + brokerCalls) { host.call(operation, args) } }
+                            val reply = value.toString().toByteArray(Charsets.UTF_8)
+                            check(reply.size <= IsolatedExecutionService.MAX_IPC_BYTES && !finished.get() && authority.accepts(identity))
+                            return reply
+                        } finally { callingBroker.set(false) }
+                    }
+                }
                 service.execute(request, object : IExecutionCallback.Stub() {
                     override fun onResult(bytes: ByteArray) {
                         if (Binder.getCallingUid() != workerUid || finished.get()) return
@@ -118,7 +143,7 @@ class AndroidIsolatedExecutor(context: Context, private val authority: Execution
                         } catch (_: Exception) { failure(FailureCode.InvalidTask) }
                         result.complete(reply)
                     }
-                })
+                }, brokerBinder)
                 result.await()
             } ?: failure(FailureCode.Timeout)
             if (authority.accepts(identity)) completed else failure(FailureCode.Revoked)
@@ -126,6 +151,8 @@ class AndroidIsolatedExecutor(context: Context, private val authority: Execution
             failure(FailureCode.ProcessExited)
         } finally {
             finished.set(true)
+            brokerCalls.cancel()
+            broker?.close()
             withContext(NonCancellable + Dispatchers.Main.immediate) {
                 revocations.cancelAndJoin()
                 // Even successful invocations retire their process; no engine globals survive.

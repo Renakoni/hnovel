@@ -10,6 +10,9 @@ import hnovel.execution.ExecutionResult
 import hnovel.execution.ExecutionWire
 import hnovel.execution.FailureCode
 import hnovel.execution.WorkerMain
+import hnovel.rhino.HostBridge
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -30,7 +33,7 @@ class IsolatedExecutionService : Service() {
             return Process.myUid()
         }
 
-        override fun execute(request: ByteArray, callback: IExecutionCallback) {
+        override fun execute(request: ByteArray, callback: IExecutionCallback, broker: IExecutionBroker?) {
             enforceHost()
             if (request.size > MAX_IPC_BYTES) {
                 deliver(callback, ExecutionWire.encodeResult(ExecutionResult.Failure(FailureCode.InputLimit)))
@@ -43,7 +46,13 @@ class IsolatedExecutionService : Service() {
             executor.execute {
                 try {
                     val result = try {
-                        WorkerMain.executeSerialized(request.toString(Charsets.UTF_8)).toByteArray(Charsets.UTF_8)
+                        WorkerMain.executeSerialized(request.toString(Charsets.UTF_8), HostBridge { name, args ->
+                            val bytes = JsonArray(args).toString().toByteArray(Charsets.UTF_8)
+                            check(bytes.size <= MAX_IPC_BYTES) { "Bridge request too large" }
+                            val reply = checkNotNull(broker) { "Host broker required" }.call(name, bytes)
+                            check(reply.size <= MAX_IPC_BYTES) { "Bridge response too large" }
+                            Json.parseToJsonElement(reply.toString(Charsets.UTF_8))
+                        }).toByteArray(Charsets.UTF_8)
                     } catch (_: Exception) {
                         ExecutionWire.encodeResult(ExecutionResult.Failure(FailureCode.InvalidTask))
                     }

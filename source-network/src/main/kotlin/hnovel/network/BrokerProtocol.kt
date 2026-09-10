@@ -81,3 +81,8 @@ class RequestVariables(initial: Map<String, String> = emptyMap(), private val ma
 }
 
 internal class BrokerFailure(val stage: RequestStage, val code: FailureCode) : java.io.IOException(code.name)
+
+/** The execution owner serializes request dispatch and local response commits with revocation. */
+fun interface RequestCommitGuard {
+    fun commit(action: () -> Unit)
+}

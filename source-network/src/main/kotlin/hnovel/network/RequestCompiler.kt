@@ -12,7 +12,7 @@ class RequestCompiler {
         if (rule.length > 65536 || keyword.length > 65536 || page < 1) return CompiledRequest.Rejected(FailureCode.InvalidRequest)
         return try {
             if (rule.contains("<js>", true) || rule.contains("@js:", true)) return CompiledRequest.Rejected(FailureCode.ScriptRequired)
-            if (Regex("\\{\\{(.*?)}}").findAll(rule).any { it.groupValues[1].trim() !in setOf("key", "page", "baseUrl") }) {
+            if (Regex("\\{\\{(.*?)\\}\\}").findAll(rule).any { it.groupValues[1].trim() !in setOf("key", "page", "baseUrl") }) {
                 return CompiledRequest.Rejected(FailureCode.ScriptRequired)
             }
             val optionStart = Regex(",\\s*(?=\\{)").find(rule)
@@ -23,7 +23,7 @@ class RequestCompiler {
             val charset = options["charset"]?.jsonPrimitive?.content ?: "UTF-8"
             if (charset != "escape") Charset.forName(charset)
             fun expand(value: String, encodeKey: Boolean, pageAlternatives: Boolean = false): String {
-                var text = Regex("\\{\\{\\s*(.*?)\\s*}}").replace(value) { match -> when (match.groupValues[1].trim()) {
+                var text = Regex("\\{\\{\\s*(.*?)\\s*\\}\\}").replace(value) { match -> when (match.groupValues[1].trim()) {
                     "key" -> if (encodeKey) encode(keyword, charset) else keyword
                     "page" -> page.toString()
                     "baseUrl" -> baseUrl

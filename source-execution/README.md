@@ -8,6 +8,10 @@ The Android app uses a non-exported `isolatedProcess` service with an AIDL reque
 
 The Application skips Hilt and host/plugin initialization in isolated UIDs. Both service process names use Android-compatible underscores; hyphens caused an APK installation failure on API 24 despite successful compilation.
 
+`ExecutionTask.Script` executes Rhino 1.8.1 inside the worker with JSON input/output and source globals derived from the host-issued identity. A reverse AIDL broker accepts only an operation and bounded JSON arguments. Its host endpoint authenticates the calling worker UID and the live invocation before dispatch. The worker receives no SourceSession, OkHttp client, storage path or credential manager.
+
+`SourceExecutionBroker` binds namespace, source, profile and account generation to one existing host session, plus the invocation request budget and request context. It currently implements synchronous `java.ajax`, source configuration and cache operations. These go through the existing network/storage policies. It is owned by the invocation and cancelled on retirement; closing it does not erase the shared source session. Request dispatch and local Cookie/cache/storage commits are serialized with identity revocation, so a revoked execution cannot commit a late response. Already-dispatched HTTP requests cannot be recalled from a remote server.
+
 ## Verification
 
 `./gradlew :source-execution:test :app:testDebugUnitTest` covers JVM protocol/host regressions. Real Android tests run with:
@@ -18,6 +22,10 @@ The Application skips Hilt and host/plugin initialization in isolated UIDs. Both
 
 The existing PR workflow includes API 24 and API 35 emulator jobs. They verify remote Binder transport, independent UID, rejection of a forwarded Binder from a foreign isolated UID, input-size rejection, timeout termination, forged identity rejection, revocation, cancellation and a subsequent successful source invocation. These tests execute the actual app Application and services; they are not Robolectric tests.
 
+The integrated suite additionally runs a real Rhino Ajax request through reverse Binder to a local server, checks source storage isolation, interrupts a catastrophic regex, and cancels an Ajax call while the broker has only one request permit. The next invocation must acquire that permit and complete. All six instrumentation tests passed on both API 24 and API 35. JVM tests also verify that revoking a ticket before a delayed response prevents Cookie storage and that deeply nested reverse-IPC input is rejected before recursive JSON parsing.
+
+Android uses the NIO variant of core-library desugaring because the source broker uses Path/Files on API 24. URL-template regex delimiters explicitly escape closing braces for Android ICU as well as the desktop JVM engine.
+
 ## Remaining Issue #86 acceptance work
 
-The worker still supports only the protocol's Echo/Sleep tasks. This PR has not yet connected the rule/Rhino engine or the source-network broker to Android IPC. Native allocation limits, catastrophic regex/infinite JavaScript tests, broker side-effect revocation and denial of engine-level reflection/network/file escape attempts remain required before claiming full Issue #86 completion. A manifest, ClassShutter or successful transport test alone is not evidence for those properties.
+The complete compatibility tool matrix, rule entry-point integration, shared jsLib state lifetime, native allocation limits and the full engine-level reflection/network/file escape suite remain required before closing #86/#87. The real Rhino/broker IPC path does not by itself establish those guarantees. JVM child-worker tests exercise pure scripts; the reverse broker transport is Android AIDL.

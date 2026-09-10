@@ -79,7 +79,7 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
     }
     fun newVariables(initial: Map<String, String> = emptyMap()) = RequestVariables(initial)
 
-    suspend fun execute(request: BrokerRequest): BrokerResult {
+    suspend fun execute(request: BrokerRequest, guard: RequestCommitGuard = RequestCommitGuard { it() }): BrokerResult {
         checkOpen()
         val snapshot = request.copy(headers = request.headers.toMap())
         val work = lifetime.async {
@@ -87,7 +87,7 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
             try {
                 validate(snapshot)
                 withTimeout(snapshot.timeoutMillis) {
-                    permits.withPermit { stage = RequestStage.Connect; perform(snapshot) }
+                    permits.withPermit { stage = RequestStage.Connect; perform(snapshot, guard) }
                 }
             } catch (_: TimeoutCancellationException) {
                 BrokerResult.Failure(stage, FailureCode.Timeout)
@@ -114,7 +114,7 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         }
     }
 
-    private suspend fun perform(request: BrokerRequest): BrokerResult {
+    private suspend fun perform(request: BrokerRequest, guard: RequestCommitGuard): BrokerResult {
         val initialUrl = request.url.toHttpUrlOrNull() ?: throw BrokerFailure(RequestStage.Parse, FailureCode.InvalidRequest)
         policy.check(initialUrl)
         val cacheGeneration = cache.generation()
@@ -127,9 +127,11 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         }
         for (attempt in 0..request.retry) {
             try {
-                val response = redirects(request, initialUrl)
+                val response = redirects(request, initialUrl, guard)
                 if (response.status in setOf(429, 502, 503, 504) && attempt < request.retry) continue
-                if (request.cache == CacheMode.ReadThrough && response.status in 200..299) cache.put(cacheKey, response, cacheGeneration)
+                if (request.cache == CacheMode.ReadThrough && response.status in 200..299) guard.commit {
+                    cache.put(cacheKey, response, cacheGeneration)
+                }
                 return BrokerResult.Success(response)
             } catch (failure: BrokerFailure) { throw failure }
               catch (failure: IOException) {
@@ -140,7 +142,7 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         error("Unreachable retry state")
     }
 
-    private suspend fun redirects(request: BrokerRequest, first: HttpUrl): BrokerResponse {
+    private suspend fun redirects(request: BrokerRequest, first: HttpUrl, guard: RequestCommitGuard): BrokerResponse {
         var url = first
         var method = request.method
         var body = request.body
@@ -159,7 +161,7 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
                 (bytes ?: ByteArray(0)).toRequestBody(headers["Content-Type"]?.toMediaTypeOrNull()) else null
             val call = client.newBuilder().dns(policy.dns(url)).callTimeout(request.timeoutMillis, TimeUnit.MILLISECONDS).build()
                 .newCall(Request.Builder().url(url).headers(headers).method(method, requestBody).build())
-            val response = awaitResponse(call, request.responseCharset, hop)
+            val response = awaitResponse(call, request.responseCharset, hop, guard)
             val location = response.headers.entries.firstOrNull { it.key.equals("Location", true) }?.value?.firstOrNull()
             if (response.status !in setOf(301, 302, 303, 307, 308) || location == null) return response
             if (hop == limits.maxRedirects) throw BrokerFailure(RequestStage.Response, FailureCode.RedirectLimit)
@@ -193,9 +195,9 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
     }
 
     /** The continuation remains cancellable through body consumption, so call.cancel interrupts reads too. */
-    private suspend fun awaitResponse(call: Call, forcedCharset: String?, redirects: Int): BrokerResponse = suspendCancellableCoroutine { continuation ->
+    private suspend fun awaitResponse(call: Call, forcedCharset: String?, redirects: Int, guard: RequestCommitGuard): BrokerResponse = suspendCancellableCoroutine { continuation ->
         continuation.invokeOnCancellation { call.cancel() }
-        call.enqueue(object : Callback {
+        val callback = object : Callback {
             override fun onFailure(call: Call, e: IOException) { if (continuation.isActive) continuation.resumeWithException(e) }
             override fun onResponse(call: Call, response: Response) {
                 response.use {
@@ -215,17 +217,22 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
                             }
                         }
                         val charset = forcedCharset ?: body.contentType()?.charset(Charsets.UTF_8)?.name() ?: "UTF-8"
-                        synchronized(this@SourceSession) {
-                            checkOpen()
-                            if (!continuation.isActive) return
-                            cookies.save(response.request.url, response.headers)
-                            continuation.resume(BrokerResponse(response.code, response.request.url.toString(),
-                                response.headers.toMultimap().mapValues { it.value.toList() }, bytes.toByteArray(), charset, redirects))
+                        guard.commit {
+                            synchronized(this@SourceSession) {
+                                checkOpen()
+                                if (continuation.isActive) {
+                                    cookies.save(response.request.url, response.headers)
+                                    continuation.resume(BrokerResponse(response.code, response.request.url.toString(),
+                                        response.headers.toMultimap().mapValues { it.value.toList() }, bytes.toByteArray(), charset, redirects))
+                                }
+                            }
                         }
                     } catch (failure: Exception) { if (continuation.isActive) continuation.resumeWithException(failure) }
                 }
             }
-        })
+        }
+        try { guard.commit { if (continuation.isActive) call.enqueue(callback) } }
+        catch (failure: Exception) { if (continuation.isActive) continuation.resumeWithException(failure) }
     }
 
     private fun checkOpen() { if (closed) throw CancellationException("Source session retired") }
