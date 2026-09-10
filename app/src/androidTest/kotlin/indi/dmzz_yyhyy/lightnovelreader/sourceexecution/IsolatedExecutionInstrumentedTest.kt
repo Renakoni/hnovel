@@ -665,7 +665,8 @@ class IsolatedExecutionInstrumentedTest {
                     suspend fun run(rule: String): RuleValue =
                         SourceExecutionBroker(id, authority, session, limits, base).use { broker ->
                             val result = executor.execute(id, ExecutionTask.Rule(rule, RuleValue.Text("<h1>local</h1>"),
-                                baseUrl = base, sourceHeaderRule = "@js:JSON.stringify({Authorization:java.ajax('/token')})"), limits, broker)
+                                output = OutputKind.Text, baseUrl = base,
+                                sourceHeaderRule = "@js:JSON.stringify({Authorization:java.ajax('/token')})"), limits, broker)
                             assertTrue(result.toString(), result is ExecutionResult.Success)
                             Json.decodeFromString(ExecutedRule.serializer(), (result as ExecutionResult.Success).output).value
                         }
