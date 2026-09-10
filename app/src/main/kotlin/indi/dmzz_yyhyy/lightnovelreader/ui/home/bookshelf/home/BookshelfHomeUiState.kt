@@ -21,6 +21,7 @@ interface BookshelfHomeUiState {
     val selectedTabIndex get() = bookshelfList.indexOfFirst { it.id == selectedBookshelfId }
     val selectedBookshelf: BookshelfUiState? get() = if (selectedTabIndex != -1) bookshelfList[selectedTabIndex] else null
     val selectMode: Boolean
+    val layout: BookshelfLayout
     val reorderMode: Boolean
     val reorderBookshelfMode: Boolean
     var updatedExpanded: Boolean
@@ -31,6 +32,7 @@ interface BookshelfHomeUiState {
     val reorderBookshelfIds: List<Int>
     val toast: String
     val changePage: (Int) -> Unit
+    val changeLayout: (BookshelfLayout) -> Unit
     val changeSortType: (BookshelfSortType) -> Unit
     val changeSortReversed: (Boolean) -> Unit
     val changeBookSelectState: (String) -> Unit
@@ -57,6 +59,7 @@ interface BookshelfHomeUiState {
 
 class MutableBookshelfHomeUiState(
     override val changePage: (Int) -> Unit = {},
+    override val changeLayout: (BookshelfLayout) -> Unit = {},
     override val changeSortType: (BookshelfSortType) -> Unit = {},
     override val changeSortReversed: (Boolean) -> Unit = {},
     override val changeBookSelectState: (String) -> Unit = {},
@@ -83,6 +86,7 @@ class MutableBookshelfHomeUiState(
     override var bookshelfList by mutableStateOf(emptyList<BookshelfUiState>())
     override var selectedBookshelfId by mutableIntStateOf(-1)
     override var selectMode by mutableStateOf(false)
+    override var layout by mutableStateOf(BookshelfLayout.List)
     override var reorderMode by mutableStateOf(false)
     override var reorderBookshelfMode by mutableStateOf(false)
     override var updatedExpanded by mutableStateOf(true)

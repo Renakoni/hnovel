@@ -13,6 +13,8 @@ import androidx.activity.result.ActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.TopAppBarDefaults
@@ -21,6 +23,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.app.ShareCompat
 import androidx.core.content.FileProvider
@@ -53,7 +56,8 @@ fun BookshelfHomeScreen(
     val saveAllBookshelfLauncher = launcher(uiState.saveAllBookshelfJsonData)
     val saveThisBookshelfLauncher = launcher(uiState.saveBookshelfJsonData)
     val importBookshelfLauncher = launcher(uiState.importBookshelf)
-    val listState = remember(uiState.selectedBookshelfId) { androidx.compose.foundation.lazy.LazyListState() }
+    val listState = rememberSaveable(uiState.selectedBookshelfId, saver = LazyListState.Saver) { LazyListState() }
+    val gridState = rememberSaveable(uiState.selectedBookshelfId, saver = LazyGridState.Saver) { LazyGridState() }
 
     BackHandler(uiState.selectMode) {
         uiState.onDisableSelectMode()
@@ -138,6 +142,7 @@ fun BookshelfHomeScreen(
         BookshelfHomeContent(
             uiState = uiState,
             listState = listState,
+            gridState = gridState,
             scrollBehavior = scrollBehavior
         )
     }
