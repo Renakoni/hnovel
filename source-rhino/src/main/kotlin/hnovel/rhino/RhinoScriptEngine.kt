@@ -33,7 +33,10 @@ private class ScriptBridge(private val bridge: HostBridge, private val rules: Sc
                 else if (rules.supports(name, arguments)) rules.call(cx, name, arguments)
                 else if (pureTool) ScriptTools.call(name.removePrefix("java."), arguments) else bridge.call(name, requests.prepare(cx, name, arguments))
                 if (Thread.currentThread().isInterrupted) throw ScriptCancelled()
-                val converted = JsonScriptData(cx, scope, maxChars).convert(result)
+                val networkResponse = name in setOf("java.ajaxAll", "java.connect") ||
+                    name in setOf("java.get", "java.head", "java.post") && args.size >= 2
+                if (networkResponse) ScriptResponses.validate(result, maxChars)
+                val converted = if (networkResponse) null else JsonScriptData(cx, scope, maxChars).convert(result)
                 when {
                     name == "java.getElement" || name == "java.getElements" -> rules.elementView(cx, scope, result)
                     name == "java.ajaxAll" -> realm.arrayIn(scope, result.jsonArray.map { ScriptResponses.create(cx, scope, it.jsonObject, false) }.toTypedArray())
@@ -88,9 +91,10 @@ data class ScriptFrame(val sourceId: String, val profile: String, val bookId: St
     val chapter: JsonObject = JsonObject(emptyMap()), val chineseConverter: Int = 0)
 
 data class ScriptLimits(val instructionLimit: Int = 100_000, val maxResultChars: Int = 256 * 1024,
-    val maxScriptChars: Int = 256 * 1024, val maxBridgeChars: Int = 64 * 1024,
+    val maxScriptChars: Int = 256 * 1024, val maxBridgeChars: Int = DEFAULT_BRIDGE_CHARS,
     val maxInterpreterStackDepth: Int = 1000) {
     init { require(instructionLimit > 0 && maxResultChars > 0 && maxScriptChars > 0 && maxBridgeChars > 0 && maxInterpreterStackDepth in 1..1000) }
+    companion object { const val DEFAULT_BRIDGE_CHARS = 64 * 1024 }
 }
 
 sealed interface ScriptResult {

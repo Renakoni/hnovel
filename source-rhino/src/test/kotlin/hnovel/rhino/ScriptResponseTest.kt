@@ -5,6 +5,37 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ScriptResponseTest {
+    @Test fun retainedResponseAndDerivedViewsChargeTheWholeOwnerAndDiscardOnOverflow() {
+        val response = JsonObject(data + ("body" to JsonPrimitive("b".repeat(400))))
+        val bounded = RhinoScriptEngine(HostBridge { _, _ -> response }, ScriptLimits(maxBridgeChars = 1024))
+        val mutations = listOf(
+            "holder.r.addHeader('X-Test',value)", "holder.r.cookie('c'+i,value)",
+            "holder.headers.put('Other',[value])", "holder.cookies.put('c',value)",
+            "holder.list.add(value)", "holder.property.add(value)", "holder.values.get(0).add(value)",
+            "holder.headerEntry.getValue().add(value)", "holder.cookieEntry.setValue(value)",
+            "holder.headers.putAll({Other:[value]})")
+        for (mutation in mutations) ScriptLibrary("a", "legado", "var holder={};").use { library ->
+            assertEquals(ScriptResult.Success("1"), bounded.evaluate("""
+                holder.r=java.get('u',{});holder.r.cookie('seed','x');
+                holder.headers=holder.r.multiHeaders();holder.cookies=holder.r.cookies();
+                holder.list=holder.headers.get('X-Test');holder.property=holder.headers['X-Test'];
+                holder.values=holder.headers.values();holder.headerEntry=holder.headers.entrySet()[0];
+                holder.cookieEntry=holder.cookies.entrySet()[0];1
+            """, frame, library))
+            var overflow = false
+            for (i in 1..9) {
+                val result = bounded.evaluate("var i=$i,value=new Array(i*60+1).join('x');$mutation;1", frame, library)
+                if (result is ScriptResult.Failure) {
+                    assertEquals(mutation, FailureCode.ResultTooLarge, result.code)
+                    overflow = true
+                    break
+                }
+            }
+            assertTrue("Must count body and metadata together: $mutation", overflow)
+            assertEquals(ScriptResult.Success("\"undefined\""), bounded.evaluate("typeof holder.r", frame, library))
+        }
+    }
+
     @Test fun malformedSnapshotsStayCatchableAndNeverExposeImplementationErrors() {
         val calls = listOf("java.connect('url')", "java.ajaxAll(['url'])", "java.get('url',{})", "java.head('url',{})", "java.post('url','',{})")
         for (payload in listOf<JsonElement>(JsonPrimitive("private-payload"), JsonNull, buildJsonObject {},

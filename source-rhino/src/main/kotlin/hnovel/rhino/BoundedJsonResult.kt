@@ -77,6 +77,11 @@ internal class BoundedJsonResult(private val maxChars: Int) {
         }
     }
 
+    fun encodeJson(value: JsonElement): String {
+        writeJson(value, 0)
+        return output.toString()
+    }
+
     private fun writeJson(value: JsonElement, depth: Int) {
         if (depth > 64) throw UnsupportedResult()
         when (value) {

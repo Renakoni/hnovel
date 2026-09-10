@@ -76,19 +76,24 @@ internal object ScriptDom {
         else -> JsonPrimitive(value.toString())
     }
 
-    fun wrap(cx: Context, scope: Scriptable, value: Any?): Any? {
+    fun wrap(cx: Context, scope: Scriptable, value: Any?, ownerCheck: (() -> Unit)? = null): Any? {
         val realm = ScriptRealm.current(cx)
+        val checkState: (() -> Unit)? = when (value) {
+            is ResponseSnapshot -> { { value.checkSize(Context.getCurrentContext().getThreadLocal(bridgeLimitKey) as Int) } }
+            is Node -> { { BoundedJsonResult(Context.getCurrentContext().getThreadLocal(bridgeLimitKey) as Int).encode(value.root().outerHtml()); Unit } }
+            else -> ownerCheck
+        }
         if (value == null) return null
         if (value is String || value is Number || value is Boolean) return value
         if (value is Enum<*>) return ScriptData.enum(cx, scope, value)
         if (value is Charset) return ScriptData.charset(cx, scope, value)
         if (value is java.net.URL) return ScriptData.url(cx, scope, value)
-        if (value is Map<*, *>) return ScriptData.map(cx, scope, value)
+        if (value is Map<*, *>) return ScriptData.map(cx, scope, value, ownerCheck = checkState)
         val type = exports.keys.firstOrNull { it.isInstance(value) }
         if (type == null) {
-            if (value is List<*>) return ScriptData.list(cx, scope, value as MutableList<*>)
-            if (value is Iterable<*>) return ScriptData.list(cx, scope, value.toMutableList())
-            if (value is Array<*>) return realm.arrayIn(scope, value.map { wrap(cx, scope, it) }.toTypedArray())
+            if (value is List<*>) return ScriptData.list(cx, scope, value as MutableList<*>, checkState)
+            if (value is Iterable<*>) return ScriptData.list(cx, scope, value.toMutableList(), checkState)
+            if (value is Array<*>) return realm.arrayIn(scope, value.map { wrap(cx, scope, it, checkState) }.toTypedArray())
             if (value is ByteArray) return JsonScriptData(cx, scope, cx.getThreadLocal(bridgeLimitKey) as Int).convert(ScriptTools.bytes(value))
             if (value is java.io.InputStream) return ScriptStreams.wrap(cx, scope, value)
             if (value is java.io.Reader) return ScriptStreams.wrap(cx, scope, value)
@@ -101,18 +106,18 @@ internal object ScriptDom {
                 val selected = candidates.sortedBy { it.isVarArgs }.firstNotNullOfOrNull { method ->
                     arguments(method.parameterTypes, method.isVarArgs, args)?.let { method to it }
                 } ?: error("Unsupported DOM overload")
+                // Derived maps/lists retain this check, including void-returning mutations.
                 val returned = try { selected.first.invoke(value, *selected.second) }
                 catch (failure: java.lang.reflect.InvocationTargetException) {
                     when (val cause = failure.cause) { is Error -> throw cause; is java.util.concurrent.CancellationException -> throw cause; else -> throw IllegalArgumentException("Invalid DOM operation") }
                 }
-                // Check the mutated tree too, including void-returning setters.
-                if (value is Node) BoundedJsonResult(context.getThreadLocal(bridgeLimitKey) as Int).encode(value.root().outerHtml())
+                finally { checkState?.invoke() }
                 if (value is Elements) {
                     for (i in value.size until (result as NativeArray).length.toInt()) result.delete(i)
                     result.put("length", result, value.size)
                     value.forEachIndexed { index, element -> result.put(index, result, wrap(context, active, element)) }
                 }
-                if (returned === value) result else wrap(context, active, returned)
+                if (returned === value) result else wrap(context, active, returned, checkState)
             }, ScriptableObject.DONTENUM)
         }
         if (value is Node || value is Elements) {

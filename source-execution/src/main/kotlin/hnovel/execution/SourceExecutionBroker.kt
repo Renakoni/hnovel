@@ -61,7 +61,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
                         headerMap(BridgeWire.arguments("[${it.content}]".toByteArray()).single())
                     }.orEmpty()
                     val request = compiled(requestNumber, args[0].jsonPrimitive.content, headers)
-                    snapshot(fetch(request))
+                    snapshot(fetch(request, hnovel.rhino.ScriptLimits.DEFAULT_BRIDGE_CHARS), false)
                 }
                 "java.ajaxAll" -> {
                     require(args.size == 1)
@@ -76,7 +76,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
                     coroutineScope {
                         val pending = requests.map { request -> async {
                             decoding.withPermit {
-                                snapshot(fetch(request)).also {
+                                snapshot(fetch(request, hnovel.rhino.ScriptLimits.DEFAULT_BRIDGE_CHARS), false).also {
                                     check(responseBytes.addAndGet(it.toString().toByteArray().size.toLong() + 1) <= BridgeWire.MAX_BYTES) { "Batch response too large" }
                                 }
                             }
@@ -90,7 +90,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
                     val request = BrokerRequest("script-$requestNumber", args[0].jsonPrimitive.content,
                         method = name.substringAfter('.').uppercase(), headers = headerMap(args[if (post) 2 else 1]),
                         body = if (post) args[1].jsonPrimitive.content else null, followRedirects = false)
-                    snapshot(fetch(request))
+                    snapshot(fetch(request, hnovel.rhino.ScriptLimits.DEFAULT_BRIDGE_CHARS), true)
                 }
                 "cache.get", "source.get", "source.getVariable" -> authorized {
                     require(args.size == if (name == "source.getVariable") 0 else 1)
@@ -129,19 +129,22 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
         item.content
     }
 
-    private suspend fun fetch(request: BrokerRequest): BrokerResponse {
-        val result = session.execute(request.copy(timeoutMillis = limits.timeoutMillis, maxResponseBytes = BridgeWire.MAX_BYTES), RequestCommitGuard { action -> authorized(action) })
+    private suspend fun fetch(request: BrokerRequest, maxResponseBytes: Int = BridgeWire.MAX_BYTES): BrokerResponse {
+        val result = session.execute(request.copy(timeoutMillis = limits.timeoutMillis, maxResponseBytes = maxResponseBytes), RequestCommitGuard { action -> authorized(action) })
         check(result is BrokerResult.Success) { "Broker request failed" }
         return result.response
     }
 
-    private fun snapshot(response: BrokerResponse) = buildJsonObject {
-        put("body", response.text())
+    private fun snapshot(response: BrokerResponse, binary: Boolean) = buildJsonObject {
+        if (binary) put("bytes", java.util.Base64.getEncoder().encodeToString(response.body))
+        else {
+            put("body", response.text())
+            put("bodySize", response.body.size)
+        }
         put("url", response.finalUrl)
         put("status", response.status)
         put("message", response.message)
         put("headers", JsonObject(response.headers.mapValues { (_, values) -> JsonArray(values.map(::JsonPrimitive)) }))
-        put("bytes", java.util.Base64.getEncoder().encodeToString(response.body))
         put("charset", response.declaredCharset?.let(::JsonPrimitive) ?: JsonNull)
         put("method", response.method)
         put("protocol", response.protocol)

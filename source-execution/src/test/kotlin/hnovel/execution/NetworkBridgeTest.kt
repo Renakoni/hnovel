@@ -18,8 +18,61 @@ class NetworkBridgeTest {
     private fun script(broker: SourceExecutionBroker, code: String): ExecutionResult {
         val wire = ExecutionWire.encode(id, ExecutionTask.Script(code), broker.limits)
         return ExecutionWire.decodeResult(WorkerMain.executeSerialized(wire.toString(Charsets.UTF_8), HostBridge { name, args ->
-            runBlocking { broker.call(name, args) }
+            val reply = runBlocking { broker.call(name, args) }.toString().toByteArray(Charsets.UTF_8)
+            Json.parseToJsonElement(BridgeWire.validate(reply))
         }).toByteArray())
+    }
+
+    @Test fun responsePayloadIsNotDuplicatedAndOrdinaryPagesFitThroughTheWire() = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            val base = server.url("/").toString()
+            SourceBroker(folder.root.toPath()).use { sessions ->
+                val session = sessions.open(SourceScope("fixture", "a", "legado"), listOf(NetworkGrant(base, true)))
+                SourceExecutionBroker(id, authority, session, ExecutionLimits(maxRequests = 32), base).use { broker ->
+                    for (body in listOf("x".repeat(28 * 1024), "x".repeat(60000), "\u4E2D".repeat(20000), "\"\\".repeat(12000))) {
+                        for (call in listOf("java.get('$base',{})", "java.connect('$base')", "java.ajaxAll(['$base'])[0]")) {
+                            server.enqueue(MockResponse().setBody(body))
+                            assertEquals("$call, ${body.length} chars", ExecutionResult.Success(body.length.toString()),
+                                script(broker, "$call.body().length"))
+                        }
+                    }
+                    server.enqueue(MockResponse().setBody("x".repeat(30000)))
+                    server.enqueue(MockResponse().setBody("x".repeat(30000)))
+                    assertEquals(ExecutionResult.Success("[30000,30000]"), script(broker,
+                        "java.ajaxAll(['$base','$base']).map(function(r){return r.body().length})"))
+                    for ((operation, args, field) in listOf(
+                        Triple("java.get", listOf(JsonPrimitive(base), JsonObject(emptyMap())), "bytes"),
+                        Triple("java.connect", listOf(JsonPrimitive(base)), "body"))) {
+                        server.enqueue(MockResponse().setBody("x".repeat(60000)))
+                        val snapshot = broker.call(operation, args).jsonObject
+                        assertTrue(field in snapshot)
+                        assertFalse((if (field == "bytes") "body" else "bytes") in snapshot)
+                        assertTrue(snapshot.toString().toByteArray().size < BridgeWire.MAX_BYTES)
+                    }
+                }
+            }
+        }
+    }
+
+    @Test fun responseBodyMetadataAndBatchLimitsRemainBounded() = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            val base = server.url("/").toString()
+            SourceBroker(folder.root.toPath()).use { sessions ->
+                val session = sessions.open(SourceScope("fixture", "a", "legado"), listOf(NetworkGrant(base, true)))
+                SourceExecutionBroker(id, authority, session, ExecutionLimits(), base).use { broker ->
+                    server.enqueue(MockResponse().setBody("x".repeat(hnovel.rhino.ScriptLimits.DEFAULT_BRIDGE_CHARS + 1)))
+                    assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied), script(broker, "java.get('$base',{})"))
+                    server.enqueue(MockResponse().setBody("x".repeat(20000)).addHeader("X-Large", "y".repeat(50000)))
+                    assertEquals(ExecutionResult.Failure(FailureCode.OutputLimit), script(broker, "java.get('$base',{})"))
+                    repeat(2) { server.enqueue(MockResponse().setBody("x".repeat(35000))) }
+                    assertEquals(ExecutionResult.Failure(FailureCode.OutputLimit), script(broker, "java.ajaxAll(['$base','$base'])"))
+                    server.enqueue(MockResponse().setBody("next"))
+                    assertEquals(ExecutionResult.Success("\"next\""), script(broker, "java.connect('$base').body()"))
+                }
+            }
+        }
     }
 
     @Test fun connectFollowsRedirectsButGetHeadPostExposeTheOriginalResponse() = runBlocking {

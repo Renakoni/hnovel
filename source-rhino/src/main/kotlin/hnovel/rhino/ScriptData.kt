@@ -4,11 +4,11 @@ import kotlinx.serialization.json.*
 import org.mozilla.javascript.*
 import java.nio.charset.Charset
 
-internal class ScriptMapValue(val map: MutableMap<String, Any?>) : NativeObject() {
+internal class ScriptMapValue(val map: MutableMap<String, Any?>, private val ownerCheck: (() -> Unit)? = null) : NativeObject() {
     override fun get(name: String, start: Scriptable): Any? {
         val own = super.get(name, start)
         return if (own != NOT_FOUND || !map.containsKey(name)) own
-            else ScriptDom.wrap(Context.getCurrentContext(), parentScope, map[name])
+            else ScriptDom.wrap(Context.getCurrentContext(), parentScope, map[name], ownerCheck)
     }
     override fun has(name: String, start: Scriptable) = super.has(name, start) || map.containsKey(name)
 }
@@ -38,40 +38,43 @@ internal object ScriptData {
 
     @Suppress("UNCHECKED_CAST")
     fun map(cx: Context, scope: Scriptable, source: Map<*, *>, changed: (() -> Unit)? = null,
-        validate: ((Map<String, Any?>) -> Unit)? = null): ScriptableObject {
+        validate: ((Map<String, Any?>) -> Unit)? = null, ownerCheck: (() -> Unit)? = null): ScriptableObject {
         val values = source as MutableMap<String, Any?>
         val realm = ScriptRealm.current(cx)
-        val result = ScriptMapValue(values).apply { parentScope = scope; prototype = realm.objectIn(scope).prototype }
+        val result = ScriptMapValue(values, ownerCheck).apply { parentScope = scope; prototype = realm.objectIn(scope).prototype }
+        fun guarded(active: Scriptable, message: String, action: (Context, Scriptable, Array<out Any>) -> Any?) =
+            ScriptCalls.method(active, message) { c, s, a -> try { action(c, s, a) } finally { ownerCheck?.invoke() } }
+        fun wrap(c: Context, s: Scriptable, value: Any?) = ScriptDom.wrap(c, s, value, ownerCheck)
         fun method(name: String, action: (Context, Scriptable, Array<out Any>) -> Any?) {
-            result.defineProperty(name, ScriptCalls.method(scope, "invalid map argument", action), ScriptableObject.DONTENUM)
+            result.defineProperty(name, guarded(scope, "invalid map argument", action), ScriptableObject.DONTENUM)
         }
         fun check(next: Map<String, Any?>) { validate?.invoke(next); JsonScriptData(Context.getCurrentContext(), scope, Context.getCurrentContext().getThreadLocal(bridgeLimitKey) as Int).convert(json(next)) }
-        method("get") { c, s, a -> require(a.size == 1); ScriptDom.wrap(c, s, values[Context.toString(a[0])]) }
-        method("getOrDefault") { c, s, a -> require(a.size == 2); ScriptDom.wrap(c, s, values.getOrDefault(Context.toString(a[0]), argument(c, s, a[1]))) }
+        method("get") { c, s, a -> require(a.size == 1); wrap(c, s, values[Context.toString(a[0])]) }
+        method("getOrDefault") { c, s, a -> require(a.size == 2); wrap(c, s, values.getOrDefault(Context.toString(a[0]), argument(c, s, a[1]))) }
         method("put") { c, s, a ->
             require(a.size == 2); val key = Context.toString(a[0]); val value = argument(c, s, a[1])
-            check(values + (key to value)); val old = values.put(key, value); changed?.invoke(); ScriptDom.wrap(c, s, old)
+            check(values + (key to value)); val old = values.put(key, value); changed?.invoke(); wrap(c, s, old)
         }
         method("putAll") { c, s, a ->
             require(a.size == 1)
             val incoming = argument(c, s, a[0]) as? Map<String, Any?> ?: error("Map required")
             check(values + incoming); values.putAll(incoming); changed?.invoke(); null
         }
-        method("remove") { c, s, a -> require(a.size == 1); val old = values.remove(Context.toString(a[0])); changed?.invoke(); ScriptDom.wrap(c, s, old) }
+        method("remove") { c, s, a -> require(a.size == 1); val old = values.remove(Context.toString(a[0])); changed?.invoke(); wrap(c, s, old) }
         method("clear") { _, _, a -> require(a.isEmpty()); values.clear(); changed?.invoke(); null }
         method("containsKey") { _, _, a -> require(a.size == 1); values.containsKey(Context.toString(a[0])) }
         method("containsValue") { c, s, a -> require(a.size == 1); values.containsValue(argument(c, s, a[0])) }
         method("size") { _, _, a -> require(a.isEmpty()); values.size }
         method("isEmpty") { _, _, a -> require(a.isEmpty()); values.isEmpty() }
-        method("keySet") { c, s, a -> require(a.isEmpty()); list(c, s, values.keys.toMutableList()) }
-        method("values") { c, s, a -> require(a.isEmpty()); list(c, s, values.values.toMutableList()) }
+        method("keySet") { c, s, a -> require(a.isEmpty()); list(c, s, values.keys.toMutableList(), ownerCheck) }
+        method("values") { c, s, a -> require(a.isEmpty()); list(c, s, values.values.toMutableList(), ownerCheck) }
         method("entrySet") { c, s, a -> require(a.isEmpty()); ScriptRealm.current(c).arrayIn(s, values.keys.map { key ->
             ScriptRealm.current(c).objectIn(s).apply {
-                defineProperty("getKey", ScriptCalls.method(s, "invalid entry argument") { _, _, args -> require(args.isEmpty()); key }, ScriptableObject.DONTENUM)
-                defineProperty("getValue", ScriptCalls.method(s, "invalid entry argument") { context, active, args -> require(args.isEmpty()); ScriptDom.wrap(context, active, values[key]) }, ScriptableObject.DONTENUM)
-                defineProperty("setValue", ScriptCalls.method(s, "invalid entry argument") { context, active, args ->
+                defineProperty("getKey", guarded(s, "invalid entry argument") { _, _, args -> require(args.isEmpty()); key }, ScriptableObject.DONTENUM)
+                defineProperty("getValue", guarded(s, "invalid entry argument") { context, active, args -> require(args.isEmpty()); wrap(context, active, values[key]) }, ScriptableObject.DONTENUM)
+                defineProperty("setValue", guarded(s, "invalid entry argument") { context, active, args ->
                     require(args.size == 1); val value = argument(context, active, args[0]); check(values + (key to value))
-                    val old = values.put(key, value); changed?.invoke(); ScriptDom.wrap(context, active, old)
+                    val old = values.put(key, value); changed?.invoke(); wrap(context, active, old)
                 }, ScriptableObject.DONTENUM)
             }
         }.toTypedArray()) }
@@ -81,26 +84,27 @@ internal object ScriptData {
     }
 
     @Suppress("UNCHECKED_CAST")
-    fun list(cx: Context, scope: Scriptable, source: MutableList<*>): NativeArray {
+    fun list(cx: Context, scope: Scriptable, source: MutableList<*>, ownerCheck: (() -> Unit)? = null): NativeArray {
         val values = source as MutableList<Any?>
-        val result = ScriptRealm.current(cx).arrayIn(scope, values.map { ScriptDom.wrap(cx, scope, it) }.toTypedArray())
+        fun wrap(c: Context, s: Scriptable, value: Any?) = ScriptDom.wrap(c, s, value, ownerCheck)
+        val result = ScriptRealm.current(cx).arrayIn(scope, values.map { wrap(cx, scope, it) }.toTypedArray())
         fun method(name: String, action: (Context, Scriptable, Array<out Any>) -> Any?) {
             result.defineProperty(name, ScriptCalls.method(scope, "invalid list argument") { c, s, a ->
-                val answer = action(c, s, a)
+                val answer = try { action(c, s, a) } finally { ownerCheck?.invoke() }
                 for (i in values.size until result.length.toInt()) result.delete(i)
                 result.put("length", result, values.size)
-                values.forEachIndexed { index, value -> result.put(index, result, ScriptDom.wrap(c, s, value)) }
+                values.forEachIndexed { index, value -> result.put(index, result, wrap(c, s, value)) }
                 answer
             }, ScriptableObject.DONTENUM)
         }
-        method("get") { c, s, a -> require(a.size == 1); ScriptDom.wrap(c, s, values[Context.toNumber(a[0]).toInt()]) }
+        method("get") { c, s, a -> require(a.size == 1); wrap(c, s, values[Context.toNumber(a[0]).toInt()]) }
         method("size") { _, _, a -> require(a.isEmpty()); values.size }
         method("isEmpty") { _, _, a -> require(a.isEmpty()); values.isEmpty() }
         method("contains") { c, s, a -> require(a.size == 1); values.contains(argument(c, s, a[0])) }
         fun check(next: List<Any?>) { JsonScriptData(Context.getCurrentContext(), scope, Context.getCurrentContext().getThreadLocal(bridgeLimitKey) as Int).convert(json(next)) }
         method("add") { c, s, a -> require(a.size == 1); val value = argument(c, s, a[0]); check(values + value); values.add(value) }
-        method("set") { c, s, a -> require(a.size == 2); val index = Context.toNumber(a[0]).toInt(); val value = argument(c, s, a[1]); check(values.toMutableList().apply { set(index, value) }); ScriptDom.wrap(c, s, values.set(index, value)) }
-        method("remove") { c, s, a -> require(a.size == 1); if (a[0] is Number) ScriptDom.wrap(c, s, values.removeAt(Context.toNumber(a[0]).toInt())) else values.remove(argument(c, s, a[0])) }
+        method("set") { c, s, a -> require(a.size == 2); val index = Context.toNumber(a[0]).toInt(); val value = argument(c, s, a[1]); check(values.toMutableList().apply { set(index, value) }); wrap(c, s, values.set(index, value)) }
+        method("remove") { c, s, a -> require(a.size == 1); if (a[0] is Number) wrap(c, s, values.removeAt(Context.toNumber(a[0]).toInt())) else values.remove(argument(c, s, a[0])) }
         method("clear") { _, _, a -> require(a.isEmpty()); values.clear(); null }
         return result
     }

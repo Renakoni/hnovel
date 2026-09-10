@@ -43,6 +43,39 @@ import org.junit.runner.RunWith
 class IsolatedExecutionInstrumentedTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
 
+    @Test fun ordinaryResponseSizesAndRetainedHeadersRespectBudgetsAcrossBinder() = runBlocking {
+        val authority = ExecutionAuthority()
+        val executor = AndroidIsolatedExecutor(context, authority)
+        val id = authority.issue("response-budgets", "legado", "1", "fixture")
+        val limits = ExecutionLimits(timeoutMillis = 30000)
+        val root = java.io.File(context.cacheDir, "response-budgets-${java.util.UUID.randomUUID()}")
+        val library = "var holder={};"
+        try {
+            MockWebServer().use { server ->
+                server.start()
+                val base = server.url("/").toString()
+                SourceBroker(root.toPath()).use { sessions ->
+                    val session = sessions.open(SourceScope("fixture", "response-budgets", "legado"), listOf(NetworkGrant(base, true)))
+                    suspend fun execute(code: String) = SourceExecutionBroker(id, authority, session, limits, base).use { broker ->
+                        executor.execute(id, ExecutionTask.Script(code, libraryCode = library, baseUrl = base), limits, broker)
+                    }
+                    server.enqueue(MockResponse().setBody("x".repeat(60000)).addHeader("X-Test", "first"))
+                    assertEquals(ExecutionResult.Success("60000"), execute("""
+                        holder.r=java.get(baseUrl,{});holder.r.addHeader('X-Retained','first');
+                        holder.headers=holder.r.multiHeaders().get('X-Retained');holder.r.body().length
+                    """))
+                    assertEquals(ExecutionResult.Success("1"), execute("holder.headers.add('second');1"))
+                    assertEquals(ExecutionResult.Failure(FailureCode.OutputLimit), execute("holder.headers.add(new Array(10001).join('x'));1"))
+                    assertEquals(ExecutionResult.Success("\"undefined\""), execute("typeof holder.r"))
+                    server.enqueue(MockResponse().setBody("\u4E2D".repeat(20000)))
+                    assertEquals(ExecutionResult.Success("[20000,60000]"), execute("var r=java.connect(baseUrl);[r.body().length,r.raw().body().contentLength()]"))
+                    repeat(2) { server.enqueue(MockResponse().setBody("x".repeat(30000))) }
+                    assertEquals(ExecutionResult.Success("[30000,30000]"), execute("java.ajaxAll([baseUrl,baseUrl]).map(function(r){return r.body().length})"))
+                }
+            }
+        } finally { executor.close(); root.deleteRecursively() }
+    }
+
     @Test fun responseBytesDomAndEntityWritesCrossRealBinderBoundary() = runBlocking {
         val authority = ExecutionAuthority()
         val executor = AndroidIsolatedExecutor(context, authority)

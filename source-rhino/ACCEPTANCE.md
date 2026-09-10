@@ -38,7 +38,7 @@ The pinned queryTTF implementation accepts HTTP(S), Base64 and byte arrays;
 its comment mentions local paths but the actual string branch does not read a
 file. Scripts can pass `java.readFile(path)` to queryTTF.
 
-Every bridge has its existing JSON size/depth limit (64 KiB by default in Rhino,
+Ordinary bridge data retains its JSON size/depth limit (64 KiB by default in Rhino,
 256 KiB IPC). Encoded bytes and JSON punctuation count toward the limit; these
 are not promises to accept arbitrarily large fonts or archives. Extraction is
 limited to 256 entries and the current bridge byte budget across all contents.
@@ -91,11 +91,20 @@ its owning library drops the complete scope/realm, including retained aliases;
 the next invocation reinitializes the library scripts. Individual native mutations
 are not rolled back. Pre-argument validation failures and pure crypto budget
 failures preserve the existing valid library state.
+Response headers, cookies, URL and charset mutations validate the complete
+retained response, charging original body bytes once plus all metadata. Derived
+maps, lists, entries and property-read views retain the owner check and use the
+current invocation's limit. DOM attributes/dataset views likewise check their
+owning tree. Overflows use the same realm-discard path, not just the process
+memory monitor. Independent script-created objects still use the process limit;
+this is not a sum of every object retained by arbitrary JavaScript.
 
 ## Data interface semantics and explicit exclusions
 
-Production response snapshots carry Base64 original bytes, final method/URL,
-protocol/timestamps and nullable declared charset. Missing declared charset stays
+Production Jsoup snapshots carry Base64 original bytes without a duplicate text
+body. StrResponse snapshots carry decoded text and original byte length, without
+a binary copy: their raw body is already consumed and cannot be replayed. Both
+include final method/URL, protocol/timestamps and nullable declared charset. Missing declared charset stays
 null so parse() can detect HTML meta/BOM encoding. Legacy text-only mock snapshots
 use UTF-8 text bytes; they cannot recover binary data that was never supplied.
 Buffered bodies support repeated body()/bodyAsBytes()/parse() calls.
@@ -108,6 +117,20 @@ skip, available/ready, mark/reset and close over bounded memory. StrResponse's
 raw body is already closed, matching the reference's text() consumption.
 Mutating response headers/cookies/URL changes only that response view, never
 the broker's session or permissions. Session Cookie integration is #88.
+
+| Response boundary | Accounting and default limit |
+| --- | --- |
+| Typed network fetch (get/head/post/connect/ajaxAll) | At most 64 KiB of original body bytes per response, using the shared default bridge limit; metadata must still fit below |
+| Worker response construction | 64 KiB: original binary bytes counted once plus JSON metadata, or decoded StrResponse text plus metadata counted as escaped JSON. ajaxAll shares one aggregate budget |
+| Retained mutable Jsoup response | Original body bytes plus escaped JSON for all headers, cookies, URL, method, charset and status data, checked after native operations and through derived views |
+| Binder reply | 256 KiB of actual UTF-8 JSON, including Base64 expansion; this transport ceiling is not a promise of 256 KiB response bodies |
+| Script-visible methods/results | Existing JSON escaping/array budgets still apply; large signed-byte arrays may require reading an in-memory stream in bounded chunks |
+
+The production snapshot has one body representation. Base64 transport expansion
+does not reduce the binary body's worker budget, and the unused generic JS copy
+of a typed response is no longer constructed. Tests cover 28 KiB and 60,000-byte
+ASCII, 60,000-byte Chinese text, escaped text, two 30,000-byte batch members,
+body/metadata/batch overflow and recovery; the Android test crosses real Binder.
 
 `ScriptDom` is the closed class/method dispatch inventory. It covers the pinned
 Jsoup data methods and supported scalar/DOM/collection/Reader overloads. Java
@@ -149,7 +172,8 @@ fixture was run. The generated fonts/archives are public synthetic data; their
 generator is recorded alongside the files. Tests establish these concrete
 contracts, not universal Legado compatibility or an absolute sandbox.
 
-Publication validation: 95 Rhino, 41 execution, 10 rules, 20 network and 43
-compatibility JVM tests pass (209 total). Debug and AndroidTest APKs build;
-the real isolated-service suite passes 21 tests on each of API 24 and API 35,
-including retained-library recovery after an oversized DOM mutation.
+Publication validation: 97 Rhino, 43 execution, 10 rules, 20 network and 43
+compatibility JVM tests pass (213 total). Debug and AndroidTest APKs build;
+the real isolated-service suite passes 22 tests on each of API 24 and API 35,
+including realistic response sizes and retained-library recovery after oversized
+DOM and derived response-header mutations.

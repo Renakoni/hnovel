@@ -9,26 +9,53 @@ import okio.source
 
 /** Native JS response views backed only by bounded data, never OkHttp/Jsoup/Java wrappers. */
 internal object ScriptResponses {
+    /** Body bytes count once, before Base64 transport expansion; metadata keeps JSON accounting. */
+    fun validate(data: JsonElement, maxChars: Int) {
+        val batch = data is JsonArray
+        val snapshots = if (batch) data.jsonArray.toList() else listOf(data)
+        var remaining = maxChars - if (batch) 2 else 0
+        if (remaining < 0) throw ResultTooLarge()
+        for ((index, item) in snapshots.withIndex()) {
+            if (batch && index > 0) remaining--
+            val snapshot = item.jsonObject
+            val bytes = snapshot["bytes"]?.let {
+                require(it.jsonPrimitive.isString)
+                val encoded = it.jsonPrimitive.content
+                if (encoded.length.toLong() > (remaining.toLong() + 2) / 3 * 4) throw ResultTooLarge()
+                java.util.Base64.getDecoder().decode(encoded).size
+            } ?: 0
+            remaining -= bytes
+            if (remaining < 0) throw ResultTooLarge()
+            remaining -= BoundedJsonResult(remaining).encodeJson(JsonObject(snapshot - "bytes")).length
+        }
+    }
+
     fun create(context: Context, scope: Scriptable, data: JsonObject, jsoup: Boolean): ScriptableObject {
         val realm = ScriptRealm.current(context)
         val response = realm.objectIn(scope)
-        val body = data.getValue("body").jsonPrimitive.content
+        val body = data["body"]?.let { require(it.jsonPrimitive.isString); it.jsonPrimitive.content }
         val url = data.getValue("url").jsonPrimitive.content
         val status = data.getValue("status").jsonPrimitive.int
         val message = data.getValue("message").jsonPrimitive.content
         val headers = data.getValue("headers").jsonObject
         // Validate every entry while still inside the guarded bridge call, before exposing
         // retained/lazy accessors. Invalid host data must not throw a JVM exception later.
-        for (field in listOf("body", "url", "message")) require(data.getValue(field).jsonPrimitive.isString)
+        for (field in listOf("url", "message")) require(data.getValue(field).jsonPrimitive.isString)
         headers.values.forEach { list -> list.jsonArray.forEach { require(it.jsonPrimitive.isString) } }
-        val bytes = data["bytes"]?.let { require(it.jsonPrimitive.isString); java.util.Base64.getDecoder().decode(it.jsonPrimitive.content) }
-            ?: body.toByteArray(Charsets.UTF_8)
         if (jsoup) {
+            val bytes = data["bytes"]?.let { java.util.Base64.getDecoder().decode(it.jsonPrimitive.content) }
+                ?: requireNotNull(body).toByteArray(Charsets.UTF_8)
             val snapshot = ResponseSnapshot(java.net.URL(url), org.jsoup.Connection.Method.valueOf(data["method"]?.jsonPrimitive?.content ?: "GET"),
                 status, message, data["charset"]?.takeUnless { it == JsonNull }?.jsonPrimitive?.content,
                 bytes, headers.mapValues { (_, list) -> list.jsonArray.map { it.jsonPrimitive.content } })
+            snapshot.checkSize(context.getThreadLocal(bridgeLimitKey) as Int)
             return ScriptDom.wrap(context, scope, snapshot) as ScriptableObject
         }
+        requireNotNull(body)
+        val bodySize = data["bodySize"]?.jsonPrimitive?.int ?: data["bytes"]?.let {
+            java.util.Base64.getDecoder().decode(it.jsonPrimitive.content).size
+        } ?: body.toByteArray(Charsets.UTF_8).size
+        require(bodySize >= 0)
         fun values(name: String) = headers.entries.firstOrNull { it.key.equals(name, true) }?.value?.jsonArray
         fun method(target: ScriptableObject, name: String, action: (Array<out Any>) -> Any?) {
             target.defineProperty(name, realm.method(scope) { cx, active, args ->
@@ -55,7 +82,7 @@ internal object ScriptResponses {
             headers.forEach { (name, values) -> values.jsonArray.forEach { add(name, it.jsonPrimitive.content) } }
         }.build()
         val rawBody = object : okhttp3.ResponseBody() {
-            private val content = object : java.io.FilterInputStream(bytes.inputStream()) {
+            private val content = object : java.io.FilterInputStream(ByteArray(0).inputStream()) {
                 private var closed = false
                 override fun close() { closed = true; super.close() }
                 override fun read(): Int { if (closed) throw java.io.IOException("closed"); return super.read() }
@@ -65,7 +92,7 @@ internal object ScriptResponses {
                 }
             }.source().buffer()
             override fun contentType() = responseHeaders["Content-Type"]?.toMediaTypeOrNull()
-            override fun contentLength() = bytes.size.toLong()
+            override fun contentLength() = bodySize.toLong()
             override fun source() = content
         }
         rawBody.source().close() // newCallStrResponse consumes/closes raw.body while producing its text.

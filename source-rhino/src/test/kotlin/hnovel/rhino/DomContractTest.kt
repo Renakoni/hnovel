@@ -70,6 +70,18 @@ class DomContractTest {
         }
     }
 
+    @Test fun retainedDatasetMutationAlsoChecksItsOwningDomTree() {
+        val bounded = RhinoScriptEngine(HostBridge { _, _ -> error("No host") }, ScriptLimits(maxBridgeChars=512))
+        val input = frame.copy(variables=mapOf("result" to JsonPrimitive("<p>" + "b".repeat(200) + "</p>")))
+        ScriptLibrary("a", "legado", "var saved={};").use { library ->
+            assertEquals(ScriptResult.Success("1"), bounded.evaluate("saved.map=java.getElements('p').first().dataset();1", input, library))
+            // The map itself fits; the attributes plus retained document exceed the budget.
+            assertEquals(FailureCode.ResultTooLarge, (bounded.evaluate(
+                "saved.map.put('a',new Array(281).join('x'));1", frame.copy(variables=emptyMap()), library) as ScriptResult.Failure).code)
+            assertEquals(ScriptResult.Success("\"undefined\""), bounded.evaluate("typeof saved.map", frame.copy(variables=emptyMap()), library))
+        }
+    }
+
     @Test fun formDataAndTrackedRangesHaveUsableDataFacades() {
         check(buildJsonArray { add("chapter");add("one");add(true);add(1);add("undefined") }, """
             var parser=java.getElements('section').first().ownerDocument().parser().setTrackPosition(true);

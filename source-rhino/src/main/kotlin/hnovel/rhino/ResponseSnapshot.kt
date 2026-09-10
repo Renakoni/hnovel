@@ -8,6 +8,7 @@ import java.io.BufferedInputStream
 import java.net.URL
 import java.nio.ByteBuffer
 import java.nio.charset.Charset
+import kotlinx.serialization.json.*
 
 /** Complete Connection.Response data contract; this object cannot execute a request. */
 internal class ResponseSnapshot(private var location: URL, private var verb: Connection.Method,
@@ -23,6 +24,15 @@ internal class ResponseSnapshot(private var location: URL, private var verb: Con
     private val type = header("Content-Type")
     private enum class BodyState { Fresh, Buffered, Parsed, Stream }
     private var state = BodyState.Fresh
+    fun checkSize(limit: Int) {
+        if (content.size > limit) throw ResultTooLarge()
+        BoundedJsonResult(limit - content.size).encodeJson(buildJsonObject {
+            put("url", location.toString()); put("method", verb.name)
+            put("status", status); put("message", statusText)
+            put("charset", encoding); put("contentType", type)
+            put("headers", ScriptData.json(fields)); put("cookies", ScriptData.json(jar))
+        })
+    }
     private fun key(name: String) = fields.keys.firstOrNull { it.equals(name, true) }
     override fun statusCode() = status
     override fun statusMessage() = statusText
