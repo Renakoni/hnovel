@@ -9,6 +9,63 @@ import org.junit.Test
 
 class RuleSourceTest {
 
+    @Test fun nestedRuleRequestsInheritStaticAndScriptSourceHeaders() = runBlocking {
+        for (dynamic in listOf(false, true)) RuleSourceFixture().use { fixture ->
+            val seen = java.util.concurrent.ConcurrentLinkedQueue<String>()
+            fixture.server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
+                override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest): okhttp3.mockwebserver.MockResponse {
+                    seen.add(request.path!!.substringBefore('?'))
+                    if (request.path == "/explicit") return okhttp3.mockwebserver.MockResponse().setResponseCode(
+                        if (request.getHeader("Authorization") == null && request.getHeader("X-Api-Key") == null &&
+                            request.getHeader("User-Agent") == "explicit-agent") 200 else 401)
+                    if (request.getHeader("Authorization") != "Bearer source" ||
+                        request.getHeader("X-Api-Key") != "source-key" ||
+                        request.getHeader("User-Agent") != if (request.path == "/override") "request-agent" else "source-agent")
+                        return okhttp3.mockwebserver.MockResponse().setResponseCode(401)
+                    return if (request.path!!.substringBefore('?') in setOf("/search", "/retry"))
+                        okhttp3.mockwebserver.MockResponse().setBody("<li><a href='/book/one'><h2>Same title</h2></a></li>")
+                    else okhttp3.mockwebserver.MockResponse().setBody("accepted")
+                }
+            }
+            val header = """{"Authorization":"Bearer source","X-Api-Key":"source-key","User-Agent":"source-agent"}"""
+            fixture.source(customize = { raw -> JsonObject(raw + mapOf(
+                "header" to JsonPrimitive(if (dynamic) "@js:JSON.stringify($header)" else header),
+                "loginCheckJs" to JsonPrimitive("""
+                    if (java.ajax('/ajax') !== 'accepted') throw 'ajax headers';
+                    if (java.ajaxAll(['/batch-a','/batch-b']).some(function(r){return r.code()!==200})) throw 'batch headers';
+                    if (java.connect('/override,{"headers":{"user-agent":"request-agent"}}').code()!==200) throw 'override headers';
+                    if (java.connect('/explicit','{"User-Agent":"explicit-agent"}').code()!==200) throw 'explicit headers';
+                    if (java.connect('/null',null).code()!==200) throw 'null headers';
+                    java.connect('/retry')
+                """.trimIndent()),
+                "ruleSearch" to JsonObject(raw.getValue("ruleSearch").jsonObject +
+                    ("name" to JsonPrimitive("h2@text@js:if(java.ajax('/row')!=='accepted')throw 'row headers';result")))
+            )) }).use { source ->
+                assertEquals("Same title", source.search("title").single().title)
+                assertEquals(setOf("/search", "/ajax", "/batch-a", "/batch-b", "/override", "/explicit", "/null", "/retry", "/row"), seen.toSet())
+                assertEquals(9, seen.size)
+            }
+        }
+    }
+
+    @Test fun headerScriptCanFetchItsValueWithoutRecursivelyEvaluatingItself() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            val normal = fixture.server.dispatcher
+            fixture.server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
+                override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest): okhttp3.mockwebserver.MockResponse =
+                    if (request.path == "/token") okhttp3.mockwebserver.MockResponse().setBody("source-token")
+                    else if (request.getHeader("Authorization") == "source-token") normal.dispatch(request)
+                    else okhttp3.mockwebserver.MockResponse().setResponseCode(401)
+            }
+            fixture.source(customize = { raw -> JsonObject(raw + mapOf(
+                "header" to JsonPrimitive("@js:JSON.stringify({Authorization:java.ajax('/token')})"),
+                "loginCheckJs" to JsonPrimitive("java.connect(result.url())")
+            )) }).use { source ->
+                assertEquals("Same title", source.search("title").single().title)
+            }
+        }
+    }
+
     @Test fun redirectsToNextChapterNeverBecomeCurrentChapterContent() = runBlocking {
         for (firstPage in listOf(false, true)) RuleSourceFixture().use { fixture -> fixture.source().use { source ->
             val book = source.search("title").single()
