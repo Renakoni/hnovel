@@ -35,9 +35,9 @@ internal class JsonScriptData(private val context: Context, private val scope: S
             }
             is JsonArray -> {
                 if (value.size > remaining) throw ResultTooLarge()
-                context.newArray(scope, value.map { read(it, depth + 1) }.toTypedArray())
+                ScriptRealm.current(context).arrayIn(scope, value.map { read(it, depth + 1) }.toTypedArray())
             }
-            is JsonObject -> (context.newObject(scope) as ScriptableObject).apply {
+            is JsonObject -> ScriptRealm.current(context).objectIn(scope).apply {
                 for ((key, item) in value) {
                     charge(key.length)
                     defineProperty(key, read(item, depth + 1), ScriptableObject.EMPTY)

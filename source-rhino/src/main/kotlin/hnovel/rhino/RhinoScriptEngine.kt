@@ -14,7 +14,8 @@ private class ScriptBridge(private val bridge: HostBridge) {
     fun call(cx: Context, scope: Scriptable, name: String, args: Array<out Any>): Any? {
             val maxChars = cx.getThreadLocal(bridgeLimitKey) as Int
             if (name.length > 256) throw ResultTooLarge()
-            val data = BoundedJsonResult(maxChars).encode(cx.newArray(scope, args.copyOf()))
+            val realm = ScriptRealm.current(cx)
+            val data = BoundedJsonResult(maxChars).encode(realm.arrayIn(scope, args.copyOf()))
             val pureTool = name.startsWith("java.") && name.removePrefix("java.") in ScriptTools.methods
             val result = try {
                 val arguments = Json.parseToJsonElement(data).jsonArray
@@ -23,21 +24,26 @@ private class ScriptBridge(private val bridge: HostBridge) {
                 catch (cancelled: java.util.concurrent.CancellationException) { throw ScriptCancelled() }
                 catch (_: Exception) {
                     if (Thread.currentThread().isInterrupted) throw ScriptCancelled()
-                    if (pureTool) throw JavaScriptException(cx.newObject(scope, "Error", arrayOf("invalid tool argument")), "script-tool", 1)
-                    throw BridgeRejected(cx.newObject(scope, "Error", arrayOf("host bridge denied")))
+                    if (pureTool) throw JavaScriptException(realm.errorIn(scope, "invalid tool argument"), "script-tool", 1)
+                    throw BridgeRejected(realm.errorIn(scope, "host bridge denied"))
                 }
             if (Thread.currentThread().isInterrupted) throw ScriptCancelled()
-            return JsonScriptData(cx, scope, maxChars).convert(result)
+            val converted = JsonScriptData(cx, scope, maxChars).convert(result)
+            return when {
+                name == "java.ajaxAll" -> realm.arrayIn(scope, result.jsonArray.map { ScriptResponses.create(cx, scope, it.jsonObject, false) }.toTypedArray())
+                name == "java.connect" -> ScriptResponses.create(cx, scope, result.jsonObject, false)
+                name in setOf("java.get", "java.head", "java.post") && args.size >= 2 -> ScriptResponses.create(cx, scope, result.jsonObject, true)
+                else -> converted
+            }
     }
 
     fun install(context: Context, scope: Scriptable, frame: ScriptFrame) {
+        val realm = ScriptRealm.current(context)
         fun method(target: ScriptableObject, name: String, action: (Context, Scriptable, Array<out Any>) -> Any?) {
-            target.defineProperty(name, object : BaseFunction(scope, ScriptableObject.getFunctionPrototype(scope)) {
-                override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable?, args: Array<out Any>): Any? = action(cx, scope, args)
-            }, ScriptableObject.READONLY or ScriptableObject.PERMANENT)
+            target.defineProperty(name, realm.method(scope, action), ScriptableObject.READONLY or ScriptableObject.PERMANENT)
         }
         fun objectFor(name: String, methods: List<String>): ScriptableObject {
-            val target = context.newObject(scope) as ScriptableObject
+            val target = realm.objectIn(scope)
             methods.forEach { member -> method(target, member) { cx, activeScope, args -> call(cx, activeScope, "$name.$member", args) } }
             scope.put(name, scope, target)
             return target
@@ -120,20 +126,23 @@ class RhinoScriptEngine(private val bridge: HostBridge, private val limits: Scri
         return try {
             factory.call { context ->
                 if (Thread.currentThread().isInterrupted) throw ScriptCancelled()
-                val scope = if (library == null) context.initSafeStandardObjects() else {
+                val realm = library?.realm ?: ScriptRealm(context)
+                ScriptRealm.install(context, realm)
+                val scope = if (library == null) realm.global else {
                     val shared = library.scope ?: NativeObject().apply {
-                        prototype = context.initSafeStandardObjects()
+                        prototype = realm.global
                         // Like the reference, initialization has no invocation bindings or host capabilities.
                         library.scripts.forEachIndexed { index, code ->
                             evaluateGlobal(context, this, code, "source-library-$index")
                         }
                         sealObject()
                         library.scope = this
+                        library.realm = realm
                     }
                     NativeObject().apply { prototype = shared }
                 }
-                scope.put("book", scope, context.newObject(scope).apply { frame.bookId?.let { put("id", this, it) } })
-                scope.put("chapter", scope, context.newObject(scope).apply { frame.chapterId?.let { put("id", this, it) } })
+                scope.put("book", scope, realm.objectIn(scope).apply { frame.bookId?.let { put("id", this, it) } })
+                scope.put("chapter", scope, realm.objectIn(scope).apply { frame.chapterId?.let { put("id", this, it) } })
                 scope.put("result", scope, JsonScriptData(context, scope, limits.maxBridgeChars).convert(frame.variables["result"] ?: JsonNull))
                 scope.put("key", scope, frame.key)
                 scope.put("page", scope, frame.page)
