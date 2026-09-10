@@ -42,7 +42,8 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
         if (name != "request.withHeaders") return callWithHeaders(name, args, emptyMap())
         require(args.size == 3)
         val operation = args[0].jsonPrimitive.content
-        require(operation in setOf("java.ajax", "java.ajaxAll", "java.connect", "java.cacheFile", "java.downloadFile", "java.importScript"))
+        require(operation in setOf("java.ajax", "java.ajaxAll", "java.connect", "java.cacheFile", "java.downloadFile", "java.importScript",
+            "java.webView", "java.webViewGetSource", "java.webViewGetOverrideUrl", "java.startBrowser", "java.startBrowserAwait", "browser.refetch"))
         return callWithHeaders(operation, args[1].jsonArray, headerMap(args[2]))
     }
 
@@ -50,21 +51,17 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
         val requestNumber = reserveRequest()
         return ownedWork {
             when (name) {
-                "java.startBrowser", "java.startBrowserAwait" -> {
+                "java.startBrowser", "java.startBrowserAwait", "browser.refetch" -> {
                     if (!allowInteraction) {
                         interactionRequired = true
                         error("Foreground source login required")
                     }
-                    require(args.size == 2 || name == "java.startBrowserAwait" && args.size == 3)
+                    require(args.size == if (name == "browser.refetch") 1 else 2)
                     val url = java.net.URI(baseUrl).resolve(args[0].jsonPrimitive.content).toString()
-                    val title = args[1].jsonPrimitive.content.also { require(it.length <= 1024) }
-                    val page = fetch(BrokerRequest("browser-$requestNumber", url,
-                        browser = BrowserOptions(interactive = true, title = title)))
-                    if (name == "java.startBrowser") JsonNull
-                    else {
-                        val refetch = args.getOrNull(2)?.jsonPrimitive?.boolean ?: true
-                        (if (refetch) fetch(BrokerRequest("verified-$requestNumber", url)) else page).scriptSnapshot(true)
-                    }
+                    val options = if (name == "browser.refetch") null else BrowserOptions(interactive = true,
+                        title = args[1].jsonPrimitive.content.also { require(it.length <= 1024) })
+                    val response = fetch(BrokerRequest("browser-$requestNumber", url, headers = sourceHeaders, browser = options))
+                    if (name == "java.startBrowser") JsonNull else response.scriptSnapshot(true)
                 }
                 "java.webView", "java.webViewGetSource", "java.webViewGetOverrideUrl" -> {
                     require(args.size == if (name == "java.webView") 3 else 4)
@@ -72,7 +69,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
                     val url = string(1).ifBlank { baseUrl }
                     val options = BrowserOptions(script = string(2), html = string(0).takeIf { it.isNotBlank() },
                         sourceRegex = string(3), overrideUrl = name == "java.webViewGetOverrideUrl")
-                    JsonPrimitive(fetch(BrokerRequest("script-$requestNumber", url, browser = options)).text())
+                    JsonPrimitive(fetch(BrokerRequest("script-$requestNumber", url, headers = sourceHeaders, browser = options)).text())
                 }
                 "source.getKey" -> JsonPrimitive(session.sourceUrl.ifBlank { baseUrl })
                 "source.getLoginInfo", "source.getLoginInfoMap", "source.getLoginHeader", "source.getLoginHeaderMap" -> authorized {

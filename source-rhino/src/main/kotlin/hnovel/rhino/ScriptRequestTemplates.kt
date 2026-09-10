@@ -13,8 +13,18 @@ internal class ScriptRequestTemplates(private val scope: Scriptable, private val
 
     /** Local URL preparation stays pure; only an actual broker operation requests source headers. */
     fun call(cx: Context, bridge: HostBridge, name: String, args: List<JsonElement>): JsonElement {
+        if (name != "java.startBrowserAwait") return dispatch(cx, bridge, name, args)
+        require(args.size in 2..3)
+        val refetch = args.getOrNull(2)?.jsonPrimitive?.boolean ?: true
+        val page = dispatch(cx, bridge, name, args.take(2))
+        // Verification can change authentication; evaluate the retry header only after it finishes.
+        return if (refetch) dispatch(cx, bridge, "browser.refetch", args.take(1)) else page
+    }
+
+    private fun dispatch(cx: Context, bridge: HostBridge, name: String, args: List<JsonElement>): JsonElement {
         val prepared = prepare(cx, name, args)
-        val inherits = name in setOf("java.ajax", "java.ajaxAll", "java.connect", "java.cacheFile", "java.downloadFile", "java.importScript") &&
+        val inherits = name in setOf("java.ajax", "java.ajaxAll", "java.connect", "java.cacheFile", "java.downloadFile", "java.importScript",
+            "java.webView", "java.webViewGetSource", "java.webViewGetOverrideUrl", "java.startBrowser", "java.startBrowserAwait", "browser.refetch") &&
             !(name == "java.connect" && args.getOrNull(1)?.let { it != JsonNull } == true) &&
             !(name == "java.ajaxAll" && prepared[0].jsonArray.isEmpty()) &&
             !(name == "java.importScript" && !prepared[0].jsonPrimitive.content.startsWith("http", true)) &&

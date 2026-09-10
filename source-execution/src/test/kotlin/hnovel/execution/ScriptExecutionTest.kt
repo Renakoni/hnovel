@@ -44,6 +44,13 @@ class ScriptExecutionTest {
                     assertEquals(1, server.requestCount)
                     assertEquals(listOf("verify", "verify"), opened)
                 }
+                SourceExecutionBroker(id, authority, session, ExecutionLimits(maxRequests = 1), allowInteraction = true).use { bridge ->
+                    server.enqueue(MockResponse().setBody("must not refetch"))
+                    assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied), runScript(id, bridge,
+                        "java.startBrowserAwait($url,'verify').body()"))
+                    assertEquals(1, server.requestCount)
+                    assertEquals(3, opened.size)
+                }
             }
         }
     }
