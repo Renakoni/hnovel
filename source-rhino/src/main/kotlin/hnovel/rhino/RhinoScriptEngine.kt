@@ -2,15 +2,16 @@ package hnovel.rhino
 
 import org.mozilla.javascript.*
 import kotlinx.serialization.json.*
+import hnovel.rules.*
 
 /** Synchronous data-only port. The host binds authority; scripts cannot supply a source ticket. */
 fun interface HostBridge { fun call(name: String, args: List<JsonElement>): JsonElement }
 
 private class BridgeRejected(value: Any) : JavaScriptException(value, "host-bridge", 1)
 
-private val bridgeLimitKey = Any()
+internal val bridgeLimitKey = Any()
 
-private class ScriptBridge(private val bridge: HostBridge) {
+private class ScriptBridge(private val bridge: HostBridge, private val rules: ScriptRuleHelpers, private val requests: ScriptRequestTemplates) {
     fun call(cx: Context, scope: Scriptable, name: String, args: Array<out Any>): Any? {
             val maxChars = cx.getThreadLocal(bridgeLimitKey) as Int
             if (name.length > 256) throw ResultTooLarge()
@@ -19,12 +20,16 @@ private class ScriptBridge(private val bridge: HostBridge) {
             val pureTool = name.startsWith("java.") && name.removePrefix("java.") in ScriptTools.methods
             val result = try {
                 val arguments = Json.parseToJsonElement(data).jsonArray
-                if (pureTool) ScriptTools.call(name.removePrefix("java."), arguments) else bridge.call(name, arguments)
+                if (name.removePrefix("java.") in ScriptCryptoObjects.factories && name.startsWith("java."))
+                    return ScriptCryptoObjects.create(cx, scope, name.removePrefix("java."), arguments)
+                if (rules.supports(name, arguments)) rules.call(cx, name, arguments)
+                else if (pureTool) ScriptTools.call(name.removePrefix("java."), arguments) else bridge.call(name, requests.prepare(cx, name, arguments))
             }
+                catch (large: ResultTooLarge) { throw large }
                 catch (cancelled: java.util.concurrent.CancellationException) { throw ScriptCancelled() }
                 catch (_: Exception) {
                     if (Thread.currentThread().isInterrupted) throw ScriptCancelled()
-                    if (pureTool) throw JavaScriptException(realm.errorIn(scope, "invalid tool argument"), "script-tool", 1)
+                    if (pureTool || name.removePrefix("java.") in ScriptCryptoObjects.factories) throw JavaScriptException(realm.errorIn(scope, "invalid tool argument"), "script-tool", 1)
                     throw BridgeRejected(realm.errorIn(scope, "host bridge denied"))
                 }
             if (Thread.currentThread().isInterrupted) throw ScriptCancelled()
@@ -54,7 +59,8 @@ private class ScriptBridge(private val bridge: HostBridge) {
             call(cx, activeScope, args[0].toString(), args.drop(1).toTypedArray())
         }
         objectFor("java", listOf("ajax", "ajaxAll", "connect", "get", "head", "post", "getCookie", "androidId",
-            "put", "getString", "getStringList", "getElement", "getElements") + ScriptTools.methods)
+            "put", "getString", "getStringList", "getElement", "getElements", "importScript", "cacheFile", "downloadFile",
+            "readFile", "readTxtFile", "deleteFile") + ScriptTools.methods + ScriptCryptoObjects.factories)
         objectFor("cache", listOf("get", "put", "delete"))
         objectFor("cookie", listOf("getCookie", "setCookie", "removeCookie"))
         val source = objectFor("source", listOf("get", "put", "getVariable", "setVariable"))
@@ -66,7 +72,8 @@ private class ScriptBridge(private val bridge: HostBridge) {
 
 data class ScriptFrame(val sourceId: String, val profile: String, val bookId: String? = null, val chapterId: String? = null,
     val variables: Map<String, JsonElement> = emptyMap(), val key: String = "", val page: Int = 1,
-    val baseUrl: String = "")
+    val baseUrl: String = "", val ruleContext: RuleContext? = null, val ruleInput: RuleValue? = null,
+    val ruleBudget: RuleBudget? = null)
 
 data class ScriptLimits(val instructionLimit: Int = 100_000, val maxResultChars: Int = 256 * 1024,
     val maxScriptChars: Int = 256 * 1024, val maxBridgeChars: Int = 64 * 1024,
@@ -83,11 +90,11 @@ sealed interface ScriptResult {
 }
 enum class FailureCode { Timeout, Cancelled, Syntax, Runtime, ResultTooLarge, UnsupportedResult, BridgeDenied }
 
-private class ScriptBudgetExceeded : Error()
+internal class ScriptBudgetExceeded : Error()
 private class ScriptCancelled : Error()
 private class ScriptSyntaxError : Error()
 
-private fun evaluateGlobal(context: Context, scope: Scriptable, code: String, name: String): Any? {
+internal fun evaluateGlobal(context: Context, scope: Scriptable, code: String, name: String): Any? {
     val compiled = try { context.compileString(code, name, 1, null) }
         catch (_: EvaluatorException) { throw ScriptSyntaxError() }
     return compiled.exec(context, scope)
@@ -148,7 +155,7 @@ class RhinoScriptEngine(private val bridge: HostBridge, private val limits: Scri
                 scope.put("page", scope, frame.page)
                 scope.put("baseUrl", scope, frame.baseUrl)
                 context.putThreadLocal(bridgeLimitKey, limits.maxBridgeChars)
-                ScriptBridge(bridge).install(context, scope, frame)
+                ScriptBridge(bridge, ScriptRuleHelpers(scope, frame, limits), ScriptRequestTemplates(scope, frame)).install(context, scope, frame)
                 val value = evaluateGlobal(context, scope, source, "source-script")
                 if (Thread.currentThread().isInterrupted) throw ScriptCancelled()
                 val json = BoundedJsonResult(limits.maxResultChars).encode(value)
