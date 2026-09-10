@@ -19,7 +19,7 @@ internal class ScriptResources(private val bridge: HostBridge, private val reque
     }
 
     fun download(cx: Context, url: String): ByteArray {
-        val path = bridge.call("java.downloadFile", requests.prepare(cx, "java.downloadFile", listOf(JsonPrimitive(url))))
+        val path = requests.call(cx, bridge, "java.downloadFile", listOf(JsonPrimitive(url)))
         return read(cx, path.jsonPrimitive.content) ?: error("Resource missing")
     }
 

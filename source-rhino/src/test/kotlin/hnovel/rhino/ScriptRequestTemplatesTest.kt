@@ -40,6 +40,27 @@ class ScriptRequestTemplatesTest {
         assertEquals("/endpoint,{\"method\":\"POST\"}", expanded("""@js:'/endpoint,'+JSON.stringify({method:'POST'})"""))
     }
 
+    @Test fun dynamicHeadersAreLazyAndShareTheCallingInstructionBudget() {
+        var called = false
+        val engine = RhinoScriptEngine(HostBridge { _, _ -> called=true; JsonNull })
+        val dynamic = frame.copy(sourceHeaderRule="@js:while(true){}")
+        assertEquals(ScriptResult.Success("\"outer\""), engine.evaluate("result", dynamic))
+        assertEquals(ScriptResult.Success("[\"/next\"]"), engine.evaluate("host.call('request.prepare','/next')", dynamic))
+        assertEquals(FailureCode.Timeout, (engine.evaluate("java.ajax('/next')", dynamic) as ScriptResult.Failure).code)
+        assertFalse(called)
+    }
+
+    @Test fun headerObjectsAndJsonStringsPreserveValuesWithoutRequestTemplateExpansion() {
+        for (header in listOf("@js:({Authorization:'{{key}}'})", "@js:JSON.stringify({Authorization:'{{key}}'})")) {
+            val engine = RhinoScriptEngine(HostBridge { name, args ->
+                assertEquals("request.withHeaders", name)
+                assertEquals("{{key}}", args[2].jsonObject.getValue("Authorization").jsonPrimitive.content)
+                JsonPrimitive("ok")
+            })
+            assertEquals(ScriptResult.Success("\"ok\""), engine.evaluate("java.ajax('/next')", frame.copy(sourceHeaderRule=header)))
+        }
+    }
+
     @Test fun runawayAndOversizedTemplatesNeverReachHost() {
         var called = false
         val engine = RhinoScriptEngine(HostBridge { _, _ -> called=true; JsonNull }, ScriptLimits(maxBridgeChars=128))
