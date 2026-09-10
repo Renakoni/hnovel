@@ -36,6 +36,7 @@ interface ReaderSettings {
     val isUsingContinuousScrolling: Boolean
     val isUsingVolumeKeyFlip: Boolean
     val volumeKeyContinuousFlipInterval: Float
+    val volumeKeyScrollFraction: Float
     val flipAnime: String
     val fastChapterChange: Boolean
     val batteryIndicatorDisplayMode: String
@@ -70,6 +71,7 @@ interface ReaderSettingsEditor : ReaderSettings {
     val isUsingContinuousScrollingUserData: BooleanUserData
     val isUsingVolumeKeyFlipUserData: BooleanUserData
     val volumeKeyContinuousFlipIntervalUserData: FloatUserData
+    val volumeKeyScrollFractionUserData: FloatUserData
     val flipAnimeUserData: StringUserData
     val fastChapterChangeUserData: BooleanUserData
     val batteryIndicatorDisplayModeUserData: StringUserData

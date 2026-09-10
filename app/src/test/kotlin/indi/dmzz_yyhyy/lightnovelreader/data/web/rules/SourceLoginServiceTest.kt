@@ -46,7 +46,7 @@ class SourceLoginServiceTest {
                     val raw = JsonObject(fixture.raw(label) + mapOf(
                         "loginUi" to JsonPrimitive("[{\"name\":\"user\"},{\"name\":\"password\",\"type\":\"password\"}]"),
                         "loginUrl" to JsonPrimitive("""function login(){var info=source.getLoginInfoMap();
-                            var response=java.post(baseUrl+'login','user='+info.get('user'),{'Content-Type':'application/x-www-form-urlencoded'});
+                            var response=java.post(baseUrl.substring(0,baseUrl.lastIndexOf('/')+1)+'login','user='+info.get('user'),{'Content-Type':'application/x-www-form-urlencoded'});
                             if(response.statusCode()!==200)throw new Error('login failed');
                             source.put('private','secret-'+info.get('user'));
                             source.putLoginHeader(JSON.stringify({'Authorization':'Bearer '+info.get('password')}));} """.trimIndent())
