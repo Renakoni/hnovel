@@ -19,6 +19,7 @@ private class ScriptBridge(private val bridge: HostBridge, private val maxChars:
             }
                 catch (cancelled: java.util.concurrent.CancellationException) { throw ScriptCancelled() }
                 catch (_: Exception) {
+                    if (Thread.currentThread().isInterrupted) throw ScriptCancelled()
                     if (pureTool) throw JavaScriptException(cx.newObject(scope, "Error", arrayOf("invalid tool argument")), "script-tool", 1)
                     throw BridgeRejected(cx.newObject(scope, "Error", arrayOf("host bridge denied")))
                 }
