@@ -32,8 +32,8 @@ private class ScriptBridge(private val bridge: HostBridge) {
 
     fun install(context: Context, scope: Scriptable, frame: ScriptFrame) {
         fun method(target: ScriptableObject, name: String, action: (Context, Scriptable, Array<out Any>) -> Any?) {
-            target.defineProperty(name, object : BaseFunction() {
-                override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any>): Any? = action(cx, scope, args)
+            target.defineProperty(name, object : BaseFunction(scope, ScriptableObject.getFunctionPrototype(scope)) {
+                override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable?, args: Array<out Any>): Any? = action(cx, scope, args)
             }, ScriptableObject.READONLY or ScriptableObject.PERMANENT)
         }
         fun objectFor(name: String, methods: List<String>): ScriptableObject {
