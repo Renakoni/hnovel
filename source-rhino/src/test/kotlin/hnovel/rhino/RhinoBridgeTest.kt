@@ -53,12 +53,13 @@ class RhinoBridgeTest {
                 "cache.put" -> { values[args[0].jsonPrimitive.content] = args[1]; JsonNull }
                 "cache.get" -> values[args[0].jsonPrimitive.content] ?: JsonNull
                 "java.ajax" -> JsonPrimitive("fixture body")
+                "source.getKey" -> JsonPrimitive("https://fixture.invalid/")
                 else -> error("Unknown API")
             }
         })
         val result = engine.evaluate("cache.put('reply',java.ajax(baseUrl)); [cache.get('reply'),source.getKey()]", frame)
-        assertEquals("[\"fixture body\",\"source-a\"]", (result as ScriptResult.Success).json)
-        assertEquals(listOf("java.ajax", "cache.put", "cache.get"), calls)
+        assertEquals("[\"fixture body\",\"https://fixture.invalid/\"]", (result as ScriptResult.Success).json)
+        assertEquals(listOf("java.ajax", "cache.put", "cache.get", "source.getKey"), calls)
         assertEquals(FailureCode.BridgeDenied, (engine.evaluate("source.put('unsupported','x')", frame) as ScriptResult.Failure).code)
     }
 

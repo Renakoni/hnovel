@@ -14,6 +14,9 @@ internal class RuleSourceDefinition(val stored: SourceDefinition) {
     val bookUrlPattern = root.string("bookUrlPattern")
     val header = root.string("header")
     val loginCheck = root.string("loginCheckJs")
+    val loginUrl = root.string("loginUrl")
+    val loginUi = root.string("loginUi")
+    val cookiesEnabled = root["enabledCookieJar"]?.jsonPrimitive?.booleanOrNull ?: true
     val coverDecode = root.string("coverDecodeJs")
     val search = rules("ruleSearch")
     val information = rules("ruleBookInfo")

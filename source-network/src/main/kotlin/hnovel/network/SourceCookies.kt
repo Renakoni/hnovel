@@ -63,6 +63,23 @@ internal class SourceCookies(private val storage: SourceStorage, private val inv
 
     private fun key(cookie: Cookie) = "${cookie.name}\n${cookie.domain}\n${cookie.path}"
 
+    @Synchronized fun setHeader(url: HttpUrl, value: String, replace: Boolean) {
+        require(value.length <= 65536)
+        val before = snapshot()
+        if (replace) cookies.entries.removeAll { it.value.second.matches(url) }
+        val headers = okhttp3.Headers.Builder()
+        value.split(';').map { it.trim() }.filter { '=' in it }.forEach { pair ->
+            headers.add("Set-Cookie", "$pair; Path=/; Max-Age=31536000")
+        }
+        try {
+            if (value.isBlank()) {
+                val saved = Json.encodeToString(cookies.values.filter { it.second.persistent }.map { SavedCookie(it.first, it.second.toString()) })
+                check(storage.write("cookies", saved) is StorageResult.Value)
+                invalidateCache()
+            } else save(url, headers.build())
+        } catch (failure: Exception) { restoreMemory(before); throw failure }
+    }
+
     @Synchronized fun snapshot(): List<Pair<String, Cookie>> = cookies.values.toList()
     @Synchronized fun restoreMemory(snapshot: List<Pair<String, Cookie>>) {
         cookies.clear()

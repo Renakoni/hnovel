@@ -39,6 +39,45 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
         val requestNumber = reserveRequest()
         return ownedWork {
             when (name) {
+                "source.getKey" -> JsonPrimitive(session.sourceUrl.ifBlank { baseUrl })
+                "source.getLoginInfo", "source.getLoginInfoMap", "source.getLoginHeader", "source.getLoginHeaderMap" -> authorized {
+                    require(args.isEmpty())
+                    val key = if (name.contains("LoginInfo")) StorageRequestKey.LOGIN_INFO else StorageRequestKey.LOGIN_HEADERS
+                    val stored = session.read(StorageRequest(StorageArea.Account, key))
+                    check(stored is StorageResult.Value)
+                    if (name.endsWith("Map")) stored.value?.let(Json::parseToJsonElement) ?: JsonNull
+                    else stored.value?.let(::JsonPrimitive) ?: JsonNull
+                }
+                "source.putLoginInfo", "source.putLoginHeader", "source.removeLoginInfo", "source.removeLoginHeader" -> authorized {
+                    val removing = name.contains("remove")
+                    require(args.size == if (removing) 0 else 1)
+                    val info = name.endsWith("Info")
+                    val value = if (removing) null else args.single().jsonPrimitive.content.also { text ->
+                        val data = Json.parseToJsonElement(text).jsonObject
+                        require(data.size <= 32 && text.length <= 16384 && data.values.all { it is JsonPrimitive && it.isString })
+                    }
+                    val key = if (info) StorageRequestKey.LOGIN_INFO else StorageRequestKey.LOGIN_HEADERS
+                    check(session.write(StorageRequest(StorageArea.Account, key, value)) is StorageResult.Value)
+                    if (!info) {
+                        val url = session.sourceUrl.ifBlank { baseUrl }
+                        if (removing) session.removeCookie(url)
+                        else Json.parseToJsonElement(value!!).jsonObject.entries.firstOrNull { it.key.equals("Cookie", true) }
+                            ?.let { session.setCookie(url, it.value.jsonPrimitive.content) }
+                    }
+                    if (info && !removing) JsonPrimitive(true) else JsonNull
+                }
+                "cookie.getCookie", "java.getCookie", "cookie.getKey", "cookie.setCookie", "cookie.replaceCookie", "cookie.removeCookie" -> authorized {
+                    val required = if (name in setOf("cookie.getKey", "cookie.setCookie", "cookie.replaceCookie")) 2 else 1
+                    require(args.size == required)
+                    val url = args[0].jsonPrimitive.content
+                    when (name) {
+                        "cookie.getCookie", "java.getCookie" -> JsonPrimitive(session.cookie(url))
+                        "cookie.getKey" -> JsonPrimitive(session.cookie(url).split(';').map { it.trim().split('=', limit = 2) }
+                            .firstOrNull { it.size == 2 && it[0] == args[1].jsonPrimitive.content }?.get(1).orEmpty())
+                        "cookie.removeCookie" -> { session.removeCookie(url); JsonNull }
+                        else -> { session.setCookie(url, args[1].jsonPrimitive.content, name == "cookie.setCookie"); JsonNull }
+                    }
+                }
                 "resource.storeArchive", "resource.readArchive" -> archiveResource(name, args)
                 "java.importScript", "java.cacheFile", "java.downloadFile", "java.readFile", "java.readTxtFile", "java.deleteFile" ->
                     resource(name, args, requestNumber)
@@ -95,10 +134,10 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
                 "cache.get", "source.get", "source.getVariable" -> authorized {
                     require(args.size == if (name == "source.getVariable") 0 else 1)
                     val key = if (name == "source.getVariable") "variable" else "value:" + args[0].jsonPrimitive.content
-                    val area = if (name.startsWith("cache.")) StorageArea.Cache else StorageArea.Config
+                    val area = if (name.startsWith("cache.")) StorageArea.Cache else if (name == "source.getVariable") StorageArea.Config else StorageArea.Account
                     val stored = session.read(StorageRequest(area, key))
                     check(stored is StorageResult.Value) { "Storage read failed" }
-                    stored.value?.let(::JsonPrimitive) ?: if (area == StorageArea.Config) JsonPrimitive("") else JsonNull
+                    stored.value?.let(::JsonPrimitive) ?: if (!name.startsWith("cache.")) JsonPrimitive("") else JsonNull
                 }
                 "cache.put", "source.put", "cache.delete", "source.setVariable" -> authorized {
                     val variable = name == "source.setVariable"
@@ -109,7 +148,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
                         if (it == JsonNull) null else it.jsonPrimitive.content
                     }
                     val ttl = if (name == "cache.put" && args.size == 3) Math.multiplyExact(args[2].jsonPrimitive.long, 1000) else null
-                    val area = if (name.startsWith("cache.")) StorageArea.Cache else StorageArea.Config
+                    val area = if (name.startsWith("cache.")) StorageArea.Cache else if (variable) StorageArea.Config else StorageArea.Account
                     check(session.write(StorageRequest(area, key, value, ttl)) is StorageResult.Value) { "Storage write failed" }
                     if (name == "source.put") JsonPrimitive(value.orEmpty()) else JsonNull
                 }

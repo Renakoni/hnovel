@@ -44,6 +44,8 @@ private class ScriptBridge(private val bridge: HostBridge, private val rules: Sc
                 if (networkResponse) ScriptResponses.validate(result, maxChars)
                 val converted = if (networkResponse) null else JsonScriptData(cx, scope, maxChars).convert(result)
                 when {
+                    name in setOf("source.getLoginInfoMap", "source.getLoginHeaderMap") && result != JsonNull ->
+                        ScriptData.map(cx, scope, result.jsonObject.mapValues { it.value.jsonPrimitive.content }.toMutableMap())
                     name == "java.getElement" || name == "java.getElements" -> rules.elementView(cx, scope, result)
                     name == "java.ajaxAll" -> realm.arrayIn(scope, result.jsonArray.map { ScriptResponses.create(cx, scope, it.jsonObject, false) }.toTypedArray())
                     name == "java.connect" -> ScriptResponses.create(cx, scope, result.jsonObject, false)
@@ -82,11 +84,11 @@ private class ScriptBridge(private val bridge: HostBridge, private val rules: Sc
             "put", "getString", "getStringList", "getElement", "getElements", "importScript", "cacheFile", "downloadFile",
             "readFile", "readTxtFile", "deleteFile", "toURL") + ScriptTools.methods + ScriptCryptoObjects.factories + fonts.methods + resources.methods)
         objectFor("cache", listOf("get", "put", "delete"))
-        objectFor("cookie", listOf("getCookie", "setCookie", "removeCookie"))
-        val source = objectFor("source", listOf("get", "put", "getVariable", "setVariable"))
+        objectFor("cookie", listOf("getCookie", "getKey", "setCookie", "replaceCookie", "removeCookie"))
+        val source = objectFor("source", listOf("get", "put", "getVariable", "setVariable", "getKey", "getLoginInfo", "getLoginInfoMap",
+            "putLoginInfo", "removeLoginInfo", "getLoginHeader", "getLoginHeaderMap", "putLoginHeader", "removeLoginHeader"))
         source.defineProperty("id", frame.sourceId, ScriptableObject.READONLY)
         source.defineProperty("profile", frame.profile, ScriptableObject.READONLY)
-        method(source, "getKey") { _, _, _ -> frame.sourceId }
         method(javaBridge, "getSource") { _, _, args -> require(args.isEmpty()); source }
     }
 }
