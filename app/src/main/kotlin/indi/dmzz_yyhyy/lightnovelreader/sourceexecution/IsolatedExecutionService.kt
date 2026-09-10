@@ -9,7 +9,7 @@ import android.os.RemoteException
 import hnovel.execution.ExecutionResult
 import hnovel.execution.ExecutionWire
 import hnovel.execution.FailureCode
-import hnovel.execution.WorkerMain
+import hnovel.execution.WorkerRuntime
 import hnovel.rhino.HostBridge
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -20,6 +20,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 class IsolatedExecutionService : Service() {
     private val executor = Executors.newSingleThreadExecutor()
     private val running = AtomicBoolean()
+    private val runtime = WorkerRuntime()
 
     private fun enforceHost() {
         // onBind runs on the main thread, outside the client's Binder transaction.
@@ -44,9 +45,10 @@ class IsolatedExecutionService : Service() {
                 return
             }
             executor.execute {
+                var released = false
                 try {
                     val result = try {
-                        WorkerMain.executeSerialized(request.toString(Charsets.UTF_8), HostBridge { name, args ->
+                        runtime.executeSerialized(request.toString(Charsets.UTF_8), HostBridge { name, args ->
                             val bytes = JsonArray(args).toString().toByteArray(Charsets.UTF_8)
                             check(bytes.size <= MAX_IPC_BYTES) { "Bridge request too large" }
                             val reply = checkNotNull(broker) { "Host broker required" }.call(name, bytes)
@@ -56,10 +58,13 @@ class IsolatedExecutionService : Service() {
                     } catch (_: Exception) {
                         ExecutionWire.encodeResult(ExecutionResult.Failure(FailureCode.InvalidTask))
                     }
+                    // The result permits the next serialized call; mark idle before notifying the host.
+                    released = true
+                    running.set(false)
                     deliver(callback, if (result.size <= MAX_IPC_BYTES) result else
                         ExecutionWire.encodeResult(ExecutionResult.Failure(FailureCode.OutputLimit)))
                 } finally {
-                    running.set(false)
+                    if (!released) running.set(false)
                 }
             }
         }

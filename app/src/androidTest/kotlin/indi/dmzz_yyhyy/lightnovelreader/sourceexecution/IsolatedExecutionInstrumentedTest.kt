@@ -40,6 +40,60 @@ import org.junit.runner.RunWith
 class IsolatedExecutionInstrumentedTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
 
+    @Test fun savedBrokerMethodCannotOutliveItsInvocationInASharedLibrary() = runBlocking {
+        val authority = ExecutionAuthority()
+        val executor = AndroidIsolatedExecutor(context, authority)
+        val id = authority.issue("source-a", "legado", "1", "fixture")
+        val limits = ExecutionLimits(timeoutMillis = 15000)
+        val root = java.io.File(context.cacheDir, "library-${java.util.UUID.randomUUID()}").toPath()
+        val library = "var holder={};"
+        try {
+            MockWebServer().use { server ->
+                server.start()
+                SourceBroker(root).use { sessions ->
+                    val session = sessions.open(SourceScope("fixture", "source-a", "legado"),
+                        listOf(NetworkGrant(server.url("/").toString(), true)))
+                    suspend fun run(code: String): ExecutionResult =
+                        SourceExecutionBroker(id, authority, session, limits, server.url("/").toString()).use { broker ->
+                            executor.execute(id, ExecutionTask.Script(code, libraryCode = library), limits, broker)
+                        }
+                    assertEquals(ExecutionResult.Success("1"), run("holder.ajax=java.ajax;1"))
+                    assertEquals(ExecutionResult.Success("\"host bridge denied\""),
+                        run("try{holder.ajax('/stale')}catch(e){e.message}"))
+                    assertEquals(0, server.requestCount)
+                    server.enqueue(MockResponse().setBody("current"))
+                    assertEquals(ExecutionResult.Success("\"current\""), run("java.ajax('/current')"))
+                    assertEquals("/current", server.takeRequest(3, TimeUnit.SECONDS)?.path)
+                }
+            }
+        } finally { executor.close() }
+    }
+
+    @Test fun sharedJsLibrarySurvivesBinderCallsAndResetsAfterRetirement() = runBlocking {
+        val authority = ExecutionAuthority()
+        val executor = AndroidIsolatedExecutor(context, authority)
+        val a = authority.issue("source-a", "legado", "1", "fixture", 1)
+        val b = authority.issue("source-b", "legado", "1", "fixture", 1)
+        val library = "var state={n:0};function next(){return ++state.n;}"
+        val limits = ExecutionLimits(timeoutMillis = 15000)
+        fun task(book: String) = ExecutionTask.Script("[next(),book.id,page,typeof invocationOnly]",
+            bookId = book, page = 2, libraryCode = library)
+        try {
+            assertEquals(ExecutionResult.Success("1"), executor.execute(a,
+                ExecutionTask.Script("var invocationOnly='private'; next()", libraryCode = library), limits))
+            assertEquals(ExecutionResult.Success("[2,\"a2\",2,\"undefined\"]"), executor.execute(a, task("a2"), limits))
+            assertEquals(ExecutionResult.Success("[1,\"b1\",2,\"undefined\"]"), executor.execute(b, task("b1"), limits))
+            assertEquals(ExecutionResult.Success("[3,\"a3\",2,\"undefined\"]"), executor.execute(a, task("a3"), limits))
+            val loggedIn = authority.issue("source-a", "legado", "1", "fixture", 2)
+            assertEquals(ExecutionResult.Success("[1,\"new-account\",2,\"undefined\"]"), executor.execute(loggedIn, task("new-account"), limits))
+            assertEquals(ExecutionResult.Failure(FailureCode.Timeout), executor.execute(a,
+                ExecutionTask.Script("/(a+)+$/.test('a'.repeat(40)+'!')", libraryCode = library), ExecutionLimits(timeoutMillis = 4000)))
+            assertEquals(ExecutionResult.Success("[1,\"restarted\",2,\"undefined\"]"), executor.execute(b, task("restarted"), limits))
+            executor.close()
+            assertEquals(ExecutionResult.Success("[1,\"closed\",2,\"undefined\"]"), executor.execute(b, task("closed"), limits))
+        } finally { executor.close() }
+    }
+
     @Test fun isolatedToolsMatchAndroidBase64AndPreserveNativeByteData() = runBlocking {
         val authority = ExecutionAuthority()
         val executor = AndroidIsolatedExecutor(context, authority)

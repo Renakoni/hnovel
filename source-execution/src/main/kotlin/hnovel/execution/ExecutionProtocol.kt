@@ -8,6 +8,7 @@ import hnovel.rhino.RhinoScriptEngine
 import hnovel.rhino.ScriptFrame
 import hnovel.rhino.ScriptLimits
 import hnovel.rhino.ScriptResult
+import hnovel.rhino.ScriptLibrary
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
@@ -22,7 +23,8 @@ import java.util.concurrent.ConcurrentHashMap
  @Serializable data class Echo(val value: String): ExecutionTask
  @Serializable data class Sleep(val millis: Long): ExecutionTask
  @Serializable data class Script(val code: String, val result: JsonElement = JsonNull, val bookId: String? = null,
-  val chapterId: String? = null, val key: String = "", val page: Int = 1, val baseUrl: String = "") : ExecutionTask
+  val chapterId: String? = null, val key: String = "", val page: Int = 1, val baseUrl: String = "",
+  val libraryCode: String? = null) : ExecutionTask
 }
 @Serializable sealed interface ExecutionResult {
  @Serializable data class Success(val output: String): ExecutionResult
@@ -96,8 +98,34 @@ object ExecutionWire {
 }
 
 /** Untrusted-side worker. It receives only the bound DTO and has no host repository/client references. */
-object WorkerMain {
- fun executeSerialized(input: String, bridge: HostBridge = HostBridge { _, _ -> error("No host broker") }): String {
+class WorkerRuntime : AutoCloseable {
+ private data class LibraryOwner(val namespace: String, val source: String, val profile: String,
+  val revision: String, val accountGeneration: Long)
+ private data class LibraryEntry(val code: String, val library: ScriptLibrary)
+ private val libraries = LinkedHashMap<LibraryOwner, LibraryEntry>(16, 0.75f, true)
+
+ private fun library(identity: ExecutionIdentity, code: String?): ScriptLibrary? {
+  if (code.isNullOrBlank()) return null
+  val key = LibraryOwner(identity.namespace, identity.sourceId, identity.profile, identity.revision, identity.accountGeneration)
+  val current = libraries[key]
+  if (current?.code == code) return current.library
+  current?.library?.close()
+  val entry = LibraryEntry(code, ScriptLibrary(identity.sourceId, identity.profile, code))
+  libraries[key] = entry
+  if (libraries.size > 16) {
+   val oldest = libraries.entries.iterator()
+   oldest.next().value.library.close()
+   oldest.remove()
+  }
+  return entry.library
+ }
+
+ @Synchronized override fun close() {
+  libraries.values.forEach { it.library.close() }
+  libraries.clear()
+ }
+
+ @Synchronized fun executeSerialized(input: String, bridge: HostBridge = HostBridge { _, _ -> error("No host broker") }): String {
   val wire = try { kotlinx.serialization.json.Json.decodeFromString(Wire.serializer(), input) }
     catch (_: Exception) { return kotlinx.serialization.json.Json.encodeToString(ExecutionResult.serializer(), ExecutionResult.Failure(FailureCode.InvalidTask)) }
   val result = when (val task = wire.task) {
@@ -106,7 +134,8 @@ object WorkerMain {
    is ExecutionTask.Script -> {
     val frame = ScriptFrame(wire.identity.sourceId, wire.identity.profile, task.bookId, task.chapterId,
      mapOf("result" to task.result), task.key, task.page, task.baseUrl)
-    when (val evaluated = RhinoScriptEngine(bridge, ScriptLimits(maxResultChars = wire.limits.maxOutputBytes)).evaluate(task.code, frame)) {
+    when (val evaluated = RhinoScriptEngine(bridge, ScriptLimits(maxResultChars = wire.limits.maxOutputBytes))
+     .evaluate(task.code, frame, library(wire.identity, task.libraryCode))) {
      is ScriptResult.Success -> if (evaluated.json.toByteArray(Charsets.UTF_8).size > wire.limits.maxOutputBytes)
       ExecutionResult.Failure(FailureCode.OutputLimit) else ExecutionResult.Success(evaluated.json)
      is ScriptResult.Failure -> ExecutionResult.Failure(when (evaluated.code) {
@@ -122,6 +151,12 @@ object WorkerMain {
   }
   return kotlinx.serialization.json.Json.encodeToString(ExecutionResult.serializer(), result)
  }
+}
+
+object WorkerMain {
+ fun executeSerialized(input: String, bridge: HostBridge = HostBridge { _, _ -> error("No host broker") }): String =
+  WorkerRuntime().use { it.executeSerialized(input, bridge) }
+
  @JvmStatic fun main(args: Array<String>) {
   val input = generateSequence { readLine() }.firstOrNull() ?: return
   print(executeSerialized(input))

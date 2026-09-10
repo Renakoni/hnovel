@@ -1,9 +1,6 @@
 package indi.dmzz_yyhyy.lightnovelreader.sourceexecution
 
-import android.content.ComponentName
 import android.content.Context
-import android.content.Intent
-import android.content.ServiceConnection
 import android.os.Binder
 import android.os.IBinder
 import android.os.Process
@@ -30,11 +27,12 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.atomic.AtomicBoolean
 
-/** One live worker on API 24+, retired after each invocation. No identity comes from a browser tab. */
+/** One serialized worker on API 24+. Library scopes survive successful calls, never failed processes. */
 class AndroidIsolatedExecutor(context: Context, private val authority: ExecutionAuthority) {
     private val context = context.applicationContext
 
@@ -48,54 +46,33 @@ class AndroidIsolatedExecutor(context: Context, private val authority: Execution
         try {
             // A new bind must never reuse a worker whose previous shutdown has not completed.
             if (retiringBinder?.isBinderAlive == true) return@withContext failure(FailureCode.ProcessExited)
-            invoke(identity, request, limits, broker)
+            val previous = retainedWorker
+            if (previous != null && (previous.authority !== authority || previous.died.isCompleted)) retire(previous)
+            if (retiringBinder?.isBinderAlive == true) return@withContext failure(FailureCode.ProcessExited)
+            val worker = retainedWorker ?: IsolatedWorkerConnection(context, authority).also { retainedWorker = it }
+            if (task is ExecutionTask.Script && !task.libraryCode.isNullOrBlank()) worker.retainsLibraries = true
+            invoke(worker, identity, request, limits, broker)
         } finally {
             workerLock.unlock()
         }
     }
 
-    private suspend fun invoke(identity: ExecutionIdentity, request: ByteArray,
+    /** Release retained library state when the owning runtime is shut down. */
+    suspend fun close() = withContext(NonCancellable + Dispatchers.IO) {
+        workerLock.withLock { retainedWorker?.takeIf { it.authority === authority }?.let { retire(it) } }
+    }
+
+    private suspend fun retire(worker: IsolatedWorkerConnection) {
+        retiringBinder = worker.remote?.asBinder()
+        try { worker.close() } finally { if (retainedWorker === worker) retainedWorker = null }
+    }
+
+    private suspend fun invoke(worker: IsolatedWorkerConnection, identity: ExecutionIdentity, request: ByteArray,
         limits: ExecutionLimits, broker: SourceExecutionBroker?): ExecutionResult = coroutineScope {
-        val connected = CompletableDeferred<IIsolatedExecutionService>()
         val result = CompletableDeferred<ExecutionResult>()
-        val died = CompletableDeferred<Unit>()
         val finished = AtomicBoolean()
         val callingBroker = AtomicBoolean()
-        var remote: IIsolatedExecutionService? = null
-        val connection = object : ServiceConnection {
-            override fun onServiceConnected(name: ComponentName, binder: IBinder) {
-                val service = IIsolatedExecutionService.Stub.asInterface(binder)
-                if (finished.get()) {
-                    try { service.terminate() } catch (_: RemoteException) { }
-                    return
-                }
-                try {
-                    binder.linkToDeath({
-                        died.complete(Unit)
-                        result.complete(failure(FailureCode.ProcessExited))
-                    }, 0)
-                    remote = service
-                    connected.complete(service)
-                } catch (_: RemoteException) {
-                    result.complete(failure(FailureCode.ProcessExited))
-                    connected.completeExceptionally(RemoteException())
-                }
-            }
-            override fun onServiceDisconnected(name: ComponentName) {
-                died.complete(Unit)
-                result.complete(failure(FailureCode.ProcessExited))
-            }
-            override fun onNullBinding(name: ComponentName) {
-                connected.completeExceptionally(RemoteException())
-            }
-            override fun onBindingDied(name: ComponentName) {
-                connected.completeExceptionally(RemoteException())
-                result.complete(failure(FailureCode.ProcessExited))
-                died.complete(Unit)
-            }
-        }
-        val bound = context.bindService(Intent(context, IsolatedExecutionService::class.java), connection, Context.BIND_AUTO_CREATE)
-        if (!bound) return@coroutineScope failure(FailureCode.ProcessExited)
+        var keepWorker = false
         val brokerCalls = SupervisorJob(coroutineContext[Job])
         val revocations = launch {
             while (!result.isCompleted) {
@@ -109,9 +86,10 @@ class AndroidIsolatedExecutor(context: Context, private val authority: Execution
         try {
             val completed = withTimeoutOrNull(limits.timeoutMillis) {
                 val service = select<IIsolatedExecutionService?> {
-                    connected.onAwait { it }
+                    worker.connected.onAwait { it }
+                    worker.died.onAwait { null }
                     result.onAwait { null }
-                } ?: return@withTimeoutOrNull result.await()
+                } ?: return@withTimeoutOrNull if (result.isCompleted) result.await() else failure(FailureCode.ProcessExited)
                 val workerUid = service.workerUid()
                 if (workerUid == Process.myUid()) return@withTimeoutOrNull failure(FailureCode.InvalidIdentity)
                 if (!authority.accepts(identity)) return@withTimeoutOrNull failure(FailureCode.Revoked)
@@ -144,9 +122,14 @@ class AndroidIsolatedExecutor(context: Context, private val authority: Execution
                         result.complete(reply)
                     }
                 }, brokerBinder)
-                result.await()
+                select {
+                    result.onAwait { it }
+                    worker.died.onAwait { failure(FailureCode.ProcessExited) }
+                }
             } ?: failure(FailureCode.Timeout)
-            if (authority.accepts(identity)) completed else failure(FailureCode.Revoked)
+            val accepted = if (authority.accepts(identity)) completed else failure(FailureCode.Revoked)
+            keepWorker = accepted is ExecutionResult.Success && worker.retainsLibraries && !worker.died.isCompleted
+            accepted
         } catch (_: RemoteException) {
             failure(FailureCode.ProcessExited)
         } finally {
@@ -155,15 +138,7 @@ class AndroidIsolatedExecutor(context: Context, private val authority: Execution
             broker?.close()
             withContext(NonCancellable + Dispatchers.Main.immediate) {
                 revocations.cancelAndJoin()
-                // Even successful invocations retire their process; no engine globals survive.
-                val service = remote
-                retiringBinder = service?.asBinder()
-                try {
-                    try { service?.terminate() } catch (_: RemoteException) { }
-                    if (service != null) withTimeoutOrNull(2000) { died.await() }
-                } finally {
-                    context.unbindService(connection)
-                }
+                if (!keepWorker) retire(worker)
             }
         }
     }
@@ -173,5 +148,6 @@ class AndroidIsolatedExecutor(context: Context, private val authority: Execution
     companion object {
         private val workerLock = Mutex()
         private var retiringBinder: IBinder? = null
+        private var retainedWorker: IsolatedWorkerConnection? = null
     }
 }
