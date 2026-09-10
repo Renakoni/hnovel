@@ -43,6 +43,26 @@ import org.junit.runner.RunWith
 class IsolatedExecutionInstrumentedTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
 
+    @Test fun nativeArchivesFontsConversionAndMetadataRunInIsolatedProcess() = runBlocking {
+        val authority = ExecutionAuthority()
+        val executor = AndroidIsolatedExecutor(context, authority)
+        val id = authority.issue("native-tools", "legado", "1")
+        val limits = ExecutionLimits(timeoutMillis = 30000)
+        fun fixture(name: String) = InstrumentationRegistry.getInstrumentation().context.assets.open("fixtures/$name").use { it.readBytes() }
+        for ((extension, method) in listOf("zip" to "Zip", "rar" to "Rar", "7z" to "7z")) {
+            val hex = fixture("chapter.$extension").joinToString("") { "%02x".format(it.toInt() and 255) }
+            val result = executor.execute(id, ExecutionTask.Script("java.get${method}StringContent('$hex','chapter.txt')"), limits)
+            assertEquals(extension, ExecutionResult.Success("\"synthetic chapter\""), result)
+        }
+        val good = java.util.Base64.getEncoder().encodeToString(fixture("plain.ttf"))
+        val bad = java.util.Base64.getEncoder().encodeToString(fixture("obfuscated.ttf"))
+        val task = ExecutionTask.Script("""
+            var good=java.queryTTF('$good');var bad=java.queryTTF('$bad');
+            [java.replaceFont('\uE000',bad,good),java.t2s('龍與書'),java.s2t('龙与书'),book.name,chapter.title]
+        """, book=buildJsonObject { put("name", "Book") }, chapter=buildJsonObject { put("title", "Chapter") })
+        assertEquals(ExecutionResult.Success("[\"A\",\"龙与书\",\"龍與書\",\"Book\",\"Chapter\"]"), executor.execute(id, task, limits))
+    }
+
     @Test fun cryptoNestedRulesTemplatesAndSourceResourcesExecuteInIsolatedWorker() = runBlocking {
         val authority=ExecutionAuthority()
         val executor=AndroidIsolatedExecutor(context,authority)

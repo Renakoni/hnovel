@@ -5,6 +5,19 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ScriptResponseTest {
+    @Test fun malformedSnapshotsStayCatchableAndNeverExposeImplementationErrors() {
+        val calls = listOf("java.connect('url')", "java.ajaxAll(['url'])", "java.get('url',{})", "java.head('url',{})", "java.post('url','',{})")
+        for (payload in listOf<JsonElement>(JsonPrimitive("private-payload"), JsonNull, buildJsonObject {},
+            JsonObject(data + ("status" to JsonPrimitive("private-status"))),
+            JsonObject(data + ("headers" to buildJsonObject { put("X-Private", "invalid-list") })))) {
+            for (call in calls) {
+                val engine = RhinoScriptEngine(HostBridge { name, _ -> if (name == "java.ajaxAll") JsonArray(listOf(payload)) else payload })
+                assertEquals(ScriptResult.Success("[\"host bridge denied\",\"undefined\",\"undefined\"]"),
+                    engine.evaluate("try{$call}catch(e){[e.message,typeof e.javaException,typeof e.getClass]}", frame))
+                assertEquals(FailureCode.BridgeDenied, (engine.evaluate(call, frame) as ScriptResult.Failure).code)
+            }
+        }
+    }
     private val data = buildJsonObject {
         put("body", "chapter"); put("url", "https://fixture.invalid/final"); put("status", 200); put("message", "OK")
         put("headers", buildJsonObject { put("X-Test", JsonArray(listOf(JsonPrimitive("one"), JsonPrimitive("two")))) })

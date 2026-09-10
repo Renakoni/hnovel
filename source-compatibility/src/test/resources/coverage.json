@@ -147,11 +147,13 @@
       "implementation": "partial",
       "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Invocation globals, original rule input and nested getString/getStringList/getElement/getElements share RuleContext, writes, depth and instruction budgets. JSON nodes retain structure; HTML/XML nodes are markup data. Broader book/chapter metadata and raw DOM methods remain pending.",
+      "evidence": "Book/chapter metadata snapshots cross the execution wire; kind/URL helpers and separate nullable book/chapter variable writes are tested. Nested selectors expose worker-local HTML/XML DOM views, serialized as markup at data boundaries. Complete upstream entity and DOM method surfaces remain partial.",
       "productTests": [
         "hnovel.execution.WorkerRuleTest",
         "hnovel.rhino.ScriptLibraryTest",
-        "hnovel.rhino.ScriptRuleHelpersTest"
+        "hnovel.rhino.ScriptRuleHelpersTest",
+        "hnovel.rhino.ScriptMetadataTest",
+        "hnovel.rhino.ScriptDomTest"
       ]
     },
     {
@@ -196,10 +198,13 @@
       "implementation": "partial",
       "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Synchronous ajax/connect, ordered bounded ajaxAll, and direct get/head/post execute over the authenticated source broker. The direct methods preserve no-redirect semantics; snapshots expose explicit native JS response data methods. Headers, batch budget/cancellation and per-request/cache byte limits are tested. Additional response/stream/DOM and request-script APIs remain pending.",
+      "evidence": "Authenticated synchronous network operations return bounded native-JS snapshots. Malformed snapshots and retained method arguments are redacted; Jsoup response parse() returns worker-local DOM views using the final URL. Terminal @js comma-expression behavior matches pinned AnalyzeUrl and is regression-tested. Response raw bytes/streams and complete response mutation APIs remain partial.",
       "productTests": [
         "hnovel.execution.NetworkBridgeTest",
-        "indi.dmzz_yyhyy.lightnovelreader.sourceexecution.IsolatedExecutionInstrumentedTest"
+        "indi.dmzz_yyhyy.lightnovelreader.sourceexecution.IsolatedExecutionInstrumentedTest",
+        "hnovel.rhino.ScriptResponseTest",
+        "hnovel.rhino.ScriptDomTest",
+        "hnovel.rhino.ScriptRequestTemplatesTest"
       ]
     },
     {
@@ -234,12 +239,13 @@
       "implementation": "partial",
       "verification": "product-contract",
       "fixtures": [],
-      "evidence": "37 pure helpers plus three modern crypto facades cover bytes/encoding/hash/legacy and modern ciphers/signatures, dates, URI and HTML formatting. Hutool 5.8.22 is pinned behind explicit data-only facades; fixed vectors and JCE/native provider tests complement dependency comparisons. Traditional/simplified conversion remains pending.",
+      "evidence": "39 pure helpers and three crypto facades include pinned quick-transfer 0.2.16 traditional/simplified conversion with reference exclusions. Pinned ICU detection runs inside the worker; explicit charset and file-sampling overloads are tested. Android API24/35 exercise actual providers and packaged conversion dictionaries.",
       "productTests": [
         "hnovel.rhino.ScriptCryptoTest",
         "indi.dmzz_yyhyy.lightnovelreader.sourceexecution.IsolatedExecutionInstrumentedTest",
         "hnovel.rhino.ScriptCryptoObjectsTest",
-        "hnovel.rhino.ScriptHtmlTest"
+        "hnovel.rhino.ScriptHtmlTest",
+        "hnovel.rhino.ScriptTextTest"
       ]
     },
     {
@@ -250,10 +256,13 @@
       "implementation": "partial",
       "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Source/account logical resources implement downloadFile/cacheFile/importScript/readFile/readTxtFile/deleteFile with origin rechecks, cache TTL, quotas and guarded commits. No host File/path is exposed. Archives, directory/font tools and arbitrary-file charset detection remain pending.",
+      "evidence": "Source/account resources now include atomic logical archive directories, folder text consumption, pinned QueryTTF font facades and byte charset detection. Android uses pinned libarchive 1.1.6 for ZIP/RAR/7z in the isolated worker; JVM uses ZIP only. Synthetic fonts and all three archive formats pass actual Binder tests. Traversal, extraction bounds, malformed fonts, origin rechecks and source separation have product tests. File paths remain scoped tokens, and full upstream overload parity is not claimed.",
       "productTests": [
         "hnovel.execution.ResourceBridgeTest",
-        "indi.dmzz_yyhyy.lightnovelreader.sourceexecution.IsolatedExecutionInstrumentedTest"
+        "indi.dmzz_yyhyy.lightnovelreader.sourceexecution.IsolatedExecutionInstrumentedTest",
+        "hnovel.rhino.ArchiveDecoderTest",
+        "hnovel.rhino.ScriptFontsTest",
+        "hnovel.rhino.ScriptTextTest"
       ]
     },
     {

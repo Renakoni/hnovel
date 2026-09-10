@@ -13,9 +13,21 @@ internal object ScriptResponses {
         val status = data.getValue("status").jsonPrimitive.int
         val message = data.getValue("message").jsonPrimitive.content
         val headers = data.getValue("headers").jsonObject
+        // Validate every entry while still inside the guarded bridge call, before exposing
+        // retained/lazy accessors. Invalid host data must not throw a JVM exception later.
+        for (field in listOf("body", "url", "message")) require(data.getValue(field).jsonPrimitive.isString)
+        headers.values.forEach { list -> list.jsonArray.forEach { require(it.jsonPrimitive.isString) } }
         fun values(name: String) = headers.entries.firstOrNull { it.key.equals(name, true) }?.value?.jsonArray
         fun method(target: ScriptableObject, name: String, action: (Array<out Any>) -> Any?) {
-            target.defineProperty(name, realm.method(scope) { _, _, args -> action(args) }, ScriptableObject.DONTENUM)
+            target.defineProperty(name, realm.method(scope) { cx, active, args ->
+                try {
+                    val limit = cx.getThreadLocal(bridgeLimitKey) as Int
+                    BoundedJsonResult(limit).encode(ScriptRealm.current(cx).arrayIn(active, args))
+                    action(args).also { BoundedJsonResult(limit).encode(it) }
+                } catch (large: ResultTooLarge) { throw large }
+                catch (cancelled: java.util.concurrent.CancellationException) { throw cancelled }
+                catch (_: Exception) { throw JavaScriptException(ScriptRealm.current(cx).errorIn(active, "host bridge denied"), "host-bridge", 1) }
+            }, ScriptableObject.DONTENUM)
         }
         fun constant(name: String, value: Any?) = method(response, name) { require(it.isEmpty()); value }
         constant("body", body)
@@ -50,8 +62,16 @@ internal object ScriptResponses {
                 }
             }
         }
-        // raw()/parse()/body streams are deliberately not Java objects; unsupported members
-        // fail visibly. The view implements only the documented data access methods above.
+        if (jsoup) {
+            response.defineProperty("parse", realm.method(scope) { cx, active, args ->
+                try {
+                    require(args.isEmpty())
+                    BoundedJsonResult(cx.getThreadLocal(bridgeLimitKey) as Int).encode(body)
+                    ScriptDom.parse(cx, active, body, url)
+                } catch (large: ResultTooLarge) { throw large }
+                catch (_: Exception) { throw JavaScriptException(ScriptRealm.current(cx).errorIn(active, "host bridge denied"), "host-bridge", 1) }
+            }, ScriptableObject.DONTENUM)
+        }
         return response
     }
 }

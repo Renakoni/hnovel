@@ -11,6 +11,46 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 class ResourceBridgeTest {
+    @Test fun extractedDirectoriesAreScopedAtomicAndConsumedAfterTextRead() = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            val base = server.url("/").toString()
+            val zipped = java.io.ByteArrayOutputStream().also { out -> java.util.zip.ZipOutputStream(out).use { zip ->
+                for ((name, text) in listOf("one.txt" to "first", "two.txt" to "second")) {
+                    zip.putNextEntry(java.util.zip.ZipEntry(name)); zip.write(text.toByteArray()); zip.closeEntry()
+                }
+            } }.toByteArray()
+            SourceBroker(folder.root.toPath()).use { sessions ->
+                val scope = SourceScope("fixture", "archive", "legado")
+                val session = sessions.open(scope, listOf(NetworkGrant(base, true)))
+                val id = authority.issue("archive", "legado", "1", "fixture")
+                var path = ""
+                var directory = ""
+                SourceExecutionBroker(id, authority, session, ExecutionLimits(maxRequests=30), base).use { broker ->
+                    server.enqueue(MockResponse().setBody(okio.Buffer().write(zipped)))
+                    assertEquals(ExecutionResult.Success("[\"first\",\"first\\u000asecond\",null]"), script(broker, """
+                        var p=java.downloadFile('/chapters.zip');var dir=java.unzipFile(p);
+                        [java.readTxtFile(dir+'/one.txt'),java.getTxtInFolder(dir),java.readFile(dir+'/one.txt')]
+                    """, base))
+                    path = broker.call("java.downloadFile", listOf(JsonPrimitive("4142"), JsonPrimitive("${base}data,{\"type\":\"zip\"}"))).jsonPrimitive.content
+                    val files = buildJsonObject { put("one.txt", "QQ==") }
+                    directory = broker.call("resource.storeArchive", listOf(JsonPrimitive(path), files)).jsonPrimitive.content
+                    assertTrue(runCatching { broker.call("resource.storeArchive", listOf(JsonPrimitive(path), buildJsonObject { put("../escape", "QQ==") })) }.isFailure)
+                    assertEquals(files, broker.call("resource.readArchive", listOf(JsonPrimitive(directory))))
+                }
+                session.close()
+                val restricted = sessions.open(scope, emptyList())
+                SourceExecutionBroker(authority.issue("archive", "legado", "1", "fixture"), authority, restricted, ExecutionLimits(), base).use { broker ->
+                    assertTrue(runCatching { broker.call("java.readFile", listOf(JsonPrimitive("$directory/one.txt"))) }.isFailure)
+                }
+                val other = sessions.open(scope.copy(sourceId="other"), listOf(NetworkGrant(base, true)))
+                SourceExecutionBroker(authority.issue("other", "legado", "1", "fixture"), authority, other, ExecutionLimits(), base).use { broker ->
+                    assertEquals(JsonNull, broker.call("resource.readArchive", listOf(JsonPrimitive(directory))))
+                }
+                assertEquals(1, server.requestCount)
+            }
+        }
+    }
     @get:Rule val folder = TemporaryFolder()
     private val authority = ExecutionAuthority()
     private fun script(broker: SourceExecutionBroker, code: String, base: String): ExecutionResult {

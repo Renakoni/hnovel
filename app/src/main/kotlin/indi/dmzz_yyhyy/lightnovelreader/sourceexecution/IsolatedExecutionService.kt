@@ -22,7 +22,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 class IsolatedExecutionService : Service() {
     private val executor = Executors.newSingleThreadExecutor()
     private val running = AtomicBoolean()
-    private val runtime = WorkerRuntime()
+    private val runtime = WorkerRuntime(AndroidArchiveDecoder)
     private val memoryMonitor = Executors.newSingleThreadScheduledExecutor()
 
     override fun onCreate() {

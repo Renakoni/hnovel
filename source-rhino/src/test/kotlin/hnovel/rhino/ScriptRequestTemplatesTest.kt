@@ -32,6 +32,14 @@ class ScriptRequestTemplatesTest {
         assertEquals("/find?q={{key}}&p={{page}}&n=3", expanded("/find?q={{key}}&p={{page}}&n={{page+1}}"))
     }
 
+    @Test fun terminalScriptRetainsCommaExpressionsWhileDelimitedScriptsCanHaveOptions() {
+        // AnalyzeUrl runs terminal @js through the end BEFORE its option split. A comma
+        // expression is JS here; moving the option split earlier changes the pinned profile.
+        assertEquals("[object Object]", expanded("""@js:'/endpoint',{"method":"POST"}"""))
+        assertEquals("/endpoint,{\"method\":\"POST\"}", expanded("""<js>'/endpoint'</js>@result,{"method":"POST"}"""))
+        assertEquals("/endpoint,{\"method\":\"POST\"}", expanded("""@js:'/endpoint,'+JSON.stringify({method:'POST'})"""))
+    }
+
     @Test fun runawayAndOversizedTemplatesNeverReachHost() {
         var called = false
         val engine = RhinoScriptEngine(HostBridge { _, _ -> called=true; JsonNull }, ScriptLimits(maxBridgeChars=128))

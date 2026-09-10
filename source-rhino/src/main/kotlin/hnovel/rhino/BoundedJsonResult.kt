@@ -42,6 +42,7 @@ internal class BoundedJsonResult(private val maxChars: Int) {
             is CharSequence -> quoted(value)
             is Boolean -> append(value.toString())
             is Number -> append(if (value.toDouble().isFinite()) Context.toString(value) else "null")
+            is ScriptDomElement -> quoted(value.element.outerHtml())
             is NativeArray -> composite(value) {
                 if (value.length > maxChars) throw ResultTooLarge()
                 append("[")

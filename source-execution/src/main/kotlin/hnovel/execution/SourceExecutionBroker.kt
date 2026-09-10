@@ -39,6 +39,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
         val requestNumber = reserveRequest()
         return ownedWork {
             when (name) {
+                "resource.storeArchive", "resource.readArchive" -> archiveResource(name, args)
                 "java.importScript", "java.cacheFile", "java.downloadFile", "java.readFile", "java.readTxtFile", "java.deleteFile" ->
                     resource(name, args, requestNumber)
                 "java.androidId" -> authorized {
@@ -145,6 +146,8 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
     private suspend fun resource(name: String, args: List<JsonElement>, number: Int): JsonElement {
         require(args.size in 1..if (name in setOf("java.downloadFile", "java.cacheFile", "java.readTxtFile")) 2 else 1)
         val first = args[0].jsonPrimitive.content
+        if (first.removePrefix("/").startsWith("archives/") && name in setOf("java.readFile", "java.readTxtFile", "java.deleteFile"))
+            return archiveResource(name, args)
         fun key(path: String): String {
             require(path.matches(Regex("/?resources/[0-9a-f]{64}\\.[a-zA-Z0-9]{1,12}"))) { "Invalid resource path" }
             return "resource:" + path.removePrefix("/")
@@ -215,6 +218,61 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
         return if (name == "java.downloadFile") JsonPrimitive(path) else JsonPrimitive(response.text().also {
             check(name != "java.importScript" || it.isNotBlank()) { "Script resource empty" }
         })
+    }
+
+    /** One account-storage record per extracted archive makes publication and quota failure atomic. */
+    private fun archiveResource(name: String, args: List<JsonElement>): JsonElement = authorized {
+        require(args.size == if (name == "resource.storeArchive") 2 else 1)
+        val path = args[0].jsonPrimitive.content.removePrefix("/")
+        fun read(key: String): JsonObject? {
+            val value = session.read(StorageRequest(StorageArea.Account, key))
+            check(value is StorageResult.Value)
+            return value.value?.let { Json.parseToJsonElement(it).jsonObject }
+        }
+        fun grants(record: JsonObject) {
+            for (field in listOf("url", "finalUrl")) check(session.permissionFailure(record.getValue(field).jsonPrimitive.content) == null)
+        }
+        if (name == "resource.storeArchive") {
+            require(path.matches(Regex("resources/[0-9a-f]{64}\\.[a-zA-Z0-9]{1,12}")))
+            val original = read("resource:$path") ?: error("Archive missing")
+            grants(original)
+            val files = args[1].jsonObject
+            require(files.size <= 256)
+            var size = 0L
+            files.forEach { (entry, value) ->
+                hnovel.rhino.ArchiveDecoder.validatePath(entry)
+                require(value.jsonPrimitive.isString)
+                size += java.util.Base64.getDecoder().decode(value.jsonPrimitive.content).size
+                require(size <= BridgeWire.MAX_BYTES)
+            }
+            val directory = "archives/" + path.substringAfter('/').substringBefore('.')
+            val record = buildJsonObject {
+                put("url", original.getValue("url")); put("finalUrl", original.getValue("finalUrl")); put("files", files)
+            }
+            check(session.write(StorageRequest(StorageArea.Account, "resource:$directory", record.toString())) is StorageResult.Value)
+            return@authorized JsonPrimitive("/$directory")
+        }
+        val match = Regex("(archives/[0-9a-f]{64})(?:/(.+))?").matchEntire(path) ?: error("Invalid archive path")
+        val directory = match.groupValues[1]
+        val entry = match.groupValues[2].takeIf(String::isNotEmpty)
+        entry?.let(hnovel.rhino.ArchiveDecoder::validatePath)
+        val record = read("resource:$directory")
+        if (name == "java.deleteFile") {
+            if (record == null) return@authorized JsonPrimitive(false)
+            val files = record.getValue("files").jsonObject
+            if (entry != null && entry !in files) return@authorized JsonPrimitive(false)
+            val updated = if (entry == null) null else JsonObject(record + ("files" to JsonObject(files - entry))).toString()
+            check(session.write(StorageRequest(StorageArea.Account, "resource:$directory", updated)) is StorageResult.Value)
+            return@authorized JsonPrimitive(true)
+        }
+        if (record == null) return@authorized JsonNull
+        grants(record)
+        val files = record.getValue("files").jsonObject
+        if (name == "resource.readArchive") { require(entry == null); return@authorized files }
+        require(entry != null)
+        val content = files[entry] ?: return@authorized JsonNull
+        val bytes = java.util.Base64.getDecoder().decode(content.jsonPrimitive.content)
+        if (name == "java.readFile") JsonArray(bytes.map { JsonPrimitive(it.toInt()) }) else JsonPrimitive(bytes.toString(Charsets.UTF_8))
     }
 
     /** Downloads data only; library code is evaluated exclusively in the isolated worker. */

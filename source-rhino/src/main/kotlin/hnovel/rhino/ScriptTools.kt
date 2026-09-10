@@ -16,7 +16,7 @@ import javax.crypto.spec.SecretKeySpec
 internal object ScriptTools {
     val methods = setOf("strToBytes", "bytesToStr", "base64Encode", "base64Decode", "base64DecodeToByteArray",
         "hexDecodeToByteArray", "hexDecodeToString", "hexEncodeToString", "md5Encode", "md5Encode16",
-        "digestHex", "digestBase64Str", "HMacHex", "HMacBase64", "encodeURI", "timeFormatUTC", "timeFormat", "randomUUID", "htmlFormat") + ScriptCrypto.methods
+        "digestHex", "digestBase64Str", "HMacHex", "HMacBase64", "encodeURI", "timeFormatUTC", "timeFormat", "randomUUID", "htmlFormat", "t2s", "s2t") + ScriptCrypto.methods
 
     fun call(name: String, values: List<JsonElement>): JsonElement {
         val args = Arguments(values)
@@ -28,6 +28,7 @@ internal object ScriptTools {
             }.doFinal(args.text(0).toByteArray(Charsets.UTF_8))
         }
         return when (name) {
+            "t2s", "s2t" -> { args.count(1); JsonPrimitive(if (name == "t2s") ScriptText.simplified(args.text(0)) else ScriptText.traditional(args.text(0))) }
             "htmlFormat" -> { args.count(1); JsonPrimitive(ScriptHtml.format(args.text(0))) }
             "strToBytes" -> { args.count(1, 2); bytes(args.text(0).toByteArray(args.charset(1))) }
             "bytesToStr" -> { args.count(1, 2); JsonPrimitive(args.bytes(0).toString(args.charset(1))) }

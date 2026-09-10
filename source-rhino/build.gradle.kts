@@ -5,6 +5,7 @@ dependencies {
     implementation("org.mozilla:rhino:1.8.1")
     testImplementation(libs.junit)
     implementation("cn.hutool:hutool-crypto:5.8.22")
+    implementation("com.github.liuyueyi.quick-chinese-transfer:quick-transfer-core:0.2.16")
     api(project(":source-rules"))
     implementation("org.jsoup:jsoup:1.16.2")
     implementation(libs.kotlinx.serialization.json)

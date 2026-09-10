@@ -30,7 +30,11 @@ class RuleContext(
     bookVariables: Map<String, String> = emptyMap(),
     chapterVariables: Map<String, String> = emptyMap(),
 ) {
-    private val inherited = listOf(chapterVariables.toMap(), bookVariables.toMap(), sourceVariables.toMap())
+    val bookValues = bookVariables.toMutableMap()
+    val chapterValues = chapterVariables.toMutableMap()
+    val bookWrites = linkedMapOf<String, String?>()
+    val chapterWrites = linkedMapOf<String, String?>()
+    private val inherited = listOf(chapterValues, bookValues, sourceVariables.toMap())
     private val values = linkedMapOf<String, String>()
     fun get(key: String): String = values[key]?.takeIf { it.isNotEmpty() }
         ?: inherited.firstNotNullOfOrNull { it[key]?.takeIf(String::isNotEmpty) }.orEmpty()
