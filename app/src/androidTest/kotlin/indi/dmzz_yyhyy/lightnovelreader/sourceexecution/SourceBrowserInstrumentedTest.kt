@@ -17,7 +17,7 @@ import java.util.concurrent.ConcurrentLinkedQueue
 class SourceBrowserInstrumentedTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
 
-    @Test fun rendersThroughBrokerAndKeepsSameDomainAccountsAndBrowserStorageSeparate() = runBlocking {
+    @Test fun rendersThroughBrokerAndKeepsSameDomainAccountsAndBrowserStorageSeparate(): Unit = runBlocking {
         val seen = ConcurrentLinkedQueue<String>()
         MockWebServer().use { denied -> MockWebServer().use { server ->
             denied.start()
@@ -68,8 +68,85 @@ class SourceBrowserInstrumentedTest {
                 assertFalse(a.browserCookie(server.url("/").toString()).contains("hidden"))
                 assertTrue(a.cookie(server.url("/").toString()).contains("hidden=server"))
                 assertEquals(0, denied.requestCount)
+                val name = if (android.os.Build.VERSION.SDK_INT >= 28) "app_webview_source_browser" else "app_webview"
+                assertFalse(File(context.applicationInfo.dataDir, name).exists())
             }
             root.deleteRecursively()
         } }
+    }
+
+    @Test fun cancelledPageCannotRestoreCookiesAndTheNextOwnerCanRender(): Unit = runBlocking {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().setHeader("Content-Type", "text/html").setBody("<p>late</p>")
+                .addHeader("Set-Cookie", "late=secret; Max-Age=3600; Path=/").setBodyDelay(5, java.util.concurrent.TimeUnit.SECONDS))
+            server.enqueue(MockResponse().setHeader("Content-Type", "text/html").setBody("<title>next</title>"))
+            server.start()
+            val root = File(context.cacheDir, "browser-cancel-${System.nanoTime()}")
+            SourceBroker(root.toPath(), browser = AndroidSourceBrowser(context)).use { broker ->
+                val grant = listOf(NetworkGrant(server.url("/").toString(), true))
+                val old = broker.open(SourceScope("cancel", "A", "legado", 1), grant)
+                val pending = async { runCatching { old.execute(BrokerRequest("cancel", server.url("/").toString(),
+                    timeoutMillis = 60000, browser = BrowserOptions())) } }
+                withContext(Dispatchers.IO) { assertNotNull(server.takeRequest(15, java.util.concurrent.TimeUnit.SECONDS)) }
+                old.clearAccount()
+                withTimeout(10000) { pending.join() }
+                val next = broker.open(SourceScope("cancel", "A", "legado", 2), grant)
+                val result = next.execute(BrokerRequest("next", server.url("/").toString(), timeoutMillis = 60000,
+                    browser = BrowserOptions("document.title"))) as BrokerResult.Success
+                assertEquals("next", result.response.text())
+                assertEquals("", next.cookie(server.url("/").toString()))
+            }
+            root.deleteRecursively()
+        }
+    }
+
+    @Test fun foregroundLoginPreservesPostResponseAndCommitsOnlyItsOwnCookies(): Unit = runBlocking {
+        context.startActivity(android.content.Intent(context, indi.dmzz_yyhyy.lightnovelreader.sourcebrowser.BrowserTestHostActivity::class.java)
+            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+        MockWebServer().use { server ->
+            val posted = CompletableDeferred<Unit>()
+            server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse {
+                    if (request.method == "POST") {
+                        assertEquals("user=fixture", request.body.readUtf8())
+                        posted.complete(Unit)
+                        return MockResponse().setHeader("Content-Type", "text/html").addHeader("Set-Cookie", "auth=accepted; Path=/; HttpOnly")
+                            .setBody("<html><title>POST accepted</title><body>Signed in</body></html>")
+                    }
+                    return MockResponse().setHeader("Content-Type", "text/html").setBody("""
+                        <html><body><form method="post" action="/login"><input name="user" value="fixture"></form>
+                        <script>setTimeout(function(){document.forms[0].submit()},100);</script></body></html>
+                    """.trimIndent())
+                }
+            }
+            server.start()
+            val root = File(context.cacheDir, "browser-login-${System.nanoTime()}")
+            SourceBroker(root.toPath(), browser = AndroidSourceBrowser(context)).use { broker ->
+                val session = broker.open(SourceScope("login", "A", "legado", 1), listOf(NetworkGrant(server.url("/").toString(), true)))
+                val login = async { session.execute(BrokerRequest("login", server.url("/login").toString(), timeoutMillis = 60000,
+                    browser = BrowserOptions(script = "document.title", interactive = true))) }
+                val formPosted = withTimeoutOrNull(20000) { posted.await(); true } == true
+                assertTrue("Form POST did not reach broker; requests=${server.requestCount}, browserCompleted=${login.isCompleted}", formPosted)
+                val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+                val label = context.getString(indi.dmzz_yyhyy.lightnovelreader.R.string.source_browser_done)
+                val clicked = withTimeoutOrNull(20000) {
+                    while (true) {
+                        val rootNode = automation.rootInActiveWindow
+                        val ready = rootNode?.findAccessibilityNodeInfosByText("Signed in").orEmpty().isNotEmpty()
+                        val button = rootNode?.findAccessibilityNodeInfosByText(label)?.firstOrNull()
+                        if (ready && button?.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK) == true) break
+                        delay(100)
+                    }
+                    true
+                }
+                assertTrue("Login window did not expose rendered POST response and finish action", clicked == true)
+                val result = login.await()
+                assertTrue(result.toString(), result is BrokerResult.Success)
+                assertEquals("POST accepted", (result as BrokerResult.Success).response.text())
+                assertEquals("auth=accepted", session.cookie(server.url("/").toString()))
+                assertEquals(2, server.requestCount)
+            }
+            root.deleteRecursively()
+        }
     }
 }

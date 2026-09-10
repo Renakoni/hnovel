@@ -12,6 +12,7 @@ import kotlinx.serialization.json.*
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -103,9 +104,14 @@ class AndroidSourceBrowser @Inject constructor(@ApplicationContext private val c
         } finally {
             alive.set(false); work.cancel()
             if (bound) context.unbindService(connection)
-            runCatching { (remote ?: connected.getCompleted()).shutdown() }
+            runCatching { remote?.shutdown() }
             // Do not give the next owner a service whose old Chromium instance is still alive.
             withContext(NonCancellable) { withTimeout(5000) { if (remote != null) died.await() } }
+            if (died.isCompleted) {
+                val directory = context.getDir(if (Build.VERSION.SDK_INT >= 28) "webview_source_browser" else "webview", Context.MODE_PRIVATE)
+                check(directory.canonicalFile.parentFile == File(context.applicationInfo.dataDir).canonicalFile)
+                check(directory.deleteRecursively())
+            }
         }
     } }
 }
