@@ -39,7 +39,7 @@ private class ScriptBridge(private val bridge: HostBridge, private val rules: Sc
                 else if (rules.supports(name, arguments)) rules.call(cx, name, arguments)
                 else if (pureTool) ScriptTools.call(name.removePrefix("java."), arguments) else bridge.call(name, requests.prepare(cx, name, arguments))
                 if (Thread.currentThread().isInterrupted) throw ScriptCancelled()
-                val networkResponse = name in setOf("java.ajaxAll", "java.connect") ||
+                val networkResponse = name in setOf("java.ajaxAll", "java.connect", "java.startBrowserAwait") ||
                     name in setOf("java.get", "java.head", "java.post") && args.size >= 2
                 if (networkResponse) ScriptResponses.validate(result, maxChars)
                 val converted = if (networkResponse) null else JsonScriptData(cx, scope, maxChars).convert(result)
@@ -48,6 +48,7 @@ private class ScriptBridge(private val bridge: HostBridge, private val rules: Sc
                         ScriptData.map(cx, scope, result.jsonObject.mapValues { it.value.jsonPrimitive.content }.toMutableMap())
                     name == "java.getElement" || name == "java.getElements" -> rules.elementView(cx, scope, result)
                     name == "java.ajaxAll" -> realm.arrayIn(scope, result.jsonArray.map { ScriptResponses.create(cx, scope, it.jsonObject, false) }.toTypedArray())
+                    name == "java.startBrowserAwait" -> ScriptResponses.create(cx, scope, result.jsonObject, true)
                     name == "java.connect" -> ScriptResponses.create(cx, scope, result.jsonObject, false)
                     name in setOf("java.get", "java.head", "java.post") && args.size >= 2 -> ScriptResponses.create(cx, scope, result.jsonObject, true)
                     else -> converted

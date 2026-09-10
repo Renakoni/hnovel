@@ -359,6 +359,9 @@
     <string name="bookshelf_name_placeholder">輸入書架名稱</string>
     <string name="bookshelf_settings">書架設定</string>
     <string name="bookshelf_create_title">建立書架</string>
+    <string name="bookshelf_layout_switch_grid">切換為網格</string>
+    <string name="bookshelf_layout_switch_list">切換為列表</string>
+    <string name="bookshelf_layout_load_error">書籍載入失敗</string>
     <string name="bookshelf_sort_type">排序類型</string>
     <string name="bookshelf_sort_default">預設</string>
     <string name="bookshelf_sort_latest">最近更新</string>

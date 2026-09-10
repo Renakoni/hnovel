@@ -2,6 +2,7 @@ package indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.mode
 
 import android.app.Application
 import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.viewModelScope
 import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.Ok
 import com.github.michaelbull.result.get
@@ -12,6 +13,10 @@ import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ContentUiState
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ReaderModeController
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ReaderModeFactory
 import io.mockk.every
+import io.mockk.coEvery
+import io.mockk.coVerify
+import io.mockk.Runs
+import io.mockk.just
 import io.mockk.mockk
 import io.nightfish.lightnovelreader.api.book.BookVolumes
 import io.nightfish.lightnovelreader.api.error.WebRequestError
@@ -20,6 +25,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.book.ChapterSource
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -50,15 +56,20 @@ class ReaderDirectoryOwnershipTest {
     private val scheduler = TestCoroutineScheduler()
     private val dispatcher = StandardTestDispatcher(scheduler)
     private val store = ViewModelStore()
+    private val readerJobs = mutableListOf<Job>()
 
     @Before
     fun setUp() = Dispatchers.setMain(dispatcher)
 
     @After
     fun tearDown() {
-        store.clear()
-        scheduler.runCurrent()
-        Dispatchers.resetMain()
+        try {
+            store.clear()
+            // Clearing the owner requests cancellation; its IO children must also finish.
+            await { readerJobs.all { it.isCompleted } }
+        } finally {
+            Dispatchers.resetMain()
+        }
     }
 
     @Test
@@ -86,6 +97,8 @@ class ReaderDirectoryOwnershipTest {
             every { getFlow(any()) } returns kotlinx.coroutines.flow.flowOf(null)
             every { getFlow(UserDataPath.Reader.IsUsingFlipPage.path) } returns kotlinx.coroutines.flow.flowOf(null)
         }
+        coEvery { dao.get(UserDataPath.ReadingBooks.path) } returns null
+        coEvery { dao.insert(UserDataPath.ReadingBooks.path, "", "StringList", any()) } just Runs
         val controller = object : ReaderModeController {
             override val uiState: ContentUiState = mockk()
             override fun changeBookId(id: String) = Unit
@@ -104,6 +117,7 @@ class ReaderDirectoryOwnershipTest {
             modeFactory = factory,
         )
         store.put("reader", reader)
+        readerJobs += reader.viewModelScope.coroutineContext[Job]!!
 
         reader.bookId = "first"
         await { firstStarted.isCompleted }
@@ -117,6 +131,9 @@ class ReaderDirectoryOwnershipTest {
         scheduler.runCurrent()
 
         assertEquals("second", reader.uiState.bookVolumes?.get()?.bookId)
+        coVerify(timeout = 2_000, exactly = 2) {
+            dao.insert(UserDataPath.ReadingBooks.path, "", "StringList", any())
+        }
     }
 
     private fun await(condition: () -> Boolean) = runBlocking {
@@ -157,11 +174,15 @@ class ReaderDirectoryOwnershipTest {
         val dao = mockk<UserDataDao>(relaxed = true) {
             every { getFlow(any()) } returns kotlinx.coroutines.flow.flowOf(null)
         }
+        // A missing preference is null; relaxed String mocks return an invalid blank book ID.
+        coEvery { dao.get(UserDataPath.ReadingBooks.path) } returns null
+        coEvery { dao.insert(UserDataPath.ReadingBooks.path, "", "StringList", any()) } just Runs
         val factory = mockk<ReaderModeFactory> {
             every { create(any(), any(), any(), any()) } returns mockk(relaxed = true)
         }
         val reader = ReaderViewModel(mockk(relaxed = true), chapters, mockk(relaxed = true), UserDataRepository(dao), factory)
         store.put("reader", reader)
+        readerJobs += reader.viewModelScope.coroutineContext[Job]!!
         try {
             reader.bookId = "first"
             await { started.isCompleted }

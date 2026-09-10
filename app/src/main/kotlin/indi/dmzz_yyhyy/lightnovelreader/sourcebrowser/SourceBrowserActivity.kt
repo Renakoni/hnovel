@@ -18,6 +18,8 @@ class SourceBrowserActivity : Activity() {
         (view.parent as? ViewGroup)?.removeView(view)
         setContentView(LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
+            fitsSystemWindows = true
+            if (active.pageTitle.isNotBlank()) addView(android.widget.TextView(context).apply { text = active.pageTitle })
             addView(LinearLayout(this@SourceBrowserActivity).apply {
                 addView(Button(context).apply { setText(R.string.source_browser_done); setOnClickListener { active.evaluate() } })
                 addView(Button(context).apply { setText(android.R.string.cancel); setOnClickListener { active.fail() } })

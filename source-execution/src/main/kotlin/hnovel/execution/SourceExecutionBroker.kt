@@ -9,7 +9,8 @@ import kotlinx.serialization.json.*
 /** Host-owned per-invocation capability. A script cannot choose its session, identity or grants. */
 class SourceExecutionBroker(val identity: ExecutionIdentity, private val authority: ExecutionAuthority,
     private val session: SourceSession, val limits: ExecutionLimits,
-    private val baseUrl: String = "", private val keyword: String = "", private val page: Int = 1) : AutoCloseable {
+    private val baseUrl: String = "", private val keyword: String = "", private val page: Int = 1,
+    private val allowInteraction: Boolean = false) : AutoCloseable {
     private val lifetime = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var requests = 0
     private var closed = false
@@ -42,8 +43,20 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
         return ownedWork {
             when (name) {
                 "java.startBrowser", "java.startBrowserAwait" -> {
-                    interactionRequired = true
-                    error("Foreground source login required")
+                    if (!allowInteraction) {
+                        interactionRequired = true
+                        error("Foreground source login required")
+                    }
+                    require(args.size == 2 || name == "java.startBrowserAwait" && args.size == 3)
+                    val url = java.net.URI(baseUrl).resolve(args[0].jsonPrimitive.content).toString()
+                    val title = args[1].jsonPrimitive.content.also { require(it.length <= 1024) }
+                    val page = fetch(BrokerRequest("browser-$requestNumber", url,
+                        browser = BrowserOptions(interactive = true, title = title)))
+                    if (name == "java.startBrowser") JsonNull
+                    else {
+                        val refetch = args.getOrNull(2)?.jsonPrimitive?.boolean ?: true
+                        (if (refetch) fetch(BrokerRequest("verified-$requestNumber", url)) else page).scriptSnapshot(true)
+                    }
                 }
                 "java.webView", "java.webViewGetSource", "java.webViewGetOverrideUrl" -> {
                     require(args.size == if (name == "java.webView") 3 else 4)
