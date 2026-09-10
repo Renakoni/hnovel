@@ -37,7 +37,7 @@ private class ScriptBridge(private val bridge: HostBridge, private val rules: Sc
                 else if (name == "java.readTxtFile") resources.text(cx, arguments)
                 else if (name.startsWith("java.") && name.substringAfter("java.") in resources.methods) resources.archive(cx, name.substringAfter("java."), arguments)
                 else if (rules.supports(name, arguments)) rules.call(cx, name, arguments)
-                else if (pureTool) ScriptTools.call(name.removePrefix("java."), arguments) else bridge.call(name, requests.prepare(cx, name, arguments))
+                else if (pureTool) ScriptTools.call(name.removePrefix("java."), arguments) else requests.call(cx, bridge, name, arguments)
                 if (Thread.currentThread().isInterrupted) throw ScriptCancelled()
                 val networkResponse = name in setOf("java.ajaxAll", "java.connect") ||
                     name in setOf("java.get", "java.head", "java.post") && args.size >= 2
@@ -95,7 +95,7 @@ data class ScriptFrame(val sourceId: String, val profile: String, val bookId: St
     val variables: Map<String, JsonElement> = emptyMap(), val key: String = "", val page: Int = 1,
     val baseUrl: String = "", val ruleContext: RuleContext? = null, val ruleInput: RuleValue? = null,
     val ruleBudget: RuleBudget? = null, val book: JsonObject = JsonObject(emptyMap()),
-    val chapter: JsonObject = JsonObject(emptyMap()), val chineseConverter: Int = 0)
+    val chapter: JsonObject = JsonObject(emptyMap()), val chineseConverter: Int = 0, val sourceHeaderRule: String = "")
 
 data class ScriptLimits(val instructionLimit: Int = 100_000, val maxResultChars: Int = 256 * 1024,
     val maxScriptChars: Int = 256 * 1024, val maxBridgeChars: Int = DEFAULT_BRIDGE_CHARS,
