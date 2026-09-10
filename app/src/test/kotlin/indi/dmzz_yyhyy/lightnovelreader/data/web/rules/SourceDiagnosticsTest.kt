@@ -62,6 +62,22 @@ class SourceDiagnosticsTest {
                 assertEquals("Network", network.result)
                 assertTrue(network.events.any { it.result == "HTTP_503" })
                 assertEquals(target.generation, accounts.current(id).generation)
+                fixture.status = 200
+                val started = CompletableDeferred<Unit>()
+                val original = fixture.server.dispatcher
+                fixture.server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
+                    override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest): okhttp3.mockwebserver.MockResponse {
+                        started.complete(Unit)
+                        return original.dispatch(request).addHeader("Set-Cookie", "late=diagnostic; Path=/")
+                            .setBodyDelay(3, java.util.concurrent.TimeUnit.SECONDS)
+                    }
+                }
+                val pending = launch { diagnostics.run(id, DiagnosticStage.Information, "", fixture.server.url("/book/one").toString(), "") }
+                withTimeout(5000) { started.await() }
+                pending.cancelAndJoin()
+                assertTrue(target.session.cookie(fixture.server.url("/").toString()).contains(secret))
+                assertFalse(target.session.cookie(fixture.server.url("/").toString()).contains("late="))
+                assertFalse(context.cacheDir.listFiles().orEmpty().any { it.name.startsWith("diagnostic-") })
             } finally { sources.stop(); root.deleteRecursively() }
         }
     }

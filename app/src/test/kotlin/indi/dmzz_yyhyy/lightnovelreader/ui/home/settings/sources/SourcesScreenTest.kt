@@ -34,7 +34,7 @@ class SourcesScreenTest {
     @After fun destroy() { activity.pause().stop().destroy() }
 
     @Test fun emptyStateOpensExplicitPreviewFlowWithoutImportingAutomatically() {
-        activity.get().setContent { MaterialTheme { SourcesScreen(SourceManagementState(), model) {} } }
+        activity.get().setContent { MaterialTheme { SourcesScreen(SourceManagementState(), model, onDiagnostics = {}) {} } }
         compose.onNodeWithText("Add book source").performClick()
         compose.onNodeWithText("Source file URL").performTextInput("https://fixture.invalid/source.json")
         compose.onNodeWithText("Download and preview").performClick()
