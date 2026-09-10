@@ -52,7 +52,9 @@ jobs:
             source-import/build/test-results/test
             source-compatibility/build/reports/tests/test
             source-compatibility/build/test-results/test
-            source-compatibility/build/reports/source-compatibility`r`n            source-rhino/build/reports/tests/test`r`n            source-rhino/build/test-results/test
+            source-compatibility/build/reports/source-compatibility
+            source-rhino/build/reports/tests/test
+            source-rhino/build/test-results/test
           if-no-files-found: ignore
 
   execution-platform:
