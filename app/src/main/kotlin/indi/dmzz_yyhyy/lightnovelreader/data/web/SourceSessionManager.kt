@@ -3,12 +3,16 @@ package indi.dmzz_yyhyy.lightnovelreader.data.web
 import io.nightfish.lightnovelreader.api.identifier.Identifier
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import javax.inject.Inject
+import javax.inject.Singleton
 
 /** Owns login state and cookies per source. Credentials never leave the caller that performs login. */
-class SourceSessionManager {
+@Singleton
+class SourceSessionManager @Inject constructor(private val executionAuthority: hnovel.execution.ExecutionAuthority = hnovel.execution.ExecutionAuthority()) {
     private val sessions = ConcurrentHashMap<Identifier, State>()
 
     @Synchronized fun begin(source: Identifier): SourceSession {
+        executionAuthority.revokeSource(source.id, source.namespace)
         val next = State(generation = (sessions[source]?.generation ?: 0) + 1)
         sessions[source] = next
         return snapshot(source, next)
@@ -27,6 +31,7 @@ class SourceSessionManager {
         val state = sessions[session.source]
         if (state == null || state.generation != session.generation || state.nonce != session.nonce)
             return SourceSession(session.source, session.generation, false, emptyMap(), session.nonce)
+        executionAuthority.revokeSource(session.source.id, session.source.namespace)
         val next = State(generation = state.generation + 1)
         sessions[session.source] = next
         return snapshot(session.source, next)

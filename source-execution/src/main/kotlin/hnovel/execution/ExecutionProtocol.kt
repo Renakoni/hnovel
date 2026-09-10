@@ -12,6 +12,12 @@ import hnovel.rhino.ScriptLibrary
 import hnovel.rules.*
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
+
+private class WorkerOutputLimit : RuntimeException()
 
 @Serializable data class ExecutionIdentity(val sourceId: String, val profile: String, val revision: String, val nonce: String,
  val namespace: String = "default", val accountGeneration: Long = 0) {
@@ -47,11 +53,25 @@ fun ExecutionTask.libraryCode(): String? = when (this) {
 /** Host authority for source identities. The worker never gets a method to issue or change a ticket. */
 class ExecutionAuthority {
  private val active = ConcurrentHashMap<String, ExecutionIdentity>()
+ private val sessions = ConcurrentHashMap<String, hnovel.network.SourceSession>()
  @Synchronized fun issue(sourceId: String, profile: String, revision: String, namespace: String = "default", accountGeneration: Long = 0): ExecutionIdentity =
   ExecutionIdentity(sourceId, profile, revision, UUID.randomUUID().toString(), namespace, accountGeneration).also { active[it.nonce] = it }
- @Synchronized fun revoke(identity: ExecutionIdentity) { active.remove(identity.nonce, identity) }
- @Synchronized fun revokeSource(sourceId: String) { active.entries.removeIf { it.value.sourceId == sourceId } }
- fun accepts(identity: ExecutionIdentity) = active[identity.nonce] == identity
+ @Synchronized fun revoke(identity: ExecutionIdentity) {
+  if (active.remove(identity.nonce, identity)) sessions.remove(identity.nonce)
+ }
+ @Synchronized fun revokeSource(sourceId: String, namespace: String) {
+  active.values.filter { it.sourceId == sourceId && it.namespace == namespace }.forEach(::revoke)
+ }
+ @Synchronized internal fun bindSession(identity: ExecutionIdentity, session: hnovel.network.SourceSession) {
+  check(accepts(identity) && !session.closed)
+  val previous = sessions.putIfAbsent(identity.nonce, session)
+  check(previous == null || previous === session) { "Execution ticket already belongs to another session" }
+ }
+ @Synchronized fun accepts(identity: ExecutionIdentity): Boolean {
+  if (active[identity.nonce] != identity) return false
+  if (sessions[identity.nonce]?.closed == true) { revoke(identity); return false }
+  return true
+ }
  /** Storage/result commits and revocation share this lock; no new commit starts after revocation. */
  @Synchronized fun <T> authorized(identity: ExecutionIdentity, block: () -> T): T {
   check(accepts(identity)) { "Execution revoked" }
@@ -64,24 +84,48 @@ class IsolatedExecutor(private val javaCommand: String = javaHome(), private val
  private val authority: ExecutionAuthority? = null) {
  fun execute(identity: ExecutionIdentity, task: ExecutionTask, limits: ExecutionLimits = ExecutionLimits()): ExecutionResult {
   if (identity.sourceId.isBlank() || (authority != null && !authority.accepts(identity))) return ExecutionResult.Failure(FailureCode.InvalidIdentity)
+  val input = ExecutionWire.encode(identity, task, limits)
+  if (input.size > BridgeWire.MAX_BYTES) return ExecutionResult.Failure(FailureCode.InputLimit)
+  val deadline = System.nanoTime() + limits.timeoutMillis * 1_000_000
   val process = try { ProcessBuilder(javaCommand, "-Xmx64m", "-Xss1m", "-XX:+ExitOnOutOfMemoryError",
    "-cp", classPath, WorkerMain::class.java.name).start() }
     catch (_: Exception) { return ExecutionResult.Failure(FailureCode.ProcessExited) }
+  val pipes = Executors.newFixedThreadPool(2) { Thread(it, "source-worker-io").apply { isDaemon = true } }
   try {
-   val request = Wire(identity, task, limits)
-   process.outputStream.bufferedWriter().use { it.write(kotlinx.serialization.json.Json.encodeToString(Wire.serializer(), request)); it.newLine(); it.flush() }
-   val deadline = System.nanoTime() + limits.timeoutMillis * 1_000_000
+   val writing = pipes.submit { process.outputStream.use { it.write(input); it.write('\n'.code); it.flush() } }
+   // Drain while the child runs: waiting for exit first deadlocks when a valid result fills
+   // the OS pipe. Bound bytes before JSON decoding, as on Android's Binder boundary.
+   val reading = pipes.submit<ByteArray> {
+    process.inputStream.use { stream ->
+     val output = java.io.ByteArrayOutputStream()
+     val buffer = ByteArray(8192)
+     while (true) {
+      val count = stream.read(buffer)
+      if (count < 0) break
+      if (output.size() + count > BridgeWire.MAX_BYTES) throw WorkerOutputLimit()
+      output.write(buffer, 0, count)
+     }
+     output.toByteArray()
+    }
+   }
    while (process.isAlive && System.nanoTime() < deadline) {
     if (authority != null && !authority.accepts(identity)) { process.destroyForcibly(); process.waitFor(); return ExecutionResult.Failure(FailureCode.Revoked) }
+    if (writing.isDone) writing.get()
+    if (reading.isDone) reading.get()
     Thread.sleep(5)
    }
-   if (process.isAlive) { process.destroyForcibly(); process.waitFor(); return ExecutionResult.Failure(FailureCode.Timeout) }
-   val line = process.inputStream.bufferedReader().readLine() ?: return ExecutionResult.Failure(FailureCode.ProcessExited)
+   // Startup/pipe scheduling also consumes the deadline; revocation during startup must
+   // retain its identity failure even if the child was not ready before that deadline.
    if (authority != null && !authority.accepts(identity)) return ExecutionResult.Failure(FailureCode.Revoked)
-   return kotlinx.serialization.json.Json.decodeFromString(ExecutionResult.serializer(), line)
+   if (process.isAlive) { process.destroyForcibly(); process.waitFor(); return ExecutionResult.Failure(FailureCode.Timeout) }
+   val bytes = reading.get(maxOf(1, deadline - System.nanoTime()), TimeUnit.NANOSECONDS)
+   if (authority != null && !authority.accepts(identity)) return ExecutionResult.Failure(FailureCode.Revoked)
+   return ExecutionWire.decodeResult(bytes)
   } catch (_: InterruptedException) { process.destroyForcibly(); Thread.currentThread().interrupt(); return ExecutionResult.Failure(FailureCode.Cancelled) }
+    catch (failure: ExecutionException) { return ExecutionResult.Failure(if (failure.cause is WorkerOutputLimit) FailureCode.OutputLimit else FailureCode.ProcessExited) }
+    catch (_: TimeoutException) { return ExecutionResult.Failure(FailureCode.Timeout) }
     catch (_: Exception) { process.destroyForcibly(); return ExecutionResult.Failure(FailureCode.ProcessExited) }
-  finally { if (process.isAlive) process.destroyForcibly() }
+  finally { if (process.isAlive) process.destroyForcibly(); pipes.shutdownNow() }
  }
  companion object {
   private fun javaHome() = java.nio.file.Path.of(System.getProperty("java.home"),"bin",if(System.getProperty("os.name").startsWith("Windows"))"java.exe" else "java").toString()
@@ -111,7 +155,7 @@ object ExecutionWire {
  fun encodeResult(result: ExecutionResult): ByteArray =
   kotlinx.serialization.json.Json.encodeToString(ExecutionResult.serializer(), result).toByteArray(Charsets.UTF_8)
  fun decodeResult(bytes: ByteArray): ExecutionResult =
-  kotlinx.serialization.json.Json.decodeFromString(ExecutionResult.serializer(), bytes.toString(Charsets.UTF_8))
+  kotlinx.serialization.json.Json.decodeFromString(ExecutionResult.serializer(), BridgeWire.validate(bytes))
 }
 
 /** Untrusted-side worker. It receives only the bound DTO and has no host repository/client references. */

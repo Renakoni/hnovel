@@ -52,7 +52,9 @@ class SourceLibraryTest {
                 SourceExecutionBroker(id, authority, session, ExecutionLimits()).use { assertEquals(1, it.loadLibrary(definition).size) }
                 session.close()
                 val denied = sessions.open(scope, emptyList())
-                SourceExecutionBroker(id, authority, denied, ExecutionLimits()).use {
+                assertFalse(authority.accepts(id))
+                val next = authority.issue("a", "legado", "1", "fixture")
+                SourceExecutionBroker(next, authority, denied, ExecutionLimits()).use {
                     assertTrue(runCatching { it.loadLibrary(definition) }.isFailure)
                 }
                 assertEquals(1, server.requestCount)
@@ -128,5 +130,20 @@ class SourceLibraryTest {
         val wire = ExecutionWire.encode(id, ExecutionTask.Script("1", libraryCode = "{\"lib\":\"https://fixture.invalid/lib\"}"), ExecutionLimits())
         assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied),
             ExecutionWire.decodeResult(WorkerMain.executeSerialized(wire.toString(Charsets.UTF_8)).toByteArray()))
+    }
+
+    @Test fun braceDelimitedBlocksFollowThePinnedMapDispatchWithoutScriptFallback() {
+        // SharedJsScope uses String.isJsonObject (trimmed braces) before GSON parsing. A
+        // failed map is not reinterpreted as executable code in the fixed profile.
+        val block = "{ var helper = function(){return 42;}; }"
+        assertTrue(SourceLibraryDefinition.isUrlMap(block))
+        assertTrue(runCatching { SourceLibraryDefinition.urls(block) }.isFailure)
+        val id = ExecutionAuthority().issue("a", "legado", "1")
+        val rejected = ExecutionWire.encode(id, ExecutionTask.Script("helper()", libraryCode = block), ExecutionLimits())
+        assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied),
+            ExecutionWire.decodeResult(WorkerMain.executeSerialized(rejected.toString(Charsets.UTF_8)).toByteArray()))
+        val inline = ExecutionWire.encode(id, ExecutionTask.Script("helper()", libraryCode = ";$block"), ExecutionLimits())
+        assertEquals(ExecutionResult.Success("42"),
+            ExecutionWire.decodeResult(WorkerMain.executeSerialized(inline.toString(Charsets.UTF_8)).toByteArray()))
     }
 }

@@ -43,6 +43,77 @@ import org.junit.runner.RunWith
 class IsolatedExecutionInstrumentedTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
 
+    @Test fun networkResponseViewsCrossBinderAndKeepRuleGetOverloadsDistinct() = runBlocking {
+        val authority = ExecutionAuthority()
+        val executor = AndroidIsolatedExecutor(context, authority)
+        val id = authority.issue("responses", "legado", "1", "fixture")
+        val limits = ExecutionLimits(timeoutMillis = 15000)
+        val root = java.io.File(context.cacheDir, "responses-${java.util.UUID.randomUUID()}").toPath()
+        try {
+            MockWebServer().use { server ->
+                server.start()
+                val base = server.url("/").toString()
+                SourceBroker(root).use { sessions ->
+                    val session = sessions.open(SourceScope("fixture", "responses", "legado"), listOf(NetworkGrant(base, true)))
+                    server.enqueue(MockResponse().setBody("connected").addHeader("X-Test", "value"))
+                    server.enqueue(MockResponse().setResponseCode(302).addHeader("Location", "https://denied.invalid/"))
+                    val code = "var a=java.connect('/one');var b=java.get('$base',{});" +
+                        "[java.get('variable'),a.body(),a.headers().get('x-test'),b.statusCode(),b.header('Location')]"
+                    SourceExecutionBroker(id, authority, session, limits, base).use { broker ->
+                        val result = executor.execute(id, ExecutionTask.Rule("@js:$code", RuleValue.Text(""),
+                            sourceVariables = mapOf("variable" to "local"), baseUrl = base), limits, broker) as ExecutionResult.Success
+                        assertEquals(RuleValue.Items(listOf("local", "connected", "value", "302", "https://denied.invalid/").map(RuleValue::Text)),
+                            Json.decodeFromString(ExecutedRule.serializer(), result.output).value)
+                    }
+                    assertEquals(2, server.requestCount)
+                    server.enqueue(MockResponse().setBody("first"))
+                    server.enqueue(MockResponse().setBody("second"))
+                    SourceExecutionBroker(id, authority, session, limits, base).use { broker ->
+                        val result = executor.execute(id, ExecutionTask.Script("java.ajaxAll(['/a','/b']).map(function(r){return r.code()})", baseUrl = base), limits, broker)
+                        assertEquals(ExecutionResult.Success("[200,200]"), result)
+                    }
+                    SourceExecutionBroker(id, authority, session, limits, base).use { broker ->
+                        assertEquals(ExecutionResult.Success("[16,true,true]"), executor.execute(id,
+                            ExecutionTask.Script("var value=java.androidId();[value.length,/^[0-9a-f]{16}$/.test(value),value===java.androidId()]", baseUrl = base), limits, broker))
+                    }
+                }
+            }
+        } finally { executor.close() }
+    }
+
+    @Test fun closedAndReplacedSessionsRevokeComputationAndRetainedLibraries() = runBlocking {
+        val authority = ExecutionAuthority()
+        val executor = AndroidIsolatedExecutor(context, authority)
+        val limits = ExecutionLimits(timeoutMillis = 15000)
+        val root = java.io.File(context.cacheDir, "lifetime-${java.util.UUID.randomUUID()}").toPath()
+        val scope = SourceScope("fixture", "lifetime", "legado")
+        val task = ExecutionTask.Script("++state.n", libraryCode = "var state={n:0};")
+        try {
+            SourceBroker(root).use { sessions ->
+                var session = sessions.open(scope, emptyList())
+                val first = authority.issue("lifetime", "legado", "1", "fixture")
+                suspend fun run(id: hnovel.execution.ExecutionIdentity) = SourceExecutionBroker(id, authority, session, limits).use {
+                    executor.execute(id, task, limits, it)
+                }
+                assertEquals(ExecutionResult.Success("1"), run(first))
+                assertEquals(ExecutionResult.Success("2"), run(first))
+                session.close()
+                assertFalse(authority.accepts(first))
+                session = sessions.open(scope, emptyList())
+                val second = authority.issue("lifetime", "legado", "1", "fixture")
+                assertEquals(ExecutionResult.Success("1"), run(second))
+                SourceExecutionBroker(second, authority, session, limits).use { broker ->
+                    val pending = async { executor.execute(second, ExecutionTask.Sleep(10000), limits, broker) }
+                    delay(300)
+                    session = sessions.open(scope.copy(accountGeneration = 1), emptyList())
+                    assertEquals(ExecutionResult.Failure(FailureCode.Revoked), withTimeout(5000) { pending.await() })
+                }
+                val third = authority.issue("lifetime", "legado", "1", "fixture", 1)
+                assertEquals(ExecutionResult.Success("1"), run(third))
+            }
+        } finally { executor.close() }
+    }
+
     @Test fun brokerAndTaskMustSharePageKeywordAndBaseUrlBeforeAnyRequest() = runBlocking {
         val authority = ExecutionAuthority()
         val executor = AndroidIsolatedExecutor(context, authority)
@@ -87,7 +158,10 @@ class IsolatedExecutionInstrumentedTest {
         val executor = AndroidIsolatedExecutor(context, authority)
         try {
             val id = authority.issue("allocator", "legado", "1")
-            val result = executor.execute(id, ExecutionTask.Script("new ArrayBuffer(192*1024*1024).byteLength"),
+            // Keep the allocation reachable. A transient buffer may be collected before the
+            // next sample; the documented monitor is an allocated-memory budget, not RSS.
+            val result = executor.execute(id, ExecutionTask.Script("holder.bytes=new ArrayBuffer(192*1024*1024);holder.bytes.byteLength",
+                libraryCode = "var holder={};"),
                 ExecutionLimits(timeoutMillis = 15000))
             assertEquals(ExecutionResult.Failure(FailureCode.ProcessExited), result)
             val next = authority.issue("other", "legado", "1")
@@ -131,7 +205,7 @@ class IsolatedExecutionInstrumentedTest {
     @Test fun externalLibrariesFeedIsolatedRulesAndCacheCannotBypassPermissionChanges() = runBlocking {
         val authority = ExecutionAuthority()
         val executor = AndroidIsolatedExecutor(context, authority)
-        val id = authority.issue("source-a", "legado", "1", "fixture")
+        var id = authority.issue("source-a", "legado", "1", "fixture")
         val limits = ExecutionLimits(timeoutMillis = 15000)
         val root = java.io.File(context.cacheDir, "external-${java.util.UUID.randomUUID()}").toPath()
         try {
@@ -147,6 +221,7 @@ class IsolatedExecutionInstrumentedTest {
                     }
                     assertEquals(0, server.requestCount)
                     denied.close()
+                    id = authority.issue("source-a", "legado", "1", "fixture")
                     val session = sessions.open(scope, listOf(NetworkGrant(server.url("/").toString(), true)))
                     server.enqueue(MockResponse().setBody("'use strict'; var state={n:0};"))
                     server.enqueue(MockResponse().setBody("function label(x){return x+(++state.n)+(this===undefined?'strict':'loose');}"))
@@ -159,6 +234,7 @@ class IsolatedExecutionInstrumentedTest {
                     assertEquals(RuleValue.Items(listOf(RuleValue.Text("A3loose"), RuleValue.Text("B4loose"))), runRule().value)
                     assertEquals(2, server.requestCount)
                     session.close()
+                    id = authority.issue("source-a", "legado", "1", "fixture")
                     val revoked = sessions.open(scope, emptyList())
                     SourceExecutionBroker(id, authority, revoked, limits).use { broker ->
                         assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied), executor.execute(id, task, limits, broker))
@@ -396,6 +472,8 @@ class IsolatedExecutionInstrumentedTest {
         try {
             val service = withTimeout(15000) { connected.await() }
             assertNotEquals(Process.myUid(), service.workerUid())
+            assertEquals(android.content.pm.PackageManager.PERMISSION_DENIED,
+                context.checkPermission(android.Manifest.permission.INTERNET, -1, service.workerUid()))
             assertNull(service.asBinder().queryLocalInterface(IIsolatedExecutionService.Stub.DESCRIPTOR))
             assertForeignUidRejected(service.asBinder())
             val result = CompletableDeferred<ExecutionResult>()

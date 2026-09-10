@@ -36,9 +36,11 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.atomic.AtomicBoolean
+import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
 
 /** One serialized worker on API 24+. Library scopes survive successful calls, never failed processes. */
-class AndroidIsolatedExecutor(context: Context, private val authority: ExecutionAuthority) {
+class AndroidIsolatedExecutor @Inject constructor(@ApplicationContext context: Context, private val authority: ExecutionAuthority) {
     private val context = context.applicationContext
 
     suspend fun execute(identity: ExecutionIdentity, task: ExecutionTask,
@@ -53,7 +55,7 @@ class AndroidIsolatedExecutor(context: Context, private val authority: Execution
             // A new bind must never reuse a worker whose previous shutdown has not completed.
             if (retiringBinder?.isBinderAlive == true) return@withContext failure(FailureCode.ProcessExited)
             val previous = retainedWorker
-            if (previous != null && (previous.authority !== authority || previous.died.isCompleted)) retire(previous)
+            if (previous != null && (previous.authority !== authority || previous.died.isCompleted || previous.hasRevokedLibrary())) retire(previous)
             if (retiringBinder?.isBinderAlive == true) return@withContext failure(FailureCode.ProcessExited)
             val worker = retainedWorker ?: IsolatedWorkerConnection(context, authority).also { retainedWorker = it }
             if (!task.libraryCode().isNullOrBlank()) worker.retainsLibraries = true
@@ -151,6 +153,7 @@ class AndroidIsolatedExecutor(context: Context, private val authority: Execution
             } ?: failure(FailureCode.Timeout)
             val accepted = if (authority.accepts(identity)) completed else failure(FailureCode.Revoked)
             keepWorker = accepted is ExecutionResult.Success && worker.retainsLibraries && !worker.died.isCompleted
+            if (keepWorker && !task.libraryCode().isNullOrBlank()) worker.retain(identity)
             accepted
         } catch (_: RemoteException) {
             failure(FailureCode.ProcessExited)

@@ -6,7 +6,10 @@ import kotlinx.serialization.json.*
 object BridgeWire {
     const val MAX_BYTES = 256 * 1024
 
-    fun arguments(bytes: ByteArray): List<JsonElement> {
+    fun arguments(bytes: ByteArray): List<JsonElement> = Json.parseToJsonElement(validate(bytes)).jsonArray
+
+    /** Shared preflight for every untrusted worker message, including execution results. */
+    fun validate(bytes: ByteArray): String {
         require(bytes.size <= MAX_BYTES) { "Bridge request too large" }
         val text = bytes.toString(Charsets.UTF_8)
         var quoted = false
@@ -26,6 +29,6 @@ object BridgeWire {
             }
         }
         require(!quoted && depth == 0) { "Invalid bridge JSON" }
-        return Json.parseToJsonElement(text).jsonArray
+        return text
     }
 }

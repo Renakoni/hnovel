@@ -2,6 +2,8 @@ package hnovel.execution
 
 import hnovel.network.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.serialization.json.*
 
 /** Host-owned per-invocation capability. A script cannot choose its session, identity or grants. */
@@ -16,6 +18,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
         require(identity.namespace == session.scope.namespace && identity.sourceId == session.scope.sourceId &&
             identity.profile == session.scope.profile && identity.accountGeneration == session.scope.accountGeneration)
         check(authority.accepts(identity) && !session.closed)
+        authority.bindSession(identity, session)
     }
 
     /** The script-visible context and request compiler must describe the same invocation. */
@@ -36,15 +39,54 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
         val requestNumber = reserveRequest()
         return ownedWork {
             when (name) {
+                "java.androidId" -> authorized {
+                    require(args.isEmpty())
+                    val value = session.installationIdentifier()
+                    check(value is StorageResult.Value && value.value != null) { "Source identifier unavailable" }
+                    JsonPrimitive(value.value)
+                }
                 "java.ajax" -> {
                     require(args.size == 1)
-                    val compiled = RequestCompiler().compile("script-$requestNumber", args[0].jsonPrimitive.content,
-                        baseUrl, keyword, page)
-                    check(compiled is CompiledRequest.Ready) { "Request requires an unsupported option" }
-                    val response = session.execute(compiled.request.copy(timeoutMillis = limits.timeoutMillis),
-                        RequestCommitGuard { action -> authorized(action) })
-                    check(response is BrokerResult.Success) { "Broker request failed" }
-                    JsonPrimitive(response.response.text())
+                    val url = (args[0] as? JsonArray)?.firstOrNull() ?: args[0]
+                    JsonPrimitive(fetch(compiled(requestNumber, url.jsonPrimitive.content)).text())
+                }
+                "java.connect" -> {
+                    require(args.size in 1..2)
+                    val headers = args.getOrNull(1)?.takeUnless { it == JsonNull }?.let {
+                        check(it is JsonPrimitive && it.isString)
+                        // Use the same bounded JSON parser as other reverse IPC input.
+                        headerMap(BridgeWire.arguments("[${it.content}]".toByteArray()).single())
+                    }.orEmpty()
+                    snapshot(fetch(compiled(requestNumber, args[0].jsonPrimitive.content, headers)))
+                }
+                "java.ajaxAll" -> {
+                    require(args.size == 1)
+                    val urls = args[0].jsonArray
+                    val requests = urls.mapIndexed { index, url ->
+                        compiled(if (index == 0) requestNumber else reserveRequest(), url.jsonPrimitive.content)
+                    }
+                    // Reserve and compile the complete batch before dispatch; a rejected budget
+                    // cannot send a prefix. Session permits bound actual network concurrency.
+                    val responseBytes = java.util.concurrent.atomic.AtomicLong(2)
+                    val decoding = Semaphore(4)
+                    coroutineScope {
+                        val pending = requests.map { request -> async {
+                            decoding.withPermit {
+                                snapshot(fetch(request)).also {
+                                    check(responseBytes.addAndGet(it.toString().toByteArray().size.toLong() + 1) <= BridgeWire.MAX_BYTES) { "Batch response too large" }
+                                }
+                            }
+                        } }
+                        JsonArray(pending.awaitAll())
+                    }
+                }
+                "java.get", "java.head", "java.post" -> {
+                    val post = name == "java.post"
+                    require(args.size == if (post) 3 else 2)
+                    val request = BrokerRequest("script-$requestNumber", args[0].jsonPrimitive.content,
+                        method = name.substringAfter('.').uppercase(), headers = headerMap(args[if (post) 2 else 1]),
+                        body = if (post) args[1].jsonPrimitive.content else null, followRedirects = false)
+                    snapshot(fetch(request))
                 }
                 "cache.get", "source.get", "source.getVariable" -> authorized {
                     require(args.size == if (name == "source.getVariable") 0 else 1)
@@ -70,6 +112,31 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
                 else -> error("Unknown bridge operation")
             }
         }
+    }
+
+    private fun compiled(number: Int, rule: String, headers: Map<String, String> = emptyMap()): BrokerRequest {
+        val compiled = RequestCompiler().compile("script-$number", rule, baseUrl, keyword, page, headers)
+        check(compiled is CompiledRequest.Ready) { "Request requires an unsupported option" }
+        return compiled.request
+    }
+
+    private fun headerMap(value: JsonElement): Map<String, String> = value.jsonObject.mapValues { (_, item) ->
+        check(item is JsonPrimitive && item.isString)
+        item.content
+    }
+
+    private suspend fun fetch(request: BrokerRequest): BrokerResponse {
+        val result = session.execute(request.copy(timeoutMillis = limits.timeoutMillis, maxResponseBytes = BridgeWire.MAX_BYTES), RequestCommitGuard { action -> authorized(action) })
+        check(result is BrokerResult.Success) { "Broker request failed" }
+        return result.response
+    }
+
+    private fun snapshot(response: BrokerResponse) = buildJsonObject {
+        put("body", response.text())
+        put("url", response.finalUrl)
+        put("status", response.status)
+        put("message", response.message)
+        put("headers", JsonObject(response.headers.mapValues { (_, values) -> JsonArray(values.map(::JsonPrimitive)) }))
     }
 
     /** Downloads data only; library code is evaluated exclusively in the isolated worker. */

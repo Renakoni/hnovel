@@ -1,0 +1,27 @@
+# Issue #86 execution-boundary acceptance
+
+The host owns authority, sessions, credentials and storage. Rule/JS/library code executes in an Android isolated UID. This is the execution infrastructure for later rule-source routing, not a claim that the complete #87 compatibility matrix or the #90 reader/search integration exists.
+
+| Requirement | Implemented boundary | Evidence |
+| --- | --- | --- |
+| Stop runaway execution and recover | Host deadline retires the process; cancellation/revocation closes broker tasks; replacement waits for Binder death | IsolatedExecutionInstrumentedTest: loops, catastrophic script/rule regex, request cancellation, next-source recovery on API 24/35 |
+| Bound input, output, recursion and allocation | 256 KiB wire cap and pre-parse depth checks; Rhino instruction/1000-frame limits; JVM 64 MiB heap; Android managed+native allocation monitor at 96 MiB | ScriptBoundaryTest, IsolatedExecutorTest, ScriptExecutionTest; retained 192 MiB allocation killed and another source succeeds on both Android APIs |
+| Preserve host responsiveness | Worker never receives host runtime objects; reverse IPC is authenticated, bounded and invocation-scoped; large JVM replies drain concurrently | Foreign UID rejection, forged tickets, 100 KiB pipe result, input/output overflow and child OOM tests |
+| Deny direct Java/files/network escape | Safe Rhino realm plus ClassShutter; isolated UID lacks INTERNET; explicit source broker grants govern actual destinations | ScriptBoundaryTest reflection/classloader/file/socket/process probes; real Android UID/permission check; SourceBrokerTest DNS rebinding/private address/redirect tests |
+| Prevent cross-source/account storage access | Session identity bound to namespace/source/profile/account; opaque storage keys are hashed rather than interpreted as paths | SourceBrokerTest quota/TTL/source/account/profile cases and ../../ key containment; ScriptExecutionTest mismatched-session and source-storage cases |
+| Prevent late local effects | Dispatch and local Cookie/cache/storage commits use the authority guard; old bound methods keep retired endpoints | Late Cookie/library-cache suppression, saved bound Ajax denial, cancelled single-permit recovery |
+| React to source/account lifecycle | Shared Hilt authority used by registry, session manager and executor; unregister/replacement and login/logout revoke namespace-scoped tickets; closed/replaced broker sessions invalidate bound tickets | WebSourceRegistryTest stale-registration/namespace regression; SourceSessionManagerTest stale-logout regression; ExecutionSessionTest; real Android session replacement during computation |
+| Scope identifier tools | java.androidId uses a persisted source/profile installation pseudonym; randomUUID is fresh and local | SourceIdentifierTest persistence/account/source/profile/reset tests and actual Android bridge check; no global device ID is exposed |
+| Retire library state | Worker checks retained owner tickets before reuse; expired scopes force retirement; current calls poll revocation; failed execution retires worker | Cross-call library state, close/timeout reset, closed-session reset and account replacement in Android suite |
+
+The Android allocation monitor samples managed allocated heap plus Debug native allocated heap every 25 ms and before/after calls. It is an operational allocation budget, not an instantaneous RSS/virtual-address-space ceiling. Transient allocations can be collected between samples, mappings are not fully measured, and the OS remains the final process-memory boundary. The allocation regression deliberately keeps the buffer reachable in a library. This distinction is part of the supported boundary; no absolute sandbox or zero-overshoot claim is made.
+
+Library state is a cache. Retiring a worker can discard other sources' cached library scopes in that worker; it does not erase persistent source data. Idle state is checked before subsequent execution, and active work observes ticket revocation. Cache eviction is not a persistence mechanism.
+
+Source removal/activation uses the registry's registration owner; replacement must retire the old registration. Definition import is a durable preview/commit operation and does not itself activate a runtime. #94 owns revision activation/rollback and #90 owns production rule-source routing. Those integrations must use the shared injected executor/authority and the current source/account generation. A stale registration or logout callback must not revoke a replacement generation.
+
+The androidId pseudonym is a documented source-isolation policy, not the literal Android system identifier returned by upstream. It is not cross-device/reinstall identity or an execution ticket; authentication requiring that literal upstream device value is outside this identifier contract.
+
+The complete bridge/tool matrix remains #87 work. Unsupported APIs fail visibly and remain partial in coverage.json. The execution boundary does not gain raw file/client/reflection capabilities to emulate unsupported APIs. New capabilities must use the same authenticated broker and add their own compatibility/permission fixtures before being marked supported.
+
+Validation: 49 Rhino JVM tests; 32 execution JVM tests; 19 network tests; 43 compatibility tests; 12 registry and 5 session-manager host tests. Android isolated execution has 17 tests on each of API 24 and API 35. Host tests verify lifecycle dispatch; Android tests establish the actual process/Binder/UID evidence.

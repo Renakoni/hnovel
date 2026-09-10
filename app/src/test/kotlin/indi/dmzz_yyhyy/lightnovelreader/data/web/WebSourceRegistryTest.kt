@@ -37,6 +37,26 @@ import java.util.concurrent.atomic.AtomicInteger
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [27], application = Application::class)
 class WebSourceRegistryTest {
+    @Test fun removalRevokesOnlyItsNamespaceAndStaleRegistrationsCannotRevokeReplacements() {
+        val authority = hnovel.execution.ExecutionAuthority()
+        val registry = WebSourceRegistry(authority)
+        val source = metadata("rules")
+        val oldRegistration = registry.register(source) { CountingSource(source.id) }
+        val old = authority.issue("rules", "legado", "1", "fixture")
+        val other = authority.issue("rules", "legado", "1", "another-namespace")
+        oldRegistration.unregister()
+        assertFalse(authority.accepts(old))
+        assertTrue(authority.accepts(other))
+        val replacement = registry.register(source) { CountingSource(source.id) }
+        val fresh = authority.issue("rules", "legado", "2", "fixture")
+        oldRegistration.unregister()
+        assertTrue(authority.accepts(fresh))
+        registry.unregister(source.id)
+        assertFalse(authority.accepts(fresh))
+        assertTrue(authority.accepts(other))
+        replacement.unregister()
+    }
+
     private fun metadata(name: String, builtIn: Boolean = false) = SourceMetadata(
         WebDataSourceItem(Identifier("fixture", name), "Same display name", "fixture"),
         setOf(SourceCapability.Directory, SourceCapability.ChapterContent), builtIn,

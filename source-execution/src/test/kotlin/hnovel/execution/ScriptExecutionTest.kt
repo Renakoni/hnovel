@@ -21,6 +21,12 @@ class ScriptExecutionTest {
         }
         val text = JsonArray(listOf(JsonPrimitive("[".repeat(100) + "\\\"}"), JsonPrimitive(7)))
         assertEquals(text, JsonArray(BridgeWire.arguments(text.toString().toByteArray())))
+        assertThrows(IllegalArgumentException::class.java) {
+            ExecutionWire.decodeResult(("{\"output\":" + "[".repeat(10000) + "]".repeat(10000) + "}").toByteArray())
+        }
+        assertThrows(IllegalArgumentException::class.java) { ExecutionWire.decodeResult(ByteArray(BridgeWire.MAX_BYTES + 1)) }
+        val result = ExecutionResult.Success("[".repeat(100) + "\\\"}")
+        assertEquals(result, ExecutionWire.decodeResult(ExecutionWire.encodeResult(result)))
     }
 
     @Test(timeout = 10000) fun realChildWorkerRunsRhinoAndTerminatesUnboundedScript() {

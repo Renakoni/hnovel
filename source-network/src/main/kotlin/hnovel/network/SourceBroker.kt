@@ -79,6 +79,19 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
     }
     fun newVariables(initial: Map<String, String> = emptyMap()) = RequestVariables(initial)
 
+    /** Source/profile-scoped installation pseudonym. Never reads the global Android device ID. */
+    @Synchronized fun installationIdentifier(): StorageResult {
+        checkOpen()
+        val key = "installation-identifier"
+        val current = config.read(key)
+        if (current !is StorageResult.Value) return current
+        if (current.value != null) return if (current.value.matches(Regex("[0-9a-f]{16}"))) current
+            else StorageResult.Failure(FailureCode.StorageUnavailable)
+        val bytes = ByteArray(8).also { java.security.SecureRandom().nextBytes(it) }
+        val identifier = bytes.joinToString("") { "%02x".format(it.toInt() and 255) }
+        return config.write(key, identifier)
+    }
+
     /** Checks current grants for a cached resource without opening a connection. */
     fun permissionFailure(url: String): FailureCode? {
         checkOpen()
@@ -111,6 +124,7 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         if (request.id.length > 256 || request.url.length + request.headers.entries.sumOf { it.key.length + it.value.length } > 65536 ||
             request.method !in setOf("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD") || request.retry !in 0..limits.maxRetry ||
             request.timeoutMillis !in 1..limits.maxTimeoutMillis || (request.body?.length ?: 0) > limits.maxRequestBytes ||
+            request.maxResponseBytes?.let { it <= 0 } == true ||
             request.method in setOf("GET", "HEAD") && request.body != null ||
             request.cache != CacheMode.Disabled && request.method != "GET") {
             throw BrokerFailure(RequestStage.Parse, FailureCode.InvalidRequest)
@@ -127,10 +141,14 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         policy.check(initialUrl)
         val cacheGeneration = cache.generation()
         val initialHeaders = headers(initialUrl, request.headers)
-        val cacheKey = hash(Json.encodeToString(listOf(initialUrl.toString(), request.responseCharset.orEmpty(),
+        val cacheKey = hash(Json.encodeToString(listOf(initialUrl.toString(), request.responseCharset.orEmpty(), request.followRedirects.toString(),
             Json.encodeToString<Map<String, List<String>>>(initialHeaders.toMultimap().mapKeys { it.key.lowercase() }.toSortedMap()))))
         if (request.cache != CacheMode.Disabled) {
-            cache.get(cacheKey)?.let { return BrokerResult.Success(it) }
+            cache.get(cacheKey)?.let {
+                if (it.body.size > (request.maxResponseBytes ?: limits.maxResponseBytes))
+                    return BrokerResult.Failure(RequestStage.Response, FailureCode.ResponseTooLarge)
+                return BrokerResult.Success(it)
+            }
             if (request.cache == CacheMode.Only) return BrokerResult.Failure(RequestStage.Response, FailureCode.CacheMiss)
         }
         for (attempt in 0..request.retry) {
@@ -169,9 +187,9 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
                 (bytes ?: ByteArray(0)).toRequestBody(headers["Content-Type"]?.toMediaTypeOrNull()) else null
             val call = client.newBuilder().dns(policy.dns(url)).callTimeout(request.timeoutMillis, TimeUnit.MILLISECONDS).build()
                 .newCall(Request.Builder().url(url).headers(headers).method(method, requestBody).build())
-            val response = awaitResponse(call, request.responseCharset, hop, guard)
+            val response = awaitResponse(call, request.responseCharset, hop, guard, minOf(request.maxResponseBytes ?: limits.maxResponseBytes, limits.maxResponseBytes))
             val location = response.headers.entries.firstOrNull { it.key.equals("Location", true) }?.value?.firstOrNull()
-            if (response.status !in setOf(301, 302, 303, 307, 308) || location == null) return response
+            if (!request.followRedirects || response.status !in setOf(301, 302, 303, 307, 308) || location == null) return response
             if (hop == limits.maxRedirects) throw BrokerFailure(RequestStage.Response, FailureCode.RedirectLimit)
             val next = url.resolve(location) ?: throw BrokerFailure(RequestStage.Permission, FailureCode.InvalidRequest)
             policy.check(next)
@@ -203,7 +221,7 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
     }
 
     /** The continuation remains cancellable through body consumption, so call.cancel interrupts reads too. */
-    private suspend fun awaitResponse(call: Call, forcedCharset: String?, redirects: Int, guard: RequestCommitGuard): BrokerResponse = suspendCancellableCoroutine { continuation ->
+    private suspend fun awaitResponse(call: Call, forcedCharset: String?, redirects: Int, guard: RequestCommitGuard, maxResponseBytes: Int): BrokerResponse = suspendCancellableCoroutine { continuation ->
         continuation.invokeOnCancellation { call.cancel() }
         val callback = object : Callback {
             override fun onFailure(call: Call, e: IOException) { if (continuation.isActive) continuation.resumeWithException(e) }
@@ -213,14 +231,14 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
                         if (!continuation.isActive) return
                         if (response.headers.toString().length > 65536) throw BrokerFailure(RequestStage.Response, FailureCode.ResponseTooLarge)
                         val body = response.body
-                        if (body.contentLength() > limits.maxResponseBytes) throw BrokerFailure(RequestStage.Response, FailureCode.ResponseTooLarge)
+                        if (body.contentLength() > maxResponseBytes) throw BrokerFailure(RequestStage.Response, FailureCode.ResponseTooLarge)
                         val bytes = ByteArrayOutputStream()
                         body.byteStream().use { stream ->
                             val buffer = ByteArray(8192)
                             while (true) {
                                 val read = stream.read(buffer)
                                 if (read < 0) break
-                                if (bytes.size() + read > limits.maxResponseBytes) throw BrokerFailure(RequestStage.Response, FailureCode.ResponseTooLarge)
+                                if (bytes.size() + read > maxResponseBytes) throw BrokerFailure(RequestStage.Response, FailureCode.ResponseTooLarge)
                                 bytes.write(buffer, 0, read)
                             }
                         }
@@ -231,7 +249,7 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
                                 if (continuation.isActive) {
                                     cookies.save(response.request.url, response.headers)
                                     continuation.resume(BrokerResponse(response.code, response.request.url.toString(),
-                                        response.headers.toMultimap().mapValues { it.value.toList() }, bytes.toByteArray(), charset, redirects))
+                                        response.headers.toMultimap().mapValues { it.value.toList() }, bytes.toByteArray(), charset, redirects, message = response.message))
                                 }
                             }
                         }

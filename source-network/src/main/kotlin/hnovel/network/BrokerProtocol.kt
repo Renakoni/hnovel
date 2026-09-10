@@ -28,12 +28,15 @@ data class SourceScope(val namespace: String, val sourceId: String, val profile:
     val timeoutMillis: Long = 30000,
     val kind: ResourceKind = ResourceKind.Document,
     val cache: CacheMode = CacheMode.Disabled,
+    val followRedirects: Boolean = true,
+    val maxResponseBytes: Int? = null,
 ) {
     override fun toString() = "BrokerRequest(method=$method, kind=$kind)"
 }
 
 @Serializable data class BrokerResponse(val status: Int, val finalUrl: String, val headers: Map<String, List<String>>,
-    val body: ByteArray, val charset: String, val redirects: Int, val fromCache: Boolean = false) {
+    val body: ByteArray, val charset: String, val redirects: Int, val fromCache: Boolean = false,
+    val message: String = "") {
     fun text(): String = body.toString(java.nio.charset.Charset.forName(charset))
     override fun toString() = "BrokerResponse(status=$status, bytes=${body.size}, redirects=$redirects, fromCache=$fromCache)"
 }

@@ -50,7 +50,7 @@ class CorpusIntegrityTest {
             assertTrue(feature.string("evidence").isNotBlank())
             assertTrue(testIds.add(feature.string("testId")))
             val implemented = featureIdsImplemented.contains(feature.string("id"))
-            val partial = feature.string("id") in setOf("URL", "HTTP", "STORAGE", "VARIABLES", "JS", "ENCODING", "SANDBOX", "IDENTIFIERS")
+            val partial = feature.string("id") in setOf("URL", "HTTP", "STORAGE", "VARIABLES", "JS", "ENCODING")
             // Real entry points exist, but these feature groups still have incomplete acceptance.
             val implementation = when {
                 implemented -> "implemented"
@@ -82,7 +82,7 @@ class CorpusIntegrityTest {
         report.writeText(FixtureCorpus.gson.toJson(manifest) + "\n")
     }
 
-    private val featureIdsImplemented = setOf("FORMAT", "HTML", "JSON", "XPATH", "REGEX", "COMPOSITION", "REPLACEMENT")
+    private val featureIdsImplemented = setOf("FORMAT", "HTML", "JSON", "XPATH", "REGEX", "COMPOSITION", "REPLACEMENT", "SANDBOX", "IDENTIFIERS")
 
     @Test
     fun syntheticSourcesCoverTheRequiredFamiliesWithoutPluginPackages() {

@@ -18,7 +18,7 @@
       "scope": "Must report unknown fields/API explicitly; cannot auto-label as supported."
     }
   ],
-  "productImplementedCount": 7,
+  "productImplementedCount": 9,
   "features": [
     {
       "id": "FORMAT",
@@ -194,9 +194,9 @@
       "implementation": "partial",
       "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Synchronous java.ajax runs through a source/account-bound reverse Binder broker with origin, redirect, peer, request and cancellation policies. Remaining ajaxAll/connect/get/head/post bridge semantics are pending.",
+      "evidence": "Synchronous ajax/connect, ordered bounded ajaxAll, and direct get/head/post execute over the authenticated source broker. The direct methods preserve no-redirect semantics; snapshots expose explicit native JS response data methods. Headers, batch budget/cancellation and per-request/cache byte limits are tested. Additional response/stream/DOM and request-script APIs remain pending.",
       "productTests": [
-        "hnovel.execution.ScriptExecutionTest",
+        "hnovel.execution.NetworkBridgeTest",
         "indi.dmzz_yyhyy.lightnovelreader.sourceexecution.IsolatedExecutionInstrumentedTest"
       ]
     },
@@ -285,13 +285,16 @@
       "owner": "https://github.com/Renakoni/hnovel/issues/86",
       "requirement": "可终止进程、IPC 来源身份、CPU/内存/输出/文件/网络预算，反射/类加载边界。",
       "testId": "CONFORMANCE-SANDBOX",
-      "implementation": "partial",
+      "implementation": "implemented",
       "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Real isolated-UID Binder transport, identity authentication, revocation, deadlines, bounded IPC, interpreter recursion, JVM heap cap and sampled Android managed/native allocation budget are tested, including allocation failure then another source. Sampling is not a hard RSS/mapping cap. Full escape acceptance and production lifecycle wiring remain pending.",
+      "evidence": "The #86 execution boundary has real isolated-UID Binder/INTERNET denial, namespace-bound authority and lifecycle hooks, guarded local commits, deadlines, bounded/depth-checked IPC, JVM pipe/heap limits, recursion controls and sampled Android allocation termination/recovery. The sampling budget is not an instantaneous RSS/mapping cap; see source-execution/ACCEPTANCE.md. New #87 capabilities must extend the same boundary and add their fixtures.",
       "productTests": [
         "hnovel.execution.IsolatedExecutorTest",
+        "hnovel.execution.ExecutionSessionTest",
         "hnovel.rhino.ScriptBoundaryTest",
+        "indi.dmzz_yyhyy.lightnovelreader.data.web.WebSourceRegistryTest",
+        "indi.dmzz_yyhyy.lightnovelreader.data.web.SourceSessionManagerTest",
         "indi.dmzz_yyhyy.lightnovelreader.sourceexecution.IsolatedExecutionInstrumentedTest"
       ]
     },
@@ -404,12 +407,14 @@
       "owner": "https://github.com/Renakoni/hnovel/issues/86",
       "requirement": "androidId/randomUUID 等标识工具的权限和来源边界；跨设备稳定性及与外部认证契约的差异必须明示。",
       "testId": "CONFORMANCE-IDENTIFIERS",
-      "implementation": "partial",
+      "implementation": "implemented",
       "verification": "product-contract",
       "fixtures": [],
-      "evidence": "randomUUID returns a fresh version-4 UUID inside the worker without a device identifier or host capability. androidId and its authentication/permission semantics remain pending.",
+      "evidence": "randomUUID produces a fresh version-4 UUID. Broker androidId returns a persisted 16-hex source/profile installation pseudonym, stable across account/revision changes and distinct after source/profile/app-data changes. It does not disclose the global system Android ID; external authentication requiring that literal upstream identifier is not claimed compatible. Neither identifier grants execution authority.",
       "productTests": [
-        "hnovel.rhino.ScriptCryptoTest"
+        "hnovel.rhino.ScriptCryptoTest",
+        "hnovel.execution.SourceIdentifierTest",
+        "indi.dmzz_yyhyy.lightnovelreader.sourceexecution.IsolatedExecutionInstrumentedTest"
       ]
     },
     {
