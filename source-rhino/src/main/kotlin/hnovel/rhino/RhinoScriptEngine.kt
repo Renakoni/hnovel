@@ -88,7 +88,7 @@ class RhinoScriptEngine(private val bridge: HostBridge, private val limits: Scri
     private fun evaluateOwned(source: String, frame: ScriptFrame, library: ScriptLibrary?): ScriptResult {
         if (library != null && (library.closed || library.sourceId != frame.sourceId || library.profile != frame.profile))
             return ScriptResult.Failure(FailureCode.BridgeDenied, "invalid library owner")
-        if (library != null && library.code.length > limits.maxScriptChars)
+        if (library != null && library.scripts.sumOf { it.length.toLong() + 1 } > limits.maxScriptChars)
             return ScriptResult.Failure(FailureCode.ResultTooLarge, "library too large")
         if (source.length > limits.maxScriptChars) return ScriptResult.Failure(FailureCode.ResultTooLarge, "script too large")
         // ContextFactory.call reuses an already-entered Context, whose observer we do not own.
@@ -115,7 +115,9 @@ class RhinoScriptEngine(private val bridge: HostBridge, private val limits: Scri
                     val shared = library.scope ?: NativeObject().apply {
                         prototype = context.initSafeStandardObjects()
                         // Like the reference, initialization has no invocation bindings or host capabilities.
-                        context.evaluateString(this, library.code, "source-library", 1, null)
+                        library.scripts.forEachIndexed { index, code ->
+                            context.evaluateString(this, code, "source-library-$index", 1, null)
+                        }
                         sealObject()
                         library.scope = this
                     }

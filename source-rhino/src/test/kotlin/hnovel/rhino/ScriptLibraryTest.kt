@@ -14,6 +14,26 @@ class ScriptLibraryTest {
     private val engine = RhinoScriptEngine(HostBridge { _, _ -> error("No library host capability") })
     private val code = "var state={n:0}; function next(){return ++state.n;}"
 
+    @Test fun librarySegmentsPreserveOrderAndIndependentStrictMode() {
+        val parts = listOf("'use strict'; var state={items:['first']};", "state.items.push('second'); function loose(){return this !== undefined;}")
+        ScriptLibrary(frame.sourceId, frame.profile, parts).use { library ->
+            assertEquals("[[\"first\",\"second\"],true]", output("[state.items,loose()]", library))
+        }
+        ScriptLibrary(frame.sourceId, frame.profile, parts.reversed()).use { library ->
+            assertEquals(FailureCode.Runtime, (engine.evaluate("state.items", frame, library) as ScriptResult.Failure).code)
+            assertNull(library.scope)
+        }
+    }
+
+    @Test fun libraryBudgetIncludesEverySegmentAndEmptySegmentOverhead() {
+        val small = RhinoScriptEngine(HostBridge { _, _ -> JsonNull }, ScriptLimits(maxScriptChars = 64))
+        for (parts in listOf(listOf(" ".repeat(40), " ".repeat(40)), List(65) { "" })) {
+            ScriptLibrary(frame.sourceId, frame.profile, parts).use { library ->
+                assertEquals(FailureCode.ResultTooLarge, (small.evaluate("1", frame, library) as ScriptResult.Failure).code)
+            }
+        }
+    }
+
     private fun output(script: String, library: ScriptLibrary, current: ScriptFrame = frame): String =
         (engine.evaluate(script, current, library) as ScriptResult.Success).json
 
