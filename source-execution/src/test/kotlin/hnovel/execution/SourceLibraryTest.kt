@@ -62,7 +62,7 @@ class SourceLibraryTest {
         }
     }
 
-    @Test fun sourcesAndAccountsDoNotShareAuthenticatedLibraryCache() = runBlocking {
+    @Test fun libraryCacheSurvivesAccountChangesButRemainsSourceOwned() = runBlocking {
         val authority = ExecutionAuthority()
         MockWebServer().use { server ->
             server.start()
@@ -70,12 +70,12 @@ class SourceLibraryTest {
                 for ((source, account) in listOf("a" to 0L, "b" to 0L, "a" to 1L)) {
                     val id = authority.issue(source, "legado", "1", "fixture", account)
                     val session = sessions.open(SourceScope("fixture", source, "legado", account), listOf(NetworkGrant(server.url("/").toString(), true)))
-                    server.enqueue(MockResponse().setBody("var owner='$source:$account';"))
+                    if (account == 0L) server.enqueue(MockResponse().setBody("var owner='$source:0';"))
                     SourceExecutionBroker(id, authority, session, ExecutionLimits()).use {
-                        assertEquals(listOf("var owner='$source:$account';"), it.loadLibrary(definition(server.url("/lib").toString())))
+                        assertEquals(listOf("var owner='$source:0';"), it.loadLibrary(definition(server.url("/lib").toString())))
                     }
                 }
-                assertEquals(3, server.requestCount)
+                assertEquals(2, server.requestCount)
             }
         }
     }

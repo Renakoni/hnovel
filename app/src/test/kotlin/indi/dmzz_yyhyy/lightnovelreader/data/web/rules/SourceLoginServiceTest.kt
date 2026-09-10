@@ -48,7 +48,8 @@ class SourceLoginServiceTest {
                         "loginUrl" to JsonPrimitive("""function login(){var info=source.getLoginInfoMap();
                             var response=java.post(baseUrl.substring(0,baseUrl.lastIndexOf('/')+1)+'login','user='+info.get('user'),{'Content-Type':'application/x-www-form-urlencoded'});
                             if(response.statusCode()!==200)throw new Error('login failed');
-                            source.put('private','secret-'+info.get('user'));
+                            source.put('saved','note-'+info.get('user'));
+                            cache.put('saved','cached-'+info.get('user'),3600);
                             source.putLoginHeader(JSON.stringify({'Authorization':'Bearer '+info.get('password')}));} """.trimIndent())
                     ))
                     val preview = sources.importer.preview(raw.toString())
@@ -68,12 +69,21 @@ class SourceLoginServiceTest {
                 assertEquals("sid=alice", seen["A"])
                 assertEquals("sid=bob", seen["B"])
                 val old = sources.loginTarget(a)
+                val bookId = fixture.server.url("/book/one").toString()
+                val digest = java.security.MessageDigest.getInstance("SHA-256").digest(bookId.toByteArray())
+                    .joinToString("") { "%02x".format(it) }
+                val record = old.session.read(StorageRequest(StorageArea.Config, "content/book/$digest")) as StorageResult.Value
+                assertNotNull(record.value)
                 login.logout(a)
                 assertTrue(old.session.closed)
                 assertEquals(LoginStatus.LoggedOut, login.status(a))
                 assertEquals(LoginStatus.Authenticated, login.status(b))
                 val fresh = sources.loginTarget(a).session
                 assertEquals(StorageResult.Value(null), fresh.read(StorageRequest(StorageArea.Account, StorageRequestKey.LOGIN_INFO)))
+                assertEquals(StorageResult.Value("note-alice"), fresh.read(StorageRequest(StorageArea.Config, "value:saved")))
+                assertEquals(StorageResult.Value("cached-alice"), fresh.read(StorageRequest(StorageArea.Cache, "value:saved")))
+                assertEquals(record, fresh.read(StorageRequest(StorageArea.Config, "content/book/$digest")))
+                assertEquals(StorageResult.Value(null), fresh.read(StorageRequest(StorageArea.Account, StorageRequestKey.LOGIN_HEADERS)))
                 assertEquals("", fresh.cookie(fixture.server.url("/").toString()))
                 assertTrue(runCatching { login.submit(attemptA, mapOf("user" to "alice")) }.isFailure)
                 // The test cipher is plain: scanning account files proves actual old-account deletion.

@@ -9,6 +9,31 @@ import org.junit.Test
 
 class RuleSourceTest {
 
+    @Test fun redirectsToNextChapterNeverBecomeCurrentChapterContent() = runBlocking {
+        for (firstPage in listOf(false, true)) RuleSourceFixture().use { fixture -> fixture.source().use { source ->
+            val book = source.search("title").single()
+            val chapters = source.directory(book.id)
+            val normal = fixture.server.dispatcher
+            fixture.server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
+                override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest): okhttp3.mockwebserver.MockResponse =
+                    if (request.path == if (firstPage) "/c/1" else "/c/1b")
+                        okhttp3.mockwebserver.MockResponse().setResponseCode(302).addHeader("Location", "/c/2")
+                    else normal.dispatch(request)
+            }
+            if (firstPage) assertEquals(ContentError.EmptyContent, failure { source.content(book.id, chapters[1].id) }.code)
+            else {
+                val content = source.content(book.id, chapters[1].id)
+                assertEquals(chapters[1].id, content.id)
+                assertEquals("One", content.title)
+                assertNull(content.previous)
+                assertEquals(chapters[2].id, content.next)
+                assertEquals(listOf("A first", null, "after image", "from-search:One"), content.parts.map { it.text })
+            }
+            assertEquals("second chapter", source.content(book.id, chapters[2].id).parts.first().text)
+            assertEquals(chapters.map { it.id to it.title }, source.directory(book.id).map { it.id to it.title })
+        } }
+    }
+
     @Test fun importedRulesReachSearchDirectoryReadingAndImagesThroughRealWorkerAndBroker() = runBlocking {
         RuleSourceFixture().use { fixture -> fixture.source().use { source ->
             val found = source.search("some title").single()
@@ -162,7 +187,7 @@ class RuleSourceTest {
             if (cancel) operation.join() else assertEquals(ContentError.Unavailable, (operation.await().exceptionOrNull() as SourceContentException).code)
             val definition = source.definition
             val session = fixture.broker.open(SourceScope("rules", definition.sourceId, definition.profile), listOf(NetworkGrant(fixture.server.url("/").toString(), true)))
-            val saved = session.read(StorageRequest(StorageArea.Account, "content/book/" + digest(id))) as StorageResult.Value
+            val saved = session.read(StorageRequest(StorageArea.Config, "content/book/" + digest(id))) as StorageResult.Value
             val record = Json.decodeFromString(BookRecord.serializer(), saved.value!!)
             assertEquals("One", record.chapters[1].title)
             assertEquals("One", record.chapters[1].state.variables["chapterKey"])

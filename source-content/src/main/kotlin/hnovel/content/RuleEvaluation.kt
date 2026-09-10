@@ -28,7 +28,9 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
             chapter.variables, book.metadata, chapter.metadata, book.bigVariables, chapter.bigVariables,
             unescapeHtml = unescape)
         val result = SourceExecutionBroker(identity, authority, session, limits, baseUrl, keyword, page).use {
-            runner.execute(identity, task, limits, it)
+            runner.execute(identity, task, limits, it).also { _ ->
+                if (it.interactionRequired) throw SourceContentException(ContentError.LoginRequired, field)
+            }
         }
         currentCoroutineContext().ensureActive()
         if (!authority.accepts(identity)) throw SourceContentException(ContentError.Unavailable, field)

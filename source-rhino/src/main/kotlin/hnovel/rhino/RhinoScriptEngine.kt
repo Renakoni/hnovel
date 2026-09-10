@@ -82,7 +82,8 @@ private class ScriptBridge(private val bridge: HostBridge, private val rules: Sc
         }
         val javaBridge = objectFor("java", listOf("ajax", "ajaxAll", "connect", "get", "head", "post", "getCookie", "androidId",
             "put", "getString", "getStringList", "getElement", "getElements", "importScript", "cacheFile", "downloadFile",
-            "readFile", "readTxtFile", "deleteFile", "toURL") + ScriptTools.methods + ScriptCryptoObjects.factories + fonts.methods + resources.methods)
+            "readFile", "readTxtFile", "deleteFile", "toURL", "webView", "webViewGetSource", "webViewGetOverrideUrl",
+            "startBrowser", "startBrowserAwait") + ScriptTools.methods + ScriptCryptoObjects.factories + fonts.methods + resources.methods)
         objectFor("cache", listOf("get", "put", "delete"))
         objectFor("cookie", listOf("getCookie", "getKey", "setCookie", "replaceCookie", "removeCookie"))
         val source = objectFor("source", listOf("get", "put", "getVariable", "setVariable", "getKey", "getLoginInfo", "getLoginInfoMap",
