@@ -113,8 +113,8 @@ class SourceBrowserService : Service() {
         check(!finished.get())
         return BrowserWire.read(host.call(operation, args.toString()))
     }
-    private fun request(request: BrokerRequest): BrokerResponse {
-        val result = Json.decodeFromString<BrokerResult>(rpc("request", buildJsonObject {
+    private fun request(request: BrokerRequest, initial: Boolean = false): BrokerResponse {
+        val result = Json.decodeFromString<BrokerResult>(rpc(if (initial) "initialRequest" else "request", buildJsonObject {
             put("url", request.url); put("method", request.method)
             put("headers", JsonObject(request.headers.mapValues { JsonPrimitive(it.value) }))
             request.body?.let { put("body", it) }
@@ -131,7 +131,7 @@ class SourceBrowserService : Service() {
             mapOf("Content-Type" to listOf("text/html; charset=UTF-8")), job.options.html!!.toByteArray(), "UTF-8", 0)
         else redirected?.takeIf { incoming.isForMainFrame && it.finalUrl == incoming.url.toString() }?.also { redirected = null }
         ?: request(if (initial) job.request else BrokerRequest("browser", incoming.url.toString(),
-            method = incoming.method.also { check(it == "GET" || it == "HEAD") }, headers = incoming.requestHeaders))
+            method = incoming.method.also { check(it == "GET" || it == "HEAD") }, headers = incoming.requestHeaders), initial = initial)
         if (!job.options.overrideUrl && matches(response.finalUrl)) handler.post { completeText(response.finalUrl) }
         val type = response.headers.entries.firstOrNull { it.key.equals("Content-Type", true) }?.value?.firstOrNull()
             ?.substringBefore(';') ?: if (incoming.isForMainFrame) "text/html" else "application/octet-stream"

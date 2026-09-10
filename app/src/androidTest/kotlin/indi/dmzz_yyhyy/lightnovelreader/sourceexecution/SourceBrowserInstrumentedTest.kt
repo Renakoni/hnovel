@@ -36,7 +36,7 @@ class SourceBrowserInstrumentedTest {
                         fetch(blocked).catch(function(){});
                         try{new WebSocket(blocked.replace('http','ws'))}catch(e){}
                         var frame=document.createElement('iframe');frame.src=blocked;document.body.appendChild(frame);
-                        fetch('/api',{method:'POST',body:'field=value',headers:{'Content-Type':'application/x-www-form-urlencoded'}})
+                        fetch('/api',{method:'POST',body:'field=value',headers:{'Content-Type':'application/x-www-form-urlencoded','Cookie':'page-forged=blocked'}})
                           .then(function(r){return r.text()}).then(function(body){
                             document.title=prior+':'+body+':'+document.cookie;window.finished=true;});
                         </script></body></html>
@@ -69,6 +69,7 @@ class SourceBrowserInstrumentedTest {
                 assertEquals(4, seen.size)
                 assertTrue(seen.elementAt(0).contains("account=alice"))
                 assertTrue(seen.elementAt(1).contains("account=bob"))
+                assertFalse(seen.any { it.contains("page-forged") })
                 assertFalse(next.browserCookie(server.url("/").toString()).contains("hidden"))
                 assertTrue(next.cookie(server.url("/").toString()).contains("hidden=server"))
                 assertEquals(0, denied.requestCount)
