@@ -9,6 +9,7 @@ import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.encodeToJsonElement
 import org.dom4j.DocumentHelper
 import org.dom4j.Element
+import org.dom4j.QName
 
 /**
  * 简单文本组件数据
@@ -25,13 +26,12 @@ data class SimpleTextComponentData(
     override val id = Companion.id
     override fun toJsonElement(): JsonElement = Json.encodeToJsonElement(this)
 
-    override fun toHtmlElement(context: Context): Element = DocumentHelper.createElement("div").apply {
+    override fun toHtmlElement(context: Context): Element = DocumentHelper.createElement(QName.get("div", "http://www.w3.org/1999/xhtml")).apply {
         this@SimpleTextComponentData.text
-            .replace("[\\x00-\\x08\\x0b-\\x0c\\x0e-\\x1f]", "")
             .split("\n")
             .forEach {
                 addText(it)
-                addElement("br")
+                addElement(QName.get("br", namespace))
             }
     }
 

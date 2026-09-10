@@ -85,6 +85,18 @@ fun BookshelfHomeTopBar(
             }
         },
         actions = {
+            IconButton(onClick = {
+                uiState.changeLayout(if (uiState.layout == BookshelfLayout.List) BookshelfLayout.Grid else BookshelfLayout.List)
+            }) {
+                Icon(
+                    painter = painterResource(
+                        if (uiState.layout == BookshelfLayout.List) R.drawable.bookshelf_layout_grid_24px else R.drawable.view_list_24px
+                    ),
+                    contentDescription = stringResource(
+                        if (uiState.layout == BookshelfLayout.List) R.string.bookshelf_layout_switch_grid else R.string.bookshelf_layout_switch_list
+                    )
+                )
+            }
             when {
                 !uiState.selectMode -> {
                     IconButton(onClick = uiState.onCreate) {

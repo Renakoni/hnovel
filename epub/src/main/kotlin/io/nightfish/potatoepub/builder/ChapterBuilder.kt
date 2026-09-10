@@ -45,8 +45,11 @@ class ChapterBuilder {
     }
 
     fun build(): Chapter {
-        title ?: throw Error("Missing 'title'")
+        val chapterTitle = title?.takeIf(String::isNotBlank) ?: "Untitled chapter"
         if (content == null && chapters.isEmpty()) throw Error("Missing 'content' or 'chapters'")
-        return content?.let { Chapter(title!!, it) } ?: Chapter(title!!, chapters)
+        _contentBuilders.forEach {
+            if (it.headElement.elementText("title").isNullOrBlank()) it.title(chapterTitle)
+        }
+        return content?.let { Chapter(chapterTitle, it) } ?: Chapter(chapterTitle, chapters)
     }
 }
