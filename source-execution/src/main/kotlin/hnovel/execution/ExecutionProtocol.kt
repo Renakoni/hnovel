@@ -33,13 +33,14 @@ private class WorkerOutputLimit : RuntimeException()
  @Serializable data class Script(val code: String, val result: JsonElement = JsonNull, val bookId: String? = null,
   val chapterId: String? = null, val key: String = "", val page: Int = 1, val baseUrl: String = "",
   val libraryCode: String? = null, val book: JsonObject = JsonObject(emptyMap()),
-  val chapter: JsonObject = JsonObject(emptyMap())) : ExecutionTask
+  val chapter: JsonObject = JsonObject(emptyMap()), val chineseConverter: Int = 0) : ExecutionTask
  @Serializable data class Rule(val rule: String, val input: RuleValue, val output: OutputKind = OutputKind.TextList,
   val location: RuleLocation = RuleLocation("rule"), val bookId: String? = null, val chapterId: String? = null,
   val key: String = "", val page: Int = 1, val baseUrl: String = "", val libraryCode: String? = null,
   val sourceVariables: Map<String, String> = emptyMap(), val bookVariables: Map<String, String> = emptyMap(),
   val chapterVariables: Map<String, String> = emptyMap(), val book: JsonObject = JsonObject(emptyMap()),
-  val chapter: JsonObject = JsonObject(emptyMap())) : ExecutionTask
+  val chapter: JsonObject = JsonObject(emptyMap()), val bookBigVariables: Map<String, String> = emptyMap(),
+  val chapterBigVariables: Map<String, String> = emptyMap(), val chineseConverter: Int = 0) : ExecutionTask
 }
 
 fun ExecutionTask.libraryCode(): String? = when (this) {
@@ -142,7 +143,7 @@ class IsolatedExecutor(private val javaCommand: String = javaHome(), private val
     "org.objectweb.asm.ClassReader", "org.slf4j.LoggerFactory", "org.seimicrawler.xpath.JXDocument",
     "org.apache.commons.lang3.StringUtils", "org.antlr.v4.runtime.Parser", "com.google.gson.Gson",
     "cn.hutool.crypto.KeyUtil", "cn.hutool.core.util.HexUtil", "com.github.liuyueyi.quick.transfer.ChineseUtils",
-    "hnovel.rhino.charset.CharsetDetector", "hnovel.rhino.font.QueryTTF").map { Class.forName(it) })
+    "hnovel.rhino.charset.CharsetDetector", "hnovel.rhino.font.QueryTTF", "okhttp3.Response", "okio.Buffer").map { Class.forName(it) })
    .map { type ->
     val location = requireNotNull(type.protectionDomain?.codeSource?.location) { "Supply a worker runtime classpath" }
     require(location.protocol == "file") { "Supply a packaged worker runtime classpath" }
@@ -204,7 +205,7 @@ class WorkerRuntime(private val archives: hnovel.rhino.ArchiveDecoder = hnovel.r
    is ExecutionTask.Sleep -> { Thread.sleep(task.millis); ExecutionResult.Success("slept") }
    is ExecutionTask.Script -> {
     val frame = ScriptFrame(wire.identity.sourceId, wire.identity.profile, task.bookId, task.chapterId,
-     mapOf("result" to task.result), task.key, task.page, task.baseUrl, book = task.book, chapter = task.chapter)
+     mapOf("result" to task.result), task.key, task.page, task.baseUrl, book = task.book, chapter = task.chapter, chineseConverter = task.chineseConverter)
     when (val evaluated = RhinoScriptEngine(bridge, ScriptLimits(maxResultChars = wire.limits.maxOutputBytes), archives)
      .evaluate(task.code, frame, library(wire.identity, task.libraryCode, wire.libraryScripts))) {
      is ScriptResult.Success -> if (evaluated.json.toByteArray(Charsets.UTF_8).size > wire.limits.maxOutputBytes)

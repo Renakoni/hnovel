@@ -249,7 +249,10 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
                                 if (continuation.isActive) {
                                     cookies.save(response.request.url, response.headers)
                                     continuation.resume(BrokerResponse(response.code, response.request.url.toString(),
-                                        response.headers.toMultimap().mapValues { it.value.toList() }, bytes.toByteArray(), charset, redirects, message = response.message))
+                                        response.headers.toMultimap().mapValues { it.value.toList() }, bytes.toByteArray(), charset, redirects,
+                                        message = response.message, protocol = response.protocol.toString(),
+                                        sentAt = response.sentRequestAtMillis, receivedAt = response.receivedResponseAtMillis,
+                                        declaredCharset = forcedCharset ?: body.contentType()?.charset()?.name(), method = response.request.method))
                                 }
                             }
                         }

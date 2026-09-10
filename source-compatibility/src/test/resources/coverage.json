@@ -18,7 +18,7 @@
       "scope": "Must report unknown fields/API explicitly; cannot auto-label as supported."
     }
   ],
-  "productImplementedCount": 9,
+  "productImplementedCount": 13,
   "features": [
     {
       "id": "FORMAT",
@@ -144,16 +144,19 @@
       "owner": "https://github.com/Renakoni/hnovel/issues/87",
       "requirement": "result/book/chapter/key/page/baseUrl 与请求/书籍/来源变量作用域，java.getString/getElement/put/get。",
       "testId": "CONFORMANCE-VARIABLES",
-      "implementation": "partial",
+      "implementation": "implemented",
       "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Book/chapter metadata snapshots cross the execution wire; kind/URL helpers and separate nullable book/chapter variable writes are tested. Nested selectors expose worker-local HTML/XML DOM views, serialized as markup at data boundaries. Complete upstream entity and DOM method surfaces remain partial.",
+      "evidence": "Metadata fields and data helpers, lazy variableMap, the 10000-character small/big split, nullable writes and changed metadata cross rule stages and IPC. DOM methods/overloads use closed native facades. Reader-global UI, Room and Parcelable machinery are explicit non-data ports in source-rhino/ACCEPTANCE.md.",
       "productTests": [
         "hnovel.execution.WorkerRuleTest",
         "hnovel.rhino.ScriptLibraryTest",
         "hnovel.rhino.ScriptRuleHelpersTest",
         "hnovel.rhino.ScriptMetadataTest",
-        "hnovel.rhino.ScriptDomTest"
+        "hnovel.rhino.ScriptDomTest",
+        "hnovel.rhino.MetadataContractTest",
+        "hnovel.rhino.DomContractTest",
+        "hnovel.execution.MetadataWireTest"
       ]
     },
     {
@@ -161,17 +164,19 @@
       "owner": "https://github.com/Renakoni/hnovel/issues/87",
       "requirement": "@js:/<js>、jsLib、Rhino 类型和异常、同步宿主桥接；引擎使用固定版本 1.8.1。",
       "testId": "CONFORMANCE-JS",
-      "implementation": "partial",
+      "implementation": "implemented",
       "verification": "product-contract",
       "fixtures": [
         "JS-SHARED-STATE",
         "MIXED-HTML-JS"
       ],
-      "evidence": "Rhino 1.8.1 executes rule script stages with typed JSON bridges and retained source-owned libraries. Authorized ordered external jsLib downloads feed separate script segments; global completion values follow the pinned engine. URL/request scripts and the complete tool matrix remain pending. Synthetic reference fixtures are not a full upstream bridge oracle.",
+      "evidence": "Rhino 1.8.1 runs global-completion scripts, ordered external jsLib segments, nested rule scripts and request templates with shared budgets and source-owned library state. Target worker tools are implemented; privileged login/browser/UI ports remain #88/#89/#91. This is the bounded novel-source data profile, not arbitrary Java interoperability.",
       "productTests": [
         "hnovel.rhino.RhinoScriptEngineTest",
         "hnovel.execution.SourceLibraryTest",
-        "hnovel.execution.WorkerRuleTest"
+        "hnovel.execution.WorkerRuleTest",
+        "hnovel.rhino.ScriptRequestTemplatesTest",
+        "hnovel.rhino.ScriptUrlsTest"
       ]
     },
     {
@@ -198,13 +203,14 @@
       "implementation": "partial",
       "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Authenticated synchronous network operations return bounded native-JS snapshots. Malformed snapshots and retained method arguments are redacted; Jsoup response parse() returns worker-local DOM views using the final URL. Terminal @js comma-expression behavior matches pinned AnalyzeUrl and is regression-tested. Response raw bytes/streams and complete response mutation APIs remain partial.",
+      "evidence": "The #87 response data surface now includes original bytes/streams, mutable Connection.Response methods, buffer/parse consumption, charset detection and closed StrResponse raw-body metadata. Pinned Jsoup differential and Binder tests pass. Session Cookie/login and browser integration remain explicitly owned by #88/#89; raw transport histories are not reconstructed.",
       "productTests": [
         "hnovel.execution.NetworkBridgeTest",
         "indi.dmzz_yyhyy.lightnovelreader.sourceexecution.IsolatedExecutionInstrumentedTest",
         "hnovel.rhino.ScriptResponseTest",
         "hnovel.rhino.ScriptDomTest",
-        "hnovel.rhino.ScriptRequestTemplatesTest"
+        "hnovel.rhino.ScriptRequestTemplatesTest",
+        "hnovel.rhino.ResponseContractTest"
       ]
     },
     {
@@ -225,10 +231,11 @@
       "implementation": "partial",
       "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Source/cache methods and external jsLib account caches run through scoped host storage with quotas, TTL and revocation-guarded local commits. Cache hits recheck library origins. Controlled resource/file tools remain pending.",
+      "evidence": "Source/cache methods, scoped external libraries and controlled resource/archive tools run through account storage with quotas, TTL and revocation-guarded commits. All resource cache hits recheck origins. Session Cookie/login state integration remains #88.",
       "productTests": [
         "hnovel.execution.ScriptExecutionTest",
-        "hnovel.execution.SourceLibraryTest"
+        "hnovel.execution.SourceLibraryTest",
+        "hnovel.execution.ResourceBridgeTest"
       ]
     },
     {
@@ -236,16 +243,17 @@
       "owner": "https://github.com/Renakoni/hnovel/issues/87",
       "requirement": "JsEncodeUtils 和 JsExtensions 的 base64/hex/hash/字节/charset、时间/URL/HTML 与繁简转换。",
       "testId": "CONFORMANCE-ENCODING",
-      "implementation": "partial",
+      "implementation": "implemented",
       "verification": "product-contract",
       "fixtures": [],
-      "evidence": "39 pure helpers and three crypto facades include pinned quick-transfer 0.2.16 traditional/simplified conversion with reference exclusions. Pinned ICU detection runs inside the worker; explicit charset and file-sampling overloads are tested. Android API24/35 exercise actual providers and packaged conversion dictionaries.",
+      "evidence": "Pinned encoding/hash/crypto/text operations, t2s/s2t dictionaries, charset detection, chapter-number normalization and JsURL data parsing are implemented. Contract tests and API24/35 tests exercise actual providers; target method boundaries are recorded in ACCEPTANCE.md.",
       "productTests": [
         "hnovel.rhino.ScriptCryptoTest",
         "indi.dmzz_yyhyy.lightnovelreader.sourceexecution.IsolatedExecutionInstrumentedTest",
         "hnovel.rhino.ScriptCryptoObjectsTest",
         "hnovel.rhino.ScriptHtmlTest",
-        "hnovel.rhino.ScriptTextTest"
+        "hnovel.rhino.ScriptTextTest",
+        "hnovel.rhino.ScriptUrlsTest"
       ]
     },
     {
@@ -253,10 +261,10 @@
       "owner": "https://github.com/Renakoni/hnovel/issues/87",
       "requirement": "importScript/cacheFile/downloadFile、读取/解压/目录和字体工具通过受控资源服务实现。",
       "testId": "CONFORMANCE-FILES",
-      "implementation": "partial",
+      "implementation": "implemented",
       "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Source/account resources now include atomic logical archive directories, folder text consumption, pinned QueryTTF font facades and byte charset detection. Android uses pinned libarchive 1.1.6 for ZIP/RAR/7z in the isolated worker; JVM uses ZIP only. Synthetic fonts and all three archive formats pass actual Binder tests. Traversal, extraction bounds, malformed fonts, origin rechecks and source separation have product tests. File paths remain scoped tokens, and full upstream overload parity is not claimed.",
+      "evidence": "Scoped resources support imports/downloads/reads/deletes, archive entries and atomic logical directories. Android uses pinned libarchive for ZIP/RAR/7z; JVM harness uses ZIP. Font tables/glyphs are checked before allocation; bounded cmap format 12 is a deliberate extension with U+100000 fixtures. Raw java.io.File access is outside the broker data profile.",
       "productTests": [
         "hnovel.execution.ResourceBridgeTest",
         "indi.dmzz_yyhyy.lightnovelreader.sourceexecution.IsolatedExecutionInstrumentedTest",

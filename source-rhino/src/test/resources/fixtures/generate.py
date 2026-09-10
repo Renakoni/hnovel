@@ -11,7 +11,7 @@ import py7zr
 import zipfile
 
 root = Path(__file__).parent
-for name, point in [('plain', 65), ('obfuscated', 0xE000)]:
+for name, point in [('plain', 65), ('obfuscated', 0xE000), ('supplementary', 0x100000)]:
     builder = FontBuilder(1000, isTTF=True)
     builder.setupGlyphOrder(['.notdef', 'triangle'])
     builder.setupCharacterMap({point: 'triangle'})

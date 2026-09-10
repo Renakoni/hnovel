@@ -33,7 +33,7 @@ This subset avoids importing a different detector or the whole ICU runtime.
 
 `font/QueryTTF.java` is the pinned `model/analyzeRule/QueryTTF.java` implementation under
 GPL-3.0-only (see `../source-compatibility/reference/LICENSE`). Adaptations
-relocate its package and remove Android's Keep annotation. `ScriptFonts` is a
+relocate its package, remove Android's Keep annotation, validate table/glyph extents before allocations, and add bounded format-12 cmap decoding (an intentional extension over the pinned parser). `ScriptFonts` is a
 native-JS facade; parser maps and Java objects are not script capabilities.
 
 Android archive decoding uses `me.zhanghai.android.libarchive:library:1.1.6`,
@@ -43,7 +43,7 @@ and recorded by the app's generated dependency license inventory. See
 https://github.com/zhanghai/libarchive-android/tree/v1.1.6 . The app adapter is
 independent code using memory buffers and never opens archive-provided paths.
 
-Test fixtures are generated original data (two triangle-glyph fonts and a
+Test fixtures are generated original data (three triangle-glyph fonts and a
 single synthetic chapter in ZIP/RAR/7z). `src/test/resources/fixtures/generate.py`
 records the construction and tool versions; these tools are not runtime or
 build dependencies.
@@ -81,3 +81,5 @@ Except as contained in this notice, the name of a copyright holder
 shall not be used in advertising or otherwise to promote the sale,
 use or other dealings in these Data Files or Software without prior
 written authorization of the copyright holder.
+
+ScriptUrls implements the pinned utils/JsURL.kt data contract. ScriptTools.toNumChapter adapts JsExtensions.toNumChapter, AppPattern.titleNumPattern and StringUtils stringToInt/chineseNumToInt at the same GPL-3.0 revision; it preserves first-match output and 32-bit arithmetic. DOM dispatch uses the pinned Jsoup 1.16.2 (MIT) dependency. Response metadata uses the repository OkHttp/Okio dependencies (Apache-2.0), never the host client.

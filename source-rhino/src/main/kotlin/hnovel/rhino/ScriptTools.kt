@@ -16,7 +16,7 @@ import javax.crypto.spec.SecretKeySpec
 internal object ScriptTools {
     val methods = setOf("strToBytes", "bytesToStr", "base64Encode", "base64Decode", "base64DecodeToByteArray",
         "hexDecodeToByteArray", "hexDecodeToString", "hexEncodeToString", "md5Encode", "md5Encode16",
-        "digestHex", "digestBase64Str", "HMacHex", "HMacBase64", "encodeURI", "timeFormatUTC", "timeFormat", "randomUUID", "htmlFormat", "t2s", "s2t") + ScriptCrypto.methods
+        "digestHex", "digestBase64Str", "HMacHex", "HMacBase64", "encodeURI", "timeFormatUTC", "timeFormat", "randomUUID", "htmlFormat", "t2s", "s2t", "toNumChapter") + ScriptCrypto.methods
 
     fun call(name: String, values: List<JsonElement>): JsonElement {
         val args = Arguments(values)
@@ -28,6 +28,7 @@ internal object ScriptTools {
             }.doFinal(args.text(0).toByteArray(Charsets.UTF_8))
         }
         return when (name) {
+            "toNumChapter" -> { args.count(1); if (values[0] == JsonNull) JsonNull else JsonPrimitive(numberedChapter(args.text(0))) }
             "t2s", "s2t" -> { args.count(1); JsonPrimitive(if (name == "t2s") ScriptText.simplified(args.text(0)) else ScriptText.traditional(args.text(0))) }
             "htmlFormat" -> { args.count(1); JsonPrimitive(ScriptHtml.format(args.text(0))) }
             "strToBytes" -> { args.count(1, 2); bytes(args.text(0).toByteArray(args.charset(1))) }
@@ -94,6 +95,30 @@ internal object ScriptTools {
             "randomUUID" -> { args.count(0); JsonPrimitive(java.util.UUID.randomUUID().toString()) }
             else -> if (name in ScriptCrypto.methods) ScriptCrypto.call(name, values) else error("Unknown pure tool")
         }
+    }
+
+    // JsExtensions.toNumChapter / StringUtils.stringToInt at the pinned revision.
+    // Keep the reference's first-match-only return and 32-bit arithmetic.
+    private fun numberedChapter(text: String): String {
+        val match = Regex("(第)(.+?)(章)").find(text) ?: return text
+        val number = match.groupValues[2].map { when { it.code == 12288 -> ' '; it.code in 65281..65374 -> (it.code-65248).toChar(); else -> it } }.joinToString("").replace(Regex("\\s+"),"")
+        val digits = mutableMapOf<Char,Int>()
+        for (alphabet in listOf("零一二三四五六七八九十","〇壹贰叁肆伍陆柒捌玖拾")) alphabet.forEachIndexed { i,c -> digits[c]=i }
+        digits.putAll(mapOf('两' to 2,'百' to 100,'佰' to 100,'千' to 1000,'仟' to 1000,'万' to 10000,'亿' to 100000000))
+        val value = number.toIntOrNull() ?: runCatching {
+            var result=0;var temporary=0;var billion=0
+            number.forEachIndexed { i,c ->
+                val n=digits.getValue(c)
+                when {
+                    n==100000000 -> { result=(result+temporary)*n;billion=billion*n+result;result=0;temporary=0 }
+                    n==10000 -> { result=(result+temporary)*n;temporary=0 }
+                    n>=10 -> { result+=n*(if(temporary==0) 1 else temporary);temporary=0 }
+                    else -> temporary=if(i>=2 && i==number.lastIndex && digits.getValue(number[i-1])>10) n*digits.getValue(number[i-1])/10 else temporary*10+n
+                }
+            }
+            result+temporary+billion
+        }.getOrDefault(-1)
+        return "第${value}章"
     }
 
     internal fun bytes(value: ByteArray) = JsonArray(value.map { JsonPrimitive(it.toInt()) })

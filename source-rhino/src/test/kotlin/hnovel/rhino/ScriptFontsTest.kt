@@ -6,6 +6,20 @@ import org.junit.Test
 import java.util.Base64
 
 class ScriptFontsTest {
+    @Test fun malformedTableExtentsFailBeforeAllocationAndSupplementaryCmapWorks() {
+        val bytes = fixture("plain")
+        val directory = java.nio.ByteBuffer.wrap(bytes).order(java.nio.ByteOrder.BIG_ENDIAN)
+        val count = directory.getShort(4).toInt() and 65535
+        val loca = (0 until count).map { 12 + it * 16 }.first { bytes.copyOfRange(it, it + 4).toString(Charsets.US_ASCII) == "loca" }
+        for ((field, value) in listOf(12 to Int.MAX_VALUE, 8 to Int.MAX_VALUE, 8 to -1)) {
+            val bad = bytes.copyOf(); java.nio.ByteBuffer.wrap(bad).putInt(loca + field, value)
+            assertTrue(runCatching { hnovel.rhino.font.QueryTTF(bad) }.exceptionOrNull() is IllegalArgumentException)
+        }
+        val supplementary = fixture("supplementary")
+        val parser = hnovel.rhino.font.QueryTTF(supplementary)
+        assertEquals(1, parser.getGlyfIdByUnicode(0x100000))
+        assertEquals(65, hnovel.rhino.font.QueryTTF(bytes).getUnicodeByGlyf(parser.getGlyfByUnicode(0x100000)))
+    }
     private fun fixture(name: String) = javaClass.getResourceAsStream("/fixtures/$name.ttf")!!.use { it.readBytes() }
     @Test fun syntheticGlyphsMapToTheirRealCodepointsThroughNativeMethods() {
         val plain = Base64.getEncoder().encodeToString(fixture("plain"))

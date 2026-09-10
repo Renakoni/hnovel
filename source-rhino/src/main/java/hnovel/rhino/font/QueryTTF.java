@@ -516,6 +516,16 @@ public class QueryTTF {
             this.byteBuffer.position(index); // 设置起始索引
         }
 
+        public BufferReader(byte[] buffer, int index, int length) {
+            this(buffer, index);
+            byteBuffer.limit(Math.addExact(index, length));
+        }
+
+        private void requireArray(int length, int width) {
+            if (length < 0 || length > byteBuffer.remaining() / width)
+                throw new IllegalArgumentException("Truncated font array");
+        }
+
         public void position(int index) {
             byteBuffer.position(index); // 设置起始索引
         }
@@ -553,35 +563,35 @@ public class QueryTTF {
         }
 
         public byte[] ReadByteArray(int len) {
-            assert len >= 0;
+            requireArray(len, 1);
             byte[] result = new byte[len];
             byteBuffer.get(result);
             return result;
         }
 
         public int[] ReadUInt8Array(int len) {
-            assert len >= 0;
+            requireArray(len, 1);
             var result = new int[len];
             for (int i = 0; i < len; ++i) result[i] = byteBuffer.get() & 0xFF;
             return result;
         }
 
         public int[] ReadInt16Array(int len) {
-            assert len >= 0;
+            requireArray(len, 2);
             var result = new int[len];
             for (int i = 0; i < len; ++i) result[i] = byteBuffer.getShort();
             return result;
         }
 
         public int[] ReadUInt16Array(int len) {
-            assert len >= 0;
+            requireArray(len, 2);
             var result = new int[len];
             for (int i = 0; i < len; ++i) result[i] = byteBuffer.getShort() & 0xFFFF;
             return result;
         }
 
         public int[] ReadInt32Array(int len) {
-            assert len >= 0;
+            requireArray(len, 4);
             var result = new int[len];
             for (int i = 0; i < len; ++i) result[i] = byteBuffer.getInt();
             return result;
@@ -599,7 +609,7 @@ public class QueryTTF {
     private void readNameTable(byte[] buffer) {
         var dataTable = directorys.get("name");
         assert dataTable != null;
-        var reader = new BufferReader(buffer, dataTable.offset);
+        var reader = new BufferReader(buffer, dataTable.offset, dataTable.length);
         name.format = reader.ReadUInt16();
         name.count = reader.ReadUInt16();
         name.stringOffset = reader.ReadUInt16();
@@ -618,7 +628,7 @@ public class QueryTTF {
     private void readHeadTable(byte[] buffer) {
         var dataTable = directorys.get("head");
         assert dataTable != null;
-        var reader = new BufferReader(buffer, dataTable.offset);
+        var reader = new BufferReader(buffer, dataTable.offset, dataTable.length);
         head.majorVersion = reader.ReadUInt16();
         head.minorVersion = reader.ReadUInt16();
         head.fontRevision = reader.ReadUInt32();
@@ -649,7 +659,7 @@ public class QueryTTF {
     private void readLocaTable(byte[] buffer) {
         var dataTable = directorys.get("loca");
         assert dataTable != null;
-        var reader = new BufferReader(buffer, dataTable.offset);
+        var reader = new BufferReader(buffer, dataTable.offset, dataTable.length);
         if (head.indexToLocFormat == 0) {
             loca = reader.ReadUInt16Array(dataTable.length / 2);
             // 当loca表数据长度为Uint16时,需要翻倍
@@ -662,7 +672,7 @@ public class QueryTTF {
     private void readCmapTable(byte[] buffer) {
         var dataTable = directorys.get("cmap");
         assert dataTable != null;
-        var reader = new BufferReader(buffer, dataTable.offset);
+        var reader = new BufferReader(buffer, dataTable.offset, dataTable.length);
         Cmap.version = reader.ReadUInt16();
         Cmap.numTables = reader.ReadUInt16();
         for (int i = 0; i < Cmap.numTables; ++i) {
@@ -676,12 +686,42 @@ public class QueryTTF {
         for (var formatTable : Cmap.records) {
             int fmtOffset = formatTable.offset;
             if (Cmap.tables.containsKey(fmtOffset)) continue;
-            reader.position(dataTable.offset + fmtOffset);
+            if (fmtOffset < 0 || fmtOffset > dataTable.length - 2)
+                throw new IllegalArgumentException("Invalid cmap offset");
+            reader = new BufferReader(buffer, dataTable.offset + fmtOffset, dataTable.length - fmtOffset);
 
             CmapFormat f = new CmapFormat();
             f.format = reader.ReadUInt16();
+            if (f.format == 12) {
+                reader.ReadUInt16(); // reserved
+                int length = reader.ReadUInt32();
+                reader.ReadUInt32(); // language
+                int groups = reader.ReadUInt32();
+                if (length < 16 || length > dataTable.length - fmtOffset || groups < 0 || groups > (length - 16) / 12)
+                    throw new IllegalArgumentException("Invalid format-12 cmap");
+                int previousEnd = -1;
+                int count = 0;
+                for (int group = 0; group < groups; group++) {
+                    int start = reader.ReadUInt32(), end = reader.ReadUInt32(), glyph = reader.ReadUInt32();
+                    if (start < 0 || end < start || end > 0x10ffff || start <= previousEnd || glyph < 0 ||
+                            (long) glyph + end - start >= maxp.numGlyphs || (long) count + end - start + 1 > 65536)
+                        throw new IllegalArgumentException("Invalid format-12 range");
+                    previousEnd = end;
+                    count += end - start + 1;
+                    for (int code = start; code <= end; code++) {
+                        if (glyph != 0) unicodeToGlyphId.put(code, glyph);
+                        glyph++;
+                    }
+                }
+                Cmap.tables.put(fmtOffset, f);
+                continue;
+            }
             f.length = reader.ReadUInt16();
             f.language = reader.ReadUInt16();
+            if (f.length < 6 || f.length > dataTable.length - fmtOffset)
+                throw new IllegalArgumentException("Invalid cmap length");
+            reader = new BufferReader(buffer, dataTable.offset + fmtOffset, f.length);
+            reader.position(dataTable.offset + fmtOffset + 6);
             switch (f.format) {
                 case 0: {
                     f.glyphIdArray = reader.ReadUInt8Array(f.length - 6);
@@ -754,7 +794,7 @@ public class QueryTTF {
     private void readMaxpTable(byte[] buffer) {
         var dataTable = directorys.get("maxp");
         assert dataTable != null;
-        var reader = new BufferReader(buffer, dataTable.offset);
+        var reader = new BufferReader(buffer, dataTable.offset, dataTable.length);
         maxp.version = reader.ReadUInt32();
         maxp.numGlyphs = reader.ReadUInt16();
         maxp.maxPoints = reader.ReadUInt16();
@@ -781,12 +821,18 @@ public class QueryTTF {
         var dataTable = directorys.get("glyf");
         assert dataTable != null;
         int glyfCount = maxp.numGlyphs;
+        if (loca.length < glyfCount + 1) throw new IllegalArgumentException("Truncated loca table");
+        for (int i = 0; i < glyfCount; i++) {
+            if (loca[i] < 0 || loca[i + 1] < loca[i] || loca[i + 1] > dataTable.length)
+                throw new IllegalArgumentException("Invalid glyph extent");
+        }
         glyfArray = new GlyfLayout[glyfCount];  // 创建字形容器
 
         var reader = new BufferReader(buffer, 0);
         for (int index = 0; index < glyfCount; index++) {
             if (loca[index] == loca[index + 1]) continue;   // 当前loca与下一个loca相同，表示这个字形不存在
             int offset = dataTable.offset + loca[index];
+            reader = new BufferReader(buffer, offset, loca[index + 1] - loca[index]);
             // 读GlyphHeaders
             var glyph = new GlyfLayout();
             reader.position(offset);
@@ -962,7 +1008,10 @@ public class QueryTTF {
             d.checkSum = fontReader.ReadUInt32();
             d.offset = fontReader.ReadUInt32();
             d.length = fontReader.ReadUInt32();
-            directorys.put(d.tableTag, d);
+            if (d.offset < 0 || d.length < 0 || (long) d.offset + d.length > buffer.length)
+                throw new IllegalArgumentException("Invalid font table extent");
+            if (directorys.put(d.tableTag, d) != null)
+                throw new IllegalArgumentException("Duplicate font table");
         }
 
 //        Log.i("QueryTTF", "解析表 name"); // 字体信息,包含版权、名称、作者等...
@@ -970,11 +1019,10 @@ public class QueryTTF {
 //        Log.i("QueryTTF", "解析表 head"); // 获取 head.indexToLocFormat
         readHeadTable(buffer);
 //        Log.i("QueryTTF", "解析表 cmap"); // Unicode编码->轮廓索引 对照表
+        readMaxpTable(buffer);
         readCmapTable(buffer);
 //        Log.i("QueryTTF", "解析表 loca"); // 轮廓数据偏移地址表
         readLocaTable(buffer);
-//        Log.i("QueryTTF", "解析表 maxp"); // 获取 maxp.numGlyphs 字体轮廓数量
-        readMaxpTable(buffer);
 //        Log.i("QueryTTF", "解析表 glyf"); // 字体轮廓数据表,需要解析loca,maxp表后计算
         readGlyfTable(buffer);
 //        Log.i("QueryTTF", "建立Unicode&Glyph映射表");

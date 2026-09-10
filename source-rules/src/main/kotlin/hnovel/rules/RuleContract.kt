@@ -1,5 +1,6 @@
 package hnovel.rules
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.*
 
 /** Safe intermediate values; no host/client, DOM object, or scripting engine instance crosses the port. */
 @Serializable sealed interface RuleValue {
@@ -29,15 +30,38 @@ class RuleContext(
     sourceVariables: Map<String, String> = emptyMap(),
     bookVariables: Map<String, String> = emptyMap(),
     chapterVariables: Map<String, String> = emptyMap(),
+    bookBigVariables: Map<String, String> = emptyMap(),
+    chapterBigVariables: Map<String, String> = emptyMap(),
 ) {
-    val bookValues = bookVariables.toMutableMap()
-    val chapterValues = chapterVariables.toMutableMap()
+    val bookValues = bookVariables.filterValues { it.length < 10000 }.toMutableMap()
+    val chapterValues = chapterVariables.filterValues { it.length < 10000 }.toMutableMap()
+    val bookBigValues = (bookVariables.filterValues { it.length >= 10000 } + bookBigVariables).toMutableMap()
+    val chapterBigValues = (chapterVariables.filterValues { it.length >= 10000 } + chapterBigVariables).toMutableMap()
     val bookWrites = linkedMapOf<String, String?>()
     val chapterWrites = linkedMapOf<String, String?>()
-    private val inherited = listOf(chapterValues, bookValues, sourceVariables.toMap())
+    val bookBigWrites = linkedMapOf<String, String?>()
+    val chapterBigWrites = linkedMapOf<String, String?>()
+    var bookMetadata: String? = null
+    var chapterMetadata: String? = null
+    val metadataVariablesInitialized = mutableSetOf<String>()
+    var initializeMetadataVariables: (() -> Unit)? = null
+    private val sourceValues = sourceVariables.toMap()
     private val values = linkedMapOf<String, String>()
-    fun get(key: String): String = values[key]?.takeIf { it.isNotEmpty() }
-        ?: inherited.firstNotNullOfOrNull { it[key]?.takeIf(String::isNotEmpty) }.orEmpty()
+    fun get(key: String): String {
+        val initializer = initializeMetadataVariables
+        if (initializer != null) initializer() else loadMetadataVariables()
+        return values[key]?.takeIf { it.isNotEmpty() }
+        ?: listOf(chapterValues[key] ?: chapterBigValues[key], bookValues[key] ?: bookBigValues[key], sourceValues[key])
+            .firstOrNull { !it.isNullOrEmpty() }.orEmpty()
+    }
+    private fun loadMetadataVariables() {
+        for ((name, json, values) in listOf(Triple("book", bookMetadata, bookValues), Triple("chapter", chapterMetadata, chapterValues))) {
+            if (metadataVariablesInitialized.add(name)) {
+                val initial = runCatching { Json.parseToJsonElement(Json.parseToJsonElement(json!!).jsonObject["variable"]!!.jsonPrimitive.content).jsonObject }.getOrNull()
+                initial?.forEach { (key, value) -> if (value is JsonPrimitive && value.isString) values.putIfAbsent(key, value.content) }
+            }
+        }
+    }
     fun put(key: String, value: String): String { values[key] = value; return value }
     fun writes(): Map<String, String> = values.toMap()
 }

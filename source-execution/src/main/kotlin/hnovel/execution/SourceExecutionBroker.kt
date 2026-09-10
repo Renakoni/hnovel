@@ -60,7 +60,8 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
                         // Use the same bounded JSON parser as other reverse IPC input.
                         headerMap(BridgeWire.arguments("[${it.content}]".toByteArray()).single())
                     }.orEmpty()
-                    snapshot(fetch(compiled(requestNumber, args[0].jsonPrimitive.content, headers)))
+                    val request = compiled(requestNumber, args[0].jsonPrimitive.content, headers)
+                    snapshot(fetch(request))
                 }
                 "java.ajaxAll" -> {
                     require(args.size == 1)
@@ -140,6 +141,12 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
         put("status", response.status)
         put("message", response.message)
         put("headers", JsonObject(response.headers.mapValues { (_, values) -> JsonArray(values.map(::JsonPrimitive)) }))
+        put("bytes", java.util.Base64.getEncoder().encodeToString(response.body))
+        put("charset", response.declaredCharset?.let(::JsonPrimitive) ?: JsonNull)
+        put("method", response.method)
+        put("protocol", response.protocol)
+        put("sentAt", response.sentAt)
+        put("receivedAt", response.receivedAt)
     }
 
     /** Logical source/account resources. A script path is never passed to the host filesystem. */

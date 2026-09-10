@@ -43,6 +43,44 @@ import org.junit.runner.RunWith
 class IsolatedExecutionInstrumentedTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
 
+    @Test fun responseBytesDomAndEntityWritesCrossRealBinderBoundary() = runBlocking {
+        val authority = ExecutionAuthority()
+        val executor = AndroidIsolatedExecutor(context, authority)
+        val id = authority.issue("response-data", "legado", "1", "fixture")
+        val limits = ExecutionLimits(timeoutMillis = 30000)
+        val root = java.io.File(context.cacheDir, "response-data-${java.util.UUID.randomUUID()}")
+        try {
+            MockWebServer().use { server ->
+                server.start()
+                val base = server.url("/").toString()
+                server.enqueue(MockResponse().setBody(okio.Buffer().write(byteArrayOf(0,127,-128,-1))))
+                val html = "<meta charset=windows-1252><p>caf\u00e9</p>".toByteArray(charset("windows-1252"))
+                server.enqueue(MockResponse().setHeader("Content-Type", "text/html").setBody(okio.Buffer().write(html)))
+                SourceBroker(root.toPath()).use { sessions ->
+                    val session = sessions.open(SourceScope("fixture", "response-data", "legado"), listOf(NetworkGrant(base, true)))
+                    SourceExecutionBroker(id, authority, session, limits, base).use { broker ->
+                        val result = executor.execute(id, ExecutionTask.Script("""
+                            var stream=java.get(baseUrl+'bytes',{}).bodyStream(),bytes=[0,0,0,0];stream.read(bytes);stream.close();
+                            var response=java.get(baseUrl+'html',{}),before=response.charset(),doc=response.parse();
+                            doc.selectFirst('p').appendText('!').dataset().put('chapter','one');
+                            [bytes,before,doc.selectFirst('p').text(),response.charset(),doc.selectFirst('p').attr('data-chapter'),typeof doc.getClass]
+                        """, baseUrl=base), limits, broker)
+                        assertEquals(ExecutionResult.Success("[[0,127,-128,-1],null,\"café!\",\"windows-1252\",\"one\",\"undefined\"]"), result)
+                    }
+                }
+            }
+            val metadataId = authority.issue("metadata-data", "legado", "1")
+            val result = executor.execute(metadataId, ExecutionTask.Rule("""<js>
+                book.setName('Updated');book.putVariable('big',new Array(10001).join('x'));result
+                </js><js>book.name+':'+book.getVariable('big').length</js>""",RuleValue.Text("input"),OutputKind.Text),limits)
+            assertTrue(result.toString(),result is ExecutionResult.Success)
+            val data=Json.decodeFromString(ExecutedRule.serializer(),(result as ExecutionResult.Success).output)
+            assertEquals(RuleValue.Text("Updated:10000"),data.value)
+            assertEquals("Updated",data.book!!.getValue("name").jsonPrimitive.content)
+            assertEquals(10000,data.bookBigWrites.getValue("big")!!.length)
+        } finally { root.deleteRecursively() }
+    }
+
     @Test fun nativeArchivesFontsConversionAndMetadataRunInIsolatedProcess() = runBlocking {
         val authority = ExecutionAuthority()
         val executor = AndroidIsolatedExecutor(context, authority)
@@ -56,6 +94,9 @@ class IsolatedExecutionInstrumentedTest {
         }
         val good = java.util.Base64.getEncoder().encodeToString(fixture("plain.ttf"))
         val bad = java.util.Base64.getEncoder().encodeToString(fixture("obfuscated.ttf"))
+        val supplementary = java.util.Base64.getEncoder().encodeToString(fixture("supplementary.ttf"))
+        assertEquals(ExecutionResult.Success("\"A\""), executor.execute(id, ExecutionTask.Script(
+            "java.replaceFont(String.fromCodePoint(0x100000),java.queryTTF('$supplementary'),java.queryTTF('$good'))"),limits))
         val task = ExecutionTask.Script("""
             var good=java.queryTTF('$good');var bad=java.queryTTF('$bad');
             [java.replaceFont('\uE000',bad,good),java.t2s('龍與書'),java.s2t('龙与书'),book.name,chapter.title]

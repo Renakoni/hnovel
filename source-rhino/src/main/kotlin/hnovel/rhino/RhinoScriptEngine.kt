@@ -24,6 +24,7 @@ private class ScriptBridge(private val bridge: HostBridge, private val rules: Sc
                     return fonts.call(cx, scope, name.substringAfter("java."), args)
                 val data = BoundedJsonResult(maxChars).encode(realm.arrayIn(scope, args.copyOf()))
                 val arguments = Json.parseToJsonElement(data).jsonArray
+                if (name == "java.toURL") return ScriptUrls.create(cx, scope, arguments)
                 if (name.removePrefix("java.") in ScriptCryptoObjects.factories && name.startsWith("java."))
                     return ScriptCryptoObjects.create(cx, scope, name.removePrefix("java."), arguments)
                 val result = if (name == "java.readTxtFile") resources.text(cx, arguments)
@@ -66,15 +67,16 @@ private class ScriptBridge(private val bridge: HostBridge, private val rules: Sc
             require(args.isNotEmpty() && args[0] is CharSequence) { "bridge name required" }
             call(cx, activeScope, args[0].toString(), args.drop(1).toTypedArray())
         }
-        objectFor("java", listOf("ajax", "ajaxAll", "connect", "get", "head", "post", "getCookie", "androidId",
+        val javaBridge = objectFor("java", listOf("ajax", "ajaxAll", "connect", "get", "head", "post", "getCookie", "androidId",
             "put", "getString", "getStringList", "getElement", "getElements", "importScript", "cacheFile", "downloadFile",
-            "readFile", "readTxtFile", "deleteFile") + ScriptTools.methods + ScriptCryptoObjects.factories + fonts.methods + resources.methods)
+            "readFile", "readTxtFile", "deleteFile", "toURL") + ScriptTools.methods + ScriptCryptoObjects.factories + fonts.methods + resources.methods)
         objectFor("cache", listOf("get", "put", "delete"))
         objectFor("cookie", listOf("getCookie", "setCookie", "removeCookie"))
         val source = objectFor("source", listOf("get", "put", "getVariable", "setVariable"))
         source.defineProperty("id", frame.sourceId, ScriptableObject.READONLY)
         source.defineProperty("profile", frame.profile, ScriptableObject.READONLY)
         method(source, "getKey") { _, _, _ -> frame.sourceId }
+        method(javaBridge, "getSource") { _, _, args -> require(args.isEmpty()); source }
     }
 }
 
@@ -82,7 +84,7 @@ data class ScriptFrame(val sourceId: String, val profile: String, val bookId: St
     val variables: Map<String, JsonElement> = emptyMap(), val key: String = "", val page: Int = 1,
     val baseUrl: String = "", val ruleContext: RuleContext? = null, val ruleInput: RuleValue? = null,
     val ruleBudget: RuleBudget? = null, val book: JsonObject = JsonObject(emptyMap()),
-    val chapter: JsonObject = JsonObject(emptyMap()))
+    val chapter: JsonObject = JsonObject(emptyMap()), val chineseConverter: Int = 0)
 
 data class ScriptLimits(val instructionLimit: Int = 100_000, val maxResultChars: Int = 256 * 1024,
     val maxScriptChars: Int = 256 * 1024, val maxBridgeChars: Int = 64 * 1024,
@@ -159,15 +161,28 @@ class RhinoScriptEngine(private val bridge: HostBridge, private val limits: Scri
                 }
                 context.putThreadLocal(bridgeLimitKey, limits.maxBridgeChars)
                 val ruleContext = frame.ruleContext ?: RuleContext(frame.sourceId, frame.bookId, frame.chapterId, frame.baseUrl)
-                scope.put("book", scope, ScriptMetadata.create(context, scope, frame.book, frame.bookId, false, ruleContext.bookValues, ruleContext.bookWrites))
-                scope.put("chapter", scope, ScriptMetadata.create(context, scope, frame.chapter, frame.chapterId, true, ruleContext.chapterValues, ruleContext.chapterWrites))
+                val bookData = ruleContext.bookMetadata?.let { Json.parseToJsonElement(it).jsonObject } ?: frame.book
+                val chapterData = ruleContext.chapterMetadata?.let { Json.parseToJsonElement(it).jsonObject } ?: frame.chapter
+                val book = ScriptMetadata.create(context, scope, bookData, frame.bookId, false, ruleContext.bookValues, ruleContext.bookWrites, ruleContext.bookBigValues, ruleContext.bookBigWrites, frame.chineseConverter,
+                    "book" !in ruleContext.metadataVariablesInitialized) { ruleContext.metadataVariablesInitialized.add("book") }
+                val chapter = ScriptMetadata.create(context, scope, chapterData, frame.chapterId, true, ruleContext.chapterValues, ruleContext.chapterWrites, ruleContext.chapterBigValues, ruleContext.chapterBigWrites, frame.chineseConverter,
+                    "chapter" !in ruleContext.metadataVariablesInitialized) { ruleContext.metadataVariablesInitialized.add("chapter") }
+                ruleContext.initializeMetadataVariables = {
+                    ScriptableObject.getProperty(book, "variableMap")
+                    ScriptableObject.getProperty(chapter, "variableMap")
+                }
+                scope.put("book", scope, book)
+                scope.put("chapter", scope, chapter)
                 scope.put("result", scope, JsonScriptData(context, scope, limits.maxBridgeChars).convert(frame.variables["result"] ?: JsonNull))
                 scope.put("key", scope, frame.key)
                 scope.put("page", scope, frame.page)
                 scope.put("baseUrl", scope, frame.baseUrl)
                 context.putThreadLocal(bridgeLimitKey, limits.maxBridgeChars)
                 ScriptBridge(bridge, ScriptRuleHelpers(scope, frame.copy(ruleContext = ruleContext), limits), ScriptRequestTemplates(scope, frame), archives).install(context, scope, frame)
-                val value = evaluateGlobal(context, scope, source, "source-script")
+                val value = try { evaluateGlobal(context, scope, source, "source-script") }
+                    finally { ruleContext.initializeMetadataVariables = null }
+                ruleContext.bookMetadata = ScriptMetadata.capture(book, limits.maxBridgeChars).toString()
+                ruleContext.chapterMetadata = ScriptMetadata.capture(chapter, limits.maxBridgeChars).toString()
                 if (Thread.currentThread().isInterrupted) throw ScriptCancelled()
                 val json = BoundedJsonResult(limits.maxResultChars).encode(value)
                 if (Thread.currentThread().isInterrupted) throw ScriptCancelled()

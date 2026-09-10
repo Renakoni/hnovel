@@ -8,6 +8,8 @@ dependencies {
     implementation("com.github.liuyueyi.quick-chinese-transfer:quick-transfer-core:0.2.16")
     api(project(":source-rules"))
     implementation("org.jsoup:jsoup:1.16.2")
+    implementation(libs.okhttp)
+    testImplementation("com.squareup.okhttp3:mockwebserver:5.4.0")
     implementation(libs.kotlinx.serialization.json)
 }
 tasks.test { useJUnit() }
