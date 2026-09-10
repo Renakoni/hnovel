@@ -7,6 +7,20 @@ import org.junit.Test
 class SourceSessionManagerTest {
     private val source = Identifier("test", "source-a")
 
+    @Test fun loginAndLogoutRevokeExecutionButStaleLogoutCannotRevokeTheNewAccount() {
+        val authority = hnovel.execution.ExecutionAuthority()
+        val manager = SourceSessionManager(authority)
+        val before = authority.issue(source.id, "legado", "1", source.namespace)
+        val first = manager.begin(source)
+        assertFalse(authority.accepts(before))
+        val loggedIn = authority.issue(source.id, "legado", "1", source.namespace, first.generation)
+        val next = manager.logout(first)
+        assertFalse(authority.accepts(loggedIn))
+        val fresh = authority.issue(source.id, "legado", "1", source.namespace, next.generation)
+        manager.logout(first)
+        assertTrue(authority.accepts(fresh))
+    }
+
     @Test fun sessionsAreSourceScopedAndLogoutInvalidatesLateResults() {
         val manager = SourceSessionManager()
         val a = manager.begin(source)

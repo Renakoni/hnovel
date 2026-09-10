@@ -8,7 +8,7 @@ import org.jsoup.parser.Parser
 import java.net.URI
 
 /** Stateless evaluator; callers supply a distinct context and budget per request. No IO is performed here. */
-class RuleEvaluator(private val scripts: RuleScriptPort? = null) {
+class RuleEvaluator(private val unescapeHtml: Boolean = true, private val scripts: RuleScriptPort? = null) {
     private val parser = RuleParser()
 
     fun evaluate(rule: String, input: RuleValue, context: RuleContext, output: OutputKind = OutputKind.TextList,
@@ -95,8 +95,10 @@ class RuleEvaluator(private val scripts: RuleScriptPort? = null) {
             }
         }
         return if (output == OutputKind.Text || output == OutputKind.Url) {
-            if (value == RuleValue.Empty) value else RuleValue.Text(Parser.unescapeEntities(
-                if (output == OutputKind.Url) value.items().firstOrNull()?.text().orEmpty() else value.text(), false))
+            if (value == RuleValue.Empty) value else {
+                val text = if (output == OutputKind.Url) value.items().firstOrNull()?.text().orEmpty() else value.text()
+                RuleValue.Text(if (unescapeHtml) Parser.unescapeEntities(text, false) else text)
+            }
         } else if (output == OutputKind.TextList || output == OutputKind.UrlList) {
             if (value is RuleValue.Text) RuleValue.Items(value.value.split('\n').map(RuleValue::Text)) else value
         } else value
@@ -234,6 +236,7 @@ class RuleEvaluator(private val scripts: RuleScriptPort? = null) {
     private inline fun <T> atStage(stage: RuleStage, location: RuleLocation, block: () -> T): T = try { block() }
         catch (failure: RuleBudgetExceeded) { throw failure }
         catch (failure: RuleFailure) { throw failure }
+        catch (failure: RuleScriptFailure) { throw RuleFailure(RuleError(stage, location, failure.code)) }
         catch (failure: Exception) { throw RuleFailure(RuleError(stage, location, failure.javaClass.simpleName)) }
 
     private fun fail(stage: RuleStage, location: RuleLocation, offset: Int, code: String): Nothing =

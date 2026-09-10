@@ -58,7 +58,7 @@ class RuleParser {
         return chosen to result
     }
 
-    internal fun balancedEnd(text: String, start: Int, location: RuleLocation, budget: RuleBudget): Int =
+    fun balancedEnd(text: String, start: Int, location: RuleLocation, budget: RuleBudget): Int =
         skipUnit(text, start, location, budget)
 
     private fun skipUnit(text: String, start: Int, location: RuleLocation, budget: RuleBudget, depth: Int = 0): Int {

@@ -22,8 +22,10 @@ import javax.inject.Singleton
 
 /** Owns registration generations; enumerating sources never constructs or loads one. */
 @Singleton
-class WebSourceRegistry internal constructor(private val dispatcher: CoroutineDispatcher) {
-    @Inject constructor() : this(Dispatchers.IO)
+class WebSourceRegistry internal constructor(private val dispatcher: CoroutineDispatcher,
+    private val executionAuthority: hnovel.execution.ExecutionAuthority) {
+    constructor() : this(Dispatchers.IO, hnovel.execution.ExecutionAuthority())
+    @Inject constructor(executionAuthority: hnovel.execution.ExecutionAuthority) : this(Dispatchers.IO, executionAuthority)
 
     private val lock = Any()
     private val entries = mutableMapOf<Identifier, Entry>()
@@ -53,6 +55,7 @@ class WebSourceRegistry internal constructor(private val dispatcher: CoroutineDi
 
     fun unregister(id: Identifier) {
         val entry = synchronized(lock) {
+            executionAuthority.revokeSource(id.id, id.namespace)
             entries.remove(id).also { publish() }
         }
         entry?.retire()
@@ -62,6 +65,7 @@ class WebSourceRegistry internal constructor(private val dispatcher: CoroutineDi
         val removed = synchronized(lock) {
             if (entries[entry.metadata.id] !== entry) false
             else {
+                executionAuthority.revokeSource(entry.metadata.id.id, entry.metadata.id.namespace)
                 entries.remove(entry.metadata.id)
                 publish()
                 true

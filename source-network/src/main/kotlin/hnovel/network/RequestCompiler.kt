@@ -12,18 +12,18 @@ class RequestCompiler {
         if (rule.length > 65536 || keyword.length > 65536 || page < 1) return CompiledRequest.Rejected(FailureCode.InvalidRequest)
         return try {
             if (rule.contains("<js>", true) || rule.contains("@js:", true)) return CompiledRequest.Rejected(FailureCode.ScriptRequired)
-            if (Regex("\\{\\{(.*?)}}").findAll(rule).any { it.groupValues[1].trim() !in setOf("key", "page", "baseUrl") }) {
+            if (Regex("\\{\\{(.*?)\\}\\}").findAll(rule).any { it.groupValues[1].trim() !in setOf("key", "page", "baseUrl") }) {
                 return CompiledRequest.Rejected(FailureCode.ScriptRequired)
             }
             val optionStart = Regex(",\\s*(?=\\{)").find(rule)
-            val options = optionStart?.let { Json.parseToJsonElement(rule.substring(it.range.last + 1)).jsonObject } ?: buildJsonObject {}
+            val options = optionStart?.let { parseJson(rule.substring(it.range.last + 1)).jsonObject } ?: buildJsonObject {}
             if (options.keys.any { it in setOf("js") }) return CompiledRequest.Rejected(FailureCode.ScriptRequired)
             if (options.keys.any { it in setOf("webView", "webJs", "webViewDelayTime", "serverID") }) return CompiledRequest.Rejected(FailureCode.BrowserRequired)
             if (options.keys.any { it !in setOf("method", "body", "headers", "header", "charset", "retry") }) return CompiledRequest.Rejected(FailureCode.UnknownOption)
             val charset = options["charset"]?.jsonPrimitive?.content ?: "UTF-8"
             if (charset != "escape") Charset.forName(charset)
             fun expand(value: String, encodeKey: Boolean, pageAlternatives: Boolean = false): String {
-                var text = Regex("\\{\\{\\s*(.*?)\\s*}}").replace(value) { match -> when (match.groupValues[1].trim()) {
+                var text = Regex("\\{\\{\\s*(.*?)\\s*\\}\\}").replace(value) { match -> when (match.groupValues[1].trim()) {
                     "key" -> if (encodeKey) encode(keyword, charset) else keyword
                     "page" -> page.toString()
                     "baseUrl" -> baseUrl
@@ -45,7 +45,7 @@ class RequestCompiler {
             if (method !in setOf("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD")) return CompiledRequest.Rejected(FailureCode.InvalidRequest)
             val mergedHeaders = headers.toMutableMap()
             val optionHeaders = options["headers"] ?: options["header"]
-            val parsedHeaders = if (optionHeaders is JsonPrimitive) Json.parseToJsonElement(optionHeaders.content).jsonObject else optionHeaders?.jsonObject
+            val parsedHeaders = if (optionHeaders is JsonPrimitive) parseJson(optionHeaders.content).jsonObject else optionHeaders?.jsonObject
             parsedHeaders?.forEach { (key, value) ->
                 mergedHeaders.keys.removeAll { it.equals(key, true) }
                 mergedHeaders[key] = expand(value.jsonPrimitive.content, false)
@@ -65,7 +65,7 @@ class RequestCompiler {
                 isForm -> raw.split('&').joinToString("&") { field -> field.split('=', limit = 2)
                     .joinToString("=") { encode(expand(it, false), charset) } }
                 raw.trimStart().startsWith('{') || raw.trimStart().startsWith('[') ->
-                    expandJson(Json.parseToJsonElement(raw)).toString()
+                    expandJson(parseJson(raw)).toString()
                 else -> expand(raw, false)
             } }
             if (body != null && method in setOf("GET", "HEAD")) return CompiledRequest.Rejected(FailureCode.InvalidRequest)
@@ -80,6 +80,25 @@ class RequestCompiler {
                 if (charset == "escape") "UTF-8" else charset, retry = retry, kind = kind))
         } catch (failure: BrokerFailure) { CompiledRequest.Rejected(failure.code) }
           catch (_: Exception) { CompiledRequest.Rejected(FailureCode.InvalidRequest) }
+    }
+
+    /** URL options/header/body strings are untrusted nested JSON, even inside a valid IPC string. */
+    private fun parseJson(text: String): JsonElement {
+        var depth = 0
+        var quoted = false
+        var escaped = false
+        for (char in text) {
+            if (quoted) {
+                if (escaped) escaped = false
+                else if (char == '\\') escaped = true
+                else if (char == '"') quoted = false
+            } else when (char) {
+                '"' -> quoted = true
+                '{', '[' -> { if (++depth > 64) throw BrokerFailure(RequestStage.Parse, FailureCode.InvalidRequest) }
+                '}', ']' -> depth--
+            }
+        }
+        return Json.parseToJsonElement(text)
     }
 
     private fun encode(value: String, charset: String): String = if (charset == "escape") buildString {

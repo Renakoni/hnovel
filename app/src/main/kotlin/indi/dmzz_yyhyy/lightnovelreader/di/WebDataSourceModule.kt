@@ -13,6 +13,10 @@ import javax.inject.Singleton
 object WebDataSourceModule {
     @Singleton
     @Provides
+    fun provideExecutionAuthority() = hnovel.execution.ExecutionAuthority()
+
+    @Singleton
+    @Provides
     fun provideWebDataSourceProvider(webBookDataSourceManager: WebBookDataSourceManager): WebBookDataSourceProvider {
         return webBookDataSourceManager.getWebDataSourceProvider()
     }

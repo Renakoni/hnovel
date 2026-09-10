@@ -18,7 +18,7 @@
       "scope": "Must report unknown fields/API explicitly; cannot auto-label as supported."
     }
   ],
-  "productImplementedCount": 7,
+  "productImplementedCount": 9,
   "features": [
     {
       "id": "FORMAT",
@@ -144,23 +144,33 @@
       "owner": "https://github.com/Renakoni/hnovel/issues/87",
       "requirement": "result/book/chapter/key/page/baseUrl 与请求/书籍/来源变量作用域，java.getString/getElement/put/get。",
       "testId": "CONFORMANCE-VARIABLES",
-      "implementation": "planned",
-      "verification": "future-fixture",
+      "implementation": "partial",
+      "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Pinned reference source inspection; production implementation pending."
+      "evidence": "Invocation globals, original rule input and nested getString/getStringList/getElement/getElements share RuleContext, writes, depth and instruction budgets. JSON nodes retain structure; HTML/XML nodes are markup data. Broader book/chapter metadata and raw DOM methods remain pending.",
+      "productTests": [
+        "hnovel.execution.WorkerRuleTest",
+        "hnovel.rhino.ScriptLibraryTest",
+        "hnovel.rhino.ScriptRuleHelpersTest"
+      ]
     },
     {
       "id": "JS",
       "owner": "https://github.com/Renakoni/hnovel/issues/87",
       "requirement": "@js:/<js>、jsLib、Rhino 类型和异常、同步宿主桥接；引擎使用固定版本 1.8.1。",
       "testId": "CONFORMANCE-JS",
-      "implementation": "planned",
-      "verification": "reference-fixture",
+      "implementation": "partial",
+      "verification": "product-contract",
       "fixtures": [
         "JS-SHARED-STATE",
         "MIXED-HTML-JS"
       ],
-      "evidence": "Rhino language + synthetic/mixed host contract execution, NOT full upstream AnalyzeRule/JsExtensions execution."
+      "evidence": "Rhino 1.8.1 executes rule script stages with typed JSON bridges and retained source-owned libraries. Authorized ordered external jsLib downloads feed separate script segments; global completion values follow the pinned engine. URL/request scripts and the complete tool matrix remain pending. Synthetic reference fixtures are not a full upstream bridge oracle.",
+      "productTests": [
+        "hnovel.rhino.RhinoScriptEngineTest",
+        "hnovel.execution.SourceLibraryTest",
+        "hnovel.execution.WorkerRuleTest"
+      ]
     },
     {
       "id": "URL",
@@ -170,11 +180,12 @@
       "implementation": "partial",
       "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Source-network broker backend implemented and tested offline. Static URL compiler, scoped network/storage and quotas are production code; process-bound IPC (#86), JavaScript entry points (#87) and browser calls (#89) remain pending. Not a full upstream bridge oracle.",
+      "evidence": "Static request compiler and scoped broker plus worker-only @js/<js>, @result, balanced expression templates and URL-option js are implemented. Whole expanded batches and nested option/header/body JSON are bounded. Static placeholders preserve charset-aware field escaping. Browser options remain deferred.",
       "productTests": [
-        "hnovel.network.SourceBrokerTest",
         "hnovel.network.RequestCompilerTest",
-        "hnovel.compatibility.ProductRequestContractTest"
+        "hnovel.execution.SourceLibraryTest",
+        "hnovel.compatibility.ProductRequestContractTest",
+        "hnovel.rhino.ScriptRequestTemplatesTest"
       ]
     },
     {
@@ -185,11 +196,10 @@
       "implementation": "partial",
       "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Source-network broker backend implemented and tested offline. Static URL compiler, scoped network/storage and quotas are production code; process-bound IPC (#86), JavaScript entry points (#87) and browser calls (#89) remain pending. Not a full upstream bridge oracle.",
+      "evidence": "Synchronous ajax/connect, ordered bounded ajaxAll, and direct get/head/post execute over the authenticated source broker. The direct methods preserve no-redirect semantics; snapshots expose explicit native JS response data methods. Headers, batch budget/cancellation and per-request/cache byte limits are tested. Additional response/stream/DOM and request-script APIs remain pending.",
       "productTests": [
-        "hnovel.network.SourceBrokerTest",
-        "hnovel.network.RequestCompilerTest",
-        "hnovel.compatibility.ProductRequestContractTest"
+        "hnovel.execution.NetworkBridgeTest",
+        "indi.dmzz_yyhyy.lightnovelreader.sourceexecution.IsolatedExecutionInstrumentedTest"
       ]
     },
     {
@@ -210,11 +220,10 @@
       "implementation": "partial",
       "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Source-network broker backend implemented and tested offline. Static URL compiler, scoped network/storage and quotas are production code; process-bound IPC (#86), JavaScript entry points (#87) and browser calls (#89) remain pending. Not a full upstream bridge oracle.",
+      "evidence": "Source/cache methods and external jsLib account caches run through scoped host storage with quotas, TTL and revocation-guarded local commits. Cache hits recheck library origins. Controlled resource/file tools remain pending.",
       "productTests": [
-        "hnovel.network.SourceBrokerTest",
-        "hnovel.network.RequestCompilerTest",
-        "hnovel.compatibility.ProductRequestContractTest"
+        "hnovel.execution.ScriptExecutionTest",
+        "hnovel.execution.SourceLibraryTest"
       ]
     },
     {
@@ -222,20 +231,30 @@
       "owner": "https://github.com/Renakoni/hnovel/issues/87",
       "requirement": "JsEncodeUtils 和 JsExtensions 的 base64/hex/hash/字节/charset、时间/URL/HTML 与繁简转换。",
       "testId": "CONFORMANCE-ENCODING",
-      "implementation": "planned",
-      "verification": "future-fixture",
+      "implementation": "partial",
+      "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Pinned reference source inspection; production implementation pending."
+      "evidence": "37 pure helpers plus three modern crypto facades cover bytes/encoding/hash/legacy and modern ciphers/signatures, dates, URI and HTML formatting. Hutool 5.8.22 is pinned behind explicit data-only facades; fixed vectors and JCE/native provider tests complement dependency comparisons. Traditional/simplified conversion remains pending.",
+      "productTests": [
+        "hnovel.rhino.ScriptCryptoTest",
+        "indi.dmzz_yyhyy.lightnovelreader.sourceexecution.IsolatedExecutionInstrumentedTest",
+        "hnovel.rhino.ScriptCryptoObjectsTest",
+        "hnovel.rhino.ScriptHtmlTest"
+      ]
     },
     {
       "id": "FILES",
       "owner": "https://github.com/Renakoni/hnovel/issues/87",
       "requirement": "importScript/cacheFile/downloadFile、读取/解压/目录和字体工具通过受控资源服务实现。",
       "testId": "CONFORMANCE-FILES",
-      "implementation": "planned",
-      "verification": "future-fixture",
+      "implementation": "partial",
+      "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Pinned reference source inspection; production implementation pending."
+      "evidence": "Source/account logical resources implement downloadFile/cacheFile/importScript/readFile/readTxtFile/deleteFile with origin rechecks, cache TTL, quotas and guarded commits. No host File/path is exposed. Archives, directory/font tools and arbitrary-file charset detection remain pending.",
+      "productTests": [
+        "hnovel.execution.ResourceBridgeTest",
+        "indi.dmzz_yyhyy.lightnovelreader.sourceexecution.IsolatedExecutionInstrumentedTest"
+      ]
     },
     {
       "id": "LOGIN",
@@ -274,10 +293,18 @@
       "owner": "https://github.com/Renakoni/hnovel/issues/86",
       "requirement": "可终止进程、IPC 来源身份、CPU/内存/输出/文件/网络预算，反射/类加载边界。",
       "testId": "CONFORMANCE-SANDBOX",
-      "implementation": "planned",
-      "verification": "android-required",
+      "implementation": "implemented",
+      "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Pinned reference source inspection; production implementation pending."
+      "evidence": "The #86 execution boundary has real isolated-UID Binder/INTERNET denial, namespace-bound authority and lifecycle hooks, guarded local commits, deadlines, bounded/depth-checked IPC, JVM pipe/heap limits, recursion controls and sampled Android allocation termination/recovery. The sampling budget is not an instantaneous RSS/mapping cap; see source-execution/ACCEPTANCE.md. New #87 capabilities must extend the same boundary and add their fixtures.",
+      "productTests": [
+        "hnovel.execution.IsolatedExecutorTest",
+        "hnovel.execution.ExecutionSessionTest",
+        "hnovel.rhino.ScriptBoundaryTest",
+        "indi.dmzz_yyhyy.lightnovelreader.data.web.WebSourceRegistryTest",
+        "indi.dmzz_yyhyy.lightnovelreader.data.web.SourceSessionManagerTest",
+        "indi.dmzz_yyhyy.lightnovelreader.sourceexecution.IsolatedExecutionInstrumentedTest"
+      ]
     },
     {
       "id": "SEARCH",
@@ -388,10 +415,15 @@
       "owner": "https://github.com/Renakoni/hnovel/issues/86",
       "requirement": "androidId/randomUUID 等标识工具的权限和来源边界；跨设备稳定性及与外部认证契约的差异必须明示。",
       "testId": "CONFORMANCE-IDENTIFIERS",
-      "implementation": "planned",
-      "verification": "future-fixture",
+      "implementation": "implemented",
+      "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Pinned reference source inspection; production implementation pending."
+      "evidence": "randomUUID produces a fresh version-4 UUID. Broker androidId returns a persisted 16-hex source/profile installation pseudonym, stable across account/revision changes and distinct after source/profile/app-data changes. It does not disclose the global system Android ID; external authentication requiring that literal upstream identifier is not claimed compatible. Neither identifier grants execution authority.",
+      "productTests": [
+        "hnovel.rhino.ScriptCryptoTest",
+        "hnovel.execution.SourceIdentifierTest",
+        "indi.dmzz_yyhyy.lightnovelreader.sourceexecution.IsolatedExecutionInstrumentedTest"
+      ]
     },
     {
       "id": "DIAGNOSTICS",
