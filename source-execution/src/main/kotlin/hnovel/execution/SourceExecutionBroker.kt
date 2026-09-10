@@ -9,10 +9,13 @@ import kotlinx.serialization.json.*
 /** Host-owned per-invocation capability. A script cannot choose its session, identity or grants. */
 class SourceExecutionBroker(val identity: ExecutionIdentity, private val authority: ExecutionAuthority,
     private val session: SourceSession, val limits: ExecutionLimits,
-    private val baseUrl: String = "", private val keyword: String = "", private val page: Int = 1) : AutoCloseable {
+    private val baseUrl: String = "", private val keyword: String = "", private val page: Int = 1,
+    private val allowInteraction: Boolean = false) : AutoCloseable {
     private val lifetime = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var requests = 0
     private var closed = false
+    var interactionRequired = false
+        private set
 
     init {
         require(identity.namespace == session.scope.namespace && identity.sourceId == session.scope.sourceId &&
@@ -39,7 +42,8 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
         if (name != "request.withHeaders") return callWithHeaders(name, args, emptyMap())
         require(args.size == 3)
         val operation = args[0].jsonPrimitive.content
-        require(operation in setOf("java.ajax", "java.ajaxAll", "java.connect", "java.cacheFile", "java.downloadFile", "java.importScript"))
+        require(operation in setOf("java.ajax", "java.ajaxAll", "java.connect", "java.cacheFile", "java.downloadFile", "java.importScript",
+            "java.webView", "java.webViewGetSource", "java.webViewGetOverrideUrl", "java.startBrowser", "java.startBrowserAwait", "browser.refetch"))
         return callWithHeaders(operation, args[1].jsonArray, headerMap(args[2]))
     }
 
@@ -47,6 +51,29 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
         val requestNumber = reserveRequest()
         return ownedWork {
             when (name) {
+                "java.startBrowser", "java.startBrowserAwait", "browser.refetch" -> {
+                    if (!allowInteraction) {
+                        interactionRequired = true
+                        error("Foreground source login required")
+                    }
+                    require(if (name == "browser.refetch") args.size == 1
+                        else args.size == 2 || name == "java.startBrowserAwait" && args.size == 3)
+                    val url = java.net.URI(baseUrl).resolve(args[0].jsonPrimitive.content).toString()
+                    val options = if (name == "browser.refetch") null else BrowserOptions(interactive = true,
+                        title = args[1].jsonPrimitive.content.also { require(it.length <= 1024) })
+                    val response = fetch(BrokerRequest("browser-$requestNumber", url, headers = sourceHeaders, browser = options))
+                    // When the worker will refetch, only signal completion; the rendered body is unused.
+                    val refetch = name == "java.startBrowserAwait" && (args.getOrNull(2)?.jsonPrimitive?.boolean ?: true)
+                    if (name == "java.startBrowser" || refetch) JsonNull else response.scriptSnapshot(true)
+                }
+                "java.webView", "java.webViewGetSource", "java.webViewGetOverrideUrl" -> {
+                    require(args.size == if (name == "java.webView") 3 else 4)
+                    fun string(index: Int) = args.getOrNull(index)?.takeUnless { it == JsonNull }?.jsonPrimitive?.content.orEmpty()
+                    val url = string(1).ifBlank { baseUrl }
+                    val options = BrowserOptions(script = string(2), html = string(0).takeIf { it.isNotBlank() },
+                        sourceRegex = string(3), overrideUrl = name == "java.webViewGetOverrideUrl")
+                    JsonPrimitive(fetch(BrokerRequest("script-$requestNumber", url, headers = sourceHeaders, browser = options)).text())
+                }
                 "source.getKey" -> JsonPrimitive(session.sourceUrl.ifBlank { baseUrl })
                 "source.getLoginInfo", "source.getLoginInfoMap", "source.getLoginHeader", "source.getLoginHeaderMap" -> authorized {
                     require(args.isEmpty())

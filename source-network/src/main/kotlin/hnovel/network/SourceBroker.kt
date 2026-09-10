@@ -23,7 +23,8 @@ import kotlin.coroutines.resumeWithException
 
 /** Host-owned authority. A script receives a bound session protocol, never open() or a raw client. */
 class SourceBroker(private val storageRoot: Path, private val dns: Dns = Dns.SYSTEM,
-    private val limits: BrokerLimits = BrokerLimits(), private val cipher: StorageCipher = StorageCipher.Plain) : AutoCloseable {
+    private val limits: BrokerLimits = BrokerLimits(), private val cipher: StorageCipher = StorageCipher.Plain,
+    private val browser: BrowserExecutor? = null) : AutoCloseable {
     private val sessions = mutableMapOf<List<String>, SourceSession>()
     @Synchronized fun open(scope: SourceScope, grants: List<NetworkGrant>): SourceSession {
         val key = scope.components(account = false)
@@ -33,7 +34,7 @@ class SourceBroker(private val storageRoot: Path, private val dns: Dns = Dns.SYS
             return old
         }
         old?.close()
-        return SourceSession(scope, grants, storageRoot, dns, limits, cipher).also {
+        return SourceSession(scope, grants, storageRoot, dns, limits, cipher, browser).also {
             if (old != null) it.inheritCaches(old)
             sessions[key] = it
         }
@@ -42,7 +43,8 @@ class SourceBroker(private val storageRoot: Path, private val dns: Dns = Dns.SYS
 }
 
 class SourceSession internal constructor(val scope: SourceScope, grants: List<NetworkGrant>, root: Path,
-    dns: Dns, private val limits: BrokerLimits, cipher: StorageCipher = StorageCipher.Plain) : AutoCloseable {
+    dns: Dns, private val limits: BrokerLimits, cipher: StorageCipher = StorageCipher.Plain,
+    private val browser: BrowserExecutor? = null) : AutoCloseable {
     internal val grants = grants.map { it.copy(headers = it.headers.toMap()) }
     private val policy = NetworkPolicy(this.grants, dns)
     private val lifetime = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -97,6 +99,13 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
     @Synchronized fun removeCookie(url: String) { checkOpen(); val parsed = url.toHttpUrlOrNull() ?: error("Invalid cookie URL")
         policy.check(parsed); cookies.setHeader(parsed, "", true) }
 
+    @Synchronized fun browserCookie(url: String, value: String? = null): String {
+        checkOpen(); val parsed = url.toHttpUrlOrNull() ?: error("Invalid cookie URL"); policy.check(parsed)
+        if (!enabledCookieJar) return ""
+        if (value != null) cookies.documentCookie(parsed, value)
+        return cookies.documentHeader(parsed)
+    }
+
     /** Called by the host after revocation; deletes only the retired account's sensitive state. */
     @Synchronized fun clearAccount() {
         close()
@@ -150,8 +159,12 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
             var stage = RequestStage.Queue
             try {
                 validate(snapshot)
-                withTimeout(snapshot.timeoutMillis) {
-                    permits.withPermit { stage = RequestStage.Connect; perform(snapshot, guard) }
+                withTimeout(if (snapshot.browser?.interactive == true) 300000 else snapshot.timeoutMillis) {
+                    if (snapshot.browser != null) {
+                        policy.check(snapshot.url.toHttpUrlOrNull() ?: throw BrokerFailure(RequestStage.Parse, FailureCode.InvalidRequest))
+                        browser?.execute(this@SourceSession, snapshot.copy(browser = null), snapshot.browser, guard)
+                            ?: BrokerResult.Failure(RequestStage.Parse, FailureCode.BrowserRequired)
+                    } else permits.withPermit { stage = RequestStage.Connect; perform(snapshot, guard) }
                 }
             } catch (_: TimeoutCancellationException) {
                 BrokerResult.Failure(stage, FailureCode.Timeout)

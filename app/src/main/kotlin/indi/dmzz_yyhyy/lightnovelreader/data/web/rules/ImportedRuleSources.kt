@@ -28,7 +28,8 @@ import javax.inject.Singleton
 class ImportedRuleSources @Inject constructor(@ApplicationContext context: Context,
     private val registry: WebSourceRegistry, private val authority: ExecutionAuthority,
     private val accounts: SourceSessionManager, private val runner: RuleTaskRunner,
-    private val storageCipher: hnovel.network.StorageCipher = hnovel.network.StorageCipher.Plain) {
+    private val storageCipher: hnovel.network.StorageCipher = hnovel.network.StorageCipher.Plain,
+    private val browser: hnovel.network.BrowserExecutor? = null) {
     private val directory = File(context.filesDir, "rule-sources")
     val definitions by lazy { SourceDefinitionStore(File(directory, "definitions").toPath()) }
     val importer by lazy { SourceDefinitionImporter(definitions) }
@@ -135,7 +136,7 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
             if (next == expected) old.installed.previous else SavedRevision(expected, old.installed.origins))
         accounts.withCurrent(id) { account ->
             check(account.generation == generation) { "Account changed during validation" }
-            val broker = SourceBroker(File(directory, "runtime").toPath(), cipher = storageCipher)
+            val broker = SourceBroker(File(directory, "runtime").toPath(), cipher = storageCipher, browser = browser)
             val session = try { broker.open(SourceScope(id.namespace, id.id, next.profile, generation), installed.origins) }
                 catch (failure: Exception) { broker.close(); throw failure }
             val ticket = authority.issue(id.id, next.profile, next.contentDigest, id.namespace, generation)
@@ -170,7 +171,7 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
         require(definition.enabled && definition.profile in setOf(LEGADO_PROFILE, EXTENSION_PROFILE))
         val id = id(definition)
         val generation = account.generation
-        val broker = SourceBroker(File(directory, "runtime").toPath(), cipher = storageCipher)
+        val broker = SourceBroker(File(directory, "runtime").toPath(), cipher = storageCipher, browser = browser)
         val session = try { broker.open(SourceScope(id.namespace, id.id, definition.profile, generation), installed.origins) }
             catch (failure: Exception) { broker.close(); throw failure }
         val ticket = authority.issue(id.id, definition.profile, definition.contentDigest, id.namespace, generation)

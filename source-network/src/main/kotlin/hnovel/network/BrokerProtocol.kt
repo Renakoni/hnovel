@@ -30,6 +30,7 @@ data class SourceScope(val namespace: String, val sourceId: String, val profile:
     val cache: CacheMode = CacheMode.Disabled,
     val followRedirects: Boolean = true,
     val maxResponseBytes: Int? = null,
+    val browser: BrowserOptions? = null,
 ) {
     override fun toString() = "BrokerRequest(method=$method, kind=$kind)"
 }

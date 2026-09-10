@@ -24,6 +24,10 @@ import kotlinx.coroutines.sync.withLock
 object WebDataSourceModule {
     @Singleton
     @Provides
+    fun provideSourceBrowser(browser: indi.dmzz_yyhyy.lightnovelreader.sourcebrowser.AndroidSourceBrowser): hnovel.network.BrowserExecutor = browser
+
+    @Singleton
+    @Provides
     fun provideSourceStorageCipher(cipher: indi.dmzz_yyhyy.lightnovelreader.data.web.AndroidSourceStorageCipher): hnovel.network.StorageCipher = cipher
 
     @Singleton

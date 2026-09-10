@@ -63,6 +63,17 @@ internal class SourceCookies(private val storage: SourceStorage) {
 
     private fun key(cookie: Cookie) = "${cookie.name}\n${cookie.domain}\n${cookie.path}"
 
+    @Synchronized fun documentHeader(url: HttpUrl): String = cookies.values.map { it.second }
+        .filter { !it.httpOnly && it.expiresAt > System.currentTimeMillis() && it.matches(url) }
+        .sortedByDescending { it.path.length }.joinToString("; ") { "${it.name}=${it.value}" }
+
+    @Synchronized fun documentCookie(url: HttpUrl, value: String) {
+        require(value.length <= 8192)
+        val parsed = Cookie.parse(url, value) ?: return
+        require(!parsed.httpOnly && cookies[key(parsed)]?.second?.httpOnly != true)
+        save(url, okhttp3.Headers.Builder().add("Set-Cookie", value).build())
+    }
+
     @Synchronized fun setHeader(url: HttpUrl, value: String, replace: Boolean) {
         require(value.length <= 65536)
         val before = snapshot()
