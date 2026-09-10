@@ -13,6 +13,8 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
     private val lifetime = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var requests = 0
     private var closed = false
+    var interactionRequired = false
+        private set
 
     init {
         require(identity.namespace == session.scope.namespace && identity.sourceId == session.scope.sourceId &&
@@ -39,6 +41,18 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
         val requestNumber = reserveRequest()
         return ownedWork {
             when (name) {
+                "java.startBrowser", "java.startBrowserAwait" -> {
+                    interactionRequired = true
+                    error("Foreground source login required")
+                }
+                "java.webView", "java.webViewGetSource", "java.webViewGetOverrideUrl" -> {
+                    require(args.size == if (name == "java.webView") 3 else 4)
+                    fun string(index: Int) = args.getOrNull(index)?.takeUnless { it == JsonNull }?.jsonPrimitive?.content.orEmpty()
+                    val url = string(1).ifBlank { baseUrl }
+                    val options = BrowserOptions(script = string(2), html = string(0).takeIf { it.isNotBlank() },
+                        sourceRegex = string(3), overrideUrl = name == "java.webViewGetOverrideUrl")
+                    JsonPrimitive(fetch(BrokerRequest("script-$requestNumber", url, browser = options)).text())
+                }
                 "source.getKey" -> JsonPrimitive(session.sourceUrl.ifBlank { baseUrl })
                 "source.getLoginInfo", "source.getLoginInfoMap", "source.getLoginHeader", "source.getLoginHeaderMap" -> authorized {
                     require(args.isEmpty())

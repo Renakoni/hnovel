@@ -34,7 +34,15 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val info = JsonObject(values.mapValues { JsonPrimitive(it.value) }).toString()
         authority.authorized(identity) { check(session.write(StorageRequest(StorageArea.Account, StorageRequestKey.LOGIN_INFO, info)) is StorageResult.Value) }
         val context = evaluation()
-        if (form.browserUrl != null) throw SourceContentException(ContentError.BrowserRequired, "loginUrl")
+        if (form.browserUrl != null) {
+            val response = session.execute(BrokerRequest("login", form.browserUrl,
+                timeoutMillis = 60000, browser = BrowserOptions(interactive = true)),
+                RequestCommitGuard { authority.authorized(identity, it) })
+            if (response !is BrokerResult.Success) throw SourceContentException(ContentError.LoginRequired, "loginUrl")
+            checkStatus(response.response.status, "loginUrl")
+            authority.authorized(identity) { check(session.write(StorageRequest(StorageArea.Account, "login/status", "authenticated")) is StorageResult.Value) }
+            return@operation
+        }
         val code = scriptBody(spec.loginUrl) + "\n" + if (action == null) "if(typeof login!=='function')throw new Error('login missing');login();true;"
             else form.fields.single { it.name == action && it.type == "button" }.action
                 ?.let(::scriptBody) ?: throw SourceContentException(ContentError.InvalidRule, "loginUi.action")
@@ -105,8 +113,6 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val previous = record.chapters.take(index).lastOrNull { !it.isVolume }?.id
         val next = record.chapters.drop(index + 1).firstOrNull { !it.isVolume }?.id
         val context = evaluation(record.book, chapter)
-        if (spec.content.string("webJs").isNotBlank() || spec.content.string("sourceRegex").isNotBlank())
-            throw SourceContentException(ContentError.BrowserRequired, "ruleContent.webJs")
         val rule = spec.content.string("content")
         if (rule.isBlank()) throw SourceContentException(ContentError.MissingCapability, "ruleContent.content")
         val queue = ArrayDeque<String>().apply { add(chapter.id) }
@@ -117,7 +123,11 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             val url = queue.removeFirst()
             if (url == next) continue // A next-chapter link never changes this logical chapter's content or identity.
             visit(visited, url, "ruleContent.nextContentUrl")
-            val document = fetch(context, url, "ruleContent.content")
+            val browser = if (spec.content.string("webJs").isNotBlank() || spec.content.string("sourceRegex").isNotBlank())
+                BrowserOptions(script = spec.content.string("webJs"), sourceRegex = spec.content.string("sourceRegex")) else null
+            val document = fetch(context, url, "ruleContent.content", browser)
+            // Redirects cannot turn a continuation (or the first page) into the next logical chapter.
+            if (document.url == next) continue
             if (document.url != url && !visited.add(document.url)) throw SourceContentException(ContentError.RepeatedPage, "ruleContent.nextContentUrl")
             if (pages.isEmpty()) context.text(spec.content.string("title"), document.input(), "ruleContent.title")
                 .takeIf { it.isNotBlank() }?.let { title = it; context.chapterField("title", JsonPrimitive(it)) }
@@ -133,6 +143,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             following.filter { it != next }.forEach(queue::addLast)
             context.page++
         }
+        if (pages.isEmpty()) throw SourceContentException(ContentError.EmptyContent, "ruleContent.content")
         var merged = pages.joinToString("\n")
         val replacement = spec.content.string("replaceRegex")
         if (replacement.isNotBlank()) merged = context.text(replacement, RuleValue.Text(merged), "ruleContent.replaceRegex", unescape = false)
@@ -301,7 +312,8 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             else Json.parseToJsonElement(context.script(spec.header, RuleValue.Empty, "header").text())
         return value.jsonObject.mapValues { it.value.jsonPrimitive.content }
     }
-    private suspend fun request(context: RuleEvaluation, url: String, field: String, kind: ResourceKind = ResourceKind.Document): BrokerResponse {
+    private suspend fun request(context: RuleEvaluation, url: String, field: String, kind: ResourceKind = ResourceKind.Document,
+        browser: BrowserOptions? = null): BrokerResponse {
         val prepared = context.script("host.call('request.prepare',result)[0]", RuleValue.Text(url), field).text()
         val compiled = RequestCompiler().compile("content", prepared, context.baseUrl, context.keyword, context.page, headers(context), kind)
         val request = when (compiled) {
@@ -310,7 +322,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
                 ContentError.BrowserRequired else ContentError.InvalidRule, field)
         }
         val started = System.nanoTime()
-        val result = session.execute(request, RequestCommitGuard { authority.authorized(identity, it) })
+        val result = session.execute(request.copy(browser = browser ?: request.browser), RequestCommitGuard { authority.authorized(identity, it) })
         trace.record(ContentTraceEvent("network", field, (System.nanoTime() - started) / 1_000_000,
             request.body?.length ?: 0, (result as? BrokerResult.Success)?.response?.body?.size ?: 0,
             when (result) { is BrokerResult.Success -> "HTTP_${result.response.status}"; is BrokerResult.Failure -> result.code.name }))
@@ -320,14 +332,15 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             is BrokerResult.Failure -> throw SourceContentException(when (result.code) {
                 hnovel.network.FailureCode.OriginDenied, hnovel.network.FailureCode.AddressDenied -> ContentError.PermissionDenied
                 hnovel.network.FailureCode.ResponseTooLarge, hnovel.network.FailureCode.Timeout -> ContentError.Limit
+                hnovel.network.FailureCode.BrowserRequired -> ContentError.BrowserRequired
                 else -> ContentError.Network
             }, field)
         }
         if (kind == ResourceKind.Image) checkStatus(response.status, field)
         return response
     }
-    private suspend fun fetch(context: RuleEvaluation, url: String, field: String): PageDocument {
-        val response = request(context, url, field)
+    private suspend fun fetch(context: RuleEvaluation, url: String, field: String, browser: BrowserOptions? = null): PageDocument {
+        val response = request(context, url, field, browser = browser)
         context.baseUrl = response.finalUrl
         if (spec.loginCheck.isBlank()) {
             checkStatus(response.status, field)

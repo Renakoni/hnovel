@@ -98,6 +98,10 @@
         android:exported="false"
         android:isolatedProcess="true"
         android:process=":source_execution" />
+    <service android:name=".sourcebrowser.SourceBrowserService" android:exported="false"
+        android:process=":source_browser" />
+    <activity android:name=".sourcebrowser.SourceBrowserActivity" android:exported="false"
+        android:process=":source_browser" android:theme="@style/AppTheme" />
   </application>
 
 </manifest>

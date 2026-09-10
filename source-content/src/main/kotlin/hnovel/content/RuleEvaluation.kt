@@ -30,7 +30,9 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
             unescapeHtml = unescape)
         val started = System.nanoTime()
         val result = SourceExecutionBroker(identity, authority, session, limits, baseUrl, keyword, page).use {
-            runner.execute(identity, task, limits, it)
+            runner.execute(identity, task, limits, it).also { _ ->
+                if (it.interactionRequired) throw SourceContentException(ContentError.LoginRequired, field)
+            }
         }
         trace.record(ContentTraceEvent("rule", field, (System.nanoTime() - started) / 1_000_000,
             input.toString().length, (result as? ExecutionResult.Success)?.output?.length ?: 0,
