@@ -7,7 +7,7 @@ import okhttp3.Cookie
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 
-internal class SourceCookies(private val storage: SourceStorage, private val invalidateCache: () -> Unit) {
+internal class SourceCookies(private val storage: SourceStorage) {
     @Serializable private data class SavedCookie(val origin: String, val cookie: String)
     private val cookies = linkedMapOf<String, Pair<String, Cookie>>()
 
@@ -24,7 +24,7 @@ internal class SourceCookies(private val storage: SourceStorage, private val inv
     }
 
     @Synchronized fun header(url: HttpUrl, explicit: String?): String {
-        if (cookies.entries.removeAll { it.value.second.expiresAt <= System.currentTimeMillis() }) invalidateCache()
+        cookies.entries.removeAll { it.value.second.expiresAt <= System.currentTimeMillis() }
         val matching = cookies.values.map { it.second }
             .filter { it.expiresAt > System.currentTimeMillis() && it.matches(url) }
             .sortedByDescending { it.path.length }
@@ -57,7 +57,7 @@ internal class SourceCookies(private val storage: SourceStorage, private val inv
         val saved = Json.encodeToString(next.values.filter { it.second.persistent }.map { SavedCookie(it.first, it.second.toString()) })
         when (val result = storage.write("cookies", saved)) {
             is StorageResult.Failure -> throw BrokerFailure(RequestStage.Storage, result.code)
-            is StorageResult.Value -> { cookies.clear(); cookies.putAll(next); invalidateCache() }
+            is StorageResult.Value -> { cookies.clear(); cookies.putAll(next) }
         }
     }
 
@@ -75,7 +75,6 @@ internal class SourceCookies(private val storage: SourceStorage, private val inv
             if (value.isBlank()) {
                 val saved = Json.encodeToString(cookies.values.filter { it.second.persistent }.map { SavedCookie(it.first, it.second.toString()) })
                 check(storage.write("cookies", saved) is StorageResult.Value)
-                invalidateCache()
             } else save(url, headers.build())
         } catch (failure: Exception) { restoreMemory(before); throw failure }
     }
@@ -84,7 +83,6 @@ internal class SourceCookies(private val storage: SourceStorage, private val inv
     @Synchronized fun restoreMemory(snapshot: List<Pair<String, Cookie>>) {
         cookies.clear()
         snapshot.forEach { cookies[key(it.second)] = it }
-        invalidateCache()
     }
 }
 
