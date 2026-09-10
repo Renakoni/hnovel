@@ -96,6 +96,42 @@ class SourceIdentityRoomTest {
         assertEquals(30, local.getUserReadingData(b.storageKey).totalReadTime)
     }
 
+    @OptIn(coil3.annotation.DelicateCoilApi::class)
+    @Test fun explicitReadingCacheClearRetainsBookshelvesProgressAndSettings() = runBlocking {
+        save(a, "Same title"); save(b, "Same title")
+        shelves.addBookshelf(Bookshelf(id = 1, name = "mixed"))
+        shelves.addBookIntoBookShelf(1, info(a, "Same title"))
+        shelves.addBookIntoBookShelf(1, info(b, "Same title"))
+        val reading = local.getUserReadingData(a.storageKey)
+        val context = RuntimeEnvironment.getApplication()
+        val data = indi.dmzz_yyhyy.lightnovelreader.data.userdata.UserDataRepository(db.userDataDao())
+        data.stringUserData("fixture/login").set("retained-login")
+        val cache = coil3.disk.DiskCache.Builder().directory(okio.Path.Companion.run {
+            java.nio.file.Files.createTempDirectory("manual-image-cache").toString().toPath()
+        }).maxSizeBytes(1024 * 1024).build()
+        cache.openEditor("image")!!.let { editor ->
+            cache.fileSystem.write(editor.metadata) { }
+            cache.fileSystem.write(editor.data) { writeUtf8("cached-image") }
+            editor.commit()
+        }
+        val loader = coil3.ImageLoader.Builder(context).diskCache(cache).build()
+        coil3.SingletonImageLoader.setUnsafe(loader)
+        val models = androidx.lifecycle.ViewModelStore()
+        val model = indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.SettingsViewModel(data, mockk(), mockk(), context, db)
+        models.put("settings", model)
+        try {
+            assertNotNull(cache.openSnapshot("image")?.also { it.close() })
+            model.clearReadingCache()
+            assertTrue(db.chapterContentDao().getAllEntities().isEmpty())
+            assertNull(cache.openSnapshot("image"))
+            assertEquals(setOf(a.storageKey, b.storageKey), shelves.getBookshelf(1)!!.allBookIds.toSet())
+            assertEquals(reading, local.getUserReadingData(a.storageKey))
+            assertEquals("Same title", local.getBookInformation(a.storageKey)!!.title)
+            assertEquals(1, local.getBookVolumes(a.storageKey)!!.volumes.size)
+            assertEquals("retained-login", data.stringUserData("fixture/login").get())
+        } finally { models.clear(); loader.shutdown(); cache.shutdown(); coil3.SingletonImageLoader.reset() }
+    }
+
     @Test fun sameIdsKeepBooksVolumesChaptersAndDeletionIndependent() = runBlocking {
         for ((book, title) in listOf(a to "A", b to "B", other to "Other")) save(book, title)
         for ((book, title) in listOf(a to "A", b to "B", other to "Other")) {
