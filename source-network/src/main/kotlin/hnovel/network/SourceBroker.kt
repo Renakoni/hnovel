@@ -56,7 +56,7 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
     private val config = SourceStorage(root, scope.components(false) + "config", limits, cipher)
     private val account = SourceStorage(root, scope.components(true) + "account", limits, cipher)
     private val cookieStorage = SourceStorage(root, scope.components(true) + "cookies", limits, cipher)
-    private val cookies = SourceCookies(cookieStorage) {}
+    private val cookies = SourceCookies(cookieStorage)
     @Volatile var enabledCookieJar = true
     var sourceUrl: String = ""
         private set
@@ -89,8 +89,6 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         cache = previous.cache
         valuesCache = previous.valuesCache
     }
-
-    @Synchronized fun clearCaches() { checkOpen(); cache.clear(); valuesCache.clear() }
 
     @Synchronized fun cookie(url: String): String { checkOpen(); val parsed = url.toHttpUrlOrNull() ?: error("Invalid cookie URL")
         policy.check(parsed); return cookies.header(parsed, null) }
@@ -197,7 +195,6 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
     private suspend fun perform(request: BrokerRequest, guard: RequestCommitGuard): BrokerResult {
         val initialUrl = request.url.toHttpUrlOrNull() ?: throw BrokerFailure(RequestStage.Parse, FailureCode.InvalidRequest)
         policy.check(initialUrl)
-        val cacheGeneration = cache.generation()
         val initialHeaders = headers(initialUrl, request.headers)
         val cacheKey = hash(Json.encodeToString(listOf(initialUrl.toString(), request.responseCharset.orEmpty(), request.followRedirects.toString(),
             Json.encodeToString<Map<String, List<String>>>(initialHeaders.toMultimap().mapKeys { it.key.lowercase() }.toSortedMap()))))
@@ -214,7 +211,7 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
                 val response = redirects(request, initialUrl, guard)
                 if (response.status in setOf(429, 502, 503, 504) && attempt < request.retry) continue
                 if (request.cache == CacheMode.ReadThrough && response.status in 200..299) guard.commit {
-                    cache.put(cacheKey, response, cacheGeneration)
+                    cache.put(cacheKey, response)
                 }
                 return BrokerResult.Success(response)
             } catch (failure: BrokerFailure) { throw failure }
@@ -342,7 +339,6 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
 private class ValueCache(private val limits: BrokerLimits) {
     private data class Entry(val value: String, val started: Long, val ttl: Long)
     private val entries = linkedMapOf<String, Entry>()
-    @Synchronized fun clear() = entries.clear()
     private fun expire() { entries.entries.removeAll { (System.nanoTime() - it.value.started) / 1_000_000 >= it.value.ttl } }
     @Synchronized fun read(key: String): StorageResult { expire(); return StorageResult.Value(entries[key]?.value) }
     @Synchronized fun write(request: StorageRequest): StorageResult {
@@ -360,16 +356,12 @@ private class ValueCache(private val limits: BrokerLimits) {
 
 private class ResponseCache(private val limits: BrokerLimits) {
     private val entries = linkedMapOf<String, Pair<Long, BrokerResponse>>()
-    private var version = 0L
-    @Synchronized fun generation() = version
-    @Synchronized fun clear() { entries.clear(); version++ }
     @Synchronized fun get(key: String): BrokerResponse? {
         val cached = entries[key] ?: return null
         if ((System.nanoTime() - cached.first) / 1_000_000 >= limits.cacheTtlMillis) { entries.remove(key); return null }
         return copy(cached.second).copy(fromCache = true)
     }
-    @Synchronized fun put(key: String, response: BrokerResponse, generation: Long) {
-        if (generation != version) return
+    @Synchronized fun put(key: String, response: BrokerResponse) {
         if (size(response) > limits.maxCacheBytes) return
         entries[key] = System.nanoTime() to copy(response)
         while (entries.values.sumOf { size(it.second) } > limits.maxCacheBytes || entries.size > 256) entries.remove(entries.keys.first())
