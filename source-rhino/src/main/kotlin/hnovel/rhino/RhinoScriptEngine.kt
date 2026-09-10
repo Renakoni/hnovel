@@ -12,9 +12,16 @@ private class ScriptBridge(private val bridge: HostBridge, private val maxChars:
     fun call(cx: Context, scope: Scriptable, name: String, args: Array<out Any>): Any? {
             if (name.length > 256) throw ResultTooLarge()
             val data = BoundedJsonResult(maxChars).encode(cx.newArray(scope, args.copyOf()))
-            val result = try { bridge.call(name, Json.parseToJsonElement(data).jsonArray) }
+            val pureTool = name.startsWith("java.") && name.removePrefix("java.") in ScriptTools.methods
+            val result = try {
+                val arguments = Json.parseToJsonElement(data).jsonArray
+                if (pureTool) ScriptTools.call(name.removePrefix("java."), arguments) else bridge.call(name, arguments)
+            }
                 catch (cancelled: java.util.concurrent.CancellationException) { throw ScriptCancelled() }
-                catch (_: Exception) { throw BridgeRejected(cx.newObject(scope, "Error", arrayOf("host bridge denied"))) }
+                catch (_: Exception) {
+                    if (pureTool) throw JavaScriptException(cx.newObject(scope, "Error", arrayOf("invalid tool argument")), "script-tool", 1)
+                    throw BridgeRejected(cx.newObject(scope, "Error", arrayOf("host bridge denied")))
+                }
             if (Thread.currentThread().isInterrupted) throw ScriptCancelled()
             return JsonScriptData(cx, scope, maxChars).convert(result)
     }
@@ -37,7 +44,7 @@ private class ScriptBridge(private val bridge: HostBridge, private val maxChars:
             call(context, scope, args[0].toString(), args.drop(1).toTypedArray())
         }
         objectFor("java", listOf("ajax", "ajaxAll", "connect", "get", "head", "post", "getCookie",
-            "get", "put", "getString", "getStringList", "getElement", "getElements").distinct())
+            "put", "getString", "getStringList", "getElement", "getElements") + ScriptTools.methods)
         objectFor("cache", listOf("get", "put", "delete"))
         objectFor("cookie", listOf("getCookie", "setCookie", "removeCookie"))
         val source = objectFor("source", listOf("get", "put", "getVariable", "setVariable"))

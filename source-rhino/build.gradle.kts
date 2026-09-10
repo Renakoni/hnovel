@@ -4,6 +4,7 @@ kotlin { jvmToolchain(21); compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gr
 dependencies {
     implementation("org.mozilla:rhino:1.8.1")
     testImplementation(libs.junit)
+    testImplementation("cn.hutool:hutool-crypto:5.8.22")
     implementation(libs.kotlinx.serialization.json)
 }
 tasks.test { useJUnit() }
