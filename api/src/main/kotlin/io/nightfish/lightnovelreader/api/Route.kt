@@ -107,6 +107,8 @@ object Route {
         /** 设置界面路由组 */
         @Serializable
         object Settings {
+            @Serializable
+            object Sources
             /** 设置主界面路由 */
             @Serializable
             object Home
