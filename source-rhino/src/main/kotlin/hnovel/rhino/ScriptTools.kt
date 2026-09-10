@@ -16,7 +16,7 @@ import javax.crypto.spec.SecretKeySpec
 internal object ScriptTools {
     val methods = setOf("strToBytes", "bytesToStr", "base64Encode", "base64Decode", "base64DecodeToByteArray",
         "hexDecodeToByteArray", "hexDecodeToString", "hexEncodeToString", "md5Encode", "md5Encode16",
-        "digestHex", "digestBase64Str", "HMacHex", "HMacBase64", "encodeURI", "timeFormatUTC", "timeFormat")
+        "digestHex", "digestBase64Str", "HMacHex", "HMacBase64", "encodeURI", "timeFormatUTC", "timeFormat", "randomUUID") + ScriptCrypto.methods
 
     fun call(name: String, values: List<JsonElement>): JsonElement {
         val args = Arguments(values)
@@ -89,16 +89,17 @@ internal object ScriptTools {
                 args.count(1)
                 JsonPrimitive(SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault()).format(Date(values[0].jsonPrimitive.long)))
             }
-            else -> error("Unknown pure tool")
+            "randomUUID" -> { args.count(0); JsonPrimitive(java.util.UUID.randomUUID().toString()) }
+            else -> if (name in ScriptCrypto.methods) ScriptCrypto.call(name, values) else error("Unknown pure tool")
         }
     }
 
-    private fun bytes(value: ByteArray) = JsonArray(value.map { JsonPrimitive(it.toInt()) })
+    internal fun bytes(value: ByteArray) = JsonArray(value.map { JsonPrimitive(it.toInt()) })
     private fun hex(value: ByteArray): String = buildString(value.size * 2) {
         val digits = "0123456789abcdef"
         value.forEach { append(digits[(it.toInt() ushr 4) and 15]); append(digits[it.toInt() and 15]) }
     }
-    private fun unhex(value: String): ByteArray? {
+    internal fun unhex(value: String): ByteArray? {
         if (value.isEmpty()) return null
         // Base16Codec in the pinned Hutool version removes these blank characters.
         val clean = value.filterNot { it.isWhitespace() || it in "\uFEFF\u202A\u0000\u3164\u2800\u180E" }
@@ -115,7 +116,7 @@ internal object ScriptTools {
         val newline = if (flags and 4 != 0) "\r\n" else "\n"
         return encoded.chunked(76).joinToString(newline, postfix = newline)
     }
-    private fun decodeBase64(value: String, flags: Int, mixedAlphabet: Boolean): ByteArray {
+    internal fun decodeBase64(value: String, flags: Int, mixedAlphabet: Boolean): ByteArray {
         if (mixedAlphabet) {
             // Hutool skips non-alphabet characters (including padding) and drops an incomplete byte.
             val alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
@@ -139,7 +140,7 @@ internal object ScriptTools {
         return (if (url) Base64.getUrlDecoder() else Base64.getDecoder()).decode(filtered)
     }
 
-    private class Arguments(private val values: List<JsonElement>) {
+    internal class Arguments(private val values: List<JsonElement>) {
         fun count(min: Int, max: Int = min) = require(values.size in min..max) { "Invalid argument count" }
         fun text(index: Int): String {
             val value = values[index].jsonPrimitive
