@@ -4,6 +4,8 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -135,7 +137,7 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel, onBack:
     state.loginForm?.let { form ->
         val values = remember(form) { mutableStateMapOf<String, String>() }
         AlertDialog(onDismissRequest = model::cancelLogin, title = { Text(stringResource(R.string.sources_login)) },
-            text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (form.browserUrl != null) Text(stringResource(R.string.sources_browser_login))
                 form.fields.forEach { field ->
                     if (field.type == "button") OutlinedButton(onClick = { model.submitLogin(values.toMap(), field.name) }, enabled = !state.busy) { Text(field.name) }
