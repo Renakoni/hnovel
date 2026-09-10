@@ -131,6 +131,7 @@ sealed class UserDataPath(
         }
         /** 显示设置路径组 @since Api 2 */
         data object Display: UserDataPath("display", Settings) {
+            data object BookshelfLayout : UserDataPath("bookshelf_layout", Display)
             /** 深色模式设置 @since Api 2 */
             data object DarkMode : UserDataPath("dark_mode", Display)
             /** 动态颜色设置 @since Api 2 */

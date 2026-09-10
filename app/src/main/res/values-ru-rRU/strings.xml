@@ -357,6 +357,9 @@
     <string name="bookshelf_name_placeholder">Введите название полки</string>
     <string name="bookshelf_settings">Настройки полки</string>
     <string name="bookshelf_create_title">Создать полку</string>
+    <string name="bookshelf_layout_switch_grid">Показать сеткой</string>
+    <string name="bookshelf_layout_switch_list">Показать списком</string>
+    <string name="bookshelf_layout_load_error">Не удалось загрузить книгу</string>
     <string name="bookshelf_sort_type">Sort Type</string>
     <string name="bookshelf_sort_default">Default</string>
     <string name="bookshelf_sort_latest">Recently Updated</string>

@@ -370,6 +370,9 @@
     <string name="bookshelf_name_placeholder">Enter the bookshelf name.</string>
     <string name="bookshelf_settings">Bookshelf Settings</string>
     <string name="bookshelf_create_title">Create Bookshelf</string>
+    <string name="bookshelf_layout_switch_grid">Switch to grid</string>
+    <string name="bookshelf_layout_switch_list">Switch to list</string>
+    <string name="bookshelf_layout_load_error">Unable to load book</string>
     <string name="bookshelf_sort_type">Sort Type</string>
     <string name="bookshelf_sort_default">Default</string>
     <string name="bookshelf_sort_latest">Recently Updated</string>
