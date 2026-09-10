@@ -64,7 +64,7 @@ class ImportedRuleSourcesTest {
                 File(context.filesDir, "images").path.toPath()
             }).maxSizeBytes(1024 * 1024).build()
             val loader = coil3.ImageLoader.Builder(context).diskCache(cache).components {
-                add(indi.dmzz_yyhyy.lightnovelreader.data.image.SourceImageInterceptor(registry, context, accounts))
+                add(indi.dmzz_yyhyy.lightnovelreader.data.image.SourceImageInterceptor(registry, context))
                 add(indi.dmzz_yyhyy.lightnovelreader.data.image.SourceImageFetcher.Factory())
             }.build()
             coil3.SingletonImageLoader.setUnsafe(loader)
