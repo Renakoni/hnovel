@@ -42,6 +42,13 @@ class AndroidSourceBrowser @Inject constructor(@ApplicationContext private val c
                         val url = args.getValue("url").jsonPrimitive.content.toHttpUrl()
                         check(session.permissionFailure(url.toString()) == null)
                         when (operation) {
+                            "initialRequest" -> {
+                                check(url == request.url.toHttpUrl())
+                                // Use the host-owned request, including its explicit source Cookie.
+                                val response = session.execute(request.copy(browser = null,
+                                    maxResponseBytes = minOf(request.maxResponseBytes ?: 1024 * 1024, 1024 * 1024)), guard)
+                                current(); Json.encodeToString(response)
+                            }
                             "request" -> {
                                 val headers = args["headers"]?.jsonObject?.mapValues { it.value.jsonPrimitive.content }.orEmpty()
                                     .filterKeys { it.lowercase() !in setOf("cookie", "host", "content-length", "connection", "accept-encoding") }
