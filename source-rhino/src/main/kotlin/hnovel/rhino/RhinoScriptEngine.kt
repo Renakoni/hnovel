@@ -123,8 +123,8 @@ class RhinoScriptEngine(private val bridge: HostBridge, private val limits: Scri
                     }
                     NativeObject().apply { prototype = shared }
                 }
-                scope.put("book", scope, NativeObject().apply { frame.bookId?.let { put("id", this, it) } })
-                scope.put("chapter", scope, NativeObject().apply { frame.chapterId?.let { put("id", this, it) } })
+                scope.put("book", scope, context.newObject(scope).apply { frame.bookId?.let { put("id", this, it) } })
+                scope.put("chapter", scope, context.newObject(scope).apply { frame.chapterId?.let { put("id", this, it) } })
                 scope.put("result", scope, JsonScriptData(context, scope, limits.maxBridgeChars).convert(frame.variables["result"] ?: JsonNull))
                 scope.put("key", scope, frame.key)
                 scope.put("page", scope, frame.page)

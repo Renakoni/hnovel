@@ -8,6 +8,18 @@ import org.mozilla.javascript.Context
 class RhinoBridgeTest {
     private val frame = ScriptFrame("source-a", "legado", key = "query", page = 3, baseUrl = "https://fixture.invalid/")
 
+    @Test fun bookAndChapterHaveNormalObjectPrototypesWithAndWithoutALibrary() {
+        val engine = RhinoScriptEngine(HostBridge { _, _ -> JsonNull })
+        val script = "[book.hasOwnProperty('id'),chapter.hasOwnProperty('id'),book.toString(),chapter.constructor===Object,Object.getPrototypeOf(book)===Object.prototype]"
+        ScriptLibrary(frame.sourceId, frame.profile, "var state={};").use { library ->
+            for (scope in listOf(null, library)) {
+                assertEquals("[true,true,\"[object Object]\",true,true]", (engine.evaluate(script,
+                    frame.copy(bookId = "book", chapterId = "chapter"), scope) as ScriptResult.Success).json)
+                assertEquals("[false,false,\"[object Object]\",true,true]", (engine.evaluate(script, frame, scope) as ScriptResult.Success).json)
+            }
+        }
+    }
+
     @Test fun interruptedBridgeFailureRemainsCancellationEvenWhenScriptCatchesErrors() {
         val engine = RhinoScriptEngine(HostBridge { _, _ ->
             Thread.currentThread().interrupt()
