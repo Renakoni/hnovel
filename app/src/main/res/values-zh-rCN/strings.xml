@@ -157,6 +157,10 @@
     <string name="settings_reader_volume_key_control">音量键翻页</string>
     <string name="settings_reader_volume_key_control_desc">使用音量+键翻到上一页，音量-键翻到下一页</string>
     <string name="settings_reader_volume_key_interval">按键持续翻页间隔</string>
+    <string name="reader_volume_scroll_title">音量键滚动</string>
+    <string name="reader_volume_scroll_description">音量+后退，音量-前进，横竖屏方向一致。阅读控制栏打开时正常调节音量。</string>
+    <string name="reader_volume_scroll_step">滚动距离（阅读区域百分比）</string>
+    <string name="reader_volume_scroll_interval">长按重复间隔（-1：关闭）</string>
     <string name="settings_reader_t2tp">点击翻页</string>
     <string name="settings_reader_t2tp_desc">启用点击翻页。点击屏幕左侧/右侧以翻页，点击中间展开菜单</string>
     <string name="settings_reader_page_turn_anim">翻页动画</string>

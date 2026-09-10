@@ -526,8 +526,9 @@ class ExportBookToEPUBWork @AssistedInject constructor(
         Log.d(TAG, "render chapter=${it.title}")
         title(it.title)
         content {
+            title(it.title)
             contentJsonDecoder.getDataFromJsonObject(bookContentMap[it.id]!!.content) {
-                bodyElement.add(
+                addContent(
                     it.toHtmlElement(applicationContext).also { element ->
                         element.parseSrc(tempDir, tasks, epubBuilder, includeImages)
                     }
@@ -544,13 +545,15 @@ class ExportBookToEPUBWork @AssistedInject constructor(
     ) {
         val src = this.attributes().firstOrNull { it.name == "src" }
         if (src != null && src.value.runCatching { this.toUri() }.isSuccess) {
-            val id = src.value.hashCode()
+            val id = java.security.MessageDigest.getInstance("SHA-256")
+                .digest(src.value.toByteArray(Charsets.UTF_8))
+                .joinToString("") { "%02x".format(it) }
             val image = tempDir.resolve("image_$id.jpg")
             tasks.add(ImageDownloader.Task(image, src.value.toUri()))
             src.value = "image/image_$id.jpg"
             epubBuilder.imgRes(
                 href = src.value,
-                id = id.toString(),
+                id = "image_$id",
                 file = image
             )
         }

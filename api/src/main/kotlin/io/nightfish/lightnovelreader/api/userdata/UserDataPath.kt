@@ -62,6 +62,8 @@ sealed class UserDataPath(
         data object IsUsingVolumeKeyFlip : UserDataPath("isUsingVolumeKeyFlip", Reader)
         /** 音量键连续翻页间隔 @since Api 2 */
         data object VolumeKeyContinuousFlipInterval : UserDataPath("volumeKeyContinuousFlipInterval", Reader)
+        /** Volume-key scroll distance as a fraction of the reading viewport. */
+        data object VolumeKeyScrollFraction : UserDataPath("volumeKeyScrollFraction", Reader)
         /** 翻页动画效果 @since Api 2 */
         data object FlipAnime : UserDataPath("flipAnime", Reader)
         /** 快速切换章节 @since Api 2 */

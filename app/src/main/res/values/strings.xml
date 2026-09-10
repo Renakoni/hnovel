@@ -163,6 +163,10 @@
     <string name="settings_reader_volume_key_control">Volume Key Navigation</string>
     <string name="settings_reader_volume_key_control_desc">Use the volume + key to move to the previous page and the volume - key to move to the next page</string>
     <string name="settings_reader_volume_key_interval">Key Continuous Flip Interval</string>
+    <string name="reader_volume_scroll_title">Volume key scrolling</string>
+    <string name="reader_volume_scroll_description">Volume + moves backward; volume - moves forward in any orientation. Volume adjusts normally while reading controls are open.</string>
+    <string name="reader_volume_scroll_step">Scroll distance (% of reading area)</string>
+    <string name="reader_volume_scroll_interval">Hold repeat interval (-1: disabled)</string>
     <string name="settings_reader_t2tp">Tap to Turn Pages</string>
     <string name="settings_reader_t2tp_desc">Enable tap-to-turn. Tap left/right side to flip pages, tap center to open the menu</string>
     <string name="settings_reader_page_turn_anim">Page Turn Animation</string>

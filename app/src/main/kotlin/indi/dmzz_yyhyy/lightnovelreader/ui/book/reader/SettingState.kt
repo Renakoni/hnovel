@@ -5,6 +5,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.graphics.Color
 import indi.dmzz_yyhyy.lightnovelreader.data.setting.AbstractSettingState
 import indi.dmzz_yyhyy.lightnovelreader.data.userdata.UserDataRepository
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.DefaultVolumeKeyScrollFraction
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.volumeKeyScrollFraction
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.scroll.ContinuousScrollSettings
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.scroll.UserDataContinuousScrollSettings
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.data.MenuOptions
@@ -30,6 +32,7 @@ class SettingState(
         UserDataContinuousScrollSettings(isUsingContinuousScrollingUserData)
     override val isUsingVolumeKeyFlipUserData = userDataRepository.booleanUserData(UserDataPath.Reader.IsUsingVolumeKeyFlip.path)
     override val volumeKeyContinuousFlipIntervalUserData = userDataRepository.floatUserData(UserDataPath.Reader.VolumeKeyContinuousFlipInterval.path)
+    override val volumeKeyScrollFractionUserData = userDataRepository.floatUserData(UserDataPath.Reader.VolumeKeyScrollFraction.path)
     override val flipAnimeUserData = userDataRepository.stringUserData(UserDataPath.Reader.FlipAnime.path)
     override val fastChapterChangeUserData = userDataRepository.booleanUserData(UserDataPath.Reader.FastChapterChange.path)
     override val batteryIndicatorDisplayModeUserData = userDataRepository.stringUserData(UserDataPath.Reader.BatteryIndicatorDisplayMode.path)
@@ -71,6 +74,8 @@ class SettingState(
     override val isUsingContinuousScrolling by isUsingContinuousScrollingUserData.safeAsState(true)
     override val isUsingVolumeKeyFlip by isUsingVolumeKeyFlipUserData.safeAsState(false)
     override val volumeKeyContinuousFlipInterval by volumeKeyContinuousFlipIntervalUserData.safeAsState(-1f)
+    private val storedVolumeKeyScrollFraction by volumeKeyScrollFractionUserData.safeAsState(DefaultVolumeKeyScrollFraction)
+    override val volumeKeyScrollFraction get() = volumeKeyScrollFraction(storedVolumeKeyScrollFraction)
     override val flipAnime by flipAnimeUserData.safeAsState(MenuOptions.FlipAnimationOptions.ScrollWithoutShadow)
     override val fastChapterChange by fastChapterChangeUserData.safeAsState(false)
     override val batteryIndicatorDisplayMode by batteryIndicatorDisplayModeUserData.safeAsState("classic")
