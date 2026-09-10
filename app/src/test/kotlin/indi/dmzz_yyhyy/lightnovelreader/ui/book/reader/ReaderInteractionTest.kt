@@ -2,6 +2,7 @@ package indi.dmzz_yyhyy.lightnovelreader.ui.book.reader
 
 import android.app.Application
 import android.view.View
+import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.ComposeFoundationFlags
@@ -22,6 +23,8 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalTextToolbar
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.platform.WindowInfo
 import androidx.compose.ui.platform.TextToolbar
 import androidx.compose.ui.platform.TextToolbarStatus
 import androidx.compose.ui.platform.testTag
@@ -41,6 +44,8 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.LocalReaderSelectionState
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ReaderSelectionState
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.LocalReaderVolumeKeysEnabled
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.readerVolumeKeys
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.componet.SimpleTextComponentContent
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.readerTapGestures
 import org.junit.After
@@ -155,6 +160,45 @@ class ReaderInteractionTest {
             assertTrue(scrollOffset() > 0)
             assertEquals(0, readerTaps)
         }
+    }
+
+    @Test
+    fun textSelectionReleasesVolumeKeysUntilSelectionIsCleared() {
+        lateinit var view: View
+        var steps = 0
+        setContent {
+            view = LocalView.current
+            CompositionLocalProvider(
+                LocalReaderVolumeKeysEnabled provides true,
+                LocalWindowInfo provides object : WindowInfo { override val isWindowFocused = true },
+            ) {
+                Column(Modifier.fillMaxSize().readerVolumeKeys(true, -1f) { steps++ }) {
+                    ReaderText("first")
+                    Box(Modifier.fillMaxSize().testTag("blank"))
+                }
+            }
+        }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            assertTrue(view.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_VOLUME_DOWN)))
+            assertTrue(view.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_VOLUME_DOWN)))
+        }
+        compose.waitForIdle()
+        assertEquals(1, steps)
+        selectFirstWord()
+        compose.runOnIdle {
+            assertTrue(selection.hasSelection)
+            assertFalse(view.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_VOLUME_DOWN)))
+            assertFalse(view.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_VOLUME_DOWN)))
+            selection.clear()
+        }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            assertTrue(view.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_VOLUME_DOWN)))
+            assertTrue(view.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_VOLUME_DOWN)))
+        }
+        compose.waitForIdle()
+        assertEquals(2, steps)
     }
 
     @Test

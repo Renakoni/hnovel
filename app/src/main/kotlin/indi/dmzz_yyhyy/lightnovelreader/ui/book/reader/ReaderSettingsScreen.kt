@@ -24,6 +24,7 @@ import androidx.compose.material3.MaterialTheme.typography
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SecondaryTabRow
 import androidx.compose.material3.SheetState
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.TabRowDefaults.SecondaryIndicator
@@ -32,6 +33,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -49,6 +51,7 @@ import indi.dmzz_yyhyy.lightnovelreader.ui.components.SettingsSliderEntry
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.data.MenuOptions
 import io.nightfish.lightnovelreader.api.ui.components.SettingsClickableEntry
 import io.nightfish.lightnovelreader.api.ui.components.SettingsSwitchEntry
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -285,31 +288,35 @@ fun LazyListScope.ActionPage(settingState: ReaderSettingsEditor) {
             stringUserData = settingState.backBlockModeUserData
         )
     }
-    if (settingState.isUsingFlipPage) {
-        item {
-            SettingsSwitchEntry(
-                modifier = Modifier.background(colorScheme.surfaceContainerHigh).animateItem(),
-                painter = painterResource(R.drawable.auto_stories_24px),
-                title = stringResource(R.string.settings_reader_volume_key_control),
-                description = stringResource(R.string.settings_reader_volume_key_control_desc),
-                checked = settingState.isUsingVolumeKeyFlip,
-                booleanUserData = settingState.isUsingVolumeKeyFlipUserData,
-            )
+    item {
+        SettingsSwitchEntry(
+            modifier = Modifier.background(colorScheme.surfaceContainerHigh).animateItem(),
+            painter = painterResource(R.drawable.auto_stories_24px),
+            title = stringResource(if (settingState.isUsingFlipPage)
+                R.string.settings_reader_volume_key_control else R.string.reader_volume_scroll_title),
+            description = stringResource(if (settingState.isUsingFlipPage)
+                R.string.settings_reader_volume_key_control_desc else R.string.reader_volume_scroll_description),
+            checked = settingState.isUsingVolumeKeyFlip,
+            booleanUserData = settingState.isUsingVolumeKeyFlipUserData,
+        )
+    }
+    if (settingState.isUsingVolumeKeyFlip) {
+        if (!settingState.isUsingFlipPage) {
+            item { VolumeScrollFractionEntry(settingState) }
         }
-        if (settingState.isUsingVolumeKeyFlip) {
-            item {
-                val steps = listOf(-1f, 0.1f, 0.2f, 0.3f, 0.5f, 0.8f, 1.0f, 2.0f, 4.0f)
-                SettingsSliderEntry(
-                    modifier = Modifier.background(colorScheme.surfaceContainerHigh).animateItem(),
-                    painter = painterResource(R.drawable.timer_24px),
-                    title = stringResource(R.string.settings_reader_volume_key_interval),
-                    unit = "s",
-                    value = settingState.volumeKeyContinuousFlipInterval,
-                    valueRange = steps.first()..steps.last(),
-                    steps = steps,
-                    floatUserData = settingState.volumeKeyContinuousFlipIntervalUserData,
-                )
-            }
+        item {
+            val steps = listOf(-1f, 0.1f, 0.2f, 0.3f, 0.5f, 0.8f, 1.0f, 2.0f, 4.0f)
+            SettingsSliderEntry(
+                modifier = Modifier.background(colorScheme.surfaceContainerHigh).animateItem(),
+                painter = painterResource(R.drawable.timer_24px),
+                title = stringResource(if (settingState.isUsingFlipPage)
+                    R.string.settings_reader_volume_key_interval else R.string.reader_volume_scroll_interval),
+                unit = "s",
+                value = settingState.volumeKeyContinuousFlipInterval,
+                valueRange = steps.first()..steps.last(),
+                steps = steps,
+                floatUserData = settingState.volumeKeyContinuousFlipIntervalUserData,
+            )
         }
     }
     if (!settingState.isUsingFlipPage) {
@@ -360,6 +367,29 @@ fun LazyListScope.ActionPage(settingState: ReaderSettingsEditor) {
                 booleanUserData = settingState.fastChapterChangeUserData,
             )
         }
+    }
+}
+
+@Composable
+private fun VolumeScrollFractionEntry(settingState: ReaderSettingsEditor) {
+    var fraction by remember(settingState.volumeKeyScrollFraction) {
+        mutableFloatStateOf(settingState.volumeKeyScrollFraction)
+    }
+    Column(
+        Modifier.clip(RoundedCornerShape(4.dp))
+            .background(colorScheme.surfaceContainerHigh)
+            .fillMaxWidth()
+            .padding(horizontal = 22.dp, vertical = 12.dp)
+    ) {
+        Text(stringResource(R.string.reader_volume_scroll_step), style = typography.headlineSmall)
+        Text("${(fraction * 100).roundToInt()}%", color = colorScheme.primary, style = typography.bodyMedium)
+        Slider(
+            value = fraction,
+            onValueChange = { fraction = (it * 20).roundToInt() / 20f },
+            onValueChangeFinished = { settingState.volumeKeyScrollFractionUserData.asynchronousSet(fraction) },
+            valueRange = 0.1f..1f,
+            steps = 17,
+        )
     }
 }
 
