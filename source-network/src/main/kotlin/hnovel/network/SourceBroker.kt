@@ -23,7 +23,7 @@ import kotlin.coroutines.resumeWithException
 
 /** Host-owned authority. A script receives a bound session protocol, never open() or a raw client. */
 class SourceBroker(private val storageRoot: Path, private val dns: Dns = Dns.SYSTEM,
-    private val limits: BrokerLimits = BrokerLimits()) : AutoCloseable {
+    private val limits: BrokerLimits = BrokerLimits(), private val cipher: StorageCipher = StorageCipher.Plain) : AutoCloseable {
     private val sessions = mutableMapOf<List<String>, SourceSession>()
     @Synchronized fun open(scope: SourceScope, grants: List<NetworkGrant>): SourceSession {
         val key = scope.components(account = false)
@@ -33,24 +33,36 @@ class SourceBroker(private val storageRoot: Path, private val dns: Dns = Dns.SYS
             return old
         }
         old?.close()
-        return SourceSession(scope, grants, storageRoot, dns, limits).also { sessions[key] = it }
+        return SourceSession(scope, grants, storageRoot, dns, limits, cipher).also {
+            if (old != null) it.inheritCaches(old)
+            sessions[key] = it
+        }
     }
     @Synchronized override fun close() { sessions.values.forEach { it.close() }; sessions.clear() }
 }
 
 class SourceSession internal constructor(val scope: SourceScope, grants: List<NetworkGrant>, root: Path,
-    dns: Dns, private val limits: BrokerLimits) : AutoCloseable {
+    dns: Dns, private val limits: BrokerLimits, cipher: StorageCipher = StorageCipher.Plain) : AutoCloseable {
     internal val grants = grants.map { it.copy(headers = it.headers.toMap()) }
     private val policy = NetworkPolicy(this.grants, dns)
     private val lifetime = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val permits = Semaphore(limits.concurrency)
     private val rate = Mutex()
     private var lastStart = 0L
-    private val cache = ResponseCache(limits)
-    private val valuesCache = ValueCache(limits)
-    private val config = SourceStorage(root, scope.components(false) + "config", limits)
-    private val account = SourceStorage(root, scope.components(true) + "account", limits)
-    private val cookies = SourceCookies(SourceStorage(root, scope.components(true) + "cookies", limits), cache::clear)
+    private var cache = ResponseCache(limits)
+    private var valuesCache = ValueCache(limits)
+    private val config = SourceStorage(root, scope.components(false) + "config", limits, cipher)
+    private val account = SourceStorage(root, scope.components(true) + "account", limits, cipher)
+    private val cookieStorage = SourceStorage(root, scope.components(true) + "cookies", limits, cipher)
+    private val cookies = SourceCookies(cookieStorage)
+    @Volatile var enabledCookieJar = true
+    var sourceUrl: String = ""
+        private set
+    fun configureSource(url: String, cookiesEnabled: Boolean) {
+        require(sourceUrl.isEmpty() || sourceUrl == url)
+        sourceUrl = url
+        enabledCookieJar = cookiesEnabled
+    }
     private val client = OkHttpClient.Builder().proxy(Proxy.NO_PROXY).followRedirects(false).followSslRedirects(false)
         .retryOnConnectionFailure(false).cookieJar(CookieJar.NO_COOKIES).cache(null)
         .addNetworkInterceptor { chain ->
@@ -66,6 +78,30 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         require(scope == previous.scope)
         checkOpen(); previous.checkOpen()
         cookies.restoreMemory(previous.cookies.snapshot())
+    }
+
+    /** Retain source caches when credentials or a runtime binding change. */
+    @Synchronized fun inheritCaches(previous: SourceSession) {
+        require(scope.components(false) == previous.scope.components(false))
+        checkOpen()
+        cache = previous.cache
+        valuesCache = previous.valuesCache
+    }
+
+    @Synchronized fun cookie(url: String): String { checkOpen(); val parsed = url.toHttpUrlOrNull() ?: error("Invalid cookie URL")
+        policy.check(parsed); return cookies.header(parsed, null) }
+    @Synchronized fun setCookie(url: String, value: String, replace: Boolean = false) {
+        checkOpen(); val parsed = url.toHttpUrlOrNull() ?: error("Invalid cookie URL"); policy.check(parsed)
+        cookies.setHeader(parsed, value, replace)
+    }
+    @Synchronized fun removeCookie(url: String) { checkOpen(); val parsed = url.toHttpUrlOrNull() ?: error("Invalid cookie URL")
+        policy.check(parsed); cookies.setHeader(parsed, "", true) }
+
+    /** Called by the host after revocation; deletes only the retired account's sensitive state. */
+    @Synchronized fun clearAccount() {
+        close()
+        check(account.clear() is StorageResult.Value && cookieStorage.clear() is StorageResult.Value) { "Account cleanup failed" }
+        cookies.restoreMemory(emptyList())
     }
 
     @Synchronized fun read(request: StorageRequest): StorageResult {
@@ -146,7 +182,6 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
     private suspend fun perform(request: BrokerRequest, guard: RequestCommitGuard): BrokerResult {
         val initialUrl = request.url.toHttpUrlOrNull() ?: throw BrokerFailure(RequestStage.Parse, FailureCode.InvalidRequest)
         policy.check(initialUrl)
-        val cacheGeneration = cache.generation()
         val initialHeaders = headers(initialUrl, request.headers)
         val cacheKey = hash(Json.encodeToString(listOf(initialUrl.toString(), request.responseCharset.orEmpty(), request.followRedirects.toString(),
             Json.encodeToString<Map<String, List<String>>>(initialHeaders.toMultimap().mapKeys { it.key.lowercase() }.toSortedMap()))))
@@ -163,7 +198,7 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
                 val response = redirects(request, initialUrl, guard)
                 if (response.status in setOf(429, 502, 503, 504) && attempt < request.retry) continue
                 if (request.cache == CacheMode.ReadThrough && response.status in 200..299) guard.commit {
-                    cache.put(cacheKey, response, cacheGeneration)
+                    cache.put(cacheKey, response)
                 }
                 return BrokerResult.Success(response)
             } catch (failure: BrokerFailure) { throw failure }
@@ -217,11 +252,18 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
     private fun headers(url: HttpUrl, explicit: Map<String, String>): Headers {
         val headers = Headers.Builder()
         policy.check(url).headers.forEach { (key, value) -> headers.set(key, value) }
+        val sameOrigin = sourceUrl.toHttpUrlOrNull()?.let { NetworkPolicy.origin(it) == NetworkPolicy.origin(url) } == true
+        val loginHeaders = if (sameOrigin) (account.read(StorageRequestKey.LOGIN_HEADERS) as? StorageResult.Value)?.value else null
+        loginHeaders?.let { Json.parseToJsonElement(it).let { json ->
+            (json as kotlinx.serialization.json.JsonObject).forEach { (key, value) ->
+                headers.set(key, (value as kotlinx.serialization.json.JsonPrimitive).content)
+            }
+        } }
         explicit.forEach { (key, value) -> headers.set(key, value) }
         if (headers.build().names().any { it.lowercase() in setOf("host", "content-length", "transfer-encoding", "connection", "proxy-authorization", "proxy-connection") }) {
             throw BrokerFailure(RequestStage.Permission, FailureCode.InvalidRequest)
         }
-        val cookie = cookies.header(url, headers["Cookie"])
+        val cookie = if (enabledCookieJar) cookies.header(url, headers["Cookie"]) else headers["Cookie"].orEmpty()
         headers.removeAll("Cookie")
         if (cookie.isNotEmpty()) headers.set("Cookie", cookie)
         return headers.build()
@@ -254,7 +296,7 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
                             synchronized(this@SourceSession) {
                                 checkOpen()
                                 if (continuation.isActive) {
-                                    cookies.save(response.request.url, response.headers)
+                                    if (enabledCookieJar) cookies.save(response.request.url, response.headers)
                                     continuation.resume(BrokerResponse(response.code, response.request.url.toString(),
                                         response.headers.toMultimap().mapValues { it.value.toList() }, bytes.toByteArray(), charset, redirects,
                                         message = response.message, protocol = response.protocol.toString(),
@@ -277,19 +319,16 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         client.dispatcher.cancelAll()
         client.connectionPool.evictAll()
         client.dispatcher.executorService.shutdown()
-        cache.clear()
-        valuesCache.clear()
     }
 }
 
-/** Session-local general cache for the later script bridge; keys are independent of HTTP cache keys. */
+/** Source cache, retained across account rotation and runtime replacement. */
 private class ValueCache(private val limits: BrokerLimits) {
     private data class Entry(val value: String, val started: Long, val ttl: Long)
     private val entries = linkedMapOf<String, Entry>()
-    fun clear() = entries.clear()
     private fun expire() { entries.entries.removeAll { (System.nanoTime() - it.value.started) / 1_000_000 >= it.value.ttl } }
-    fun read(key: String): StorageResult { expire(); return StorageResult.Value(entries[key]?.value) }
-    fun write(request: StorageRequest): StorageResult {
+    @Synchronized fun read(key: String): StorageResult { expire(); return StorageResult.Value(entries[key]?.value) }
+    @Synchronized fun write(request: StorageRequest): StorageResult {
         expire()
         if (request.value == null) { entries.remove(request.key); return StorageResult.Value(null) }
         val ttl = request.ttlMillis ?: limits.cacheTtlMillis
@@ -304,16 +343,12 @@ private class ValueCache(private val limits: BrokerLimits) {
 
 private class ResponseCache(private val limits: BrokerLimits) {
     private val entries = linkedMapOf<String, Pair<Long, BrokerResponse>>()
-    private var version = 0L
-    @Synchronized fun generation() = version
-    @Synchronized fun clear() { entries.clear(); version++ }
     @Synchronized fun get(key: String): BrokerResponse? {
         val cached = entries[key] ?: return null
         if ((System.nanoTime() - cached.first) / 1_000_000 >= limits.cacheTtlMillis) { entries.remove(key); return null }
         return copy(cached.second).copy(fromCache = true)
     }
-    @Synchronized fun put(key: String, response: BrokerResponse, generation: Long) {
-        if (generation != version) return
+    @Synchronized fun put(key: String, response: BrokerResponse) {
         if (size(response) > limits.maxCacheBytes) return
         entries[key] = System.nanoTime() to copy(response)
         while (entries.values.sumOf { size(it.second) } > limits.maxCacheBytes || entries.size > 256) entries.remove(entries.keys.first())

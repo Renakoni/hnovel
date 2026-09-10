@@ -24,6 +24,10 @@ import kotlinx.coroutines.sync.withLock
 object WebDataSourceModule {
     @Singleton
     @Provides
+    fun provideSourceStorageCipher(cipher: indi.dmzz_yyhyy.lightnovelreader.data.web.AndroidSourceStorageCipher): hnovel.network.StorageCipher = cipher
+
+    @Singleton
+    @Provides
     fun provideRuleTaskRunner(executor: AndroidIsolatedExecutor): RuleTaskRunner {
         val queue = Mutex()
         return RuleTaskRunner { identity, task, limits, broker ->

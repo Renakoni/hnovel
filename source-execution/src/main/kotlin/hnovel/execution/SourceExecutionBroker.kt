@@ -9,8 +9,7 @@ import kotlinx.serialization.json.*
 /** Host-owned per-invocation capability. A script cannot choose its session, identity or grants. */
 class SourceExecutionBroker(val identity: ExecutionIdentity, private val authority: ExecutionAuthority,
     private val session: SourceSession, val limits: ExecutionLimits,
-    private val baseUrl: String = "", private val keyword: String = "", private val page: Int = 1,
-    private val sourceHeaders: Map<String, String> = emptyMap()) : AutoCloseable {
+    private val baseUrl: String = "", private val keyword: String = "", private val page: Int = 1) : AutoCloseable {
     private val lifetime = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var requests = 0
     private var closed = false
@@ -37,12 +36,59 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
     }
 
     suspend fun call(name: String, args: List<JsonElement>): JsonElement {
+        if (name != "request.withHeaders") return callWithHeaders(name, args, emptyMap())
+        require(args.size == 3)
+        val operation = args[0].jsonPrimitive.content
+        require(operation in setOf("java.ajax", "java.ajaxAll", "java.connect", "java.cacheFile", "java.downloadFile", "java.importScript"))
+        return callWithHeaders(operation, args[1].jsonArray, headerMap(args[2]))
+    }
+
+    private suspend fun callWithHeaders(name: String, args: List<JsonElement>, sourceHeaders: Map<String, String>): JsonElement {
         val requestNumber = reserveRequest()
         return ownedWork {
             when (name) {
+                "source.getKey" -> JsonPrimitive(session.sourceUrl.ifBlank { baseUrl })
+                "source.getLoginInfo", "source.getLoginInfoMap", "source.getLoginHeader", "source.getLoginHeaderMap" -> authorized {
+                    require(args.isEmpty())
+                    val key = if (name.contains("LoginInfo")) StorageRequestKey.LOGIN_INFO else StorageRequestKey.LOGIN_HEADERS
+                    val stored = session.read(StorageRequest(StorageArea.Account, key))
+                    check(stored is StorageResult.Value)
+                    if (name.endsWith("Map")) stored.value?.let(Json::parseToJsonElement) ?: JsonNull
+                    else stored.value?.let(::JsonPrimitive) ?: JsonNull
+                }
+                "source.putLoginInfo", "source.putLoginHeader", "source.removeLoginInfo", "source.removeLoginHeader" -> authorized {
+                    val removing = name.contains("remove")
+                    require(args.size == if (removing) 0 else 1)
+                    val info = name.endsWith("Info")
+                    val value = if (removing) null else args.single().jsonPrimitive.content.also { text ->
+                        val data = Json.parseToJsonElement(text).jsonObject
+                        require(data.size <= 32 && text.length <= 16384 && data.values.all { it is JsonPrimitive && it.isString })
+                    }
+                    val key = if (info) StorageRequestKey.LOGIN_INFO else StorageRequestKey.LOGIN_HEADERS
+                    check(session.write(StorageRequest(StorageArea.Account, key, value)) is StorageResult.Value)
+                    if (!info) {
+                        val url = session.sourceUrl.ifBlank { baseUrl }
+                        if (removing) session.removeCookie(url)
+                        else Json.parseToJsonElement(value!!).jsonObject.entries.firstOrNull { it.key.equals("Cookie", true) }
+                            ?.let { session.setCookie(url, it.value.jsonPrimitive.content) }
+                    }
+                    if (info && !removing) JsonPrimitive(true) else JsonNull
+                }
+                "cookie.getCookie", "java.getCookie", "cookie.getKey", "cookie.setCookie", "cookie.replaceCookie", "cookie.removeCookie" -> authorized {
+                    val required = if (name in setOf("cookie.getKey", "cookie.setCookie", "cookie.replaceCookie")) 2 else 1
+                    require(args.size == required)
+                    val url = args[0].jsonPrimitive.content
+                    when (name) {
+                        "cookie.getCookie", "java.getCookie" -> JsonPrimitive(session.cookie(url))
+                        "cookie.getKey" -> JsonPrimitive(session.cookie(url).split(';').map { it.trim().split('=', limit = 2) }
+                            .firstOrNull { it.size == 2 && it[0] == args[1].jsonPrimitive.content }?.get(1).orEmpty())
+                        "cookie.removeCookie" -> { session.removeCookie(url); JsonNull }
+                        else -> { session.setCookie(url, args[1].jsonPrimitive.content, name == "cookie.setCookie"); JsonNull }
+                    }
+                }
                 "resource.storeArchive", "resource.readArchive" -> archiveResource(name, args)
                 "java.importScript", "java.cacheFile", "java.downloadFile", "java.readFile", "java.readTxtFile", "java.deleteFile" ->
-                    resource(name, args, requestNumber)
+                    resource(name, args, requestNumber, sourceHeaders)
                 "java.androidId" -> authorized {
                     require(args.isEmpty())
                     val value = session.installationIdentifier()
@@ -52,7 +98,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
                 "java.ajax" -> {
                     require(args.size == 1)
                     val url = (args[0] as? JsonArray)?.firstOrNull() ?: args[0]
-                    JsonPrimitive(fetch(compiled(requestNumber, url.jsonPrimitive.content)).text())
+                    JsonPrimitive(fetch(compiled(requestNumber, url.jsonPrimitive.content, sourceHeaders)).text())
                 }
                 "java.connect" -> {
                     require(args.size in 1..2)
@@ -68,7 +114,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
                     require(args.size == 1)
                     val urls = args[0].jsonArray
                     val requests = urls.mapIndexed { index, url ->
-                        compiled(if (index == 0) requestNumber else reserveRequest(), url.jsonPrimitive.content)
+                        compiled(if (index == 0) requestNumber else reserveRequest(), url.jsonPrimitive.content, sourceHeaders)
                     }
                     // Reserve and compile the complete batch before dispatch; a rejected budget
                     // cannot send a prefix. Session permits bound actual network concurrency.
@@ -99,7 +145,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
                     val area = if (name.startsWith("cache.")) StorageArea.Cache else StorageArea.Config
                     val stored = session.read(StorageRequest(area, key))
                     check(stored is StorageResult.Value) { "Storage read failed" }
-                    stored.value?.let(::JsonPrimitive) ?: if (area == StorageArea.Config) JsonPrimitive("") else JsonNull
+                    stored.value?.let(::JsonPrimitive) ?: if (!name.startsWith("cache.")) JsonPrimitive("") else JsonNull
                 }
                 "cache.put", "source.put", "cache.delete", "source.setVariable" -> authorized {
                     val variable = name == "source.setVariable"
@@ -119,7 +165,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
         }
     }
 
-    private fun compiled(number: Int, rule: String, headers: Map<String, String> = sourceHeaders): BrokerRequest {
+    private fun compiled(number: Int, rule: String, headers: Map<String, String>): BrokerRequest {
         val compiled = RequestCompiler().compile("script-$number", rule, baseUrl, keyword, page, headers)
         check(compiled is CompiledRequest.Ready) { "Request requires an unsupported option" }
         return compiled.request
@@ -137,7 +183,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
     }
 
     /** Logical source/account resources. A script path is never passed to the host filesystem. */
-    private suspend fun resource(name: String, args: List<JsonElement>, number: Int): JsonElement {
+    private suspend fun resource(name: String, args: List<JsonElement>, number: Int, sourceHeaders: Map<String, String>): JsonElement {
         require(args.size in 1..if (name in setOf("java.downloadFile", "java.cacheFile", "java.readTxtFile")) 2 else 1)
         val first = args[0].jsonPrimitive.content
         if (first.removePrefix("/").startsWith("archives/") && name in setOf("java.readFile", "java.readTxtFile", "java.deleteFile"))
@@ -147,7 +193,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
             return "resource:" + path.removePrefix("/")
         }
         fun read(path: String): JsonObject? = authorized {
-            val stored = session.read(StorageRequest(StorageArea.Account, key(path)))
+            val stored = session.read(StorageRequest(StorageArea.Config, key(path)))
             check(stored is StorageResult.Value) { "Resource storage unavailable" }
             stored.value?.let { Json.parseToJsonElement(it).jsonObject }
         }
@@ -160,7 +206,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
         if (name in setOf("java.readFile", "java.readTxtFile", "java.deleteFile") || name == "java.importScript" && !first.startsWith("http", true)) {
             val record = read(first)
             if (name == "java.deleteFile") return authorized {
-                check(session.write(StorageRequest(StorageArea.Account, key(first))) is StorageResult.Value)
+                check(session.write(StorageRequest(StorageArea.Config, key(first))) is StorageResult.Value)
                 JsonPrimitive(record != null)
             }
             if (record == null) {
@@ -181,7 +227,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
         val suffix = type ?: rawUrl.substring(0, optionStart?.range?.first ?: rawUrl.length).substringBefore('?').substringAfterLast('/', "").substringAfterLast('.', "bin")
         require(suffix.matches(Regex("[a-zA-Z0-9]{1,12}"))) { "Invalid resource type" }
         val rule = if (options != null) rawUrl.substring(0, optionStart!!.range.first) + "," + JsonObject(options - "type") else rawUrl
-        val request = compiled(number, rule).copy(kind = ResourceKind.Script)
+        val request = compiled(number, rule, sourceHeaders).copy(kind = ResourceKind.Script)
         authorized { check(session.permissionFailure(request.url) == null) { "Resource origin denied" } }
         val hash = java.security.MessageDigest.getInstance("SHA-256").digest(rawUrl.toByteArray())
             .joinToString("") { "%02x".format(it.toInt() and 255) }
@@ -208,7 +254,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
             put("bytes", java.util.Base64.getEncoder().encodeToString(response.body))
             if (cache) put("cacheUntil", if (seconds == 0L) 0 else Math.addExact(System.currentTimeMillis(), cacheDuration))
         }
-        authorized { check(session.write(StorageRequest(StorageArea.Account, key(path), record.toString())) is StorageResult.Value) { "Resource quota exceeded" } }
+        authorized { check(session.write(StorageRequest(StorageArea.Config, key(path), record.toString())) is StorageResult.Value) { "Resource quota exceeded" } }
         return if (name == "java.downloadFile") JsonPrimitive(path) else JsonPrimitive(response.text().also {
             check(name != "java.importScript" || it.isNotBlank()) { "Script resource empty" }
         })
@@ -219,7 +265,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
         require(args.size == if (name == "resource.storeArchive") 2 else 1)
         val path = args[0].jsonPrimitive.content.removePrefix("/")
         fun read(key: String): JsonObject? {
-            val value = session.read(StorageRequest(StorageArea.Account, key))
+            val value = session.read(StorageRequest(StorageArea.Config, key))
             check(value is StorageResult.Value)
             return value.value?.let { Json.parseToJsonElement(it).jsonObject }
         }
@@ -246,7 +292,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
             val record = buildJsonObject {
                 put("url", original.getValue("url")); put("finalUrl", original.getValue("finalUrl")); put("files", files)
             }
-            check(session.write(StorageRequest(StorageArea.Account, "resource:$directory", record.toString())) is StorageResult.Value)
+            check(session.write(StorageRequest(StorageArea.Config, "resource:$directory", record.toString())) is StorageResult.Value)
             return@authorized JsonPrimitive("/$directory")
         }
         val match = Regex("(archives/[0-9a-f]{64})(?:/(.+))?").matchEntire(path) ?: error("Invalid archive path")
@@ -259,7 +305,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
             val files = record.getValue("files").jsonObject
             if (entry != null && entry !in files) return@authorized JsonPrimitive(false)
             val updated = if (entry == null) null else JsonObject(record + ("files" to JsonObject(files - entry))).toString()
-            check(session.write(StorageRequest(StorageArea.Account, "resource:$directory", updated)) is StorageResult.Value)
+            check(session.write(StorageRequest(StorageArea.Config, "resource:$directory", updated)) is StorageResult.Value)
             return@authorized JsonPrimitive(true)
         }
         if (record == null) return@authorized JsonNull
@@ -281,7 +327,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
             val digest = java.security.MessageDigest.getInstance("SHA-256").digest(url.toByteArray(Charsets.UTF_8))
                 .joinToString("") { "%02x".format(it.toInt() and 255) }
             val key = "library:$digest"
-            val cached = authorized { session.read(StorageRequest(StorageArea.Account, key)) }
+            val cached = authorized { session.read(StorageRequest(StorageArea.Config, key)) }
             check(cached is StorageResult.Value) { "Library cache unavailable" }
             val entry = cached.value?.let { Json.parseToJsonElement(it).jsonObject } ?: run {
                 val response = session.execute(BrokerRequest("library-$requestNumber", url,
@@ -291,7 +337,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
                 if (code.length.toLong() + 1 + size > SourceLibraryDefinition.MAX_CHARS) throw LibraryTooLarge()
                 buildJsonObject { put("url", response.response.finalUrl); put("code", code) }.also { entry ->
                     authorized {
-                        check(session.write(StorageRequest(StorageArea.Account, key, entry.toString())) is StorageResult.Value) {
+                        check(session.write(StorageRequest(StorageArea.Config, key, entry.toString())) is StorageResult.Value) {
                             "Library cache quota exceeded"
                         }
                     }

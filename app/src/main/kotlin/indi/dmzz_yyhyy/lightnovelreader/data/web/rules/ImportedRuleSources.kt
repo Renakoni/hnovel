@@ -27,7 +27,8 @@ import javax.inject.Singleton
 @Singleton
 class ImportedRuleSources @Inject constructor(@ApplicationContext context: Context,
     private val registry: WebSourceRegistry, private val authority: ExecutionAuthority,
-    private val accounts: SourceSessionManager, private val runner: RuleTaskRunner) {
+    private val accounts: SourceSessionManager, private val runner: RuleTaskRunner,
+    private val storageCipher: hnovel.network.StorageCipher = hnovel.network.StorageCipher.Plain) {
     private val directory = File(context.filesDir, "rule-sources")
     val definitions by lazy { SourceDefinitionStore(File(directory, "definitions").toPath()) }
     val importer by lazy { SourceDefinitionImporter(definitions) }
@@ -46,8 +47,13 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
                     val current = active[id] ?: continue
                     if (current.registration.metadata.accountGeneration != generation) {
                         current.registration.unregister()
+                        runCatching { current.session?.clearAccount() }.onFailure {
+                            android.util.Log.w("ImportedRuleSources", "Retired account cleanup failed")
+                        }
                         current.broker?.close()
-                        active[id] = restoreBinding(current.installed)
+                        active[id] = restoreBinding(current.installed).also { next ->
+                            current.session?.let { next.session?.inheritCaches(it) }
+                        }
                     }
                 }
             } }
@@ -129,7 +135,7 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
             if (next == expected) old.installed.previous else SavedRevision(expected, old.installed.origins))
         accounts.withCurrent(id) { account ->
             check(account.generation == generation) { "Account changed during validation" }
-            val broker = SourceBroker(File(directory, "runtime").toPath())
+            val broker = SourceBroker(File(directory, "runtime").toPath(), cipher = storageCipher)
             val session = try { broker.open(SourceScope(id.namespace, id.id, next.profile, generation), installed.origins) }
                 catch (failure: Exception) { broker.close(); throw failure }
             val ticket = authority.issue(id.id, next.profile, next.contentDigest, id.namespace, generation)
@@ -138,13 +144,15 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
                 val metadata = old.registration.metadata.copy(item = old.registration.metadata.item.copy(name = next.displayName),
                     revision = next.contentDigest, capabilities = old.registration.metadata.capabilities.let {
                         if (source.canSearch) it + SourceCapability.Search else it - SourceCapability.Search
+                    }.let {
+                        if (source.canLogin) it + SourceCapability.Login else it - SourceCapability.Login
                     })
                 val registration = registry.replace(old.registration, RuleWebBookDataSource(id, source), metadata, ticket) {
                     // This runs under the authority fence: old Cookie commits cannot land after the snapshot.
-                    old.session?.let(session::inheritCookies)
+                    old.session?.let { session.inheritCookies(it); session.inheritCaches(it) }
                     save(active.values.map { if (it === old) installed else it.installed })
                 }
-                active[id] = Binding(installed, registration, broker, session)
+                active[id] = Binding(installed, registration, broker, session, source)
                 old.broker?.close()
             } catch (failure: Exception) { authority.revoke(ticket); broker.close(); throw failure }
         }
@@ -162,7 +170,7 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
         require(definition.enabled && definition.profile in setOf(LEGADO_PROFILE, EXTENSION_PROFILE))
         val id = id(definition)
         val generation = account.generation
-        val broker = SourceBroker(File(directory, "runtime").toPath())
+        val broker = SourceBroker(File(directory, "runtime").toPath(), cipher = storageCipher)
         val session = try { broker.open(SourceScope(id.namespace, id.id, definition.profile, generation), installed.origins) }
             catch (failure: Exception) { broker.close(); throw failure }
         val ticket = authority.issue(id.id, definition.profile, definition.contentDigest, id.namespace, generation)
@@ -171,10 +179,39 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
         val metadata = SourceMetadata(WebDataSourceItem(id, definition.displayName, "Imported source"), buildSet {
             addAll(listOf(SourceCapability.BookInformation, SourceCapability.Directory, SourceCapability.ChapterContent, SourceCapability.Images))
             if (source.canSearch) add(SourceCapability.Search)
+            if (source.canLogin) add(SourceCapability.Login)
         }, revision = definition.contentDigest, accountGeneration = generation)
         val registration = try { beforePublish(); registry.register(RuleWebBookDataSource(id, source), metadata) }
             catch (failure: Exception) { source.close(); broker.close(); throw failure }
-        Binding(installed, registration, broker, session)
+        Binding(installed, registration, broker, session, source)
+    }
+
+    internal suspend fun loginTarget(id: Identifier): RuleLoginTarget = withContext(Dispatchers.IO) {
+        restore()
+        lock.withLock {
+            val current = checkNotNull(active[id]) { "Source is not installed" }
+            RuleLoginTarget(id, current.registration.metadata.revision, current.registration.metadata.accountGeneration,
+                checkNotNull(current.rule), checkNotNull(current.session))
+        }
+    }
+
+    internal suspend fun rotateAccount(id: Identifier, expectedGeneration: Long? = null): RuleLoginTarget = withContext(Dispatchers.IO) {
+        restore()
+        lock.withLock {
+            val current = checkNotNull(active[id]) { "Source is not installed" }
+            if (expectedGeneration != null) check(accounts.current(id).generation == expectedGeneration) { "Login attempt is stale" }
+            accounts.begin(id)
+            current.registration.unregister()
+            try { current.session?.clearAccount() } finally {
+                current.broker?.close()
+                active[id] = restoreBinding(current.installed).also { next ->
+                            current.session?.let { next.session?.inheritCaches(it) }
+                        }
+            }
+            val next = active.getValue(id)
+            RuleLoginTarget(id, next.registration.metadata.revision, next.registration.metadata.accountGeneration,
+                checkNotNull(next.rule), checkNotNull(next.session))
+        }
     }
 
     private fun save(installed: List<InstalledSource>) {
@@ -197,7 +234,7 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
     @Serializable private data class SavedRevision(val definition: SourceDefinition, val origins: List<NetworkGrant>)
     @Serializable private data class InstalledSource(val definition: SourceDefinition, val origins: List<NetworkGrant>, val previous: SavedRevision? = null)
     private data class Binding(val installed: InstalledSource, val registration: SourceRegistration, val broker: SourceBroker?,
-        val session: hnovel.network.SourceSession? = null)
+        val session: hnovel.network.SourceSession? = null, val rule: RuleSource? = null)
     companion object {
         private const val MAX_SNAPSHOT_BYTES = 16 * 1024 * 1024
         fun id(definition: SourceDefinition) = Identifier("rules", definition.sourceId)
@@ -205,3 +242,6 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
 }
 
 data class InstalledRuleSource(val definition: SourceDefinition, val origins: List<NetworkGrant>, val previous: SourceDefinition?)
+
+internal data class RuleLoginTarget(val source: Identifier, val revision: String, val generation: Long,
+    val rules: RuleSource, val session: hnovel.network.SourceSession)

@@ -37,13 +37,15 @@ private class ScriptBridge(private val bridge: HostBridge, private val rules: Sc
                 else if (name == "java.readTxtFile") resources.text(cx, arguments)
                 else if (name.startsWith("java.") && name.substringAfter("java.") in resources.methods) resources.archive(cx, name.substringAfter("java."), arguments)
                 else if (rules.supports(name, arguments)) rules.call(cx, name, arguments)
-                else if (pureTool) ScriptTools.call(name.removePrefix("java."), arguments) else bridge.call(name, requests.prepare(cx, name, arguments))
+                else if (pureTool) ScriptTools.call(name.removePrefix("java."), arguments) else requests.call(cx, bridge, name, arguments)
                 if (Thread.currentThread().isInterrupted) throw ScriptCancelled()
                 val networkResponse = name in setOf("java.ajaxAll", "java.connect") ||
                     name in setOf("java.get", "java.head", "java.post") && args.size >= 2
                 if (networkResponse) ScriptResponses.validate(result, maxChars)
                 val converted = if (networkResponse) null else JsonScriptData(cx, scope, maxChars).convert(result)
                 when {
+                    name in setOf("source.getLoginInfoMap", "source.getLoginHeaderMap") && result != JsonNull ->
+                        ScriptData.map(cx, scope, result.jsonObject.mapValues { it.value.jsonPrimitive.content }.toMutableMap())
                     name == "java.getElement" || name == "java.getElements" -> rules.elementView(cx, scope, result)
                     name == "java.ajaxAll" -> realm.arrayIn(scope, result.jsonArray.map { ScriptResponses.create(cx, scope, it.jsonObject, false) }.toTypedArray())
                     name == "java.connect" -> ScriptResponses.create(cx, scope, result.jsonObject, false)
@@ -82,11 +84,11 @@ private class ScriptBridge(private val bridge: HostBridge, private val rules: Sc
             "put", "getString", "getStringList", "getElement", "getElements", "importScript", "cacheFile", "downloadFile",
             "readFile", "readTxtFile", "deleteFile", "toURL") + ScriptTools.methods + ScriptCryptoObjects.factories + fonts.methods + resources.methods)
         objectFor("cache", listOf("get", "put", "delete"))
-        objectFor("cookie", listOf("getCookie", "setCookie", "removeCookie"))
-        val source = objectFor("source", listOf("get", "put", "getVariable", "setVariable"))
+        objectFor("cookie", listOf("getCookie", "getKey", "setCookie", "replaceCookie", "removeCookie"))
+        val source = objectFor("source", listOf("get", "put", "getVariable", "setVariable", "getKey", "getLoginInfo", "getLoginInfoMap",
+            "putLoginInfo", "removeLoginInfo", "getLoginHeader", "getLoginHeaderMap", "putLoginHeader", "removeLoginHeader"))
         source.defineProperty("id", frame.sourceId, ScriptableObject.READONLY)
         source.defineProperty("profile", frame.profile, ScriptableObject.READONLY)
-        method(source, "getKey") { _, _, _ -> frame.sourceId }
         method(javaBridge, "getSource") { _, _, args -> require(args.isEmpty()); source }
     }
 }
@@ -95,7 +97,7 @@ data class ScriptFrame(val sourceId: String, val profile: String, val bookId: St
     val variables: Map<String, JsonElement> = emptyMap(), val key: String = "", val page: Int = 1,
     val baseUrl: String = "", val ruleContext: RuleContext? = null, val ruleInput: RuleValue? = null,
     val ruleBudget: RuleBudget? = null, val book: JsonObject = JsonObject(emptyMap()),
-    val chapter: JsonObject = JsonObject(emptyMap()), val chineseConverter: Int = 0)
+    val chapter: JsonObject = JsonObject(emptyMap()), val chineseConverter: Int = 0, val sourceHeaderRule: String = "")
 
 data class ScriptLimits(val instructionLimit: Int = 100_000, val maxResultChars: Int = 256 * 1024,
     val maxScriptChars: Int = 256 * 1024, val maxBridgeChars: Int = DEFAULT_BRIDGE_CHARS,

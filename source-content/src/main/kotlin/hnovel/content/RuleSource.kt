@@ -17,10 +17,29 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
     private val store = RuleBookStore(session, authority, identity)
     private val serial = Mutex()
     val canSearch get() = spec.searchUrl.isNotBlank()
+    val canLogin get() = spec.loginUrl.isNotBlank() || spec.loginUi.isNotBlank()
     init {
         require(identity.sourceId == definition.sourceId && identity.profile == definition.profile && identity.revision == definition.contentDigest)
         require(session.scope.sourceId == identity.sourceId && session.scope.namespace == identity.namespace &&
             session.scope.profile == identity.profile && session.scope.accountGeneration == identity.accountGeneration)
+        session.configureSource(spec.baseUrl, spec.cookiesEnabled)
+    }
+
+    fun loginForm(): LoginForm = LoginForm.parse(spec.loginUi, spec.loginUrl)
+
+    suspend fun login(values: Map<String, String>, action: String? = null): Unit = operation("loginUrl") {
+        val form = loginForm()
+        require(form.fields.filter { it.type != "button" }.map { it.name }.toSet().containsAll(values.keys))
+        require(values.size <= 32 && values.entries.sumOf { it.key.length.toLong() + it.value.length } <= 16384)
+        val info = JsonObject(values.mapValues { JsonPrimitive(it.value) }).toString()
+        authority.authorized(identity) { check(session.write(StorageRequest(StorageArea.Account, StorageRequestKey.LOGIN_INFO, info)) is StorageResult.Value) }
+        val context = evaluation()
+        if (form.browserUrl != null) throw SourceContentException(ContentError.BrowserRequired, "loginUrl")
+        val code = scriptBody(spec.loginUrl) + "\n" + if (action == null) "if(typeof login!=='function')throw new Error('login missing');login();true;"
+            else form.fields.single { it.name == action && it.type == "button" }.action
+                ?.let(::scriptBody) ?: throw SourceContentException(ContentError.InvalidRule, "loginUi.action")
+        context.script(code, RuleValue.Empty, "loginUrl")
+        if (action == null) authority.authorized(identity) { check(session.write(StorageRequest(StorageArea.Account, "login/status", "authenticated")) is StorageResult.Value) }
     }
 
     suspend fun search(keyword: String, page: Int = 1): List<RuleBook> = operation("ruleSearch") {
@@ -321,7 +340,10 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         return PageDocument(value.getValue("body").jsonPrimitive.content, finalUrl)
     }
     private fun checkStatus(status: Int, field: String) {
-        if (status == 401 || status == 403) throw SourceContentException(ContentError.LoginRequired, field)
+        if (status == 401 || status == 403) {
+            authority.authorized(identity) { session.write(StorageRequest(StorageArea.Account, "login/status", "required")) }
+            throw SourceContentException(ContentError.LoginRequired, field)
+        }
         if (status !in 200..299) throw SourceContentException(ContentError.Network, field)
     }
     private suspend fun links(context: RuleEvaluation, rule: String, document: PageDocument, field: String): List<String> =

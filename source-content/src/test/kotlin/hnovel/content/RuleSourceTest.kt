@@ -51,9 +51,10 @@ class RuleSourceTest {
     @Test fun headerScriptCanFetchItsValueWithoutRecursivelyEvaluatingItself() = runBlocking {
         RuleSourceFixture().use { fixture ->
             val normal = fixture.server.dispatcher
+            val tokens = java.util.concurrent.atomic.AtomicInteger()
             fixture.server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
                 override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest): okhttp3.mockwebserver.MockResponse =
-                    if (request.path == "/token") okhttp3.mockwebserver.MockResponse().setBody("source-token")
+                    if (request.path == "/token") okhttp3.mockwebserver.MockResponse().setBody("source-token").also { tokens.incrementAndGet() }
                     else if (request.getHeader("Authorization") == "source-token") normal.dispatch(request)
                     else okhttp3.mockwebserver.MockResponse().setResponseCode(401)
             }
@@ -62,6 +63,67 @@ class RuleSourceTest {
                 "loginCheckJs" to JsonPrimitive("java.connect(result.url())")
             )) }).use { source ->
                 assertEquals("Same title", source.search("title").single().title)
+                assertEquals("Only the search and its explicit retry need headers", 2, tokens.get())
+            }
+        }
+    }
+
+    @Test fun localFieldsDoNotMultiplyHeaderRequestsAcrossReadingStages() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            val normal = fixture.server.dispatcher
+            val tokens = java.util.concurrent.atomic.AtomicInteger()
+            fixture.server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
+                override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest): okhttp3.mockwebserver.MockResponse =
+                    if (request.path == "/token") okhttp3.mockwebserver.MockResponse().setBody("token-${tokens.incrementAndGet()}")
+                    else if (request.getHeader("Authorization") == "token-${tokens.get()}") normal.dispatch(request)
+                    else okhttp3.mockwebserver.MockResponse().setResponseCode(401)
+            }
+            fixture.source(customize = { raw -> JsonObject(raw +
+                ("header" to JsonPrimitive("@js:JSON.stringify({Authorization:java.ajax('/token'),'X-Source':'A'})")))
+            }).use { source ->
+                val book = source.search("title").single()
+                assertEquals(1, tokens.get())
+                val chapters = source.directory(book.id)
+                source.content(book.id, chapters[1].id)
+                source.image(book.id, fixture.server.url("/cover.png").toString(), true)
+                assertEquals("Each business request evaluates its header exactly once", fixture.documents.get(), tokens.get())
+                val before = tokens.get()
+                source.search("title", page = 2)
+                assertEquals(before + 1, tokens.get())
+            }
+        }
+    }
+
+    @Test fun nestedRequestsRefreshOneTimeHeadersAndPreserveTheirCallingResult() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            val tokens = java.util.concurrent.atomic.AtomicInteger()
+            val requests = java.util.concurrent.atomic.AtomicInteger()
+            fixture.server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
+                override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest): okhttp3.mockwebserver.MockResponse {
+                    if (request.path == "/token") return okhttp3.mockwebserver.MockResponse().setBody("token-${tokens.incrementAndGet()}")
+                    if (request.path == "/explicit") return okhttp3.mockwebserver.MockResponse().setBody("explicit")
+                    val expected = requests.incrementAndGet()
+                    if (request.getHeader("Authorization") != "token-$expected") return okhttp3.mockwebserver.MockResponse().setResponseCode(401)
+                    return okhttp3.mockwebserver.MockResponse().setBody(when (request.path) {
+                        "/lookup" -> "/search"
+                        "/search" -> "<li><a href='/book/one'><h2>Same title</h2></a></li>"
+                        else -> "accepted"
+                    })
+                }
+            }
+            fixture.source(customize = { raw -> JsonObject(raw + mapOf(
+                "header" to JsonPrimitive("@js:var local='header';var result=java.ajax('/token');JSON.stringify({Authorization:result})"),
+                "searchUrl" to JsonPrimitive("@js:java.ajax('/lookup')"),
+                "loginCheckJs" to JsonPrimitive("java.connect(result.url())"),
+                "ruleSearch" to JsonObject(raw.getValue("ruleSearch").jsonObject + ("name" to JsonPrimitive("""
+                    h2@text@js:var local='caller';if(java.ajax('/nested')!=='accepted')throw 'nested';
+                    if(local!=='caller')throw 'header overwrote caller';
+                    if(java.connect('/explicit','{}').body()!=='explicit')throw 'explicit';result
+                """.trimIndent())))
+            )) }).use { source ->
+                assertEquals("Same title", source.search("title").single().title)
+                assertEquals(4, requests.get())
+                assertEquals(4, tokens.get())
             }
         }
     }
@@ -244,7 +306,7 @@ class RuleSourceTest {
             if (cancel) operation.join() else assertEquals(ContentError.Unavailable, (operation.await().exceptionOrNull() as SourceContentException).code)
             val definition = source.definition
             val session = fixture.broker.open(SourceScope("rules", definition.sourceId, definition.profile), listOf(NetworkGrant(fixture.server.url("/").toString(), true)))
-            val saved = session.read(StorageRequest(StorageArea.Account, "content/book/" + digest(id))) as StorageResult.Value
+            val saved = session.read(StorageRequest(StorageArea.Config, "content/book/" + digest(id))) as StorageResult.Value
             val record = Json.decodeFromString(BookRecord.serializer(), saved.value!!)
             assertEquals("One", record.chapters[1].title)
             assertEquals("One", record.chapters[1].state.variables["chapterKey"])
