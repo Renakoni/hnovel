@@ -43,6 +43,130 @@ import org.junit.runner.RunWith
 class IsolatedExecutionInstrumentedTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
 
+    @Test fun ordinaryResponseSizesAndRetainedHeadersRespectBudgetsAcrossBinder() = runBlocking {
+        val authority = ExecutionAuthority()
+        val executor = AndroidIsolatedExecutor(context, authority)
+        val id = authority.issue("response-budgets", "legado", "1", "fixture")
+        val limits = ExecutionLimits(timeoutMillis = 30000)
+        val root = java.io.File(context.cacheDir, "response-budgets-${java.util.UUID.randomUUID()}")
+        val library = "var holder={};"
+        try {
+            MockWebServer().use { server ->
+                server.start()
+                val base = server.url("/").toString()
+                SourceBroker(root.toPath()).use { sessions ->
+                    val session = sessions.open(SourceScope("fixture", "response-budgets", "legado"), listOf(NetworkGrant(base, true)))
+                    suspend fun execute(code: String) = SourceExecutionBroker(id, authority, session, limits, base).use { broker ->
+                        executor.execute(id, ExecutionTask.Script(code, libraryCode = library, baseUrl = base), limits, broker)
+                    }
+                    server.enqueue(MockResponse().setBody("x".repeat(60000)).addHeader("X-Test", "first"))
+                    assertEquals(ExecutionResult.Success("60000"), execute("""
+                        holder.r=java.get(baseUrl,{});holder.r.addHeader('X-Retained','first');
+                        holder.headers=holder.r.multiHeaders().get('X-Retained');holder.r.body().length
+                    """))
+                    assertEquals(ExecutionResult.Success("1"), execute("holder.headers.add('second');1"))
+                    assertEquals(ExecutionResult.Failure(FailureCode.OutputLimit), execute("holder.headers.add(new Array(10001).join('x'));1"))
+                    assertEquals(ExecutionResult.Success("\"undefined\""), execute("typeof holder.r"))
+                    server.enqueue(MockResponse().setBody("\u4E2D".repeat(20000)))
+                    assertEquals(ExecutionResult.Success("[20000,60000]"), execute("var r=java.connect(baseUrl);[r.body().length,r.raw().body().contentLength()]"))
+                    repeat(2) { server.enqueue(MockResponse().setBody("x".repeat(30000))) }
+                    assertEquals(ExecutionResult.Success("[30000,30000]"), execute("java.ajaxAll([baseUrl,baseUrl]).map(function(r){return r.body().length})"))
+                }
+            }
+        } finally { executor.close(); root.deleteRecursively() }
+    }
+
+    @Test fun responseBytesDomAndEntityWritesCrossRealBinderBoundary() = runBlocking {
+        val authority = ExecutionAuthority()
+        val executor = AndroidIsolatedExecutor(context, authority)
+        val id = authority.issue("response-data", "legado", "1", "fixture")
+        val limits = ExecutionLimits(timeoutMillis = 30000)
+        val root = java.io.File(context.cacheDir, "response-data-${java.util.UUID.randomUUID()}")
+        try {
+            MockWebServer().use { server ->
+                server.start()
+                val base = server.url("/").toString()
+                server.enqueue(MockResponse().setBody(okio.Buffer().write(byteArrayOf(0,127,-128,-1))))
+                val html = "<meta charset=windows-1252><p>caf\u00e9</p>".toByteArray(charset("windows-1252"))
+                server.enqueue(MockResponse().setHeader("Content-Type", "text/html").setBody(okio.Buffer().write(html)))
+                SourceBroker(root.toPath()).use { sessions ->
+                    val session = sessions.open(SourceScope("fixture", "response-data", "legado"), listOf(NetworkGrant(base, true)))
+                    SourceExecutionBroker(id, authority, session, limits, base).use { broker ->
+                        val result = executor.execute(id, ExecutionTask.Script("""
+                            var stream=java.get(baseUrl+'bytes',{}).bodyStream(),bytes=[0,0,0,0];stream.read(bytes);stream.close();
+                            var response=java.get(baseUrl+'html',{}),before=response.charset(),doc=response.parse();
+                            doc.selectFirst('p').appendText('!').dataset().put('chapter','one');
+                            [bytes,before,doc.selectFirst('p').text(),response.charset(),doc.selectFirst('p').attr('data-chapter'),typeof doc.getClass]
+                        """, baseUrl=base), limits, broker)
+                        assertEquals(ExecutionResult.Success("[[0,127,-128,-1],null,\"café!\",\"windows-1252\",\"one\",\"undefined\"]"), result)
+                    }
+                }
+            }
+            val metadataId = authority.issue("metadata-data", "legado", "1")
+            val result = executor.execute(metadataId, ExecutionTask.Rule("""<js>
+                book.setName('Updated');book.putVariable('big',new Array(10001).join('x'));result
+                </js><js>book.name+':'+book.getVariable('big').length</js>""",RuleValue.Text("input"),OutputKind.Text),limits)
+            assertTrue(result.toString(),result is ExecutionResult.Success)
+            val data=Json.decodeFromString(ExecutedRule.serializer(),(result as ExecutionResult.Success).output)
+            assertEquals(RuleValue.Text("Updated:10000"),data.value)
+            assertEquals("Updated",data.book!!.getValue("name").jsonPrimitive.content)
+            assertEquals(10000,data.bookBigWrites.getValue("big")!!.length)
+        } finally { root.deleteRecursively() }
+    }
+
+    @Test fun oversizedArchivesMatchPortableSizeFailuresAcrossTheIsolatedBoundary() = runBlocking {
+        fun zip(vararg entries: Pair<String, Int>) = java.io.ByteArrayOutputStream().also { out ->
+            java.util.zip.ZipOutputStream(out).use { archive ->
+                for ((name, size) in entries) {
+                    archive.putNextEntry(java.util.zip.ZipEntry(name)); archive.write(ByteArray(size)); archive.closeEntry()
+                }
+            }
+        }.toByteArray()
+        val exact = zip("chapter" to 65536)
+        for (decoder in listOf(hnovel.rhino.ArchiveDecoder.Zip, AndroidArchiveDecoder)) {
+            assertEquals(65536, decoder.decode(exact, 65536).getValue("chapter").size)
+            assertTrue(runCatching { decoder.decode(exact, exact.size - 1) }.exceptionOrNull() is hnovel.rhino.ArchiveSizeLimitExceeded)
+        }
+        val authority = ExecutionAuthority()
+        val executor = AndroidIsolatedExecutor(context, authority)
+        val id = authority.issue("archive-limits", "legado", "1")
+        val limits = ExecutionLimits(timeoutMillis = 30000)
+        try {
+            for (bytes in listOf(zip("chapter" to 65537), zip("chapter" to 40000, "other" to 40000))) {
+                val hex = bytes.joinToString("") { "%02x".format(it.toInt() and 255) }
+                assertEquals(ExecutionResult.Failure(FailureCode.OutputLimit), executor.execute(id,
+                    ExecutionTask.Script("java.getZipStringContent('$hex','chapter')"), limits))
+            }
+            val invalid = zip("../chapter" to 1).joinToString("") { "%02x".format(it.toInt() and 255) }
+            assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied), executor.execute(id,
+                ExecutionTask.Script("java.getZipStringContent('$invalid','chapter')"), limits))
+            assertEquals(ExecutionResult.Success("42"), executor.execute(id, ExecutionTask.Script("21*2"), limits))
+        } finally { executor.close() }
+    }
+
+    @Test fun nativeArchivesFontsConversionAndMetadataRunInIsolatedProcess() = runBlocking {
+        val authority = ExecutionAuthority()
+        val executor = AndroidIsolatedExecutor(context, authority)
+        val id = authority.issue("native-tools", "legado", "1")
+        val limits = ExecutionLimits(timeoutMillis = 30000)
+        fun fixture(name: String) = InstrumentationRegistry.getInstrumentation().context.assets.open("fixtures/$name").use { it.readBytes() }
+        for ((extension, method) in listOf("zip" to "Zip", "rar" to "Rar", "7z" to "7z")) {
+            val hex = fixture("chapter.$extension").joinToString("") { "%02x".format(it.toInt() and 255) }
+            val result = executor.execute(id, ExecutionTask.Script("java.get${method}StringContent('$hex','chapter.txt')"), limits)
+            assertEquals(extension, ExecutionResult.Success("\"synthetic chapter\""), result)
+        }
+        val good = java.util.Base64.getEncoder().encodeToString(fixture("plain.ttf"))
+        val bad = java.util.Base64.getEncoder().encodeToString(fixture("obfuscated.ttf"))
+        val supplementary = java.util.Base64.getEncoder().encodeToString(fixture("supplementary.ttf"))
+        assertEquals(ExecutionResult.Success("\"A\""), executor.execute(id, ExecutionTask.Script(
+            "java.replaceFont(String.fromCodePoint(0x100000),java.queryTTF('$supplementary'),java.queryTTF('$good'))"),limits))
+        val task = ExecutionTask.Script("""
+            var good=java.queryTTF('$good');var bad=java.queryTTF('$bad');
+            [java.replaceFont('\uE000',bad,good),java.t2s('龍與書'),java.s2t('龙与书'),book.name,chapter.title]
+        """, book=buildJsonObject { put("name", "Book") }, chapter=buildJsonObject { put("title", "Chapter") })
+        assertEquals(ExecutionResult.Success("[\"A\",\"龙与书\",\"龍與書\",\"Book\",\"Chapter\"]"), executor.execute(id, task, limits))
+    }
+
     @Test fun cryptoNestedRulesTemplatesAndSourceResourcesExecuteInIsolatedWorker() = runBlocking {
         val authority=ExecutionAuthority()
         val executor=AndroidIsolatedExecutor(context,authority)
@@ -365,6 +489,29 @@ class IsolatedExecutionInstrumentedTest {
                     assertEquals(ExecutionResult.Success("\"current\""), run("java.ajax.call(null,'/current')"))
                     assertEquals("/current", server.takeRequest(3, TimeUnit.SECONDS)?.path)
                 }
+            }
+        } finally { executor.close() }
+    }
+
+    @Test fun oversizedDomMutationDiscardsRetainedLibraryStateAcrossBinderCalls() = runBlocking {
+        val authority = ExecutionAuthority()
+        val executor = AndroidIsolatedExecutor(context, authority)
+        val id = authority.issue("dom-reset", "legado", "1")
+        val limits = ExecutionLimits(timeoutMillis = 15000)
+        val library = "var saved={};var counter={value:0};"
+        fun task(code: String) = ExecutionTask.Script(code, libraryCode = library,
+            result = JsonPrimitive("<p>A</p>"))
+        try {
+            repeat(2) {
+                assertEquals(ExecutionResult.Success("1"), executor.execute(id, task("""
+                    saved.node=java.getElements('p').first();saved.alias=saved.node;
+                    saved.node.append(new Array(60001).join('x'));++counter.value
+                """), limits))
+                assertEquals(ExecutionResult.Failure(FailureCode.OutputLimit), executor.execute(id, task("""
+                    try{saved.node.append(new Array(10001).join('x'))}catch(e){}
+                """), limits))
+                assertEquals(ExecutionResult.Success("[\"undefined\",\"undefined\",0]"), executor.execute(id,
+                    task("[typeof saved.node,typeof saved.alias,counter.value]"), limits))
             }
         } finally { executor.close() }
     }

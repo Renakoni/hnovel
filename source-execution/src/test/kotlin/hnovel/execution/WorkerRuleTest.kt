@@ -2,10 +2,26 @@ package hnovel.execution
 
 import hnovel.rules.*
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.*
 import org.junit.Assert.*
 import org.junit.Test
 
 class WorkerRuleTest {
+    @Test fun metadataAndScopedWritesCrossWireWithoutChangingBookIdentity() {
+        val book = buildJsonObject { put("name", "Same book"); put("author", "Same author"); put("bookUrl", "/book"); put("wordCount", "10k"); put("kind", "novel,fiction") }
+        val chapter = buildJsonObject { put("url", "one,{\"method\":\"POST\"}"); put("baseUrl", "https://fixture.invalid/toc/"); put("title", "One") }
+        val task = ExecutionTask.Rule("""@js:
+            book.putVariable('token','book');chapter.putVariable('token',null);
+            [book.name,book.getKindList().join('|'),chapter.getAbsoluteURL(),java.get('token'),book.id].join(';')
+        """, RuleValue.Text("input"), OutputKind.Text, bookId="source-a:book", book=book, chapter=chapter,
+            chapterVariables=mapOf("token" to "old"))
+        val result = value(run(task))
+        assertEquals(RuleValue.Text("Same book;10k|novel|fiction;https://fixture.invalid/toc/one,{\"method\":\"POST\"};book;source-a:book"), result.value)
+        assertEquals(mapOf("token" to "book"), result.bookWrites)
+        assertEquals(mapOf("token" to null), result.chapterWrites)
+        assertEquals("Same book", book.getValue("name").jsonPrimitive.content)
+        assertEquals(RuleValue.Text(""), value(run(task.copy(rule="@js:book.getVariable('token')", chapterVariables=emptyMap()))).value)
+    }
     private val id = ExecutionAuthority().issue("a", "legado", "1")
     private fun run(task: ExecutionTask.Rule): ExecutionResult {
         val input = ExecutionWire.encode(id, task, ExecutionLimits())

@@ -13,11 +13,28 @@ internal class ScriptRuleHelpers(private val scope: Scriptable, frame: ScriptFra
     private val budget = frame.ruleBudget ?: RuleBudget(RuleLimits(maxInputChars = limits.maxBridgeChars,
         maxOutputChars = limits.maxBridgeChars))
     private var depth = 0
+    private var elements: RuleValue? = null
+
+    fun elementView(cx: Context, active: Scriptable, data: JsonElement): Any? {
+        fun convert(value: RuleValue): Any? = when (value) {
+            is RuleValue.Node -> if (value.kind == InputKind.Html || value.kind == InputKind.Xml)
+                ScriptDom.fragment(cx, active, value.content, context.baseUrl, value.kind == InputKind.Xml)
+                else JsonScriptData(cx, active, limits.maxBridgeChars).convert(json(value))
+            is RuleValue.Items -> {
+                val nodes = value.values.map(::convert)
+                if (nodes.isNotEmpty() && nodes.all { it is ScriptDomElement }) ScriptDom.elements(cx, active, nodes.map { (it as ScriptDomElement).element })
+                else ScriptRealm.current(cx).arrayIn(active, nodes.toTypedArray())
+            }
+            else -> JsonScriptData(cx, active, limits.maxBridgeChars).convert(json(value))
+        }
+        return elements?.let(::convert) ?: JsonScriptData(cx, active, limits.maxBridgeChars).convert(data)
+    }
 
     fun supports(name: String, args: List<JsonElement>) = name in setOf("java.getString", "java.getStringList",
         "java.getElement", "java.getElements", "java.put") || name == "java.get" && args.size == 1
 
     fun call(cx: Context, name: String, args: List<JsonElement>): JsonElement {
+        elements = null
         if (++depth > budget.limits.maxDepth) { depth--; throw ScriptBudgetExceeded() }
         try {
             budget.check()
@@ -59,6 +76,9 @@ internal class ScriptRuleHelpers(private val scope: Scriptable, frame: ScriptFra
                 error("Nested rule failed")
             }
             val selected = (result as RuleResult.Success).value
+            if (name == "java.getElement" || name == "java.getElements") {
+                elements = if (name == "java.getElement" && selected is RuleValue.Items && selected.values.singleOrNull().let { it is RuleValue.Node && it.kind == InputKind.Json }) selected.values.single() else selected
+            }
             return when (name) {
                 "java.getString" -> JsonPrimitive(text(selected).let { if (unescape) Parser.unescapeEntities(it, false) else it })
                 "java.getStringList" -> JsonArray((if (selected is RuleValue.Text) selected.value.split('\n') else items(selected).map(::text)).map(::JsonPrimitive))

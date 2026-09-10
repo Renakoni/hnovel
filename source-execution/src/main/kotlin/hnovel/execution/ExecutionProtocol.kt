@@ -3,6 +3,7 @@ package hnovel.execution
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
 import hnovel.rhino.HostBridge
 import hnovel.rhino.RhinoScriptEngine
 import hnovel.rhino.ScriptFrame
@@ -31,12 +32,15 @@ private class WorkerOutputLimit : RuntimeException()
  @Serializable data class Sleep(val millis: Long): ExecutionTask
  @Serializable data class Script(val code: String, val result: JsonElement = JsonNull, val bookId: String? = null,
   val chapterId: String? = null, val key: String = "", val page: Int = 1, val baseUrl: String = "",
-  val libraryCode: String? = null) : ExecutionTask
+  val libraryCode: String? = null, val book: JsonObject = JsonObject(emptyMap()),
+  val chapter: JsonObject = JsonObject(emptyMap()), val chineseConverter: Int = 0) : ExecutionTask
  @Serializable data class Rule(val rule: String, val input: RuleValue, val output: OutputKind = OutputKind.TextList,
   val location: RuleLocation = RuleLocation("rule"), val bookId: String? = null, val chapterId: String? = null,
   val key: String = "", val page: Int = 1, val baseUrl: String = "", val libraryCode: String? = null,
   val sourceVariables: Map<String, String> = emptyMap(), val bookVariables: Map<String, String> = emptyMap(),
-  val chapterVariables: Map<String, String> = emptyMap()) : ExecutionTask
+  val chapterVariables: Map<String, String> = emptyMap(), val book: JsonObject = JsonObject(emptyMap()),
+  val chapter: JsonObject = JsonObject(emptyMap()), val bookBigVariables: Map<String, String> = emptyMap(),
+  val chapterBigVariables: Map<String, String> = emptyMap(), val chineseConverter: Int = 0) : ExecutionTask
 }
 
 fun ExecutionTask.libraryCode(): String? = when (this) {
@@ -138,7 +142,8 @@ class IsolatedExecutor(private val javaCommand: String = javaHome(), private val
    listOf("org.jsoup.Jsoup", "com.jayway.jsonpath.JsonPath", "net.minidev.json.JSONValue", "net.minidev.asm.BeansAccess",
     "org.objectweb.asm.ClassReader", "org.slf4j.LoggerFactory", "org.seimicrawler.xpath.JXDocument",
     "org.apache.commons.lang3.StringUtils", "org.antlr.v4.runtime.Parser", "com.google.gson.Gson",
-    "cn.hutool.crypto.KeyUtil", "cn.hutool.core.util.HexUtil").map { Class.forName(it) })
+    "cn.hutool.crypto.KeyUtil", "cn.hutool.core.util.HexUtil", "com.github.liuyueyi.quick.transfer.ChineseUtils",
+    "hnovel.rhino.charset.CharsetDetector", "hnovel.rhino.font.QueryTTF", "okhttp3.Response", "okio.Buffer").map { Class.forName(it) })
    .map { type ->
     val location = requireNotNull(type.protectionDomain?.codeSource?.location) { "Supply a worker runtime classpath" }
     require(location.protocol == "file") { "Supply a packaged worker runtime classpath" }
@@ -160,7 +165,7 @@ object ExecutionWire {
 }
 
 /** Untrusted-side worker. It receives only the bound DTO and has no host repository/client references. */
-class WorkerRuntime : AutoCloseable {
+class WorkerRuntime(private val archives: hnovel.rhino.ArchiveDecoder = hnovel.rhino.ArchiveDecoder.Zip) : AutoCloseable {
  private data class LibraryOwner(val namespace: String, val source: String, val profile: String,
   val revision: String, val accountGeneration: Long)
  private data class LibraryEntry(val code: String, val scripts: List<String>, val library: ScriptLibrary)
@@ -195,13 +200,13 @@ class WorkerRuntime : AutoCloseable {
    return kotlinx.serialization.json.Json.encodeToString(ExecutionResult.serializer(), ExecutionResult.Failure(FailureCode.BridgeDenied))
   val result = when (val task = wire.task) {
    is ExecutionTask.Rule -> WorkerRuleEvaluator.evaluate(task, wire.identity, wire.limits, bridge,
-    library(wire.identity, task.libraryCode, wire.libraryScripts))
+    library(wire.identity, task.libraryCode, wire.libraryScripts), archives)
    is ExecutionTask.Echo -> if (task.value.toByteArray().size > wire.limits.maxOutputBytes) ExecutionResult.Failure(FailureCode.OutputLimit) else ExecutionResult.Success(task.value)
    is ExecutionTask.Sleep -> { Thread.sleep(task.millis); ExecutionResult.Success("slept") }
    is ExecutionTask.Script -> {
     val frame = ScriptFrame(wire.identity.sourceId, wire.identity.profile, task.bookId, task.chapterId,
-     mapOf("result" to task.result), task.key, task.page, task.baseUrl)
-    when (val evaluated = RhinoScriptEngine(bridge, ScriptLimits(maxResultChars = wire.limits.maxOutputBytes))
+     mapOf("result" to task.result), task.key, task.page, task.baseUrl, book = task.book, chapter = task.chapter, chineseConverter = task.chineseConverter)
+    when (val evaluated = RhinoScriptEngine(bridge, ScriptLimits(maxResultChars = wire.limits.maxOutputBytes), archives)
      .evaluate(task.code, frame, library(wire.identity, task.libraryCode, wire.libraryScripts))) {
      is ScriptResult.Success -> if (evaluated.json.toByteArray(Charsets.UTF_8).size > wire.limits.maxOutputBytes)
       ExecutionResult.Failure(FailureCode.OutputLimit) else ExecutionResult.Success(evaluated.json)

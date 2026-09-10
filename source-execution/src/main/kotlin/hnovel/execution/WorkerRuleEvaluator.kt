@@ -6,20 +6,25 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
 
 /** Typed output and invocation-local writes; the host decides whether to persist those writes. */
-@Serializable data class ExecutedRule(val value: RuleValue, val writes: Map<String, String>)
+@Serializable data class ExecutedRule(val value: RuleValue, val writes: Map<String, String>,
+    val bookWrites: Map<String, String?> = emptyMap(), val chapterWrites: Map<String, String?> = emptyMap(),
+    val bookBigWrites: Map<String, String?> = emptyMap(), val chapterBigWrites: Map<String, String?> = emptyMap(),
+    val book: JsonObject? = null, val chapter: JsonObject? = null)
 
 /** Selectors, regex and scripts all run inside the worker's hard process deadline. */
 internal object WorkerRuleEvaluator {
     fun evaluate(task: ExecutionTask.Rule, identity: ExecutionIdentity, limits: ExecutionLimits,
-        bridge: HostBridge, library: ScriptLibrary?): ExecutionResult {
+        bridge: HostBridge, library: ScriptLibrary?, archives: ArchiveDecoder = ArchiveDecoder.Zip): ExecutionResult {
         val context = RuleContext(identity.sourceId, task.bookId, task.chapterId, task.baseUrl,
-            task.sourceVariables, task.bookVariables, task.chapterVariables)
+            task.sourceVariables, task.bookVariables, task.chapterVariables, task.bookBigVariables, task.chapterBigVariables)
+        context.bookMetadata = task.book.toString()
+        context.chapterMetadata = task.chapter.toString()
         var scriptFailure: hnovel.rhino.FailureCode? = null
         val evaluator = RuleEvaluator { request, current, budget ->
             budget.check()
             val frame = ScriptFrame(identity.sourceId, identity.profile, task.bookId, task.chapterId,
-                mapOf("result" to input(request.input)), task.key, task.page, task.baseUrl, current, task.input, budget)
-            when (val result = RhinoScriptEngine(bridge, ScriptLimits(maxResultChars = limits.maxOutputBytes))
+                mapOf("result" to input(request.input)), task.key, task.page, task.baseUrl, current, task.input, budget, task.book, task.chapter, task.chineseConverter)
+            when (val result = RhinoScriptEngine(bridge, ScriptLimits(maxResultChars = limits.maxOutputBytes), archives)
                 .evaluate(request.script, frame, library)) {
                 is ScriptResult.Success -> value(Json.parseToJsonElement(result.json))
                 is ScriptResult.Failure -> { scriptFailure = result.code; throw RuleScriptFailure(result.code.name) }
@@ -28,7 +33,9 @@ internal object WorkerRuleEvaluator {
         val budget = RuleBudget(RuleLimits(timeoutMillis = limits.timeoutMillis, maxOutputChars = limits.maxOutputBytes))
         return when (val result = evaluator.evaluate(task.rule, task.input, context, task.output, task.location, budget)) {
             is RuleResult.Success -> {
-                val json = Json.encodeToString(ExecutedRule.serializer(), ExecutedRule(result.value, context.writes()))
+                fun changed(snapshot: String?, initial: JsonObject) = snapshot?.let { Json.parseToJsonElement(it).jsonObject }?.takeIf { it != initial }
+                val json = Json.encodeToString(ExecutedRule.serializer(), ExecutedRule(result.value, context.writes(), context.bookWrites, context.chapterWrites, context.bookBigWrites, context.chapterBigWrites,
+                    changed(context.bookMetadata, task.book), changed(context.chapterMetadata, task.chapter)))
                 if (json.toByteArray(Charsets.UTF_8).size > limits.maxOutputBytes) ExecutionResult.Failure(FailureCode.OutputLimit)
                 else ExecutionResult.Success(json)
             }

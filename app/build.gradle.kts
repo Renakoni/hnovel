@@ -16,6 +16,7 @@ plugins {
 }
 
 android {
+    sourceSets.getByName("androidTest").assets.srcDir("../source-rhino/src/test/resources")
     namespace = "indi.dmzz_yyhyy.lightnovelreader"
     compileSdk = 37
 
@@ -160,6 +161,7 @@ tasks.withType<JavaCompile>().configureEach {
 }
 
 dependencies {
+    implementation("me.zhanghai.android.libarchive:library:1.1.6")
     // Desugaring
     coreLibraryDesugaring(libs.desugar.jdk.libs)
     // Android lib

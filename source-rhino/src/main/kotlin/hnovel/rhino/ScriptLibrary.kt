@@ -10,9 +10,14 @@ class ScriptLibrary(val sourceId: String, val profile: String, scripts: List<Str
     internal var realm: ScriptRealm? = null
     internal var closed = false
 
-    @Synchronized override fun close() {
-        closed = true
+    /** A size failure may happen after a native mutation; no failed realm is reused. */
+    @Synchronized internal fun discardState() {
         scope = null
         realm = null
+    }
+
+    @Synchronized override fun close() {
+        closed = true
+        discardState()
     }
 }
