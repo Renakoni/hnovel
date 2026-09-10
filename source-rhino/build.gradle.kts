@@ -4,6 +4,6 @@ kotlin { jvmToolchain(21); compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gr
 dependencies {
     implementation("org.mozilla:rhino:1.8.1")
     testImplementation(libs.junit)
-    testImplementation(libs.kotlinx.serialization.json)
+    implementation(libs.kotlinx.serialization.json)
 }
 tasks.test { useJUnit() }

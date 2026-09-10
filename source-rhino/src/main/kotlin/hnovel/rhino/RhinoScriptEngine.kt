@@ -1,27 +1,59 @@
 package hnovel.rhino
 
 import org.mozilla.javascript.*
+import kotlinx.serialization.json.*
 
-interface HostBridge { fun call(name: String, args: List<Any?>): Any? }
+/** Synchronous data-only port. The host binds authority; scripts cannot supply a source ticket. */
+fun interface HostBridge { fun call(name: String, args: List<JsonElement>): JsonElement }
 
-private class HostBridgeObject(private val bridge: HostBridge) : ScriptableObject() {
-    override fun getClassName() = "HostBridge"
-    override fun get(name: String, start: Scriptable): Any = if (name == "call") object : BaseFunction() {
-        override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any>): Any? {
-            if (args.isEmpty()) throw IllegalArgumentException("bridge name required")
-            return bridge.call(Context.toString(args[0]), args.drop(1).map {
-                if (it === Undefined.instance) null else Context.toString(it)
-            })
+private class BridgeRejected(value: Any) : JavaScriptException(value, "host-bridge", 1)
+
+private class ScriptBridge(private val bridge: HostBridge, private val maxChars: Int) {
+    fun call(cx: Context, scope: Scriptable, name: String, args: Array<out Any>): Any? {
+            if (name.length > 256) throw ResultTooLarge()
+            val data = BoundedJsonResult(maxChars).encode(cx.newArray(scope, args.copyOf()))
+            val result = try { bridge.call(name, Json.parseToJsonElement(data).jsonArray) }
+                catch (cancelled: java.util.concurrent.CancellationException) { throw ScriptCancelled() }
+                catch (_: Exception) { throw BridgeRejected(cx.newObject(scope, "Error", arrayOf("host bridge denied"))) }
+            if (Thread.currentThread().isInterrupted) throw ScriptCancelled()
+            return JsonScriptData(cx, scope, maxChars).convert(result)
+    }
+
+    fun install(context: Context, scope: Scriptable, frame: ScriptFrame) {
+        fun method(target: ScriptableObject, name: String, action: (Array<out Any>) -> Any?) {
+            target.defineProperty(name, object : BaseFunction() {
+                override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any>): Any? = action(args)
+            }, ScriptableObject.READONLY or ScriptableObject.PERMANENT)
         }
-    } else super.get(name, start)
+        fun objectFor(name: String, methods: List<String>): ScriptableObject {
+            val target = context.newObject(scope) as ScriptableObject
+            methods.forEach { member -> method(target, member) { call(context, scope, "$name.$member", it) } }
+            scope.put(name, scope, target)
+            return target
+        }
+        val host = objectFor("host", emptyList())
+        method(host, "call") { args ->
+            require(args.isNotEmpty() && args[0] is CharSequence) { "bridge name required" }
+            call(context, scope, args[0].toString(), args.drop(1).toTypedArray())
+        }
+        objectFor("java", listOf("ajax", "ajaxAll", "connect", "get", "head", "post", "getCookie",
+            "get", "put", "getString", "getStringList", "getElement", "getElements").distinct())
+        objectFor("cache", listOf("get", "put", "delete"))
+        objectFor("cookie", listOf("getCookie", "setCookie", "removeCookie"))
+        val source = objectFor("source", listOf("get", "put", "getVariable", "setVariable"))
+        source.defineProperty("id", frame.sourceId, ScriptableObject.READONLY)
+        source.defineProperty("profile", frame.profile, ScriptableObject.READONLY)
+        method(source, "getKey") { frame.sourceId }
+    }
 }
 
 data class ScriptFrame(val sourceId: String, val profile: String, val bookId: String? = null, val chapterId: String? = null,
-    val variables: MutableMap<String, Any?> = linkedMapOf())
+    val variables: Map<String, JsonElement> = emptyMap(), val key: String = "", val page: Int = 1,
+    val baseUrl: String = "")
 
 data class ScriptLimits(val instructionLimit: Int = 100_000, val maxResultChars: Int = 256 * 1024,
-    val maxScriptChars: Int = 256 * 1024) {
-    init { require(instructionLimit > 0 && maxResultChars > 0 && maxScriptChars > 0) }
+    val maxScriptChars: Int = 256 * 1024, val maxBridgeChars: Int = 64 * 1024) {
+    init { require(instructionLimit > 0 && maxResultChars > 0 && maxScriptChars > 0 && maxBridgeChars > 0) }
 }
 
 sealed interface ScriptResult {
@@ -61,14 +93,18 @@ class RhinoScriptEngine(private val bridge: HostBridge, private val limits: Scri
             factory.call { context ->
                 if (Thread.currentThread().isInterrupted) throw ScriptCancelled()
                 val scope = context.initSafeStandardObjects()
-                scope.put("source", scope, NativeObject().apply { put("id", this, frame.sourceId); put("profile", this, frame.profile) })
                 scope.put("book", scope, NativeObject().apply { frame.bookId?.let { put("id", this, it) } })
                 scope.put("chapter", scope, NativeObject().apply { frame.chapterId?.let { put("id", this, it) } })
-                scope.put("result", scope, Context.javaToJS(frame.variables["result"], scope))
-                scope.put("host", scope, HostBridgeObject(bridge))
+                scope.put("result", scope, JsonScriptData(context, scope, limits.maxBridgeChars).convert(frame.variables["result"] ?: JsonNull))
+                scope.put("key", scope, frame.key)
+                scope.put("page", scope, frame.page)
+                scope.put("baseUrl", scope, frame.baseUrl)
+                ScriptBridge(bridge, limits.maxBridgeChars).install(context, scope, frame)
                 val value = context.evaluateString(scope, source, "source-script", 1, null)
                 if (Thread.currentThread().isInterrupted) throw ScriptCancelled()
-                ScriptResult.Success(BoundedJsonResult(limits.maxResultChars).encode(value))
+                val json = BoundedJsonResult(limits.maxResultChars).encode(value)
+                if (Thread.currentThread().isInterrupted) throw ScriptCancelled()
+                ScriptResult.Success(json)
             }
         } catch (_: ScriptBudgetExceeded) { ScriptResult.Failure(FailureCode.Timeout, "instruction budget exceeded") }
           catch (_: ScriptCancelled) { ScriptResult.Failure(FailureCode.Cancelled, "script cancelled") }
@@ -77,6 +113,7 @@ class RhinoScriptEngine(private val bridge: HostBridge, private val limits: Scri
           catch (_: UnsupportedResult) { ScriptResult.Failure(FailureCode.UnsupportedResult, "result is not JSON data") }
           catch (_: WrappedException) { ScriptResult.Failure(FailureCode.BridgeDenied, "host bridge denied") }
           catch (_: EvaluatorException) { ScriptResult.Failure(FailureCode.Syntax, "syntax error") }
+          catch (_: BridgeRejected) { ScriptResult.Failure(FailureCode.BridgeDenied, "host bridge denied") }
           catch (_: JavaScriptException) { ScriptResult.Failure(FailureCode.Runtime, "script failed") }
           catch (_: Exception) { ScriptResult.Failure(FailureCode.Runtime, "script failed") }
     }

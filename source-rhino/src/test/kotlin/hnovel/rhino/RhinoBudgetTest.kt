@@ -1,13 +1,15 @@
 package hnovel.rhino
 
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonPrimitive
 import org.junit.Assert.*
 import org.junit.Test
 import org.mozilla.javascript.Context
 import org.mozilla.javascript.ContextFactory
 
 class RhinoBudgetTest {
-    private val bridge = object : HostBridge { override fun call(name: String, args: List<Any?>): Any? = error("unexpected bridge") }
+    private val bridge = HostBridge { _, _ -> error("unexpected bridge") }
     private val frame = ScriptFrame("fixture", "legado")
 
     @Test(timeout = 5000) fun infiniteLoopConsumesBudgetEvenIfScriptAttemptsToCatchIt() {
@@ -46,9 +48,9 @@ class RhinoBudgetTest {
 
     @Test fun interruptionAfterEvaluationIsCancelledBeforeSerialization() {
         val engine = RhinoScriptEngine(object : HostBridge {
-            override fun call(name: String, args: List<Any?>): Any? {
+            override fun call(name: String, args: List<JsonElement>): JsonElement {
                 Thread.currentThread().interrupt()
-                return "ok"
+                return JsonPrimitive("ok")
             }
         })
         try { assertEquals(FailureCode.Cancelled, (engine.evaluate("host.call('interrupt')", frame) as ScriptResult.Failure).code) }
