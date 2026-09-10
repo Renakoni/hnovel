@@ -53,7 +53,7 @@ private class ScriptBridge(private val bridge: HostBridge) {
             require(args.isNotEmpty() && args[0] is CharSequence) { "bridge name required" }
             call(cx, activeScope, args[0].toString(), args.drop(1).toTypedArray())
         }
-        objectFor("java", listOf("ajax", "ajaxAll", "connect", "get", "head", "post", "getCookie",
+        objectFor("java", listOf("ajax", "ajaxAll", "connect", "get", "head", "post", "getCookie", "androidId",
             "put", "getString", "getStringList", "getElement", "getElements") + ScriptTools.methods)
         objectFor("cache", listOf("get", "put", "delete"))
         objectFor("cookie", listOf("getCookie", "setCookie", "removeCookie"))
