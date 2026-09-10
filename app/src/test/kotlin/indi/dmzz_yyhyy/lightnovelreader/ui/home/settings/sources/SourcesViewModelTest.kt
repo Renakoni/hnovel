@@ -66,6 +66,25 @@ class SourcesViewModelTest {
                 model.remove(id)
                 assertTrue(idle().installed.isEmpty())
                 assertTrue(registry.sources.value.isEmpty())
+                val secondRaw = JsonObject(raw + ("bookSourceUrl" to JsonPrimitive("https://fixture.invalid/second")))
+                val batchPermissions = mapOf(0 to "https://fixture.invalid/", 1 to "https://fixture.invalid/")
+                model.previewText(JsonArray(listOf(raw, secondRaw)).toString()); idle()
+                model.commit(setOf(0, 1), batchPermissions, false)
+                val installed = idle().installed
+                assertEquals(2, installed.size)
+                val second = installed.single { it.definition.importKey != first.definition.importKey }
+                val secondId = ImportedRuleSources.id(second.definition)
+                val changed = JsonObject(raw + ("bookSourceName" to JsonPrimitive("Batch success")))
+                val broken = JsonObject(secondRaw + ("jsLib" to JsonPrimitive("function broken(")))
+                model.previewText(JsonArray(listOf(changed, broken)).toString()); idle()
+                model.commit(setOf(0, 1), batchPermissions, false)
+                val partial = idle()
+                assertEquals(indi.dmzz_yyhyy.lightnovelreader.R.string.sources_import_partial, partial.message)
+                assertNull(partial.preview)
+                assertTrue(partial.installed.any { it.definition.displayName == "Batch success" })
+                assertEquals(second.definition, partial.installed.single { ImportedRuleSources.id(it.definition) == secondId }.definition)
+                model.saveConfiguration(secondId, "kept after rejected candidate", batchPermissions.getValue(1))
+                assertEquals(indi.dmzz_yyhyy.lightnovelreader.R.string.sources_saved, idle().message)
             } finally { model.cancel(); sources.stop(); root.deleteRecursively(); Dispatchers.resetMain() }
         }
     }
