@@ -89,6 +89,9 @@ class ScriptLibraryTest {
         ScriptLibrary(frame.sourceId, frame.profile, "var holder={};").use { library ->
             assertEquals("null", output("holder.encode=java.base64Encode; undefined", library))
             assertEquals("[\"YQ==\",\"undefined\"]", output("[holder.encode('a'),typeof holder.encode.getClass]", library))
+            val smaller = RhinoScriptEngine(HostBridge { _, _ -> JsonNull }, ScriptLimits(maxBridgeChars = 128))
+            assertEquals(FailureCode.ResultTooLarge,
+                (smaller.evaluate("holder.encode('a'.repeat(100))", frame, library) as ScriptResult.Failure).code)
         }
     }
 }

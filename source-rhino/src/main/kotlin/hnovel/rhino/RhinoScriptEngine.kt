@@ -8,8 +8,11 @@ fun interface HostBridge { fun call(name: String, args: List<JsonElement>): Json
 
 private class BridgeRejected(value: Any) : JavaScriptException(value, "host-bridge", 1)
 
-private class ScriptBridge(private val bridge: HostBridge, private val maxChars: Int) {
+private val bridgeLimitKey = Any()
+
+private class ScriptBridge(private val bridge: HostBridge) {
     fun call(cx: Context, scope: Scriptable, name: String, args: Array<out Any>): Any? {
+            val maxChars = cx.getThreadLocal(bridgeLimitKey) as Int
             if (name.length > 256) throw ResultTooLarge()
             val data = BoundedJsonResult(maxChars).encode(cx.newArray(scope, args.copyOf()))
             val pureTool = name.startsWith("java.") && name.removePrefix("java.") in ScriptTools.methods
@@ -124,7 +127,8 @@ class RhinoScriptEngine(private val bridge: HostBridge, private val limits: Scri
                 scope.put("key", scope, frame.key)
                 scope.put("page", scope, frame.page)
                 scope.put("baseUrl", scope, frame.baseUrl)
-                ScriptBridge(bridge, limits.maxBridgeChars).install(context, scope, frame)
+                context.putThreadLocal(bridgeLimitKey, limits.maxBridgeChars)
+                ScriptBridge(bridge).install(context, scope, frame)
                 val value = context.evaluateString(scope, source, "source-script", 1, null)
                 if (Thread.currentThread().isInterrupted) throw ScriptCancelled()
                 val json = BoundedJsonResult(limits.maxResultChars).encode(value)
