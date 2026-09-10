@@ -13,6 +13,7 @@ import org.dom4j.Document
 import java.io.File
 import java.time.LocalDateTime
 import java.util.Locale
+import java.util.UUID
 
 class EpubBuilder {
     var id: String? = null
@@ -28,7 +29,6 @@ class EpubBuilder {
     var manifestItems: MutableSet<EpubManifest.Item> = mutableSetOf(
         EpubManifest.Item(href = "toc.ncx", id = "ncx", mediaType = "application/x-dtbncx+xml"),
         EpubManifest.Item(href = "nav.xhtml", id = "nav", mediaType = "application/xhtml+xml", properties = "nav"),
-        EpubManifest.Item(href = "cover.jpg", id = "cover", mediaType = "image/jpeg", properties = "cover-image"),
     )
     var spineId: String? = null
     var spineItems: MutableList<Spine.Itemref> = mutableListOf()
@@ -162,7 +162,8 @@ class EpubBuilder {
     }
 
     fun build(): Epub {
-        id = id ?: title
+        id = id?.takeIf(String::isNotBlank) ?: title?.takeIf(String::isNotBlank) ?: "urn:uuid:${UUID.randomUUID()}"
+        title = title?.takeIf(String::isNotBlank) ?: "Untitled book"
         val ol = chapters.toOl()
         val navPoints = chapters.map { it.toNavPoint() }
         val container = Container(
@@ -172,7 +173,13 @@ class EpubBuilder {
             EpubManifest.Item(
                 href = it.id + ".xhtml",
                 id = it.id,
-                mediaType = "application/xhtml+xml"
+                mediaType = "application/xhtml+xml",
+                properties = listOf(
+                    "svg" to "http://www.w3.org/2000/svg",
+                    "mathml" to "http://www.w3.org/1998/Math/MathML"
+                ).filter { (_, namespace) ->
+                    it.chapterContent!!.selectNodes("//*[namespace-uri()='$namespace']").isNotEmpty()
+                }.joinToString(" ") { (property, _) -> property }.ifEmpty { null }
             )
         })
         spineItems.addAll(contentChapters.map {
@@ -190,9 +197,9 @@ class EpubBuilder {
             language = language,
             modified = modifier ?: throw Error("Missing 'modifier'"),
             coverId = if (hasCover) "cover" else null,
-            creator = creator,
-            description = description,
-            publisher = publisher
+            creator = creator?.takeIf(String::isNotBlank),
+            description = description?.takeIf(String::isNotBlank),
+            publisher = publisher?.takeIf(String::isNotBlank)
         )
         val manifest = EpubManifest(
             id = manifestId,
@@ -208,7 +215,7 @@ class EpubBuilder {
             spine = spine
         )
         val nav = Nav(
-            title = id ?: throw Error("Missing 'id'"),
+            title = title ?: throw Error("Missing 'title'"),
             ol = ol
         )
         val tocNcx = TocNcx(

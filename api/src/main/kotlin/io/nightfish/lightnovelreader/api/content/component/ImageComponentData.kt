@@ -17,6 +17,7 @@ import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.encodeToJsonElement
 import org.dom4j.DocumentHelper
 import org.dom4j.Element
+import org.dom4j.QName
 
 /**
  * 图片组件数据
@@ -75,9 +76,10 @@ data class ImageComponentData(
     override val id = Companion.id
     override fun toJsonElement(): JsonElement = Json.encodeToJsonElement(this)
 
-    override fun toHtmlElement(context: Context): Element = DocumentHelper.createElement("div").apply {
-        addElement("img").apply {
+    override fun toHtmlElement(context: Context): Element = DocumentHelper.createElement(QName.get("div", "http://www.w3.org/1999/xhtml")).apply {
+        addElement(QName.get("img", namespace)).apply {
             addAttribute("src", uri.toString())
+            addAttribute("alt", "")
         }
     }
 
