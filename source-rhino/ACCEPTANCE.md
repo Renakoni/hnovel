@@ -129,6 +129,14 @@ compares all 125 three-operation sequences over these five methods against a
 real nonempty Jsoup response. Streams expose read overloads,
 skip, available/ready, mark/reset and close over bounded memory. StrResponse's
 raw body is already closed, matching the reference's text() consumption.
+Named headers(name) lists retain the pinned Jsoup 1.16.2 live-list behavior:
+add/set/remove/clear affect header(), headers() and multiHeaders() immediately.
+Cleared lists remain in multiHeaders(), but header() returns null and headers()
+omits them. Replacement/removal detaches old lists; adding to an empty header
+creates a new list. Missing headers return an immutable empty list. Named list
+mutations retain the response owner's size check, including its original body;
+overflow discards the library realm just as mutations through multiHeaders() do.
+MockWebServer-backed differential tests cover these transitions.
 Mutating response headers/cookies/URL changes only that response view, never
 the broker's session or permissions. Session Cookie integration is #88.
 

@@ -11,7 +11,7 @@ class ScriptResponseTest {
         val mutations = listOf(
             "holder.r.addHeader('X-Test',value)", "holder.r.cookie('c'+i,value)",
             "holder.headers.put('Other',[value])", "holder.cookies.put('c',value)",
-            "holder.list.add(value)", "holder.property.add(value)", "holder.values.get(0).add(value)",
+            "holder.list.add(value)", "holder.namedList.add(value)", "holder.property.add(value)", "holder.values.get(0).add(value)",
             "holder.headerEntry.getValue().add(value)", "holder.cookieEntry.setValue(value)",
             "holder.headers.putAll({Other:[value]})")
         for (mutation in mutations) ScriptLibrary("a", "legado", "var holder={};").use { library ->
@@ -19,6 +19,7 @@ class ScriptResponseTest {
                 holder.r=java.get('u',{});holder.r.cookie('seed','x');
                 holder.headers=holder.r.multiHeaders();holder.cookies=holder.r.cookies();
                 holder.list=holder.headers.get('X-Test');holder.property=holder.headers['X-Test'];
+                holder.namedList=holder.r.headers('x-test');
                 holder.values=holder.headers.values();holder.headerEntry=holder.headers.entrySet()[0];
                 holder.cookieEntry=holder.cookies.entrySet()[0];1
             """, frame, library))
@@ -32,6 +33,19 @@ class ScriptResponseTest {
                 }
             }
             assertTrue("Must count body and metadata together: $mutation", overflow)
+            assertEquals(ScriptResult.Success("\"undefined\""), bounded.evaluate("typeof holder.r", frame, library))
+        }
+    }
+
+    @Test fun retainedNamedHeaderListCountsBodyWhenMutationFitsItsOwnBudget() {
+        val response = JsonObject(data + ("body" to JsonPrimitive("b".repeat(400))))
+        val bounded = RhinoScriptEngine(HostBridge { _, _ -> response }, ScriptLimits(maxBridgeChars = 1024))
+        ScriptLibrary("a", "legado", "var holder={};").use { library ->
+            assertEquals(ScriptResult.Success("1"), bounded.evaluate(
+                "holder.r=java.get('u',{});holder.list=holder.r.headers('x-test');1", frame, library))
+            // The argument and list fit separately; the retained 400-byte body makes the owner exceed 1024.
+            assertEquals(FailureCode.ResultTooLarge, (bounded.evaluate(
+                "holder.list.add(new Array(701).join('x'));1", frame, library) as ScriptResult.Failure).code)
             assertEquals(ScriptResult.Success("\"undefined\""), bounded.evaluate("typeof holder.r", frame, library))
         }
     }

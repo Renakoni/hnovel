@@ -43,14 +43,19 @@ internal class ResponseSnapshot(private var location: URL, private var verb: Con
     override fun url(url: URL) = apply { location = url }
     override fun method() = verb
     override fun method(method: Connection.Method) = apply { verb = method }
-    override fun header(name: String): String? = key(name)?.let { fields.getValue(it).joinToString(", ") }
-    override fun headers(name: String): MutableList<String> = key(name)?.let { fields.getValue(it).toMutableList() } ?: mutableListOf()
+    override fun header(name: String): String? = headers(name).takeIf { it.isNotEmpty() }?.joinToString(", ")
+    // Pinned Jsoup exposes existing values live, but returns an immutable empty list for a missing header.
+    override fun headers(name: String): MutableList<String> = key(name)?.let { fields.getValue(it) } ?: java.util.Collections.emptyList()
     override fun header(name: String, value: String) = apply { require(name.isNotEmpty()); removeHeader(name); addHeader(name, value) }
-    override fun addHeader(name: String, value: String) = apply { require(name.isNotEmpty()); fields.getOrPut(key(name) ?: name) { mutableListOf() }.add(value) }
-    override fun hasHeader(name: String) = key(name) != null
+    override fun addHeader(name: String, value: String) = apply {
+        require(name.isNotEmpty())
+        val values = headers(name)
+        if (values.isEmpty()) fields[name] = mutableListOf(value) else values.add(value)
+    }
+    override fun hasHeader(name: String) = headers(name).isNotEmpty()
     override fun hasHeaderWithValue(name: String, value: String) = headers(name).any { it.equals(value, true) }
     override fun removeHeader(name: String) = apply { key(name)?.let(fields::remove) }
-    override fun headers(): MutableMap<String, String> = fields.mapValuesTo(linkedMapOf()) { it.value.first() }
+    override fun headers(): MutableMap<String, String> = fields.filterValues { it.isNotEmpty() }.mapValuesTo(linkedMapOf()) { it.value.first() }
     override fun multiHeaders(): MutableMap<String, MutableList<String>> = fields
     override fun cookie(name: String): String? = jar[name]
     override fun cookie(name: String, value: String) = apply { require(name.isNotEmpty()); jar[name] = value }

@@ -61,6 +61,64 @@ class ResponseContractTest {
         }
     }
 
+    @Test fun namedHeaderListsStayLiveUntilReplacementAndRemovalLikePinnedJsoup() {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().setBody("chapter").addHeader("X-Test", "one").addHeader("X-Test", "two"))
+            val reference = Jsoup.connect(server.url("/book").toString()).execute()
+            val list = reference.headers("x-test")
+            val expected = buildJsonArray {
+                list.add("three")
+                assertEquals("one, two, three", reference.header("X-Test"))
+                add(reference.header("X-Test")); add(reference.multiHeaders()["X-Test"]!!.joinToString("|"))
+                list[0] = "changed"; list.removeAt(1)
+                add(reference.header("x-test")); add(reference.headers()["X-Test"])
+                reference.addHeader("X-Test", "four")
+                add(list.size); add(list.last())
+                reference.header("X-Test", "replacement"); list.add("detached")
+                add(reference.header("x-test")); add(list.joinToString("|"))
+                val removed = reference.headers("X-Test")
+                reference.removeHeader("x-test"); removed.add("removed")
+                add(reference.header("X-Test")); add(reference.hasHeader("X-Test"))
+                add(reference.multiHeaders().containsKey("X-Test"))
+            }
+            assertEquals(ScriptResult.Success(expected.toString()), run("""
+                var r=java.get('u',{}),list=r.headers('x-test'),out=[];
+                list.add('three');out.push(r.header('X-Test'),r.multiHeaders().get('X-Test').join('|'));
+                list.set(0,'changed');list.remove(1);out.push(r.header('x-test'),r.headers().get('X-Test'));
+                r.addHeader('X-Test','four');out.push(list.size(),list.get(list.size()-1));
+                r.header('X-Test','replacement');list.add('detached');out.push(r.header('x-test'),list.join('|'));
+                var removed=r.headers('X-Test');r.removeHeader('x-test');removed.add('removed');
+                out.push(r.header('X-Test'),r.hasHeader('X-Test'),r.multiHeaders().containsKey('X-Test'));out
+            """, data("chapter".toByteArray())))
+        }
+    }
+
+    @Test fun clearedAndMissingHeaderListsMatchPinnedJsoup() {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().setBody("chapter").addHeader("X-Test", "one").addHeader("X-Test", "two"))
+            val reference = Jsoup.connect(server.url("/book").toString()).execute()
+            val cleared = reference.headers("X-Test")
+            val expected = buildJsonArray {
+                cleared.clear()
+                add(reference.header("X-Test")); add(reference.hasHeader("X-Test"))
+                add(reference.headers().containsKey("X-Test")); add(reference.multiHeaders().containsKey("X-Test"))
+                add(reference.multiHeaders()["X-Test"]!!.size)
+                reference.addHeader("X-Test", "fresh"); cleared.add("detached")
+                add(reference.header("X-Test")); add(cleared.joinToString("|"))
+                add(runCatching { reference.headers("missing").add("absent") }.isFailure)
+                add(reference.hasHeader("missing"))
+            }
+            assertEquals(ScriptResult.Success(expected.toString()), run("""
+                var r=java.get('u',{}),cleared=r.headers('X-Test');cleared.clear();
+                var out=[r.header('X-Test'),r.hasHeader('X-Test'),r.headers().containsKey('X-Test'),
+                    r.multiHeaders().containsKey('X-Test'),r.multiHeaders().get('X-Test').size()];
+                r.addHeader('X-Test','fresh');cleared.add('detached');out.push(r.header('X-Test'),cleared.join('|'));
+                var rejected=false;try{r.headers('missing').add('absent')}catch(e){rejected=true}
+                out.push(rejected,r.hasHeader('missing'));out
+            """, data("chapter".toByteArray())))
+        }
+    }
+
     @Test fun parseDetectsMetaCharsetWithoutReencodingBinarySnapshot() {
         val bytes = "<meta charset=windows-1252><p>caf\u00e9</p>".toByteArray(charset("windows-1252"))
         MockWebServer().use { server ->
