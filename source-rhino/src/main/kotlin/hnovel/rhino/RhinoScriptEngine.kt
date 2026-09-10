@@ -27,21 +27,21 @@ private class ScriptBridge(private val bridge: HostBridge, private val maxChars:
     }
 
     fun install(context: Context, scope: Scriptable, frame: ScriptFrame) {
-        fun method(target: ScriptableObject, name: String, action: (Array<out Any>) -> Any?) {
+        fun method(target: ScriptableObject, name: String, action: (Context, Scriptable, Array<out Any>) -> Any?) {
             target.defineProperty(name, object : BaseFunction() {
-                override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any>): Any? = action(args)
+                override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any>): Any? = action(cx, scope, args)
             }, ScriptableObject.READONLY or ScriptableObject.PERMANENT)
         }
         fun objectFor(name: String, methods: List<String>): ScriptableObject {
             val target = context.newObject(scope) as ScriptableObject
-            methods.forEach { member -> method(target, member) { call(context, scope, "$name.$member", it) } }
+            methods.forEach { member -> method(target, member) { cx, activeScope, args -> call(cx, activeScope, "$name.$member", args) } }
             scope.put(name, scope, target)
             return target
         }
         val host = objectFor("host", emptyList())
-        method(host, "call") { args ->
+        method(host, "call") { cx, activeScope, args ->
             require(args.isNotEmpty() && args[0] is CharSequence) { "bridge name required" }
-            call(context, scope, args[0].toString(), args.drop(1).toTypedArray())
+            call(cx, activeScope, args[0].toString(), args.drop(1).toTypedArray())
         }
         objectFor("java", listOf("ajax", "ajaxAll", "connect", "get", "head", "post", "getCookie",
             "put", "getString", "getStringList", "getElement", "getElements") + ScriptTools.methods)
@@ -50,7 +50,7 @@ private class ScriptBridge(private val bridge: HostBridge, private val maxChars:
         val source = objectFor("source", listOf("get", "put", "getVariable", "setVariable"))
         source.defineProperty("id", frame.sourceId, ScriptableObject.READONLY)
         source.defineProperty("profile", frame.profile, ScriptableObject.READONLY)
-        method(source, "getKey") { frame.sourceId }
+        method(source, "getKey") { _, _, _ -> frame.sourceId }
     }
 }
 
@@ -77,7 +77,15 @@ private class ScriptCancelled : Error()
 
 /** Interpreted JS is instruction-bounded. Native calls/regex still require the #86 process boundary. */
 class RhinoScriptEngine(private val bridge: HostBridge, private val limits: ScriptLimits = ScriptLimits()) {
-    fun evaluate(source: String, frame: ScriptFrame): ScriptResult {
+    fun evaluate(source: String, frame: ScriptFrame, library: ScriptLibrary? = null): ScriptResult =
+        if (library == null) evaluateOwned(source, frame, null)
+        else synchronized(library) { evaluateOwned(source, frame, library) }
+
+    private fun evaluateOwned(source: String, frame: ScriptFrame, library: ScriptLibrary?): ScriptResult {
+        if (library != null && (library.closed || library.sourceId != frame.sourceId || library.profile != frame.profile))
+            return ScriptResult.Failure(FailureCode.BridgeDenied, "invalid library owner")
+        if (library != null && library.code.length > limits.maxScriptChars)
+            return ScriptResult.Failure(FailureCode.ResultTooLarge, "library too large")
         if (source.length > limits.maxScriptChars) return ScriptResult.Failure(FailureCode.ResultTooLarge, "script too large")
         // ContextFactory.call reuses an already-entered Context, whose observer we do not own.
         if (Context.getCurrentContext() != null) return ScriptResult.Failure(FailureCode.Runtime, "nested execution context")
@@ -99,7 +107,16 @@ class RhinoScriptEngine(private val bridge: HostBridge, private val limits: Scri
         return try {
             factory.call { context ->
                 if (Thread.currentThread().isInterrupted) throw ScriptCancelled()
-                val scope = context.initSafeStandardObjects()
+                val scope = if (library == null) context.initSafeStandardObjects() else {
+                    val shared = library.scope ?: NativeObject().apply {
+                        prototype = context.initSafeStandardObjects()
+                        // Like the reference, initialization has no invocation bindings or host capabilities.
+                        context.evaluateString(this, library.code, "source-library", 1, null)
+                        sealObject()
+                        library.scope = this
+                    }
+                    NativeObject().apply { prototype = shared }
+                }
                 scope.put("book", scope, NativeObject().apply { frame.bookId?.let { put("id", this, it) } })
                 scope.put("chapter", scope, NativeObject().apply { frame.chapterId?.let { put("id", this, it) } })
                 scope.put("result", scope, JsonScriptData(context, scope, limits.maxBridgeChars).convert(frame.variables["result"] ?: JsonNull))
