@@ -119,7 +119,7 @@ class ResourceBridgeTest {
         }
     }
 
-    @Test fun resourcePathsCannotCrossSourceAccountsOrTheFilesystem() = runBlocking {
+    @Test fun resourcePathsSurviveAccountChangesButCannotCrossSourcesOrTheFilesystem() = runBlocking {
         MockWebServer().use { server ->
             server.start()
             val base=server.url("/").toString()
@@ -136,7 +136,8 @@ class ResourceBridgeTest {
                     val session=sessions.open(scope,listOf(NetworkGrant(base,true)))
                     val ticket=authority.issue(scope.sourceId,"legado","1","fixture",scope.accountGeneration)
                     SourceExecutionBroker(ticket,authority,session,ExecutionLimits(),base).use { broker ->
-                        assertEquals(JsonNull,broker.call("java.readFile",listOf(JsonPrimitive(path))))
+                        if (scope.sourceId == "b") assertEquals(JsonNull,broker.call("java.readFile",listOf(JsonPrimitive(path))))
+                        else assertEquals(ExecutionResult.Success("\"AB\""),script(broker,"java.readTxtFile(${JsonPrimitive(path)})",base))
                     }
                 }
                 assertEquals(0,server.requestCount)

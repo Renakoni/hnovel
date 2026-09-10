@@ -9,6 +9,88 @@ import org.junit.Test
 
 class RuleSourceTest {
 
+    @Test fun ruleBrowserCallsInheritHeadersAndRefreshThemAfterVerification() = runBlocking {
+        for (dynamic in listOf(false, true)) {
+            val browserPaths = mutableListOf<String>()
+            val tokens = java.util.concurrent.atomic.AtomicInteger()
+            val generation = java.util.concurrent.atomic.AtomicReference("before")
+            val seen = java.util.concurrent.ConcurrentLinkedQueue<String>()
+            val missing = java.util.concurrent.ConcurrentLinkedQueue<String>()
+            val browser = BrowserExecutor { session, request, _, guard ->
+                browserPaths += java.net.URI(request.url).path
+                val response = session.execute(request.copy(browser = null), guard)
+                if (request.url.endsWith("/await")) generation.set("after")
+                response
+            }
+            RuleSourceFixture(browser).use { fixture ->
+                fixture.server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
+                    override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest): okhttp3.mockwebserver.MockResponse {
+                        if (request.path == "/token") return okhttp3.mockwebserver.MockResponse()
+                            .setBody("${generation.get()}-${tokens.incrementAndGet()}")
+                        seen += request.path!!
+                        val token = if (dynamic) "${generation.get()}-${tokens.get()}" else "static"
+                        val accepted = request.getHeader("Authorization") == token && request.getHeader("User-Agent") == "source-agent" &&
+                            request.getHeader("Cookie") == "source=login"
+                        if (!accepted) missing += request.path!!
+                        return okhttp3.mockwebserver.MockResponse().setBody(if (accepted) "accepted" else "missing header")
+                    }
+                }
+                val url = fixture.server.url("/").toString()
+                fixture.source(customize = { raw -> JsonObject(raw + mapOf(
+                    "header" to JsonPrimitive(if (dynamic)
+                        "@js:JSON.stringify({Authorization:java.ajax('/token'),'User-Agent':'source-agent',Cookie:'source=login'})"
+                        else """{"Authorization":"static","User-Agent":"source-agent","Cookie":"source=login"}"""),
+                    "loginUrl" to JsonPrimitive("""
+                        function login(){
+                            if(java.webView(null,'${url}view','')!=='accepted')throw 'view header';
+                            if(java.webViewGetSource(null,'${url}source','','')!=='accepted')throw 'source header';
+                            if(java.webViewGetOverrideUrl(null,'${url}override','','')!=='accepted')throw 'override header';
+                            java.startBrowser('/start','verify');
+                            if(java.startBrowserAwait('/rendered','verify',false).body()!=='accepted')throw 'rendered header';
+                            if(java.startBrowserAwait('/await','verify').body()!=='accepted')throw 'refetch header';
+                        }
+                    """.trimIndent())
+                )) }).use { source -> source.login(emptyMap()) }
+                assertEquals(listOf("/view", "/source", "/override", "/start", "/rendered", "/await"), browserPaths)
+                assertEquals(browserPaths + "/await", seen.toList())
+                assertTrue(missing.toString(), missing.isEmpty())
+                assertEquals(if (dynamic) 7 else 0, tokens.get())
+            }
+        }
+    }
+
+    @Test fun directBrowserLoginUsesEvaluatedSourceHeadersOnItsFirstRequest() = runBlocking {
+        for (dynamic in listOf(false, true)) {
+            var navigations = 0
+            val browser = BrowserExecutor { session, request, options, guard ->
+                assertTrue(options.interactive)
+                navigations++
+                session.execute(request.copy(browser = null), guard)
+            }
+            RuleSourceFixture(browser).use { fixture ->
+                fixture.server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
+                    override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest) =
+                        okhttp3.mockwebserver.MockResponse().setResponseCode(
+                            if (request.getHeader("User-Agent") == "source-agent" &&
+                                request.getHeader("Authorization") == "Bearer alice" &&
+                                request.getHeader("Cookie") == "source=login") 200 else 401)
+                            .setHeader("Content-Type", "text/html").setBody("<title>Login</title>")
+                }
+                val header = """{"User-Agent":"source-agent","Authorization":"Bearer alice","Cookie":"source=login"}"""
+                fixture.source(customize = { raw -> JsonObject(raw + mapOf(
+                    "loginUrl" to JsonPrimitive(fixture.server.url("/login").toString()),
+                    "loginUi" to JsonPrimitive("""[{"name":"user"}]"""),
+                    "header" to JsonPrimitive(if (dynamic) """@js:JSON.stringify({
+                        'User-Agent':'source-agent',Authorization:'Bearer '+source.getLoginInfoMap().get('user'),Cookie:'source=login'})""" else header)
+                )) }).use { source ->
+                    source.login(mapOf("user" to "alice"))
+                    assertEquals(1, navigations)
+                    assertEquals(1, fixture.server.requestCount)
+                }
+            }
+        }
+    }
+
     @Test fun nestedRuleRequestsInheritStaticAndScriptSourceHeaders() = runBlocking {
         for (dynamic in listOf(false, true)) RuleSourceFixture().use { fixture ->
             val seen = java.util.concurrent.ConcurrentLinkedQueue<String>()
@@ -306,7 +388,7 @@ class RuleSourceTest {
             if (cancel) operation.join() else assertEquals(ContentError.Unavailable, (operation.await().exceptionOrNull() as SourceContentException).code)
             val definition = source.definition
             val session = fixture.broker.open(SourceScope("rules", definition.sourceId, definition.profile), listOf(NetworkGrant(fixture.server.url("/").toString(), true)))
-            val saved = session.read(StorageRequest(StorageArea.Account, "content/book/" + digest(id))) as StorageResult.Value
+            val saved = session.read(StorageRequest(StorageArea.Config, "content/book/" + digest(id))) as StorageResult.Value
             val record = Json.decodeFromString(BookRecord.serializer(), saved.value!!)
             assertEquals("One", record.chapters[1].title)
             assertEquals("One", record.chapters[1].state.variables["chapterKey"])

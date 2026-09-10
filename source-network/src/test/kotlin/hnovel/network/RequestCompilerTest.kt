@@ -43,7 +43,8 @@ class RequestCompilerTest {
         for (rule in listOf("@js:result", "<js>result</js>", "{{page + 1}}", """/x,{"js":"result"}""")) {
             assertEquals(CompiledRequest.Rejected(FailureCode.ScriptRequired), compiler.compile("r", rule, "https://fixture.invalid"))
         }
-        assertEquals(CompiledRequest.Rejected(FailureCode.BrowserRequired), compiler.compile("r", """/x,{"webView":true}""", "https://fixture.invalid"))
+        val browser = compiler.compile("r", """/x,{"webView":true,"webJs":"document.title","webViewDelayTime":200}""", "https://fixture.invalid") as CompiledRequest.Ready
+        assertEquals(BrowserOptions("document.title", 200), browser.request.browser)
         assertEquals(CompiledRequest.Rejected(FailureCode.UnknownOption), compiler.compile("r", """/x,{"surprise":1}""", "https://fixture.invalid"))
         assertEquals(CompiledRequest.Rejected(FailureCode.InvalidRequest), compiler.compile("r", "file:///private", ""))
     }

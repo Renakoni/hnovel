@@ -107,6 +107,10 @@ object Route {
         /** 设置界面路由组 */
         @Serializable
         object Settings {
+            @Serializable
+            object Sources
+            @Serializable
+            data class SourceDiagnostic(val namespace: String, val sourceId: String)
             /** 设置主界面路由 */
             @Serializable
             object Home

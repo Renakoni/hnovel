@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sources_import_partial">未能启用全部来源。已启用来源保留，请重新预览导入以重试。</string>
+    <string name="settings_clear_reading_cache">清理阅读缓存</string>
+    <string name="settings_clear_reading_cache_desc">删除已下载正文和图片，保留书架、阅读记录、目录及登录状态。继续阅读时可能重新下载。</string>
+    <string name="settings_cache_cleared">阅读缓存已清理</string>
+    <string name="settings_cache_clear_failed">未能完成缓存清理</string>
+</resources>

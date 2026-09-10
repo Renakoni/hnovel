@@ -24,10 +24,6 @@ import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.UserAgent
 import io.ktor.client.plugins.cookies.ConstantCookiesStorage
 import io.ktor.client.plugins.cookies.HttpCookies
-import io.ktor.client.plugins.logging.ANDROID
-import io.ktor.client.plugins.logging.LogLevel
-import io.ktor.client.plugins.logging.Logger
-import io.ktor.client.plugins.logging.Logging
 import io.ktor.client.request.cookie
 import io.ktor.client.request.get
 import io.ktor.client.statement.bodyAsBytes
@@ -135,10 +131,6 @@ class Wenku8Api : WebBookDataSource, AutoCloseable {
             }
         }
         install(HttpTimeout)
-        install(Logging) {
-            logger = Logger.ANDROID
-            level = LogLevel.HEADERS
-        }
     }
     private val hosts =
         listOf("https://www.wenku8.cc", "https://www.wenku8.net", "https://www.wenku8.com")

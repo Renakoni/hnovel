@@ -49,7 +49,7 @@ class SourceImageTest {
         }
         val fetched = mutableListOf<String?>()
         val loader = ImageLoader.Builder(context).components {
-            add(SourceImageInterceptor(registry, context, SourceSessionManager()))
+            add(SourceImageInterceptor(registry, context))
             add(SourceImageFetcher.Factory())
             add(object : Fetcher.Factory<Uri> {
                 override fun create(data: Uri, options: Options, imageLoader: ImageLoader): Fetcher = Fetcher {
@@ -68,14 +68,14 @@ class SourceImageTest {
             assertEquals(listOf("account-a", "account-b"), fetched)
             aHeaders = mapOf("Authorization" to "account-a-new")
             assertTrue(load(a) is SuccessResult)
-            assertEquals(listOf("account-a", "account-b", "account-a-new"), fetched)
+            assertEquals(listOf("account-a", "account-b"), fetched)
             registry.unregister(a.sourceId)
             assertEquals(DataSource.MEMORY_CACHE, (load(a) as SuccessResult).dataSource)
             assertEquals(DataSource.MEMORY_CACHE, (load(b) as SuccessResult).dataSource)
-            assertEquals(3, fetched.size)
+            assertEquals(2, fetched.size)
             loader.memoryCache?.clear()
             assertFalse(load(a) is SuccessResult)
-            assertEquals(3, fetched.size)
+            assertEquals(2, fetched.size)
         } finally {
             loader.shutdown()
             registry.unregister(a.sourceId)
@@ -83,15 +83,13 @@ class SourceImageTest {
         }
     }
 
-    @Test fun revisionAccountAndHeadersAreExecutionIdentityNotBookIdentity() {
+    @Test fun imageKeysDistinguishSourcesBooksRevisionsAndRoles() {
         val image = SourceImage(a, url)
-        val key = sourceImageCacheKey(image, "1", 0, mapOf("Cookie" to "secret"))
-        assertNotEquals(key, sourceImageCacheKey(image, "2", 0, mapOf("Cookie" to "secret")))
-        assertNotEquals(key, sourceImageCacheKey(image, "1", 1, mapOf("Cookie" to "secret")))
-        assertNotEquals(key, sourceImageCacheKey(image, "1", 0, mapOf("Cookie" to "changed")))
-        assertNotEquals(key, sourceImageCacheKey(image.copy(cover = true), "1", 0, mapOf("Cookie" to "secret")))
-        assertNotEquals(key, sourceImageCacheKey(image.copy(book = a.copy(remoteId = "other")), "1", 0, mapOf("Cookie" to "secret")))
-        assertFalse(key.contains("secret"))
+        val key = sourceImageCacheKey(image, "1")
+        assertNotEquals(key, sourceImageCacheKey(image, "2"))
+        assertNotEquals(key, sourceImageCacheKey(image.copy(book = b), "1"))
+        assertNotEquals(key, sourceImageCacheKey(image.copy(cover = true), "1"))
+        assertNotEquals(key, sourceImageCacheKey(image.copy(book = a.copy(remoteId = "other")), "1"))
         assertFalse(key.contains(url))
         assertEquals(a, SourceBookId.fromStorageKey(a.storageKey))
     }
@@ -116,7 +114,7 @@ class SourceImageTest {
             java.nio.file.Files.createTempDirectory("source-image-cache").toString().toPath()
         }).maxSizeBytes(1024 * 1024).build()
         val loader = ImageLoader.Builder(context).diskCache(cache).components {
-            add(SourceImageInterceptor(registry, context, accounts)); add(SourceImageFetcher.Factory())
+            add(SourceImageInterceptor(registry, context)); add(SourceImageFetcher.Factory())
         }.build()
         suspend fun load(cover: Boolean) = loader.execute(ImageRequest.Builder(context)
             .data(SourceImage(a, url, cover)).size(2, 2).build())
@@ -129,7 +127,7 @@ class SourceImageTest {
             assertEquals(DataSource.DISK, (load(true) as SuccessResult).dataSource)
             assertEquals(DataSource.DISK, (load(false) as SuccessResult).dataSource)
             accounts.begin(a.sourceId)
-            assertFalse(load(false) is SuccessResult)
+            assertTrue(load(false) is SuccessResult)
             loader.memoryCache?.clear(); cache.clear()
             assertFalse(load(true) is SuccessResult)
             assertEquals(2, calls.size)

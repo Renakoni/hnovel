@@ -74,7 +74,7 @@ class SourceBrokerTest {
         }
     }
 
-    @Test(timeout = 10000) fun cookieChangesPreventLateRequestsFromRepopulatingThePreviousCacheGeneration() = runBlocking {
+    @Test(timeout = 10000) fun cookieChangesPreserveCachedBodiesWithoutRestoringOldAuthentication() = runBlocking {
         MockWebServer().use { server ->
             val started = CountDownLatch(1)
             val release = CountDownLatch(1)
@@ -95,8 +95,9 @@ class SourceBrokerTest {
                     session.execute(request(server.url("/after")))
                     release.countDown()
                     success(pending.await())
-                    assertEquals(BrokerResult.Failure(RequestStage.Response, FailureCode.CacheMiss), session.execute(
-                        request(server.url("/book"), CacheMode.Only).copy(headers = mapOf("Cookie" to "auth=before"))))
+                    assertEquals("before", success(session.execute(
+                        request(server.url("/book"), CacheMode.Only).copy(headers = mapOf("Cookie" to "auth=before")))).text())
+                    assertEquals("auth=after", session.cookie(server.url("/").toString()))
                 } finally { release.countDown() }
             }
         }
@@ -189,6 +190,7 @@ class SourceBrokerTest {
             val a = broker.open(scope(), emptyList())
             assertEquals(StorageResult.Value("config"), a.write(StorageRequest(StorageArea.Config, "../../outside", "config")))
             a.write(StorageRequest(StorageArea.Account, "name", "A"))
+            a.write(StorageRequest(StorageArea.Cache, "saved", "cached", ttlMillis = 60000))
             assertEquals(StorageResult.Failure(FailureCode.StorageQuota), a.write(StorageRequest(StorageArea.Config, "large", "x".repeat(17))))
             assertEquals(StorageResult.Value("config"), a.read(StorageRequest(StorageArea.Config, "../../outside")))
             assertFalse(directory.root.parentFile.resolve("outside").exists())
@@ -198,6 +200,7 @@ class SourceBrokerTest {
             assertEquals("two", two.get("name"))
             val newer = broker.open(scope(generation = 1), emptyList())
             assertTrue(a.closed)
+            assertEquals(StorageResult.Value("cached"), newer.read(StorageRequest(StorageArea.Cache, "saved")))
             assertEquals(StorageResult.Value("config"), newer.read(StorageRequest(StorageArea.Config, "../../outside")))
             assertEquals(StorageResult.Value(null), newer.read(StorageRequest(StorageArea.Account, "name")))
             for (other in listOf(scope("b"), scope(profile = "other"))) {

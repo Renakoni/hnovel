@@ -18,8 +18,13 @@ class RequestCompiler {
             val optionStart = Regex(",\\s*(?=\\{)").find(rule)
             val options = optionStart?.let { parseJson(rule.substring(it.range.last + 1)).jsonObject } ?: buildJsonObject {}
             if (options.keys.any { it in setOf("js") }) return CompiledRequest.Rejected(FailureCode.ScriptRequired)
-            if (options.keys.any { it in setOf("webView", "webJs", "webViewDelayTime", "serverID") }) return CompiledRequest.Rejected(FailureCode.BrowserRequired)
-            if (options.keys.any { it !in setOf("method", "body", "headers", "header", "charset", "retry") }) return CompiledRequest.Rejected(FailureCode.UnknownOption)
+            if ("serverID" in options) return CompiledRequest.Rejected(FailureCode.BrowserRequired)
+            if (options.keys.any { it !in setOf("method", "body", "headers", "header", "charset", "retry", "webView", "webJs", "webViewDelayTime") }) return CompiledRequest.Rejected(FailureCode.UnknownOption)
+            val webView = options["webView"]?.jsonPrimitive?.boolean ?: false
+            val webJs = options["webJs"]?.jsonPrimitive?.content.orEmpty()
+            val browserDelay = options["webViewDelayTime"]?.jsonPrimitive?.long ?: 0
+            if (browserDelay !in 0..30000 || webJs.length > 65536) return CompiledRequest.Rejected(FailureCode.InvalidRequest)
+            val browser = if (webView || webJs.isNotBlank() || browserDelay > 0) BrowserOptions(webJs, browserDelay) else null
             val charset = options["charset"]?.jsonPrimitive?.content ?: "UTF-8"
             if (charset != "escape") Charset.forName(charset)
             fun expand(value: String, encodeKey: Boolean, pageAlternatives: Boolean = false): String {
@@ -77,7 +82,7 @@ class RequestCompiler {
             val retry = options["retry"]?.jsonPrimitive?.int ?: 0
             if (retry !in 0..3) return CompiledRequest.Rejected(FailureCode.InvalidRequest)
             CompiledRequest.Ready(BrokerRequest(id, url.toString(), method, mergedHeaders.toMap(), body,
-                if (charset == "escape") "UTF-8" else charset, retry = retry, kind = kind))
+                if (charset == "escape") "UTF-8" else charset, retry = retry, kind = kind, browser = browser))
         } catch (failure: BrokerFailure) { CompiledRequest.Rejected(failure.code) }
           catch (_: Exception) { CompiledRequest.Rejected(FailureCode.InvalidRequest) }
     }

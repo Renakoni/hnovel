@@ -39,6 +39,8 @@ import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.pluginmanager.navigateT
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.pluginmanager.settingsPluginManagerNavigation
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.sourcechange.navigateToSettingsSourceChangeDestination
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.sourcechange.settingsSourceChangeDestination
+import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.sources.settingsSourcesDestination
+import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.sources.sourceDiagnosticDestination
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.textformatting.editTextFormattingRuleDialog
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.textformatting.navigateToSettingsTextFormattingManagerDestination
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.textformatting.settingsTextFormattingNavigation
@@ -67,17 +69,20 @@ fun NavGraphBuilder.settingsDestination() {
             importData = settingsViewModel::importFromFile,
             onClickDebugMode = navController::navigateToSettingsDebugDestination,
             onClickLicenses = navController::navigateToSettingsLicensesDestination,
-            onClickChangeSource = navController::navigateToSettingsSourceChangeDestination,
+            onClickChangeSource = { navController.navigate(Route.Main.Settings.Sources) },
             onClickExportUserData = navController::navigateToExportUserDataDialog,
             onClickLogcat = navController::navigateToSettingsLogcatDestination,
             onClickTextFormatting = navController::navigateToSettingsTextFormattingManagerDestination,
             onClickPluginManager = navController::navigateToSettingsPluginManagerHomeDestination,
             onClickThemeSettings = navController::navigateToSettingsThemeDestination,
             onClickStorageManager = navController::navigateToStorageManager,
+            clearReadingCache = settingsViewModel::clearReadingCache,
             onOptOut = settingsViewModel::trackOptOut
         )
     }
     settingsSourceChangeDestination()
+    settingsSourcesDestination()
+    sourceDiagnosticDestination()
     exportUserDataDialog()
     editTextFormattingRuleDialog()
     sliderValueDialog()

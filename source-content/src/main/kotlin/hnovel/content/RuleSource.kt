@@ -12,38 +12,77 @@ import kotlinx.serialization.json.*
 /** One registered revision/account. Source retirement revokes its ticket; it never chooses another source. */
 class RuleSource(val definition: SourceDefinition, private val identity: ExecutionIdentity,
     private val authority: ExecutionAuthority, private val session: SourceSession,
-    private val runner: RuleTaskRunner) : AutoCloseable {
+    private val runner: RuleTaskRunner, private val trace: ContentTrace = ContentTrace.None) : AutoCloseable {
     private val spec = RuleSourceDefinition(definition)
     private val store = RuleBookStore(session, authority, identity)
     private val serial = Mutex()
     val canSearch get() = spec.searchUrl.isNotBlank()
+    val canLogin get() = spec.loginUrl.isNotBlank() || spec.loginUi.isNotBlank()
     init {
         require(identity.sourceId == definition.sourceId && identity.profile == definition.profile && identity.revision == definition.contentDigest)
         require(session.scope.sourceId == identity.sourceId && session.scope.namespace == identity.namespace &&
             session.scope.profile == identity.profile && session.scope.accountGeneration == identity.accountGeneration)
+        session.configureSource(spec.baseUrl, spec.cookiesEnabled)
+    }
+
+    fun loginForm(): LoginForm = LoginForm.parse(spec.loginUi, spec.loginUrl)
+
+    suspend fun login(values: Map<String, String>, action: String? = null): Unit = operation("loginUrl", timeoutMillis = 300000) {
+        val form = loginForm()
+        require(form.fields.filter { it.type != "button" }.map { it.name }.toSet().containsAll(values.keys))
+        require(values.size <= 32 && values.entries.sumOf { it.key.length.toLong() + it.value.length } <= 16384)
+        val info = JsonObject(values.mapValues { JsonPrimitive(it.value) }).toString()
+        authority.authorized(identity) { check(session.write(StorageRequest(StorageArea.Account, StorageRequestKey.LOGIN_INFO, info)) is StorageResult.Value) }
+        val context = evaluation(interactive = true)
+        if (form.browserUrl != null) {
+            val response = session.execute(BrokerRequest("login", form.browserUrl, headers = context.headers(),
+                timeoutMillis = 60000, browser = BrowserOptions(interactive = true)),
+                RequestCommitGuard { authority.authorized(identity, it) })
+            if (response !is BrokerResult.Success) throw SourceContentException(ContentError.LoginRequired, "loginUrl")
+            checkStatus(response.response.status, "loginUrl")
+            authority.authorized(identity) { check(session.write(StorageRequest(StorageArea.Account, "login/status", "authenticated")) is StorageResult.Value) }
+            return@operation
+        }
+        val code = scriptBody(spec.loginUrl) + "\n" + if (action == null) "if(typeof login!=='function')throw new Error('login missing');login();true;"
+            else form.fields.single { it.name == action && it.type == "button" }.action
+                ?.let(::scriptBody) ?: throw SourceContentException(ContentError.InvalidRule, "loginUi.action")
+        context.script(code, RuleValue.Empty, "loginUrl")
+        if (action == null) authority.authorized(identity) { check(session.write(StorageRequest(StorageArea.Account, "login/status", "authenticated")) is StorageResult.Value) }
     }
 
     suspend fun search(keyword: String, page: Int = 1): List<RuleBook> = operation("ruleSearch") {
         if (!canSearch) throw SourceContentException(ContentError.MissingCapability, "searchUrl")
         val context = evaluation(keyword = keyword, page = page)
         val document = fetch(context, spec.searchUrl, "searchUrl")
-        val rule = spec.search.string("bookList")
+        booksFromPage(context, document, spec.search, "ruleSearch")
+    }
+
+    /** Executes a selected discovery URL through the same production list pipeline as search. */
+    suspend fun discovery(url: String, page: Int = 1): List<RuleBook> = operation("ruleExplore") {
+        if (url.isBlank() || spec.explore.isEmpty()) throw SourceContentException(ContentError.MissingCapability, "ruleExplore")
+        val context = evaluation(page = page)
+        booksFromPage(context, fetch(context, url, "exploreUrl"), spec.explore, "ruleExplore")
+    }
+
+    private suspend fun booksFromPage(context: RuleEvaluation, document: PageDocument, fields: JsonObject,
+        field: String): List<RuleBook> {
+        val rule = fields.string("bookList")
         val isBookUrl = spec.bookUrlPattern.isNotBlank() && context.value(":\\A(?:${spec.bookUrlPattern})\\z",
             RuleValue.Text(document.url), "bookUrlPattern", OutputKind.Elements).items().isNotEmpty()
         if (rule.isBlank() || isBookUrl) {
             val id = sourceLink(document.url, document.url)
             val record = information(id, BookRecord(identity.revision, RuleBook(id, state = context.book)), document)
             store.write(record)
-            return@operation listOf(record.book)
+            return listOf(record.book)
         }
-        val items = context.value(rule.removePrefix("-").removePrefix("+"), document.input(), "ruleSearch.bookList", OutputKind.Elements).items()
-        if (items.size > 1000) throw SourceContentException(ContentError.Limit, "ruleSearch.bookList")
+        val items = context.value(rule.removePrefix("-").removePrefix("+"), document.input(), "$field.bookList", OutputKind.Elements).items()
+        if (items.size > 1000) throw SourceContentException(ContentError.Limit, "$field.bookList")
         val books = mutableListOf<RuleBook>()
         for (item in items) {
             val row = context.fork()
-            val parsed = bookFields(row, item, spec.search, "ruleSearch", RuleBook(""))
+            val parsed = bookFields(row, item, fields, field, RuleBook(""))
             if (parsed.title.isBlank()) continue
-            val rawUrl = row.text(spec.search.string("bookUrl"), item, "ruleSearch.bookUrl")
+            val rawUrl = row.text(fields.string("bookUrl"), item, "$field.bookUrl")
             val id = sourceLink(document.url, rawUrl.ifBlank { document.url })
             row.bookId = id; row.bookField("bookUrl", id)
             books += parsed.copy(id = id, tocUrl = id, state = row.book)
@@ -54,7 +93,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             if (old?.informationLoaded != true || old.revision != identity.revision)
                 store.write(BookRecord(identity.revision, book))
         }
-        ordered
+        return ordered
     }
 
     suspend fun information(bookId: String): RuleBook = operation("ruleBookInfo") {
@@ -86,8 +125,6 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val previous = record.chapters.take(index).lastOrNull { !it.isVolume }?.id
         val next = record.chapters.drop(index + 1).firstOrNull { !it.isVolume }?.id
         val context = evaluation(record.book, chapter)
-        if (spec.content.string("webJs").isNotBlank() || spec.content.string("sourceRegex").isNotBlank())
-            throw SourceContentException(ContentError.BrowserRequired, "ruleContent.webJs")
         val rule = spec.content.string("content")
         if (rule.isBlank()) throw SourceContentException(ContentError.MissingCapability, "ruleContent.content")
         val queue = ArrayDeque<String>().apply { add(chapter.id) }
@@ -98,7 +135,9 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             val url = queue.removeFirst()
             if (url == next) continue // A next-chapter link never changes this logical chapter's content or identity.
             visit(visited, url, "ruleContent.nextContentUrl")
-            val document = fetch(context, url, "ruleContent.content")
+            val browser = if (spec.content.string("webJs").isNotBlank() || spec.content.string("sourceRegex").isNotBlank())
+                BrowserOptions(script = spec.content.string("webJs"), sourceRegex = spec.content.string("sourceRegex")) else null
+            val document = fetch(context, url, "ruleContent.content", browser)
             // Redirects cannot turn a continuation (or the first page) into the next logical chapter.
             if (document.url == next) continue
             if (document.url != url && !visited.add(document.url)) throw SourceContentException(ContentError.RepeatedPage, "ruleContent.nextContentUrl")
@@ -268,9 +307,10 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val old = store.read(id)
         return if (old?.informationLoaded == true && old.revision == identity.revision) old else information(id, old)
     }
-    private fun evaluation(book: RuleBook? = null, chapter: RuleChapter? = null, keyword: String = "", page: Int = 1): RuleEvaluation {
+    private fun evaluation(book: RuleBook? = null, chapter: RuleChapter? = null, keyword: String = "", page: Int = 1, interactive: Boolean = false): RuleEvaluation {
         val result = RuleEvaluation(identity, authority, session, runner, spec.library, book?.id, chapter?.id,
-            book?.state ?: ScriptState(), chapter?.state ?: ScriptState(), book?.id ?: spec.baseUrl, keyword, page, headerRule = spec.header)
+            book?.state ?: ScriptState(), chapter?.state ?: ScriptState(), book?.id ?: spec.baseUrl, keyword, page,
+            headerRule = spec.header, interactive = interactive, trace = trace)
         book?.let {
             result.bookField("bookUrl", it.id)
             if ("name" !in result.book.metadata) result.bookField("name", it.title)
@@ -279,7 +319,8 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         chapter?.let { result.chapterField("url", JsonPrimitive(it.id)); result.chapterField("title", JsonPrimitive(it.title)); result.chapterField("bookUrl", JsonPrimitive(book!!.id)) }
         return result
     }
-    private suspend fun request(context: RuleEvaluation, url: String, field: String, kind: ResourceKind = ResourceKind.Document): BrokerResponse {
+    private suspend fun request(context: RuleEvaluation, url: String, field: String, kind: ResourceKind = ResourceKind.Document,
+        browser: BrowserOptions? = null): BrokerResponse {
         val prepared = context.script("host.call('request.prepare',result)[0]", RuleValue.Text(url), field).text()
         val compiled = RequestCompiler().compile("content", prepared, context.baseUrl, context.keyword, context.page, context.headers(), kind)
         val request = when (compiled) {
@@ -287,21 +328,26 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             is CompiledRequest.Rejected -> throw SourceContentException(if (compiled.code == hnovel.network.FailureCode.BrowserRequired)
                 ContentError.BrowserRequired else ContentError.InvalidRule, field)
         }
-        val result = session.execute(request, RequestCommitGuard { authority.authorized(identity, it) })
+        val started = System.nanoTime()
+        val result = session.execute(request.copy(browser = browser ?: request.browser), RequestCommitGuard { authority.authorized(identity, it) })
+        trace.record(ContentTraceEvent("network", field, (System.nanoTime() - started) / 1_000_000,
+            request.body?.length ?: 0, (result as? BrokerResult.Success)?.response?.body?.size ?: 0,
+            when (result) { is BrokerResult.Success -> "HTTP_${result.response.status}"; is BrokerResult.Failure -> result.code.name }))
         if (!authority.accepts(identity)) throw SourceContentException(ContentError.Unavailable, field)
         val response = when (result) {
             is BrokerResult.Success -> result.response
             is BrokerResult.Failure -> throw SourceContentException(when (result.code) {
                 hnovel.network.FailureCode.OriginDenied, hnovel.network.FailureCode.AddressDenied -> ContentError.PermissionDenied
                 hnovel.network.FailureCode.ResponseTooLarge, hnovel.network.FailureCode.Timeout -> ContentError.Limit
+                hnovel.network.FailureCode.BrowserRequired -> ContentError.BrowserRequired
                 else -> ContentError.Network
             }, field)
         }
         if (kind == ResourceKind.Image) checkStatus(response.status, field)
         return response
     }
-    private suspend fun fetch(context: RuleEvaluation, url: String, field: String): PageDocument {
-        val response = request(context, url, field)
+    private suspend fun fetch(context: RuleEvaluation, url: String, field: String, browser: BrowserOptions? = null): PageDocument {
+        val response = request(context, url, field, browser = browser)
         context.baseUrl = response.finalUrl
         if (spec.loginCheck.isBlank()) {
             checkStatus(response.status, field)
@@ -321,7 +367,10 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         return PageDocument(value.getValue("body").jsonPrimitive.content, finalUrl)
     }
     private fun checkStatus(status: Int, field: String) {
-        if (status == 401 || status == 403) throw SourceContentException(ContentError.LoginRequired, field)
+        if (status == 401 || status == 403) {
+            authority.authorized(identity) { session.write(StorageRequest(StorageArea.Account, "login/status", "required")) }
+            throw SourceContentException(ContentError.LoginRequired, field)
+        }
         if (status !in 200..299) throw SourceContentException(ContentError.Network, field)
     }
     private suspend fun links(context: RuleEvaluation, rule: String, document: PageDocument, field: String): List<String> =
@@ -333,9 +382,9 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
     }
     // Host storage and orchestration use IO. The caller's priority dispatcher owns the outer
     // request only; nested timeout jobs must not compete with their parent for its last permit.
-    private suspend fun <T : Any> operation(field: String, block: suspend () -> T): T = withContext(Dispatchers.IO) { serial.withLock {
+    private suspend fun <T : Any> operation(field: String, timeoutMillis: Long = 60000, block: suspend () -> T): T = withContext(Dispatchers.IO) { serial.withLock {
         if (!authority.accepts(identity)) throw SourceContentException(ContentError.Unavailable, field)
-        try { withTimeoutOrNull(60000) { block().also { currentCoroutineContext().ensureActive()
+        try { withTimeoutOrNull(timeoutMillis) { block().also { currentCoroutineContext().ensureActive()
             if (!authority.accepts(identity)) throw SourceContentException(ContentError.Unavailable, field) } }
             ?: throw SourceContentException(ContentError.Limit, field) }
         catch (cancelled: CancellationException) { throw cancelled }

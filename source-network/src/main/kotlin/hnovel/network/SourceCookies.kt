@@ -7,7 +7,7 @@ import okhttp3.Cookie
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 
-internal class SourceCookies(private val storage: SourceStorage, private val invalidateCache: () -> Unit) {
+internal class SourceCookies(private val storage: SourceStorage) {
     @Serializable private data class SavedCookie(val origin: String, val cookie: String)
     private val cookies = linkedMapOf<String, Pair<String, Cookie>>()
 
@@ -24,7 +24,7 @@ internal class SourceCookies(private val storage: SourceStorage, private val inv
     }
 
     @Synchronized fun header(url: HttpUrl, explicit: String?): String {
-        if (cookies.entries.removeAll { it.value.second.expiresAt <= System.currentTimeMillis() }) invalidateCache()
+        cookies.entries.removeAll { it.value.second.expiresAt <= System.currentTimeMillis() }
         val matching = cookies.values.map { it.second }
             .filter { it.expiresAt > System.currentTimeMillis() && it.matches(url) }
             .sortedByDescending { it.path.length }
@@ -57,17 +57,43 @@ internal class SourceCookies(private val storage: SourceStorage, private val inv
         val saved = Json.encodeToString(next.values.filter { it.second.persistent }.map { SavedCookie(it.first, it.second.toString()) })
         when (val result = storage.write("cookies", saved)) {
             is StorageResult.Failure -> throw BrokerFailure(RequestStage.Storage, result.code)
-            is StorageResult.Value -> { cookies.clear(); cookies.putAll(next); invalidateCache() }
+            is StorageResult.Value -> { cookies.clear(); cookies.putAll(next) }
         }
     }
 
     private fun key(cookie: Cookie) = "${cookie.name}\n${cookie.domain}\n${cookie.path}"
 
+    @Synchronized fun documentHeader(url: HttpUrl): String = cookies.values.map { it.second }
+        .filter { !it.httpOnly && it.expiresAt > System.currentTimeMillis() && it.matches(url) }
+        .sortedByDescending { it.path.length }.joinToString("; ") { "${it.name}=${it.value}" }
+
+    @Synchronized fun documentCookie(url: HttpUrl, value: String) {
+        require(value.length <= 8192)
+        val parsed = Cookie.parse(url, value) ?: return
+        require(!parsed.httpOnly && cookies[key(parsed)]?.second?.httpOnly != true)
+        save(url, okhttp3.Headers.Builder().add("Set-Cookie", value).build())
+    }
+
+    @Synchronized fun setHeader(url: HttpUrl, value: String, replace: Boolean) {
+        require(value.length <= 65536)
+        val before = snapshot()
+        if (replace) cookies.entries.removeAll { it.value.second.matches(url) }
+        val headers = okhttp3.Headers.Builder()
+        value.split(';').map { it.trim() }.filter { '=' in it }.forEach { pair ->
+            headers.add("Set-Cookie", "$pair; Path=/; Max-Age=31536000")
+        }
+        try {
+            if (value.isBlank()) {
+                val saved = Json.encodeToString(cookies.values.filter { it.second.persistent }.map { SavedCookie(it.first, it.second.toString()) })
+                check(storage.write("cookies", saved) is StorageResult.Value)
+            } else save(url, headers.build())
+        } catch (failure: Exception) { restoreMemory(before); throw failure }
+    }
+
     @Synchronized fun snapshot(): List<Pair<String, Cookie>> = cookies.values.toList()
     @Synchronized fun restoreMemory(snapshot: List<Pair<String, Cookie>>) {
         cookies.clear()
         snapshot.forEach { cookies[key(it.second)] = it }
-        invalidateCache()
     }
 }
 

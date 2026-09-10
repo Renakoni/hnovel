@@ -15,6 +15,47 @@ import java.util.concurrent.TimeUnit
 class ScriptExecutionTest {
     @get:Rule val directory = TemporaryFolder()
 
+    @Test fun browserVerificationRequiresForegroundAndReturnsTheRequestedResponse() = runBlocking {
+        val authority = ExecutionAuthority()
+        val opened = mutableListOf<String>()
+        val browser = BrowserExecutor { _, request, options, guard ->
+            assertTrue(options.interactive)
+            guard.commit { opened += options.title }
+            val body = if (options.title == "large") "rendered".repeat(30000) else "rendered"
+            BrokerResult.Success(BrokerResponse(200, request.url, emptyMap(), body.toByteArray(), "UTF-8", 0))
+        }
+        MockWebServer().use { server ->
+            server.start()
+            SourceBroker(directory.root.toPath(), browser = browser).use { sessions ->
+                val id = authority.issue("a", "legado", "1", "fixture")
+                val session = sessions.open(SourceScope("fixture", "a", "legado"), listOf(NetworkGrant(server.url("/").toString(), true)))
+                val url = JsonPrimitive(server.url("/verify").toString())
+                SourceExecutionBroker(id, authority, session, ExecutionLimits()).use { bridge ->
+                    assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied), runScript(id, bridge, "java.startBrowser($url,'verify')"))
+                    assertTrue(bridge.interactionRequired)
+                    assertTrue(opened.isEmpty())
+                }
+                SourceExecutionBroker(id, authority, session, ExecutionLimits(), allowInteraction = true).use { bridge ->
+                    assertEquals(ExecutionResult.Success("\"rendered\""), runScript(id, bridge,
+                        "java.startBrowserAwait($url,'verify',false).body()"))
+                    assertEquals(0, server.requestCount)
+                    server.enqueue(MockResponse().setBody("refetched"))
+                    assertEquals(ExecutionResult.Success("\"refetched\""), runScript(id, bridge,
+                        "java.startBrowserAwait($url,'large').body()"))
+                    assertEquals(1, server.requestCount)
+                    assertEquals(listOf("verify", "large"), opened)
+                }
+                SourceExecutionBroker(id, authority, session, ExecutionLimits(maxRequests = 1), allowInteraction = true).use { bridge ->
+                    server.enqueue(MockResponse().setBody("must not refetch"))
+                    assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied), runScript(id, bridge,
+                        "java.startBrowserAwait($url,'verify').body()"))
+                    assertEquals(1, server.requestCount)
+                    assertEquals(3, opened.size)
+                }
+            }
+        }
+    }
+
     @Test fun deeplyNestedWorkerPayloadIsRejectedBeforeHostParsing() {
         assertThrows(IllegalArgumentException::class.java) {
             BridgeWire.arguments(("[".repeat(10000) + "]".repeat(10000)).toByteArray())
@@ -102,7 +143,9 @@ class ScriptExecutionTest {
     private fun runScript(id: ExecutionIdentity, bridge: SourceExecutionBroker, script: String): ExecutionResult {
         val wire = ExecutionWire.encode(id, ExecutionTask.Script(script), bridge.limits)
         val output = WorkerMain.executeSerialized(wire.toString(Charsets.UTF_8), HostBridge { name, args ->
-            runBlocking { bridge.call(name, args) }
+            runBlocking { bridge.call(name, args) }.also {
+                require(it.toString().toByteArray(Charsets.UTF_8).size <= BridgeWire.MAX_BYTES)
+            }
         })
         return ExecutionWire.decodeResult(output.toByteArray(Charsets.UTF_8))
     }

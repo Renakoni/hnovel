@@ -8,7 +8,9 @@ import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 import java.security.MessageDigest
 
 /** Opaque keys become bounded filenames. No caller-provided path or directory is accepted. */
-internal class SourceStorage(root: Path, namespace: List<String>, private val limits: BrokerLimits) {
+internal class SourceStorage(root: Path, namespace: List<String>, private val limits: BrokerLimits,
+    private val cipher: StorageCipher = StorageCipher.Plain) {
+    private val identity = namespace.joinToString("") { "${it.length}:$it" }
     private val directory: Path
     init {
         Files.createDirectories(root)
@@ -23,14 +25,14 @@ internal class SourceStorage(root: Path, namespace: List<String>, private val li
         if (!Files.exists(path, NOFOLLOW_LINKS)) StorageResult.Value(null)
         else {
             if (Files.size(path) > limits.maxStorageBytes) return@operation StorageResult.Failure(FailureCode.StorageQuota)
-            StorageResult.Value(Files.readAllBytes(path).toString(Charsets.UTF_8))
+            StorageResult.Value(cipher.open(Files.readAllBytes(path), identity + hash(key)).toString(Charsets.UTF_8))
         }
     }
 
     @Synchronized fun write(key: String, value: String?): StorageResult = operation {
         val path = path(key)
         if (value == null) { Files.deleteIfExists(path); return@operation StorageResult.Value(null) }
-        val bytes = value.toByteArray(Charsets.UTF_8)
+        val bytes = cipher.seal(value.toByteArray(Charsets.UTF_8), identity + hash(key))
         val files = Files.list(directory).use { it.iterator().asSequence().toList() }
         if (files.any { !Files.isRegularFile(it, NOFOLLOW_LINKS) }) return@operation StorageResult.Failure(FailureCode.StorageUnavailable)
         val oldSize = if (Files.exists(path)) Files.size(path) else 0L
@@ -45,6 +47,15 @@ internal class SourceStorage(root: Path, namespace: List<String>, private val li
             catch (_: java.nio.file.AtomicMoveNotSupportedException) { Files.move(temp, path, REPLACE_EXISTING) }
         } finally { Files.deleteIfExists(temp) }
         StorageResult.Value(value)
+    }
+
+    @Synchronized fun clear(): StorageResult = operation {
+        check(!Files.isSymbolicLink(directory) && directory.toRealPath() == directory)
+        Files.list(directory).use { files -> files.forEach { file ->
+            check(Files.isRegularFile(file, NOFOLLOW_LINKS))
+            Files.delete(file)
+        } }
+        StorageResult.Value(null)
     }
 
     private fun path(key: String): Path {
