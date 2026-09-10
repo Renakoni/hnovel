@@ -71,4 +71,36 @@ class ResponseContractTest {
                 run("var r=java.get('u',{}),before=r.charset(),text=r.parse().select('p').text();[before,text,r.charset()]", data(bytes,"text/html")))
         }
     }
+
+    @Test fun responseConsumptionSequencesMatchPinnedJsoupIncludingBufferedStreamRejection() {
+        val operations = listOf("bufferUp", "body", "bodyAsBytes", "parse", "bodyStream")
+        val sequences = operations.flatMap { first -> operations.flatMap { second ->
+            operations.map { third -> listOf(first, second, third) }
+        } }
+        MockWebServer().use { server ->
+            for (sequence in sequences) {
+                server.enqueue(MockResponse().setBody("<p>one</p>"))
+                val reference = Jsoup.connect(server.url("/book").toString()).execute()
+                val expected = sequence.map { operation -> runCatching {
+                    when (operation) {
+                        "bufferUp" -> reference.bufferUp()
+                        "body" -> reference.body()
+                        "bodyAsBytes" -> reference.bodyAsBytes()
+                        "parse" -> reference.parse()
+                        else -> reference.bodyStream().use { it.read() }
+                    }
+                }.isSuccess }
+                val calls = JsonArray(sequence.map(::JsonPrimitive))
+                assertEquals(sequence.toString(), ScriptResult.Success(JsonArray(expected.map(::JsonPrimitive)).toString()),
+                    run("""
+                        var r=java.get('u',{});
+                        $calls.map(function(operation){
+                            try{var value=r[operation]();if(operation==='bodyStream'){value.read();value.close()}return true}
+                            catch(e){return false}
+                        })
+                    """, data("<p>one</p>".toByteArray())))
+                if (sequence.take(2) == listOf("bufferUp", "bodyStream")) assertEquals(listOf(true, false), expected.take(2))
+            }
+        }
+    }
 }

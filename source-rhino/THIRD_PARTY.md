@@ -33,7 +33,7 @@ This subset avoids importing a different detector or the whole ICU runtime.
 
 `font/QueryTTF.java` is the pinned `model/analyzeRule/QueryTTF.java` implementation under
 GPL-3.0-only (see `../source-compatibility/reference/LICENSE`). Adaptations
-relocate its package, remove Android's Keep annotation, validate table/glyph extents before allocations, and add bounded format-12 cmap decoding (an intentional extension over the pinned parser). `ScriptFonts` is a
+relocate its package, remove Android's Keep annotation, validate table/glyph extents before allocations, correct format-4 glyph-array zero/delta/modulo handling and validate its ranges, and add bounded format-12 cmap decoding (an intentional extension over the pinned parser). `ScriptFonts` is a
 native-JS facade; parser maps and Java objects are not script capabilities.
 
 Android archive decoding uses `me.zhanghai.android.libarchive:library:1.1.6`,

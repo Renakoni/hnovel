@@ -736,6 +736,8 @@ public class QueryTTF {
                 }
                 case 4: {
                     f.segCountX2 = reader.ReadUInt16();
+                    if (f.segCountX2 == 0 || (f.segCountX2 & 1) != 0)
+                        throw new IllegalArgumentException("Invalid format-4 segment count");
                     int segCount = f.segCountX2 / 2;
                     f.searchRange = reader.ReadUInt16();
                     f.entrySelector = reader.ReadUInt16();
@@ -755,13 +757,19 @@ public class QueryTTF {
                         int unicodeExclusive = f.endCode[segmentIndex];
                         int idDelta = f.idDelta[segmentIndex];
                         int idRangeOffset = f.idRangeOffsets[segmentIndex];
+                        if (unicodeInclusive > unicodeExclusive || (idRangeOffset & 1) != 0)
+                            throw new IllegalArgumentException("Invalid format-4 segment");
+                        int firstGlyphIndex = idRangeOffset / 2 + segmentIndex - segCount;
+                        if (idRangeOffset != 0 && (firstGlyphIndex < 0 ||
+                                firstGlyphIndex + unicodeExclusive - unicodeInclusive >= glyphIdArrayLength))
+                            throw new IllegalArgumentException("Invalid format-4 glyph range");
                         for (int unicode = unicodeInclusive; unicode <= unicodeExclusive; unicode++) {
                             int glyphId = 0;
                             if (idRangeOffset == 0) {
                                 glyphId = (unicode + idDelta) & 0xFFFF;
                             } else {
-                                int gIndex = (idRangeOffset / 2) + unicode - unicodeInclusive + segmentIndex - segCount;
-                                if (gIndex < glyphIdArrayLength) glyphId = f.glyphIdArray[gIndex] + idDelta;
+                                int rawGlyphId = f.glyphIdArray[firstGlyphIndex + unicode - unicodeInclusive];
+                                if (rawGlyphId != 0) glyphId = (rawGlyphId + idDelta) & 0xFFFF;
                             }
                             if (glyphId == 0) continue; // 排除轮廓索引为0的Unicode
                             unicodeToGlyphId.put(unicode, glyphId);

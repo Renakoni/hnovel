@@ -98,8 +98,12 @@ Production response snapshots carry Base64 original bytes, final method/URL,
 protocol/timestamps and nullable declared charset. Missing declared charset stays
 null so parse() can detect HTML meta/BOM encoding. Legacy text-only mock snapshots
 use UTF-8 text bytes; they cannot recover binary data that was never supplied.
-body()/bodyAsBytes()/bufferUp() permit repeated buffered reads; parse() or
-bodyStream() consumes an unbuffered response. Streams expose read overloads,
+Buffered bodies support repeated body()/bodyAsBytes()/parse() calls.
+bodyStream() is only available before consumption, including before bufferUp(),
+matching pinned Jsoup 1.16.2. After an unbuffered parse(), bufferUp() is a no-op
+and cannot restore bytes or allow another parse/stream. ResponseContractTest
+compares all 125 three-operation sequences over these five methods against a
+real nonempty Jsoup response. Streams expose read overloads,
 skip, available/ready, mark/reset and close over bounded memory. StrResponse's
 raw body is already closed, matching the reference's text() consumption.
 Mutating response headers/cookies/URL changes only that response view, never
@@ -134,6 +138,10 @@ Font format 12 support is a deliberate extension over the pinned QueryTTF,
 which ignores that format. Directory/table/glyph bounds are checked before
 table-derived array allocation; format 12 expansion is capped at 65,536 mappings.
 The supplementary fixture maps U+100000 to the same synthetic triangle as A.
+Format 4 preserves zero glyph-array entries as missing and applies idDelta
+modulo 65,536 only to nonzero entries. Odd offsets, invalid segment counts,
+inverted ranges and glyph-array overreads are rejected. This corrects the pinned
+parser's arithmetic; tests use hand-encoded cmap tables and queryTTF/replaceFont.
 
 Cookie/login/browser/UI integrations belong to #88/#89/#91, production source
 routing to #90, and activation/rollback to #94. No private source or credential
@@ -141,7 +149,7 @@ fixture was run. The generated fonts/archives are public synthetic data; their
 generator is recorded alongside the files. Tests establish these concrete
 contracts, not universal Legado compatibility or an absolute sandbox.
 
-Publication validation: 92 Rhino, 41 execution, 10 rules, 20 network and 43
-compatibility JVM tests pass (206 total). Debug and AndroidTest APKs build;
+Publication validation: 95 Rhino, 41 execution, 10 rules, 20 network and 43
+compatibility JVM tests pass (209 total). Debug and AndroidTest APKs build;
 the real isolated-service suite passes 21 tests on each of API 24 and API 35,
 including retained-library recovery after an oversized DOM mutation.

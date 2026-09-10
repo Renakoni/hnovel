@@ -21,8 +21,8 @@ internal class ResponseSnapshot(private var location: URL, private var verb: Con
         }
     }
     private val type = header("Content-Type")
-    private var read = false
-    private var buffered = false
+    private enum class BodyState { Fresh, Buffered, Parsed, Stream }
+    private var state = BodyState.Fresh
     private fun key(name: String) = fields.keys.firstOrNull { it.equals(name, true) }
     override fun statusCode() = status
     override fun statusMessage() = statusText
@@ -47,15 +47,20 @@ internal class ResponseSnapshot(private var location: URL, private var verb: Con
     override fun hasCookie(name: String) = name in jar
     override fun removeCookie(name: String) = apply { jar.remove(name) }
     override fun cookies(): MutableMap<String, String> = jar
-    override fun bufferUp() = apply { if (!buffered) { check(!read); buffered = true; read = true } }
-    override fun bodyAsBytes(): ByteArray { bufferUp(); return content.copyOf() }
-    override fun body(): String { bufferUp(); return Charset.forName(encoding ?: "UTF-8").decode(ByteBuffer.wrap(content)).toString() }
-    override fun bodyStream(): BufferedInputStream { check(!read); read = true; return content.inputStream().buffered() }
+    // Pinned Jsoup makes bufferUp a no-op after parse closed an unbuffered body;
+    // it does not restore bytes. Buffered content supports body/bytes/parse, not bodyStream.
+    override fun bufferUp() = apply {
+        check(state != BodyState.Stream)
+        if (state == BodyState.Fresh) state = BodyState.Buffered
+    }
+    override fun bodyAsBytes(): ByteArray { bufferUp(); check(state == BodyState.Buffered); return content.copyOf() }
+    override fun body(): String { bufferUp(); check(state == BodyState.Buffered); return Charset.forName(encoding ?: "UTF-8").decode(ByteBuffer.wrap(content)).toString() }
+    override fun bodyStream(): BufferedInputStream { check(state == BodyState.Fresh); state = BodyState.Stream; return content.inputStream().buffered() }
     override fun parse(): Document {
-        check(buffered || !read)
-        read = true
+        check(state == BodyState.Fresh || state == BodyState.Buffered)
         val parser = if (type?.contains("xml", true) == true) Parser.xmlParser() else Parser.htmlParser()
         return content.inputStream().use { Jsoup.parse(it, encoding, location.toExternalForm(), parser) }.also {
+            if (state == BodyState.Fresh) state = BodyState.Parsed
             encoding = it.outputSettings().charset().name()
         }
     }
