@@ -90,9 +90,13 @@ class SourceRevisionUpdatesTest {
                 assertFalse(failure.toString().contains("private-secret"))
                 val next = candidate(sources, JsonObject(fixture.raw() + ("bookSourceName" to JsonPrimitive("New"))))
                 assertTrue(runCatching { updates.apply(id, next.reference(), listOf(NetworkGrant("https://unapproved.test/"))) }.isFailure)
-                val blocked = File(host.filesDir, "rule-sources/active.json.new").apply { mkdirs() }
-                File(blocked, "block").writeText("test")
+                // API 27 AtomicFile writes the base after keeping a .bak, not a .new file.
+                val base = File(host.filesDir, "rule-sources/active.json")
+                val saved = base.readBytes()
+                val backup = File(host.filesDir, "rule-sources/active.json.bak").apply { writeBytes(saved) }
+                check(base.delete()); check(base.mkdir()); File(base, "block").writeText("test")
                 assertTrue(runCatching { updates.apply(id, next.reference(), grants) }.isFailure)
+                base.deleteRecursively(); base.writeBytes(saved); backup.delete()
                 assertSame(old, (registry.resolve(id) as SourceResolution.Ready).runtime)
                 assertEquals(first.contentDigest, sources.installedSources().single().definition.contentDigest)
                 assertEquals("Same title", old.getBookInformation(fixture.server.url("/book/one").toString()).get()!!.title)
