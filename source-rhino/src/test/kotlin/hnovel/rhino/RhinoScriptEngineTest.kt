@@ -9,6 +9,26 @@ class RhinoScriptEngineTest {
  @Test fun syntaxAndBridgeErrorsAreStructured() { assertTrue(engine.evaluate("return ;",frame) is ScriptResult.Failure); assertTrue(engine.evaluate("host.call('bad','x')",frame) is ScriptResult.Failure) }
  @Test fun classesAreNotExposed() { val r=engine.evaluate("Packages.java.lang.System.exit",frame); assertTrue(r is ScriptResult.Failure) }
 
+ @Test fun bridgeFunctionsSupportCallApplyAndBindWithAndWithoutALibrary() {
+  val calls = mutableListOf<String>()
+  val bridgeEngine = RhinoScriptEngine(HostBridge { name, args ->
+   calls += name
+   JsonPrimitive(args.single().jsonPrimitive.content.uppercase())
+  })
+  val script = "[java.ajax.call(null,'a'),cache.get.apply(cache,['b']),source.get.bind(source)('c')," +
+   "host.call.call(null,'upper','d'),source.getKey.apply(null,[]),java.md5Encode.bind(java)('')," +
+   "java.ajax instanceof Function]"
+  ScriptLibrary("source-a", "legado", "var holder={};").use { library ->
+    for (scope in listOf(null, library)) {
+     assertEquals(ScriptResult.Success("[\"A\",\"B\",\"C\",\"D\",\"source-a\",\"d41d8cd98f00b204e9800998ecf8427e\",true]"),
+      bridgeEngine.evaluate(script, frame, scope))
+   }
+   assertEquals(ScriptResult.Success("1"), bridgeEngine.evaluate("holder.hash=java.md5Encode.bind(java);1", frame, library))
+   assertEquals(ScriptResult.Success("\"d41d8cd98f00b204e9800998ecf8427e\""), bridgeEngine.evaluate("holder.hash('')", frame, library))
+  }
+  assertEquals(List(2) { listOf("java.ajax", "cache.get", "source.get", "upper") }.flatten(), calls)
+ }
+
  @Test fun globalCompletionAndTopLevelReturnFollowThePinnedEngineEntryPoint() {
   val scripts = listOf("21*2", "var value=21; value*2", "function answer(){return 42;} answer()")
   val cx = org.mozilla.javascript.Context.enter()
