@@ -5,6 +5,7 @@ import io.nightfish.potatoepub.xml.XmlBuilder
 import org.dom4j.Document
 import org.dom4j.DocumentHelper
 import org.dom4j.Element
+import org.dom4j.QName
 import java.io.File
 
 @Suppress("MemberVisibilityCanBePrivate")
@@ -27,7 +28,16 @@ class SimpleContentBuilder {
     }
 
     fun title(src: String) {
-        headElement.addElement("title").addText(src)
+        (headElement.element("title") ?: headElement.addElement("title")).text = src
+    }
+
+    fun addContent(element: Element) {
+        fun normalizeHtml(node: Element) {
+            if (node.namespaceURI.isEmpty()) node.qName = QName.get(node.name, rootElement.namespace)
+            if (node.namespaceURI == rootElement.namespaceURI) node.elements().forEach(::normalizeHtml)
+        }
+        normalizeHtml(element)
+        bodyElement.add(element)
     }
 
     fun headline(level: Int, content: String) {
@@ -39,10 +49,7 @@ class SimpleContentBuilder {
     }
 
     fun text(content: String) {
-        var result = Regex("&#([0-8]|1[1-2]|1[4-9]|2[0-9]|3[0-1]);").replace(content, "")
-        result = Regex("&#x(0[0-8BCEF]|1[0-9A-F]|7F|8[0-9A-F]|9[0-9A-F]|A[0-9A-F]|B[0-9A-F]|C[0-9A-F]|D[0-9A-F]|E[0-9A-F]|F[0-9A-F]);", RegexOption.IGNORE_CASE)
-            .replace(result, "")
-        contentElement.addText(result)
+        contentElement.addText(content)
     }
 
     /**
@@ -52,7 +59,7 @@ class SimpleContentBuilder {
         _images[Pair(id, src)] = image
         XmlBuilder.ElementBuilder(contentElement, "div", arrayOf(Attribute("class", "div_image"))) {
             "img"(
-                "border" to 0,
+                "alt" to "",
                 "class" to "image_content",
                 "src" to src
             )
