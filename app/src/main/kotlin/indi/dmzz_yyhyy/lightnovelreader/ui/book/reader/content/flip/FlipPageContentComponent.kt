@@ -1,7 +1,6 @@
 package indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.flip
 
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
@@ -27,13 +26,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.paint
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onKeyEvent
-import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -49,6 +41,8 @@ import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentErr
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentLoading
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentUiState
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.readerTapGestures
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ReaderVolumeDirection
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.readerVolumeKeys
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.data.MenuOptions
 import indi.dmzz_yyhyy.lightnovelreader.utils.LocalSnackbarHost
 import indi.dmzz_yyhyy.lightnovelreader.utils.rememberReaderBackgroundPainter
@@ -56,12 +50,8 @@ import indi.dmzz_yyhyy.lightnovelreader.utils.showSnackbar
 import io.nightfish.lightnovelreader.api.content.component.AbstractContentComponent
 import io.nightfish.lightnovelreader.api.ui.LocalReaderStyle
 import io.nightfish.lightnovelreader.api.ui.LocalTextLocaleList
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.math.absoluteValue
-import kotlin.time.Duration.Companion.milliseconds
 
 @Composable
 fun FlipPageContentComponent(
@@ -161,7 +151,6 @@ private fun SimpleFlipPageTextComponent(
             uiState.updatePageState(PagerState { result.size })
         }
     }
-    val focusRequester = remember { FocusRequester() }
     val snackbarHostState = LocalSnackbarHost.current
 
     // 仅在启用背景图时才创建 painter：rememberReaderBackgroundPainter 会发起图片加载副作用，
@@ -177,14 +166,12 @@ private fun SimpleFlipPageTextComponent(
     val screenWidthPx = windowInfo.containerSize.width.toFloat()
     val readerFirstPageText = stringResource(R.string.reader_first_page)
     val previousChapterText = stringResource(R.string.previous_chapter)
-    fun lastPage(pagerState: PagerState) {
+    suspend fun lastPage(pagerState: PagerState) {
         if (pagerState.currentPage != 0) {
-            scope.launch {
-                if (settingState.flipAnime != MenuOptions.FlipAnimationOptions.None) {
-                    pagerState.animateScrollToPage(pagerState.currentPage - 1)
-                } else {
-                    pagerState.scrollToPage(pagerState.currentPage - 1)
-                }
+            if (settingState.flipAnime != MenuOptions.FlipAnimationOptions.None) {
+                pagerState.animateScrollToPage(pagerState.currentPage - 1)
+            } else {
+                pagerState.scrollToPage(pagerState.currentPage - 1)
             }
         } else if (settingState.fastChapterChange && slippedContentComponentList.isNotEmpty()) {
             uiState.loadPrevChapter.invoke()
@@ -207,14 +194,12 @@ private fun SimpleFlipPageTextComponent(
     val readerLastPageText = stringResource(R.string.reader_last_page)
     val nextPageText = stringResource(R.string.next_chapter)
 
-    fun nextPage(pagerState: PagerState) {
+    suspend fun nextPage(pagerState: PagerState) {
         if (pagerState.currentPage + 1 < pagerState.pageCount) {
-            scope.launch {
-                if (settingState.flipAnime != MenuOptions.FlipAnimationOptions.None) {
-                    pagerState.animateScrollToPage(pagerState.currentPage + 1)
-                } else {
-                    pagerState.scrollToPage(pagerState.currentPage + 1)
-                }
+            if (settingState.flipAnime != MenuOptions.FlipAnimationOptions.None) {
+                pagerState.animateScrollToPage(pagerState.currentPage + 1)
+            } else {
+                pagerState.scrollToPage(pagerState.currentPage + 1)
             }
         } else if (settingState.fastChapterChange && slippedContentComponentList.isNotEmpty()) {
             uiState.loadNextChapter.invoke()
@@ -232,8 +217,6 @@ private fun SimpleFlipPageTextComponent(
             }
         }
     }
-    var volumeJob by remember { mutableStateOf<Job?>(null) }
-    val intervalMs = (settingState.volumeKeyContinuousFlipInterval * 1000).toLong()
 
     Box(
         modifier = modifier
@@ -252,41 +235,14 @@ private fun SimpleFlipPageTextComponent(
             state = uiState.pagerState,
             key = { it },
             modifier = modifier
-                .focusRequester(focusRequester)
-                .focusable()
-                .onKeyEvent { event ->
-                    if (!settingState.isUsingVolumeKeyFlip) {
-                        false
-                    } else if (event.key == Key.VolumeUp || event.key == Key.VolumeDown) {
-                        when (event.type) {
-                            KeyEventType.KeyDown -> {
-                                focusRequester.requestFocus()
-                                if (event.nativeKeyEvent.repeatCount == 0) {
-                                    if (event.key == Key.VolumeUp) lastPage(uiState.pagerState)
-                                    else nextPage(uiState.pagerState)
-
-                                    if (intervalMs > 0) {
-                                        volumeJob?.cancel()
-                                        volumeJob = scope.launch {
-                                            while (isActive) {
-                                                delay(intervalMs.milliseconds)
-                                                if (event.key == Key.VolumeUp) lastPage(uiState.pagerState)
-                                                else nextPage(uiState.pagerState)
-                                            }
-                                        }
-                                    }
-                                }
-                                true
-                            }
-                            KeyEventType.KeyUp -> {
-                                volumeJob?.cancel()
-                                volumeJob = null
-                                true
-                            }
-                            else -> false
-                        }
-                    } else {
-                        false
+                .readerVolumeKeys(
+                    enabled = settingState.isUsingVolumeKeyFlip && settingState.isUsingFlipPage &&
+                        slippedContentComponentList.isNotEmpty(),
+                    intervalSeconds = settingState.volumeKeyContinuousFlipInterval,
+                ) { direction ->
+                    when (direction) {
+                        ReaderVolumeDirection.Backward -> lastPage(uiState.pagerState)
+                        ReaderVolumeDirection.Forward -> nextPage(uiState.pagerState)
                     }
                 }
                 .draggable(
@@ -301,8 +257,8 @@ private fun SimpleFlipPageTextComponent(
                 .readerTapGestures { position ->
                     if (settingState.isUsingFlipPage && settingState.isUsingClickFlipPage)
                         when {
-                            position.x < screenWidthPx / 3f -> lastPage(uiState.pagerState)
-                            position.x > screenWidthPx * 2f / 3f -> nextPage(uiState.pagerState)
+                            position.x < screenWidthPx / 3f -> scope.launch { lastPage(uiState.pagerState) }
+                            position.x > screenWidthPx * 2f / 3f -> scope.launch { nextPage(uiState.pagerState) }
                             else -> changeIsImmersive.invoke()
                         }
                     else changeIsImmersive.invoke()
