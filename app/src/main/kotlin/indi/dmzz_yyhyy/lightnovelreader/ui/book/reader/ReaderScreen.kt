@@ -47,6 +47,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -77,6 +78,7 @@ import com.github.michaelbull.result.onErr
 import com.github.michaelbull.result.onOk
 import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ContentComponent
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.LocalReaderVolumeKeysEnabled
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.AnimatedText
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.AnimatedTextLine
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.LnrSnackbar
@@ -204,6 +206,7 @@ fun ReaderScreen(
 
         Content(
             isImmersive = isImmersive,
+            volumeKeysEnabled = !showSettingsBottomSheet && !showChapterSelectionBottomSheet,
             readingScreenUiState = readingScreenUiState,
             settingState = settingState,
             fontFamilySettings = fontFamilySettings,
@@ -316,7 +319,8 @@ fun Content(
     fontFamilySettings: ReaderFontFamilySettings,
     onClickPrevChapter: () -> Unit,
     onClickNextChapter: () -> Unit,
-    onChangeIsImmersive: () -> Unit
+    onChangeIsImmersive: () -> Unit,
+    volumeKeysEnabled: Boolean = true,
 ) {
     Box(modifier = Modifier.fillMaxSize().readerProbeLayout("content-root")) {
         val isEnableIndicator =
@@ -329,25 +333,30 @@ fun Content(
                 readingScreenUiState.contentUiState,
                 label = "ContentAnimate"
             ) { contentUiState ->
-                ContentComponent(
-                    uiState = contentUiState,
-                    settingState = settingState,
-                    fontFamilySettings = fontFamilySettings,
-                    paddingValues =
-                        if (settingState.autoPadding)
-                            readerAutoPadding(if (isEnableIndicator) 40.dp else 0.dp)
-                        else PaddingValues(
-                            top = settingState.topPadding.dp,
-                            bottom = if (isEnableIndicator)
-                                (settingState.bottomPadding + 40).dp
-                            else settingState.bottomPadding.dp,
-                            start = settingState.leftPadding.dp,
-                            end = settingState.rightPadding.dp
-                        ),
-                    changeIsImmersive = onChangeIsImmersive,
-                    onClickPrevChapter = onClickPrevChapter,
-                    onClickNextChapter = onClickNextChapter
-                )
+                // Controls cover the reading viewport; outgoing animated modes must release input.
+                CompositionLocalProvider(LocalReaderVolumeKeysEnabled provides (
+                    volumeKeysEnabled && isImmersive && contentUiState === readingScreenUiState.contentUiState
+                )) {
+                    ContentComponent(
+                        uiState = contentUiState,
+                        settingState = settingState,
+                        fontFamilySettings = fontFamilySettings,
+                        paddingValues =
+                            if (settingState.autoPadding)
+                                readerAutoPadding(if (isEnableIndicator) 40.dp else 0.dp)
+                            else PaddingValues(
+                                top = settingState.topPadding.dp,
+                                bottom = if (isEnableIndicator)
+                                    (settingState.bottomPadding + 40).dp
+                                else settingState.bottomPadding.dp,
+                                start = settingState.leftPadding.dp,
+                                end = settingState.rightPadding.dp
+                            ),
+                        changeIsImmersive = onChangeIsImmersive,
+                        onClickPrevChapter = onClickPrevChapter,
+                        onClickNextChapter = onClickNextChapter
+                    )
+                }
             }
 
             AnimatedVisibility(

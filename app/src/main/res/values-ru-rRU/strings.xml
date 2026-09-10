@@ -157,6 +157,10 @@
     <string name="settings_reader_volume_key_control">Управление кнопками громкости</string>
     <string name="settings_reader_volume_key_control_desc">Используйте кнопку \"+\" для перехода на предыдущую страницу и \"-\" для следующей.</string>
     <string name="settings_reader_volume_key_interval">Интервал непрерывного перелистывания клавишей</string>
+    <string name="reader_volume_scroll_title">Прокрутка кнопками громкости</string>
+    <string name="reader_volume_scroll_description">Громкость +: назад, громкость -: вперёд при любой ориентации. При открытой панели чтения кнопки регулируют громкость.</string>
+    <string name="reader_volume_scroll_step">Шаг прокрутки (% области чтения)</string>
+    <string name="reader_volume_scroll_interval">Интервал повтора (-1: отключён)</string>
     <string name="settings_reader_t2tp">Касание для перелистывания</string>
     <string name="settings_reader_t2tp_desc">Включите перелистывание по нажатию и смените жест вызова меню на вертикальный свайп.</string>
     <string name="settings_reader_page_turn_anim">Анимация перелистывания</string>

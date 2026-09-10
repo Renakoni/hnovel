@@ -6,6 +6,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -56,6 +57,8 @@ import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentErr
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentLoading
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentUiState
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.readerTapGestures
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.readerVolumeKeys
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.volumeKeyScrollDistance
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.Loading
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.data.MenuOptions
 import indi.dmzz_yyhyy.lightnovelreader.utils.LocalSnackbarHost
@@ -252,6 +255,17 @@ fun ScrollContentTextComponent(
         LazyColumn(
             modifier = modifier
                 .padding(paddingValues)
+                .readerVolumeKeys(
+                    enabled = settingState.isUsingVolumeKeyFlip && !settingState.isUsingFlipPage &&
+                        uiState.readingChapterContent?.get() != null && lazyColumnSize.height > 0,
+                    intervalSeconds = settingState.volumeKeyContinuousFlipInterval,
+                ) { direction ->
+                    listState.scrollBy(volumeKeyScrollDistance(
+                        listState.layoutInfo.viewportSize.height,
+                        settingState.volumeKeyScrollFraction,
+                        direction,
+                    ))
+                }
                 .readerTapGestures { changeIsImmersive() }
                 .onGloballyPositioned {
                     scope.launch {
