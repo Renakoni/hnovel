@@ -56,12 +56,15 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
                         interactionRequired = true
                         error("Foreground source login required")
                     }
-                    require(args.size == if (name == "browser.refetch") 1 else 2)
+                    require(if (name == "browser.refetch") args.size == 1
+                        else args.size == 2 || name == "java.startBrowserAwait" && args.size == 3)
                     val url = java.net.URI(baseUrl).resolve(args[0].jsonPrimitive.content).toString()
                     val options = if (name == "browser.refetch") null else BrowserOptions(interactive = true,
                         title = args[1].jsonPrimitive.content.also { require(it.length <= 1024) })
                     val response = fetch(BrokerRequest("browser-$requestNumber", url, headers = sourceHeaders, browser = options))
-                    if (name == "java.startBrowser") JsonNull else response.scriptSnapshot(true)
+                    // When the worker will refetch, only signal completion; the rendered body is unused.
+                    val refetch = name == "java.startBrowserAwait" && (args.getOrNull(2)?.jsonPrimitive?.boolean ?: true)
+                    if (name == "java.startBrowser" || refetch) JsonNull else response.scriptSnapshot(true)
                 }
                 "java.webView", "java.webViewGetSource", "java.webViewGetOverrideUrl" -> {
                     require(args.size == if (name == "java.webView") 3 else 4)

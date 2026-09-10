@@ -16,7 +16,7 @@ internal class ScriptRequestTemplates(private val scope: Scriptable, private val
         if (name != "java.startBrowserAwait") return dispatch(cx, bridge, name, args)
         require(args.size in 2..3)
         val refetch = args.getOrNull(2)?.jsonPrimitive?.boolean ?: true
-        val page = dispatch(cx, bridge, name, args.take(2))
+        val page = dispatch(cx, bridge, name, args)
         // Verification can change authentication; evaluate the retry header only after it finishes.
         return if (refetch) dispatch(cx, bridge, "browser.refetch", args.take(1)) else page
     }
