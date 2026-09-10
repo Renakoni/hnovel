@@ -63,8 +63,9 @@ data class ScriptFrame(val sourceId: String, val profile: String, val bookId: St
     val baseUrl: String = "")
 
 data class ScriptLimits(val instructionLimit: Int = 100_000, val maxResultChars: Int = 256 * 1024,
-    val maxScriptChars: Int = 256 * 1024, val maxBridgeChars: Int = 64 * 1024) {
-    init { require(instructionLimit > 0 && maxResultChars > 0 && maxScriptChars > 0 && maxBridgeChars > 0) }
+    val maxScriptChars: Int = 256 * 1024, val maxBridgeChars: Int = 64 * 1024,
+    val maxInterpreterStackDepth: Int = 1000) {
+    init { require(instructionLimit > 0 && maxResultChars > 0 && maxScriptChars > 0 && maxBridgeChars > 0 && maxInterpreterStackDepth in 1..1000) }
 }
 
 sealed interface ScriptResult {
@@ -78,6 +79,13 @@ enum class FailureCode { Timeout, Cancelled, Syntax, Runtime, ResultTooLarge, Un
 
 private class ScriptBudgetExceeded : Error()
 private class ScriptCancelled : Error()
+private class ScriptSyntaxError : Error()
+
+private fun evaluateGlobal(context: Context, scope: Scriptable, code: String, name: String): Any? {
+    val compiled = try { context.compileString(code, name, 1, null) }
+        catch (_: EvaluatorException) { throw ScriptSyntaxError() }
+    return compiled.exec(context, scope)
+}
 
 /** Interpreted JS is instruction-bounded. Native calls/regex still require the #86 process boundary. */
 class RhinoScriptEngine(private val bridge: HostBridge, private val limits: ScriptLimits = ScriptLimits()) {
@@ -98,6 +106,7 @@ class RhinoScriptEngine(private val bridge: HostBridge, private val limits: Scri
             override fun makeContext(): Context = super.makeContext().apply {
                 languageVersion = Context.VERSION_ES6
                 optimizationLevel = -1
+                maximumInterpreterStackDepth = limits.maxInterpreterStackDepth
                 instructionObserverThreshold = minOf(1000, limits.instructionLimit)
                 setClassShutter { false }
             }
@@ -116,7 +125,7 @@ class RhinoScriptEngine(private val bridge: HostBridge, private val limits: Scri
                         prototype = context.initSafeStandardObjects()
                         // Like the reference, initialization has no invocation bindings or host capabilities.
                         library.scripts.forEachIndexed { index, code ->
-                            context.evaluateString(this, code, "source-library-$index", 1, null)
+                            evaluateGlobal(context, this, code, "source-library-$index")
                         }
                         sealObject()
                         library.scope = this
@@ -131,7 +140,7 @@ class RhinoScriptEngine(private val bridge: HostBridge, private val limits: Scri
                 scope.put("baseUrl", scope, frame.baseUrl)
                 context.putThreadLocal(bridgeLimitKey, limits.maxBridgeChars)
                 ScriptBridge(bridge).install(context, scope, frame)
-                val value = context.evaluateString(scope, source, "source-script", 1, null)
+                val value = evaluateGlobal(context, scope, source, "source-script")
                 if (Thread.currentThread().isInterrupted) throw ScriptCancelled()
                 val json = BoundedJsonResult(limits.maxResultChars).encode(value)
                 if (Thread.currentThread().isInterrupted) throw ScriptCancelled()
@@ -143,7 +152,9 @@ class RhinoScriptEngine(private val bridge: HostBridge, private val limits: Scri
           catch (_: ResultTooLarge) { ScriptResult.Failure(FailureCode.ResultTooLarge, "result too large") }
           catch (_: UnsupportedResult) { ScriptResult.Failure(FailureCode.UnsupportedResult, "result is not JSON data") }
           catch (_: WrappedException) { ScriptResult.Failure(FailureCode.BridgeDenied, "host bridge denied") }
-          catch (_: EvaluatorException) { ScriptResult.Failure(FailureCode.Syntax, "syntax error") }
+          catch (_: ScriptSyntaxError) { ScriptResult.Failure(FailureCode.Syntax, "syntax error") }
+          catch (_: EvaluatorException) { ScriptResult.Failure(FailureCode.Runtime, "script failed") }
+          catch (_: StackOverflowError) { ScriptResult.Failure(FailureCode.Runtime, "script stack exhausted") }
           catch (_: BridgeRejected) { ScriptResult.Failure(FailureCode.BridgeDenied, "host bridge denied") }
           catch (_: JavaScriptException) { ScriptResult.Failure(FailureCode.Runtime, "script failed") }
           catch (_: Exception) { ScriptResult.Failure(FailureCode.Runtime, "script failed") }
