@@ -13,11 +13,11 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
     var bookId: String? = null, var chapterId: String? = null, var book: ScriptState = ScriptState(),
     var chapter: ScriptState = ScriptState(), var baseUrl: String, val keyword: String = "", var page: Int = 1,
     private val calls: java.util.concurrent.atomic.AtomicInteger = java.util.concurrent.atomic.AtomicInteger(),
-    private val headerRule: String = "", private val interactive: Boolean = false) {
+    private val headerRule: String = "", private val interactive: Boolean = false, private val trace: ContentTrace = ContentTrace.None) {
     private val limits = ExecutionLimits(timeoutMillis = if (interactive) 60000 else 5000, maxOutputBytes = 196608)
 
     fun fork(bookId: String? = this.bookId, chapterId: String? = this.chapterId) =
-        RuleEvaluation(identity, authority, session, runner, library, bookId, chapterId, book.copy(), chapter.copy(), baseUrl, keyword, page, calls, headerRule, interactive)
+        RuleEvaluation(identity, authority, session, runner, library, bookId, chapterId, book.copy(), chapter.copy(), baseUrl, keyword, page, calls, headerRule, interactive, trace)
 
     suspend fun headers(): Map<String, String> {
         if (headerRule.isBlank()) return emptyMap()
@@ -35,12 +35,18 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
             keyword, page, baseUrl, library, book.inherited + chapter.inherited, book.variables,
             chapter.variables, book.metadata, chapter.metadata, book.bigVariables, chapter.bigVariables,
             unescapeHtml = unescape, sourceHeaderRule = if (field == "header") "" else headerRule)
+        val started = System.nanoTime()
         val result = SourceExecutionBroker(identity, authority, session, limits, baseUrl, keyword, page,
             allowInteraction = interactive).use {
             runner.execute(identity, task, limits, it).also { _ ->
                 if (it.interactionRequired) throw SourceContentException(ContentError.LoginRequired, field)
             }
         }
+        trace.record(ContentTraceEvent("rule", field, (System.nanoTime() - started) / 1_000_000,
+            input.toString().length, (result as? ExecutionResult.Success)?.output?.length ?: 0,
+            (result as? ExecutionResult.Failure)?.code?.name ?: "Success",
+            (result as? ExecutionResult.Failure)?.ruleError?.code,
+            (result as? ExecutionResult.Failure)?.ruleError?.location?.offset))
         currentCoroutineContext().ensureActive()
         if (!authority.accepts(identity)) throw SourceContentException(ContentError.Unavailable, field)
         when (result) {

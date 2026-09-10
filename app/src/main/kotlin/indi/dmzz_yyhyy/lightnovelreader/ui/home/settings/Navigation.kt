@@ -40,6 +40,7 @@ import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.pluginmanager.settingsP
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.sourcechange.navigateToSettingsSourceChangeDestination
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.sourcechange.settingsSourceChangeDestination
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.sources.settingsSourcesDestination
+import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.sources.sourceDiagnosticDestination
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.textformatting.editTextFormattingRuleDialog
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.textformatting.navigateToSettingsTextFormattingManagerDestination
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.textformatting.settingsTextFormattingNavigation
@@ -81,6 +82,7 @@ fun NavGraphBuilder.settingsDestination() {
     }
     settingsSourceChangeDestination()
     settingsSourcesDestination()
+    sourceDiagnosticDestination()
     exportUserDataDialog()
     editTextFormattingRuleDialog()
     sliderValueDialog()
