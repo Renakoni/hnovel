@@ -29,15 +29,20 @@ internal object ScriptResponses {
         }
         method(response, "header") { args ->
             require(args.size == 1 && args[0] is CharSequence)
-            values(args[0].toString())?.lastOrNull()?.jsonPrimitive?.content ?: if (jsoup) "" else null
+            val matching = values(args[0].toString())
+            if (jsoup) matching?.joinToString(", ") { it.jsonPrimitive.content }
+            else matching?.lastOrNull()?.jsonPrimitive?.content
         }
         method(response, "headers") { args ->
             require(args.isEmpty())
             realm.objectIn(scope).apply {
-                if (jsoup) headers.forEach { (name, list) -> defineProperty(name, list.jsonArray.last().jsonPrimitive.content, ScriptableObject.EMPTY) }
+                if (jsoup) headers.forEach { (name, list) ->
+                    list.jsonArray.firstOrNull()?.let { defineProperty(name, it.jsonPrimitive.content, ScriptableObject.EMPTY) }
+                }
                 method(this, "get") { names ->
                     require(names.size == 1 && names[0] is CharSequence)
-                    values(names[0].toString())?.lastOrNull()?.jsonPrimitive?.content
+                    if (jsoup) headers[names[0].toString()]?.jsonArray?.firstOrNull()?.jsonPrimitive?.content
+                    else values(names[0].toString())?.lastOrNull()?.jsonPrimitive?.content
                 }
                 method(this, "values") { names ->
                     require(names.size == 1 && names[0] is CharSequence)

@@ -16,8 +16,8 @@ class ScriptResponseTest {
         assertEquals(ScriptResult.Success("[\"chapter\",200,\"OK\",true,\"two\",[\"one\",\"two\"],\"undefined\",\"undefined\"]"), engine.evaluate(
             "var r=java.connect('url');[r.body(),r.code(),r.message(),r.isSuccessful(),r.headers().get('x-test')," +
                 "r.headers().values('X-Test'),typeof r.getClass,typeof r.raw]", frame))
-        assertEquals(ScriptResult.Success("[\"chapter\",200,\"OK\",\"\",\"two\"]"), engine.evaluate(
-            "var r=java.get('url',{});[r.body.call(null),r.statusCode(),r.statusMessage(),r.header('missing'),r.headers().get('x-test')]", frame))
+        assertEquals(ScriptResult.Success("[\"chapter\",200,\"OK\",null,\"one\",\"one, two\",null]"), engine.evaluate(
+            "var r=java.get('url',{});[r.body.call(null),r.statusCode(),r.statusMessage(),r.header('missing'),r.headers().get('X-Test'),r.header('x-test'),r.headers().get('x-test')]", frame))
         assertEquals(ScriptResult.Success("[\"chapter\",\"chapter\"]"), engine.evaluate("java.ajaxAll(['a','b']).map(function(r){return r.body()})", frame))
     }
 
