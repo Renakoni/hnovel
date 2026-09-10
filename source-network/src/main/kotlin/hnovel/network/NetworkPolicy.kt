@@ -6,6 +6,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import java.net.InetAddress
 
 /** Host-approved exact origin. Granting a host never implicitly grants private addresses or redirects. */
+@kotlinx.serialization.Serializable
 data class NetworkGrant(val origin: String, val allowPrivateAddresses: Boolean = false,
     val headers: Map<String, String> = emptyMap()) {
     override fun toString() = "NetworkGrant(origin=$origin, allowPrivateAddresses=$allowPrivateAddresses)"

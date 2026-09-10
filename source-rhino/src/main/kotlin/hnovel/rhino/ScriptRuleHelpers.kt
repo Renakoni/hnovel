@@ -17,8 +17,8 @@ internal class ScriptRuleHelpers(private val scope: Scriptable, frame: ScriptFra
 
     fun elementView(cx: Context, active: Scriptable, data: JsonElement): Any? {
         fun convert(value: RuleValue): Any? = when (value) {
-            is RuleValue.Node -> if (value.kind == InputKind.Html || value.kind == InputKind.Xml)
-                ScriptDom.fragment(cx, active, value.content, context.baseUrl, value.kind == InputKind.Xml)
+            is RuleValue.Node -> if (value.kind == InputKind.Html) ScriptDom.wrap(cx, active, value.htmlElement(context.baseUrl))
+                else if (value.kind == InputKind.Xml) ScriptDom.fragment(cx, active, value.content, context.baseUrl, true)
                 else JsonScriptData(cx, active, limits.maxBridgeChars).convert(json(value))
             is RuleValue.Items -> {
                 val nodes = value.values.map(::convert)

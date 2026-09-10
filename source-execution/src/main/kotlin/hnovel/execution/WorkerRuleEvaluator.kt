@@ -20,7 +20,7 @@ internal object WorkerRuleEvaluator {
         context.bookMetadata = task.book.toString()
         context.chapterMetadata = task.chapter.toString()
         var scriptFailure: hnovel.rhino.FailureCode? = null
-        val evaluator = RuleEvaluator { request, current, budget ->
+        val evaluator = RuleEvaluator(unescapeHtml = task.unescapeHtml) { request, current, budget ->
             budget.check()
             val frame = ScriptFrame(identity.sourceId, identity.profile, task.bookId, task.chapterId,
                 mapOf("result" to input(request.input)), task.key, task.page, task.baseUrl, current, task.input, budget, task.book, task.chapter, task.chineseConverter)

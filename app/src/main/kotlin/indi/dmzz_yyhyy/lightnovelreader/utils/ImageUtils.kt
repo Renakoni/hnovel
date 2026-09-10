@@ -23,12 +23,13 @@ object ImageUtils {
     suspend fun uriToBitmap(
         imageUri: Uri,
         context: Context,
-        bookId: String
+        bookId: String,
+        cover: Boolean = false
     ):  Result<Bitmap, Throwable> = withContext(Dispatchers.IO) {
         try {
             val loader = SingletonImageLoader.get(context)
             val request = ImageRequest.Builder(context)
-                .data(SourceImage(BookIdentity.book(bookId), imageUri.toString()))
+                .data(SourceImage(BookIdentity.book(bookId), imageUri.toString(), cover))
                 .interceptorCoroutineContext(Dispatchers.IO)
                 .build()
 

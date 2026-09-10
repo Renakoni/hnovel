@@ -23,6 +23,16 @@ class RuleEvaluatorTest {
         assertTrue(value("class.book@html").text().contains("<b>One</b>"))
     }
 
+    @Test fun selectedTableRowsKeepTheirRootAttributesAfterSerialization() {
+        val input = RuleValue.Text("<table><tbody><tr data-volume='true'><td><a href='/chapter'>One</a></td></tr></tbody></table>")
+        val node = value("tr", input, OutputKind.Elements).items().single()
+        val wire = kotlinx.serialization.json.Json.encodeToString(RuleValue.serializer(), node)
+        val restored = kotlinx.serialization.json.Json.decodeFromString(RuleValue.serializer(), wire)
+        assertEquals("true", value("@data-volume", restored, OutputKind.Text).text())
+        assertEquals("One", value("td@text", restored, OutputKind.Text).text())
+        assertEquals("https://fixture.invalid/chapter", value("a@href", restored, OutputKind.Url).text())
+    }
+
     @Test fun jsonAndXmlSelectionTemplatesAndEmptyFallback() {
         val json = RuleValue.Node("""{"items":[{"title":"A"},{"title":"B"}],"suffix":"!"}""", InputKind.Json)
         assertEquals("A\nB", value("$.items[*].title", json, OutputKind.Text).text())

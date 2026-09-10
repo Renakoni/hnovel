@@ -43,6 +43,78 @@ import org.junit.runner.RunWith
 class IsolatedExecutionInstrumentedTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
 
+    @Test fun coldStartupIsBoundedSeparatelyAndSuccessfulCallsReuseTheWorker() = runBlocking {
+        val binds = java.util.concurrent.atomic.AtomicInteger()
+        val connections = java.util.concurrent.ConcurrentHashMap<ServiceConnection, ServiceConnection>()
+        val host = object : android.content.ContextWrapper(context) {
+            override fun getApplicationContext(): Context = this
+            override fun bindService(intent: Intent, connection: ServiceConnection, flags: Int): Boolean {
+                val first = binds.incrementAndGet() == 1
+                val delayed = object : ServiceConnection {
+                    override fun onServiceConnected(name: ComponentName, binder: IBinder) {
+                        if (first) android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(
+                            { connection.onServiceConnected(name, binder) }, 3000)
+                        else connection.onServiceConnected(name, binder)
+                    }
+                    override fun onServiceDisconnected(name: ComponentName) = connection.onServiceDisconnected(name)
+                    override fun onBindingDied(name: ComponentName) = connection.onBindingDied(name)
+                    override fun onNullBinding(name: ComponentName) = connection.onNullBinding(name)
+                }
+                connections[connection] = delayed
+                return super.bindService(intent, delayed, flags)
+            }
+            override fun unbindService(connection: ServiceConnection) = super.unbindService(connections.remove(connection)!!)
+        }
+        val authority = ExecutionAuthority()
+        val executor = AndroidIsolatedExecutor(host, authority)
+        val first = authority.issue("first", "legado", "1")
+        try {
+            assertEquals(ExecutionResult.Success("ready"), executor.execute(first, ExecutionTask.Echo("ready"), ExecutionLimits(timeoutMillis = 2000)))
+            val limits = ExecutionLimits(timeoutMillis = 15000)
+            assertEquals(ExecutionResult.Success("1"), executor.execute(first, ExecutionTask.Script("var localOnly=1;localOnly"), limits))
+            assertEquals(ExecutionResult.Success("\"undefined\""), executor.execute(first, ExecutionTask.Script("typeof localOnly"), limits))
+            assertEquals(1, binds.get())
+            authority.revoke(first)
+            val second = authority.issue("second", "legado", "1")
+            assertEquals(ExecutionResult.Success("next"), executor.execute(second, ExecutionTask.Echo("next"), limits))
+            assertEquals(2, binds.get())
+            assertEquals(ExecutionResult.Failure(FailureCode.ScriptRuntime), executor.execute(second, ExecutionTask.Script("throw new Error('fail')"), limits))
+            assertEquals(ExecutionResult.Success("recovered"), executor.execute(second, ExecutionTask.Echo("recovered"), limits))
+            assertEquals(3, binds.get())
+        } finally { executor.close() }
+    }
+
+    @Test fun importedRulePipelineReachesReadingAcrossRealBinder() = runBlocking {
+        hnovel.content.RuleSourceFixture().use { fixture ->
+            val registry = indi.dmzz_yyhyy.lightnovelreader.data.web.WebSourceRegistry(fixture.authority)
+            val accounts = indi.dmzz_yyhyy.lightnovelreader.data.web.SourceSessionManager(fixture.authority)
+            val executor = AndroidIsolatedExecutor(context, fixture.authority)
+            val runner = indi.dmzz_yyhyy.lightnovelreader.di.WebDataSourceModule.provideRuleTaskRunner(executor)
+            val root = java.io.File(context.cacheDir, "pipeline-${java.util.UUID.randomUUID()}").apply { mkdirs() }
+            val host = object : android.content.ContextWrapper(context) { override fun getFilesDir() = root }
+            val service = indi.dmzz_yyhyy.lightnovelreader.data.web.rules.ImportedRuleSources(host, registry, fixture.authority, accounts, runner)
+            try {
+                val preview = service.importer.preview(fixture.raw().toString())
+                assertTrue(preview.issues.toString(), preview.issues.isEmpty())
+                assertNull(service.importer.commit(preview, listOf(hnovel.imports.ImportSelection(0, hnovel.imports.ImportDecision.Add))).error)
+                val definition = service.definitions.list().single()
+                val id = service.activate(definition.reference(), listOf(NetworkGrant(fixture.server.url("/").toString(), true)))
+                val runtime = (registry.resolve(id) as indi.dmzz_yyhyy.lightnovelreader.data.web.SourceResolution.Ready).runtime
+                val remoteId = fixture.server.url("/book/one").toString()
+                val info = runtime.getBookInformation(remoteId)
+                assertTrue(info.toString(), info.isOk)
+                val directory = runtime.getBookVolumes(remoteId).component1()!!
+                assertEquals(2, directory.volumes.single().chapters.size)
+                val first = directory.volumes.single().chapters.first()
+                val content = runtime.getChapterContent(first.id, remoteId).component1()!!
+                assertEquals(first.id, content.id)
+                assertTrue(content.content.toString(), content.content.toString().contains("A first"))
+                assertTrue(content.content.toString().contains("last replaced"))
+                assertArrayEquals(byteArrayOf(3, 2, 1), runtime.imageBytes(remoteId, fixture.server.url("/cover.png").toString(), true).component1())
+            } finally { service.stop(); executor.close(); root.deleteRecursively() }
+        }
+    }
+
     @Test fun ordinaryResponseSizesAndRetainedHeadersRespectBudgetsAcrossBinder() = runBlocking {
         val authority = ExecutionAuthority()
         val executor = AndroidIsolatedExecutor(context, authority)

@@ -24,7 +24,7 @@
 
 其中登录、发现、分页和共享脚本使用合成宿主服务，**不是**完整上游 `JsExtensions`、`AnalyzeRule`、`WebBook`、CookieStore 或 WebView 的执行证明。完整桥接和端到端参考对比由各实现 Issue 补齐。这种证据差别写入每个样本，不能用测试总数掩盖。
 
-所有产品实现状态仍为 `planned`。完整功能映射、未来测试 ID 和负责人见 [coverage.json](../source-compatibility/src/test/resources/coverage.json)。已经运行的案例见 [cases.json](../source-compatibility/src/test/resources/cases.json)。最终 #95 的兼容性验收不能因为这些参考测试通过而提前关闭。
+本文建立时产品状态为 `planned`；后续 PR 已逐项更新矩阵，当前状态以矩阵为准。生产连接与仍未完成的端到端部分见 [Rhino 合并后 checkpoint](vnr-checkpoint-after-rhino.md)。完整功能映射、未来测试 ID 和负责人见 [coverage.json](../source-compatibility/src/test/resources/coverage.json)。已经运行的案例见 [cases.json](../source-compatibility/src/test/resources/cases.json)。最终 #95 的兼容性验收不能因为这些参考测试通过而提前关闭。
 
 ## 高级样本的真实范围
 

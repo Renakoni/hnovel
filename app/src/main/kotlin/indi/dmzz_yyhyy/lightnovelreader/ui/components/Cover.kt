@@ -55,7 +55,7 @@ private fun RemoteBookCover(bookId: String, width: Dp, height: Dp, uri: Uri) {
             .imageTransPostProcessingManager
             .getCoil3Transformations(ImagePostProcessingPipeline.bookCover, uri)
         ImageRequest.Builder(context)
-            .data(SourceImage(BookIdentity.book(bookId), uri.toString()))
+            .data(SourceImage(BookIdentity.book(bookId), uri.toString(), cover = true))
             .transformations(transformations)
             .crossfade(true)
             .memoryCachePolicy(CachePolicy.ENABLED)

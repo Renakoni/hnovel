@@ -9,7 +9,8 @@ import kotlinx.serialization.json.*
 /** Host-owned per-invocation capability. A script cannot choose its session, identity or grants. */
 class SourceExecutionBroker(val identity: ExecutionIdentity, private val authority: ExecutionAuthority,
     private val session: SourceSession, val limits: ExecutionLimits,
-    private val baseUrl: String = "", private val keyword: String = "", private val page: Int = 1) : AutoCloseable {
+    private val baseUrl: String = "", private val keyword: String = "", private val page: Int = 1,
+    private val sourceHeaders: Map<String, String> = emptyMap()) : AutoCloseable {
     private val lifetime = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var requests = 0
     private var closed = false
@@ -59,9 +60,9 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
                         check(it is JsonPrimitive && it.isString)
                         // Use the same bounded JSON parser as other reverse IPC input.
                         headerMap(BridgeWire.arguments("[${it.content}]".toByteArray()).single())
-                    }.orEmpty()
+                    } ?: sourceHeaders
                     val request = compiled(requestNumber, args[0].jsonPrimitive.content, headers)
-                    snapshot(fetch(request, hnovel.rhino.ScriptLimits.DEFAULT_BRIDGE_CHARS), false)
+                    fetch(request, hnovel.rhino.ScriptLimits.DEFAULT_BRIDGE_CHARS).scriptSnapshot(false)
                 }
                 "java.ajaxAll" -> {
                     require(args.size == 1)
@@ -76,7 +77,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
                     coroutineScope {
                         val pending = requests.map { request -> async {
                             decoding.withPermit {
-                                snapshot(fetch(request, hnovel.rhino.ScriptLimits.DEFAULT_BRIDGE_CHARS), false).also {
+                                fetch(request, hnovel.rhino.ScriptLimits.DEFAULT_BRIDGE_CHARS).scriptSnapshot(false).also {
                                     check(responseBytes.addAndGet(it.toString().toByteArray().size.toLong() + 1) <= BridgeWire.MAX_BYTES) { "Batch response too large" }
                                 }
                             }
@@ -90,7 +91,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
                     val request = BrokerRequest("script-$requestNumber", args[0].jsonPrimitive.content,
                         method = name.substringAfter('.').uppercase(), headers = headerMap(args[if (post) 2 else 1]),
                         body = if (post) args[1].jsonPrimitive.content else null, followRedirects = false)
-                    snapshot(fetch(request, hnovel.rhino.ScriptLimits.DEFAULT_BRIDGE_CHARS), true)
+                    fetch(request, hnovel.rhino.ScriptLimits.DEFAULT_BRIDGE_CHARS).scriptSnapshot(true)
                 }
                 "cache.get", "source.get", "source.getVariable" -> authorized {
                     require(args.size == if (name == "source.getVariable") 0 else 1)
@@ -118,7 +119,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
         }
     }
 
-    private fun compiled(number: Int, rule: String, headers: Map<String, String> = emptyMap()): BrokerRequest {
+    private fun compiled(number: Int, rule: String, headers: Map<String, String> = sourceHeaders): BrokerRequest {
         val compiled = RequestCompiler().compile("script-$number", rule, baseUrl, keyword, page, headers)
         check(compiled is CompiledRequest.Ready) { "Request requires an unsupported option" }
         return compiled.request
@@ -133,23 +134,6 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
         val result = session.execute(request.copy(timeoutMillis = limits.timeoutMillis, maxResponseBytes = maxResponseBytes), RequestCommitGuard { action -> authorized(action) })
         check(result is BrokerResult.Success) { "Broker request failed" }
         return result.response
-    }
-
-    private fun snapshot(response: BrokerResponse, binary: Boolean) = buildJsonObject {
-        if (binary) put("bytes", java.util.Base64.getEncoder().encodeToString(response.body))
-        else {
-            put("body", response.text())
-            put("bodySize", response.body.size)
-        }
-        put("url", response.finalUrl)
-        put("status", response.status)
-        put("message", response.message)
-        put("headers", JsonObject(response.headers.mapValues { (_, values) -> JsonArray(values.map(::JsonPrimitive)) }))
-        put("charset", response.declaredCharset?.let(::JsonPrimitive) ?: JsonNull)
-        put("method", response.method)
-        put("protocol", response.protocol)
-        put("sentAt", response.sentAt)
-        put("receivedAt", response.receivedAt)
     }
 
     /** Logical source/account resources. A script path is never passed to the host filesystem. */

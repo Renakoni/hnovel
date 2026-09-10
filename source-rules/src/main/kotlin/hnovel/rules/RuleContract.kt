@@ -6,7 +6,7 @@ import kotlinx.serialization.json.*
 @Serializable sealed interface RuleValue {
     @Serializable data class Text(val value: String) : RuleValue
     @Serializable data class Items(val values: List<RuleValue>) : RuleValue
-    @Serializable data class Node(val content: String, val kind: InputKind) : RuleValue
+    @Serializable data class Node(val content: String, val kind: InputKind, val parentTag: String? = null) : RuleValue
     @Serializable data class Captures(val groups: List<String>) : RuleValue
     @Serializable data object Empty : RuleValue
 }

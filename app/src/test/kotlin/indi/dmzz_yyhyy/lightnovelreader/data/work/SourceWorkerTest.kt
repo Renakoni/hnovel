@@ -69,7 +69,7 @@ class SourceWorkerTest {
             coEvery { fixture.registry.resolve(book.sourceId) } returns SourceResolution.Ready(runtime)
             val data = workDataOf("bookId" to book.storageKey)
             repeat(2) {
-                val worker = CacheBookWork(context, workerParameters(data), fixture.local, progress, fixture.repository())
+                val worker = CacheBookWork(context, workerParameters(data), fixture.local, progress, fixture.repository(), mockk(relaxed = true))
                 assertEquals(ListenableWorker.Result.success(), worker.doWork())
             }
             coVerify(exactly = 2) { runtime.getChapterContent("c", "same", any()) }
@@ -90,7 +90,7 @@ class SourceWorkerTest {
             WebRequestErrorKind.AuthenticationRequired to "authentication_required")) {
             every { repository.getBookVolumesFlow(a.storageKey, any()) } returns kotlinx.coroutines.flow.flowOf(
                 Err(WebRequestError("Sign in", "Do not persist this private detail", kind = kind)))
-            val worker = CacheBookWork(context, workerParameters(workDataOf("bookId" to a.storageKey)), mockk(), progress, repository)
+            val worker = CacheBookWork(context, workerParameters(workDataOf("bookId" to a.storageKey)), mockk(), progress, repository, mockk(relaxed = true))
             val result = worker.doWork() as ListenableWorker.Result.Failure
             assertEquals(reason, result.outputData.getString("reason"))
             assertEquals(a.storageKey, result.outputData.getString("bookId"))

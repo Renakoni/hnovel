@@ -317,7 +317,7 @@ class ExportBookToEPUBWork @AssistedInject constructor(
                 bookInformation.title
             )
         } else {
-            tasks.add(ImageDownloader.Task(cover, bookInformation.coverUri))
+            tasks.add(ImageDownloader.Task(cover, bookInformation.coverUri, cover = true))
         }
         for ((currentVolumeIndex, volume) in bookVolumes.volumes.withIndex()) {
             if (!selectedVolume.contains(volume.volumeId)) continue
@@ -457,7 +457,7 @@ class ExportBookToEPUBWork @AssistedInject constructor(
                     bookInformation.title
                 )
             } else {
-                tasks.add(ImageDownloader.Task(cover, bookInformation.coverUri))
+                tasks.add(ImageDownloader.Task(cover, bookInformation.coverUri, cover = true))
             }
             cover(cover)
         }

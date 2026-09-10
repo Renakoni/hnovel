@@ -9,6 +9,13 @@ class RhinoScriptEngineTest {
  @Test fun syntaxAndBridgeErrorsAreStructured() { assertTrue(engine.evaluate("return ;",frame) is ScriptResult.Failure); assertTrue(engine.evaluate("host.call('bad','x')",frame) is ScriptResult.Failure) }
  @Test fun classesAreNotExposed() { val r=engine.evaluate("Packages.java.lang.System.exit",frame); assertTrue(r is ScriptResult.Failure) }
 
+ @Test fun preparingHostPipelineRequestsExpandsContextWithoutDispatchingHttp() {
+  val local = RhinoScriptEngine(HostBridge { _, _ -> error("Request preparation must stay inside the worker") })
+  assertEquals(ScriptResult.Success("\"/search?q=NOVEL&page={{page}}\""), local.evaluate(
+   "host.call('request.prepare','/search?q={{key.toUpperCase()}}&page={{page}}')[0]",
+   frame.copy(key = "novel", page = 2, baseUrl = "https://fixture.invalid/")))
+ }
+
  @Test fun bridgeFunctionsSupportCallApplyAndBindWithAndWithoutALibrary() {
   val calls = mutableListOf<String>()
   val bridgeEngine = RhinoScriptEngine(HostBridge { name, args ->

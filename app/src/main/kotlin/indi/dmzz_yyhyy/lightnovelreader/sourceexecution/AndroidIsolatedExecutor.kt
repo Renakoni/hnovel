@@ -39,7 +39,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 
-/** One serialized worker on API 24+. Library scopes survive successful calls, never failed processes. */
+/** One serialized worker on API 24+. Successful calls reuse the process; failed calls retire it. */
 class AndroidIsolatedExecutor @Inject constructor(@ApplicationContext context: Context, private val authority: ExecutionAuthority) {
     private val context = context.applicationContext
 
@@ -55,10 +55,9 @@ class AndroidIsolatedExecutor @Inject constructor(@ApplicationContext context: C
             // A new bind must never reuse a worker whose previous shutdown has not completed.
             if (retiringBinder?.isBinderAlive == true) return@withContext failure(FailureCode.ProcessExited)
             val previous = retainedWorker
-            if (previous != null && (previous.authority !== authority || previous.died.isCompleted || previous.hasRevokedLibrary())) retire(previous)
+            if (previous != null && (previous.authority !== authority || previous.died.isCompleted || previous.hasRevokedOwner())) retire(previous)
             if (retiringBinder?.isBinderAlive == true) return@withContext failure(FailureCode.ProcessExited)
             val worker = retainedWorker ?: IsolatedWorkerConnection(context, authority).also { retainedWorker = it }
-            if (!task.libraryCode().isNullOrBlank()) worker.retainsLibraries = true
             invoke(worker, identity, task, limits, broker)
         } finally {
             workerLock.unlock()
@@ -92,6 +91,19 @@ class AndroidIsolatedExecutor @Inject constructor(@ApplicationContext context: C
             }
         }
         try {
+            // Android class loading is not script execution. Bound cold startup separately;
+            // cancellation/revocation still interrupts it and no task is submitted before readiness.
+            val service = withTimeoutOrNull(15000) {
+                select<IIsolatedExecutionService?> {
+                    worker.connected.onAwait { it }
+                    worker.died.onAwait { null }
+                    result.onAwait { null }
+                }
+            } ?: return@coroutineScope when {
+                result.isCompleted -> result.await()
+                worker.died.isCompleted -> failure(FailureCode.ProcessExited)
+                else -> failure(FailureCode.Timeout)
+            }
             val completed = withTimeoutOrNull(limits.timeoutMillis) {
                 val definition = task.libraryCode()
                 val scripts = if (SourceLibraryDefinition.isUrlMap(definition)) {
@@ -109,11 +121,6 @@ class AndroidIsolatedExecutor @Inject constructor(@ApplicationContext context: C
                 } else null
                 val request = ExecutionWire.encode(identity, task, limits, scripts)
                 if (request.size > IsolatedExecutionService.MAX_IPC_BYTES) return@withTimeoutOrNull failure(FailureCode.InputLimit)
-                val service = select<IIsolatedExecutionService?> {
-                    worker.connected.onAwait { it }
-                    worker.died.onAwait { null }
-                    result.onAwait { null }
-                } ?: return@withTimeoutOrNull if (result.isCompleted) result.await() else failure(FailureCode.ProcessExited)
                 val workerUid = service.workerUid()
                 if (workerUid == Process.myUid()) return@withTimeoutOrNull failure(FailureCode.InvalidIdentity)
                 if (!authority.accepts(identity)) return@withTimeoutOrNull failure(FailureCode.Revoked)
@@ -152,8 +159,11 @@ class AndroidIsolatedExecutor @Inject constructor(@ApplicationContext context: C
                 }
             } ?: failure(FailureCode.Timeout)
             val accepted = if (authority.accepts(identity)) completed else failure(FailureCode.Revoked)
-            keepWorker = accepted is ExecutionResult.Success && worker.retainsLibraries && !worker.died.isCompleted
-            if (keepWorker && !task.libraryCode().isNullOrBlank()) worker.retain(identity)
+            keepWorker = accepted is ExecutionResult.Success && !worker.died.isCompleted
+            if (keepWorker) {
+                worker.lastIdentity = identity
+                if (!task.libraryCode().isNullOrBlank()) worker.retain(identity)
+            }
             accepted
         } catch (_: RemoteException) {
             failure(FailureCode.ProcessExited)

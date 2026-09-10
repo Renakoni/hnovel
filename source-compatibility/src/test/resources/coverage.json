@@ -18,7 +18,7 @@
       "scope": "Must report unknown fields/API explicitly; cannot auto-label as supported."
     }
   ],
-  "productImplementedCount": 13,
+  "productImplementedCount": 18,
   "features": [
     {
       "id": "FORMAT",
@@ -328,52 +328,82 @@
       "owner": "https://github.com/Renakoni/hnovel/issues/90",
       "requirement": "ruleSearch、bookUrlPattern 直链、详情与搜索上下文/缓存语义。",
       "testId": "CONFORMANCE-SEARCH",
-      "implementation": "planned",
-      "verification": "future-fixture",
+      "implementation": "implemented",
+      "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Pinned reference source inspection; production implementation pending."
+      "evidence": "Real imported RuleSource + WorkerRuntime/wire + host broker and local HTTP fixtures, Android production adapter + Room/CacheBookWork/Coil, and real Binder instrumentation. See docs/vnr-checkpoint-after-rhino.md for remaining browser/login/update/UI boundaries and quotas; not full upstream WebBook differential execution.",
+      "productTests": [
+        "hnovel.content.RuleSourceTest",
+        "indi.dmzz_yyhyy.lightnovelreader.data.web.rules.ImportedRuleSourcesTest",
+        "indi.dmzz_yyhyy.lightnovelreader.data.image.SourceImageTest",
+        "indi.dmzz_yyhyy.lightnovelreader.sourceexecution.IsolatedExecutionInstrumentedTest"
+      ]
     },
     {
       "id": "DETAIL",
       "owner": "https://github.com/Renakoni/hnovel/issues/90",
       "requirement": "ruleBookInfo、init/预处理、元数据与目录缓存、登录响应转换。",
       "testId": "CONFORMANCE-DETAIL",
-      "implementation": "planned",
-      "verification": "future-fixture",
+      "implementation": "implemented",
+      "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Pinned reference source inspection; production implementation pending."
+      "evidence": "Real imported RuleSource + WorkerRuntime/wire + host broker and local HTTP fixtures, Android production adapter + Room/CacheBookWork/Coil, and real Binder instrumentation. See docs/vnr-checkpoint-after-rhino.md for remaining browser/login/update/UI boundaries and quotas; not full upstream WebBook differential execution.",
+      "productTests": [
+        "hnovel.content.RuleSourceTest",
+        "indi.dmzz_yyhyy.lightnovelreader.data.web.rules.ImportedRuleSourcesTest",
+        "indi.dmzz_yyhyy.lightnovelreader.data.image.SourceImageTest",
+        "indi.dmzz_yyhyy.lightnovelreader.sourceexecution.IsolatedExecutionInstrumentedTest"
+      ]
     },
     {
       "id": "TOC",
       "owner": "https://github.com/Renakoni/hnovel/issues/90",
       "requirement": "ruleToc、目录多页/分卷/顺序/重复防护和章节身份。",
       "testId": "CONFORMANCE-TOC",
-      "implementation": "planned",
-      "verification": "future-fixture",
+      "implementation": "implemented",
+      "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Pinned reference source inspection; production implementation pending."
+      "evidence": "Real imported RuleSource + WorkerRuntime/wire + host broker and local HTTP fixtures, Android production adapter + Room/CacheBookWork/Coil, and real Binder instrumentation. See docs/vnr-checkpoint-after-rhino.md for remaining browser/login/update/UI boundaries and quotas; not full upstream WebBook differential execution.",
+      "productTests": [
+        "hnovel.content.RuleSourceTest",
+        "indi.dmzz_yyhyy.lightnovelreader.data.web.rules.ImportedRuleSourcesTest",
+        "indi.dmzz_yyhyy.lightnovelreader.data.image.SourceImageTest",
+        "indi.dmzz_yyhyy.lightnovelreader.sourceexecution.IsolatedExecutionInstrumentedTest"
+      ]
     },
     {
       "id": "CONTENT",
       "owner": "https://github.com/Renakoni/hnovel/issues/90",
       "requirement": "ruleContent、正文多页/前后处理/替换；保留段落和图片顺序。",
       "testId": "CONFORMANCE-CONTENT",
-      "implementation": "planned",
-      "verification": "reference-fixture",
+      "implementation": "implemented",
+      "verification": "product-contract",
       "fixtures": [
         "PAGES-CONTRACT"
       ],
-      "evidence": "Hand-derived logical chapter assembly contract, not upstream WebBook pipeline execution."
+      "evidence": "Real imported RuleSource + WorkerRuntime/wire + host broker and local HTTP fixtures, Android production adapter + Room/CacheBookWork/Coil, and real Binder instrumentation. See docs/vnr-checkpoint-after-rhino.md for remaining browser/login/update/UI boundaries and quotas; not full upstream WebBook differential execution.",
+      "productTests": [
+        "hnovel.content.RuleSourceTest",
+        "indi.dmzz_yyhyy.lightnovelreader.data.web.rules.ImportedRuleSourcesTest",
+        "indi.dmzz_yyhyy.lightnovelreader.data.image.SourceImageTest",
+        "indi.dmzz_yyhyy.lightnovelreader.sourceexecution.IsolatedExecutionInstrumentedTest"
+      ]
     },
     {
       "id": "IMAGES",
       "owner": "https://github.com/Renakoni/hnovel/issues/90",
       "requirement": "coverDecodeJs、正文图片转换与来源/会话专用 headers/cache。",
       "testId": "CONFORMANCE-IMAGES",
-      "implementation": "planned",
-      "verification": "future-fixture",
+      "implementation": "implemented",
+      "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Pinned reference source inspection; production implementation pending."
+      "evidence": "Real imported RuleSource + WorkerRuntime/wire + host broker and local HTTP fixtures, Android production adapter + Room/CacheBookWork/Coil, and real Binder instrumentation. See docs/vnr-checkpoint-after-rhino.md for remaining browser/login/update/UI boundaries and quotas; not full upstream WebBook differential execution.",
+      "productTests": [
+        "hnovel.content.RuleSourceTest",
+        "indi.dmzz_yyhyy.lightnovelreader.data.web.rules.ImportedRuleSourcesTest",
+        "indi.dmzz_yyhyy.lightnovelreader.data.image.SourceImageTest",
+        "indi.dmzz_yyhyy.lightnovelreader.sourceexecution.IsolatedExecutionInstrumentedTest"
+      ]
     },
     {
       "id": "DISCOVERY",
