@@ -15,6 +15,9 @@ import hnovel.execution.ExecutionTask
 import hnovel.execution.ExecutionWire
 import hnovel.execution.FailureCode
 import hnovel.execution.SourceExecutionBroker
+import hnovel.execution.ExecutedRule
+import hnovel.rules.RuleValue
+import hnovel.rules.OutputKind
 import hnovel.network.SourceBroker
 import hnovel.network.SourceScope
 import hnovel.network.NetworkGrant
@@ -40,6 +43,183 @@ import org.junit.runner.RunWith
 class IsolatedExecutionInstrumentedTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
 
+    @Test fun brokerAndTaskMustSharePageKeywordAndBaseUrlBeforeAnyRequest() = runBlocking {
+        val authority = ExecutionAuthority()
+        val executor = AndroidIsolatedExecutor(context, authority)
+        val id = authority.issue("context", "legado", "1", "fixture")
+        val limits = ExecutionLimits(timeoutMillis = 15000)
+        val root = java.io.File(context.cacheDir, "context-${java.util.UUID.randomUUID()}").toPath()
+        try {
+            MockWebServer().use { server ->
+                server.start()
+                SourceBroker(root).use { sessions ->
+                    val base = server.url("/root/").toString()
+                    val session = sessions.open(SourceScope("fixture", "context", "legado"),
+                        listOf(NetworkGrant(server.url("/").toString(), true)))
+                    val code = "java.ajax('chapter?page={{page}}&q={{key}}')"
+                    val script = ExecutionTask.Script(code, key = "chapter space", page = 2, baseUrl = base)
+                    val rule = ExecutionTask.Rule("@js:$code", RuleValue.Text(""), OutputKind.Text,
+                        key = script.key, page = script.page, baseUrl = base)
+                    val mismatches = listOf(script.copy(page = 1), script.copy(key = "wrong"), script.copy(baseUrl = ""),
+                        rule.copy(page = 1), rule.copy(key = "wrong"), rule.copy(baseUrl = ""))
+                    for (task in mismatches) {
+                        SourceExecutionBroker(id, authority, session, limits, base, script.key, script.page).use { broker ->
+                            assertEquals(ExecutionResult.Failure(FailureCode.InvalidTask), executor.execute(id, task, limits, broker))
+                        }
+                    }
+                    assertEquals(0, server.requestCount)
+                    for (task in listOf(script, rule)) {
+                        server.enqueue(MockResponse().setBody("served"))
+                        SourceExecutionBroker(id, authority, session, limits, base, script.key, script.page).use { broker ->
+                            val response = executor.execute(id, task, limits, broker) as ExecutionResult.Success
+                            if (task is ExecutionTask.Script) assertEquals("\"served\"", response.output)
+                            else assertEquals(RuleValue.Text("served"), Json.decodeFromString(ExecutedRule.serializer(), response.output).value)
+                        }
+                        assertEquals("/root/chapter?page=2&q=chapter+space", server.takeRequest(3, TimeUnit.SECONDS)?.path)
+                    }
+                }
+            }
+        } finally { executor.close() }
+    }
+
+    @Test fun allocationFailureKillsWorkerAndAnotherSourceCanRun() = runBlocking {
+        val authority = ExecutionAuthority()
+        val executor = AndroidIsolatedExecutor(context, authority)
+        try {
+            val id = authority.issue("allocator", "legado", "1")
+            val result = executor.execute(id, ExecutionTask.Script("new ArrayBuffer(192*1024*1024).byteLength"),
+                ExecutionLimits(timeoutMillis = 15000))
+            assertEquals(ExecutionResult.Failure(FailureCode.ProcessExited), result)
+            val next = authority.issue("other", "legado", "1")
+            assertEquals(ExecutionResult.Success("42"), executor.execute(next, ExecutionTask.Script("21*2"),
+                ExecutionLimits(timeoutMillis = 15000)))
+        } finally { executor.close() }
+    }
+
+    @Test fun legacyCipherHelpersMatchAndroidProvidersInsideTheIsolatedWorker() = runBlocking {
+        val authority = ExecutionAuthority()
+        val executor = AndroidIsolatedExecutor(context, authority)
+        val id = authority.issue("crypto", "legado", "1")
+        val expressions = mutableListOf<String>()
+        val expected = mutableListOf<JsonElement>()
+        for ((algorithm, key) in listOf("AES" to "0123456789abcdef", "DES" to "01234567", "DESede" to "0123456789abcdefABCDEFGH")) {
+            val cipher = javax.crypto.Cipher.getInstance("$algorithm/ECB/PKCS5Padding")
+            cipher.init(javax.crypto.Cipher.ENCRYPT_MODE, javax.crypto.spec.SecretKeySpec(key.toByteArray(), algorithm))
+            val encoded = android.util.Base64.encodeToString(cipher.doFinal("chapter".toByteArray()), android.util.Base64.NO_WRAP)
+            val encrypt = when (algorithm) {
+                "AES" -> "java.aesEncodeToBase64String('chapter','$key','AES/ECB/PKCS5Padding','')"
+                "DES" -> "java.desEncodeToBase64String('chapter','$key','DES/ECB/PKCS5Padding','')"
+                else -> "java.tripleDESEncodeBase64Str('chapter','$key','ECB','PKCS5Padding','')"
+            }
+            val decrypt = when (algorithm) {
+                "AES" -> "java.aesEncodeToString('$encoded','$key','AES/ECB/PKCS5Padding','')"
+                "DES" -> "java.desDecodeToString('$encoded','$key','DES/ECB/PKCS5Padding','')"
+                else -> "java.tripleDESDecodeStr('$encoded','$key','ECB','PKCS5Padding','')"
+            }
+            expressions += encrypt
+            expected += JsonPrimitive(encoded)
+            expressions += decrypt
+            expected += JsonPrimitive("chapter")
+        }
+        try {
+            val result = executor.execute(id, ExecutionTask.Script(expressions.joinToString(",", "[", "]")), ExecutionLimits(timeoutMillis = 15000))
+            assertTrue(result.toString(), result is ExecutionResult.Success)
+            assertEquals(JsonArray(expected), Json.parseToJsonElement((result as ExecutionResult.Success).output))
+        } finally { executor.close() }
+    }
+
+    @Test fun externalLibrariesFeedIsolatedRulesAndCacheCannotBypassPermissionChanges() = runBlocking {
+        val authority = ExecutionAuthority()
+        val executor = AndroidIsolatedExecutor(context, authority)
+        val id = authority.issue("source-a", "legado", "1", "fixture")
+        val limits = ExecutionLimits(timeoutMillis = 15000)
+        val root = java.io.File(context.cacheDir, "external-${java.util.UUID.randomUUID()}").toPath()
+        try {
+            MockWebServer().use { server ->
+                server.start()
+                val definition = buildJsonObject { put("first", server.url("/one").toString()); put("second", server.url("/two").toString()) }.toString()
+                val task = ExecutionTask.Rule("tag.li@text@js:result.map(label)", RuleValue.Text("<li>A</li><li>B</li>"), libraryCode = definition)
+                SourceBroker(root).use { sessions ->
+                    val scope = SourceScope("fixture", "source-a", "legado")
+                    val denied = sessions.open(scope, emptyList())
+                    SourceExecutionBroker(id, authority, denied, limits).use { broker ->
+                        assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied), executor.execute(id, task, limits, broker))
+                    }
+                    assertEquals(0, server.requestCount)
+                    denied.close()
+                    val session = sessions.open(scope, listOf(NetworkGrant(server.url("/").toString(), true)))
+                    server.enqueue(MockResponse().setBody("'use strict'; var state={n:0};"))
+                    server.enqueue(MockResponse().setBody("function label(x){return x+(++state.n)+(this===undefined?'strict':'loose');}"))
+                    suspend fun runRule(): ExecutedRule = SourceExecutionBroker(id, authority, session, limits).use { broker ->
+                        val result = executor.execute(id, task, limits, broker)
+                        assertTrue(result.toString(), result is ExecutionResult.Success)
+                        Json.decodeFromString(ExecutedRule.serializer(), (result as ExecutionResult.Success).output)
+                    }
+                    assertEquals(RuleValue.Items(listOf(RuleValue.Text("A1loose"), RuleValue.Text("B2loose"))), runRule().value)
+                    assertEquals(RuleValue.Items(listOf(RuleValue.Text("A3loose"), RuleValue.Text("B4loose"))), runRule().value)
+                    assertEquals(2, server.requestCount)
+                    session.close()
+                    val revoked = sessions.open(scope, emptyList())
+                    SourceExecutionBroker(id, authority, revoked, limits).use { broker ->
+                        assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied), executor.execute(id, task, limits, broker))
+                    }
+                    assertEquals(2, server.requestCount)
+                }
+            }
+        } finally { executor.close() }
+    }
+
+    @Test fun libraryDownloadDeadlineAndRevocationReleaseTheSingleBrokerPermit() = runBlocking {
+        val authority = ExecutionAuthority()
+        val executor = AndroidIsolatedExecutor(context, authority)
+        val root = java.io.File(context.cacheDir, "library-cancel-${java.util.UUID.randomUUID()}").toPath()
+        try {
+            MockWebServer().use { server ->
+                server.start()
+                SourceBroker(root, limits = BrokerLimits(concurrency = 1)).use { sessions ->
+                    val session = sessions.open(SourceScope("fixture", "source-a", "legado"), listOf(NetworkGrant(server.url("/").toString(), true)))
+                    val definition = buildJsonObject { put("lib", server.url("/slow").toString()) }.toString()
+                    val task = ExecutionTask.Script("1", libraryCode = definition)
+                    for (revoke in listOf(false, true)) {
+                        val id = authority.issue("source-a", "legado", "1", "fixture")
+                        val limits = ExecutionLimits(timeoutMillis = if (revoke) 15000 else 2000)
+                        server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE))
+                        SourceExecutionBroker(id, authority, session, limits).use { broker ->
+                            val pending = async { executor.execute(id, task, limits, broker) }
+                            assertNotNull(withContext(Dispatchers.IO) { server.takeRequest(10, TimeUnit.SECONDS) })
+                            if (revoke) authority.revoke(id)
+                            assertEquals(ExecutionResult.Failure(if (revoke) FailureCode.Revoked else FailureCode.Timeout),
+                                withTimeout(5000) { pending.await() })
+                        }
+                    }
+                    val next = authority.issue("source-a", "legado", "1", "fixture")
+                    val limits = ExecutionLimits(timeoutMillis = 15000)
+                    server.enqueue(MockResponse().setBody("var ready=true;"))
+                    SourceExecutionBroker(next, authority, session, limits).use { broker ->
+                        assertEquals(ExecutionResult.Success("true"), executor.execute(next, task.copy(code = "ready"), limits, broker))
+                    }
+                }
+            }
+        } finally { executor.close() }
+    }
+
+    @Test fun ruleScriptRegexIsKilledAndTheNextRuleCanSelectNormally() = runBlocking {
+        val authority = ExecutionAuthority()
+        val executor = AndroidIsolatedExecutor(context, authority)
+        val id = authority.issue("source-a", "legado", "1")
+        try {
+            val failure = executor.execute(id,
+                ExecutionTask.Rule("@js:/(a+)+$/.test(result)", RuleValue.Text("a".repeat(40) + "!")), ExecutionLimits(timeoutMillis = 4000)) as ExecutionResult.Failure
+            assertEquals(FailureCode.Timeout, failure.code)
+            // Instruction exhaustion has a stage; host process-deadline termination has none.
+            failure.ruleError?.let { assertEquals(hnovel.rules.RuleStage.Script, it.stage) }
+            val other = authority.issue("source-b", "legado", "1")
+            val result = executor.execute(other, ExecutionTask.Rule("tag.h1@text", RuleValue.Text("<h1>next</h1>"), OutputKind.Text),
+                ExecutionLimits(timeoutMillis = 15000)) as ExecutionResult.Success
+            assertEquals(RuleValue.Text("next"), Json.decodeFromString(ExecutedRule.serializer(), result.output).value)
+        } finally { executor.close() }
+    }
+
     @Test fun savedBrokerMethodCannotOutliveItsInvocationInASharedLibrary() = runBlocking {
         val authority = ExecutionAuthority()
         val executor = AndroidIsolatedExecutor(context, authority)
@@ -55,14 +235,14 @@ class IsolatedExecutionInstrumentedTest {
                         listOf(NetworkGrant(server.url("/").toString(), true)))
                     suspend fun run(code: String): ExecutionResult =
                         SourceExecutionBroker(id, authority, session, limits, server.url("/").toString()).use { broker ->
-                            executor.execute(id, ExecutionTask.Script(code, libraryCode = library), limits, broker)
+                            executor.execute(id, ExecutionTask.Script(code, libraryCode = library, baseUrl = server.url("/").toString()), limits, broker)
                         }
-                    assertEquals(ExecutionResult.Success("1"), run("holder.ajax=java.ajax;1"))
+                    assertEquals(ExecutionResult.Success("1"), run("holder.ajax=java.ajax.bind(java);1"))
                     assertEquals(ExecutionResult.Success("\"host bridge denied\""),
                         run("try{holder.ajax('/stale')}catch(e){e.message}"))
                     assertEquals(0, server.requestCount)
                     server.enqueue(MockResponse().setBody("current"))
-                    assertEquals(ExecutionResult.Success("\"current\""), run("java.ajax('/current')"))
+                    assertEquals(ExecutionResult.Success("\"current\""), run("java.ajax.call(null,'/current')"))
                     assertEquals("/current", server.takeRequest(3, TimeUnit.SECONDS)?.path)
                 }
             }
@@ -145,7 +325,8 @@ class IsolatedExecutionInstrumentedTest {
                 SourceExecutionBroker(id, authority, session, limits, server.url("/").toString()).use { broker ->
                     server.enqueue(MockResponse().setBody("isolated chapter"))
                     val result = executor.execute(id, ExecutionTask.Script(
-                        "source.put('result',java.ajax('/chapter?page={{page}}')); [source.id,source.get('result')]"), limits, broker)
+                        "source.put('result',java.ajax('/chapter?page={{page}}')); [source.id,source.get('result')]",
+                        baseUrl = server.url("/").toString()), limits, broker)
                     assertEquals(ExecutionResult.Success("[\"source-a\",\"isolated chapter\"]"), result)
                     assertEquals("/chapter?page=1", server.takeRequest(3, TimeUnit.SECONDS)?.path)
                 }
@@ -187,14 +368,14 @@ class IsolatedExecutionInstrumentedTest {
                     listOf(NetworkGrant(server.url("/").toString(), true)))
                 val broker = SourceExecutionBroker(id, authority, session, limits, server.url("/").toString())
                 server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE))
-                val pending = async { executor.execute(id, ExecutionTask.Script("java.ajax('/slow')"), limits, broker) }
+                val pending = async { executor.execute(id, ExecutionTask.Script("java.ajax('/slow')", baseUrl = server.url("/").toString()), limits, broker) }
                 assertNotNull(withContext(Dispatchers.IO) { server.takeRequest(10, TimeUnit.SECONDS) })
                 pending.cancel()
                 withTimeout(5000) { pending.join() }
                 server.enqueue(MockResponse().setBody("next"))
                 SourceExecutionBroker(id, authority, session, limits, server.url("/").toString()).use { next ->
                     assertEquals(ExecutionResult.Success("\"next\""), executor.execute(id,
-                        ExecutionTask.Script("java.ajax('/next')"), limits, next))
+                        ExecutionTask.Script("java.ajax('/next')", baseUrl = server.url("/").toString()), limits, next))
                 }
                 assertEquals("/next", server.takeRequest(3, TimeUnit.SECONDS)?.path)
             }

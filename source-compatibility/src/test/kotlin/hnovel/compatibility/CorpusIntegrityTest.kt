@@ -50,16 +50,16 @@ class CorpusIntegrityTest {
             assertTrue(feature.string("evidence").isNotBlank())
             assertTrue(testIds.add(feature.string("testId")))
             val implemented = featureIdsImplemented.contains(feature.string("id"))
-            val brokerBackend = feature.string("id") in setOf("URL", "HTTP", "STORAGE")
-            // Broker entry points and process binding remain owned by later issues.
+            val partial = feature.string("id") in setOf("URL", "HTTP", "STORAGE", "VARIABLES", "JS", "ENCODING", "SANDBOX", "IDENTIFIERS")
+            // Real entry points exist, but these feature groups still have incomplete acceptance.
             val implementation = when {
                 implemented -> "implemented"
-                brokerBackend -> "partial"
+                partial -> "partial"
                 else -> "planned"
             }
             assertEquals(implementation, feature.string("implementation"))
-            if (brokerBackend) assertEquals("product-contract", feature.string("verification"))
-            if (implemented || brokerBackend) {
+            if (partial) assertEquals("product-contract", feature.string("verification"))
+            if (implemented || partial) {
                 assertTrue(feature.getAsJsonArray("productTests").size() > 0)
                 assertTrue(feature.string("verification").startsWith("product-"))
             }

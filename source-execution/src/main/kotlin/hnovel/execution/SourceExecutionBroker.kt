@@ -18,6 +18,13 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
         check(authority.accepts(identity) && !session.closed)
     }
 
+    /** The script-visible context and request compiler must describe the same invocation. */
+    fun matchesTaskContext(task: ExecutionTask): Boolean = when (task) {
+        is ExecutionTask.Script -> baseUrl == task.baseUrl && keyword == task.key && page == task.page
+        is ExecutionTask.Rule -> baseUrl == task.baseUrl && keyword == task.key && page == task.page
+        else -> true
+    }
+
     private fun <T> authorized(block: () -> T): T = authority.authorized(identity) {
         synchronized(this) {
             check(!closed && !session.closed) { "Execution retired" }
@@ -26,8 +33,8 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
     }
 
     suspend fun call(name: String, args: List<JsonElement>): JsonElement {
-        val requestNumber = authorized { check(++requests <= limits.maxRequests) { "Request budget exceeded" }; requests }
-        val work = lifetime.async {
+        val requestNumber = reserveRequest()
+        return ownedWork {
             when (name) {
                 "java.ajax" -> {
                     require(args.size == 1)
@@ -63,6 +70,49 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
                 else -> error("Unknown bridge operation")
             }
         }
+    }
+
+    /** Downloads data only; library code is evaluated exclusively in the isolated worker. */
+    suspend fun loadLibrary(definition: String): List<String> = ownedWork {
+        var size = 0L
+        SourceLibraryDefinition.urls(definition).map { url ->
+            val requestNumber = reserveRequest()
+            check(session.permissionFailure(url) == null) { "Library origin denied" }
+            val digest = java.security.MessageDigest.getInstance("SHA-256").digest(url.toByteArray(Charsets.UTF_8))
+                .joinToString("") { "%02x".format(it.toInt() and 255) }
+            val key = "library:$digest"
+            val cached = authorized { session.read(StorageRequest(StorageArea.Account, key)) }
+            check(cached is StorageResult.Value) { "Library cache unavailable" }
+            val entry = cached.value?.let { Json.parseToJsonElement(it).jsonObject } ?: run {
+                val response = session.execute(BrokerRequest("library-$requestNumber", url,
+                    timeoutMillis = limits.timeoutMillis, kind = ResourceKind.Script), RequestCommitGuard { action -> authorized(action) })
+                check(response is BrokerResult.Success && response.response.status in 200..299) { "Library download failed" }
+                val code = response.response.text()
+                if (code.length.toLong() + 1 + size > SourceLibraryDefinition.MAX_CHARS) throw LibraryTooLarge()
+                buildJsonObject { put("url", response.response.finalUrl); put("code", code) }.also { entry ->
+                    authorized {
+                        check(session.write(StorageRequest(StorageArea.Account, key, entry.toString())) is StorageResult.Value) {
+                            "Library cache quota exceeded"
+                        }
+                    }
+                }
+            }
+            check(session.permissionFailure(entry.getValue("url").jsonPrimitive.content) == null) { "Library redirect origin denied" }
+            entry.getValue("code").jsonPrimitive.content.also { code ->
+                size += code.length.toLong() + 1
+                if (size > SourceLibraryDefinition.MAX_CHARS) throw LibraryTooLarge()
+            }
+        }
+    }
+
+    private fun reserveRequest(): Int = authorized {
+        check(++requests <= limits.maxRequests) { "Request budget exceeded" }
+        requests
+    }
+
+    private suspend fun <T> ownedWork(block: suspend () -> T): T {
+        authorized { }
+        val work = lifetime.async { block() }
         return try { work.await().let { value -> authorized { value } } } finally { work.cancel() }
     }
 

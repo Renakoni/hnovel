@@ -9,6 +9,7 @@ import hnovel.rhino.ScriptFrame
 import hnovel.rhino.ScriptLimits
 import hnovel.rhino.ScriptResult
 import hnovel.rhino.ScriptLibrary
+import hnovel.rules.*
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
@@ -25,12 +26,23 @@ import java.util.concurrent.ConcurrentHashMap
  @Serializable data class Script(val code: String, val result: JsonElement = JsonNull, val bookId: String? = null,
   val chapterId: String? = null, val key: String = "", val page: Int = 1, val baseUrl: String = "",
   val libraryCode: String? = null) : ExecutionTask
+ @Serializable data class Rule(val rule: String, val input: RuleValue, val output: OutputKind = OutputKind.TextList,
+  val location: RuleLocation = RuleLocation("rule"), val bookId: String? = null, val chapterId: String? = null,
+  val key: String = "", val page: Int = 1, val baseUrl: String = "", val libraryCode: String? = null,
+  val sourceVariables: Map<String, String> = emptyMap(), val bookVariables: Map<String, String> = emptyMap(),
+  val chapterVariables: Map<String, String> = emptyMap()) : ExecutionTask
+}
+
+fun ExecutionTask.libraryCode(): String? = when (this) {
+ is ExecutionTask.Script -> libraryCode
+ is ExecutionTask.Rule -> libraryCode
+ else -> null
 }
 @Serializable sealed interface ExecutionResult {
  @Serializable data class Success(val output: String): ExecutionResult
- @Serializable data class Failure(val code: FailureCode): ExecutionResult
+ @Serializable data class Failure(val code: FailureCode, val ruleError: RuleError? = null): ExecutionResult
 }
-@Serializable enum class FailureCode { Timeout, ProcessExited, InvalidIdentity, OutputLimit, InvalidTask, Cancelled, Revoked, Busy, InputLimit, ScriptSyntax, ScriptRuntime, BridgeDenied }
+@Serializable enum class FailureCode { Timeout, ProcessExited, InvalidIdentity, OutputLimit, InvalidTask, Cancelled, Revoked, Busy, InputLimit, ScriptSyntax, ScriptRuntime, BridgeDenied, RuleRuntime }
 
 /** Host authority for source identities. The worker never gets a method to issue or change a ticket. */
 class ExecutionAuthority {
@@ -52,7 +64,8 @@ class IsolatedExecutor(private val javaCommand: String = javaHome(), private val
  private val authority: ExecutionAuthority? = null) {
  fun execute(identity: ExecutionIdentity, task: ExecutionTask, limits: ExecutionLimits = ExecutionLimits()): ExecutionResult {
   if (identity.sourceId.isBlank() || (authority != null && !authority.accepts(identity))) return ExecutionResult.Failure(FailureCode.InvalidIdentity)
-  val process = try { ProcessBuilder(javaCommand, "-cp", classPath, WorkerMain::class.java.name).start() }
+  val process = try { ProcessBuilder(javaCommand, "-Xmx64m", "-Xss1m", "-XX:+ExitOnOutOfMemoryError",
+   "-cp", classPath, WorkerMain::class.java.name).start() }
     catch (_: Exception) { return ExecutionResult.Failure(FailureCode.ProcessExited) }
   try {
    val request = Wire(identity, task, limits)
@@ -75,9 +88,12 @@ class IsolatedExecutor(private val javaCommand: String = javaHome(), private val
 
   // Gradle/plugin hosts can load these classes outside java.class.path. Locate the actual worker
   // and its runtime dependencies; callers with non-file classloaders must pass a packaged classpath.
-  private fun workerClassPath(): String = listOf(WorkerMain::class.java, Unit::class.java,
+  private fun workerClassPath(): String = (listOf(WorkerMain::class.java, Unit::class.java,
    kotlinx.serialization.KSerializer::class.java, kotlinx.serialization.json.Json::class.java,
-   RhinoScriptEngine::class.java, org.mozilla.javascript.Context::class.java)
+   RhinoScriptEngine::class.java, org.mozilla.javascript.Context::class.java, RuleEvaluator::class.java) +
+   listOf("org.jsoup.Jsoup", "com.jayway.jsonpath.JsonPath", "net.minidev.json.JSONValue", "net.minidev.asm.BeansAccess",
+    "org.objectweb.asm.ClassReader", "org.slf4j.LoggerFactory", "org.seimicrawler.xpath.JXDocument",
+    "org.apache.commons.lang3.StringUtils", "org.antlr.v4.runtime.Parser", "com.google.gson.Gson").map { Class.forName(it) })
    .map { type ->
     val location = requireNotNull(type.protectionDomain?.codeSource?.location) { "Supply a worker runtime classpath" }
     require(location.protocol == "file") { "Supply a packaged worker runtime classpath" }
@@ -85,12 +101,13 @@ class IsolatedExecutor(private val javaCommand: String = javaHome(), private val
    }.distinct().joinToString(java.io.File.pathSeparator)
  }
 }
-@Serializable private data class Wire(val identity: ExecutionIdentity, val task: ExecutionTask, val limits: ExecutionLimits)
+@Serializable private data class Wire(val identity: ExecutionIdentity, val task: ExecutionTask, val limits: ExecutionLimits,
+ val libraryScripts: List<String>? = null)
 
 /** Shared Android/JVM wire encoding; the authority stays in the host. */
 object ExecutionWire {
- fun encode(identity: ExecutionIdentity, task: ExecutionTask, limits: ExecutionLimits): ByteArray =
-  kotlinx.serialization.json.Json.encodeToString(Wire.serializer(), Wire(identity, task, limits)).toByteArray(Charsets.UTF_8)
+ fun encode(identity: ExecutionIdentity, task: ExecutionTask, limits: ExecutionLimits, libraryScripts: List<String>? = null): ByteArray =
+  kotlinx.serialization.json.Json.encodeToString(Wire.serializer(), Wire(identity, task, limits, libraryScripts)).toByteArray(Charsets.UTF_8)
  fun encodeResult(result: ExecutionResult): ByteArray =
   kotlinx.serialization.json.Json.encodeToString(ExecutionResult.serializer(), result).toByteArray(Charsets.UTF_8)
  fun decodeResult(bytes: ByteArray): ExecutionResult =
@@ -101,16 +118,17 @@ object ExecutionWire {
 class WorkerRuntime : AutoCloseable {
  private data class LibraryOwner(val namespace: String, val source: String, val profile: String,
   val revision: String, val accountGeneration: Long)
- private data class LibraryEntry(val code: String, val library: ScriptLibrary)
+ private data class LibraryEntry(val code: String, val scripts: List<String>, val library: ScriptLibrary)
  private val libraries = LinkedHashMap<LibraryOwner, LibraryEntry>(16, 0.75f, true)
 
- private fun library(identity: ExecutionIdentity, code: String?): ScriptLibrary? {
+ private fun library(identity: ExecutionIdentity, code: String?, resolved: List<String>?): ScriptLibrary? {
   if (code.isNullOrBlank()) return null
   val key = LibraryOwner(identity.namespace, identity.sourceId, identity.profile, identity.revision, identity.accountGeneration)
   val current = libraries[key]
-  if (current?.code == code) return current.library
+  val scripts = resolved ?: listOf(code)
+  if (current?.code == code && current.scripts == scripts) return current.library
   current?.library?.close()
-  val entry = LibraryEntry(code, ScriptLibrary(identity.sourceId, identity.profile, code))
+  val entry = LibraryEntry(code, scripts, ScriptLibrary(identity.sourceId, identity.profile, scripts))
   libraries[key] = entry
   if (libraries.size > 16) {
    val oldest = libraries.entries.iterator()
@@ -128,14 +146,18 @@ class WorkerRuntime : AutoCloseable {
  @Synchronized fun executeSerialized(input: String, bridge: HostBridge = HostBridge { _, _ -> error("No host broker") }): String {
   val wire = try { kotlinx.serialization.json.Json.decodeFromString(Wire.serializer(), input) }
     catch (_: Exception) { return kotlinx.serialization.json.Json.encodeToString(ExecutionResult.serializer(), ExecutionResult.Failure(FailureCode.InvalidTask)) }
+  if (SourceLibraryDefinition.isUrlMap(wire.task.libraryCode()) && wire.libraryScripts == null)
+   return kotlinx.serialization.json.Json.encodeToString(ExecutionResult.serializer(), ExecutionResult.Failure(FailureCode.BridgeDenied))
   val result = when (val task = wire.task) {
+   is ExecutionTask.Rule -> WorkerRuleEvaluator.evaluate(task, wire.identity, wire.limits, bridge,
+    library(wire.identity, task.libraryCode, wire.libraryScripts))
    is ExecutionTask.Echo -> if (task.value.toByteArray().size > wire.limits.maxOutputBytes) ExecutionResult.Failure(FailureCode.OutputLimit) else ExecutionResult.Success(task.value)
    is ExecutionTask.Sleep -> { Thread.sleep(task.millis); ExecutionResult.Success("slept") }
    is ExecutionTask.Script -> {
     val frame = ScriptFrame(wire.identity.sourceId, wire.identity.profile, task.bookId, task.chapterId,
      mapOf("result" to task.result), task.key, task.page, task.baseUrl)
     when (val evaluated = RhinoScriptEngine(bridge, ScriptLimits(maxResultChars = wire.limits.maxOutputBytes))
-     .evaluate(task.code, frame, library(wire.identity, task.libraryCode))) {
+     .evaluate(task.code, frame, library(wire.identity, task.libraryCode, wire.libraryScripts))) {
      is ScriptResult.Success -> if (evaluated.json.toByteArray(Charsets.UTF_8).size > wire.limits.maxOutputBytes)
       ExecutionResult.Failure(FailureCode.OutputLimit) else ExecutionResult.Success(evaluated.json)
      is ScriptResult.Failure -> ExecutionResult.Failure(when (evaluated.code) {

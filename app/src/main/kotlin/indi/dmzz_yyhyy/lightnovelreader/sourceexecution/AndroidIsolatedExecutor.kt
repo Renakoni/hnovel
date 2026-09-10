@@ -14,6 +14,11 @@ import hnovel.execution.ExecutionWire
 import hnovel.execution.FailureCode
 import hnovel.execution.SourceExecutionBroker
 import hnovel.execution.BridgeWire
+import hnovel.execution.SourceLibraryDefinition
+import hnovel.execution.LibraryTooLarge
+import hnovel.execution.libraryCode
+import kotlinx.coroutines.async
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -39,6 +44,7 @@ class AndroidIsolatedExecutor(context: Context, private val authority: Execution
     suspend fun execute(identity: ExecutionIdentity, task: ExecutionTask,
         limits: ExecutionLimits = ExecutionLimits(), broker: SourceExecutionBroker? = null): ExecutionResult = withContext(Dispatchers.IO) {
         if (broker != null && (broker.identity != identity || broker.limits != limits)) return@withContext failure(FailureCode.InvalidIdentity)
+        if (broker != null && !broker.matchesTaskContext(task)) return@withContext failure(FailureCode.InvalidTask)
         if (!authority.accepts(identity)) return@withContext failure(FailureCode.InvalidIdentity)
         val request = ExecutionWire.encode(identity, task, limits)
         if (request.size > IsolatedExecutionService.MAX_IPC_BYTES) return@withContext failure(FailureCode.InputLimit)
@@ -50,8 +56,8 @@ class AndroidIsolatedExecutor(context: Context, private val authority: Execution
             if (previous != null && (previous.authority !== authority || previous.died.isCompleted)) retire(previous)
             if (retiringBinder?.isBinderAlive == true) return@withContext failure(FailureCode.ProcessExited)
             val worker = retainedWorker ?: IsolatedWorkerConnection(context, authority).also { retainedWorker = it }
-            if (task is ExecutionTask.Script && !task.libraryCode.isNullOrBlank()) worker.retainsLibraries = true
-            invoke(worker, identity, request, limits, broker)
+            if (!task.libraryCode().isNullOrBlank()) worker.retainsLibraries = true
+            invoke(worker, identity, task, limits, broker)
         } finally {
             workerLock.unlock()
         }
@@ -67,7 +73,7 @@ class AndroidIsolatedExecutor(context: Context, private val authority: Execution
         try { worker.close() } finally { if (retainedWorker === worker) retainedWorker = null }
     }
 
-    private suspend fun invoke(worker: IsolatedWorkerConnection, identity: ExecutionIdentity, request: ByteArray,
+    private suspend fun invoke(worker: IsolatedWorkerConnection, identity: ExecutionIdentity, task: ExecutionTask,
         limits: ExecutionLimits, broker: SourceExecutionBroker?): ExecutionResult = coroutineScope {
         val result = CompletableDeferred<ExecutionResult>()
         val finished = AtomicBoolean()
@@ -85,6 +91,22 @@ class AndroidIsolatedExecutor(context: Context, private val authority: Execution
         }
         try {
             val completed = withTimeoutOrNull(limits.timeoutMillis) {
+                val definition = task.libraryCode()
+                val scripts = if (SourceLibraryDefinition.isUrlMap(definition)) {
+                    val host = broker ?: return@withTimeoutOrNull failure(FailureCode.BridgeDenied)
+                    // Keep a denied download from cancelling the invocation's parent scope before
+                    // its structured failure can be returned and the worker retired.
+                    val loading = async { runCatching { host.loadLibrary(checkNotNull(definition)) } }
+                    try {
+                        select<List<String>?> {
+                            loading.onAwait { it.getOrThrow() }
+                            result.onAwait { null }
+                            worker.died.onAwait { null }
+                        } ?: return@withTimeoutOrNull if (result.isCompleted) result.await() else failure(FailureCode.ProcessExited)
+                    } finally { loading.cancel() }
+                } else null
+                val request = ExecutionWire.encode(identity, task, limits, scripts)
+                if (request.size > IsolatedExecutionService.MAX_IPC_BYTES) return@withTimeoutOrNull failure(FailureCode.InputLimit)
                 val service = select<IIsolatedExecutionService?> {
                     worker.connected.onAwait { it }
                     worker.died.onAwait { null }
@@ -132,7 +154,10 @@ class AndroidIsolatedExecutor(context: Context, private val authority: Execution
             accepted
         } catch (_: RemoteException) {
             failure(FailureCode.ProcessExited)
-        } finally {
+        } catch (cancelled: CancellationException) { throw cancelled }
+          catch (_: LibraryTooLarge) { failure(FailureCode.InputLimit) }
+          catch (_: Exception) { if (authority.accepts(identity)) failure(FailureCode.BridgeDenied) else failure(FailureCode.Revoked) }
+        finally {
             finished.set(true)
             brokerCalls.cancel()
             broker?.close()

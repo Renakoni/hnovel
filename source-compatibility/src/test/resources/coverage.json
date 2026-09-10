@@ -144,23 +144,32 @@
       "owner": "https://github.com/Renakoni/hnovel/issues/87",
       "requirement": "result/book/chapter/key/page/baseUrl 与请求/书籍/来源变量作用域，java.getString/getElement/put/get。",
       "testId": "CONFORMANCE-VARIABLES",
-      "implementation": "planned",
-      "verification": "future-fixture",
+      "implementation": "partial",
+      "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Pinned reference source inspection; production implementation pending."
+      "evidence": "Typed invocation globals and rule variable snapshots are implemented; java.get/put share request-local RuleContext with chapter/book/source precedence. Broader metadata and nested getString/getElement APIs remain pending.",
+      "productTests": [
+        "hnovel.execution.WorkerRuleTest",
+        "hnovel.rhino.ScriptLibraryTest"
+      ]
     },
     {
       "id": "JS",
       "owner": "https://github.com/Renakoni/hnovel/issues/87",
       "requirement": "@js:/<js>、jsLib、Rhino 类型和异常、同步宿主桥接；引擎使用固定版本 1.8.1。",
       "testId": "CONFORMANCE-JS",
-      "implementation": "planned",
-      "verification": "reference-fixture",
+      "implementation": "partial",
+      "verification": "product-contract",
       "fixtures": [
         "JS-SHARED-STATE",
         "MIXED-HTML-JS"
       ],
-      "evidence": "Rhino language + synthetic/mixed host contract execution, NOT full upstream AnalyzeRule/JsExtensions execution."
+      "evidence": "Rhino 1.8.1 executes rule script stages with typed JSON bridges and retained source-owned libraries. Authorized ordered external jsLib downloads feed separate script segments; global completion values follow the pinned engine. URL/request scripts and the complete tool matrix remain pending. Synthetic reference fixtures are not a full upstream bridge oracle.",
+      "productTests": [
+        "hnovel.rhino.RhinoScriptEngineTest",
+        "hnovel.execution.SourceLibraryTest",
+        "hnovel.execution.WorkerRuleTest"
+      ]
     },
     {
       "id": "URL",
@@ -170,10 +179,10 @@
       "implementation": "partial",
       "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Source-network broker backend implemented and tested offline. Static URL compiler, scoped network/storage and quotas are production code; process-bound IPC (#86), JavaScript entry points (#87) and browser calls (#89) remain pending. Not a full upstream bridge oracle.",
+      "evidence": "Static RequestCompiler behavior is tested. Real Ajax and external-library requests cross authenticated Android Binder to the source broker. Dynamic URL templates/option scripts and browser request paths remain pending.",
       "productTests": [
-        "hnovel.network.SourceBrokerTest",
         "hnovel.network.RequestCompilerTest",
+        "hnovel.execution.SourceLibraryTest",
         "hnovel.compatibility.ProductRequestContractTest"
       ]
     },
@@ -185,11 +194,10 @@
       "implementation": "partial",
       "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Source-network broker backend implemented and tested offline. Static URL compiler, scoped network/storage and quotas are production code; process-bound IPC (#86), JavaScript entry points (#87) and browser calls (#89) remain pending. Not a full upstream bridge oracle.",
+      "evidence": "Synchronous java.ajax runs through a source/account-bound reverse Binder broker with origin, redirect, peer, request and cancellation policies. Remaining ajaxAll/connect/get/head/post bridge semantics are pending.",
       "productTests": [
-        "hnovel.network.SourceBrokerTest",
-        "hnovel.network.RequestCompilerTest",
-        "hnovel.compatibility.ProductRequestContractTest"
+        "hnovel.execution.ScriptExecutionTest",
+        "indi.dmzz_yyhyy.lightnovelreader.sourceexecution.IsolatedExecutionInstrumentedTest"
       ]
     },
     {
@@ -210,11 +218,10 @@
       "implementation": "partial",
       "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Source-network broker backend implemented and tested offline. Static URL compiler, scoped network/storage and quotas are production code; process-bound IPC (#86), JavaScript entry points (#87) and browser calls (#89) remain pending. Not a full upstream bridge oracle.",
+      "evidence": "Source/cache methods and external jsLib account caches run through scoped host storage with quotas, TTL and revocation-guarded local commits. Cache hits recheck library origins. Controlled resource/file tools remain pending.",
       "productTests": [
-        "hnovel.network.SourceBrokerTest",
-        "hnovel.network.RequestCompilerTest",
-        "hnovel.compatibility.ProductRequestContractTest"
+        "hnovel.execution.ScriptExecutionTest",
+        "hnovel.execution.SourceLibraryTest"
       ]
     },
     {
@@ -222,10 +229,14 @@
       "owner": "https://github.com/Renakoni/hnovel/issues/87",
       "requirement": "JsEncodeUtils 和 JsExtensions 的 base64/hex/hash/字节/charset、时间/URL/HTML 与繁简转换。",
       "testId": "CONFORMANCE-ENCODING",
-      "implementation": "planned",
-      "verification": "future-fixture",
+      "implementation": "partial",
+      "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Pinned reference source inspection; production implementation pending."
+      "evidence": "Thirty-six worker-local byte/encoding/hash/time/legacy-cipher/UUID helpers have fixed vectors, Hutool differential tests and Android provider tests. HTML/traditional-simplified conversion and modern crypto factories remain pending.",
+      "productTests": [
+        "hnovel.rhino.ScriptCryptoTest",
+        "indi.dmzz_yyhyy.lightnovelreader.sourceexecution.IsolatedExecutionInstrumentedTest"
+      ]
     },
     {
       "id": "FILES",
@@ -274,10 +285,15 @@
       "owner": "https://github.com/Renakoni/hnovel/issues/86",
       "requirement": "可终止进程、IPC 来源身份、CPU/内存/输出/文件/网络预算，反射/类加载边界。",
       "testId": "CONFORMANCE-SANDBOX",
-      "implementation": "planned",
-      "verification": "android-required",
+      "implementation": "partial",
+      "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Pinned reference source inspection; production implementation pending."
+      "evidence": "Real isolated-UID Binder transport, identity authentication, revocation, deadlines, bounded IPC, interpreter recursion, JVM heap cap and sampled Android managed/native allocation budget are tested, including allocation failure then another source. Sampling is not a hard RSS/mapping cap. Full escape acceptance and production lifecycle wiring remain pending.",
+      "productTests": [
+        "hnovel.execution.IsolatedExecutorTest",
+        "hnovel.rhino.ScriptBoundaryTest",
+        "indi.dmzz_yyhyy.lightnovelreader.sourceexecution.IsolatedExecutionInstrumentedTest"
+      ]
     },
     {
       "id": "SEARCH",
@@ -388,10 +404,13 @@
       "owner": "https://github.com/Renakoni/hnovel/issues/86",
       "requirement": "androidId/randomUUID 等标识工具的权限和来源边界；跨设备稳定性及与外部认证契约的差异必须明示。",
       "testId": "CONFORMANCE-IDENTIFIERS",
-      "implementation": "planned",
-      "verification": "future-fixture",
+      "implementation": "partial",
+      "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Pinned reference source inspection; production implementation pending."
+      "evidence": "randomUUID returns a fresh version-4 UUID inside the worker without a device identifier or host capability. androidId and its authentication/permission semantics remain pending.",
+      "productTests": [
+        "hnovel.rhino.ScriptCryptoTest"
+      ]
     },
     {
       "id": "DIAGNOSTICS",

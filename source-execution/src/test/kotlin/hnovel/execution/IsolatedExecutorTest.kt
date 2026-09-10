@@ -2,6 +2,12 @@ package hnovel.execution
 import org.junit.Assert.*
 import org.junit.Test
 class IsolatedExecutorTest {
+ @Test fun allocationFailureStaysInChildAndTheNextInvocationSucceeds() {
+  val executor = IsolatedExecutor()
+  assertEquals(ExecutionResult.Failure(FailureCode.ProcessExited), executor.execute(id,
+   ExecutionTask.Script("new ArrayBuffer(128*1024*1024).byteLength"), ExecutionLimits(timeoutMillis = 15000)))
+  assertEquals(ExecutionResult.Success("42"), executor.execute(id.copy(sourceId = "other"), ExecutionTask.Script("21*2")))
+ }
  @Test fun hostIssuedIdentityRejectsForgeryAndRevocationKillsLateWorker() {
   val authority = ExecutionAuthority(); val issued = authority.issue("source-a", "legado", "r1")
   val executor = IsolatedExecutor(authority = authority)

@@ -79,6 +79,14 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
     }
     fun newVariables(initial: Map<String, String> = emptyMap()) = RequestVariables(initial)
 
+    /** Checks current grants for a cached resource without opening a connection. */
+    fun permissionFailure(url: String): FailureCode? {
+        checkOpen()
+        val parsed = url.toHttpUrlOrNull() ?: return FailureCode.InvalidRequest
+        return try { policy.check(parsed); null }
+        catch (failure: BrokerFailure) { failure.code }
+    }
+
     suspend fun execute(request: BrokerRequest, guard: RequestCommitGuard = RequestCommitGuard { it() }): BrokerResult {
         checkOpen()
         val snapshot = request.copy(headers = request.headers.toMap())
