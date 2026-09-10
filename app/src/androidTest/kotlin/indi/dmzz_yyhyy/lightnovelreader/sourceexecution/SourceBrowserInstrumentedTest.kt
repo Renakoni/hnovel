@@ -132,6 +132,7 @@ class SourceBrowserInstrumentedTest {
             SourceBroker(root.toPath(), browser = AndroidSourceBrowser(context)).use { broker ->
                 val session = broker.open(SourceScope("login", "A", "legado", 1), listOf(NetworkGrant(server.url("/").toString(), true)))
                 val login = async { session.execute(BrokerRequest("login", server.url("/login").toString(), timeoutMillis = 60000,
+                    headers = mapOf("User-Agent" to "source-login-agent", "Authorization" to "Bearer source-login", "Cookie" to "source=login"),
                     browser = BrowserOptions(script = "document.title === 'POST accepted' ? document.title : null", interactive = true))) }
                 val formPosted = withTimeoutOrNull(20000) { posted.await(); true } == true
                 assertTrue("Form POST did not reach broker; requests=${server.requestCount}, browserCompleted=${login.isCompleted}", formPosted)
@@ -152,8 +153,11 @@ class SourceBrowserInstrumentedTest {
                 assertEquals("POST accepted", (result as BrokerResult.Success).response.text())
                 assertEquals("auth=accepted", session.cookie(server.url("/").toString()))
                 val navigation = List(server.requestCount) { server.takeRequest(1, java.util.concurrent.TimeUnit.SECONDS)!! }
-                    .filter { it.path == "/login" }.map { it.method }
-                assertEquals(listOf("GET", "POST"), navigation)
+                    .filter { it.path == "/login" }
+                assertEquals(listOf("GET", "POST"), navigation.map { it.method })
+                assertEquals("source-login-agent", navigation.first().getHeader("User-Agent"))
+                assertEquals("Bearer source-login", navigation.first().getHeader("Authorization"))
+                assertEquals("source=login", navigation.first().getHeader("Cookie"))
             }
             root.deleteRecursively()
         }

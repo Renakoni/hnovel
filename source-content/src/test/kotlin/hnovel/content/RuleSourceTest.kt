@@ -9,6 +9,38 @@ import org.junit.Test
 
 class RuleSourceTest {
 
+    @Test fun directBrowserLoginUsesEvaluatedSourceHeadersOnItsFirstRequest() = runBlocking {
+        for (dynamic in listOf(false, true)) {
+            var navigations = 0
+            val browser = BrowserExecutor { session, request, options, guard ->
+                assertTrue(options.interactive)
+                navigations++
+                session.execute(request.copy(browser = null), guard)
+            }
+            RuleSourceFixture(browser).use { fixture ->
+                fixture.server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
+                    override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest) =
+                        okhttp3.mockwebserver.MockResponse().setResponseCode(
+                            if (request.getHeader("User-Agent") == "source-agent" &&
+                                request.getHeader("Authorization") == "Bearer alice" &&
+                                request.getHeader("Cookie") == "source=login") 200 else 401)
+                            .setHeader("Content-Type", "text/html").setBody("<title>Login</title>")
+                }
+                val header = """{"User-Agent":"source-agent","Authorization":"Bearer alice","Cookie":"source=login"}"""
+                fixture.source(customize = { raw -> JsonObject(raw + mapOf(
+                    "loginUrl" to JsonPrimitive(fixture.server.url("/login").toString()),
+                    "loginUi" to JsonPrimitive("""[{"name":"user"}]"""),
+                    "header" to JsonPrimitive(if (dynamic) """@js:JSON.stringify({
+                        'User-Agent':'source-agent',Authorization:'Bearer '+source.getLoginInfoMap().get('user'),Cookie:'source=login'})""" else header)
+                )) }).use { source ->
+                    source.login(mapOf("user" to "alice"))
+                    assertEquals(1, navigations)
+                    assertEquals(1, fixture.server.requestCount)
+                }
+            }
+        }
+    }
+
     @Test fun redirectsToNextChapterNeverBecomeCurrentChapterContent() = runBlocking {
         for (firstPage in listOf(false, true)) RuleSourceFixture().use { fixture -> fixture.source().use { source ->
             val book = source.search("title").single()
