@@ -37,6 +37,7 @@ class ScriptRequestTemplatesTest {
         val engine = RhinoScriptEngine(HostBridge { _, _ -> called=true; JsonNull }, ScriptLimits(maxBridgeChars=128))
         assertEquals(FailureCode.Timeout, (engine.evaluate("java.ajax('@js:while(true){}')", frame) as ScriptResult.Failure).code)
         assertEquals(FailureCode.ResultTooLarge, (engine.evaluate("java.ajax('/x?q={{\"a\".repeat(1000)}}')", frame) as ScriptResult.Failure).code)
+        assertEquals(FailureCode.ResultTooLarge, (engine.evaluate("java.ajaxAll(['/{{\"a\".repeat(70)}}','/{{\"b\".repeat(70)}}'])", frame) as ScriptResult.Failure).code)
         assertFalse(called)
     }
 }

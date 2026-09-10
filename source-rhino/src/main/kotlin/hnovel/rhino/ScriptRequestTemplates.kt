@@ -16,11 +16,19 @@ internal class ScriptRequestTemplates(private val scope: Scriptable, private val
         if (name == "java.importScript" && !args[0].jsonPrimitive.content.startsWith("http", true)) return args
         if (++depth > 32) { depth--; throw ScriptBudgetExceeded() }
         try {
+            val limit = cx.getThreadLocal(bridgeLimitKey) as Int
+            var used = 2L
+            fun item(value: JsonElement): JsonPrimitive = JsonPrimitive(expand(cx, value.jsonPrimitive.content)).also {
+                used += it.toString().length + 1L
+                if (used > limit) throw ResultTooLarge()
+            }
             val urlIndex = if (name == "java.downloadFile" && args.size == 2) 1 else 0
             val first = args[urlIndex]
-            val expanded = if (name == "java.ajaxAll") JsonArray(first.jsonArray.map { JsonPrimitive(expand(cx, it.jsonPrimitive.content)) })
-                else JsonPrimitive(expand(cx, ((first as? JsonArray)?.firstOrNull() ?: first).jsonPrimitive.content))
-            return args.toMutableList().apply { this[urlIndex] = expanded }
+            val expanded = if (name == "java.ajaxAll") JsonArray(first.jsonArray.map(::item))
+                else item((first as? JsonArray)?.firstOrNull() ?: first)
+            return args.toMutableList().apply { this[urlIndex] = expanded }.also {
+                if (JsonArray(it).toString().length > limit) throw ResultTooLarge()
+            }
         } finally { depth-- }
     }
 
