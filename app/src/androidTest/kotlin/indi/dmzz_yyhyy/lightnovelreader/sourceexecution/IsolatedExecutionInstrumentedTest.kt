@@ -30,6 +30,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.*
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -38,6 +39,43 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class IsolatedExecutionInstrumentedTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
+
+    @Test fun isolatedToolsMatchAndroidBase64AndPreserveNativeByteData() = runBlocking {
+        val authority = ExecutionAuthority()
+        val executor = AndroidIsolatedExecutor(context, authority)
+        val id = authority.issue("source-tools", "legado", "1")
+        val expressions = mutableListOf<String>()
+        val expected = mutableListOf<JsonElement>()
+        for (text in listOf("", "a", "ab", "abc", "\uFFFF", "a".repeat(58), "\u4E2D".repeat(60))) {
+            val literal = JsonPrimitive(text)
+            for (flags in 0..31) {
+                val encoded = android.util.Base64.encodeToString(text.toByteArray(Charsets.UTF_8), flags)
+                expressions += "java.base64Encode($literal,$flags)"
+                expected += JsonPrimitive(encoded)
+                expressions += "java.base64Decode(${JsonPrimitive(encoded)},$flags)"
+                expected += JsonPrimitive(String(android.util.Base64.decode(encoded, flags), Charsets.UTF_8))
+            }
+        }
+        for (encoded in listOf("YQ", " YQ==\n", "a", "YQ=", "Y!Q==", "YQ==YQ==", "77-_", "77+/", "")) {
+            for (flags in listOf(0, 8)) {
+                expressions += "(function(){try{return java.base64Decode(${JsonPrimitive(encoded)},$flags)}catch(e){return 'invalid'}})()"
+                expected += JsonPrimitive(try { String(android.util.Base64.decode(encoded, flags), Charsets.UTF_8) }
+                    catch (_: IllegalArgumentException) { "invalid" })
+            }
+        }
+        expressions += "java.strToBytes('\u4E2D','GBK')"
+        expected.add(JsonArray(listOf(JsonPrimitive(-42), JsonPrimitive(-48))))
+        expressions += "java.bytesToStr(java.strToBytes('\u4E2D'))"
+        expected += JsonPrimitive("\u4E2D")
+        expressions += "java.md5Encode('abc')"
+        expected += JsonPrimitive("900150983cd24fb0d6963f7d28e17f72")
+        expressions += "java.HMacHex('data','HmacSHA256','key')"
+        expected += JsonPrimitive("5031fe3d989c6d1537a013fa6e739da23463fdaec3b70137d828e36ace221bd0")
+        val result = executor.execute(id, ExecutionTask.Script(expressions.joinToString(",", "[", "]")),
+            ExecutionLimits(timeoutMillis = 15000))
+        assertTrue(result.toString(), result is ExecutionResult.Success)
+        assertEquals(JsonArray(expected), Json.parseToJsonElement((result as ExecutionResult.Success).output))
+    }
 
     @Test fun rhinoCallsAuthenticatedHostBrokerAcrossIsolatedBinder() = runBlocking {
         val authority = ExecutionAuthority()
