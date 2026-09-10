@@ -16,14 +16,19 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -40,6 +45,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -60,7 +66,6 @@ import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.get
 import com.github.michaelbull.result.getOrElse
 import com.github.michaelbull.result.map
-import com.github.michaelbull.result.onErr
 import com.github.michaelbull.result.onOk
 import com.valentinilk.shimmer.Shimmer
 import com.valentinilk.shimmer.ShimmerBounds
@@ -71,13 +76,12 @@ import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.EmptyPage
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.bookshelf.BookshelfBookItem
 import indi.dmzz_yyhyy.lightnovelreader.utils.bottomBarPadding
-import indi.dmzz_yyhyy.lightnovelreader.utils.bottomBarSpacer
-import indi.dmzz_yyhyy.lightnovelreader.utils.navigationBarSpacer
 import io.nightfish.lightnovelreader.api.bookshelf.BookshelfSortType
 import io.nightfish.lightnovelreader.api.error.WebRequestError
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
 import me.majiajie.tinypinyin.Pinyin
 import java.text.Collator
 import java.util.Locale
@@ -87,6 +91,7 @@ import java.util.Locale
 internal fun BookshelfHomeContent(
     uiState: BookshelfHomeUiState,
     listState: LazyListState,
+    gridState: LazyGridState,
     scrollBehavior: TopAppBarScrollBehavior,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
@@ -142,9 +147,10 @@ internal fun BookshelfHomeContent(
             val allBooksFlow = remember(selectedBookshelfUiState.allBookFlows) {
                 selectedBookshelfUiState.allBookFlows
                     .map { pair ->
-                        pair.second.map {
-                            pair.first to it
-                        }
+                        pair.second.map { result ->
+                            val item: Result<BookshelfBookItem, WebRequestError>? = result
+                            pair.first to item
+                        }.onStart { emit(pair.first to null) }
                     }
                     .let { flows ->
                         if (flows.isEmpty()) {
@@ -169,9 +175,10 @@ internal fun BookshelfHomeContent(
             val updatedBooksFlow = remember(selectedBookshelfUiState.updatedBookFlows) {
                 selectedBookshelfUiState.updatedBookFlows
                     .map { pair ->
-                        pair.second.map {
-                            pair.first to it
-                        }
+                        pair.second.map { result ->
+                            val item: Result<BookshelfBookItem, WebRequestError>? = result
+                            pair.first to item
+                        }.onStart { emit(pair.first to null) }
                     }
                     .let { flows ->
                         if (flows.isEmpty()) {
@@ -196,9 +203,10 @@ internal fun BookshelfHomeContent(
             val pinnedBooksFlow = remember(selectedBookshelfUiState.pinnedBookFlows) {
                 selectedBookshelfUiState.pinnedBookFlows
                     .map { pair ->
-                        pair.second.map {
-                            pair.first to it
-                        }
+                        pair.second.map { result ->
+                            val item: Result<BookshelfBookItem, WebRequestError>? = result
+                            pair.first to item
+                        }.onStart { emit(pair.first to null) }
                     }
                     .let { flows ->
                         if (flows.isEmpty()) {
@@ -220,195 +228,138 @@ internal fun BookshelfHomeContent(
                 )
             }
 
-            val selectedBookIdSet = uiState.selectedBookIds.toHashSet()
-            val onLongPress: (String) -> Unit = { bookId ->
-                if (!uiState.selectMode) {
-                    uiState.onEnableSelectMode()
+            val sections = listOf(
+                BookshelfSection("updated", R.drawable.autorenew_24px, R.string.bookshelf_group_title_updated,
+                    sortedUpdatedBooks, uiState.updatedExpanded) { uiState.updatedExpanded = !uiState.updatedExpanded },
+                BookshelfSection("pinned", R.drawable.keep_24px, R.string.bookshelf_group_title_pinned,
+                    sortedPinnedBooks, uiState.pinnedExpanded) { uiState.pinnedExpanded = !uiState.pinnedExpanded },
+                BookshelfSection("book", R.drawable.outline_bookmark_24px, R.string.bookshelf_group_title_all,
+                    sortedAllBooks, uiState.allExpanded) { uiState.allExpanded = !uiState.allExpanded }
+            ).filter { it.books.isNotEmpty() }
+            val itemKeys = sections.flatMap { section ->
+                listOf(section.key) + if (section.expanded) section.books.map { section.bookKey(it.first) } else emptyList()
+            }
+            var previousLayout by rememberSaveable(uiState.selectedBookshelfId) { mutableStateOf(uiState.layout) }
+            LaunchedEffect(uiState.layout, uiState.selectedBookshelfId) {
+                if (previousLayout == uiState.layout) return@LaunchedEffect
+                // Keep the source-qualified book (and its section), even if sorting moved its index.
+                val visibleKeys = if (previousLayout == BookshelfLayout.List) {
+                    listState.layoutInfo.visibleItemsInfo.filter { it.contentType == "book_card" }.map { it.key }
+                } else {
+                    gridState.layoutInfo.visibleItemsInfo.filter { it.contentType == "book_card" }.map { it.key }
                 }
-                uiState.changeBookSelectState(bookId)
-            }
-            var initialScrollApplied by remember(uiState.selectedBookshelfId) { mutableStateOf(false) }
-
-            LaunchedEffect(uiState.selectedBookshelfId, selectedBookshelfUiState.allBookFlows) {
-                if (initialScrollApplied || selectedBookshelfUiState.allBookFlows.isEmpty()) return@LaunchedEffect
-                listState.scrollToItem(0)
-                initialScrollApplied = true
+                val targetIndex = visibleKeys.firstNotNullOfOrNull { key -> itemKeys.indexOf(key).takeIf { it >= 0 } }
+                previousLayout = uiState.layout
+                if (targetIndex != null) {
+                    if (uiState.layout == BookshelfLayout.List) listState.scrollToItem(targetIndex)
+                    else gridState.scrollToItem(targetIndex)
+                }
             }
 
+            val selectedBookIdSet = uiState.selectedBookIds.toHashSet()
             val shimmerInstance = rememberShimmer(ShimmerBounds.Custom)
             val density = LocalDensity.current
             val lineHeight = MaterialTheme.typography.titleMedium.lineHeight
             val titleHeight = with(density) { (lineHeight * 2.2f).toDp() }
+            val card: @Composable (Pair<String, Result<BookshelfBookItem, WebRequestError>?>) -> Unit = { pair ->
+                BookshelfBookCard(
+                    id = pair.first,
+                    bookshelfBookItem = pair.second,
+                    selected = pair.first in selectedBookIdSet,
+                    selectMode = uiState.selectMode,
+                    layout = uiState.layout,
+                    titleHeight = titleHeight,
+                    shimmer = shimmerInstance,
+                    onBookClick = uiState.onBookClick,
+                    onBookSelect = uiState.changeBookSelectState,
+                    onLongPress = { bookId ->
+                        if (!uiState.selectMode) uiState.onEnableSelectMode()
+                        uiState.changeBookSelectState(bookId)
+                    }
+                )
+            }
 
             AnimatedVisibility(
-                visible = uiState.selectedBookshelf?.allBookFlows?.isEmpty() == true,
+                visible = selectedBookshelfUiState.allBookFlows.isEmpty(),
                 enter = fadeIn(),
                 exit = fadeOut()
             ) {
                 EmptyPage(
-                    modifier = Modifier
-                        .navigationBarsPadding()
-                        .bottomBarPadding(),
+                    modifier = Modifier.navigationBarsPadding().bottomBarPadding(),
                     icon = painterResource(R.drawable.bookmarks_90px),
                     title = stringResource(R.string.nothing_here),
                     description = stringResource(R.string.nothing_here_desc_bookshelf)
                 )
             }
 
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .nestedScroll(scrollBehavior.nestedScrollConnection)
-                    .onGloballyPositioned { layoutCoordinates ->
-                        shimmerInstance.updateBounds(layoutCoordinates.unclippedBoundsInWindow())
-                    },
-                state = listState
-            ) {
-                bookshelfContent(
-                    selectedBookIdSet = selectedBookIdSet,
-                    titleHeight = titleHeight,
-                    shimmer = shimmerInstance,
-                    isSelectMode = uiState.selectMode,
-                    onClickBook = uiState.onBookClick,
-                    onBookSelect = uiState.changeBookSelectState,
-                    onLongPress = onLongPress,
-                    updatedBooks = sortedUpdatedBooks,
-                    updatedExpanded = uiState.updatedExpanded,
-                    onToggleUpdateExpand = { uiState.updatedExpanded = !uiState.updatedExpanded },
-                    pinnedBooks = sortedPinnedBooks,
-                    pinnedExpanded = uiState.pinnedExpanded,
-                    onTogglePinnedExpand = { uiState.pinnedExpanded = !uiState.pinnedExpanded },
-                    allBooks = sortedAllBooks,
-                    allExpanded = uiState.allExpanded,
-                    onToggleAllExpand = { uiState.allExpanded = !uiState.allExpanded }
-                )
-                navigationBarSpacer()
-                bottomBarSpacer()
+            val contentModifier = Modifier
+                .fillMaxWidth()
+                .nestedScroll(scrollBehavior.nestedScrollConnection)
+                .onGloballyPositioned { layoutCoordinates ->
+                    shimmerInstance.updateBounds(layoutCoordinates.unclippedBoundsInWindow())
+                }
+            if (uiState.layout == BookshelfLayout.List) {
+                LazyColumn(modifier = contentModifier, state = listState) {
+                    sections.forEach { section ->
+                        stickyHeader(key = section.key) { section.Header() }
+                        if (section.expanded) {
+                            items(section.books, key = { section.bookKey(it.first) }, contentType = { "book_card" }) { card(it) }
+                        }
+                    }
+                    if (sections.isNotEmpty()) {
+                        item(key = "footer") { BookshelfFooter(sortedAllBooks.size, uiState.allExpanded) }
+                    }
+                }
+            } else {
+                LazyVerticalGrid(
+                    columns = GridCells.Adaptive(160.dp * density.fontScale.coerceAtLeast(1f)),
+                    modifier = contentModifier,
+                    state = gridState
+                ) {
+                    sections.forEach { section ->
+                        item(key = section.key, span = { GridItemSpan(maxLineSpan) }, contentType = "header") { section.Header() }
+                        if (section.expanded) {
+                            items(section.books, key = { section.bookKey(it.first) }, contentType = { "book_card" }) { card(it) }
+                        }
+                    }
+                    if (sections.isNotEmpty()) {
+                        item(key = "footer", span = { GridItemSpan(maxLineSpan) }) { BookshelfFooter(sortedAllBooks.size, uiState.allExpanded) }
+                    }
+                }
             }
         }
     }
 }
 
-private fun LazyListScope.bookshelfContent(
-    selectedBookIdSet: Set<String>,
-    titleHeight: Dp,
-    shimmer: Shimmer,
-    isSelectMode: Boolean,
-    onClickBook: (String) -> Unit,
-    onBookSelect: (String) -> Unit,
-    onLongPress: (String) -> Unit,
-    updatedBooks: List<Pair<String, Result<BookshelfBookItem, WebRequestError>?>>,
-    updatedExpanded: Boolean,
-    onToggleUpdateExpand: () -> Unit,
-    pinnedBooks: List<Pair<String, Result<BookshelfBookItem, WebRequestError>?>>,
-    pinnedExpanded: Boolean,
-    onTogglePinnedExpand: () -> Unit,
-    allBooks: List<Pair<String, Result<BookshelfBookItem, WebRequestError>?>>,
-    allExpanded: Boolean,
-    onToggleAllExpand: () -> Unit
+private class BookshelfSection(
+    val key: String,
+    val icon: Int,
+    val title: Int,
+    val books: List<Pair<String, Result<BookshelfBookItem, WebRequestError>?>>,
+    val expanded: Boolean,
+    val onToggle: () -> Unit
 ) {
-    if (updatedBooks.isNotEmpty()) {
-        stickyHeader {
-            CollapseHeader(
-                icon = painterResource(R.drawable.autorenew_24px),
-                title = stringResource(R.string.bookshelf_group_title_updated, updatedBooks.size),
-                expanded = updatedExpanded,
-                onToggleExpand = onToggleUpdateExpand
-            )
-        }
-        if (updatedExpanded) {
-            items(
-                updatedBooks,
-                key = { "updated_${it.first}" },
-                contentType = { "book_card" }
-            ) { pair ->
-                BookshelfBookCard(
-                    id = pair.first,
-                    bookshelfBookItem = pair.second,
-                    selected = selectedBookIdSet.contains(pair.first),
-                    selectMode = isSelectMode,
-                    titleHeight = titleHeight,
-                    shimmer = shimmer,
-                    onBookClick = onClickBook,
-                    onBookSelect = onBookSelect,
-                    onLongPress = onLongPress
-                )
-            }
-        }
-    }
+    // The same book can occur in several sections; the id is already SourceBookId.storageKey.
+    fun bookKey(id: String) = "${key}_$id"
 
-    if (pinnedBooks.isNotEmpty()) {
-        stickyHeader {
-            CollapseHeader(
-                icon = painterResource(R.drawable.keep_24px),
-                title = stringResource(R.string.bookshelf_group_title_pinned, pinnedBooks.size),
-                expanded = pinnedExpanded,
-                onToggleExpand = onTogglePinnedExpand
-            )
-        }
-        if (pinnedExpanded) {
-            items(
-                pinnedBooks,
-                key = { "pinned_${it.first}" },
-                contentType = { "book_card" }
-            ) { pair ->
-                BookshelfBookCard(
-                    id = pair.first,
-                    bookshelfBookItem = pair.second,
-                    selected = selectedBookIdSet.contains(pair.first),
-                    selectMode = isSelectMode,
-                    titleHeight = titleHeight,
-                    shimmer = shimmer,
-                    onBookClick = onClickBook,
-                    onBookSelect = onBookSelect,
-                    onLongPress = onLongPress
-                )
-            }
-        }
+    @Composable
+    fun Header() {
+        CollapseHeader(painterResource(icon), stringResource(title, books.size), expanded, onToggle)
     }
+}
 
-    if (allBooks.isNotEmpty()) {
-        stickyHeader {
-            CollapseHeader(
-                icon = painterResource(R.drawable.outline_bookmark_24px),
-                title = stringResource(R.string.bookshelf_group_title_all, allBooks.size),
-                expanded = allExpanded,
-                onToggleExpand = onToggleAllExpand
+@Composable
+private fun BookshelfFooter(count: Int, expanded: Boolean) {
+    Column(Modifier.fillMaxWidth().navigationBarsPadding().bottomBarPadding()) {
+        if (count > 0 && expanded) {
+            Text(
+                modifier = Modifier.align(Alignment.CenterHorizontally).padding(vertical = 18.dp),
+                text = stringResource(R.string.n_books, count),
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.W600,
+                color = MaterialTheme.colorScheme.outline
             )
-        }
-        if (allExpanded) {
-            items(
-                allBooks,
-                key = { "book_${it.first}" },
-                contentType = { "book_card" }
-            ) { pair ->
-                BookshelfBookCard(
-                    id = pair.first,
-                    bookshelfBookItem = pair.second,
-                    selected = selectedBookIdSet.contains(pair.first),
-                    selectMode = isSelectMode,
-                    titleHeight = titleHeight,
-                    shimmer = shimmer,
-                    onBookClick = onClickBook,
-                    onBookSelect = onBookSelect,
-                    onLongPress = onLongPress
-                )
-            }
-            item {
-                Box(
-                    modifier = Modifier.fillMaxWidth(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        modifier = Modifier.padding(vertical = 18.dp),
-                        text = stringResource(R.string.n_books, allBooks.size),
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.W600,
-                        color = MaterialTheme.colorScheme.outline
-                    )
-                }
-                Spacer(Modifier.height(20.dp))
-            }
+            Spacer(Modifier.height(20.dp))
         }
     }
 }
@@ -419,6 +370,7 @@ private fun BookshelfBookCard(
     bookshelfBookItem: Result<BookshelfBookItem, WebRequestError>?,
     selected: Boolean,
     selectMode: Boolean,
+    layout: BookshelfLayout,
     titleHeight: Dp,
     shimmer: Shimmer,
     onBookClick: (String) -> Unit,
@@ -429,32 +381,35 @@ private fun BookshelfBookCard(
         targetState = bookshelfBookItem,
         label = "BookCardCrossfade"
     ) { result ->
-        result?.onOk {
-            BookCardContent(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .padding(vertical = 6.dp),
-                bookInformation = it.bookInformation,
+        val onClick = { if (selectMode) onBookSelect(id) else onBookClick(id) }
+        if (layout == BookshelfLayout.Grid) {
+            BookshelfGridCard(
+                id = id,
+                result = result,
                 selected = selected,
-                collected = false,
-                onClick = {
-                    if (!selectMode) onBookClick(id)
-                    else onBookSelect(id)
-                },
-                onLongPress = { onLongPress(id) },
-                latestChapterTitle = it.lastUpdatedChapterTitle,
-                titleHeight = titleHeight
+                selectMode = selectMode,
+                shimmer = shimmer,
+                onClick = onClick,
+                onLongPress = { onLongPress(id) }
             )
-        }?.onErr {
-            //TODO 错误显示
-        } ?: BookCardContentSkeleton(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp)
-                .padding(vertical = 6.dp)
-                .shimmer(shimmer)
-        )
+        } else if (result?.isErr == true) {
+            BookshelfBookError(selected, onClick) { onLongPress(id) }
+        } else {
+            result?.onOk {
+                BookCardContent(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                    bookInformation = it.bookInformation,
+                    selected = selected,
+                    collected = false,
+                    onClick = onClick,
+                    onLongPress = { onLongPress(id) },
+                    latestChapterTitle = it.lastUpdatedChapterTitle,
+                    titleHeight = titleHeight
+                )
+            } ?: BookCardContentSkeleton(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp).shimmer(shimmer)
+            )
+        }
     }
 }
 
@@ -473,7 +428,7 @@ private fun CollapseHeader(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(50.dp)
+                    .heightIn(min = 50.dp)
                     .clickable(onClick = onToggleExpand)
                     .padding(horizontal = 16.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -519,11 +474,11 @@ private fun CollapseHeader(
 }
 
 private fun sortBooks(
-    source: List<Pair<String, Result<BookshelfBookItem, WebRequestError>>>,
+    source: List<Pair<String, Result<BookshelfBookItem, WebRequestError>?>>,
     allBookIds: List<String>,
     sortType: BookshelfSortType,
     sortReversed: Boolean,
-): List<Pair<String, Result<BookshelfBookItem, WebRequestError>>> {
+): List<Pair<String, Result<BookshelfBookItem, WebRequestError>?>> {
     val stableIndexMap = allBookIds.withIndex().associate { it.value to it.index }
     val locale = Locale.getDefault()
     val collator = Collator.getInstance(locale)
@@ -532,14 +487,14 @@ private fun sortBooks(
             stableIndexMap[it.first] ?: Int.MAX_VALUE
         }
         BookshelfSortType.Latest -> source.sortedWith(
-            compareByDescending<Pair<String, Result<BookshelfBookItem, WebRequestError>>> { pair ->
-                pair.second.map { it.bookInformation.lastUpdated }.get()
+            compareByDescending<Pair<String, Result<BookshelfBookItem, WebRequestError>?>> { pair ->
+                pair.second?.map { it.bookInformation.lastUpdated }?.get()
             }.thenBy { stableIndexMap[it.first] ?: Int.MAX_VALUE }
         )
         BookshelfSortType.Name -> source.sortedWith(
             Comparator { left, right ->
-                val leftTitle = left.second.map { it.bookInformation.title }.getOrElse { "" }
-                val rightTitle = right.second.map { it.bookInformation.title }.getOrElse { "" }
+                val leftTitle = left.second?.map { it.bookInformation.title }?.getOrElse { "" }.orEmpty()
+                val rightTitle = right.second?.map { it.bookInformation.title }?.getOrElse { "" }.orEmpty()
                 val nameCompare = collator.compare(
                     titleSortKey(leftTitle, locale),
                     titleSortKey(rightTitle, locale)
@@ -552,8 +507,8 @@ private fun sortBooks(
             }
         )
         BookshelfSortType.WordCount -> source.sortedWith(
-            compareByDescending<Pair<String, Result<BookshelfBookItem, WebRequestError>>> { pair ->
-                pair.second.map { it.bookInformation.wordCount.count }.getOrElse { 0 }
+            compareByDescending<Pair<String, Result<BookshelfBookItem, WebRequestError>?>> { pair ->
+                pair.second?.map { it.bookInformation.wordCount.count }?.getOrElse { 0 } ?: 0
             }.thenBy { stableIndexMap[it.first] ?: Int.MAX_VALUE }
         )
     }
