@@ -114,6 +114,36 @@ class IsolatedExecutionInstrumentedTest {
         } finally { root.deleteRecursively() }
     }
 
+    @Test fun oversizedArchivesMatchPortableSizeFailuresAcrossTheIsolatedBoundary() = runBlocking {
+        fun zip(vararg entries: Pair<String, Int>) = java.io.ByteArrayOutputStream().also { out ->
+            java.util.zip.ZipOutputStream(out).use { archive ->
+                for ((name, size) in entries) {
+                    archive.putNextEntry(java.util.zip.ZipEntry(name)); archive.write(ByteArray(size)); archive.closeEntry()
+                }
+            }
+        }.toByteArray()
+        val exact = zip("chapter" to 65536)
+        for (decoder in listOf(hnovel.rhino.ArchiveDecoder.Zip, AndroidArchiveDecoder)) {
+            assertEquals(65536, decoder.decode(exact, 65536).getValue("chapter").size)
+            assertTrue(runCatching { decoder.decode(exact, exact.size - 1) }.exceptionOrNull() is hnovel.rhino.ArchiveSizeLimitExceeded)
+        }
+        val authority = ExecutionAuthority()
+        val executor = AndroidIsolatedExecutor(context, authority)
+        val id = authority.issue("archive-limits", "legado", "1")
+        val limits = ExecutionLimits(timeoutMillis = 30000)
+        try {
+            for (bytes in listOf(zip("chapter" to 65537), zip("chapter" to 40000, "other" to 40000))) {
+                val hex = bytes.joinToString("") { "%02x".format(it.toInt() and 255) }
+                assertEquals(ExecutionResult.Failure(FailureCode.OutputLimit), executor.execute(id,
+                    ExecutionTask.Script("java.getZipStringContent('$hex','chapter')"), limits))
+            }
+            val invalid = zip("../chapter" to 1).joinToString("") { "%02x".format(it.toInt() and 255) }
+            assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied), executor.execute(id,
+                ExecutionTask.Script("java.getZipStringContent('$invalid','chapter')"), limits))
+            assertEquals(ExecutionResult.Success("42"), executor.execute(id, ExecutionTask.Script("21*2"), limits))
+        } finally { executor.close() }
+    }
+
     @Test fun nativeArchivesFontsConversionAndMetadataRunInIsolatedProcess() = runBlocking {
         val authority = ExecutionAuthority()
         val executor = AndroidIsolatedExecutor(context, authority)

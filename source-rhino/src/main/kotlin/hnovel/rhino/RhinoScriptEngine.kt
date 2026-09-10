@@ -45,6 +45,7 @@ private class ScriptBridge(private val bridge: HostBridge, private val rules: Sc
                     else -> converted
                 }
             }
+                catch (_: ArchiveSizeLimitExceeded) { throw ResultTooLarge() }
                 catch (large: ResultTooLarge) { throw large }
                 catch (unsupported: UnsupportedResult) { throw unsupported }
                 catch (cancelled: java.util.concurrent.CancellationException) { throw ScriptCancelled() }

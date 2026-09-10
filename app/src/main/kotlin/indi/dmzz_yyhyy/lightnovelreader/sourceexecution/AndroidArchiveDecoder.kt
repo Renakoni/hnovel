@@ -1,6 +1,7 @@
 package indi.dmzz_yyhyy.lightnovelreader.sourceexecution
 
 import hnovel.rhino.ArchiveDecoder
+import hnovel.rhino.ArchiveSizeLimitExceeded
 import me.zhanghai.android.libarchive.Archive
 import me.zhanghai.android.libarchive.ArchiveEntry
 import java.io.ByteArrayOutputStream
@@ -9,7 +10,7 @@ import java.nio.ByteBuffer
 /** Native parsing is confined to the isolated worker and its hard process deadline. */
 internal object AndroidArchiveDecoder : ArchiveDecoder {
     override fun decode(bytes: ByteArray, maxBytes: Int): Map<String, ByteArray> {
-        require(bytes.size <= maxBytes)
+        if (bytes.size > maxBytes) throw ArchiveSizeLimitExceeded()
         val archive = Archive.readNew()
         try {
             Archive.readSupportFilterAll(archive)
@@ -39,7 +40,7 @@ internal object AndroidArchiveDecoder : ArchiveDecoder {
                     val count = buffer.position()
                     if (count == 0) break
                     total += count
-                    require(total <= maxBytes)
+                    if (total > maxBytes) throw ArchiveSizeLimitExceeded()
                     buffer.flip(); buffer.get(chunk, 0, count)
                     output.write(chunk, 0, count)
                 }

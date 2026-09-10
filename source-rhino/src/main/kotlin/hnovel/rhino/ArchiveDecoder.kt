@@ -3,8 +3,12 @@ package hnovel.rhino
 import java.io.ByteArrayOutputStream
 import java.util.zip.ZipInputStream
 
+/** Input or aggregate decoded bytes exceeded the archive budget. */
+class ArchiveSizeLimitExceeded : RuntimeException()
+
 /** A worker-only decoder. Android supplies the pinned libarchive implementation for RAR/7z too. */
 fun interface ArchiveDecoder {
+    /** @throws ArchiveSizeLimitExceeded when input or decoded contents exceed [maxBytes]. */
     fun decode(bytes: ByteArray, maxBytes: Int): Map<String, ByteArray>
 
     companion object {
@@ -14,6 +18,7 @@ fun interface ArchiveDecoder {
         }
 
         val Zip = ArchiveDecoder { bytes, maxBytes ->
+            if (bytes.size > maxBytes) throw ArchiveSizeLimitExceeded()
             val files = linkedMapOf<String, ByteArray>()
             var total = 0L
             var entries = 0
@@ -32,7 +37,7 @@ fun interface ArchiveDecoder {
                         val size = input.read(buffer)
                         if (size < 0) break
                         total += size
-                        if (total > maxBytes) throw ResultTooLarge()
+                        if (total > maxBytes) throw ArchiveSizeLimitExceeded()
                         output.write(buffer, 0, size)
                     }
                     files[entry.name] = output.toByteArray()

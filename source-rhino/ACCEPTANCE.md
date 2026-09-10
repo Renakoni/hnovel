@@ -45,6 +45,10 @@ limited to 256 entries and the current bridge byte budget across all contents.
 Absolute paths, traversal, backslashes, drive prefixes, duplicates and oversized
 content fail. Android also rejects links, special entries and encrypted entries.
 The portable ZIP decoder treats entries as data, with no filesystem extraction.
+Both decoders report input or aggregate decoded byte-budget overflow through
+ArchiveSizeLimitExceeded, mapped by the bridge to ResultTooLarge and execution
+OutputLimit. Invalid paths/types and the entry-count validation remain bridge
+rejections. Native decoder cleanup runs on both successful and failed extraction.
 
 Extraction publishes one account-storage record under `/archives/<unique-token>`.
 Each extraction gets its own opaque token, even for the same resource URL;
@@ -172,8 +176,9 @@ fixture was run. The generated fonts/archives are public synthetic data; their
 generator is recorded alongside the files. Tests establish these concrete
 contracts, not universal Legado compatibility or an absolute sandbox.
 
-Publication validation: 97 Rhino, 43 execution, 10 rules, 20 network and 43
-compatibility JVM tests pass (213 total). Debug and AndroidTest APKs build;
-the real isolated-service suite passes 22 tests on each of API 24 and API 35,
+Publication validation: 98 Rhino, 43 execution, 10 rules, 20 network and 43
+compatibility JVM tests pass (214 total). Debug and AndroidTest APKs build;
+the real isolated-service suite passes 23 tests on each of API 24 and API 35,
 including realistic response sizes and retained-library recovery after oversized
-DOM and derived response-header mutations.
+DOM and derived response-header mutations, plus matching archive size-failure
+classification and recovery across the native and portable decoders.
