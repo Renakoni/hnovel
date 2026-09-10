@@ -52,10 +52,12 @@ class SourceImageInterceptor @Inject constructor(
         }
         val account = accounts.current(image.book.sourceId).generation
         if (runtime.hasImageProvider) check(account == runtime.metadata.accountGeneration) { "Image account changed" }
-        val result = runtime.execute {
+        var pendingKey: String? = null
+        val result = try { runtime.execute {
             val headers = runtime.imageHeaders()
             val key = sourceImageCacheKey(image, runtime.metadata.revision, runtime.metadata.accountGeneration, headers)
             accountCache.remember(image.book.sourceId, account, key)
+            pendingKey = key
             val result = chain.withRequest(chain.request.newBuilder()
                 .data(if (runtime.hasImageProvider) BoundSourceImage(image, key, runtime, accountCache) { action ->
                     accountCache.commit(image.book.sourceId, account, action)
@@ -67,6 +69,9 @@ class SourceImageInterceptor @Inject constructor(
                 }.build())
                 .build()).proceed()
             result to key
+        } } catch (failure: Exception) {
+            if (account != accounts.current(image.book.sourceId).generation) pendingKey?.let(accountCache::purgeKey)
+            throw failure
         }
         accounts.withCurrent(image.book.sourceId) {
             if (account != it.generation) { accountCache.purgeKey(result.second); error("Image account changed") }
