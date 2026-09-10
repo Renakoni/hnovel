@@ -650,6 +650,42 @@ class IsolatedExecutionInstrumentedTest {
         assertEquals(JsonArray(expected), Json.parseToJsonElement((result as ExecutionResult.Success).output))
     }
 
+    @Test fun dynamicSourceHeadersRunOnlyForNetworkCallsAcrossIsolatedBinder() = runBlocking {
+        val authority = ExecutionAuthority()
+        val executor = AndroidIsolatedExecutor(context, authority)
+        val id = authority.issue("source-header", "legado", "1", "fixture")
+        val limits = ExecutionLimits(timeoutMillis = 15000)
+        val root = java.io.File(context.cacheDir, "header-${java.util.UUID.randomUUID()}").toPath()
+        try {
+            MockWebServer().use { server ->
+                server.start()
+                SourceBroker(root).use { sessions ->
+                    val base = server.url("/").toString()
+                    val session = sessions.open(SourceScope("fixture", "source-header", "legado"), listOf(NetworkGrant(base, true)))
+                    suspend fun run(rule: String): RuleValue =
+                        SourceExecutionBroker(id, authority, session, limits, base).use { broker ->
+                            val result = executor.execute(id, ExecutionTask.Rule(rule, RuleValue.Text("<h1>local</h1>"),
+                                baseUrl = base, sourceHeaderRule = "@js:JSON.stringify({Authorization:java.ajax('/token')})"), limits, broker)
+                            assertTrue(result.toString(), result is ExecutionResult.Success)
+                            Json.decodeFromString(ExecutedRule.serializer(), (result as ExecutionResult.Success).output).value
+                        }
+                    assertEquals(RuleValue.Text("local"), run("h1@text"))
+                    assertEquals(0, server.requestCount)
+                    server.enqueue(MockResponse().setBody("source-token"))
+                    server.enqueue(MockResponse().setBody("remote"))
+                    assertEquals(RuleValue.Text("remote"), run("@js:java.ajax('/chapter')"))
+                    val token = server.takeRequest(3, TimeUnit.SECONDS)!!
+                    assertEquals("/token", token.path)
+                    assertNull(token.getHeader("Authorization"))
+                    val chapter = server.takeRequest(3, TimeUnit.SECONDS)!!
+                    assertEquals("/chapter", chapter.path)
+                    assertEquals("source-token", chapter.getHeader("Authorization"))
+                    assertEquals(2, server.requestCount)
+                }
+            }
+        } finally { executor.close() }
+    }
+
     @Test fun rhinoCallsAuthenticatedHostBrokerAcrossIsolatedBinder() = runBlocking {
         val authority = ExecutionAuthority()
         val executor = AndroidIsolatedExecutor(context, authority)
