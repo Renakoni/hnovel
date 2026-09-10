@@ -33,7 +33,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         require(values.size <= 32 && values.entries.sumOf { it.key.length.toLong() + it.value.length } <= 16384)
         val info = JsonObject(values.mapValues { JsonPrimitive(it.value) }).toString()
         authority.authorized(identity) { check(session.write(StorageRequest(StorageArea.Account, StorageRequestKey.LOGIN_INFO, info)) is StorageResult.Value) }
-        val context = evaluation()
+        val context = evaluation(interactive = true)
         if (form.browserUrl != null) {
             val response = session.execute(BrokerRequest("login", form.browserUrl,
                 timeoutMillis = 60000, browser = BrowserOptions(interactive = true)),
@@ -295,9 +295,9 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val old = store.read(id)
         return if (old?.informationLoaded == true && old.revision == identity.revision) old else information(id, old)
     }
-    private fun evaluation(book: RuleBook? = null, chapter: RuleChapter? = null, keyword: String = "", page: Int = 1): RuleEvaluation {
+    private fun evaluation(book: RuleBook? = null, chapter: RuleChapter? = null, keyword: String = "", page: Int = 1, interactive: Boolean = false): RuleEvaluation {
         val result = RuleEvaluation(identity, authority, session, runner, spec.library, book?.id, chapter?.id,
-            book?.state ?: ScriptState(), chapter?.state ?: ScriptState(), book?.id ?: spec.baseUrl, keyword, page)
+            book?.state ?: ScriptState(), chapter?.state ?: ScriptState(), book?.id ?: spec.baseUrl, keyword, page, interactive = interactive)
         book?.let {
             result.bookField("bookUrl", it.id)
             if ("name" !in result.book.metadata) result.bookField("name", it.title)

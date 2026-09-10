@@ -12,11 +12,12 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
     private val session: SourceSession, private val runner: RuleTaskRunner, private val library: String?,
     var bookId: String? = null, var chapterId: String? = null, var book: ScriptState = ScriptState(),
     var chapter: ScriptState = ScriptState(), var baseUrl: String, val keyword: String = "", var page: Int = 1,
-    private val calls: java.util.concurrent.atomic.AtomicInteger = java.util.concurrent.atomic.AtomicInteger()) {
-    private val limits = ExecutionLimits(timeoutMillis = 5000, maxOutputBytes = 196608)
+    private val calls: java.util.concurrent.atomic.AtomicInteger = java.util.concurrent.atomic.AtomicInteger(),
+    private val interactive: Boolean = false) {
+    private val limits = ExecutionLimits(timeoutMillis = if (interactive) 60000 else 5000, maxOutputBytes = 196608)
 
     fun fork(bookId: String? = this.bookId, chapterId: String? = this.chapterId) =
-        RuleEvaluation(identity, authority, session, runner, library, bookId, chapterId, book.copy(), chapter.copy(), baseUrl, keyword, page, calls)
+        RuleEvaluation(identity, authority, session, runner, library, bookId, chapterId, book.copy(), chapter.copy(), baseUrl, keyword, page, calls, interactive)
 
     suspend fun value(rule: String, input: RuleValue, field: String, output: OutputKind = OutputKind.Text,
         unescape: Boolean = true): RuleValue {
@@ -27,7 +28,7 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
             keyword, page, baseUrl, library, book.inherited + chapter.inherited, book.variables,
             chapter.variables, book.metadata, chapter.metadata, book.bigVariables, chapter.bigVariables,
             unescapeHtml = unescape)
-        val result = SourceExecutionBroker(identity, authority, session, limits, baseUrl, keyword, page).use {
+        val result = SourceExecutionBroker(identity, authority, session, limits, baseUrl, keyword, page, allowInteraction = interactive).use {
             runner.execute(identity, task, limits, it).also { _ ->
                 if (it.interactionRequired) throw SourceContentException(ContentError.LoginRequired, field)
             }
