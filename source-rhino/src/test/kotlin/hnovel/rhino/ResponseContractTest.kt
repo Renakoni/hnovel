@@ -72,6 +72,45 @@ class ResponseContractTest {
         }
     }
 
+    @Test fun bodyAndParseBomPoliciesMatchPinnedJsoupWithAndWithoutDeclaredCharsets() {
+        val html = "<p>caf\u00e9 \u4E2D</p>"
+        val encodings = listOf(
+            "UTF-8" to byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte()),
+            "UTF-16LE" to byteArrayOf(0xFF.toByte(), 0xFE.toByte()),
+            "UTF-16BE" to byteArrayOf(0xFE.toByte(), 0xFF.toByte()),
+            "UTF-32LE" to byteArrayOf(0xFF.toByte(), 0xFE.toByte(), 0, 0),
+            "UTF-32BE" to byteArrayOf(0, 0, 0xFE.toByte(), 0xFF.toByte()))
+        MockWebServer().use { server ->
+            for ((encoding, bom) in encodings) for (declared in listOf(null, "UTF-8", encoding).distinct()) {
+                val bytes = bom + html.toByteArray(charset(encoding))
+                val type = "text/html" + (declared?.let { "; charset=$it" } ?: "")
+                server.enqueue(MockResponse().setHeader("Content-Type", type).setBody(Buffer().write(bytes)))
+                val reference = Jsoup.connect(server.url("/").toString()).execute()
+                val before = reference.charset()
+                val bodyBefore = reference.body()
+                // Jsoup 1.16.2 body() does not sniff a BOM or update charset.
+                assertEquals(before, reference.charset())
+                if (declared == null) assertEquals(bytes.toString(Charsets.UTF_8), bodyBefore)
+                assertArrayEquals(bytes, reference.bodyAsBytes())
+                val parsed = reference.parse().select("p").text()
+                assertEquals("caf\u00e9 \u4E2D", parsed)
+                val expected = buildJsonArray {
+                    add(before?.let(::JsonPrimitive) ?: JsonNull); add(bodyBefore); add(parsed)
+                    add(reference.charset()); add(reference.body())
+                    add(JsonArray(bytes.map { JsonPrimitive(it.toInt()) }))
+                }
+                val snapshot = JsonObject(data(bytes, type) - "body" +
+                    ("charset" to (before?.let(::JsonPrimitive) ?: JsonNull)))
+                val actual = run("""
+                    var r=java.get('u',{}),before=r.charset(),text=r.body(),parsed=r.parse().select('p').text();
+                    [before,text,parsed,r.charset(),r.body(),r.bodyAsBytes()]
+                """, snapshot)
+                assertTrue("$encoding / $declared: $actual", actual is ScriptResult.Success)
+                assertEquals("$encoding / $declared", expected, Json.parseToJsonElement((actual as ScriptResult.Success).json))
+            }
+        }
+    }
+
     @Test fun responseConsumptionSequencesMatchPinnedJsoupIncludingBufferedStreamRejection() {
         val operations = listOf("bufferUp", "body", "bodyAsBytes", "parse", "bodyStream")
         val sequences = operations.flatMap { first -> operations.flatMap { second ->

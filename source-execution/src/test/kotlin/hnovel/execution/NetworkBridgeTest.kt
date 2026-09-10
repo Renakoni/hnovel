@@ -75,6 +75,42 @@ class NetworkBridgeTest {
         }
     }
 
+    @Test fun bomBytesAndDeclaredCharsetSurviveBrokerWireBeforeWorkerParsing() = runBlocking {
+        val html = "<p>caf\u00e9 \u4E2D</p>"
+        val encodings = listOf(
+            "UTF-8" to byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte()),
+            "UTF-16LE" to byteArrayOf(0xFF.toByte(), 0xFE.toByte()),
+            "UTF-16BE" to byteArrayOf(0xFE.toByte(), 0xFF.toByte()),
+            "UTF-32LE" to byteArrayOf(0xFF.toByte(), 0xFE.toByte(), 0, 0),
+            "UTF-32BE" to byteArrayOf(0, 0, 0xFE.toByte(), 0xFF.toByte()))
+        MockWebServer().use { server ->
+            server.start()
+            val base = server.url("/").toString()
+            SourceBroker(folder.root.toPath()).use { sessions ->
+                val session = sessions.open(SourceScope("fixture", "a", "legado"), listOf(NetworkGrant(base, true)))
+                SourceExecutionBroker(id, authority, session, ExecutionLimits(), base).use { broker ->
+                    for ((encoding, bom) in encodings) for (declared in listOf(null, encoding)) {
+                        val bytes = bom + html.toByteArray(charset(encoding))
+                        server.enqueue(MockResponse().setHeader("Content-Type", "text/html" +
+                            (declared?.let { "; charset=$it" } ?: "")).setBody(okio.Buffer().write(bytes)))
+                        val result = script(broker, """
+                            var r=java.get('$base',{}),before=r.charset(),body=r.body();
+                            [before,body,r.parse().select('p').text(),r.bodyAsBytes()]
+                        """)
+                        assertTrue("$encoding / $declared: $result", result is ExecutionResult.Success)
+                        val expected = buildJsonArray {
+                            add(declared?.let(::JsonPrimitive) ?: JsonNull)
+                            add(bytes.toString(charset(declared ?: "UTF-8")))
+                            add("caf\u00e9 \u4E2D")
+                            add(JsonArray(bytes.map { JsonPrimitive(it.toInt()) }))
+                        }
+                        assertEquals("$encoding / $declared", expected, Json.parseToJsonElement((result as ExecutionResult.Success).output))
+                    }
+                }
+            }
+        }
+    }
+
     @Test fun connectFollowsRedirectsButGetHeadPostExposeTheOriginalResponse() = runBlocking {
         MockWebServer().use { server ->
             server.start()

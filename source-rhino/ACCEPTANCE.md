@@ -111,6 +111,16 @@ a binary copy: their raw body is already consumed and cannot be replayed. Both
 include final method/URL, protocol/timestamps and nullable declared charset. Missing declared charset stays
 null so parse() can detect HTML meta/BOM encoding. Legacy text-only mock snapshots
 use UTF-8 text bytes; they cannot recover binary data that was never supplied.
+Pinned Jsoup 1.16.2 body() decodes using the declared/current charset or UTF-8;
+it does not run BOM detection or update charset(). Any BOM consumption follows
+the selected charset decoder's behavior. parse() performs
+BOM/meta detection and updates charset(); a later buffered body() uses that
+updated charset. Raw bytes always retain the BOM. This deliberate version-specific
+contract is compared with actual Jsoup responses across UTF-8, UTF-16LE/BE and
+UTF-32LE/BE BOMs, absent/matching/conflicting charset headers, and body->parse->body
+reads. NetworkBridgeTest also checks BOM bytes and declared charset across broker
+serialization before worker parsing. Automatic BOM decoding in body() would be a
+separate compatibility change, not a correction to this pinned contract.
 Buffered bodies support repeated body()/bodyAsBytes()/parse() calls.
 bodyStream() is only available before consumption, including before bufferUp(),
 matching pinned Jsoup 1.16.2. After an unbuffered parse(), bufferUp() is a no-op
@@ -176,8 +186,8 @@ fixture was run. The generated fonts/archives are public synthetic data; their
 generator is recorded alongside the files. Tests establish these concrete
 contracts, not universal Legado compatibility or an absolute sandbox.
 
-Publication validation: 98 Rhino, 43 execution, 10 rules, 20 network and 43
-compatibility JVM tests pass (214 total). Debug and AndroidTest APKs build;
+Publication validation: 99 Rhino, 44 execution, 10 rules, 20 network and 43
+compatibility JVM tests pass (216 total). Debug and AndroidTest APKs build;
 the real isolated-service suite passes 23 tests on each of API 24 and API 35,
 including realistic response sizes and retained-library recovery after oversized
 DOM and derived response-header mutations, plus matching archive size-failure
