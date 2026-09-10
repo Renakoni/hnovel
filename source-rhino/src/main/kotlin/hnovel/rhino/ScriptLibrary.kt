@@ -7,10 +7,12 @@ class ScriptLibrary(val sourceId: String, val profile: String, scripts: List<Str
     constructor(sourceId: String, profile: String, code: String) : this(sourceId, profile, listOf(code))
     internal val scripts = scripts.toList()
     internal var scope: ScriptableObject? = null
+    internal var realm: ScriptRealm? = null
     internal var closed = false
 
     @Synchronized override fun close() {
         closed = true
         scope = null
+        realm = null
     }
 }
