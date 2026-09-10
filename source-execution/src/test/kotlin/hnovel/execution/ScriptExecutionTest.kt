@@ -73,7 +73,7 @@ class ScriptExecutionTest {
                 assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied), runScript(id, bridge, "source.put('key','exhausted')"))
                 authority.revoke(id)
                 assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied), runScript(id, bridge, "source.put('key','revoked')"))
-                assertEquals(StorageResult.Value("before"), session.read(StorageRequest(StorageArea.Account, "value:key")))
+                assertEquals(StorageResult.Value("before"), session.read(StorageRequest(StorageArea.Config, "value:key")))
             }
         }
     }

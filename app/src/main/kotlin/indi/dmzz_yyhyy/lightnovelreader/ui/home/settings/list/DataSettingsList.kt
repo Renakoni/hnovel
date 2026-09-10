@@ -29,6 +29,10 @@ import indi.dmzz_yyhyy.lightnovelreader.ui.components.SettingsSwitchEntry
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.SettingState
 import indi.dmzz_yyhyy.lightnovelreader.utils.uriLauncher
 import kotlinx.coroutines.launch
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import kotlinx.coroutines.CancellationException
 
 @Composable
 fun DataSettingsList(
@@ -36,6 +40,7 @@ fun DataSettingsList(
     settingState: SettingState,
     importData: (Uri, Boolean) -> OneTimeWorkRequest,
     onClickStorageManager: () -> Unit,
+    clearReadingCache: suspend () -> Unit,
 ) {
     val dataImportFailedText = stringResource(R.string.data_import_failed)
     val dataImportSuccessText = stringResource(R.string.data_import_success)
@@ -47,6 +52,29 @@ fun DataSettingsList(
     var pendingImportUri by remember { mutableStateOf<Uri?>(null) }
     var showImportDialog by remember { mutableStateOf(false) }
     var isImporting by remember { mutableStateOf(false) }
+    var showClearCache by remember { mutableStateOf(false) }
+    var clearingCache by remember { mutableStateOf(false) }
+
+    if (showClearCache) AlertDialog(
+        onDismissRequest = { if (!clearingCache) showClearCache = false },
+        title = { Text(stringResource(R.string.settings_clear_reading_cache)) },
+        text = { Text(stringResource(R.string.settings_clear_reading_cache_desc)) },
+        confirmButton = { TextButton(enabled = !clearingCache, onClick = {
+            clearingCache = true
+            scope.launch {
+                try {
+                    clearReadingCache()
+                    showClearCache = false
+                    Toast.makeText(context, R.string.settings_cache_cleared, Toast.LENGTH_SHORT).show()
+                } catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { Toast.makeText(context, R.string.settings_cache_clear_failed, Toast.LENGTH_SHORT).show() }
+                finally { clearingCache = false }
+            }
+        }) { Text(stringResource(android.R.string.ok)) } },
+        dismissButton = { TextButton(enabled = !clearingCache, onClick = { showClearCache = false }) {
+            Text(stringResource(android.R.string.cancel))
+        } }
+    )
 
     val startImport: (Uri, Boolean) -> Unit = { uri, overwrite ->
         isImporting = true
@@ -114,6 +142,13 @@ fun DataSettingsList(
         title = stringResource(R.string.settings_storage_manager),
         description = stringResource(R.string.settings_storage_manager_desc),
         onClick = onClickStorageManager
+    )
+    SettingsClickableEntry(
+        modifier = Modifier.background(colorScheme.surfaceContainer),
+        painter = painterResource(R.drawable.database_24px),
+        title = stringResource(R.string.settings_clear_reading_cache),
+        description = stringResource(R.string.settings_clear_reading_cache_desc),
+        onClick = { showClearCache = true }
     )
     SettingsSwitchEntry(
         modifier = Modifier.background(colorScheme.surfaceContainer),

@@ -122,16 +122,28 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
             ImportSelection(candidate.index, decision)
         }
         val committed = sources.importer.commit(preview, selections)
-        check(committed.error == null && committed.items.all { it.reference != null && it.error == null })
-        for (item in committed.items) {
-            val reference = item.reference!!
-            val definition = sources.definitions.list().single { it.reference() == reference }
-            val id = ImportedRuleSources.id(definition)
-            if (snapshot.installed.any { ImportedRuleSources.id(it.definition) == id })
-                updates.apply(id, reference, grants.getValue(item.index), allowIdentityChange)
-            else sources.activate(reference, grants.getValue(item.index))
+        var failed = committed.error != null
+        try {
+            for (item in committed.items) {
+                val reference = item.reference
+                if (reference == null || item.error != null) { failed = true; continue }
+                try {
+                    val definition = sources.definitions.list().single { it.reference() == reference }
+                    val id = ImportedRuleSources.id(definition)
+                    if (snapshot.installed.any { ImportedRuleSources.id(it.definition) == id })
+                        updates.apply(id, reference, grants.getValue(item.index), allowIdentityChange)
+                    else sources.activate(reference, grants.getValue(item.index))
+                } catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { failed = true }
+            }
+        } finally {
+            // Import definitions are already committed. Retrying requires a fresh preview of that state.
+            withContext(NonCancellable) {
+                reload()
+                mutable.update { it.copy(preview = null, updateTarget = null) }
+            }
         }
-        reload(); mutable.update { it.copy(preview = null, updateTarget = null, message = R.string.sources_saved) }
+        mutable.update { it.copy(message = if (failed) R.string.sources_import_partial else R.string.sources_saved) }
     }
     fun checkUpdate(id: Identifier) = launch {
         val checked = updates.check(id)
@@ -144,8 +156,7 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
     }
     fun saveConfiguration(id: Identifier, variable: String, permissions: String) = launch {
         require(variable.length <= 32768)
-        val installed = sources.installedSources().single { ImportedRuleSources.id(it.definition) == id }
-        updates.apply(id, installed.definition.reference(), grants(permissions))
+        updates.updatePermissions(id, grants(permissions))
         check(sources.loginTarget(id).session.write(StorageRequest(StorageArea.Config, "variable", variable)) is StorageResult.Value)
         reload(); mutable.update { it.copy(variable = variable, message = R.string.sources_saved) }
     }

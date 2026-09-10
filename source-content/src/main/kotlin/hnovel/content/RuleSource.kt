@@ -27,7 +27,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
 
     fun loginForm(): LoginForm = LoginForm.parse(spec.loginUi, spec.loginUrl)
 
-    suspend fun login(values: Map<String, String>, action: String? = null): Unit = operation("loginUrl") {
+    suspend fun login(values: Map<String, String>, action: String? = null): Unit = operation("loginUrl", timeoutMillis = 300000) {
         val form = loginForm()
         require(form.fields.filter { it.type != "button" }.map { it.name }.toSet().containsAll(values.keys))
         require(values.size <= 32 && values.entries.sumOf { it.key.length.toLong() + it.value.length } <= 16384)
@@ -375,9 +375,9 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
     }
     // Host storage and orchestration use IO. The caller's priority dispatcher owns the outer
     // request only; nested timeout jobs must not compete with their parent for its last permit.
-    private suspend fun <T : Any> operation(field: String, block: suspend () -> T): T = withContext(Dispatchers.IO) { serial.withLock {
+    private suspend fun <T : Any> operation(field: String, timeoutMillis: Long = 60000, block: suspend () -> T): T = withContext(Dispatchers.IO) { serial.withLock {
         if (!authority.accepts(identity)) throw SourceContentException(ContentError.Unavailable, field)
-        try { withTimeoutOrNull(60000) { block().also { currentCoroutineContext().ensureActive()
+        try { withTimeoutOrNull(timeoutMillis) { block().also { currentCoroutineContext().ensureActive()
             if (!authority.accepts(identity)) throw SourceContentException(ContentError.Unavailable, field) } }
             ?: throw SourceContentException(ContentError.Limit, field) }
         catch (cancelled: CancellationException) { throw cancelled }

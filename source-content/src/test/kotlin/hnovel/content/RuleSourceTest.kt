@@ -187,7 +187,7 @@ class RuleSourceTest {
             if (cancel) operation.join() else assertEquals(ContentError.Unavailable, (operation.await().exceptionOrNull() as SourceContentException).code)
             val definition = source.definition
             val session = fixture.broker.open(SourceScope("rules", definition.sourceId, definition.profile), listOf(NetworkGrant(fixture.server.url("/").toString(), true)))
-            val saved = session.read(StorageRequest(StorageArea.Account, "content/book/" + digest(id))) as StorageResult.Value
+            val saved = session.read(StorageRequest(StorageArea.Config, "content/book/" + digest(id))) as StorageResult.Value
             val record = Json.decodeFromString(BookRecord.serializer(), saved.value!!)
             assertEquals("One", record.chapters[1].title)
             assertEquals("One", record.chapters[1].state.variables["chapterKey"])

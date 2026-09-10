@@ -42,7 +42,9 @@
         return Promise.resolve().then(function () {
             if (url instanceof Request) throw new Error('Use a URL and explicit options');
             var r = send(url, options);
-            var response = new Response(r.body, {status: r.status, headers: r.headers});
+            var binary = atob(r.bytes), bytes = new Uint8Array(binary.length);
+            for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            var response = new Response(r.status === 204 || r.status === 205 || r.status === 304 ? null : bytes, {status: r.status, headers: r.headers});
             Object.defineProperty(response, 'url', {value: r.url});
             return response;
         });
@@ -83,9 +85,7 @@
         new FormData(form).forEach(function (value, key) { if (typeof value !== 'string') throw new Error('File upload unavailable'); fields.append(key, value); });
         if (submitter && submitter.name) fields.append(submitter.name, submitter.value);
         if (method === 'GET') { location.href = url + (url.indexOf('?') < 0 ? '?' : '&') + fields.toString(); return; }
-        var r = send(url, {method: method, body: fields});
-        // The broker already committed response cookies. Reload the authorized final URL after POST.
-        location.href = r.url;
+        call('navigate', {url: url, method: method, body: fields.toString(), headers: {'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'}});
     }
     addEventListener('submit', function (event) { event.preventDefault(); submit(event.target, event.submitter); }, true);
     HTMLFormElement.prototype.submit = function () { submit(this); };

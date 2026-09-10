@@ -76,6 +76,7 @@ fun NavGraphBuilder.settingsDestination() {
             onClickPluginManager = navController::navigateToSettingsPluginManagerHomeDestination,
             onClickThemeSettings = navController::navigateToSettingsThemeDestination,
             onClickStorageManager = navController::navigateToStorageManager,
+            clearReadingCache = settingsViewModel::clearReadingCache,
             onOptOut = settingsViewModel::trackOptOut
         )
     }

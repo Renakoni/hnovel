@@ -146,7 +146,7 @@ class SourceBrowserService : Service() {
             }
             val storage = rpc("storage", buildJsonObject { put("url", mainUrl) })
             val doc = org.jsoup.Jsoup.parse(response.text(), mainUrl)
-            val script = "(function(){var initial=$storage;Object.keys(initial).forEach(function(k){localStorage.setItem(k,initial[k]);});})();\n" + bootstrap
+            val script = "(function(){var initial=${storage.replace("<", "\\u003c")};Object.keys(initial).forEach(function(k){localStorage.setItem(k,initial[k]);});})();\n" + bootstrap
             doc.head().prependElement("script").appendChild(org.jsoup.nodes.DataNode(script))
             body = doc.outerHtml().toByteArray()
         }
@@ -164,7 +164,7 @@ class SourceBrowserService : Service() {
     internal fun evaluate() {
         if (finished.get()) return
         val script = job.options.script.ifBlank { "document.documentElement.outerHTML" }
-        webView?.evaluateJavascript("(function(){try {return JSON.stringify({value:eval(${JsonPrimitive(script)})});}catch(e){return '{}';}})()") { result ->
+        webView?.evaluateJavascript("(function(){try {var value=eval(${JsonPrimitive(script)});var state={};for(var i=0;i<localStorage.length;i++){var key=localStorage.key(i);state[key]=localStorage.getItem(key);}SourceBrowser.call('storage',JSON.stringify({url:location.href,value:state}));return JSON.stringify({value:value});}catch(e){return '{}';}})()") { result ->
             try {
                 val encoded = Json.parseToJsonElement(result).jsonPrimitive.content
                 val value = Json.parseToJsonElement(encoded).jsonObject["value"]
@@ -194,14 +194,19 @@ class SourceBrowserService : Service() {
 
     private inner class PageBridge {
         @JavascriptInterface fun call(operation: String, arguments: String): String = runCatching {
-            require(operation in setOf("request", "cookie", "storage") && arguments.length <= 65536)
+            require(operation in setOf("request", "navigate", "cookie", "storage") && arguments.length <= 65536)
             val args = Json.parseToJsonElement(arguments).jsonObject
-            if (operation != "request") return@runCatching rpc(operation, args)
-            val result = Json.decodeFromString<BrokerResult>(rpc(operation, args))
+            if (operation !in setOf("request", "navigate")) return@runCatching rpc(operation, args)
+            val result = Json.decodeFromString<BrokerResult>(rpc("request", args))
             check(result is BrokerResult.Success)
+            if (operation == "navigate") {
+                redirected = result.response
+                handler.post { webView?.loadUrl(result.response.finalUrl) }
+            }
             if (!job.options.overrideUrl && matches(result.response.finalUrl)) handler.post { completeText(result.response.finalUrl) }
             buildJsonObject {
                 put("status", result.response.status); put("url", result.response.finalUrl); put("body", result.response.text())
+                put("bytes", android.util.Base64.encodeToString(result.response.body, android.util.Base64.NO_WRAP))
                 put("headers", JsonObject(result.response.headers.filterKeys { !it.equals("Set-Cookie", true) }
                     .mapValues { JsonPrimitive(it.value.joinToString(", ")) }))
             }.toString()
