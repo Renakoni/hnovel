@@ -54,23 +54,35 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         if (!canSearch) throw SourceContentException(ContentError.MissingCapability, "searchUrl")
         val context = evaluation(keyword = keyword, page = page)
         val document = fetch(context, spec.searchUrl, "searchUrl")
-        val rule = spec.search.string("bookList")
+        booksFromPage(context, document, spec.search, "ruleSearch")
+    }
+
+    /** Executes a selected discovery URL through the same production list pipeline as search. */
+    suspend fun discovery(url: String, page: Int = 1): List<RuleBook> = operation("ruleExplore") {
+        if (url.isBlank() || spec.explore.isEmpty()) throw SourceContentException(ContentError.MissingCapability, "ruleExplore")
+        val context = evaluation(page = page)
+        booksFromPage(context, fetch(context, url, "exploreUrl"), spec.explore, "ruleExplore")
+    }
+
+    private suspend fun booksFromPage(context: RuleEvaluation, document: PageDocument, fields: JsonObject,
+        field: String): List<RuleBook> {
+        val rule = fields.string("bookList")
         val isBookUrl = spec.bookUrlPattern.isNotBlank() && context.value(":\\A(?:${spec.bookUrlPattern})\\z",
             RuleValue.Text(document.url), "bookUrlPattern", OutputKind.Elements).items().isNotEmpty()
         if (rule.isBlank() || isBookUrl) {
             val id = sourceLink(document.url, document.url)
             val record = information(id, BookRecord(identity.revision, RuleBook(id, state = context.book)), document)
             store.write(record)
-            return@operation listOf(record.book)
+            return listOf(record.book)
         }
-        val items = context.value(rule.removePrefix("-").removePrefix("+"), document.input(), "ruleSearch.bookList", OutputKind.Elements).items()
-        if (items.size > 1000) throw SourceContentException(ContentError.Limit, "ruleSearch.bookList")
+        val items = context.value(rule.removePrefix("-").removePrefix("+"), document.input(), "$field.bookList", OutputKind.Elements).items()
+        if (items.size > 1000) throw SourceContentException(ContentError.Limit, "$field.bookList")
         val books = mutableListOf<RuleBook>()
         for (item in items) {
             val row = context.fork()
-            val parsed = bookFields(row, item, spec.search, "ruleSearch", RuleBook(""))
+            val parsed = bookFields(row, item, fields, field, RuleBook(""))
             if (parsed.title.isBlank()) continue
-            val rawUrl = row.text(spec.search.string("bookUrl"), item, "ruleSearch.bookUrl")
+            val rawUrl = row.text(fields.string("bookUrl"), item, "$field.bookUrl")
             val id = sourceLink(document.url, rawUrl.ifBlank { document.url })
             row.bookId = id; row.bookField("bookUrl", id)
             books += parsed.copy(id = id, tocUrl = id, state = row.book)
@@ -81,7 +93,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             if (old?.informationLoaded != true || old.revision != identity.revision)
                 store.write(BookRecord(identity.revision, book))
         }
-        ordered
+        return ordered
     }
 
     suspend fun information(bookId: String): RuleBook = operation("ruleBookInfo") {

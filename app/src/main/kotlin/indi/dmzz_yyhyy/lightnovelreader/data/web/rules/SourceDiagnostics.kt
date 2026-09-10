@@ -33,7 +33,7 @@ class SourceDiagnostics @Inject constructor(@ApplicationContext private val cont
     private val authority: ExecutionAuthority, private val accounts: SourceSessionManager,
     private val registry: WebSourceRegistry, private val cipher: StorageCipher,
     private val browser: BrowserExecutor? = null) {
-    suspend fun run(source: Identifier, stage: DiagnosticStage, keyword: String, bookUrl: String, chapterUrl: String): SourceDiagnosticReport =
+    suspend fun run(source: Identifier, stage: DiagnosticStage, keyword: String, bookUrl: String, chapterUrl: String, exploreUrl: String = ""): SourceDiagnosticReport =
         withContext(Dispatchers.IO) {
             val definition = sources.installedSources().single { ImportedRuleSources.id(it.definition) == source }
             val account = accounts.current(source).generation
@@ -64,7 +64,7 @@ class SourceDiagnostics @Inject constructor(@ApplicationContext private val cont
                             DiagnosticStage.Information -> { rules.information(bookUrl); 1 }
                             DiagnosticStage.Directory -> rules.directory(bookUrl).size
                             DiagnosticStage.Content -> rules.content(bookUrl, chapterUrl).parts.size
-                            DiagnosticStage.Discovery -> throw SourceContentException(ContentError.MissingCapability, "ruleExplore")
+                            DiagnosticStage.Discovery -> rules.discovery(exploreUrl).size
                         }
                         currentCoroutineContext().ensureActive()
                         check(authority.accepts(ticket))

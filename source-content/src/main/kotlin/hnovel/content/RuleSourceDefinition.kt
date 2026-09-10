@@ -19,6 +19,7 @@ internal class RuleSourceDefinition(val stored: SourceDefinition) {
     val cookiesEnabled = root["enabledCookieJar"]?.jsonPrimitive?.booleanOrNull ?: true
     val coverDecode = root.string("coverDecodeJs")
     val search = rules("ruleSearch")
+    val explore = rules("ruleExplore").takeIf { it.isNotEmpty() } ?: search
     val information = rules("ruleBookInfo")
     val toc = rules("ruleToc")
     val content = rules("ruleContent")

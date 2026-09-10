@@ -33,7 +33,7 @@ class SourceDiagnosticsTest {
             val diagnostics = SourceDiagnostics(context, sources, fixture.runner, fixture.authority, accounts, registry, StorageCipher.Plain)
             try {
                 val secret = "synthetic-secret-never-export"
-                val raw = JsonObject(fixture.raw() + ("ruleSearch" to buildJsonObject {
+                val raw = JsonObject(fixture.raw() + ("ruleExplore" to fixture.raw().getValue("ruleSearch")) + ("ruleSearch" to buildJsonObject {
                     put("bookList", "li"); put("bookUrl", "a@href")
                     put("name", "@js:source.put('private','$secret');throw '$secret';")
                 }))
@@ -42,7 +42,7 @@ class SourceDiagnosticsTest {
                 val id = sources.activate(committed.items.single().reference!!, listOf(NetworkGrant(fixture.server.url("/").toString(), true)))
                 val target = sources.loginTarget(id)
                 target.session.setCookie(fixture.server.url("/").toString(), "account=$secret")
-                target.session.write(StorageRequest(StorageArea.Account, "value:private", "retained"))
+                target.session.write(StorageRequest(StorageArea.Config, "value:private", "retained"))
                 val report = diagnostics.run(id, DiagnosticStage.Search, secret, "", "")
                 assertEquals("InvalidRule", report.result)
                 assertEquals("ruleSearch.name", report.field)
@@ -50,9 +50,13 @@ class SourceDiagnosticsTest {
                 assertTrue(report.events.any { it.field == "ruleSearch.name" && it.result != "Success" })
                 assertFalse(report.export().contains(secret))
                 assertFalse(report.export().contains("http://"))
-                assertEquals(StorageResult.Value("retained"), target.session.read(StorageRequest(StorageArea.Account, "value:private")))
+                assertEquals(StorageResult.Value("retained"), target.session.read(StorageRequest(StorageArea.Config, "value:private")))
                 assertTrue(target.session.cookie(fixture.server.url("/").toString()).contains(secret))
                 assertFalse(context.cacheDir.listFiles().orEmpty().any { it.name.startsWith("diagnostic-") })
+                val discovery = diagnostics.run(id, DiagnosticStage.Discovery, "", "", "", fixture.server.url("/search?q=fixture").toString())
+                assertEquals("Success", discovery.result)
+                assertTrue(discovery.count > 0)
+                assertTrue(discovery.events.any { it.field == "ruleExplore.name" })
                 fixture.status = 503
                 val network = diagnostics.run(id, DiagnosticStage.Information, "", fixture.server.url("/book/one").toString(), "")
                 assertEquals("Network", network.result)

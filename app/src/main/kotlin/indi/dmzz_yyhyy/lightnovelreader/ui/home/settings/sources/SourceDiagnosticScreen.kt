@@ -37,11 +37,11 @@ class SourceDiagnosticViewModel @Inject constructor(private val diagnostics: Sou
     private val mutable = MutableStateFlow(DiagnosticState())
     val state = mutable.asStateFlow()
     private var job: Job? = null
-    fun run(id: Identifier, stage: DiagnosticStage, keyword: String, book: String, chapter: String) {
+    fun run(id: Identifier, stage: DiagnosticStage, keyword: String, book: String, chapter: String, explore: String) {
         if (state.value.busy) return
         mutable.value = DiagnosticState(busy = true)
         job = viewModelScope.launch {
-            try { mutable.value = DiagnosticState(report = diagnostics.run(id, stage, keyword, book, chapter)) }
+            try { mutable.value = DiagnosticState(report = diagnostics.run(id, stage, keyword, book, chapter, explore)) }
             catch (cancelled: CancellationException) { mutable.value = DiagnosticState(); throw cancelled }
             catch (_: Exception) { mutable.value = DiagnosticState(failed = true) }
         }
@@ -65,6 +65,7 @@ fun NavGraphBuilder.sourceDiagnosticDestination() {
         val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { it?.let(model::export) }
         var keyword by remember { mutableStateOf("") }
         var book by remember { mutableStateOf("") }
+        var explore by remember { mutableStateOf("") }
         var chapter by remember { mutableStateOf("") }
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             item { TextButton(onClick = { model.cancel(); nav.popBackStack() }) { Text(stringResource(R.string.sources_back)) } }
@@ -72,11 +73,12 @@ fun NavGraphBuilder.sourceDiagnosticDestination() {
             item { Text(stringResource(R.string.source_diagnostics_help)) }
             item { OutlinedTextField(keyword, { keyword = it }, label = { Text(stringResource(R.string.source_diagnostics_keyword)) }, enabled = !state.busy) }
             item { OutlinedTextField(book, { book = it }, label = { Text(stringResource(R.string.source_diagnostics_book)) }, enabled = !state.busy) }
+            item { OutlinedTextField(explore, { explore = it }, label = { Text(stringResource(R.string.source_diagnostics_explore_url)) }, enabled = !state.busy) }
             item { OutlinedTextField(chapter, { chapter = it }, label = { Text(stringResource(R.string.source_diagnostics_chapter)) }, enabled = !state.busy) }
             item {
                 Column {
                     DiagnosticStage.entries.forEach { stage ->
-                        OutlinedButton(onClick = { model.run(Identifier(route.namespace, route.sourceId), stage, keyword, book, chapter) }, enabled = !state.busy) {
+                        OutlinedButton(onClick = { model.run(Identifier(route.namespace, route.sourceId), stage, keyword, book, chapter, explore) }, enabled = !state.busy) {
                             Text(stringResource(when (stage) {
                                 DiagnosticStage.Search -> R.string.source_diagnostics_search
                                 DiagnosticStage.Information -> R.string.source_diagnostics_information
