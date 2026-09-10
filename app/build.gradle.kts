@@ -113,6 +113,8 @@ android {
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            // JAR lookup indexes are not used by Android; both pinned Hutool artifacts contain one.
+            excludes += "META-INF/INDEX.LIST"
         }
     }
 }
