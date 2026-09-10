@@ -1,19 +1,20 @@
 package hnovel.rules
+import kotlinx.serialization.Serializable
 
 /** Safe intermediate values; no host/client, DOM object, or scripting engine instance crosses the port. */
-sealed interface RuleValue {
-    data class Text(val value: String) : RuleValue
-    data class Items(val values: List<RuleValue>) : RuleValue
-    data class Node(val content: String, val kind: InputKind) : RuleValue
-    data class Captures(val groups: List<String>) : RuleValue
-    data object Empty : RuleValue
+@Serializable sealed interface RuleValue {
+    @Serializable data class Text(val value: String) : RuleValue
+    @Serializable data class Items(val values: List<RuleValue>) : RuleValue
+    @Serializable data class Node(val content: String, val kind: InputKind) : RuleValue
+    @Serializable data class Captures(val groups: List<String>) : RuleValue
+    @Serializable data object Empty : RuleValue
 }
 
-enum class InputKind { Auto, Html, Json, Xml }
-enum class OutputKind { Text, TextList, Url, UrlList, Element, Elements }
-enum class RuleStage { Parse, Select, Replace, Script, Budget }
-data class RuleLocation(val field: String, val offset: Int = 0)
-data class RuleError(val stage: RuleStage, val location: RuleLocation, val code: String)
+@Serializable enum class InputKind { Auto, Html, Json, Xml }
+@Serializable enum class OutputKind { Text, TextList, Url, UrlList, Element, Elements }
+@Serializable enum class RuleStage { Parse, Select, Replace, Script, Budget }
+@Serializable data class RuleLocation(val field: String, val offset: Int = 0)
+@Serializable data class RuleError(val stage: RuleStage, val location: RuleLocation, val code: String)
 sealed interface RuleResult {
     data class Success(val value: RuleValue) : RuleResult
     data class Failure(val error: RuleError) : RuleResult
@@ -75,6 +76,9 @@ class RuleBudget(val limits: RuleLimits = RuleLimits()) {
         return size
     }
 }
+
+/** Script adapters supply stable redacted codes, never exception messages or source text. */
+class RuleScriptFailure(val code: String) : RuntimeException(code)
 
 class RuleBudgetExceeded : RuntimeException("Rule execution budget exceeded")
 internal class RuleFailure(val error: RuleError) : RuntimeException(error.code)

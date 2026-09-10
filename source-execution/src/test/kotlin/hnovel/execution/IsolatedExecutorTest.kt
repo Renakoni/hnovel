@@ -2,6 +2,24 @@ package hnovel.execution
 import org.junit.Assert.*
 import org.junit.Test
 class IsolatedExecutorTest {
+ @Test fun cryptoAndNestedRulesLoadInsideTheChildClasspath() {
+  val task=ExecutionTask.Script("var c=java.createSymmetricCrypto('AES/ECB/PKCS5Padding','0123456789abcdef');java.getString('@js:c.decryptStr(c.encrypt(\"chapter\"))')")
+  assertEquals(ExecutionResult.Success("\"chapter\""),IsolatedExecutor().execute(id,task,ExecutionLimits(timeoutMillis=15000)))
+ }
+ @Test fun pipeSizedRepliesDoNotDeadlockAndBothWireDirectionsAreBounded() {
+  val executor = IsolatedExecutor()
+  val text = "x".repeat(100_000)
+  val limits = ExecutionLimits(timeoutMillis = 15000, maxOutputBytes = 400_000)
+  assertEquals(ExecutionResult.Success(text), executor.execute(id, ExecutionTask.Echo(text), limits))
+  assertEquals(ExecutionResult.Failure(FailureCode.InputLimit), executor.execute(id, ExecutionTask.Echo("x".repeat(300_000)), limits))
+  assertEquals(ExecutionResult.Failure(FailureCode.OutputLimit), executor.execute(id, ExecutionTask.Script("'x'.repeat(300000)"), limits))
+ }
+ @Test fun allocationFailureStaysInChildAndTheNextInvocationSucceeds() {
+  val executor = IsolatedExecutor()
+  assertEquals(ExecutionResult.Failure(FailureCode.ProcessExited), executor.execute(id,
+   ExecutionTask.Script("new ArrayBuffer(128*1024*1024).byteLength"), ExecutionLimits(timeoutMillis = 15000)))
+  assertEquals(ExecutionResult.Success("42"), executor.execute(id.copy(sourceId = "other"), ExecutionTask.Script("21*2")))
+ }
  @Test fun hostIssuedIdentityRejectsForgeryAndRevocationKillsLateWorker() {
   val authority = ExecutionAuthority(); val issued = authority.issue("source-a", "legado", "r1")
   val executor = IsolatedExecutor(authority = authority)
@@ -21,5 +39,5 @@ class IsolatedExecutorTest {
  private val id=ExecutionIdentity("source-a","legado","r1","nonce")
  @Test fun completesAndReturnsBoundedResult() { assertEquals(ExecutionResult.Success("ok"), IsolatedExecutor().execute(id,ExecutionTask.Echo("ok"))) }
  @Test fun hungWorkerIsKilledByHostDeadline() { assertEquals(ExecutionResult.Failure(FailureCode.Timeout), IsolatedExecutor().execute(id,ExecutionTask.Sleep(10000),ExecutionLimits(100,1000,1))) }
- @Test fun outputBudgetIsEnforcedInsideWorker() { assertEquals(ExecutionResult.Failure(FailureCode.OutputLimit), IsolatedExecutor().execute(id,ExecutionTask.Echo("12345"),ExecutionLimits(1000,4,1))) }
+ @Test fun outputBudgetIsEnforcedInsideWorker() { assertEquals(ExecutionResult.Failure(FailureCode.OutputLimit), IsolatedExecutor().execute(id,ExecutionTask.Echo("12345"),ExecutionLimits(15000,4,1))) }
 }

@@ -236,6 +236,7 @@ class RuleEvaluator(private val unescapeHtml: Boolean = true, private val script
     private inline fun <T> atStage(stage: RuleStage, location: RuleLocation, block: () -> T): T = try { block() }
         catch (failure: RuleBudgetExceeded) { throw failure }
         catch (failure: RuleFailure) { throw failure }
+        catch (failure: RuleScriptFailure) { throw RuleFailure(RuleError(stage, location, failure.code)) }
         catch (failure: Exception) { throw RuleFailure(RuleError(stage, location, failure.javaClass.simpleName)) }
 
     private fun fail(stage: RuleStage, location: RuleLocation, offset: Int, code: String): Nothing =

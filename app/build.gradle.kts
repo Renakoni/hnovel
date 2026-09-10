@@ -280,4 +280,7 @@ tasks.register("printVersionCode") {
 
 dependencies {
     implementation(project(":source-execution"))
+    implementation(project(":source-rhino"))
+    implementation(project(":source-network"))
+    androidTestImplementation("com.squareup.okhttp3:mockwebserver:5.4.0")
 }

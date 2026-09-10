@@ -6,6 +6,13 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RequestCompilerTest {
+    @Test fun nestedJsonInsideOptionStringsIsBoundedBeforeParsing() {
+        val nested = "[".repeat(2000) + "0" + "]".repeat(2000)
+        val denied = CompiledRequest.Rejected(FailureCode.InvalidRequest)
+        assertEquals(denied, RequestCompiler().compile("x", "/x,{\"header\":$nested}", "https://fixture.invalid/"))
+        assertEquals(denied, RequestCompiler().compile("x", "/x,{\"header\":${kotlinx.serialization.json.JsonPrimitive(nested)}}", "https://fixture.invalid/"))
+        assertEquals(denied, RequestCompiler().compile("x", "/x,{\"method\":\"POST\",\"body\":${kotlinx.serialization.json.JsonPrimitive(nested)}}", "https://fixture.invalid/"))
+    }
     private val compiler = RequestCompiler()
     private fun request(rule: String, key: String = "校园", page: Int = 2): BrokerRequest {
         val result = compiler.compile("request", rule, "https://fixture.invalid/base/", key, page)
