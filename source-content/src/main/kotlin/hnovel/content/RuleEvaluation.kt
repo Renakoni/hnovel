@@ -12,11 +12,12 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
     private val session: SourceSession, private val runner: RuleTaskRunner, private val library: String?,
     var bookId: String? = null, var chapterId: String? = null, var book: ScriptState = ScriptState(),
     var chapter: ScriptState = ScriptState(), var baseUrl: String, val keyword: String = "", var page: Int = 1,
-    private val calls: java.util.concurrent.atomic.AtomicInteger = java.util.concurrent.atomic.AtomicInteger()) {
+    private val calls: java.util.concurrent.atomic.AtomicInteger = java.util.concurrent.atomic.AtomicInteger(),
+    private val trace: ContentTrace = ContentTrace.None) {
     private val limits = ExecutionLimits(timeoutMillis = 5000, maxOutputBytes = 196608)
 
     fun fork(bookId: String? = this.bookId, chapterId: String? = this.chapterId) =
-        RuleEvaluation(identity, authority, session, runner, library, bookId, chapterId, book.copy(), chapter.copy(), baseUrl, keyword, page, calls)
+        RuleEvaluation(identity, authority, session, runner, library, bookId, chapterId, book.copy(), chapter.copy(), baseUrl, keyword, page, calls, trace)
 
     suspend fun value(rule: String, input: RuleValue, field: String, output: OutputKind = OutputKind.Text,
         unescape: Boolean = true): RuleValue {
@@ -27,9 +28,15 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
             keyword, page, baseUrl, library, book.inherited + chapter.inherited, book.variables,
             chapter.variables, book.metadata, chapter.metadata, book.bigVariables, chapter.bigVariables,
             unescapeHtml = unescape)
+        val started = System.nanoTime()
         val result = SourceExecutionBroker(identity, authority, session, limits, baseUrl, keyword, page).use {
             runner.execute(identity, task, limits, it)
         }
+        trace.record(ContentTraceEvent("rule", field, (System.nanoTime() - started) / 1_000_000,
+            input.toString().length, (result as? ExecutionResult.Success)?.output?.length ?: 0,
+            (result as? ExecutionResult.Failure)?.code?.name ?: "Success",
+            (result as? ExecutionResult.Failure)?.ruleError?.code,
+            (result as? ExecutionResult.Failure)?.ruleError?.location?.offset))
         currentCoroutineContext().ensureActive()
         if (!authority.accepts(identity)) throw SourceContentException(ContentError.Unavailable, field)
         when (result) {

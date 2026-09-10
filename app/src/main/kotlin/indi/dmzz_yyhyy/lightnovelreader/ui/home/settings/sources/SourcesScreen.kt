@@ -41,6 +41,7 @@ fun NavGraphBuilder.settingsSourcesDestination() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel, onBack: () -> Unit) {
+    val nav = LocalNavController.current
     var adding by remember { mutableStateOf(false) }
     var text by remember { mutableStateOf("") }
     var url by remember { mutableStateOf("") }
@@ -94,6 +95,7 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel, onBack:
                         OutlinedTextField(permissions, { permissions = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.sources_permissions)) }, enabled = !state.busy)
                         Button(onClick = { model.saveConfiguration(state.selected!!, configuration, permissions) }, enabled = !state.busy) { Text(stringResource(R.string.sources_save)) }
                         OutlinedButton(onClick = { model.checkUpdate(state.selected!!) }, enabled = !state.busy) { Text(stringResource(R.string.sources_check_update)) }
+                        OutlinedButton(onClick = { nav.navigate(Route.Main.Settings.SourceDiagnostic(state.selected!!.namespace, state.selected.id)) }, enabled = !state.busy) { Text(stringResource(R.string.sources_diagnostics)) }
                         if (installed.previous != null) OutlinedButton(onClick = { rollback = true }, enabled = !state.busy) { Text(stringResource(R.string.sources_rollback)) }
                         TextButton(onClick = { deleting = true }, enabled = !state.busy) { Text(stringResource(R.string.sources_delete), color = MaterialTheme.colorScheme.error) }
                     }

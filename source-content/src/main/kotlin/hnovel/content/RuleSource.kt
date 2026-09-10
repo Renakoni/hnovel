@@ -12,7 +12,7 @@ import kotlinx.serialization.json.*
 /** One registered revision/account. Source retirement revokes its ticket; it never chooses another source. */
 class RuleSource(val definition: SourceDefinition, private val identity: ExecutionIdentity,
     private val authority: ExecutionAuthority, private val session: SourceSession,
-    private val runner: RuleTaskRunner) : AutoCloseable {
+    private val runner: RuleTaskRunner, private val trace: ContentTrace = ContentTrace.None) : AutoCloseable {
     private val spec = RuleSourceDefinition(definition)
     private val store = RuleBookStore(session, authority, identity)
     private val serial = Mutex()
@@ -286,7 +286,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
     }
     private fun evaluation(book: RuleBook? = null, chapter: RuleChapter? = null, keyword: String = "", page: Int = 1): RuleEvaluation {
         val result = RuleEvaluation(identity, authority, session, runner, spec.library, book?.id, chapter?.id,
-            book?.state ?: ScriptState(), chapter?.state ?: ScriptState(), book?.id ?: spec.baseUrl, keyword, page)
+            book?.state ?: ScriptState(), chapter?.state ?: ScriptState(), book?.id ?: spec.baseUrl, keyword, page, trace = trace)
         book?.let {
             result.bookField("bookUrl", it.id)
             if ("name" !in result.book.metadata) result.bookField("name", it.title)
@@ -309,7 +309,11 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             is CompiledRequest.Rejected -> throw SourceContentException(if (compiled.code == hnovel.network.FailureCode.BrowserRequired)
                 ContentError.BrowserRequired else ContentError.InvalidRule, field)
         }
+        val started = System.nanoTime()
         val result = session.execute(request, RequestCommitGuard { authority.authorized(identity, it) })
+        trace.record(ContentTraceEvent("network", field, (System.nanoTime() - started) / 1_000_000,
+            request.body?.length ?: 0, (result as? BrokerResult.Success)?.response?.body?.size ?: 0,
+            when (result) { is BrokerResult.Success -> "HTTP_${result.response.status}"; is BrokerResult.Failure -> result.code.name }))
         if (!authority.accepts(identity)) throw SourceContentException(ContentError.Unavailable, field)
         val response = when (result) {
             is BrokerResult.Success -> result.response
