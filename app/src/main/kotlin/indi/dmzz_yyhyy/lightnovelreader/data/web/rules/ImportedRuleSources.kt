@@ -51,7 +51,9 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
                             android.util.Log.w("ImportedRuleSources", "Retired account cleanup failed")
                         }
                         current.broker?.close()
-                        active[id] = restoreBinding(current.installed)
+                        active[id] = restoreBinding(current.installed).also { next ->
+                            current.session?.let { next.session?.inheritCaches(it) }
+                        }
                     }
                 }
             } }
@@ -147,7 +149,7 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
                     })
                 val registration = registry.replace(old.registration, RuleWebBookDataSource(id, source), metadata, ticket) {
                     // This runs under the authority fence: old Cookie commits cannot land after the snapshot.
-                    old.session?.let(session::inheritCookies)
+                    old.session?.let { session.inheritCookies(it); session.inheritCaches(it) }
                     save(active.values.map { if (it === old) installed else it.installed })
                 }
                 active[id] = Binding(installed, registration, broker, session, source)
@@ -202,7 +204,9 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
             current.registration.unregister()
             try { current.session?.clearAccount() } finally {
                 current.broker?.close()
-                active[id] = restoreBinding(current.installed)
+                active[id] = restoreBinding(current.installed).also { next ->
+                            current.session?.let { next.session?.inheritCaches(it) }
+                        }
             }
             val next = active.getValue(id)
             RuleLoginTarget(id, next.registration.metadata.revision, next.registration.metadata.accountGeneration,
