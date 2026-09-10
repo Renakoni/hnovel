@@ -10,8 +10,8 @@ import java.io.StringWriter
 fun Document.asFormatedXml(): String {
     val format = OutputFormat()
     format.encoding = "UTF-8"
-    format.isNewlines = true
-    format.indent = "  "
+    // Indenting mixed XHTML content inserts whitespace into the book's text.
+    format.isNewlines = false
     format.isExpandEmptyElements = false
     val strWtr = StringWriter()
     val xmlWrt = XMLWriter(strWtr, format)
@@ -30,13 +30,24 @@ fun sanitizeXmlSimple(xml: String): String =
         .replace(Regex("&#(?:x[0-9a-fA-F]+|\\d+);")) { m ->
             val s = m.value
             val cp = if (s.startsWith("&#x", ignoreCase = true)) {
-                s.substring(3, s.length - 1).toInt(16)
+                s.substring(3, s.length - 1).toIntOrNull(16)
             } else {
-                s.substring(2, s.length - 1).toInt()
+                s.substring(2, s.length - 1).toIntOrNull()
             }
-            val ok = (cp == 0x9 || cp == 0xA || cp == 0xD) ||
-                    (cp in 0x20..0xD7FF) ||
-                    (cp in 0xE000..0xFFFD)
-            if (ok) m.value else ""
+            if (cp != null && isXmlCharacter(cp)) m.value else ""
         }
-        .replace(Regex("[^\\u0009\\u000A\\u000D\\u0020-\\uD7FF\\uE000-\\uFFFD]"), "")
+        .let { value ->
+            buildString(value.length) {
+                var index = 0
+                while (index < value.length) {
+                    val codePoint = value.codePointAt(index)
+                    if (isXmlCharacter(codePoint)) appendCodePoint(codePoint)
+                    index += Character.charCount(codePoint)
+                }
+            }
+        }
+
+private fun isXmlCharacter(codePoint: Int): Boolean =
+    codePoint == 0x9 || codePoint == 0xA || codePoint == 0xD ||
+        codePoint in 0x20..0xD7FF || codePoint in 0xE000..0xFFFD ||
+        codePoint in 0x10000..0x10FFFF
