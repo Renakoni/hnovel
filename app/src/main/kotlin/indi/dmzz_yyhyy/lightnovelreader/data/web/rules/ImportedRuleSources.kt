@@ -132,7 +132,7 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
         require(next.sourceId == expected.sourceId && next.profile == expected.profile && next.enabled)
         require(origins.isNotEmpty() && origins.size <= 32)
         val installed = InstalledSource(next, origins.map { it.copy(headers = it.headers.toMap()) },
-            SavedRevision(expected, old.installed.origins))
+            if (next == expected) old.installed.previous else SavedRevision(expected, old.installed.origins))
         accounts.withCurrent(id) { account ->
             check(account.generation == generation) { "Account changed during validation" }
             val broker = SourceBroker(File(directory, "runtime").toPath(), cipher = storageCipher)
