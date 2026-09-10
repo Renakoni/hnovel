@@ -39,6 +39,7 @@ class BookshelfHomeViewModel @Inject constructor(
 ) : ViewModel() {
     private val _uiState = MutableBookshelfHomeUiState(
         changePage = ::changePage,
+        changeLayout = ::changeLayout,
         changeSortType = ::changeSortType,
         changeSortReversed = ::changeSortReversed,
         changeBookSelectState = ::changeBookSelectState,
@@ -60,6 +61,21 @@ class BookshelfHomeViewModel @Inject constructor(
     )
     val uiState: BookshelfHomeUiState = _uiState
     private val bookshelfOrderUserData = userDataRepository.intListUserData(UserDataPath.BookshelfOrder.path)
+    private val bookshelfLayoutUserData = userDataRepository.stringUserData(UserDataPath.Settings.Display.BookshelfLayout.path)
+
+    init {
+        viewModelScope.launch {
+            bookshelfLayoutUserData.getFlow().collect { value ->
+                _uiState.layout = BookshelfLayout.entries.firstOrNull { it.name == value } ?: BookshelfLayout.List
+            }
+        }
+    }
+
+    fun changeLayout(layout: BookshelfLayout) {
+        viewModelScope.launch {
+            bookshelfLayoutUserData.set(layout.name)
+        }
+    }
 
     fun load() {
         viewModelScope.launch(Dispatchers.IO) {
