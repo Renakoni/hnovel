@@ -21,7 +21,8 @@ class ScriptExecutionTest {
         val browser = BrowserExecutor { _, request, options, guard ->
             assertTrue(options.interactive)
             guard.commit { opened += options.title }
-            BrokerResult.Success(BrokerResponse(200, request.url, emptyMap(), "rendered".toByteArray(), "UTF-8", 0))
+            val body = if (options.title == "large") "rendered".repeat(30000) else "rendered"
+            BrokerResult.Success(BrokerResponse(200, request.url, emptyMap(), body.toByteArray(), "UTF-8", 0))
         }
         MockWebServer().use { server ->
             server.start()
@@ -40,9 +41,9 @@ class ScriptExecutionTest {
                     assertEquals(0, server.requestCount)
                     server.enqueue(MockResponse().setBody("refetched"))
                     assertEquals(ExecutionResult.Success("\"refetched\""), runScript(id, bridge,
-                        "java.startBrowserAwait($url,'verify').body()"))
+                        "java.startBrowserAwait($url,'large').body()"))
                     assertEquals(1, server.requestCount)
-                    assertEquals(listOf("verify", "verify"), opened)
+                    assertEquals(listOf("verify", "large"), opened)
                 }
                 SourceExecutionBroker(id, authority, session, ExecutionLimits(maxRequests = 1), allowInteraction = true).use { bridge ->
                     server.enqueue(MockResponse().setBody("must not refetch"))
@@ -142,7 +143,9 @@ class ScriptExecutionTest {
     private fun runScript(id: ExecutionIdentity, bridge: SourceExecutionBroker, script: String): ExecutionResult {
         val wire = ExecutionWire.encode(id, ExecutionTask.Script(script), bridge.limits)
         val output = WorkerMain.executeSerialized(wire.toString(Charsets.UTF_8), HostBridge { name, args ->
-            runBlocking { bridge.call(name, args) }
+            runBlocking { bridge.call(name, args) }.also {
+                require(it.toString().toByteArray(Charsets.UTF_8).size <= BridgeWire.MAX_BYTES)
+            }
         })
         return ExecutionWire.decodeResult(output.toByteArray(Charsets.UTF_8))
     }
