@@ -29,7 +29,10 @@ fun CategoriesScreen(
 ) {
     Scaffold(topBar = { DiscoveryTopBar(stringResource(R.string.categories_title), onBack, onRefresh, onSettings) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            if (state.sources.isEmpty()) {
+            if (state.loadingSources) {
+                // No inventory snapshot yet is not an authoritative empty-source result.
+                LinearProgressIndicator(Modifier.fillMaxWidth())
+            } else if (state.sources.isEmpty()) {
                 DiscoveryEmpty(stringResource(R.string.categories_no_sources), onManageSources)
             } else {
                 ScrollableTabRow(selectedTabIndex = state.sources.indexOfFirst { it.metadata.id == state.selected }.coerceAtLeast(0)) {

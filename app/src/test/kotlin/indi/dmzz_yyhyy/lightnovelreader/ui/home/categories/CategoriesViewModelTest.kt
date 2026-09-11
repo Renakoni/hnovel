@@ -89,6 +89,18 @@ class CategoriesViewModelTest {
         assertEquals(1, zProvider.calls)
     }
 
+    @Test fun initialInventoryLoadingEndsEvenWhenThereAreNoSources() = runTest(dispatcher) {
+        val model = model()
+        assertTrue(model.state.value.loadingSources)
+        advanceUntilIdle()
+        assertFalse(model.state.value.loadingSources)
+        assertTrue(model.state.value.sources.isEmpty())
+        val id = add("later", Categories())
+        advanceUntilIdle()
+        assertEquals(id, model.state.value.selected)
+        assertTrue(model.state.value.content[id]!!.loaded)
+    }
+
     @Test fun cancelledLateACompletionCannotOverwriteB() = runTest(dispatcher) {
         val started = CompletableDeferred<Unit>()
         val finish = CompletableDeferred<Unit>()
