@@ -675,4 +675,8 @@
     <string name="restart">重启</string>
     <string name="current_web_data_source_not_founded">当前网络数据源不可用，请检查插件与数据源设置</string>
     <string name="never_read">未读</string>
+    <string name="explore_more">查看更多</string>
+    <string name="explore_search">搜索此来源</string>
+    <string name="explore_no_sources">暂无支持探索的来源。可在来源管理中添加书源，或搜索支持搜索的来源。</string>
+    <string name="explore_empty">此来源暂无探索内容。</string>
 </resources>

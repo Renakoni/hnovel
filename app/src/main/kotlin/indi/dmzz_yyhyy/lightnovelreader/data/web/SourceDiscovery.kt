@@ -15,7 +15,8 @@ internal const val DISCOVERY_SEARCH_PREFIX = "hnovel-search:"
 
 data class SourceDiscoveryTarget(val sourceId: Identifier, val target: String)
 data class SourceDiscoveryBook(val id: SourceBookId, val title: String, val author: String, val coverUrl: String)
-data class SourceDiscoverySection(val id: String, val title: String, val books: List<SourceDiscoveryBook>, val more: SourceDiscoveryTarget?)
+data class SourceDiscoverySection(val id: String, val title: String, val books: List<SourceDiscoveryBook>,
+    val more: SourceDiscoveryTarget?, val categoryId: String? = null)
 data class SourceDiscoveryCategory(val id: String, val title: String, val target: SourceDiscoveryTarget)
 data class SourceDiscoveryPage(val books: List<SourceDiscoveryBook>, val nextCursor: String?)
 data class SourceDiscoveryCatalog(val categories: List<SourceDiscoveryCategory>, val filters: List<DiscoveryFilter>,
@@ -26,6 +27,7 @@ data class SourceDiscoveryUpdate(val catalog: SourceDiscoveryCatalog, val action
 class SourceDiscovery internal constructor(private val runtime: SourceRuntime, private val provider: DiscoveryProvider) {
     val hasFeed get() = provider.hasFeed && SourceCapability.Explore in runtime.metadata.capabilities
     val hasCategories get() = provider.hasCategories && SourceCapability.Categories in runtime.metadata.capabilities
+    val hasInteractions get() = provider.hasInteractions
     val failureField get() = provider.failureField
 
     fun forSession(id: String, values: Map<String, String> = emptyMap(), environment: DiscoveryEnvironment = DiscoveryEnvironment()): SourceDiscovery {
@@ -47,7 +49,7 @@ class SourceDiscovery internal constructor(private val runtime: SourceRuntime, p
     suspend fun feed(): Result<List<SourceDiscoverySection>, DiscoveryError> = runtime.execute {
         if (!hasFeed) return@execute Err(DiscoveryError.Unsupported)
         provider.feed().map { sections -> sections.map {
-            SourceDiscoverySection(it.id, it.title, it.books.map(::bind), it.more?.let(::target))
+            SourceDiscoverySection(it.id, it.title, it.books.map(::bind), it.more?.let(::target), it.categoryId)
         } }
     }
 

@@ -1,31 +1,23 @@
 package indi.dmzz_yyhyy.lightnovelreader.ui.home.explore
 
 import android.app.Application
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModelStore
+import com.github.michaelbull.result.Ok
+import com.github.michaelbull.result.get
+import hnovel.execution.ExecutionAuthority
 import indi.dmzz_yyhyy.lightnovelreader.data.book.BookRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.book.SourceBookId
-import indi.dmzz_yyhyy.lightnovelreader.data.bookshelf.BookshelfRepository
-import indi.dmzz_yyhyy.lightnovelreader.data.text.TextProcessingRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.web.*
-import indi.dmzz_yyhyy.lightnovelreader.ui.home.explore.expanded.ExpandedPageViewModel
-import io.mockk.every
+import indi.dmzz_yyhyy.lightnovelreader.ui.home.discovery.DiscoveryResultsViewModel
 import io.mockk.mockk
-import io.mockk.verify
+import io.nightfish.lightnovelreader.api.Route
 import io.nightfish.lightnovelreader.api.identifier.Identifier
 import io.nightfish.lightnovelreader.api.web.WebBookDataSource
 import io.nightfish.lightnovelreader.api.web.WebDataSourceItem
-import io.nightfish.lightnovelreader.api.web.explore.ExplorePageProvider
-import io.nightfish.lightnovelreader.api.web.search.SearchResult
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.emptyFlow
-import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.test.StandardTestDispatcher
-import kotlinx.coroutines.test.resetMain
-import kotlinx.coroutines.test.setMain
-import kotlinx.coroutines.withTimeout
+import io.nightfish.lightnovelreader.api.web.discovery.*
+import kotlinx.coroutines.*
+import kotlinx.coroutines.test.*
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -36,45 +28,47 @@ import org.robolectric.annotation.Config
 @Config(sdk = [27], application = Application::class)
 @OptIn(ExperimentalCoroutinesApi::class)
 class SourceTagPageTest {
-    @Test fun bookTagUsesItsOwnPageAndBooksWithoutReadingTheBrowsingProvider() = runBlocking {
-        val main = StandardTestDispatcher()
-        Dispatchers.setMain(main)
-        val registry = WebSourceRegistry()
+    @Test fun tagTargetAndResultSessionStayWithBookSourceAfterAnotherSourceIsOpenedOrOwnerRemoved() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(dispatcher)
+        val authority = ExecutionAuthority()
+        val registry = WebSourceRegistry(dispatcher, authority)
+        val stores = mutableListOf<ViewModelStore>()
         val book = SourceBookId(Identifier("fixture", "a"), "same")
-        val page = mockk<ExplorePageProvider.DefaultExplorePageProvider> {
-            every { exploreExpandedPageDataSourceMap } returns mapOf("tag" to mockk {
-                every { title } returns "A tag"
-                every { filters } returns emptyList()
-                every { getResultFlow() } returns flowOf(SearchResult.SingleBook("same"))
-            })
-        }
-        val source = object : WebBookDataSource by EmptyWebDataSource {
-            override val id = book.sourceId
-            override val explorePageProvider = page
-        }
-        registry.register(source, SourceMetadata(WebDataSourceItem(book.sourceId, "A", "fixture"), emptySet()))
-        val provider = mockk<WebBookDataSourceProvider>()
-        val shelves = mockk<BookshelfRepository> { every { getAllBookshelfBookIdsFlow() } returns flowOf(emptyList()) }
-        val text = mockk<TextProcessingRepository> { every { processText(any()) } answers { firstArg<() -> String>()() } }
-        val books = mockk<BookRepository> { every { getBookInformationFlow(book, any()) } returns emptyFlow() }
-        val store = ViewModelStore()
-        val model = ExpandedPageViewModel(registry, provider, shelves, text, books)
-        store.put("page", model)
+        val b = Identifier("fixture", "b")
+        for (id in listOf(book.sourceId, b)) registry.register(object : WebBookDataSource by EmptyWebDataSource {
+            override val id = id
+            override fun bookTagPage(tag: String) = "tag:$tag"
+            override val discoveryProvider = object : DiscoveryProvider {
+                override val hasCategories = true
+                override suspend fun categories() = Ok(listOf(DiscoveryCategory("tag", "Tag", "tag:fantasy")))
+                override suspend fun page(request: DiscoveryRequest) = Ok(DiscoveryPage(listOf(DiscoveryBook("same", id.id))))
+            }
+        }, SourceMetadata(WebDataSourceItem(id, id.id, "fixture"), setOf(SourceCapability.Categories)))
         try {
-            model.init("tag", book.storageKey)
-            withTimeout(5000) {
-                while (model.uiState.bookList.isEmpty()) { main.scheduler.runCurrent(); delay(1) }
-            }
-            assertEquals(book.storageKey, model.uiState.bookList.single().first)
-            assertFalse(model.exploreUiState.isOffLine)
+            val repository = BookRepository(mockk(), mockk(), mockk(), mockk(), mockk(), mockk(), registry)
+            val target = repository.bookTagPage(book, "fantasy").get()!!
+            registry.resolve(b)
+            val route = Route.Main.DiscoveryResults(target.sourceId.namespace, target.sourceId.id, target.target, "Tag", "tag-session")
+            val model = DiscoveryResultsViewModel(registry, SourceSessionManager(authority), SavedStateHandle(), route)
+            stores += ViewModelStore().apply { put("page", model) }
+            model.setActive(true)
+            advanceUntilIdle()
+            assertEquals(book, model.state.value.books.single().id)
+            assertEquals("a", model.state.value.books.single().title)
             registry.unregister(book.sourceId)
+            advanceUntilIdle()
+            assertEquals(DiscoveryError.Unavailable, model.state.value.error)
+            assertTrue(model.state.value.books.isEmpty())
             model.refresh()
-            withTimeout(5000) {
-                while (!model.exploreUiState.isOffLine) { main.scheduler.runCurrent(); delay(1) }
-            }
-            verify(exactly = 0) { provider.value }
+            advanceUntilIdle()
+            assertEquals(DiscoveryError.Unavailable, model.state.value.error)
+            assertTrue(repository.bookTagPage(book, "fantasy").isErr)
         } finally {
-            store.clear(); registry.unregister(book.sourceId); Dispatchers.resetMain()
+            stores.forEach { it.clear() }
+            registry.sources.value.forEach { registry.unregister(it.metadata.id) }
+            advanceUntilIdle()
+            Dispatchers.resetMain()
         }
     }
 }

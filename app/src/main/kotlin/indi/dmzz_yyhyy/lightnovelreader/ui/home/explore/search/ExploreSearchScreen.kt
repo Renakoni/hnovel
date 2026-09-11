@@ -9,6 +9,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -31,10 +32,6 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -48,14 +45,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.compose.LifecycleEventEffect
 import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.AnimatedText
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.BookCardItem
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.EmptyPage
-import indi.dmzz_yyhyy.lightnovelreader.ui.home.explore.ExploreScreen
-import indi.dmzz_yyhyy.lightnovelreader.ui.home.explore.ExploreUiState
+import indi.dmzz_yyhyy.lightnovelreader.ui.home.discovery.DiscoveryFailure
 import indi.dmzz_yyhyy.lightnovelreader.utils.LocalSnackbarHost
 import indi.dmzz_yyhyy.lightnovelreader.utils.addToBookshelfAction
 import indi.dmzz_yyhyy.lightnovelreader.utils.withHaptic
@@ -63,23 +57,19 @@ import indi.dmzz_yyhyy.lightnovelreader.utils.withHaptic
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExploreSearchScreen(
-    exploreUiState: ExploreUiState,
     exploreSearchUiState: ExploreSearchUiState,
     refresh: () -> Unit,
     requestAddBookToBookshelf: (String) -> Unit,
     onClickBack: () -> Unit,
-    init: () -> Unit,
     onChangeSearchType: (String) -> Unit,
     onSearch: (String) -> Unit,
     onClickDeleteHistory: (String) -> Unit,
     onClickClearAllHistory: () -> Unit,
     onClickBook: (String) -> Unit,
-    updateSuggestions: (keyword: String) -> Unit
+    updateSuggestions: (keyword: String) -> Unit,
+    onManageSources: () -> Unit,
 ) {
-    var searchKeyword by rememberSaveable { mutableStateOf("") }
-    LifecycleEventEffect(Lifecycle.Event.ON_START) {
-        init.invoke()
-    }
+    val searchKeyword = exploreSearchUiState.query
     Scaffold(
         topBar = {
             Box(
@@ -121,10 +111,7 @@ fun ExploreSearchScreen(
                     inputField = {
                         SearchBarDefaults.InputField(
                             query = searchKeyword,
-                            onQueryChange = {
-                                searchKeyword = it
-                                updateSuggestions(it)
-                            },
+                            onQueryChange = updateSuggestions,
                             onSearch = {
                                 exploreSearchUiState.setSearchBarExpandedState(false)
                                 onSearch(it)
@@ -146,7 +133,7 @@ fun ExploreSearchScreen(
                                     if (searchKeyword.isNotBlank())
                                         IconButton(onClick = {
                                             exploreSearchUiState.setSearchBarExpandedState(true)
-                                            searchKeyword = ""
+                                            updateSuggestions("")
                                         }) {
                                             Icon(painter = painterResource(R.drawable.close_24px), contentDescription = "clear")
                                         }
@@ -161,6 +148,11 @@ fun ExploreSearchScreen(
                     expanded = exploreSearchUiState.searchBarExpanded,
                     onExpandedChange = { if (!it) onClickBack.invoke() }
                 ) {
+                    Text(exploreSearchUiState.sourceName, Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                        style = MaterialTheme.typography.labelLarge)
+                    (exploreSearchUiState.failure ?: exploreSearchUiState.suggestionFailure)?.let { failure ->
+                        DiscoveryFailure(failure.error, refresh, onManageSources, onClickBack, failure.field)
+                    }
                     val hasHistory = exploreSearchUiState.historyList.isNotEmpty()
                     val showHistory = exploreSearchUiState.suggestions.isEmpty() || searchKeyword.isEmpty()
                     AnimatedVisibility(
@@ -228,7 +220,6 @@ fun ExploreSearchScreen(
                                             .height(46.dp)
                                             .padding(horizontal = 16.dp)
                                             .clickable {
-                                                searchKeyword = it
                                                 exploreSearchUiState.setSearchBarExpandedState(false)
                                                 onSearch.invoke(history)
                                             },
@@ -275,7 +266,6 @@ fun ExploreSearchScreen(
                                             .height(46.dp)
                                             .padding(horizontal = 16.dp)
                                             .clickable {
-                                                searchKeyword = it
                                                 exploreSearchUiState.setSearchBarExpandedState(false)
                                                 onSearch.invoke(history)
                                             },
@@ -299,92 +289,51 @@ fun ExploreSearchScreen(
             SnackbarHost(LocalSnackbarHost.current)
         }
     ) { paddingValues ->
-        ExploreScreen(
-            modifier = Modifier.padding(paddingValues),
-            uiState = exploreUiState,
-            refresh = refresh
-        ) {
-            AnimatedVisibility(
-                visible = exploreSearchUiState.errorMessage.isNotEmpty(),
-                enter = fadeIn(),
-                exit = fadeOut()
-            ) {
-                EmptyPage(
-                    icon = painterResource(R.drawable.error_24px),
-                    title = "搜索出现了错误",
-                    description = exploreSearchUiState.errorMessage
-                )
+        Column(Modifier.fillMaxSize().padding(paddingValues)) {
+            Text(exploreSearchUiState.sourceName, Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                style = MaterialTheme.typography.labelLarge)
+            exploreSearchUiState.failure?.let { failure ->
+                DiscoveryFailure(failure.error, refresh, onManageSources, onClickBack, failure.field)
             }
-            AnimatedVisibility(
-                visible = exploreSearchUiState.isLoadingComplete && exploreSearchUiState.searchResult.isEmpty() && exploreSearchUiState.errorMessage.isEmpty(),
-                enter = fadeIn(),
-                exit = fadeOut()
-            ) {
+            if (exploreSearchUiState.isLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (exploreSearchUiState.isLoadingComplete && exploreSearchUiState.searchResult.isEmpty() && exploreSearchUiState.failure == null) {
                 EmptyPage(
                     icon = painterResource(R.drawable.not_found_90dp),
                     title = stringResource(R.string.search_no_results),
                     description = stringResource(R.string.search_no_results_desc)
                 )
             }
-            AnimatedVisibility(
-                visible = !exploreSearchUiState.isLoading && exploreSearchUiState.errorMessage.isEmpty(),
-                enter = fadeIn(),
-                exit = fadeOut()
-            ) {
-                val density = LocalDensity.current
-                val lineHeight = MaterialTheme.typography.titleMedium.lineHeight
-                val titleHeight = with(density) {
-                    (lineHeight * 2.2f).toDp()
-                }
-                LazyColumn {
-                    stickyHeader {
-                        Box(
-                            modifier = Modifier.fillMaxWidth()
-                                .background(MaterialTheme.colorScheme.background)
-                                .padding(top = 8.dp)
-                        ) {
-                            AnimatedText(
-                                modifier = Modifier.padding(vertical = 12.dp, horizontal = 20.dp),
-                                text = stringResource(
-                                    R.string.search_results_title,
-                                    searchKeyword,
-                                    exploreSearchUiState.searchResult.size,
-                                    if (exploreSearchUiState.isLoadingComplete) "" else "..."
-                                ),
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.W600,
-                                letterSpacing = 0.5.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                    items(exploreSearchUiState.searchResult) {
-                        val addToBookshelf = addToBookshelfAction.toSwipeAction {
-                            requestAddBookToBookshelf(it.first)
-                        }
-                        BookCardItem(
-                            modifier = Modifier.padding(horizontal = 16.dp).padding(vertical = 3.dp),
-                            bookInformationFlow = it.second,
-                            onClick = { onClickBook(it.first) },
-                            onLongPress = withHaptic {},
-                            collected = exploreSearchUiState.allBookshelfBookIds.contains(it.first),
-                            swipeToRightActions = listOf(addToBookshelf),
-                            titleHeight = titleHeight
+            val density = LocalDensity.current
+            val lineHeight = MaterialTheme.typography.titleMedium.lineHeight
+            val titleHeight = with(density) { (lineHeight * 2.2f).toDp() }
+            LazyColumn(Modifier.weight(1f)) {
+                if (exploreSearchUiState.submittedKeyword.isNotBlank()) stickyHeader {
+                    Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).padding(top = 8.dp)) {
+                        AnimatedText(
+                            modifier = Modifier.padding(vertical = 12.dp, horizontal = 20.dp),
+                            text = stringResource(R.string.search_results_title, exploreSearchUiState.submittedKeyword,
+                                exploreSearchUiState.searchResult.size, if (exploreSearchUiState.isLoadingComplete) "" else "..."),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.W600,
+                            letterSpacing = 0.5.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    item {
-                        AnimatedVisibility(
-                            visible = !exploreSearchUiState.isLoadingComplete,
-                            enter = fadeIn(),
-                            exit = fadeOut()
-                        ) {
-                            LinearProgressIndicator(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 8.dp, horizontal = 20.dp)
-                            )
-                        }
-                    }
+                }
+                items(exploreSearchUiState.searchResult, key = { it.first }) {
+                    val addToBookshelf = addToBookshelfAction.toSwipeAction { requestAddBookToBookshelf(it.first) }
+                    BookCardItem(
+                        modifier = Modifier.padding(horizontal = 16.dp).padding(vertical = 3.dp),
+                        bookInformationFlow = it.second,
+                        onClick = { onClickBook(it.first) },
+                        onLongPress = withHaptic {},
+                        collected = exploreSearchUiState.allBookshelfBookIds.contains(it.first),
+                        swipeToRightActions = listOf(addToBookshelf),
+                        titleHeight = titleHeight
+                    )
+                }
+                if (!exploreSearchUiState.isLoadingComplete && exploreSearchUiState.failure == null && exploreSearchUiState.submittedKeyword.isNotBlank()) item {
+                    LinearProgressIndicator(Modifier.fillMaxWidth().padding(vertical = 8.dp, horizontal = 20.dp))
                 }
             }
         }

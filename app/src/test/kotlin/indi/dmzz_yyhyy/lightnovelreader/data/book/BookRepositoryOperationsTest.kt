@@ -175,9 +175,9 @@ class BookRepositoryOperationsTest {
         coEvery { fixture.registry.resolve(bookA.sourceId) } returns indi.dmzz_yyhyy.lightnovelreader.data.web.SourceResolution.Ready(a)
         coEvery { fixture.registry.resolve(bookB.sourceId) } returns indi.dmzz_yyhyy.lightnovelreader.data.web.SourceResolution.Ready(b)
         val repository = fixture.repository()
-        assertEquals(com.github.michaelbull.result.Ok("page-a"), repository.bookTagPage(bookA, "tag"))
-        assertEquals(com.github.michaelbull.result.Ok("page-b"), repository.bookTagPage(bookB, "tag"))
-        assertEquals(com.github.michaelbull.result.Ok("page-a"), repository.bookTagPage(bookA, "tag"))
+        assertEquals(com.github.michaelbull.result.Ok(indi.dmzz_yyhyy.lightnovelreader.data.web.SourceDiscoveryTarget(bookA.sourceId, "page-a")), repository.bookTagPage(bookA, "tag"))
+        assertEquals(com.github.michaelbull.result.Ok(indi.dmzz_yyhyy.lightnovelreader.data.web.SourceDiscoveryTarget(bookB.sourceId, "page-b")), repository.bookTagPage(bookB, "tag"))
+        assertEquals(com.github.michaelbull.result.Ok(indi.dmzz_yyhyy.lightnovelreader.data.web.SourceDiscoveryTarget(bookA.sourceId, "page-a")), repository.bookTagPage(bookA, "tag"))
         coEvery { fixture.registry.resolve(bookA.sourceId) } returns indi.dmzz_yyhyy.lightnovelreader.data.web.SourceResolution.Missing(bookA.sourceId)
         assertTrue(repository.bookTagPage(bookA, "tag").isErr)
         verify(exactly = 2) { a.bookTagPage("tag") }

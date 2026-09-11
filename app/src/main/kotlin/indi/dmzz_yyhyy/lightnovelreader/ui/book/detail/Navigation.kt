@@ -165,7 +165,8 @@ fun NavGraphBuilder.bookDetailDestination() {
             onClickTag = { tag ->
                 coroutineScope.launch {
                     viewModel.tagPage(tag)?.onOk { page ->
-                        if (page != null) navController.navigate(Route.Main.Explore.Expanded(page, bookId))
+                        if (page != null && navController.isResumed()) navController.navigate(Route.Main.DiscoveryResults(
+                            page.sourceId.namespace, page.sourceId.id, page.target, tag, java.util.UUID.randomUUID().toString()))
                     }?.onErr { error -> snackbarHostState.showSnackbar(error.title) }
                 }
             },

@@ -1,84 +1,51 @@
 package indi.dmzz_yyhyy.lightnovelreader.ui.home.explore.home
 
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
+import android.net.Uri
+import androidx.lifecycle.SavedStateHandle
+import com.github.michaelbull.result.map
 import dagger.hilt.android.lifecycle.HiltViewModel
-import indi.dmzz_yyhyy.lightnovelreader.data.explore.ExploreRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.text.TextProcessingRepository
-import io.nightfish.lightnovelreader.api.web.explore.ExplorePageProvider
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
+import indi.dmzz_yyhyy.lightnovelreader.data.web.*
+import indi.dmzz_yyhyy.lightnovelreader.ui.home.discovery.DiscoveryPageViewModel
+import io.nightfish.lightnovelreader.api.Route
+import io.nightfish.lightnovelreader.api.explore.ExploreDisplayBook
+import kotlinx.serialization.json.Json
+import java.util.UUID
 import javax.inject.Inject
 
 @HiltViewModel
 class ExploreHomeViewModel @Inject constructor(
-    private val textProcessingRepository: TextProcessingRepository,
-    exploreRepository: ExploreRepository
-) : ViewModel() {
-    private val _uiState = MutableExploreHomeUiState()
-    private var workingExplorePageJob: Job? = null
-    private var workingExploreBooksRowsJob: Job? = null
-    val uiState: ExploreHomeUiState = _uiState
-    private val source = exploreRepository.sourceSnapshot
-    private val explorePageProvider = source.explorePageProvider
-    var customExplorePageProvider: ExplorePageProvider.CustomExplorePageProvider<*>? = null
-
-    init {
-        if (explorePageProvider is ExplorePageProvider.CustomExplorePageProvider<*>) {
-            customExplorePageProvider = explorePageProvider
-        }
+    registry: WebSourceRegistry,
+    accounts: SourceSessionManager,
+    saved: SavedStateHandle,
+    private val text: TextProcessingRepository,
+) : DiscoveryPageViewModel(registry, accounts, saved, SourceCapability.Explore) {
+    override suspend fun loadFeed(discovery: SourceDiscovery) = discovery.feed().map { sections ->
+        sections.map { section -> section.copy(books = section.books.map { book ->
+            val display = text.processExploreBooksRow(ExploreDisplayBook(
+                id = book.id.storageKey, title = book.title, author = book.author, coverUri = Uri.parse(book.coverUrl)))
+            book.copy(title = display.title, author = display.author, coverUrl = display.coverUri.toString())
+        }) }
     }
 
-    fun init() {
-        when (explorePageProvider) {
-            is ExplorePageProvider.DefaultExplorePageProvider -> {
-                if (_uiState.pageTitles.isEmpty()) {
-                    _uiState.pageTitles = explorePageProvider.exploreTapPageDataSourceMap.map { it.value.title }
-                }
-                if (_uiState.explorePageBooksRawList.isEmpty()) {
-                    loadPage(_uiState.selectedPage, forceRefresh = true)
-                }
-            }
-            is ExplorePageProvider.CustomExplorePageProvider<*> -> explorePageProvider.init(viewModelScope)
-        }
+    fun more(section: SourceDiscoverySection): Route.Main.DiscoveryResults? {
+        val id = state.value.selected ?: return null
+        val content = state.value.content[id] ?: return null
+        val target = section.more ?: return null
+        if (target.sourceId != id || target.target.isBlank() || section !in content.sections) return null
+        return Route.Main.DiscoveryResults(id.namespace, id.id, target.target, section.title,
+            UUID.randomUUID().toString(), section.categoryId, Json.encodeToString(content.values))
     }
 
-    fun changePage(page: Int) {
-        loadPage(page)
+    fun search(): Route.Main.Explore.Search? = selected(SourceCapability.Search)?.let {
+        Route.Main.Explore.Search(it.namespace, it.id)
     }
 
-    private fun loadPage(page: Int, forceRefresh: Boolean = false) {
-        if (explorePageProvider !is ExplorePageProvider.DefaultExplorePageProvider) return
-        if (explorePageProvider.explorePageIdList.isEmpty()) return
-        val pageChanged = _uiState.selectedPage != page
-        if (!forceRefresh && !pageChanged && _uiState.explorePageBooksRawList.isNotEmpty()) return
-        workingExplorePageJob?.cancel()
-        workingExploreBooksRowsJob?.cancel()
-        _uiState.selectedPage = page
-        workingExplorePageJob = viewModelScope.launch {
-            val selectedId = explorePageProvider.explorePageIdList[page]
-            val explorePageMap = explorePageProvider.exploreTapPageDataSourceMap
-            _uiState.pageTitles = explorePageMap.map { it.value.title }
-            workingExploreBooksRowsJob = viewModelScope.launch(Dispatchers.IO) {
-                explorePageMap[selectedId]?.getRowsFlow()?.collect { exploreBooksRows ->
-                    _uiState.explorePageBooksRawList = exploreBooksRows
-                        .map { exploreBooksRow ->
-                            exploreBooksRow.copy(
-                                bookList = exploreBooksRow.bookList.map {
-                                    textProcessingRepository.processExploreBooksRow(it.copy(
-                                        id = indi.dmzz_yyhyy.lightnovelreader.data.book.SourceBookId(source.id, it.id).storageKey
-                                    ))
-                                }
-                            )
-                        }
-                }
-            }
-        }
+    fun categories(): Route.Main.Categories? = selected(SourceCapability.Categories)?.let {
+        Route.Main.Categories(it.namespace, it.id)
     }
 
-    fun refresh() {
-        _uiState.explorePageBooksRawList = emptyList()
-        loadPage(_uiState.selectedPage, forceRefresh = true)
+    private fun selected(capability: SourceCapability) = state.value.selected?.takeIf { id ->
+        state.value.sources.any { it.metadata.id == id && capability in it.metadata.capabilities }
     }
 }

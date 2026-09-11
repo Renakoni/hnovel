@@ -13,6 +13,7 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
     private val session: RuleDiscoverySession = source.openDiscovery(java.util.UUID.randomUUID().toString())) : DiscoveryProvider {
     override val hasFeed get() = source.canDiscover
     override val hasCategories get() = source.canDiscover
+    override val hasInteractions = true
     override var failureField: String? = null
         private set
     private var current: DiscoveryCatalog? = null
@@ -29,7 +30,7 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
         val first = catalog.categories.firstOrNull { it.target.isNotBlank() }
         val preview = first?.let { session.page(it.target, 1, catalog.values).take(6).map(::book) }.orEmpty()
         catalog.categories.map { category -> DiscoverySection(category.id, category.title,
-            if (category == first) preview else emptyList(), category.target.takeIf(String::isNotBlank)) }
+            if (category == first) preview else emptyList(), category.target.takeIf(String::isNotBlank), category.id) }
     }
     override fun filters(target: String) = if (target.startsWith(DISCOVERY_SEARCH_PREFIX)) emptyList() else current?.filters.orEmpty()
 

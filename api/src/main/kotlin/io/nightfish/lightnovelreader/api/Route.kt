@@ -92,20 +92,10 @@ object Route {
             object Home
             /** 搜索界面路由 */
             @Serializable
-            object Search
-            /**
-             * 探索展开页界面路由
-             *
-             * @param expandedPageDataSourceId 展开页数据源的唯一标识
-             */
-            @Serializable
-            data class Expanded(
-                val expandedPageDataSourceId: String,
-                val sourceBookKey: String? = null
-            )
+            data class Search(val namespace: String, val sourceId: String)
         }
         @Serializable
-        object Categories
+        data class Categories(val namespace: String? = null, val sourceId: String? = null)
 
         /** A host-owned result session; targets and filters never imply a global source switch. */
         @Serializable

@@ -9,6 +9,7 @@ import com.github.michaelbull.result.Ok
 import com.github.michaelbull.result.Result
 import hnovel.execution.ExecutionAuthority
 import indi.dmzz_yyhyy.lightnovelreader.data.web.*
+import indi.dmzz_yyhyy.lightnovelreader.ui.home.discovery.DiscoveryCommand
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.discovery.DiscoveryScroll
 import io.nightfish.lightnovelreader.api.Route
 import io.nightfish.lightnovelreader.api.identifier.Identifier

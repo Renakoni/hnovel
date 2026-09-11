@@ -74,10 +74,13 @@ class RuleDiscoveryProviderTest {
             val rule = fixture.source { raw -> definition(raw).let {
                 JsonObject(it + ("exploreUrl" to JsonPrimitive("New::/search&&Completed::/search?complete=1&&Popular::/search?hot=1")))
             } }
-            val feed = RuleDiscoveryProvider(rule).feed().get()!!
+            val provider = RuleDiscoveryProvider(rule)
+            val feed = provider.feed().get()!!
             assertEquals(listOf("New", "Completed", "Popular"), feed.map { it.title })
             assertEquals(listOf(1, 0, 0), feed.map { it.books.size })
             assertTrue(feed.all { it.more != null })
+            assertTrue(provider.hasInteractions)
+            assertEquals(provider.catalog().get()!!.categories.map { it.id }, feed.map { it.categoryId })
             assertEquals(1, fixture.documents.get())
         }
     }

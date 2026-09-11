@@ -6,7 +6,8 @@ import com.github.michaelbull.result.map
 
 /** Source-local data only. The host binds book IDs and targets to the owning runtime. */
 data class DiscoveryBook(val remoteId: String, val title: String, val author: String = "", val coverUrl: String = "")
-data class DiscoverySection(val id: String, val title: String, val books: List<DiscoveryBook>, val more: String? = null)
+data class DiscoverySection(val id: String, val title: String, val books: List<DiscoveryBook>,
+    val more: String? = null, val categoryId: String? = null)
 data class DiscoveryCategory(val id: String, val title: String, val target: String)
 
 /** Null cursor starts a list; null nextCursor ends it, even if the last page is empty. */
@@ -46,6 +47,8 @@ interface DiscoveryProvider {
     val failureField: String? get() = null
     val hasFeed: Boolean get() = false
     val hasCategories: Boolean get() = false
+    /** A feed page also displays this provider's catalogue inputs and actions. */
+    val hasInteractions: Boolean get() = false
     suspend fun feed(): Result<List<DiscoverySection>, DiscoveryError> = Err(DiscoveryError.Unsupported)
     suspend fun categories(): Result<List<DiscoveryCategory>, DiscoveryError> = Err(DiscoveryError.Unsupported)
     fun filters(target: String): List<DiscoveryFilter> = emptyList()

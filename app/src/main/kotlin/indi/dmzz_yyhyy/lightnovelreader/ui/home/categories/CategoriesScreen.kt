@@ -19,7 +19,7 @@ import io.nightfish.lightnovelreader.api.identifier.Identifier
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CategoriesScreen(
-    state: CategoriesState,
+    state: DiscoveryPageState,
     onSelect: (Identifier) -> Unit,
     onCategory: (SourceDiscoveryCategory) -> Unit,
     onScroll: (Identifier, DiscoveryScroll) -> Unit,
@@ -45,10 +45,10 @@ fun CategoriesScreen(
                     }
                 }
                 val id = state.selected
-                val content = state.content[id] ?: CategoryContent()
+                val content = state.content[id] ?: DiscoveryPageContent()
                 if (content.loading || content.acting) LinearProgressIndicator(Modifier.fillMaxWidth())
                 content.error?.let { DiscoveryFailure(it, onRefresh, onManageSources, onBack, content.errorField) }
-                if (id != null) key(id) {
+                if (id != null) key(id, content.resetId) {
                     val list = rememberLazyListState(content.scroll.index, content.scroll.offset)
                     LaunchedEffect(list) {
                         snapshotFlow { DiscoveryScroll(list.firstVisibleItemIndex, list.firstVisibleItemScrollOffset) }

@@ -19,6 +19,7 @@ import indi.dmzz_yyhyy.lightnovelreader.BuildConfig
 import indi.dmzz_yyhyy.lightnovelreader.data.bookshelf.BookshelfRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.local.LocalBookDataSource
 import indi.dmzz_yyhyy.lightnovelreader.data.text.TextProcessingRepository
+import indi.dmzz_yyhyy.lightnovelreader.data.web.SourceDiscoveryTarget
 import indi.dmzz_yyhyy.lightnovelreader.data.work.CacheBookWork
 import io.nightfish.lightnovelreader.api.book.BookInformation
 import io.nightfish.lightnovelreader.api.book.BookRepositoryApi
@@ -160,8 +161,10 @@ class BookRepository @Inject constructor(
         return true
     }
 
-    suspend fun bookTagPage(book: SourceBookId, tag: String): Result<String?, WebRequestError> =
-        sourceRegistry.request(book) { Ok(it.bookTagPage(tag)) }
+    suspend fun bookTagPage(book: SourceBookId, tag: String): Result<SourceDiscoveryTarget?, WebRequestError> =
+        sourceRegistry.request(book) { runtime ->
+            Ok(runtime.bookTagPage(tag)?.let { SourceDiscoveryTarget(book.sourceId, it) })
+        }
 
     suspend fun volumeCover(
         book: SourceBookId,
