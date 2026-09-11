@@ -22,6 +22,7 @@ import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.navigation
 import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.bookshelf.bookshelfNavigation
+import indi.dmzz_yyhyy.lightnovelreader.ui.home.categories.categoriesDestination
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.explore.exploreNavigation
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.reading.readingNavigation
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.settingsNavigation
@@ -34,6 +35,7 @@ fun NavGraphBuilder.homeNavigation(sharedTransitionScope: SharedTransitionScope)
     ) {
         readingNavigation(sharedTransitionScope)
         exploreNavigation()
+        categoriesDestination()
         bookshelfNavigation(sharedTransitionScope)
         settingsNavigation()
     }

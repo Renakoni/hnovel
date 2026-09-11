@@ -19,7 +19,7 @@ data class SourceMetadata(
 
 enum class SourceStatus { Registered, Initializing, Ready, Failed }
 
-data class SourceListing(val metadata: SourceMetadata, val status: SourceStatus)
+data class SourceListing(val metadata: SourceMetadata, val status: SourceStatus, val generation: Long = 0)
 
 /** Removing an old owner must not unregister a newer source with the same ID. */
 class SourceRegistration internal constructor(

@@ -29,6 +29,7 @@ class WebSourceRegistry internal constructor(private val dispatcher: CoroutineDi
 
     private val lock = Any()
     private val entries = mutableMapOf<Identifier, Entry>()
+    private val registrationSequence = java.util.concurrent.atomic.AtomicLong()
     private val cleanupScope = CoroutineScope(SupervisorJob() + dispatcher)
     private val mutableSources = MutableStateFlow<List<SourceListing>>(emptyList())
     val sources = mutableSources.asStateFlow()
@@ -116,7 +117,7 @@ class WebSourceRegistry internal constructor(private val dispatcher: CoroutineDi
 
     private fun publish() {
         mutableSources.value = Collections.unmodifiableList(entries.values
-            .map { SourceListing(it.metadata, it.status) }
+            .map { SourceListing(it.metadata, it.status, it.generation) }
             .sortedWith(compareBy({ !it.metadata.builtIn }, { it.metadata.id.namespace }, { it.metadata.id.id })))
     }
 
@@ -129,6 +130,7 @@ class WebSourceRegistry internal constructor(private val dispatcher: CoroutineDi
 
     private inner class Entry(val metadata: SourceMetadata, create: () -> WebBookDataSource,
         private val preconstructed: WebBookDataSource?) {
+        val generation = registrationSequence.incrementAndGet()
         private val lifetime = CoroutineScope(SupervisorJob() + dispatcher)
         private val ownership = Any()
         private var retired = false

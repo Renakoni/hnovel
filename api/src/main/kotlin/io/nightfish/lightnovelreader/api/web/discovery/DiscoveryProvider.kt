@@ -22,7 +22,10 @@ sealed interface DiscoveryFilter {
         val min: Int, val max: Int, val defaultValue: Int = min) : DiscoveryFilter
 }
 
-enum class DiscoveryError { Unsupported, AuthenticationRequired, Network, InvalidRequest, InvalidResponse }
+enum class DiscoveryError {
+    Unsupported, AuthenticationRequired, PermissionDenied, InvalidRules, Network,
+    InvalidRequest, InvalidResponse, Unavailable,
+}
 
 /** Implementations must not keep page/filter state. Each request is an independent snapshot. */
 interface DiscoveryProvider {
