@@ -74,7 +74,6 @@
     <string name="download_item_failed">%s失敗, 請檢查您的網絡環境或尋求開發者幫助</string>
     <string name="book_updated_to_title">更新至:</string>
     <string name="book_word_count_limit">字數限制:</string>
-    <string name="source_available_title">可用資料來源</string>
     <string name="unavailable">無法使用</string>
     <string name="overview">概覽</string>
     <string name="settings">設定</string>
@@ -97,10 +96,6 @@
     <string name="reader_reached_start">故事才剛剛開始</string>
     <string name="reader_reached_end">已經結束了…</string>
     <string name="font_file_error">字體文件錯誤或已損壞, 請您檢查後導入</string>
-    <string name="settings_data_source_pending_title">切換到 %s</string>
-    <string name="settings_data_source_pending_desc">
-        系統將清除快取並重新啟動。當下次切換回「%s」時，您目前的資料將可再次使用。
-    </string>
     <string name="plugin_invalid_title">無效外掛</string>
     <string name="plugin_invalid_desc">無法取得外掛資訊，外掛可能無效或損壞</string>
     <string name="plugin_disabled">不可用</string>
@@ -228,8 +223,6 @@
     <string name="settings_import_data_desc">從選定的 .lnr 檔案匯入使用者資料</string>
     <string name="settings_storage_manager">儲存空間統計</string>
     <string name="settings_storage_manager_desc">查看應用程式、快取、外掛以及其他檔案如何使用儲存空間。</string>
-    <string name="settings_select_data_source">資料來源</string>
-    <string name="settings_select_data_source_desc">切換軟體資料來源</string>
     <string name="settings_plugins">擴充外掛</string>
     <string name="settings_plugins_desc">安裝與管理擴充外掛</string>
     <string name="settings_app_logs">應用程式日誌</string>
@@ -388,7 +381,6 @@
     <string name="bookshelf_group_title_updated">已更新 (%s)</string>
     <string name="bookshelf_group_title_pinned">已釘選 (%s)</string>
     <string name="bookshelf_group_title_all">全部 (%s)</string>
-    <string name="data_source_provider">提供者: %s</string>
     <string name="read_progress">已讀 %s</string>
     <string name="read_minutes">%d 分鐘</string>
     <string name="translators">翻譯貢獻者</string>
@@ -476,7 +468,6 @@
     <string name="dialog_snap_settings_text">包括應用程式設定和閱讀器設定</string>
     <string name="dialog_snap_bookmarks">書籤</string>
     <string name="dialog_snap_bookmarks_text">包括全部書本的書籤資訊</string>
-    <string name="dialog_select_data_source_text">選擇使用的資料來源，這將清除快取並切換軟體資料來源。目前的使用者資料不會遺失，並將在下次切換回目前資料來源時還原。</string>
     <string name="dialog_slider_custom">輸入數值</string>
     <string name="dialog_slider_custom_illegal_value">請輸入合法的數值</string>
     <string name="dialog_color_picker">調色盤</string>
@@ -667,6 +658,5 @@
     <string name="key_local_book_sort_last_read">以最後閱讀時間排序</string>
     <string name="key_local_book_sort_chapter_count">以章節數量排序</string>
     <string name="restart">重新啟動</string>
-    <string name="current_web_data_source_not_founded">找不到目前資料源，請確認您的外掛和資料源設定</string>
     <string name="never_read">從未閱讀</string>
 </resources>

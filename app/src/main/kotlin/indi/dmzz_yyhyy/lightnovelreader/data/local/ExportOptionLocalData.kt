@@ -31,7 +31,7 @@ class ExportOptionLocalData(
     private val formattingRuleDao: FormattingRuleDao,
     private val userReadingDataDao: UserReadingDataDao,
     private val userDataDao: UserDataDao,
-    webDataSourceUserDataPathSet: Set<String>
+    libraryUserDataPaths: Set<String>
 ) {
     abstract class OptionSolver {
         var enable: Boolean = false
@@ -74,7 +74,7 @@ class ExportOptionLocalData(
             dailyCountEntities.addAll(dailyCountDao.getAll())
             userReadingDataEntities.addAll(userReadingDataDao.getAll())
             userDataEntities.addAll(userDataDao.getAllEntities().filter {
-                webDataSourceUserDataPathSet.contains(it.path)
+                libraryUserDataPaths.contains(it.path)
             }
             )
         }

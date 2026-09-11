@@ -4,10 +4,8 @@ import androidx.work.WorkManager
 import indi.dmzz_yyhyy.lightnovelreader.data.bookshelf.BookshelfRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.local.LocalBookDataSource
 import indi.dmzz_yyhyy.lightnovelreader.data.text.TextProcessingRepository
-import indi.dmzz_yyhyy.lightnovelreader.data.web.WebBookDataSourceProvider
 import indi.dmzz_yyhyy.lightnovelreader.data.web.proxy.ProxyWebBookDataSource
 import io.mockk.coEvery
-import io.mockk.every
 import indi.dmzz_yyhyy.lightnovelreader.data.web.SourceRuntime
 import indi.dmzz_yyhyy.lightnovelreader.data.web.SourceResolution
 import indi.dmzz_yyhyy.lightnovelreader.data.web.WebSourceRegistry
@@ -17,9 +15,6 @@ internal class BookRepositoryFixture {
     val local = mockk<LocalBookDataSource>()
     val remote = mockk<ProxyWebBookDataSource>()
     var activeRemote = remote
-    val provider = mockk<WebBookDataSourceProvider> {
-        every { value } answers { activeRemote }
-    }
     private val runtime = mockk<SourceRuntime> {
         coEvery { getBookInformation(any(), any()) } coAnswers { activeRemote.getBookInformation(firstArg(), secondArg()) }
         coEvery { getBookVolumes(any(), any()) } coAnswers { activeRemote.getBookVolumes(firstArg(), secondArg()) }

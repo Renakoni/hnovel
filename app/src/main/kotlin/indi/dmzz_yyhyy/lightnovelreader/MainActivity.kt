@@ -29,7 +29,6 @@ import indi.dmzz_yyhyy.lightnovelreader.data.logging.LoggerRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.plugin.PluginManager
 import indi.dmzz_yyhyy.lightnovelreader.data.update.UpdateCheckRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.userdata.UserDataRepository
-import indi.dmzz_yyhyy.lightnovelreader.data.web.WebBookDataSourceProvider
 import indi.dmzz_yyhyy.lightnovelreader.data.work.CheckUpdateWork
 import indi.dmzz_yyhyy.lightnovelreader.theme.LightNovelReaderTheme
 import indi.dmzz_yyhyy.lightnovelreader.ui.LightNovelReaderApp
@@ -45,7 +44,6 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
@@ -63,7 +61,6 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var updateCheckRepository: UpdateCheckRepository
     @Inject lateinit var workManager: WorkManager
     @Inject lateinit var pluginManager: PluginManager
-    @Inject lateinit var webBookDataSourceProvider: WebBookDataSourceProvider
     private val coroutineScope: CoroutineScope = CoroutineScope(Dispatchers.IO)
 
     private var appLocale by mutableStateOf(
@@ -98,10 +95,6 @@ class MainActivity : ComponentActivity() {
                     this, arrayOf(POST_NOTIFICATIONS), 0
                 )
             }
-        }
-
-        val webBookDataSourceFoundedFlow = flow {
-            emit(webBookDataSourceProvider.isWebDataSourceFounded())
         }
 
         val fontSizeUserData = userDataRepository.floatUserData(UserDataPath.Reader.FontSize.path)
@@ -149,8 +142,7 @@ class MainActivity : ComponentActivity() {
                             onBuildNavHost()
                         }
                     },
-                    onReaderActiveChanged = ::setReaderActive,
-                    webBookDataSourceFoundedFlow = webBookDataSourceFoundedFlow
+                    onReaderActiveChanged = ::setReaderActive
                 )
             }
         }

@@ -188,6 +188,7 @@ dependencies {
     testImplementation(libs.compose.ui.test.junit4)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.mockk)
+    testImplementation(libs.work.testing)
     implementation(libs.kotlin.compose.compiler.plugin)
     // Hilt
     ksp(libs.kotlin.metadata.jvm)

@@ -4,7 +4,7 @@ import io.nightfish.lightnovelreader.api.identifier.Identifier
 
 /**
  * 网络书本数据源管理接口
- * 提供注册、注销及获取已激活数据源的能力
+ * 提供注册和注销能力。宿主按照请求的来源身份解析运行时，没有全局激活的数据源。
  *
  * @since Api 2
  */
@@ -31,12 +31,4 @@ interface WebBookDataSourceManagerApi {
      */
     fun unregisterWebDataSource(webDataSourceId: Identifier)
 
-    /**
-     * 获取当前激活的网络数据源
-     *
-     * @return 当前已激活的[WebBookDataSource]实例
-     *
-     * @since Api 2
-     */
-    fun getWebDataSource(): WebBookDataSource
 }

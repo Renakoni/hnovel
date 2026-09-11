@@ -3,7 +3,8 @@
 Implemented by #79 on top of the discovery contracts from #77, #78 and #91.
 The primary delivery is Explore and its source-scoped search/results. Root
 navigation/settings placement is delivered separately by #80, as described below.
-Retirement of remaining global source adapters belongs to #81.
+Retirement of remaining global source adapters is documented in
+[host-multi-source.md](host-multi-source.md) (#81).
 
 ## Acceptance checklist
 

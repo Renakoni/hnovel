@@ -55,7 +55,7 @@ class CheckUpdateWork @AssistedInject constructor(
             if (metadata.id !in needRemindBookIdSet) return@forEach
             delay(3000.milliseconds)
             var status = "unchanged"
-            // Preserve legacy Wenku8 bare IDs while canonicalizing new source-qualified keys.
+            // Each metadata entry owns its source; browsing never supplies a fallback.
             val book = runCatching { BookIdentity.book(metadata.id) }.getOrNull()
             if (book == null) {
                 status = "invalid_book_identity"
