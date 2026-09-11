@@ -119,6 +119,81 @@ class DiscoveryResultsViewModelTest {
         assertEquals(mapOf("sort" to "a"), restored.state.value.filters)
     }
 
+    @Test fun sourceSearchNeverEvaluatesCatalogOnInitialLoadPaginationOrRefresh() = runTest(dispatcher) {
+        var catalogs = 0
+        val provider = object : Pages() {
+            override suspend fun catalog(refresh: Boolean): Result<DiscoveryCatalog, DiscoveryError> {
+                catalogs++
+                return Err(DiscoveryError.InvalidRules)
+            }
+            override fun filters(target: String) = emptyList<DiscoveryFilter.Choice>()
+        }
+        add(provider)
+        val target = DISCOVERY_SEARCH_PREFIX + "A title"
+        val model = model(route = route.copy(target = target, categoryId = null, filtersJson = "{\"sort\":\"b\"}"))
+        advanceUntilIdle()
+        assertNull(model.state.value.error)
+        assertEquals(1, model.state.value.books.size)
+        model.loadMore()
+        advanceUntilIdle()
+        assertEquals(2, model.state.value.books.size)
+        model.refresh()
+        advanceUntilIdle()
+        assertNull(model.state.value.error)
+        assertEquals(0, catalogs)
+        assertEquals(listOf(null, "2", null), provider.requests.map { it.cursor })
+        assertTrue(provider.requests.all { it.target == target && it.filters.isEmpty() })
+    }
+
+    @Test fun rawExploreActionsStillLoadCatalogValuesWithoutACategoryId() = runTest(dispatcher) {
+        var catalogs = 0
+        val provider = object : Pages() {
+            override suspend fun catalog(refresh: Boolean): Result<DiscoveryCatalog, DiscoveryError> {
+                catalogs++
+                return Ok(DiscoveryCatalog(emptyList(), filters(""), mapOf("sort" to "b")))
+            }
+        }
+        add(provider)
+        val model = model(route = route.copy(target = "raw-explore", categoryId = null))
+        advanceUntilIdle()
+        assertNull(model.state.value.error)
+        assertEquals(1, catalogs)
+        assertEquals("raw-explore", provider.requests.single().target)
+        assertEquals(mapOf("sort" to "b"), provider.requests.single().filters)
+    }
+
+    @Test fun dynamicCategoryKeepsItsIdWhileFiltersRegenerateTheUrlAndPageDraft() = runTest(dispatcher) {
+        val snapshots = mutableListOf<Map<String, String>>()
+        val observed = mutableListOf<DiscoveryRequest>()
+        add(object : Pages() {
+            override fun openSession(id: String, values: Map<String, String>, environment: DiscoveryEnvironment): DiscoveryProvider {
+                snapshots += values.toMap()
+                return object : Pages() {
+                    override suspend fun catalog(refresh: Boolean) = Ok(DiscoveryCatalog(
+                        listOf(DiscoveryCategory("category", "Dynamic title", "tag-" + values["sort"])),
+                        filters(""), values))
+                    override suspend fun page(request: DiscoveryRequest): Result<DiscoveryPage, DiscoveryError> {
+                        observed += request
+                        return Ok(DiscoveryPage(emptyList()))
+                    }
+                }
+            }
+        })
+        val model = model(route = route.copy(target = "tag-a", filtersJson = "{\"sort\":\"a\",\"draft\":\"page-only\"}"))
+        advanceUntilIdle()
+        assertNull(model.state.value.error)
+        model.filter("sort", "b")
+        advanceUntilIdle()
+        assertNull(model.state.value.error)
+        assertEquals(listOf("tag-a", "tag-b"), observed.map { it.target })
+        assertEquals(listOf("page-only", "page-only"), snapshots.map { it["draft"] })
+        assertEquals(mapOf("sort" to "b"), model.state.value.filters)
+        accounts.begin(source)
+        advanceUntilIdle()
+        assertNull(snapshots.last()["draft"])
+        assertEquals("b", snapshots.last()["sort"])
+    }
+
     @Test fun sourceRemovalAndReplacementNeverRetargetThePageToAnotherSource() = runTest(dispatcher) {
         val provider = Pages()
         add(provider)

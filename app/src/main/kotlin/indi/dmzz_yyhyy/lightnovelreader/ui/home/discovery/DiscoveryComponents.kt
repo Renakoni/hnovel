@@ -33,7 +33,7 @@ internal fun DiscoveryEmpty(message: String, onManageSources: () -> Unit) {
 }
 
 @Composable
-internal fun DiscoveryFailure(error: DiscoveryError, retry: () -> Unit, manage: () -> Unit, back: () -> Unit) {
+internal fun DiscoveryFailure(error: DiscoveryError, retry: () -> Unit, manage: () -> Unit, back: () -> Unit, field: String? = null) {
     val message = when (error) {
         DiscoveryError.Unsupported -> R.string.discovery_unsupported
         DiscoveryError.AuthenticationRequired -> R.string.discovery_login_required
@@ -46,6 +46,7 @@ internal fun DiscoveryFailure(error: DiscoveryError, retry: () -> Unit, manage: 
     }
     Column(Modifier.padding(16.dp)) {
         Text(stringResource(message), color = MaterialTheme.colorScheme.error)
+        field?.let { Text(stringResource(R.string.discovery_rule_field, it), style = MaterialTheme.typography.bodySmall) }
         Row {
             TextButton(onClick = retry) { Text(stringResource(R.string.discovery_retry)) }
             TextButton(onClick = manage) { Text(stringResource(R.string.sources_title)) }
@@ -58,6 +59,16 @@ internal fun DiscoveryFailure(error: DiscoveryError, retry: () -> Unit, manage: 
 @Composable
 internal fun DiscoveryFilterControl(filter: DiscoveryFilter, value: String, onChange: (String) -> Unit) {
     when (filter) {
+        is DiscoveryFilter.Text -> {
+            var draft by remember(value) { mutableStateOf(value) }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(value = draft, onValueChange = { if (it.length <= 4096) draft = it },
+                    label = { Text(filter.title) }, singleLine = true, modifier = Modifier.weight(1f))
+                TextButton(onClick = { onChange(draft) }, enabled = draft != value) {
+                    Text(stringResource(R.string.discovery_apply))
+                }
+            }
+        }
         is DiscoveryFilter.Toggle -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(filter.title, Modifier.padding(vertical = 12.dp))
             Switch(checked = value == "true", onCheckedChange = { onChange(it.toString()) })

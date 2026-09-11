@@ -10,16 +10,39 @@ import io.nightfish.lightnovelreader.api.web.discovery.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
+/** Reserved host target for source-local search, which has no discovery catalogue or filters. */
+internal const val DISCOVERY_SEARCH_PREFIX = "hnovel-search:"
+
 data class SourceDiscoveryTarget(val sourceId: Identifier, val target: String)
 data class SourceDiscoveryBook(val id: SourceBookId, val title: String, val author: String, val coverUrl: String)
 data class SourceDiscoverySection(val id: String, val title: String, val books: List<SourceDiscoveryBook>, val more: SourceDiscoveryTarget?)
 data class SourceDiscoveryCategory(val id: String, val title: String, val target: SourceDiscoveryTarget)
 data class SourceDiscoveryPage(val books: List<SourceDiscoveryBook>, val nextCursor: String?)
+data class SourceDiscoveryCatalog(val categories: List<SourceDiscoveryCategory>, val filters: List<DiscoveryFilter>,
+    val values: Map<String, String>, val buttons: List<DiscoveryButton>)
+data class SourceDiscoveryUpdate(val catalog: SourceDiscoveryCatalog, val actions: List<DiscoveryAction>, val refresh: Boolean)
 
 /** Captures one registration, never a UI selection or a replacement runtime. */
 class SourceDiscovery internal constructor(private val runtime: SourceRuntime, private val provider: DiscoveryProvider) {
     val hasFeed get() = provider.hasFeed && SourceCapability.Explore in runtime.metadata.capabilities
     val hasCategories get() = provider.hasCategories && SourceCapability.Categories in runtime.metadata.capabilities
+    val failureField get() = provider.failureField
+
+    fun forSession(id: String, values: Map<String, String> = emptyMap(), environment: DiscoveryEnvironment = DiscoveryEnvironment()): SourceDiscovery {
+        runtime.checkAvailable()
+        return SourceDiscovery(runtime, provider.openSession(id, values.toMap(), environment))
+    }
+
+    suspend fun catalog(refresh: Boolean = false): Result<SourceDiscoveryCatalog, DiscoveryError> = runtime.execute {
+        if (!hasCategories) return@execute Err(DiscoveryError.Unsupported)
+        provider.catalog(refresh).map(::bind)
+    }
+
+    suspend fun interact(id: String, value: String?, longClick: Boolean) = runtime.execute {
+        provider.interact(id, value, longClick).map { SourceDiscoveryUpdate(bind(it.catalog), it.actions.toList(), it.refresh) }
+    }
+
+    suspend fun openBrowser(action: DiscoveryAction.Browser) = runtime.execute { provider.openBrowser(action) }
 
     suspend fun feed(): Result<List<SourceDiscoverySection>, DiscoveryError> = runtime.execute {
         if (!hasFeed) return@execute Err(DiscoveryError.Unsupported)
@@ -56,6 +79,10 @@ class SourceDiscovery internal constructor(private val runtime: SourceRuntime, p
     }
 
     private fun target(id: String) = SourceDiscoveryTarget(runtime.id, id)
+    private fun bind(catalog: DiscoveryCatalog) = SourceDiscoveryCatalog(catalog.categories.map {
+        SourceDiscoveryCategory(it.id, it.title, target(it.target))
+    }, catalog.filters.map { if (it is DiscoveryFilter.Choice) it.copy(options = it.options.toMap()) else it },
+        catalog.values.toMap(), catalog.buttons.toList())
     private fun bind(book: DiscoveryBook) = SourceDiscoveryBook(
         SourceBookId(runtime.id, book.remoteId), book.title, book.author, book.coverUrl,
     )
@@ -64,6 +91,7 @@ class SourceDiscovery internal constructor(private val runtime: SourceRuntime, p
 /** One instance per result page. Failed loads keep the cursor for retry; reset and load serialize. */
 class DiscoverySession internal constructor(private val source: SourceDiscovery, private val target: String) {
     val filters = source.filters(target)
+    val failureField get() = source.failureField
     private val mutex = Mutex()
     private var values: Map<String, String> = emptyMap()
     private var cursor: String? = null
@@ -80,8 +108,9 @@ class DiscoverySession internal constructor(private val source: SourceDiscovery,
     suspend fun loadMore(): Result<SourceDiscoveryPage, DiscoveryError> = mutex.withLock {
         if (ended) return@withLock Ok(SourceDiscoveryPage(books.toList(), null))
         source.page(DiscoveryRequest(target, cursor, values)).map { page ->
+            val repeated = page.books.isNotEmpty() && page.books.all { next -> books.any { it.id == next.id } }
             books = (books + page.books).distinctBy { it.id }
-            cursor = page.nextCursor
+            cursor = page.nextCursor.takeUnless { repeated }
             ended = cursor == null
             SourceDiscoveryPage(books.toList(), cursor)
         }

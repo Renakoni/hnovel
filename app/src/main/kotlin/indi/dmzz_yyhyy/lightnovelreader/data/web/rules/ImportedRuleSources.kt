@@ -47,12 +47,11 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
                 for ((id, generation) in generations) {
                     val current = active[id] ?: continue
                     if (current.registration.metadata.accountGeneration != generation) {
-                        current.registration.unregister()
                         runCatching { current.session?.clearAccount() }.onFailure {
                             android.util.Log.w("ImportedRuleSources", "Retired account cleanup failed")
                         }
                         current.broker?.close()
-                        active[id] = restoreBinding(current.installed).also { next ->
+                        active[id] = restoreBinding(current.installed, current.registration).also { next ->
                             current.session?.let { next.session?.inheritCaches(it) }
                         }
                     }
@@ -147,6 +146,9 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
                         if (source.canSearch) it + SourceCapability.Search else it - SourceCapability.Search
                     }.let {
                         if (source.canLogin) it + SourceCapability.Login else it - SourceCapability.Login
+                    }.let {
+                        val discovery = setOf(SourceCapability.Explore, SourceCapability.Categories)
+                        if (source.canDiscover) it + discovery else it - discovery
                     })
                 val registration = registry.replace(old.registration, RuleWebBookDataSource(id, source), metadata, ticket) {
                     // This runs under the authority fence: old Cookie commits cannot land after the snapshot.
@@ -159,14 +161,15 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
         }
     } }
 
-    private fun restoreBinding(installed: InstalledSource): Binding = try { bind(installed) }
+    private fun restoreBinding(installed: InstalledSource, previous: SourceRegistration? = null): Binding = try { bind(installed, previous) }
     catch (_: Exception) {
+        previous?.unregister()
         val metadata = SourceMetadata(WebDataSourceItem(id(installed.definition), installed.definition.displayName, "Imported source"),
             emptySet(), revision = installed.definition.contentDigest, accountGeneration = accounts.current(id(installed.definition)).generation)
         Binding(installed, registry.register(metadata) { throw SourceUnavailableException(metadata.id) }, null)
     }
 
-    private fun bind(installed: InstalledSource, beforePublish: () -> Unit = {}): Binding = accounts.withCurrent(id(installed.definition)) { account ->
+    private fun bind(installed: InstalledSource, previous: SourceRegistration? = null, beforePublish: () -> Unit = {}): Binding = accounts.withCurrent(id(installed.definition)) { account ->
         val definition = installed.definition
         require(definition.enabled && definition.profile in setOf(LEGADO_PROFILE, EXTENSION_PROFILE))
         val id = id(definition)
@@ -181,8 +184,12 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
             addAll(listOf(SourceCapability.BookInformation, SourceCapability.Directory, SourceCapability.ChapterContent, SourceCapability.Images))
             if (source.canSearch) add(SourceCapability.Search)
             if (source.canLogin) add(SourceCapability.Login)
+            if (source.canDiscover) addAll(setOf(SourceCapability.Explore, SourceCapability.Categories))
         }, revision = definition.contentDigest, accountGeneration = generation)
-        val registration = try { beforePublish(); registry.register(RuleWebBookDataSource(id, source), metadata) }
+        val registration = try {
+            if (previous == null) { beforePublish(); registry.register(RuleWebBookDataSource(id, source), metadata) }
+            else registry.replace(previous, RuleWebBookDataSource(id, source), metadata, ticket, beforePublish)
+        }
             catch (failure: Exception) { source.close(); broker.close(); throw failure }
         Binding(installed, registration, broker, session, source)
     }
@@ -202,10 +209,9 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
             val current = checkNotNull(active[id]) { "Source is not installed" }
             if (expectedGeneration != null) check(accounts.current(id).generation == expectedGeneration) { "Login attempt is stale" }
             accounts.begin(id)
-            current.registration.unregister()
             try { current.session?.clearAccount() } finally {
                 current.broker?.close()
-                active[id] = restoreBinding(current.installed).also { next ->
+                active[id] = restoreBinding(current.installed, current.registration).also { next ->
                             current.session?.let { next.session?.inheritCaches(it) }
                         }
             }

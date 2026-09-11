@@ -5,6 +5,8 @@
     <string name="discovery_refresh">Refresh</string>
     <string name="discovery_retry">Retry</string>
     <string name="discovery_apply">Apply</string>
+    <string name="discovery_rule_field">Source rule: %1$s</string>
+    <string name="discovery_source_action">Source action</string>
     <string name="discovery_load_more">Load more</string>
     <string name="discovery_no_books">No books match these filters.</string>
     <string name="discovery_unsupported">This source does not provide this browsing capability.</string>

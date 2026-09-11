@@ -12,6 +12,7 @@ import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import indi.dmzz_yyhyy.lightnovelreader.data.web.*
 import io.nightfish.lightnovelreader.api.identifier.Identifier
 import io.nightfish.lightnovelreader.api.web.WebDataSourceItem
+import io.nightfish.lightnovelreader.api.web.discovery.*
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -77,6 +78,27 @@ class CategoriesScreenTest {
         compose.onNodeWithText("No enabled book source provides categories. Add or enable a source in source management.").assertExists()
         compose.onNodeWithText("Book sources").performClick()
         assertEquals(1, opened)
+    }
+
+    @Test fun sourceFormChoicesAndButtonsUseHostCallbacksInsideOneSourceTab() {
+        val id = Identifier("fixture", "actions")
+        val values = mutableListOf<Pair<String, String>>()
+        val actions = mutableListOf<Pair<String, Boolean>>()
+        val page = CategoryContent(listOf(category(id)), loaded = true,
+            filters = listOf(DiscoveryFilter.Choice("Sort", "Sort", linkedMapOf("new" to "New", "popular" to "Popular"), "new")),
+            values = mapOf("Sort" to "new"), buttons = listOf(DiscoveryButton("login", "Sign in")))
+        activity.get().setContent { MaterialTheme {
+            CategoriesScreen(CategoriesState(listOf(listing(id, "Rule source")), id, mapOf(id to page)),
+                {}, {}, { _, _ -> }, {}, {}, {}, {}, onInput = { key, value -> values += key to value },
+                onAction = { key, long -> actions += key to long })
+        } }
+        compose.onNodeWithText("Rule source").assertIsSelected()
+        compose.onNodeWithText("Sort: New").performClick()
+        compose.onNodeWithText("Popular").performClick()
+        compose.onNodeWithText("Sign in").performClick()
+        compose.onNodeWithText("Sign in").performTouchInput { longClick() }
+        assertEquals(listOf("Sort" to "popular"), values)
+        assertEquals(listOf("login" to false, "login" to true), actions)
     }
 
     @Test fun waitingForTheFirstSnapshotDoesNotDisplayTheEmptySourceMessage() {

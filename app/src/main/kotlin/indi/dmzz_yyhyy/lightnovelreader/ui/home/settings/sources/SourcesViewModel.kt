@@ -39,6 +39,7 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
     private var operation: Job? = null
     private var attempt: LoginAttempt? = null
     private var operationGeneration = 0
+    private var openedFromDiscovery: Identifier? = null
 
     init {
         viewModelScope.launch { registry.sources.collect { list -> mutable.update { it.copy(registry = list) } } }
@@ -74,13 +75,27 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
         mutable.update { it.copy(installed = installed) }
     }
     fun refresh() = launch { reload() }
-    fun select(id: Identifier?) = launch {
+    fun select(id: Identifier?) = launch { selectSource(id) }
+    private suspend fun selectSource(id: Identifier?) {
         mutable.update { it.copy(selected = id, preview = null, updateTarget = null) }
         if (id != null && mutable.value.installed.any { ImportedRuleSources.id(it.definition) == id }) {
             val target = sources.loginTarget(id)
             val variable = target.session.read(StorageRequest(StorageArea.Config, "variable")) as StorageResult.Value
             val status = login.status(id)
             mutable.update { it.copy(loginStatus = status, variable = variable.value.orEmpty()) }
+        }
+    }
+
+    fun openFromDiscovery(id: Identifier, signIn: Boolean) {
+        if (openedFromDiscovery == id) return
+        launch {
+            selectSource(id)
+            openedFromDiscovery = id
+            if (signIn) {
+                val form = login.form(id)
+                attempt = login.begin(id)
+                mutable.update { it.copy(loginForm = form, loginStatus = LoginStatus.LoggedOut) }
+            }
         }
     }
 

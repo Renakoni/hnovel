@@ -64,7 +64,8 @@ class SourceDiagnostics @Inject constructor(@ApplicationContext private val cont
                             DiagnosticStage.Information -> { rules.information(bookUrl); 1 }
                             DiagnosticStage.Directory -> rules.directory(bookUrl).size
                             DiagnosticStage.Content -> rules.content(bookUrl, chapterUrl).parts.size
-                            DiagnosticStage.Discovery -> rules.discovery(exploreUrl).size
+                            DiagnosticStage.Discovery -> if (exploreUrl.isBlank()) rules.openDiscovery("diagnostic").catalog().rows.size
+                                else rules.discovery(exploreUrl).size
                         }
                         currentCoroutineContext().ensureActive()
                         check(authority.accepts(ticket))

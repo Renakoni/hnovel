@@ -92,6 +92,10 @@ private class ScriptBridge(private val bridge: HostBridge, private val rules: Sc
         source.defineProperty("id", frame.sourceId, ScriptableObject.READONLY)
         source.defineProperty("profile", frame.profile, ScriptableObject.READONLY)
         method(javaBridge, "getSource") { _, _, args -> require(args.isEmpty()); source }
+        frame.discovery?.install(context, scope, javaBridge, source)
+        if (frame.discovery != null) method(javaBridge, "removeCookie") { cx, active, args ->
+            call(cx, active, "cookie.removeCookie", args)
+        }
     }
 }
 
@@ -99,7 +103,8 @@ data class ScriptFrame(val sourceId: String, val profile: String, val bookId: St
     val variables: Map<String, JsonElement> = emptyMap(), val key: String = "", val page: Int = 1,
     val baseUrl: String = "", val ruleContext: RuleContext? = null, val ruleInput: RuleValue? = null,
     val ruleBudget: RuleBudget? = null, val book: JsonObject = JsonObject(emptyMap()),
-    val chapter: JsonObject = JsonObject(emptyMap()), val chineseConverter: Int = 0, val sourceHeaderRule: String = "")
+    val chapter: JsonObject = JsonObject(emptyMap()), val chineseConverter: Int = 0, val sourceHeaderRule: String = "",
+    val discovery: ScriptDiscovery? = null)
 
 data class ScriptLimits(val instructionLimit: Int = 100_000, val maxResultChars: Int = 256 * 1024,
     val maxScriptChars: Int = 256 * 1024, val maxBridgeChars: Int = DEFAULT_BRIDGE_CHARS,
@@ -198,6 +203,7 @@ class RhinoScriptEngine(private val bridge: HostBridge, private val limits: Scri
                 ScriptBridge(bridge, ScriptRuleHelpers(scope, frame.copy(ruleContext = ruleContext), limits), ScriptRequestTemplates(scope, frame), archives).install(context, scope, frame)
                 val value = try { evaluateGlobal(context, scope, source, "source-script") }
                     finally { ruleContext.initializeMetadataVariables = null }
+                frame.discovery?.capture()
                 ruleContext.bookMetadata = ScriptMetadata.capture(book, limits.maxBridgeChars).toString()
                 ruleContext.chapterMetadata = ScriptMetadata.capture(chapter, limits.maxBridgeChars).toString()
                 if (Thread.currentThread().isInterrupted) throw ScriptCancelled()

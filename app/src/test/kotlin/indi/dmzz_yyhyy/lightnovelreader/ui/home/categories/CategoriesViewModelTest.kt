@@ -64,6 +64,19 @@ class CategoriesViewModelTest {
         }
     }
 
+    private class BrowserCategories(private val refresh: Boolean = false) : Categories() {
+        val completion = CompletableDeferred<Result<Unit, DiscoveryError>>()
+        var started = 0
+        var cancelled = 0
+        override val failureField = "discovery.browser"
+        override suspend fun interact(id: String, value: String?, longClick: Boolean) =
+            Ok(DiscoveryUpdate(DiscoveryCatalog(emptyList()), listOf(DiscoveryAction.Browser("https://fixture.invalid/")), refresh))
+        override suspend fun openBrowser(action: DiscoveryAction.Browser): Result<Unit, DiscoveryError> {
+            started++
+            return try { completion.await() } catch (failure: CancellationException) { cancelled++; throw failure }
+        }
+    }
+
     @Test fun stableTabsAreLazyAndRetainVisitedContentAndScroll() = runTest(dispatcher) {
         val zProvider = Categories()
         val aProvider = Categories()
@@ -203,5 +216,182 @@ class CategoriesViewModelTest {
         advanceUntilIdle()
         assertTrue(model.state.value.content[a]!!.loaded)
         assertNull(model.state.value.content[a]!!.error)
+    }
+
+    @Test fun sourceActionsRefreshOnceAndPreserveOtherTabsAndRouteFilterSnapshots() = runTest(dispatcher) {
+        var catalogs = 0
+        var value = "new"
+        fun snapshot() = DiscoveryCatalog(listOf(DiscoveryCategory("books", "Books", "target")),
+            listOf(DiscoveryFilter.Choice("Sort", "Sort", linkedMapOf("new" to "New", "popular" to "Popular"), "new")),
+            mapOf("Sort" to value), listOf(DiscoveryButton("refresh", "Refresh source")))
+        val a = add("a", object : Categories() {
+            override suspend fun catalog(refresh: Boolean): Result<DiscoveryCatalog, DiscoveryError> {
+                catalogs++
+                return Ok(snapshot())
+            }
+            override suspend fun interact(id: String, value: String?, longClick: Boolean): Result<DiscoveryUpdate, DiscoveryError> {
+                return Ok(DiscoveryUpdate(snapshot(), listOf(DiscoveryAction.Results("target", "Books")), refresh = true))
+            }
+        })
+        val other = Categories()
+        val b = add("b", other)
+        val model = model()
+        val commands = mutableListOf<DiscoveryCommand>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { model.commands.collect { commands += it } }
+        advanceUntilIdle()
+        model.select(b); advanceUntilIdle()
+        model.scroll(b, DiscoveryScroll(3, 21))
+        model.select(a); advanceUntilIdle()
+        value = "popular"
+        model.interact("refresh")
+        advanceUntilIdle()
+        assertEquals(2, catalogs)
+        assertEquals(1, other.calls)
+        assertEquals(DiscoveryScroll(3, 21), model.state.value.content[b]!!.scroll)
+        assertEquals(a, commands.single().source)
+        assertTrue(model.accepts(commands.single()))
+        val route = model.result(model.state.value.content[a]!!.categories.single())!!
+        assertEquals(mapOf("Sort" to "popular"), Json.decodeFromString<Map<String, String>>(route.filtersJson))
+        model.select(b)
+        assertFalse(model.accepts(commands.single()))
+    }
+
+    @Test fun lateInteractionCannotNavigateOrRefreshAnotherSource() = runTest(dispatcher) {
+        val finish = CompletableDeferred<Unit>()
+        val started = CompletableDeferred<Unit>()
+        add("a", object : Categories() {
+            override suspend fun interact(id: String, value: String?, longClick: Boolean): Result<DiscoveryUpdate, DiscoveryError> = withContext(NonCancellable) {
+                started.complete(Unit); finish.await()
+                Ok(DiscoveryUpdate(DiscoveryCatalog(emptyList()), listOf(DiscoveryAction.Login), refresh = true))
+            }
+        })
+        val other = Categories()
+        val b = add("b", other)
+        val model = model()
+        val commands = mutableListOf<DiscoveryCommand>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { model.commands.collect { commands += it } }
+        advanceUntilIdle()
+        model.interact("button"); runCurrent()
+        assertTrue(started.isCompleted)
+        model.select(b); runCurrent()
+        finish.complete(Unit); advanceUntilIdle()
+        assertTrue(commands.isEmpty())
+        assertEquals(b, model.state.value.selected)
+        assertEquals(1, other.calls)
+    }
+
+    @Test fun retainedBrowserStillCancelsOnTabSwitchAndLeavingThePage() = runTest(dispatcher) {
+        val provider = BrowserCategories()
+        val a = add("a", provider)
+        val other = Categories()
+        val b = add("b", other)
+        val model = model()
+        val commands = mutableListOf<DiscoveryCommand>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { model.commands.collect { commands += it } }
+        advanceUntilIdle()
+        model.interact("browser"); runCurrent()
+        model.openBrowser(commands.last()); runCurrent()
+        assertEquals(1, provider.started)
+        model.setActive(false, retainBrowser = true); runCurrent()
+        assertEquals(0, provider.cancelled)
+        model.select(b); runCurrent()
+        assertEquals(1, provider.cancelled)
+        model.setActive(true); runCurrent()
+        assertFalse(model.accepts(commands.last()))
+        assertEquals(1, other.calls)
+        model.select(a); runCurrent()
+        model.interact("browser"); runCurrent()
+        model.openBrowser(commands.last()); runCurrent()
+        assertEquals(2, provider.started)
+        model.setActive(false); runCurrent()
+        assertEquals(2, provider.cancelled)
+        assertFalse(model.state.value.content[a]!!.acting)
+    }
+
+    @Test fun browserCoverRetainsWorkAndSuccessRefreshesOnceAfterResume() = runTest(dispatcher) {
+        val provider = BrowserCategories(refresh = true)
+        val a = add("a", provider)
+        val model = model()
+        val commands = mutableListOf<DiscoveryCommand>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { model.commands.collect {
+            commands += it
+            model.openBrowser(it)
+        } }
+        advanceUntilIdle()
+        model.interact("browser"); runCurrent()
+        assertEquals(1, provider.started)
+        assertFalse(model.state.value.content[a]!!.loaded)
+        model.setActive(false, retainBrowser = true); runCurrent()
+        assertTrue(model.state.value.content[a]!!.acting)
+        assertFalse(model.accepts(commands.single()))
+        model.setActive(true); runCurrent()
+        assertTrue(model.state.value.content[a]!!.acting)
+        assertEquals(1, provider.calls)
+        model.setActive(false, retainBrowser = true); runCurrent()
+        provider.completion.complete(Ok(Unit)); advanceUntilIdle()
+        assertEquals(0, provider.cancelled)
+        assertFalse(model.state.value.content[a]!!.acting)
+        assertFalse(model.state.value.content[a]!!.loaded)
+        assertFalse(model.state.value.content[a]!!.loading)
+        assertEquals(1, provider.calls)
+        model.setActive(true); advanceUntilIdle()
+        assertTrue(model.state.value.content[a]!!.loaded)
+        assertEquals(2, provider.calls)
+        assertFalse(model.accepts(commands.single()))
+        model.setActive(false); model.setActive(true); advanceUntilIdle()
+        assertEquals(2, provider.calls)
+    }
+
+    @Test fun browserFailureBeforeResumeIsRetainedWithoutReloadingTheCatalog() = runTest(dispatcher) {
+        val provider = BrowserCategories()
+        val a = add("a", provider)
+        val model = model()
+        val commands = mutableListOf<DiscoveryCommand>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { model.commands.collect { commands += it } }
+        advanceUntilIdle()
+        model.interact("browser"); runCurrent()
+        model.openBrowser(commands.single()); runCurrent()
+        model.setActive(false, retainBrowser = true); runCurrent()
+        provider.completion.complete(Err(DiscoveryError.Network)); advanceUntilIdle()
+        assertFalse(model.state.value.content[a]!!.acting)
+        assertEquals(DiscoveryError.Network, model.state.value.content[a]!!.error)
+        assertEquals("discovery.browser", model.state.value.content[a]!!.errorField)
+        model.setActive(true); advanceUntilIdle()
+        assertEquals(DiscoveryError.Network, model.state.value.content[a]!!.error)
+        assertEquals(1, provider.calls)
+        assertEquals(0, provider.cancelled)
+    }
+
+    @Test fun retainedBrowserIsCancelledOnAccountChangeReplacementAndRemoval() = runTest(dispatcher) {
+        val provider = BrowserCategories()
+        val a = add("a", provider)
+        val model = model()
+        val commands = mutableListOf<DiscoveryCommand>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { model.commands.collect { commands += it } }
+        advanceUntilIdle()
+        model.interact("browser"); runCurrent()
+        model.openBrowser(commands.last()); runCurrent()
+        model.setActive(false, retainBrowser = true)
+        accounts.begin(a); runCurrent()
+        assertEquals(1, provider.cancelled)
+        assertNull(model.state.value.content[a])
+        model.setActive(true); advanceUntilIdle()
+        model.interact("browser"); runCurrent()
+        model.openBrowser(commands.last()); runCurrent()
+        model.setActive(false, retainBrowser = true)
+        registry.unregister(a)
+        val replacement = BrowserCategories()
+        add("a", replacement); advanceUntilIdle()
+        assertEquals(2, provider.cancelled)
+        assertFalse(model.accepts(commands.last()))
+        model.setActive(true); advanceUntilIdle()
+        assertEquals(1, replacement.calls)
+        model.interact("browser"); runCurrent()
+        model.openBrowser(commands.last()); runCurrent()
+        model.setActive(false, retainBrowser = true)
+        registry.unregister(a); advanceUntilIdle()
+        assertEquals(1, replacement.cancelled)
+        assertTrue(model.state.value.content.isEmpty())
+        assertNull(model.state.value.selected)
     }
 }

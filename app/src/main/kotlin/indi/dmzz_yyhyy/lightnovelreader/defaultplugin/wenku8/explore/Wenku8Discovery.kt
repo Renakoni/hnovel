@@ -69,6 +69,7 @@ class Wenku8Discovery(private val host: String, private val fetch: suspend (Stri
             is DiscoveryFilter.Choice -> value in filter.options
             is DiscoveryFilter.Toggle -> value == "true" || value == "false"
             is DiscoveryFilter.Number -> value.toIntOrNull()?.let { it in filter.min..filter.max } == true
+            is DiscoveryFilter.Text -> value.length <= 4096
             null -> false
         } }
     }

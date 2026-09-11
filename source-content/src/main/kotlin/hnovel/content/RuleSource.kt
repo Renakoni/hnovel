@@ -13,11 +13,37 @@ import kotlinx.serialization.json.*
 class RuleSource(val definition: SourceDefinition, private val identity: ExecutionIdentity,
     private val authority: ExecutionAuthority, private val session: SourceSession,
     private val runner: RuleTaskRunner, private val trace: ContentTrace = ContentTrace.None) : AutoCloseable {
-    private val spec = RuleSourceDefinition(definition)
+    internal val spec = RuleSourceDefinition(definition)
     private val store = RuleBookStore(session, authority, identity)
     private val serial = Mutex()
     val canSearch get() = spec.searchUrl.isNotBlank()
     val canLogin get() = spec.loginUrl.isNotBlank() || spec.loginUi.isNotBlank()
+    val canDiscover get() = definition.enabledExplore && spec.exploreUrl.isNotBlank()
+
+    fun openDiscovery(sessionId: String, values: Map<String, String> = emptyMap(),
+        environment: RuleDiscoveryEnvironment = RuleDiscoveryEnvironment()) = RuleDiscoverySession(this, sessionId, values, environment)
+
+    internal fun discoveryState(key: String): String? = authority.authorized(identity) {
+        val result = session.read(StorageRequest(StorageArea.Config, "discovery/$key"))
+        if (result !is StorageResult.Value) throw SourceContentException(ContentError.Storage, "discovery.$key")
+        result.value
+    }
+
+    internal fun saveDiscoveryState(key: String, value: String) = authority.authorized(identity) {
+        val path = if (key == "configuration") "variable" else "discovery/$key"
+        if (session.write(StorageRequest(StorageArea.Config, path, value)) !is StorageResult.Value)
+            throw SourceContentException(ContentError.Storage, "discovery.$key")
+    }
+
+    internal suspend fun discoveryPage(context: RuleEvaluation, url: String): List<RuleBook> =
+        booksFromPage(context, fetch(context, url, "exploreUrl"), spec.explore, "ruleExplore")
+
+    suspend fun openDiscoveryBrowser(url: String, html: String? = null, script: String = "", title: String = ""): Unit =
+        operation("discovery.browser", timeoutMillis = 300000) {
+            val context = evaluation(interactive = true)
+            request(context, url, "discovery.browser", browser = BrowserOptions(interactive = true, html = html, script = script, title = title))
+            Unit
+        }
     init {
         require(identity.sourceId == definition.sourceId && identity.profile == definition.profile && identity.revision == definition.contentDigest)
         require(session.scope.sourceId == identity.sourceId && session.scope.namespace == identity.namespace &&
@@ -307,7 +333,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val old = store.read(id)
         return if (old?.informationLoaded == true && old.revision == identity.revision) old else information(id, old)
     }
-    private fun evaluation(book: RuleBook? = null, chapter: RuleChapter? = null, keyword: String = "", page: Int = 1, interactive: Boolean = false): RuleEvaluation {
+    internal fun evaluation(book: RuleBook? = null, chapter: RuleChapter? = null, keyword: String = "", page: Int = 1, interactive: Boolean = false): RuleEvaluation {
         val result = RuleEvaluation(identity, authority, session, runner, spec.library, book?.id, chapter?.id,
             book?.state ?: ScriptState(), chapter?.state ?: ScriptState(), book?.id ?: spec.baseUrl, keyword, page,
             headerRule = spec.header, interactive = interactive, trace = trace)
@@ -382,7 +408,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
     }
     // Host storage and orchestration use IO. The caller's priority dispatcher owns the outer
     // request only; nested timeout jobs must not compete with their parent for its last permit.
-    private suspend fun <T : Any> operation(field: String, timeoutMillis: Long = 60000, block: suspend () -> T): T = withContext(Dispatchers.IO) { serial.withLock {
+    internal suspend fun <T : Any> operation(field: String, timeoutMillis: Long = 60000, block: suspend () -> T): T = withContext(Dispatchers.IO) { serial.withLock {
         if (!authority.accepts(identity)) throw SourceContentException(ContentError.Unavailable, field)
         try { withTimeoutOrNull(timeoutMillis) { block().also { currentCoroutineContext().ensureActive()
             if (!authority.accepts(identity)) throw SourceContentException(ContentError.Unavailable, field) } }

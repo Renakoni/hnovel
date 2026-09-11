@@ -14,7 +14,7 @@ The existing `JVM unit tests` CI job runs this task alongside the app tests. It 
 - `rhino-contract`: Rhino executes a synthetic script against a recording **host double**. This validates the test contract, not the real Legado Java bridge, login implementation, or browser.
 - `mixed-contract`: a pinned HTML selector feeds a synthetic script. This does not exercise upstream `AnalyzeRule` routing or the complete `WebBook` pipeline.
 
-The first corpus has 21 executable cases and six synthetic source definitions. `coverage.json` maps the broader target to implementation Issues and future test IDs. **FORMAT (#83) and six #84 feature statuses now have product evidence. URL/HTTP/storage have tested production broker backends and remain `partial` for the full script-facing profile; all other features remain `planned`.** No skipped test is used to make missing product functionality look green. Browser and process isolation explicitly require future Android emulator tests.
+The first corpus has 21 executable cases and six synthetic source definitions. `coverage.json` maps the broader target to implementation Issues and future test IDs, and records current per-feature product evidence. URL/HTTP/storage retain their explicit partial-acceptance boundaries. No skipped test is used to make missing product functionality look green; JVM host doubles are not Android browser or process-isolation evidence.
 
 `ReferenceRunner` calls the pinned selectors directly. It intentionally does not reimplement the whole rule interpreter as a supposedly independent oracle. The three small JVM shims replace only an Android shrinker annotation, `TextUtils.join`, and disabled debug logging. They do not supply fake parser results.
 
@@ -54,3 +54,7 @@ Tests now depend on production `source-network`. `ProductRequestContractTest` co
 ## Production import evidence (#83)
 
 `ProductImportFixtureTest` previews and explicitly commits the six existing synthetic definitions through `source-import`. Its tests also cover indexed validation errors, selection/conflict decisions, identity preservation, flags, disk snapshots and local broker downloads. Unknown fields and external customOrder are retained; customOrder does not change the host tab order. Importing a definition does not execute its rules or establish runtime compatibility.
+
+## Production discovery evidence (#91)
+
+`RuleDiscoveryTest`, `ScriptDiscoveryTest`, and the app's `RuleDiscoveryProviderTest` execute the finite source catalogue/action protocol through production entry points. Host state and Compose tests cover one source per tab, filter snapshots, cancellation and source-local refreshes. The four #91 feature entries refer to that bounded discovery/settings contract, not every reader callback or overload in a Legado fork. See [the protocol, provenance, and deliberate differences](../source-content/DISCOVERY.md), including `infoMap.save` commit timing and the product-defined `exploreScreen` / `upConfig` mappings. The historical private-sample inventory remains shape evidence, not proof of live-source compatibility.

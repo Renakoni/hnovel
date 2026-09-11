@@ -33,7 +33,8 @@ class SourceDiagnosticsTest {
             val diagnostics = SourceDiagnostics(context, sources, fixture.runner, fixture.authority, accounts, registry, StorageCipher.Plain)
             try {
                 val secret = "synthetic-secret-never-export"
-                val raw = JsonObject(fixture.raw() + ("ruleExplore" to fixture.raw().getValue("ruleSearch")) + ("ruleSearch" to buildJsonObject {
+                val raw = JsonObject(fixture.raw() + ("exploreUrl" to JsonPrimitive("@js:infoMap.note='diagnostic';infoMap.save();[{title:'Books',url:'/search'}]")) +
+                    ("ruleExplore" to fixture.raw().getValue("ruleSearch")) + ("ruleSearch" to buildJsonObject {
                     put("bookList", "li"); put("bookUrl", "a@href")
                     put("name", "@js:source.put('private','$secret');throw '$secret';")
                 }))
@@ -57,6 +58,13 @@ class SourceDiagnosticsTest {
                 assertEquals("Success", discovery.result)
                 assertTrue(discovery.count > 0)
                 assertTrue(discovery.events.any { it.field == "ruleExplore.name" })
+                val requests = fixture.documents.get()
+                val catalogue = diagnostics.run(id, DiagnosticStage.Discovery, "", "", "")
+                assertEquals("Success", catalogue.result)
+                assertEquals(1, catalogue.count)
+                assertTrue(catalogue.events.any { it.field == "exploreUrl" })
+                assertEquals(requests, fixture.documents.get())
+                assertEquals(StorageResult.Value(null), target.session.read(StorageRequest(StorageArea.Config, "discovery/info")))
                 fixture.status = 503
                 val network = diagnostics.run(id, DiagnosticStage.Information, "", fixture.server.url("/book/one").toString(), "")
                 assertEquals("Network", network.result)

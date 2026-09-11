@@ -11,6 +11,10 @@ internal class RuleSourceDefinition(val stored: SourceDefinition) {
     val baseUrl = root.string("bookSourceUrl")
     val library = root.string("jsLib").takeIf { it.isNotBlank() }
     val searchUrl = root.string("searchUrl")
+    val exploreUrl = root.string("exploreUrl")
+    val exploreScreen = root.string("exploreScreen")
+    val customButton = root["customButton"]?.jsonPrimitive?.booleanOrNull ?: false
+    val eventListener = root["eventListener"]?.jsonPrimitive?.booleanOrNull ?: false
     val bookUrlPattern = root.string("bookUrlPattern")
     val header = root.string("header")
     val loginCheck = root.string("loginCheckJs")

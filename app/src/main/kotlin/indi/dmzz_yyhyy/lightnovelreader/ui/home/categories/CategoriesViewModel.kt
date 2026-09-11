@@ -3,7 +3,7 @@ package indi.dmzz_yyhyy.lightnovelreader.ui.home.categories
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.github.michaelbull.result.andThen
+import com.github.michaelbull.result.getOrElse
 import com.github.michaelbull.result.onOk
 import com.github.michaelbull.result.onErr
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -11,12 +11,15 @@ import indi.dmzz_yyhyy.lightnovelreader.data.web.*
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.discovery.*
 import io.nightfish.lightnovelreader.api.Route
 import io.nightfish.lightnovelreader.api.identifier.Identifier
-import io.nightfish.lightnovelreader.api.web.discovery.DiscoveryError
+import io.nightfish.lightnovelreader.api.web.discovery.*
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.Json
 import java.util.UUID
 import javax.inject.Inject
 
@@ -26,6 +29,11 @@ data class CategoryContent(
     val loading: Boolean = false,
     val error: DiscoveryError? = null,
     val scroll: DiscoveryScroll = DiscoveryScroll(),
+    val filters: List<DiscoveryFilter> = emptyList(),
+    val values: Map<String, String> = emptyMap(),
+    val buttons: List<DiscoveryButton> = emptyList(),
+    val acting: Boolean = false,
+    val errorField: String? = null,
 )
 
 data class CategoriesState(
@@ -34,6 +42,8 @@ data class CategoriesState(
     val content: Map<Identifier, CategoryContent> = emptyMap(),
     val loadingSources: Boolean = false,
 )
+
+data class DiscoveryCommand(val source: Identifier, val epoch: Long, val action: DiscoveryAction, val values: Map<String, String>)
 
 @HiltViewModel
 class CategoriesViewModel @Inject constructor(
@@ -49,7 +59,16 @@ class CategoriesViewModel @Inject constructor(
     }
     private var active = false
     private var pending: Job? = null
+    private var browser: Job? = null
+    private var browserToken: Any? = null
     private var serial = 0L
+    private var actionEpoch = 0L
+    private val sessions = mutableMapOf<Identifier, SourceDiscovery>()
+    private val refreshCatalog = mutableSetOf<Identifier>()
+    private val outgoing = Channel<DiscoveryCommand>(Channel.BUFFERED)
+    val commands = outgoing.receiveAsFlow()
+    private val pageId = saved.get<String>("category.session") ?: UUID.randomUUID().toString().also { saved["category.session"] = it }
+    private var environment = DiscoveryEnvironment()
 
     init {
         viewModelScope.launch {
@@ -62,6 +81,7 @@ class CategoriesViewModel @Inject constructor(
                 if (changed) cancelLoad()
                 // cancelLoad also clears loading flags; do not restore a snapshot captured before it.
                 val content = state.value.content.filterKeys { it in next && versions[it] == next[it] }
+                sessions.keys.retainAll(content.keys)
                 versions = next
                 mutableState.value = CategoriesState(sources, selected, content)
                 if (selected != null) remember(selected)
@@ -70,9 +90,9 @@ class CategoriesViewModel @Inject constructor(
         }
     }
 
-    fun setActive(value: Boolean) {
+    fun setActive(value: Boolean, retainBrowser: Boolean = false) {
         active = value
-        if (value) load() else cancelLoad()
+        if (value) load() else cancelLoad(retainBrowser)
     }
 
     fun select(id: Identifier) {
@@ -86,8 +106,69 @@ class CategoriesViewModel @Inject constructor(
     fun refresh() {
         val id = state.value.selected ?: return
         cancelLoad()
-        put(id, CategoryContent(scroll = state.value.content[id]?.scroll ?: DiscoveryScroll()))
+        refreshCatalog += id
+        put(id, (state.value.content[id] ?: CategoryContent()).copy(loaded = false, loading = false, error = null))
         if (active) load()
+    }
+
+    fun environment(value: DiscoveryEnvironment) {
+        if (environment == value) return
+        environment = value
+        cancelLoad()
+        sessions.clear()
+        mutableState.value = state.value.copy(content = state.value.content.mapValues { (_, page) -> page.copy(loaded = false, error = null) })
+    }
+
+    fun accepts(command: DiscoveryCommand) = active && state.value.selected == command.source && command.epoch == actionEpoch
+
+    fun interact(id: String, value: String? = null, longClick: Boolean = false) {
+        val source = state.value.selected ?: return
+        val previous = state.value.content[source] ?: return
+        val discovery = sessions[source] ?: return
+        if (!active || previous.loading || previous.acting) return
+        cancelLoad()
+        val token = ++serial
+        val epoch = actionEpoch
+        put(source, previous.copy(acting = true, error = null))
+        pending = viewModelScope.launch {
+            val result = discoveryRequest { discovery.interact(id, value, longClick) }
+            if (serial != token || !active || state.value.selected != source) return@launch
+            result.onErr { put(source, state.value.content.getValue(source).copy(acting = false, error = it, errorField = discovery.failureField)) }
+                .onOk { update ->
+                    put(source, applyCatalog(state.value.content.getValue(source), update.catalog))
+                    // Record invalidation before an emitted action can stop/cancel this page's work.
+                    if (update.refresh) {
+                        refreshCatalog += source
+                        put(source, state.value.content.getValue(source).copy(loaded = false))
+                    }
+                    update.actions.forEach { outgoing.send(DiscoveryCommand(source, epoch, it, update.catalog.values)) }
+                    if (update.refresh && active) load()
+                }
+        }
+    }
+
+    fun openBrowser(command: DiscoveryCommand) {
+        if (!accepts(command)) return
+        val action = command.action as? DiscoveryAction.Browser ?: return
+        val discovery = sessions[command.source] ?: return
+        // A queued catalogue refresh must not race the browser's page/session ownership.
+        serial++
+        pending?.cancel()
+        pending = null
+        val token = Any()
+        browserToken = token
+        browser?.cancel()
+        put(command.source, state.value.content.getValue(command.source).copy(loading = false, acting = true, error = null, errorField = null))
+        browser = viewModelScope.launch {
+            val result = discoveryRequest { discovery.openBrowser(action) }
+            // Its Activity covers this destination. Completion may precede onStart, after UI
+            // command epochs have expired; only this captured browser request may finish the handoff.
+            if (browserToken !== token) return@launch
+            browserToken = null
+            browser = null
+            result.onErr { put(command.source, state.value.content.getValue(command.source).copy(acting = false, error = it, errorField = discovery.failureField)) }
+                .onOk { refresh() }
+        }
     }
 
     fun scroll(id: Identifier, position: DiscoveryScroll) {
@@ -96,9 +177,11 @@ class CategoriesViewModel @Inject constructor(
 
     fun result(category: SourceDiscoveryCategory): Route.Main.DiscoveryResults? {
         val id = state.value.selected ?: return null
-        if (category.target.sourceId != id || category !in state.value.content[id]?.categories.orEmpty()) return null
+        if (category.target.sourceId != id || category.target.target.isBlank() || category !in state.value.content[id]?.categories.orEmpty()) return null
+        // Rule input IDs equal the original form title/infoMap key, not viewName or URL-row digests.
+        // filtersJson relies on this to seed both result filter normalization and the page-local draft.
         return Route.Main.DiscoveryResults(id.namespace, id.id, category.target.target, category.title,
-            UUID.randomUUID().toString(), category.id)
+            UUID.randomUUID().toString(), category.id, Json.encodeToString(state.value.content[id]?.values.orEmpty()))
     }
 
     private fun remember(id: Identifier) {
@@ -107,29 +190,43 @@ class CategoriesViewModel @Inject constructor(
         saved["category.source"] = id.id
     }
 
-    private fun cancelLoad() {
+    private fun cancelLoad(retainBrowser: Boolean = false) {
         serial++
+        actionEpoch++
         pending?.cancel()
         pending = null
-        state.value.selected?.let { id -> state.value.content[id]?.let { put(id, it.copy(loading = false)) } }
+        if (!retainBrowser) {
+            browserToken = null
+            browser?.cancel()
+            browser = null
+        }
+        state.value.selected?.let { id -> state.value.content[id]?.let { put(id, it.copy(loading = false, acting = browserToken != null)) } }
     }
 
     private fun put(id: Identifier, value: CategoryContent) {
         mutableState.value = state.value.copy(content = state.value.content + (id to value))
     }
 
+    private fun applyCatalog(previous: CategoryContent, catalog: SourceDiscoveryCatalog) = previous.copy(
+        categories = catalog.categories, filters = catalog.filters, values = catalog.values, buttons = catalog.buttons,
+        loaded = true, loading = false, acting = false, error = null, errorField = null)
+
     private fun load() {
         val id = state.value.selected ?: return
         val previous = state.value.content[id] ?: CategoryContent()
-        if (previous.loaded || previous.loading || previous.error != null) return
+        if (previous.loaded || previous.loading || previous.acting || previous.error != null) return
         val token = ++serial
         put(id, previous.copy(loading = true))
         pending = viewModelScope.launch {
-            val result = discoveryRequest { registry.discovery(id).andThen { it.categories() } }
+            val result = discoveryRequest {
+                val discovery = sessions[id] ?: registry.discovery(id).getOrElse { return@discoveryRequest com.github.michaelbull.result.Err(it) }
+                    .forSession(pageId, previous.values, environment).also { sessions[id] = it }
+                discovery.catalog(id in refreshCatalog)
+            }
             if (serial != token || !active || state.value.selected != id) return@launch
             val current = state.value.content[id] ?: previous
-            result.onOk { put(id, current.copy(categories = it, loading = false, loaded = true)) }
-                .onErr { put(id, current.copy(error = it, loading = false)) }
+            result.onOk { refreshCatalog -= id; put(id, applyCatalog(current, it)) }
+                .onErr { put(id, current.copy(error = it, loading = false, errorField = sessions[id]?.failureField)) }
         }
     }
 }

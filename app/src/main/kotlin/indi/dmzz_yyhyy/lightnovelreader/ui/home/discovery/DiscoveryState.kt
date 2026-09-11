@@ -47,4 +47,5 @@ internal fun filterValues(definitions: List<DiscoveryFilter>, saved: Map<String,
         is DiscoveryFilter.Toggle -> saved[filter.id]?.takeIf { it == "true" || it == "false" } ?: filter.defaultValue.toString()
         is DiscoveryFilter.Number -> saved[filter.id]?.toIntOrNull()?.takeIf { it in filter.min..filter.max }?.toString()
             ?: filter.defaultValue.toString()
+        is DiscoveryFilter.Text -> saved[filter.id]?.takeIf { it.length <= 4096 } ?: filter.defaultValue
     } }

@@ -80,6 +80,19 @@ class SourceDefinitionImporterTest {
         assertEquals("concurrentRate", invalid.issues.single().field)
     }
 
+    @Test fun discoveryExtensionFlagsAreBooleansAndRemainExplicitlyClassified() {
+        val importer = SourceDefinitionImporter(SourceDefinitionStore(temp.newFolder().toPath()))
+        val preview = importer.preview(json(extra = ",\"customButton\":true,\"eventListener\":false"))
+        assertTrue(preview.issues.isEmpty())
+        assertEquals(setOf("customButton", "eventListener"), preview.candidates.single().notices
+            .filter { it.code == "DiscoveryExtension" }.map { it.field }.toSet())
+        for (field in listOf("customButton", "eventListener")) for (value in listOf("\"true\"", "\"@js:run()\"", "{}", "1")) {
+            val invalid = importer.preview(json(extra = ",\"$field\":$value"))
+            assertEquals(ImportCode.InvalidField, invalid.issues.single().code)
+            assertEquals(field, invalid.issues.single().field)
+        }
+    }
+
     @Test fun complexFieldsAreValidationErrorsAndCannotOverwriteExistingDefinition() {
         val root = temp.newFolder().toPath()
         val store = SourceDefinitionStore(root)

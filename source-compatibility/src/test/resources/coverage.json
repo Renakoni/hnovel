@@ -18,7 +18,7 @@
       "scope": "Must report unknown fields/API explicitly; cannot auto-label as supported."
     }
   ],
-  "productImplementedCount": 18,
+  "productImplementedCount": 22,
   "features": [
     {
       "id": "FORMAT",
@@ -410,22 +410,34 @@
       "owner": "https://github.com/Renakoni/hnovel/issues/91",
       "requirement": "exploreUrl/ruleExplore/exploreScreen 的动态分类、过滤和单层 feed 映射。",
       "testId": "CONFORMANCE-DISCOVERY",
-      "implementation": "planned",
-      "verification": "reference-fixture",
+      "implementation": "implemented",
+      "verification": "product-contract",
       "fixtures": [
         "DISCOVERY-CONTRACT"
       ],
-      "evidence": "Rhino evaluation with synthetic source variables, not the upstream discovery host."
+      "evidence": "Production imported catalogue/ruleExplore pipeline, source-qualified adapter and host state/Compose tests: static/dynamic rows, source-order lazy previews, per-page filters and drafts, duplicate-page termination, retry and revision/account cancellation. exploreScreen uses an explicitly product-defined finite control contract, not an established upstream oracle. See source-content/DISCOVERY.md; no new real WebView/Binder evidence is claimed.",
+      "productTests": [
+        "hnovel.content.RuleDiscoveryTest",
+        "indi.dmzz_yyhyy.lightnovelreader.data.web.rules.RuleDiscoveryProviderTest",
+        "indi.dmzz_yyhyy.lightnovelreader.ui.home.categories.CategoriesViewModelTest",
+        "indi.dmzz_yyhyy.lightnovelreader.ui.home.categories.CategoriesScreenTest",
+        "indi.dmzz_yyhyy.lightnovelreader.ui.home.discovery.DiscoveryResultsViewModelTest"
+      ]
     },
     {
       "id": "EXTENSION-FLAGS",
       "owner": "https://github.com/Renakoni/hnovel/issues/91",
       "requirement": "样本 customButton/eventListener 是布尔标记；识别扩展并实现已确认事件/按钮协议，不能当作 JS 字段直接 eval。",
       "testId": "CONFORMANCE-EXTENSION-FLAGS",
-      "implementation": "planned",
-      "verification": "future-fixture",
+      "implementation": "implemented",
+      "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Pinned reference source inspection; production implementation pending."
+      "evidence": "customButton/eventListener are validated booleans. Source controls dispatch clickCustomButton/longClickCustomButton to ruleContent.callBackJs with explicit event and null book/chapter. Luoyacheng/legado@8b87c5aba4df91c39a3a0939a68a1180b9f2ee1c is separate extension evidence. This is the finite discovery/settings integration, not reader/shelf/detail lifecycle callbacks.",
+      "productTests": [
+        "hnovel.imports.SourceDefinitionImporterTest",
+        "hnovel.content.RuleDiscoveryTest",
+        "indi.dmzz_yyhyy.lightnovelreader.ui.home.categories.CategoriesScreenTest"
+      ]
     },
     {
       "id": "EXTENSION-LOGIN-UI",
@@ -442,20 +454,31 @@
       "owner": "https://github.com/Renakoni/hnovel/issues/91",
       "requirement": "infoMap.set/save 的状态保存/动作上下文：观察到成员使用，构造和持久化语义仍需扩展宿主证据，不能凭名称宣称等价。",
       "testId": "CONFORMANCE-EXTENSION-INFOMAP",
-      "implementation": "planned",
-      "verification": "future-fixture",
+      "implementation": "implemented",
+      "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Pinned reference source inspection; production implementation pending."
+      "evidence": "Invocation-local string drafts support bracket/get/put/set and explicit save(seconds,need), backed by source settings with TTL. set replaces; unsaved drafts remain page-local and failed actions do not commit. InfoMap.kt at Luoyacheng/legado@8b87c5aba4df91c39a3a0939a68a1180b9f2ee1c supplies extension evidence; the host deliberately commits after successful operations instead of Android onPause. See source-content/DISCOVERY.md.",
+      "productTests": [
+        "hnovel.rhino.ScriptDiscoveryTest",
+        "hnovel.content.RuleDiscoveryTest",
+        "indi.dmzz_yyhyy.lightnovelreader.ui.home.discovery.DiscoveryResultsViewModelTest"
+      ]
     },
     {
       "id": "EXTENSION-UI",
       "owner": "https://github.com/Renakoni/hnovel/issues/91",
       "requirement": "java.upConfig/upLoginData/reLoginView/refreshExplore/showBrowser/open/searchBook 及配置/theme 快照等扩展动作；逐项定义受控协议。",
       "testId": "CONFORMANCE-EXTENSION-UI",
-      "implementation": "planned",
-      "verification": "future-fixture",
+      "implementation": "implemented",
+      "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Pinned reference source inspection; production implementation pending."
+      "evidence": "Bounded data-only actions map to current-source forms, coalesced refresh, settings/login, source-local search/results and the existing permissioned browser/Cookie ports. Current-source searchBook object overload, invocation ownership, limits and lifecycle cancellation are tested. Theme/reader data are host snapshots, not Android handles. upConfig has documented product-defined source-local semantics; exact upstream overload equivalence is unresolved. Unknown actions/fields fail with locations; no arbitrary UI DSL or global-setting mutation. See source-content/DISCOVERY.md.",
+      "productTests": [
+        "hnovel.rhino.ScriptDiscoveryTest",
+        "hnovel.content.RuleDiscoveryTest",
+        "indi.dmzz_yyhyy.lightnovelreader.data.web.rules.RuleDiscoveryProviderTest",
+        "indi.dmzz_yyhyy.lightnovelreader.ui.home.categories.CategoriesViewModelTest"
+      ]
     },
     {
       "id": "IDENTIFIERS",

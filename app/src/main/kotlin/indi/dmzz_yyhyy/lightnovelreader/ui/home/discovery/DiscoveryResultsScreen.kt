@@ -43,7 +43,7 @@ fun DiscoveryResultsScreen(
             }
             items(state.books, key = { it.id.storageKey }) { book -> DiscoveryBookCard(book) { onBook(book.id) } }
             if (state.loading) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
-            state.error?.let { error -> item { DiscoveryFailure(error, onLoadMore, onManageSources, onBack) } }
+            state.error?.let { error -> item { DiscoveryFailure(error, onLoadMore, onManageSources, onBack, state.errorField) } }
             if (state.loaded && state.books.isEmpty() && state.error == null) item { Text(stringResource(R.string.discovery_no_books)) }
             if (state.hasMore && state.error == null) item {
                 OutlinedButton(onClick = onLoadMore, enabled = !state.loading, modifier = Modifier.fillMaxWidth()) {

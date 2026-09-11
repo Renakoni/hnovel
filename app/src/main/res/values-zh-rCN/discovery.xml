@@ -15,4 +15,6 @@
     <string name="discovery_invalid_target">此分类或筛选条件已失效，请返回分类目录。</string>
     <string name="discovery_invalid_response">书源返回的数据无效，请重试或查看书源诊断。</string>
     <string name="discovery_unavailable">此书源已移除、停用或替换，请返回目录或打开书源管理。</string>
+    <string name="discovery_rule_field">书源规则：%1$s</string>
+    <string name="discovery_source_action">书源操作</string>
 </resources>

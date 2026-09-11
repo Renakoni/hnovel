@@ -23,19 +23,33 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
+import androidx.navigation.toRoute
 import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.data.web.SourceCapability
 import indi.dmzz_yyhyy.lightnovelreader.data.web.rules.ImportedRuleSources
 import indi.dmzz_yyhyy.lightnovelreader.data.web.rules.LoginStatus
 import io.nightfish.lightnovelreader.api.Route
+import io.nightfish.lightnovelreader.api.identifier.Identifier
 import io.nightfish.lightnovelreader.api.ui.LocalNavController
 import kotlinx.serialization.json.*
+import kotlinx.coroutines.flow.first
 
 fun NavGraphBuilder.settingsSourcesDestination() {
     composable<Route.Main.Settings.Sources> {
         val nav = LocalNavController.current
         val model = hiltViewModel<SourcesViewModel>()
         val state by model.state.collectAsStateWithLifecycle()
+        SourcesScreen(state, model, onDiagnostics = { id -> nav.navigate(Route.Main.Settings.SourceDiagnostic(id.namespace, id.id)) }) { nav.popBackStack() }
+    }
+    composable<Route.Main.Settings.SourceDetail> { entry ->
+        val route = entry.toRoute<Route.Main.Settings.SourceDetail>()
+        val nav = LocalNavController.current
+        val model = hiltViewModel<SourcesViewModel>()
+        val state by model.state.collectAsStateWithLifecycle()
+        LaunchedEffect(model) {
+            model.state.first { !it.busy }
+            model.openFromDiscovery(Identifier(route.namespace, route.sourceId), route.login)
+        }
         SourcesScreen(state, model, onDiagnostics = { id -> nav.navigate(Route.Main.Settings.SourceDiagnostic(id.namespace, id.id)) }) { nav.popBackStack() }
     }
 }
