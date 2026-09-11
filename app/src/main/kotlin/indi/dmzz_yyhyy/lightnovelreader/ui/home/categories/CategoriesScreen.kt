@@ -10,10 +10,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.data.web.SourceDiscoveryCategory
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.discovery.*
+import indi.dmzz_yyhyy.lightnovelreader.ui.home.HomeSettingsAction
+import indi.dmzz_yyhyy.lightnovelreader.utils.bottomBarSpacer
 import io.nightfish.lightnovelreader.api.identifier.Identifier
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -30,7 +34,7 @@ fun CategoriesScreen(
     onInput: (String, String) -> Unit = { _, _ -> },
     onAction: (String, Boolean) -> Unit = { _, _ -> },
 ) {
-    Scaffold(topBar = { DiscoveryTopBar(stringResource(R.string.categories_title), onBack, onRefresh, onSettings) }) { padding ->
+    Scaffold(topBar = { CategoriesTopBar(onRefresh, onSettings) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             if (state.loadingSources) {
                 // No inventory snapshot yet is not an authoritative empty-source result.
@@ -72,9 +76,21 @@ fun CategoriesScreen(
                                 modifier = Modifier.clickable(enabled = category.target.target.isNotBlank()) { onCategory(category) })
                             HorizontalDivider(Modifier.padding(horizontal = 16.dp))
                         }
+                        bottomBarSpacer()
                     }
                 }
             }
         }
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun CategoriesTopBar(onRefresh: () -> Unit, onSettings: () -> Unit) {
+    MediumTopAppBar(title = { Text(stringResource(R.string.categories_title), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        navigationIcon = { Icon(painterResource(R.drawable.view_list_24px), null, Modifier.padding(12.dp)) },
+        actions = {
+            TextButton(onClick = onRefresh) { Text(stringResource(R.string.discovery_refresh)) }
+            HomeSettingsAction(onSettings)
+        }, windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top))
 }

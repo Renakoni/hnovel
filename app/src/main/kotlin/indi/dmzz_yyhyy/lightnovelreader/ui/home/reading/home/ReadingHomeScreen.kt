@@ -81,6 +81,11 @@ import indi.dmzz_yyhyy.lightnovelreader.ui.components.EmptyPage
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.SectionHeader
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.rememberSkeletonShimmer
 import indi.dmzz_yyhyy.lightnovelreader.utils.LocalSnackbarHost
+import indi.dmzz_yyhyy.lightnovelreader.ui.home.HomeSettingsAction
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
 import indi.dmzz_yyhyy.lightnovelreader.utils.bottomBarPadding
 import indi.dmzz_yyhyy.lightnovelreader.utils.bottomBarSpacer
 import indi.dmzz_yyhyy.lightnovelreader.utils.formReadingDuration
@@ -110,12 +115,14 @@ fun ReadingScreen(
     onAddBook: (String) -> Unit,
     @Suppress("unused") sharedTransitionScope: SharedTransitionScope,
     onClickOpenChapters: (String) -> Unit,
+    onSettings: () -> Unit,
 ) {
 
     Column(modifier = Modifier.fillMaxSize()) {
-        TopBar(
+        ReadingTopBar(
             onClickDownloadManager = onClickDownloadManager,
-            onClickStats = onClickStats
+            onClickStats = onClickStats,
+            onSettings = onSettings
         )
 
         if (recentReadingBooks.isEmpty()) {
@@ -344,9 +351,10 @@ fun ReadingBookCardSkeleton(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun TopBar(
+internal fun ReadingTopBar(
     onClickDownloadManager: () -> Unit,
-    onClickStats: () -> Unit
+    onClickStats: () -> Unit,
+    onSettings: () -> Unit,
 ) {
     TopAppBar(
         title = {
@@ -371,7 +379,9 @@ private fun TopBar(
                     contentDescription = "statistics"
                 )
             }
-        }
+            HomeSettingsAction(onSettings)
+        },
+        windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top)
     )
 }
 

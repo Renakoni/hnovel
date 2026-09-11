@@ -2,8 +2,8 @@
 
 Implemented by #79 on top of the discovery contracts from #77, #78 and #91.
 The primary delivery is Explore and its source-scoped search/results. Root
-navigation/settings placement (#80) and retirement of remaining global source
-adapters (#81) are separate changes.
+navigation/settings placement is delivered separately by #80, as described below.
+Retirement of remaining global source adapters belongs to #81.
 
 ## Acceptance checklist
 
@@ -54,6 +54,47 @@ SavedState contains source selection/session IDs for roots and query/type/
 submitted text/expansion for search. Feeds, runtime instances and book flows are
 not serialized. The existing results route carries source, target, category ID,
 session ID and normalized filters.
+
+## Main navigation and settings (#80)
+
+The four bottom destinations are Reading, Bookshelf, Explore and Categories.
+Only their exact root destinations select/show the bottom bar; search, results,
+settings and source management are secondary pages. Each existing root app bar
+owns its title and actions and places the shared settings action last. Settings
+has one destination and a normal Back action, with no separate settings state per
+root and no changes to the reader's window ownership.
+
+`navigateToMainRoot` uses Navigation's saved back stacks for switching roots.
+Reselecting a root leaves its entry intact. A default Categories visit preserves
+the selected source; an explicit source shortcut sends a one-time request to the
+restored category entry. The request waits for the source inventory, then goes
+through the page's normal selection method. Source capability/removal handling
+therefore remains in the discovery ViewModel. Only the lightweight request is
+saved, never providers or feed data.
+
+Opening Settings does not pop or replace the originating root. The shared
+navigation helper accepts clicks only from a resumed entry and avoids adding a
+second settings graph. Back through Settings and its source page restores the
+same root entry, selection and scroll, including Activity reconstruction.
+
+App bars apply safe top/horizontal insets. Bookshelf selection groups Pin/Remove/
+Add-to-bookshelves in an overflow menu so layout, select-all, cancel and settings
+remain reachable on narrow screens. These actions retain their existing callbacks.
+Categories reserves bottom-bar space; Settings reserves only the system bar.
+
+- [x] Four content roots with a shared settings action and correct selected state.
+- [x] Settings/children hide the bottom bar and return to the originating entry.
+- [x] Repeated clicks and source shortcuts do not duplicate root/settings entries.
+- [x] Category source/scroll and nested settings navigation survive reconstruction.
+- [x] Root actions remain reachable with narrow/wide layouts and system bar insets.
+
+`MainNavigationTest` uses the real NavController, production navigation helpers
+and a Compose NavHost. It checks root ownership, repeated clicks, explicit source
+requests, saved scroll and Activity recreation in Settings → Sources.
+`HomeSettingsActionTest` renders the actual four root app bars at 320dp and
+720dp, dispatches system insets and checks touch bounds and selection actions.
+Existing Categories/Explore/Bookshelf UI tests cover their content and empty state.
+These are JVM/Robolectric checks; they do not claim physical-device UI coverage.
 
 ## Rule feed and native compatibility
 

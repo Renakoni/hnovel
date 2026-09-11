@@ -56,7 +56,7 @@ class ExploreHomeScreenTest {
         var categories: Identifier? = null
         activity.get().setContent { MaterialTheme {
             ExploreHomeScreen(state, { state = state.copy(selected = it) }, { _, _ -> }, {}, { more += it }, { books += it },
-                { search = state.selected }, { categories = state.selected }, {}, { _, _ -> }, { _, _ -> })
+                { search = state.selected }, { categories = state.selected }, {}, { _, _ -> }, { _, _ -> }, {})
         } }
         compose.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.Selected)).assertCountEquals(2)
         compose.onNodeWithText("Source A").assertIsSelected()
@@ -77,7 +77,7 @@ class ExploreHomeScreenTest {
         val id = Identifier("fixture", "Only source")
         activity.get().setContent { MaterialTheme {
             ExploreHomeScreen(DiscoveryPageState(listOf(listing(id, setOf(SourceCapability.Explore))), id, mapOf(id to content(id))),
-                {}, { _, _ -> }, {}, {}, {}, {}, {}, {}, { _, _ -> }, { _, _ -> })
+                {}, { _, _ -> }, {}, {}, {}, {}, {}, {}, { _, _ -> }, { _, _ -> }, {})
         } }
         compose.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.Selected)).assertCountEquals(1)
         compose.onNodeWithText("Only source").assertIsSelected()
@@ -88,7 +88,7 @@ class ExploreHomeScreenTest {
     @Test fun emptySourceStateOffersManagementAndNoFakeTabs() {
         var opened = 0
         activity.get().setContent { MaterialTheme {
-            ExploreHomeScreen(DiscoveryPageState(), {}, { _, _ -> }, {}, {}, {}, {}, {}, { opened++ }, { _, _ -> }, { _, _ -> })
+            ExploreHomeScreen(DiscoveryPageState(), {}, { _, _ -> }, {}, {}, {}, {}, {}, { opened++ }, { _, _ -> }, { _, _ -> }, {})
         } }
         compose.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.Selected)).assertCountEquals(0)
         compose.onNodeWithText("Book sources").performClick()
@@ -105,7 +105,7 @@ class ExploreHomeScreenTest {
         activity.get().setContent { MaterialTheme {
             ExploreHomeScreen(DiscoveryPageState(listOf(listing(id)), id, mapOf(id to page)),
                 {}, { _, _ -> }, {}, {}, {}, {}, {}, {}, { key, value -> input += key to value },
-                { key, long -> actions += key to long })
+                { key, long -> actions += key to long }, {})
         } }
         compose.onNodeWithText("Sort: New").performClick()
         compose.onNodeWithText("Popular").performClick()

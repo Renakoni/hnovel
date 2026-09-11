@@ -48,6 +48,9 @@ import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.theme.navigateToSetting
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.theme.settingsThemeDestination
 import indi.dmzz_yyhyy.lightnovelreader.ui.storagemanager.navigateToStorageManager
 import indi.dmzz_yyhyy.lightnovelreader.utils.isResumed
+import indi.dmzz_yyhyy.lightnovelreader.utils.popBackStackIfResumed
+import androidx.navigation.NavDestination.Companion.hasRoute
+import androidx.navigation.NavDestination.Companion.hierarchy
 import indi.dmzz_yyhyy.lightnovelreader.utils.uriLauncher
 import io.nightfish.lightnovelreader.api.Route
 import io.nightfish.lightnovelreader.api.ui.LocalNavController
@@ -77,7 +80,8 @@ fun NavGraphBuilder.settingsDestination() {
             onClickThemeSettings = navController::navigateToSettingsThemeDestination,
             onClickStorageManager = navController::navigateToStorageManager,
             clearReadingCache = settingsViewModel::clearReadingCache,
-            onOptOut = settingsViewModel::trackOptOut
+            onOptOut = settingsViewModel::trackOptOut,
+            onBack = { navController.popBackStackIfResumed() }
         )
     }
     settingsSourceChangeDestination()
@@ -106,7 +110,8 @@ fun NavGraphBuilder.settingsNavigation() {
 
 @Suppress("unused")
 fun NavController.navigateToSettingsDestination() {
-    navigate(Route.Main.Settings)
+    if (!isResumed() || currentDestination?.hierarchy?.any { it.hasRoute<Route.Main.Settings>() } == true) return
+    navigate(Route.Main.Settings) { launchSingleTop = true }
 }
 
 private fun NavGraphBuilder.sliderValueDialog() {

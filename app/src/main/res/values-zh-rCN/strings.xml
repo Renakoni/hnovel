@@ -679,4 +679,8 @@
     <string name="explore_search">搜索此来源</string>
     <string name="explore_no_sources">暂无支持探索的来源。可在来源管理中添加书源，或搜索支持搜索的来源。</string>
     <string name="explore_empty">此来源暂无探索内容。</string>
+    <string name="bookshelf_selection_actions">已选书籍操作</string>
+    <string name="bookshelf_pin_selected">置顶 / 取消置顶</string>
+    <string name="bookshelf_remove_selected">从当前书架移除</string>
+    <string name="bookshelf_collect_selected">添加到书架</string>
 </resources>

@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.AnimatedText
+import indi.dmzz_yyhyy.lightnovelreader.ui.home.HomeSettingsAction
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.data.MenuOptions.BookshelfSortTypeOptions
 import io.nightfish.lightnovelreader.api.bookshelf.BookshelfSortType
 
@@ -51,6 +52,7 @@ fun BookshelfHomeTopBar(
     onSaveThisBookshelf: () -> Unit,
     onSaveAllBookshelf: () -> Unit,
     onImportBookshelf: () -> Unit,
+    onSettings: () -> Unit,
 ) {
     val localDensity = LocalDensity.current
     var mainMenuExpanded by remember { mutableStateOf(false) }
@@ -352,26 +354,23 @@ fun BookshelfHomeTopBar(
                             contentDescription = "select all"
                         )
                     }
-                    IconButton(onClick = uiState.onPin) {
-                        Icon(
-                            painter = painterResource(R.drawable.keep_24px),
-                            contentDescription = "pin"
-                        )
-                    }
-                    IconButton(onClick = uiState.onRemove) {
-                        Icon(
-                            painter = painterResource(R.drawable.bookmark_remove_24px),
-                            contentDescription = "remove"
-                        )
-                    }
-                    IconButton(onClick = uiState.onMarkSelectedBooks) {
-                        Icon(
-                            painter = painterResource(R.drawable.outline_bookmark_24px),
-                            contentDescription = "bookmark"
-                        )
+                    Box {
+                        var expanded by remember { mutableStateOf(false) }
+                        IconButton(onClick = { expanded = true }) {
+                            Icon(painterResource(R.drawable.more_vert_24px), stringResource(R.string.bookshelf_selection_actions))
+                        }
+                        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                            DropdownMenuItem(text = { Text(stringResource(R.string.bookshelf_pin_selected)) },
+                                onClick = { expanded = false; uiState.onPin() })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.bookshelf_remove_selected)) },
+                                onClick = { expanded = false; uiState.onRemove() })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.bookshelf_collect_selected)) },
+                                onClick = { expanded = false; uiState.onMarkSelectedBooks() })
+                        }
                     }
                 }
             }
+            HomeSettingsAction(onSettings)
         },
         windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top),
         scrollBehavior = scrollBehavior,

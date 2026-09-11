@@ -28,6 +28,7 @@ import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.data.book.SourceBookId
 import indi.dmzz_yyhyy.lightnovelreader.data.web.*
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.Cover
+import indi.dmzz_yyhyy.lightnovelreader.ui.home.HomeSettingsAction
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.discovery.*
 import indi.dmzz_yyhyy.lightnovelreader.utils.bottomBarSpacer
 import indi.dmzz_yyhyy.lightnovelreader.utils.fadingEdge
@@ -47,6 +48,7 @@ fun ExploreHomeScreen(
     onManageSources: () -> Unit,
     onInput: (String, String) -> Unit,
     onAction: (String, Boolean) -> Unit,
+    onSettings: () -> Unit,
 ) {
     val selected = state.sources.firstOrNull { it.metadata.id == state.selected }
     val capabilities = selected?.metadata?.capabilities.orEmpty()
@@ -60,7 +62,8 @@ fun ExploreHomeScreen(
                 IconButton(onClick = onSearch, enabled = SourceCapability.Search in capabilities) {
                     Icon(painterResource(R.drawable.search_24px), stringResource(R.string.explore_search))
                 }
-            })
+                HomeSettingsAction(onSettings)
+            }, windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top))
     }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             if (state.loadingSources) {
