@@ -1,0 +1,18 @@
+<resources>
+    <string name="categories_title">Categories</string>
+    <string name="categories_no_sources">No enabled book source provides categories. Add or enable a source in source management.</string>
+    <string name="categories_empty">This source returned no categories.</string>
+    <string name="discovery_refresh">Refresh</string>
+    <string name="discovery_retry">Retry</string>
+    <string name="discovery_apply">Apply</string>
+    <string name="discovery_load_more">Load more</string>
+    <string name="discovery_no_books">No books match these filters.</string>
+    <string name="discovery_unsupported">This source does not provide this browsing capability.</string>
+    <string name="discovery_login_required">Sign in to this source in source management, then retry.</string>
+    <string name="discovery_permission">This source needs network permission. Check its allowed sites in source management.</string>
+    <string name="discovery_invalid_rules">The source rules are incompatible. Check source diagnostics or update the source.</string>
+    <string name="discovery_network">Could not load this source. Check the connection and retry.</string>
+    <string name="discovery_invalid_target">This category or filter is no longer available. Return to the category list.</string>
+    <string name="discovery_invalid_response">The source returned an invalid result. Retry or check source diagnostics.</string>
+    <string name="discovery_unavailable">This source was removed, disabled or replaced. Return to the list or open source management.</string>
+</resources>

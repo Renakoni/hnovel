@@ -66,6 +66,8 @@ class LightNovelReaderApplication : Application(), Configuration.Provider, coil3
             System.setProperty("kotlinx.coroutines.debug", "on")
         }
         // We have to ensure the plugin load before the activity start up, so we use run blocking here though it will block the main thread
+        // Discovery treats the first registry snapshot as authoritative, including imported sources.
+        // Async startup must add explicit registration readiness before exposing missing/empty states.
         runBlocking {
             pluginManager.initAllPlugin()
             importedRuleSources.restore()

@@ -104,6 +104,21 @@ object Route {
                 val sourceBookKey: String? = null
             )
         }
+        @Serializable
+        object Categories
+
+        /** A host-owned result session; targets and filters never imply a global source switch. */
+        @Serializable
+        data class DiscoveryResults(
+            val namespace: String,
+            val sourceId: String,
+            val target: String,
+            val title: String,
+            val sessionId: String,
+            val categoryId: String? = null,
+            val filtersJson: String = "{}",
+        )
+
         /** 设置界面路由组 */
         @Serializable
         object Settings {
