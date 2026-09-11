@@ -60,6 +60,7 @@ class CategoriesViewModel @Inject constructor(
     private var active = false
     private var pending: Job? = null
     private var browser: Job? = null
+    private var browserToken: Any? = null
     private var serial = 0L
     private var actionEpoch = 0L
     private val sessions = mutableMapOf<Identifier, SourceDiscovery>()
@@ -89,9 +90,9 @@ class CategoriesViewModel @Inject constructor(
         }
     }
 
-    fun setActive(value: Boolean) {
+    fun setActive(value: Boolean, retainBrowser: Boolean = false) {
         active = value
-        if (value) load() else cancelLoad()
+        if (value) load() else cancelLoad(retainBrowser)
     }
 
     fun select(id: Identifier) {
@@ -135,12 +136,13 @@ class CategoriesViewModel @Inject constructor(
             result.onErr { put(source, state.value.content.getValue(source).copy(acting = false, error = it, errorField = discovery.failureField)) }
                 .onOk { update ->
                     put(source, applyCatalog(state.value.content.getValue(source), update.catalog))
-                    update.actions.forEach { outgoing.send(DiscoveryCommand(source, epoch, it, update.catalog.values)) }
+                    // Record invalidation before an emitted action can stop/cancel this page's work.
                     if (update.refresh) {
                         refreshCatalog += source
                         put(source, state.value.content.getValue(source).copy(loaded = false))
-                        load()
                     }
+                    update.actions.forEach { outgoing.send(DiscoveryCommand(source, epoch, it, update.catalog.values)) }
+                    if (update.refresh && active) load()
                 }
         }
     }
@@ -149,11 +151,20 @@ class CategoriesViewModel @Inject constructor(
         if (!accepts(command)) return
         val action = command.action as? DiscoveryAction.Browser ?: return
         val discovery = sessions[command.source] ?: return
+        // A queued catalogue refresh must not race the browser's page/session ownership.
+        serial++
+        pending?.cancel()
+        pending = null
+        val token = Any()
+        browserToken = token
         browser?.cancel()
-        put(command.source, state.value.content.getValue(command.source).copy(acting = true, error = null, errorField = null))
+        put(command.source, state.value.content.getValue(command.source).copy(loading = false, acting = true, error = null, errorField = null))
         browser = viewModelScope.launch {
             val result = discoveryRequest { discovery.openBrowser(action) }
-            if (!accepts(command)) return@launch
+            // Its Activity covers this destination. Completion may precede onStart, after UI
+            // command epochs have expired; only this captured browser request may finish the handoff.
+            if (browserToken !== token) return@launch
+            browserToken = null
             browser = null
             result.onErr { put(command.source, state.value.content.getValue(command.source).copy(acting = false, error = it, errorField = discovery.failureField)) }
                 .onOk { refresh() }
@@ -167,6 +178,8 @@ class CategoriesViewModel @Inject constructor(
     fun result(category: SourceDiscoveryCategory): Route.Main.DiscoveryResults? {
         val id = state.value.selected ?: return null
         if (category.target.sourceId != id || category.target.target.isBlank() || category !in state.value.content[id]?.categories.orEmpty()) return null
+        // Rule input IDs equal the original form title/infoMap key, not viewName or URL-row digests.
+        // filtersJson relies on this to seed both result filter normalization and the page-local draft.
         return Route.Main.DiscoveryResults(id.namespace, id.id, category.target.target, category.title,
             UUID.randomUUID().toString(), category.id, Json.encodeToString(state.value.content[id]?.values.orEmpty()))
     }
@@ -177,14 +190,17 @@ class CategoriesViewModel @Inject constructor(
         saved["category.source"] = id.id
     }
 
-    private fun cancelLoad() {
+    private fun cancelLoad(retainBrowser: Boolean = false) {
         serial++
         actionEpoch++
         pending?.cancel()
         pending = null
-        browser?.cancel()
-        browser = null
-        state.value.selected?.let { id -> state.value.content[id]?.let { put(id, it.copy(loading = false, acting = false)) } }
+        if (!retainBrowser) {
+            browserToken = null
+            browser?.cancel()
+            browser = null
+        }
+        state.value.selected?.let { id -> state.value.content[id]?.let { put(id, it.copy(loading = false, acting = browserToken != null)) } }
     }
 
     private fun put(id: Identifier, value: CategoryContent) {
@@ -198,7 +214,7 @@ class CategoriesViewModel @Inject constructor(
     private fun load() {
         val id = state.value.selected ?: return
         val previous = state.value.content[id] ?: CategoryContent()
-        if (previous.loaded || previous.loading || previous.error != null) return
+        if (previous.loaded || previous.loading || previous.acting || previous.error != null) return
         val token = ++serial
         put(id, previous.copy(loading = true))
         pending = viewModelScope.launch {

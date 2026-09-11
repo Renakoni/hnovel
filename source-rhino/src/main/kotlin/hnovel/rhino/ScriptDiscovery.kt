@@ -58,6 +58,8 @@ class ScriptDiscovery(initial: JsonObject) {
         }
         method(info, "set") { args -> require(args.size == 1); replace(json(args[0]).jsonObject); null }
         method(info, "save") { args ->
+            // Catalogue/viewName scripts may save drafts too; the host commits only after validation.
+            // Unlike UI intents and upLoginData, this deliberately does not require an interaction.
             require(args.size <= 2)
             val seconds = args.firstOrNull()?.let { Context.toNumber(it).also { n -> require(n.isFinite() && n % 1 == 0.0) }.toLong() } ?: 0
             require(seconds in 0..Int.MAX_VALUE.toLong())

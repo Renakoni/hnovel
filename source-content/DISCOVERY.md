@@ -26,6 +26,9 @@ navigation remain [#79](https://github.com/Renakoni/hnovel/issues/79) and
   described below, without URL rows. Likewise, `upConfig` is a documented source-local
   host protocol; an exact upstream overload was not found. Neither is advertised as
   upstream differential compatibility.
+- External plugin API migration and publication boundaries are recorded in
+  [the API changelog](../api/CHANGELOG.md); monorepo compilation is not binary
+  compatibility evidence for separately compiled plugins.
 
 ## Data, identity, and ownership
 
@@ -34,10 +37,14 @@ sections, never nested Home/All/category tabs. A blank URL is a heading. Loading
 catalogue does not fetch every result list: a feed fetches at most the first actionable
 section's first-page preview (six books); later sections retain their own More target.
 
-An entry may supply an explicit `id`. Otherwise URL-row IDs are derived from the field,
-type, URL, action, and duplicate occurrence, excluding display titles. Input keys remain
-their original `title`; `viewName` changes their display label after defaults have been
-installed. If filtering regenerates a literal URL, an explicit stable category ID lets
+URL/button entries may supply an explicit `id`. Otherwise their IDs are derived from
+the field, type, URL, action, and duplicate occurrence, excluding display titles. For
+inputs, row ID = original `title` = form key = `infoMap` key; an input's explicit `id`
+does not override this. The adapter's filter IDs and `route.filtersJson` use these same
+keys to seed both normalized result filters and the page-local session draft. Do not
+substitute URL-row digests or display labels without migrating that channel. `viewName`
+changes only the display label after defaults have been installed.
+If filtering regenerates a literal URL, an explicit stable category ID lets
 the result page resolve the new target; URL templates can instead read `infoMap` and
 `page` at request time. Removed categories fail explicitly instead of choosing another.
 
@@ -50,9 +57,16 @@ the result page resolve the new target; URL templates can instead read `infoMap`
 | Explicitly saved `infoMap` and source configuration | Source/profile settings, shared only by explicit persistence |
 | Login state, Cookie, browser state | Existing account/session services and origin grants |
 
-Changing source, stopping the page, replacing a revision, or rotating an account cancels
-owned work and invalidates old command epochs. The runtime checks its authority before
-accepting results. Account rebind uses atomic registry replacement so login does not
+Changing source, leaving the navigation destination, replacing a revision, or rotating
+an account cancels owned work and invalidates old command epochs. Stopping the page
+also cancels catalogue/action work and expires queued UI commands. The one exception
+is its owned browser while this remains the current navigation entry: the browser's
+Activity necessarily stops the covered page. Its independent request token accepts
+completion even before the page resumes; success marks the catalogue stale for one
+refresh on return, and errors are retained for display. Navigating away, explicit
+refresh, runtime/account invalidation, and ViewModel destruction still cancel it.
+The runtime checks its authority before accepting results.
+Account rebind uses atomic registry replacement so login does not
 temporarily remove the source tab. Other sources retain loaded content and scrolling.
 Result-page transient drafts survive filter refreshes but are discarded on runtime or
 account replacement; only normalized visible filter values are saved in SavedState.
@@ -89,6 +103,15 @@ layout. Unknown row types/fields and invalid choices produce field-qualified err
 | `java.removeCookie(url)` | Existing source-bound Cookie broker port, not global browser state |
 | `java.getThemeMode()`, `getThemeConfig[Map]()`, `getReadBookConfig[Map]()` | Data snapshots of the host appearance; changing returned maps cannot edit host settings |
 
+Source-search actions use the host-reserved `hnovel-search:` target, no category ID,
+and no discovery filters. Result-page creation, pagination, and refresh must not
+evaluate `exploreUrl` just to discard its controls/values: that script may fail or
+explicitly persist `infoMap`. Raw explore actions without a category ID still evaluate
+the catalogue for their controls and draft, and are not source-search actions.
+`java.upConfig(map)` is already committed by the source session; the adapter emits
+no navigation action for it and uses the returned refresh flag. Only `java.upConfig()`
+emits the settings destination action.
+
 The host supplies effective light/dark mode (`1`/`2`), theme primary/background/text
 colors, and reader font size/line height/weight. This is not the complete Android
 reference configuration object or its local paths. Result actions cannot select another
@@ -108,6 +131,22 @@ page; explicitly persisted settings may seed later pages, including after an acc
 change. A previously opened page keeps its own draft. Live network/storage methods still
 have the existing broker semantics; this is not a transaction that rolls back arbitrary
 script-issued HTTP or Cookie operations.
+
+Catalogue `@js:`/`<js>` and `viewName` scripts are non-interactive but may mutate
+`infoMap` and opt into persistence with `infoMap.save()`. Their draft/save intent is
+committed only after the entire catalogue (including display scripts) validates;
+failed evaluation does not publish those changes. `java.upLoginData` and deferred
+UI actions still require an interaction. Display scripts are therefore not guaranteed
+to be pure, and callers must not evaluate catalogues speculatively.
+
+The browser port already uses a real Android WebView Activity, not a mock future
+integration. Its coroutine suspends without blocking the main thread; the originating
+page's action controls stay busy until completion/cancellation. The existing broker
+and content-operation limit is 300,000 ms for an interactive request. This remains a
+finite request/response contract with Done/Cancel, not support for an indefinitely
+open browser. A future long-lived WebView flow needs a separately owned browser
+lifecycle and explicit completion events, not a longer timeout or waiting forever
+inside a discovery action.
 
 ## Bounds, errors, and verification
 

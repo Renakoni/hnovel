@@ -144,6 +144,8 @@ class RuleDiscoverySession internal constructor(private val source: RuleSource, 
             if (type !in inputTypes + setOf("url", "button") || field == "exploreScreen" && type == "url")
                 throw SourceContentException(ContentError.InvalidRule, "$location.type")
             val url = row.string("url")
+            // Input IDs are form/infoMap keys; only URL/button rows may use explicit IDs or digests.
+            // viewName is presentation-only, and host result routes carry drafts under these same keys.
             val key = if (type in inputTypes) name else row.string("id").ifBlank {
                 val identity = "$type:$url:${row.string("action")}"; val occurrence = occurrences.merge(identity, 1, Int::plus)!!
                 digest("$field:$identity:$occurrence")

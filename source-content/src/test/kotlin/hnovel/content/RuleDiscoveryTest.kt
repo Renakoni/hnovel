@@ -70,6 +70,26 @@ class RuleDiscoveryTest {
         }
     }
 
+    @Test fun nonInteractiveCatalogAndViewNameSaveOnlyAfterSuccessfulValidation() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            val source = fixture.source { definition(it, """
+                @js:infoMap.catalog='saved';infoMap.save();
+                [{title:'Query',type:'text',default:'start',
+                  viewName:"infoMap.rendered='saved';infoMap.save();if(infoMap.fail==='yes')throw 'fixture failure';'Search '+infoMap.Query"}]
+            """.trimIndent()) }
+            val catalog = source.openDiscovery("catalog").catalog()
+            assertEquals("Search start", catalog.rows.single().title)
+            val saved = source.discoveryState("info")!!
+            assertEquals(buildJsonObject {
+                put("catalog", "saved"); put("Query", "start"); put("rendered", "saved")
+            }, Json.parseToJsonElement(saved).jsonObject["values"])
+            val failure = try { source.openDiscovery("failed", mapOf("fail" to "yes")).catalog(); null }
+                catch (e: SourceContentException) { e }
+            assertEquals("exploreUrl[0].viewName", failure?.field)
+            assertEquals(saved, source.discoveryState("info"))
+        }
+    }
+
     @Test fun customButtonUsesBooleanFlagsAndRunsCallbackWithExplicitEventAndSnapshots() = runBlocking {
         RuleSourceFixture().use { fixture ->
             val source = fixture.source { raw -> definition(raw, "Books::/search", buildJsonObject {
@@ -152,11 +172,18 @@ class RuleDiscoveryTest {
     @Test fun screenControlsAndViewNamesUseTheSameFiniteContract() = runBlocking {
         RuleSourceFixture().use { fixture ->
             val source = fixture.source { definition(it, "Books::/search", buildJsonObject {
-                put("exploreScreen", """[{"title":"Query","type":"text","default":"start","viewName":"'Search '+infoMap.Query"}]""")
+                put("exploreScreen", """[{"id":"presentation-id","title":"Query","type":"text","default":"start","viewName":"'Search '+infoMap.Query"}]""")
             }) }
-            val rows = source.openDiscovery("screen").catalog().rows
+            val page = source.openDiscovery("screen")
+            val rows = page.catalog().rows
             assertEquals(listOf("url", "text"), rows.map { it.type })
+            assertEquals("Query", rows.last().id)
             assertEquals("Search start", rows.last().title)
+            page.interact("Query", "edited")
+            val updated = page.catalog(refresh = true)
+            assertEquals("Query", updated.rows.last().id)
+            assertEquals("Search edited", updated.rows.last().title)
+            assertEquals(mapOf("Query" to "edited"), updated.values)
         }
     }
 

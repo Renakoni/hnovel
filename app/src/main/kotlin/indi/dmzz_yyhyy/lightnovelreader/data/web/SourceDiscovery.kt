@@ -10,6 +10,9 @@ import io.nightfish.lightnovelreader.api.web.discovery.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
+/** Reserved host target for source-local search, which has no discovery catalogue or filters. */
+internal const val DISCOVERY_SEARCH_PREFIX = "hnovel-search:"
+
 data class SourceDiscoveryTarget(val sourceId: Identifier, val target: String)
 data class SourceDiscoveryBook(val id: SourceBookId, val title: String, val author: String, val coverUrl: String)
 data class SourceDiscoverySection(val id: String, val title: String, val books: List<SourceDiscoveryBook>, val more: SourceDiscoveryTarget?)

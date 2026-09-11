@@ -1,6 +1,7 @@
 package indi.dmzz_yyhyy.lightnovelreader.ui.home.categories
 
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.LifecycleStartEffect
@@ -18,7 +19,7 @@ import kotlinx.serialization.json.Json
 import java.util.UUID
 
 fun NavGraphBuilder.categoriesDestination() {
-    composable<Route.Main.Categories> {
+    composable<Route.Main.Categories> { entry ->
         val nav = LocalNavController.current
         val model = hiltViewModel<CategoriesViewModel>()
         val state by model.state.collectAsStateWithLifecycle()
@@ -26,7 +27,17 @@ fun NavGraphBuilder.categoriesDestination() {
         LifecycleStartEffect(model, environment) {
             model.environment(environment)
             model.setActive(true)
-            onStopOrDispose { model.setActive(false) }
+            onStopOrDispose {
+                // The owned browser opens an Activity, not a navigation destination. Do not cancel
+                // it merely because it covers this page; navigating elsewhere still cancels it.
+                model.setActive(false, retainBrowser = nav.currentBackStackEntry?.id == entry.id)
+            }
+        }
+        DisposableEffect(model, nav, entry) {
+            onDispose {
+                // Navigation can remove the composition after onStop already retained the browser.
+                if (nav.currentBackStackEntry?.id != entry.id) model.setActive(false)
+            }
         }
         LaunchedEffect(model) {
             model.commands.collect { command ->

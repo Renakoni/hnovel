@@ -2,6 +2,7 @@ package indi.dmzz_yyhyy.lightnovelreader.data.web.rules
 
 import com.github.michaelbull.result.*
 import hnovel.content.*
+import indi.dmzz_yyhyy.lightnovelreader.data.web.DISCOVERY_SEARCH_PREFIX
 import io.nightfish.lightnovelreader.api.web.discovery.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
@@ -30,13 +31,13 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
         catalog.categories.map { category -> DiscoverySection(category.id, category.title,
             if (category == first) preview else emptyList(), category.target.takeIf(String::isNotBlank)) }
     }
-    override fun filters(target: String) = if (target.startsWith(SEARCH_PREFIX)) emptyList() else current?.filters.orEmpty()
+    override fun filters(target: String) = if (target.startsWith(DISCOVERY_SEARCH_PREFIX)) emptyList() else current?.filters.orEmpty()
 
     override suspend fun page(request: DiscoveryRequest) = request {
         val page = request.cursor?.toIntOrNull() ?: if (request.cursor == null) 1
             else throw SourceContentException(ContentError.InvalidRule, "ruleExplore.page")
         if (page !in 1..64) throw SourceContentException(ContentError.Limit, "ruleExplore.page")
-        val books = if (request.target.startsWith(SEARCH_PREFIX)) source.search(request.target.removePrefix(SEARCH_PREFIX), page)
+        val books = if (request.target.startsWith(DISCOVERY_SEARCH_PREFIX)) source.search(request.target.removePrefix(DISCOVERY_SEARCH_PREFIX), page)
             else session.page(request.target, page, request.filters)
         DiscoveryPage(books.map(::book), if (books.isEmpty()) null else (page + 1).toString())
     }
@@ -46,9 +47,10 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
         val catalog = map(updated.catalog).also { current = it }
         DiscoveryUpdate(catalog, updated.actions.mapNotNull { action -> when (action.kind) {
             "login" -> DiscoveryAction.Login
-            "settings", "configuration" -> if (action.kind == "settings") DiscoveryAction.Settings else null
+            "settings" -> DiscoveryAction.Settings
+            "configuration" -> null // Already persisted by the session; updated.refresh redraws this page.
             "results" -> DiscoveryAction.Results(action.value, action.title)
-            "search" -> DiscoveryAction.Results(SEARCH_PREFIX + action.value, action.value)
+            "search" -> DiscoveryAction.Results(DISCOVERY_SEARCH_PREFIX + action.value, action.value)
             "browser" -> DiscoveryAction.Browser(action.value, action.title, action.html, action.script)
             else -> throw SourceContentException(ContentError.InvalidRule, "discovery.action")
         } }, updated.refresh)
@@ -77,6 +79,4 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
         ContentError.Unavailable -> DiscoveryError.Unavailable
         else -> DiscoveryError.InvalidRules
     }) }
-
-    companion object { private const val SEARCH_PREFIX = "hnovel-search:" }
 }

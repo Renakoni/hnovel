@@ -104,6 +104,30 @@ class RuleDiscoveryProviderTest {
         }
     }
 
+    @Test fun formKeysIgnoreViewNamesAndConfigurationRefreshDoesNotNavigate() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            val source = fixture.source { raw -> JsonObject(definition(raw) + ("exploreUrl" to JsonPrimitive("""[
+                {"title":"Query","type":"text","default":"start","viewName":"'Search '+infoMap.Query"},
+                {"id":"configure","title":"Configure","type":"button","action":"java.upConfig({category:'new'});"},
+                {"id":"settings","title":"Settings","type":"button","action":"java.upConfig();"},
+                {"id":"search","title":"Search","type":"button","action":"java.searchBook(infoMap.Query);"}
+            ]"""))) }
+            val provider = RuleDiscoveryProvider(source)
+            val catalog = provider.catalog().get()!!
+            assertEquals(DiscoveryFilter.Text("Query", "Search start", "start"), catalog.filters.single())
+            assertEquals(mapOf("Query" to "start"), catalog.values)
+            val configured = provider.interact("configure").get()!!
+            assertTrue(configured.refresh)
+            assertTrue(configured.actions.isEmpty())
+            val settings = provider.interact("settings").get()!!
+            assertEquals(listOf(DiscoveryAction.Settings), settings.actions)
+            assertFalse(settings.refresh)
+            val search = provider.interact("search").get()!!.actions.single() as DiscoveryAction.Results
+            assertEquals(DISCOVERY_SEARCH_PREFIX + "start", search.target)
+            assertTrue(provider.filters(search.target).isEmpty())
+        }
+    }
+
     @Test fun importedCapabilitiesAndAccountReplacementNeverRemoveTheSelectedTab() = runBlocking {
         RuleSourceFixture().use { fixture ->
             val authority = ExecutionAuthority()
