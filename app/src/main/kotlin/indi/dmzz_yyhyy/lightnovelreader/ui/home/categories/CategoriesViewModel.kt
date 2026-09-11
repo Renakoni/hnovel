@@ -40,6 +40,7 @@ data class CategoriesState(
     val sources: List<SourceListing> = emptyList(),
     val selected: Identifier? = null,
     val content: Map<Identifier, CategoryContent> = emptyMap(),
+    val loadingSources: Boolean = false,
 )
 
 data class DiscoveryCommand(val source: Identifier, val epoch: Long, val action: DiscoveryAction, val values: Map<String, String>)
@@ -50,7 +51,7 @@ class CategoriesViewModel @Inject constructor(
     accounts: SourceSessionManager,
     private val saved: SavedStateHandle,
 ) : ViewModel() {
-    private val mutableState = MutableStateFlow(CategoriesState())
+    private val mutableState = MutableStateFlow(CategoriesState(loadingSources = true))
     val state = mutableState.asStateFlow()
     private var versions = emptyMap<Identifier, DiscoveryVersion>()
     private var requested = saved.get<String>("category.namespace")?.let { namespace ->
@@ -74,11 +75,12 @@ class CategoriesViewModel @Inject constructor(
                 discoverySources(sources, SourceCapability.Categories) to generations
             }.collect { (sources, generations) ->
                 val next = sources.associate { it.metadata.id to it.version(generations) }
-                val content = state.value.content.filterKeys { it in next && versions[it] == next[it] }
-                sessions.keys.retainAll(content.keys)
                 val selected = selectedSource(sources, requested)
                 val changed = selected != state.value.selected || versions[selected] != next[selected]
                 if (changed) cancelLoad()
+                // cancelLoad also clears loading flags; do not restore a snapshot captured before it.
+                val content = state.value.content.filterKeys { it in next && versions[it] == next[it] }
+                sessions.keys.retainAll(content.keys)
                 versions = next
                 mutableState.value = CategoriesState(sources, selected, content)
                 if (selected != null) remember(selected)

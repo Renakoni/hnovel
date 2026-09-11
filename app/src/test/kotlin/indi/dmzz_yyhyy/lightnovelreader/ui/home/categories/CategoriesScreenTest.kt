@@ -100,4 +100,16 @@ class CategoriesScreenTest {
         assertEquals(listOf("Sort" to "popular"), values)
         assertEquals(listOf("login" to false, "login" to true), actions)
     }
+
+    @Test fun waitingForTheFirstSnapshotDoesNotDisplayTheEmptySourceMessage() {
+        var state by mutableStateOf(CategoriesState(loadingSources = true))
+        activity.get().setContent { MaterialTheme {
+            CategoriesScreen(state, {}, {}, { _, _ -> }, {}, {}, {}, {})
+        } }
+        val message = "No enabled book source provides categories. Add or enable a source in source management."
+        compose.onNodeWithText(message).assertDoesNotExist()
+        compose.onNodeWithText("Book sources").assertDoesNotExist()
+        compose.runOnIdle { state = state.copy(loadingSources = false) }
+        compose.onNodeWithText(message).assertExists()
+    }
 }

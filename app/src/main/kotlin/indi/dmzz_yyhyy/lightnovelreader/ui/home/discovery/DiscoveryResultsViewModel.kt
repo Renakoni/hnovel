@@ -62,6 +62,7 @@ class DiscoveryResultsViewModel internal constructor(
 
     init {
         viewModelScope.launch {
+            // Application startup restores sources before any Activity. Missing here is not "still restoring".
             combine(registry.sources, accounts.changes) { sources, generations ->
                 sources.firstOrNull { it.metadata.id == sourceId }?.version(generations)
             }.distinctUntilChanged().collect { next ->
