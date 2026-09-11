@@ -30,6 +30,7 @@ internal class RuleWebBookDataSource(override val id: Identifier, private val so
     override val offLine = false
     override val isOffLineFlow = MutableStateFlow(false)
     override suspend fun isOffLine() = false
+    override val discoveryProvider = RuleDiscoveryProvider(source)
     override val searchProvider = object : SearchProvider {
         override val searchTypes = if (source.canSearch) listOf(SearchType("keyword", "Search".local(), "Book title or author".local())) else emptyList()
         override fun search(searchType: SearchType, keyword: String) = flow {

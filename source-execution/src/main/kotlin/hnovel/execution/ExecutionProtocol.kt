@@ -41,7 +41,7 @@ private class WorkerOutputLimit : RuntimeException()
   val chapterVariables: Map<String, String> = emptyMap(), val book: JsonObject = JsonObject(emptyMap()),
   val chapter: JsonObject = JsonObject(emptyMap()), val bookBigVariables: Map<String, String> = emptyMap(),
   val chapterBigVariables: Map<String, String> = emptyMap(), val chineseConverter: Int = 0,
-  val unescapeHtml: Boolean = true, val sourceHeaderRule: String = "") : ExecutionTask
+  val unescapeHtml: Boolean = true, val sourceHeaderRule: String = "", val discovery: JsonObject? = null) : ExecutionTask
 }
 
 fun ExecutionTask.libraryCode(): String? = when (this) {

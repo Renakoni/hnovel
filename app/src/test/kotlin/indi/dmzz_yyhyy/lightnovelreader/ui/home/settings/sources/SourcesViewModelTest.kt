@@ -3,6 +3,9 @@ package indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.sources
 import android.app.Application
 import android.content.ContextWrapper
 import hnovel.content.RuleSourceFixture
+import hnovel.imports.ImportDecision
+import hnovel.imports.ImportSelection
+import hnovel.network.NetworkGrant
 import indi.dmzz_yyhyy.lightnovelreader.data.web.*
 import indi.dmzz_yyhyy.lightnovelreader.data.web.rules.*
 import kotlinx.coroutines.*
@@ -23,6 +26,41 @@ import java.nio.file.Files
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [27], application = Application::class)
 class SourcesViewModelTest {
+    @Test fun discoveryLoginSelectsTheOriginAndDoesNotRestartOnRecreation(): Unit = runBlocking {
+        Dispatchers.setMain(Dispatchers.Unconfined)
+        val root = Files.createTempDirectory("discovery-settings").toFile()
+        val context = object : ContextWrapper(RuntimeEnvironment.getApplication()) {
+            override fun getFilesDir() = File(root, "files")
+            override fun getCacheDir() = File(root, "cache")
+        }
+        RuleSourceFixture().use { fixture ->
+            val registry = WebSourceRegistry(fixture.authority)
+            val accounts = SourceSessionManager(fixture.authority)
+            val sources = ImportedRuleSources(context, registry, fixture.authority, accounts, fixture.runner)
+            val updates = SourceRevisionUpdates(context, sources, accounts, fixture.runner, fixture.authority)
+            val login = SourceLoginService(sources, accounts)
+            val raw = JsonObject(fixture.raw() + mapOf("loginUrl" to JsonPrimitive("function login(){}"),
+                "loginUi" to JsonPrimitive("[{\"name\":\"user\"}]")))
+            val committed = sources.importer.commit(sources.importer.preview(raw.toString()), listOf(ImportSelection(0, ImportDecision.Add)))
+            val id = sources.activate(committed.items.single().reference!!, listOf(NetworkGrant(fixture.server.url("/").toString(), true)))
+            val model = SourcesViewModel(context, sources, updates, login, registry)
+            suspend fun idle() = withTimeout(10000) { model.state.first { !it.busy } }
+            try {
+                idle()
+                model.openFromDiscovery(id, true)
+                val opened = idle()
+                assertEquals(id, opened.selected)
+                assertEquals("user", opened.loginForm!!.fields.single().name)
+                val generation = accounts.current(id).generation
+                assertEquals(1L, generation)
+                model.openFromDiscovery(id, true)
+                idle()
+                assertEquals(generation, accounts.current(id).generation)
+                assertEquals(0, fixture.documents.get())
+            } finally { model.cancel(); sources.stop(); root.deleteRecursively(); Dispatchers.resetMain() }
+        }
+    }
+
     @Test fun previewApprovalUpdateRollbackAndRemovalUseProductionServices(): Unit = runBlocking {
         Dispatchers.setMain(Dispatchers.Unconfined)
         val root = Files.createTempDirectory("source-management").toFile()

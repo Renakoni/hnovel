@@ -9,7 +9,7 @@ import kotlinx.serialization.json.*
 @Serializable data class ExecutedRule(val value: RuleValue, val writes: Map<String, String>,
     val bookWrites: Map<String, String?> = emptyMap(), val chapterWrites: Map<String, String?> = emptyMap(),
     val bookBigWrites: Map<String, String?> = emptyMap(), val chapterBigWrites: Map<String, String?> = emptyMap(),
-    val book: JsonObject? = null, val chapter: JsonObject? = null)
+    val book: JsonObject? = null, val chapter: JsonObject? = null, val discovery: JsonObject? = null)
 
 /** Selectors, regex and scripts all run inside the worker's hard process deadline. */
 internal object WorkerRuleEvaluator {
@@ -19,12 +19,13 @@ internal object WorkerRuleEvaluator {
             task.sourceVariables, task.bookVariables, task.chapterVariables, task.bookBigVariables, task.chapterBigVariables)
         context.bookMetadata = task.book.toString()
         context.chapterMetadata = task.chapter.toString()
+        val discovery = task.discovery?.let(::ScriptDiscovery)
         var scriptFailure: hnovel.rhino.FailureCode? = null
         val evaluator = RuleEvaluator(unescapeHtml = task.unescapeHtml) { request, current, budget ->
             budget.check()
             val frame = ScriptFrame(identity.sourceId, identity.profile, task.bookId, task.chapterId,
                 mapOf("result" to input(request.input)), task.key, task.page, task.baseUrl, current, task.input, budget, task.book, task.chapter, task.chineseConverter,
-                sourceHeaderRule = task.sourceHeaderRule)
+                sourceHeaderRule = task.sourceHeaderRule, discovery = discovery)
             when (val result = RhinoScriptEngine(bridge, ScriptLimits(maxResultChars = limits.maxOutputBytes), archives)
                 .evaluate(request.script, frame, library)) {
                 is ScriptResult.Success -> value(Json.parseToJsonElement(result.json))
@@ -36,7 +37,7 @@ internal object WorkerRuleEvaluator {
             is RuleResult.Success -> {
                 fun changed(snapshot: String?, initial: JsonObject) = snapshot?.let { Json.parseToJsonElement(it).jsonObject }?.takeIf { it != initial }
                 val json = Json.encodeToString(ExecutedRule.serializer(), ExecutedRule(result.value, context.writes(), context.bookWrites, context.chapterWrites, context.bookBigWrites, context.chapterBigWrites,
-                    changed(context.bookMetadata, task.book), changed(context.chapterMetadata, task.chapter)))
+                    changed(context.bookMetadata, task.book), changed(context.chapterMetadata, task.chapter), discovery?.snapshot))
                 if (json.toByteArray(Charsets.UTF_8).size > limits.maxOutputBytes) ExecutionResult.Failure(FailureCode.OutputLimit)
                 else ExecutionResult.Success(json)
             }

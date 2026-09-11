@@ -84,6 +84,10 @@ class LegadoSourceAdapter : SourceFormatAdapter {
         val enabled = boolean("enabled", true)
         val explore = boolean("enabledExplore", true)
         boolean("enabledCookieJar", true)
+        for (flag in listOf("customButton", "eventListener")) {
+            boolean(flag, false)
+            if ((value[flag] as? JsonPrimitive)?.isString == true) throw ImportFailure(ImportCode.InvalidField, flag)
+        }
         val strings = setOf("bookSourceGroup", "bookUrlPattern", "jsLib", "header",
             "loginUrl", "loginUi", "loginCheckJs", "coverDecodeJs", "bookSourceComment", "variableComment",
             "exploreUrl", "exploreScreen", "searchUrl")
@@ -95,11 +99,12 @@ class LegadoSourceAdapter : SourceFormatAdapter {
             val rule = value[field]
             if (rule != null && rule != JsonNull && rule !is JsonObject) throw ImportFailure(ImportCode.InvalidField, field)
         }
-        val known = strings + numbers + rules + setOf("bookSourceUrl", "bookSourceName", "bookSourceType", "enabled", "enabledExplore", "enabledCookieJar")
+        val known = strings + numbers + rules + setOf("bookSourceUrl", "bookSourceName", "bookSourceType", "enabled", "enabledExplore", "enabledCookieJar", "customButton", "eventListener")
         val notices = value.keys.filter { it !in known }.map { ImportNotice("UnclassifiedField", it) }.toMutableList()
         // Parsing a rule object is not a claim that its fields or scripts are executable.
         notices.add(ImportNotice("ExecutionCompatibilityPending"))
         if ("customOrder" in value) notices.add(ImportNotice("ExternalOrderRetainedNotApplied", "customOrder"))
+        listOf("customButton", "eventListener").filter { it in value }.forEach { notices.add(ImportNotice("DiscoveryExtension", it)) }
         return ParsedSource(key, name, enabled, explore, notices)
     }
 }

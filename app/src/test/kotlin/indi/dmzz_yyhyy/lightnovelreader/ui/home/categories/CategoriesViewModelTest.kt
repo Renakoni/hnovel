@@ -192,4 +192,99 @@ class CategoriesViewModelTest {
         assertTrue(model.state.value.content[a]!!.loaded)
         assertNull(model.state.value.content[a]!!.error)
     }
+
+    @Test fun sourceActionsRefreshOnceAndPreserveOtherTabsAndRouteFilterSnapshots() = runTest(dispatcher) {
+        var catalogs = 0
+        var value = "new"
+        fun snapshot() = DiscoveryCatalog(listOf(DiscoveryCategory("books", "Books", "target")),
+            listOf(DiscoveryFilter.Choice("Sort", "Sort", linkedMapOf("new" to "New", "popular" to "Popular"), "new")),
+            mapOf("Sort" to value), listOf(DiscoveryButton("refresh", "Refresh source")))
+        val a = add("a", object : Categories() {
+            override suspend fun catalog(refresh: Boolean): Result<DiscoveryCatalog, DiscoveryError> {
+                catalogs++
+                return Ok(snapshot())
+            }
+            override suspend fun interact(id: String, value: String?, longClick: Boolean): Result<DiscoveryUpdate, DiscoveryError> {
+                return Ok(DiscoveryUpdate(snapshot(), listOf(DiscoveryAction.Results("target", "Books")), refresh = true))
+            }
+        })
+        val other = Categories()
+        val b = add("b", other)
+        val model = model()
+        val commands = mutableListOf<DiscoveryCommand>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { model.commands.collect { commands += it } }
+        advanceUntilIdle()
+        model.select(b); advanceUntilIdle()
+        model.scroll(b, DiscoveryScroll(3, 21))
+        model.select(a); advanceUntilIdle()
+        value = "popular"
+        model.interact("refresh")
+        advanceUntilIdle()
+        assertEquals(2, catalogs)
+        assertEquals(1, other.calls)
+        assertEquals(DiscoveryScroll(3, 21), model.state.value.content[b]!!.scroll)
+        assertEquals(a, commands.single().source)
+        assertTrue(model.accepts(commands.single()))
+        val route = model.result(model.state.value.content[a]!!.categories.single())!!
+        assertEquals(mapOf("Sort" to "popular"), Json.decodeFromString<Map<String, String>>(route.filtersJson))
+        model.select(b)
+        assertFalse(model.accepts(commands.single()))
+    }
+
+    @Test fun lateInteractionCannotNavigateOrRefreshAnotherSource() = runTest(dispatcher) {
+        val finish = CompletableDeferred<Unit>()
+        val started = CompletableDeferred<Unit>()
+        add("a", object : Categories() {
+            override suspend fun interact(id: String, value: String?, longClick: Boolean): Result<DiscoveryUpdate, DiscoveryError> = withContext(NonCancellable) {
+                started.complete(Unit); finish.await()
+                Ok(DiscoveryUpdate(DiscoveryCatalog(emptyList()), listOf(DiscoveryAction.Login), refresh = true))
+            }
+        })
+        val other = Categories()
+        val b = add("b", other)
+        val model = model()
+        val commands = mutableListOf<DiscoveryCommand>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { model.commands.collect { commands += it } }
+        advanceUntilIdle()
+        model.interact("button"); runCurrent()
+        assertTrue(started.isCompleted)
+        model.select(b); runCurrent()
+        finish.complete(Unit); advanceUntilIdle()
+        assertTrue(commands.isEmpty())
+        assertEquals(b, model.state.value.selected)
+        assertEquals(1, other.calls)
+    }
+
+    @Test fun browserWorkIsCancelledOnTabSwitchAndPageStop() = runTest(dispatcher) {
+        var started = 0
+        var cancelled = 0
+        val a = add("a", object : Categories() {
+            override suspend fun interact(id: String, value: String?, longClick: Boolean) =
+                Ok(DiscoveryUpdate(DiscoveryCatalog(emptyList()), listOf(DiscoveryAction.Browser("https://fixture.invalid/"))))
+            override suspend fun openBrowser(action: DiscoveryAction.Browser): Result<Unit, DiscoveryError> {
+                started++
+                try { awaitCancellation() } finally { cancelled++ }
+            }
+        })
+        val other = Categories()
+        val b = add("b", other)
+        val model = model()
+        val commands = mutableListOf<DiscoveryCommand>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { model.commands.collect { commands += it } }
+        advanceUntilIdle()
+        model.interact("browser"); runCurrent()
+        model.openBrowser(commands.last()); runCurrent()
+        assertEquals(1, started)
+        model.select(b); runCurrent()
+        assertEquals(1, cancelled)
+        assertFalse(model.accepts(commands.last()))
+        assertEquals(1, other.calls)
+        model.select(a); runCurrent()
+        model.interact("browser"); runCurrent()
+        model.openBrowser(commands.last()); runCurrent()
+        assertEquals(2, started)
+        model.setActive(false); runCurrent()
+        assertEquals(2, cancelled)
+        assertFalse(model.state.value.content[a]!!.acting)
+    }
 }

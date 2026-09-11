@@ -11,6 +11,7 @@ import io.nightfish.lightnovelreader.api.Route
 import io.nightfish.lightnovelreader.api.identifier.Identifier
 import io.nightfish.lightnovelreader.api.web.discovery.DiscoveryError
 import io.nightfish.lightnovelreader.api.web.discovery.DiscoveryFilter
+import io.nightfish.lightnovelreader.api.web.discovery.DiscoveryEnvironment
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -32,6 +33,7 @@ data class DiscoveryResultsState(
     val error: DiscoveryError? = null,
     val scroll: DiscoveryScroll = DiscoveryScroll(),
     val resetId: Long = 0,
+    val errorField: String? = null,
 )
 
 /** One ViewModel per navigation entry. Only lightweight identity/filter values survive process death. */
@@ -55,12 +57,15 @@ class DiscoveryResultsViewModel internal constructor(
     private var session: DiscoverySession? = null
     private var pending: Job? = null
     private var serial = 0L
+    private var environment = DiscoveryEnvironment()
+    private var draftValues = emptyMap<String, String>()
 
     init {
         viewModelScope.launch {
             combine(registry.sources, accounts.changes) { sources, generations ->
                 sources.firstOrNull { it.metadata.id == sourceId }?.version(generations)
             }.distinctUntilChanged().collect { next ->
+                if (version != null) draftValues = emptyMap()
                 version = next
                 cancelLoad()
                 session = null
@@ -87,6 +92,14 @@ class DiscoveryResultsViewModel internal constructor(
         if (active) loadMore()
     }
 
+    fun environment(value: DiscoveryEnvironment) {
+        if (environment == value) return
+        environment = value
+        cancelLoad()
+        session = null
+        mutableState.value = state.value.copy(loaded = false, error = null)
+    }
+
     fun filter(id: String, value: String) {
         val next = filterValues(state.value.definitions, state.value.filters + (id to value))
         if (next == state.value.filters) return
@@ -111,28 +124,34 @@ class DiscoveryResultsViewModel internal constructor(
         val token = ++serial
         mutableState.value = state.value.copy(loading = true, error = null)
         pending = viewModelScope.launch {
+            var failureField: String? = null
             val result = discoveryRequest {
                 if (session == null) {
                     val source = registry.discovery(sourceId).getOrElse { return@discoveryRequest Err(it) }
-                    if (route.categoryId != null) {
-                        val categories = source.categories().getOrElse { return@discoveryRequest Err(it) }
-                        if (categories.none { it.id == route.categoryId && it.target.target == route.target })
-                            return@discoveryRequest Err(DiscoveryError.InvalidRequest)
+                        .forSession(route.sessionId, draftValues + state.value.filters, environment)
+                    var target = route.target
+                    var catalogValues = emptyMap<String, String>()
+                    if (source.hasCategories) {
+                        val catalog = source.catalog().getOrElse { failureField = source.failureField; return@discoveryRequest Err(it) }
+                        catalogValues = catalog.values
+                        if (route.categoryId != null) target = catalog.categories.singleOrNull { it.id == route.categoryId }
+                            ?.target?.target?.takeIf(String::isNotBlank) ?: return@discoveryRequest Err(DiscoveryError.InvalidRequest)
                     }
-                    val opened = source.open(SourceDiscoveryTarget(sourceId, route.target))
-                    val values = filterValues(opened.filters, state.value.filters)
+                    val opened = source.open(SourceDiscoveryTarget(sourceId, target))
+                    val values = filterValues(opened.filters, catalogValues + state.value.filters)
                     opened.reset(values)
                     if (token != serial) return@discoveryRequest Err(DiscoveryError.Unavailable)
                     session = opened
+                    draftValues = catalogValues
                     saveFilters(values)
                     mutableState.value = state.value.copy(definitions = opened.filters, filters = values)
                 }
-                requireNotNull(session).loadMore()
+                requireNotNull(session).loadMore().onErr { failureField = session?.failureField }
             }
             if (token != serial || !active) return@launch
             result.onOk { mutableState.value = state.value.copy(books = it.books, loading = false,
-                loaded = true, hasMore = it.nextCursor != null) }
-                .onErr { mutableState.value = state.value.copy(loading = false, error = it) }
+                loaded = true, hasMore = it.nextCursor != null, errorField = null) }
+                .onErr { mutableState.value = state.value.copy(loading = false, error = it, errorField = failureField) }
         }
     }
 }

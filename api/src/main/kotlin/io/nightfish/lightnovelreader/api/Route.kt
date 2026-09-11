@@ -125,6 +125,8 @@ object Route {
             @Serializable
             object Sources
             @Serializable
+            data class SourceDetail(val namespace: String, val sourceId: String, val login: Boolean = false)
+            @Serializable
             data class SourceDiagnostic(val namespace: String, val sourceId: String)
             /** 设置主界面路由 */
             @Serializable

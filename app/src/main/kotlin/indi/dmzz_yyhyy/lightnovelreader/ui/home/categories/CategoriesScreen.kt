@@ -1,6 +1,7 @@
 package indi.dmzz_yyhyy.lightnovelreader.ui.home.categories
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -26,6 +27,8 @@ fun CategoriesScreen(
     onManageSources: () -> Unit,
     onSettings: () -> Unit,
     onBack: () -> Unit,
+    onInput: (String, String) -> Unit = { _, _ -> },
+    onAction: (String, Boolean) -> Unit = { _, _ -> },
 ) {
     Scaffold(topBar = { DiscoveryTopBar(stringResource(R.string.categories_title), onBack, onRefresh, onSettings) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
@@ -40,8 +43,8 @@ fun CategoriesScreen(
                 }
                 val id = state.selected
                 val content = state.content[id] ?: CategoryContent()
-                if (content.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
-                content.error?.let { DiscoveryFailure(it, onRefresh, onManageSources, onBack) }
+                if (content.loading || content.acting) LinearProgressIndicator(Modifier.fillMaxWidth())
+                content.error?.let { DiscoveryFailure(it, onRefresh, onManageSources, onBack, content.errorField) }
                 if (id != null) key(id) {
                     val list = rememberLazyListState(content.scroll.index, content.scroll.offset)
                     LaunchedEffect(list) {
@@ -49,12 +52,21 @@ fun CategoriesScreen(
                             .collect { onScroll(id, it) }
                     }
                     LazyColumn(state = list, modifier = Modifier.fillMaxSize()) {
-                        if (content.loaded && content.categories.isEmpty()) item {
+                        items(content.filters, key = { "input:${it.id}" }) { filter ->
+                            Column(Modifier.padding(horizontal = 16.dp)) {
+                                DiscoveryFilterControl(filter, content.values[filter.id].orEmpty()) { if (!content.acting) onInput(filter.id, it) }
+                            }
+                        }
+                        items(content.buttons, key = { "action:${it.id}" }) { button ->
+                            ListItem(headlineContent = { Text(if (button.id == "custom-button") stringResource(R.string.discovery_source_action) else button.title) }, modifier = Modifier.combinedClickable(
+                                enabled = !content.acting, onClick = { onAction(button.id, false) }, onLongClick = { onAction(button.id, true) }))
+                        }
+                        if (content.loaded && content.categories.isEmpty() && content.buttons.isEmpty() && content.filters.isEmpty()) item {
                             DiscoveryEmpty(stringResource(R.string.categories_empty), onManageSources)
                         }
                         items(content.categories, key = { it.id }) { category ->
                             ListItem(headlineContent = { Text(category.title) },
-                                modifier = Modifier.clickable { onCategory(category) })
+                                modifier = Modifier.clickable(enabled = category.target.target.isNotBlank()) { onCategory(category) })
                             HorizontalDivider(Modifier.padding(horizontal = 16.dp))
                         }
                     }

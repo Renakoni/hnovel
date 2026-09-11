@@ -14,10 +14,12 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
     var chapter: ScriptState = ScriptState(), var baseUrl: String, val keyword: String = "", var page: Int = 1,
     private val calls: java.util.concurrent.atomic.AtomicInteger = java.util.concurrent.atomic.AtomicInteger(),
     private val headerRule: String = "", private val interactive: Boolean = false, private val trace: ContentTrace = ContentTrace.None) {
+    var discovery: JsonObject? = null
     private val limits = ExecutionLimits(timeoutMillis = if (interactive) 60000 else 5000, maxOutputBytes = 196608)
 
     fun fork(bookId: String? = this.bookId, chapterId: String? = this.chapterId) =
         RuleEvaluation(identity, authority, session, runner, library, bookId, chapterId, book.copy(), chapter.copy(), baseUrl, keyword, page, calls, headerRule, interactive, trace)
+            .also { it.discovery = discovery }
 
     suspend fun headers(): Map<String, String> {
         if (headerRule.isBlank()) return emptyMap()
@@ -34,7 +36,7 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
         val task = ExecutionTask.Rule(rule, input, output, RuleLocation(field), bookId, chapterId,
             keyword, page, baseUrl, library, book.inherited + chapter.inherited, book.variables,
             chapter.variables, book.metadata, chapter.metadata, book.bigVariables, chapter.bigVariables,
-            unescapeHtml = unescape, sourceHeaderRule = if (field == "header") "" else headerRule)
+            unescapeHtml = unescape, sourceHeaderRule = if (field == "header") "" else headerRule, discovery = discovery)
         val started = System.nanoTime()
         val result = SourceExecutionBroker(identity, authority, session, limits, baseUrl, keyword, page,
             allowInteraction = interactive).use {
@@ -58,6 +60,7 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
             }, field)
             is ExecutionResult.Success -> {
                 val executed = Json.decodeFromString(ExecutedRule.serializer(), result.output)
+                if (discovery != null) discovery = executed.discovery ?: throw SourceContentException(ContentError.InvalidRule, field)
                 book = book.copy(metadata = executed.book ?: book.metadata,
                     variables = applyWrites(book.variables, executed.bookWrites),
                     bigVariables = applyWrites(book.bigVariables, executed.bookBigWrites),
