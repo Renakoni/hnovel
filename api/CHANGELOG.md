@@ -1,5 +1,13 @@
 # Plugin API changes
 
+## Unreleased — source rate limiting (#140)
+
+- Append `DiscoveryError.RateLimited` so a site's request limit is distinct from
+  an empty search, authentication failure or network error. Existing enum entries
+  and provider signatures are unchanged. Exhaustive consumers must handle the
+  appended case when recompiling; previously compiled exhaustive dispatches can
+  fail if they receive it. No external API artifact is published by this change.
+
 ## Unreleased — source origin approval feedback (#139)
 
 - Add optional `DiscoveryProvider.permissionFailure` and `DiscoveryPermission` to

@@ -79,7 +79,7 @@ class ImportedRuleSourcesTest {
                 val a = install(service, fixture.raw("A"), fixture.server.url("/").toString())
                 val b = install(service, fixture.raw("B"), fixture.server.url("/").toString())
                 val local = LocalBookDataSource(db.bookInformationDao(), db.bookVolumesDao(), db.chapterContentDao(), db.userReadingDataDao())
-                val shelves = BookshelfRepository(db.bookshelfDao(), mockk())
+                val shelves = BookshelfRepository(db.bookshelfDao(), mockk(), registry)
                 val components = ContentComponentRegistry()
                 val text = TextProcessingRepository(mockk(relaxed = true), mockk(relaxed = true), components)
                 val chapters = ChapterRepository(registry, local, text)

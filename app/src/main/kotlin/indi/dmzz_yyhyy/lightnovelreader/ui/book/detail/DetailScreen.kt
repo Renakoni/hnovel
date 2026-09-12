@@ -93,6 +93,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.github.michaelbull.result.getOrElse
+import com.github.michaelbull.result.get
 import com.github.michaelbull.result.map
 import com.github.michaelbull.result.onErr
 import com.github.michaelbull.result.onOk
@@ -136,7 +137,8 @@ fun DetailScreen(
     requestAddBookToBookshelf: (String) -> Unit,
     onClickTag: (String) -> Unit,
     onClickCover: (Uri) -> Unit,
-    onClickMarkAsRead: () -> Unit
+    onClickMarkAsRead: () -> Unit,
+    onRetry: () -> Unit = {}
 ) {
     val navController = LocalNavController.current
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
@@ -175,7 +177,7 @@ fun DetailScreen(
             val allowByDirection = !lazyListState.isScrollInProgress || scrollingUp
             val canGoForward = lazyListState.canScrollForward
 
-            hasVolumes && uiState.userReadingData != null && canGoForward && allowByDirection
+            uiState.readingAvailable && hasVolumes && uiState.userReadingData != null && canGoForward && allowByDirection
         }
     }
 
@@ -247,6 +249,7 @@ fun DetailScreen(
                 title = uiState.bookInformation?.map { it.title }?.getOrElse { "" } ?: "",
                 readingProgress = uiState.userReadingData?.readingProgress ?: 0f,
                 volumesEmpty = volumesEmpty,
+                readingAvailable = uiState.readingAvailable,
                 onClickBackButton = onClickBackButton,
                 onClickExport = { showExportBottomSheet = true },
                 onClickTextFormatting = {
@@ -284,7 +287,11 @@ fun DetailScreen(
                         onClickShowInfo = { showInfoBottomSheet = true }
                     )
                 }?.onErr {
-                    //TODO 错误显示
+                    Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(it.title, style = typography.titleMedium)
+                        Text(it.message, style = typography.bodyMedium)
+                        TextButton(onClick = onRetry) { Text(stringResource(R.string.discovery_retry)) }
+                    }
                 } ?: DetailContentSkeleton(
                         Modifier
                             .fillMaxSize()
@@ -294,7 +301,7 @@ fun DetailScreen(
         }
 
 
-        if (showExportBottomSheet) {
+        if (showExportBottomSheet && uiState.readingAvailable) {
             uiState.bookVolumes?.onOk { bookVolumes ->
                 ExportBottomSheet(
                     sheetState = exportBottomSheetState,
@@ -307,15 +314,13 @@ fun DetailScreen(
             }
         }
         AnimatedVisibility(visible = showInfoBottomSheet) {
-            uiState.bookVolumes?.onOk { bookVolumes ->
-                uiState.bookInformation?.onOk { bookInformation ->
-                    BookInfoBottomSheet(
-                        bookInformation = bookInformation,
-                        bookVolumes = bookVolumes,
-                        sheetState = infoBottomSheetState,
-                        onDismissRequest = { showInfoBottomSheet = false }
-                    )
-                }
+            uiState.bookInformation?.onOk { bookInformation ->
+                BookInfoBottomSheet(
+                    bookInformation = bookInformation,
+                    bookVolumes = uiState.bookVolumes?.get(),
+                    sheetState = infoBottomSheetState,
+                    onDismissRequest = { showInfoBottomSheet = false }
+                )
             }
         }
     }
@@ -472,6 +477,7 @@ private fun DetailContent(
         if (visible >= 1) item {
             BookCardBlock(
                 bookInformation = bookInformation,
+                showReadingMetadata = uiState.readingAvailable,
                 modifier = Modifier
                     .fadeInOnce("book")
                     .graphicsLayer {
@@ -495,6 +501,7 @@ private fun DetailContent(
                 modifier = Modifier.fadeInOnce("op"),
                 isInBookshelf = uiState.isInBookshelf,
                 isCached = uiState.isCached,
+                canCache = uiState.canCache,
                 downloadItem = uiState.downloadItem,
                 onClickAddToBookShelf = { requestAddBookToBookshelf(bookInformation.id) },
                 onClickCache = { cacheBook(bookInformation.id) },
@@ -509,7 +516,12 @@ private fun DetailContent(
             )
         }
 
-        if (visible >= 5) item {
+        if (visible >= 5 && !uiState.readingAvailable) item {
+            Text(stringResource(if (uiState.metadataOnly) R.string.source_metadata_only else R.string.source_reading_unavailable),
+                Modifier.padding(horizontal = itemHorizontalPadding, vertical = itemVerticalPadding),
+                style = typography.bodyMedium, color = colorScheme.onSurfaceVariant)
+        }
+        if (visible >= 5 && uiState.readingAvailable) item {
             Row(
                 modifier = Modifier
                     .fadeInOnce("contents")
@@ -530,7 +542,7 @@ private fun DetailContent(
             }
         }
 
-        if (visible >= 6) {
+        if (visible >= 6 && uiState.readingAvailable) {
             uiState.bookVolumes?.onOk { bookVolumes ->
                 items(
                     items = bookVolumes.volumes,
@@ -572,6 +584,7 @@ private fun TopBar(
     title: String,
     readingProgress: Float,
     volumesEmpty: Boolean,
+    readingAvailable: Boolean,
     onClickBackButton: () -> Unit,
     onClickExport: () -> Unit,
     onClickTextFormatting: () -> Unit,
@@ -642,7 +655,7 @@ private fun TopBar(
                 }
             },
             actions = {
-                TopBarActions(
+                if (readingAvailable) TopBarActions(
                     volumesEmpty = volumesEmpty,
                     onClickExport = onClickExport,
                     onClickTextFormatting = onClickTextFormatting,
@@ -710,6 +723,7 @@ private fun TopBarActions(
 @Composable
 private fun BookCardBlock(
     bookInformation: BookInformation,
+    showReadingMetadata: Boolean,
     modifier: Modifier,
     onClickCover: (Uri) -> Unit
 ) {
@@ -790,7 +804,7 @@ private fun BookCardBlock(
                 color = colorScheme.primary,
                 style = typography.bodyLarge
             )
-            Column {
+            if (showReadingMetadata) Column {
                 InfoRow(
                     icon = { BookStatusIcon(bookInformation.isComplete) },
                     text = updateText
@@ -908,6 +922,7 @@ private fun QuickOperationsBlock(
     modifier: Modifier,
     isInBookshelf: Boolean,
     isCached: Boolean,
+    canCache: Boolean,
     downloadItem: DownloadItem?,
     onClickAddToBookShelf: () -> Unit,
     onClickCache: () -> Unit,
@@ -953,7 +968,7 @@ private fun QuickOperationsBlock(
                 onClick = { },
                 modifier = Modifier.weight(1f)
             )
-        } else {
+        } else if (canCache) {
             QuickOperationButton(
                 icon = cloud,
                 title = if (downloadItem == null)

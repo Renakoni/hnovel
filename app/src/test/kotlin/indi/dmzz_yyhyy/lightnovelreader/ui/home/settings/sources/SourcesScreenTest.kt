@@ -139,6 +139,23 @@ class SourcesScreenTest {
         verify(exactly = 0) { model.commit(any(), any(), any()) }
     }
 
+    @Test fun zlibraryHasAnAppSearchEntryAndMirrorChangesStayDraftUntilSaved() {
+        val native = indi.dmzz_yyhyy.lightnovelreader.data.web.zlibrary.ZLibrarySources
+        val settings = indi.dmzz_yyhyy.lightnovelreader.data.web.zlibrary.ZLibrarySettings()
+        val state = SourceManagementState(selected = native.ID,
+            zLibrary = indi.dmzz_yyhyy.lightnovelreader.data.web.zlibrary.ZLibraryState(settings))
+        var selected: Identifier? = null
+        activity.get().setContent { MaterialTheme { SourcesScreen(state, model, onDiagnostics = {}, onSearch = { selected = it }) {} } }
+        compose.onNodeWithText("Search this source").performClick()
+        org.junit.Assert.assertEquals(native.ID, selected)
+        compose.onNodeWithText("https://z-lib.fo:443").performScrollTo().performClick()
+        verify(exactly = 0) { model.saveZLibrary(any(), any()) }
+        compose.onNodeWithText("Save site and permissions").performScrollTo().performClick()
+        verify(exactly = 1) { model.saveZLibrary("https://z-lib.fo:443", settings.origins.joinToString("\n")) }
+        compose.onNodeWithContentDescription("Enable source").performScrollTo().performClick()
+        verify(exactly = 1) { model.setZLibraryEnabled(false) }
+    }
+
     @Test fun loginControlsSubmitDefaultsAndTheCurrentSourceFormValues() {
         val form = LoginForm(listOf(LoginField("user", "text", label = "Account"), LoginField("password", "password"),
             LoginField("region", "select", choices = listOf("east", "west"), label = "Region"),

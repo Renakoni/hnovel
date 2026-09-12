@@ -26,6 +26,7 @@ import javax.inject.Inject
 class LightNovelReaderApplication : Application(), Configuration.Provider, coil3.SingletonImageLoader.Factory {
     @Inject lateinit var sourceImageInterceptor: indi.dmzz_yyhyy.lightnovelreader.data.image.SourceImageInterceptor
     @Inject lateinit var importedRuleSources: indi.dmzz_yyhyy.lightnovelreader.data.web.rules.ImportedRuleSources
+    @Inject lateinit var zLibrarySources: indi.dmzz_yyhyy.lightnovelreader.data.web.zlibrary.ZLibrarySources
 
     override fun newImageLoader(context: Context): coil3.ImageLoader = coil3.ImageLoader.Builder(context)
         .components { add(sourceImageInterceptor); add(indi.dmzz_yyhyy.lightnovelreader.data.image.SourceImageFetcher.Factory()) }
@@ -71,6 +72,7 @@ class LightNovelReaderApplication : Application(), Configuration.Provider, coil3
         runBlocking {
             pluginManager.initAllPlugin()
             importedRuleSources.restore()
+            zLibrarySources.restore()
         }
         coroutineScope.launch(Dispatchers.IO) {
             matomoAnalytics.initialize()

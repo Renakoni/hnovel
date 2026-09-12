@@ -40,7 +40,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun BookInfoBottomSheet(
     bookInformation: BookInformation,
-    bookVolumes: BookVolumes,
+    bookVolumes: BookVolumes?,
     sheetState: SheetState,
     onDismissRequest: () -> Unit,
 ) {
@@ -163,7 +163,7 @@ fun BookInfoBottomSheet(
                 icon = painterResource(R.drawable.text_snippet_24px)
             )
 
-            InfoItem(
+            if (bookVolumes != null) InfoItem(
                 title = stringResource(R.string.detail_info_updated_on),
                 content = bookInformation.lastUpdated.format(dateFormatter()) + "\n" +
                         if (bookInformation.isComplete) stringResource(R.string.book_completed)
@@ -181,7 +181,7 @@ fun BookInfoBottomSheet(
                 icon = painterResource(R.drawable.tag_24px)
             )
 
-            InfoItem(
+            if (bookVolumes != null) InfoItem(
                 title = stringResource(R.string.detail_info_stats),
                 content = stringResource(
                     R.string.detail_info_word_count_content,

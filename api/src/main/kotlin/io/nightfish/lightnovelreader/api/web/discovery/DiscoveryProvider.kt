@@ -39,7 +39,7 @@ sealed interface DiscoveryFilter {
 
 enum class DiscoveryError {
     Unsupported, AuthenticationRequired, PermissionDenied, InvalidRules, Network,
-    InvalidRequest, InvalidResponse, Unavailable, Limit, AddressDenied, Dns,
+    InvalidRequest, InvalidResponse, Unavailable, Limit, AddressDenied, Dns, RateLimited,
 }
 
 /** Source-bound, redacted exact origin; resourceKind is a host resource label, never a URL or header. */

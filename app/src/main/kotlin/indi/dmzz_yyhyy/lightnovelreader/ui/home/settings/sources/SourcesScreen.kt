@@ -31,6 +31,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.web.SourceCapability
 import indi.dmzz_yyhyy.lightnovelreader.data.web.rules.ImportedRuleSources
 import indi.dmzz_yyhyy.lightnovelreader.data.web.rules.InstalledRuleSource
 import indi.dmzz_yyhyy.lightnovelreader.data.web.rules.LoginStatus
+import indi.dmzz_yyhyy.lightnovelreader.data.web.zlibrary.ZLibrarySources
 import io.nightfish.lightnovelreader.api.Route
 import io.nightfish.lightnovelreader.api.identifier.Identifier
 import io.nightfish.lightnovelreader.api.ui.LocalNavController
@@ -85,7 +86,8 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
     }
     BackHandler { back() }
     Scaffold(topBar = {
-        TopAppBar(title = { Text(installed?.definition?.displayName ?: stringResource(R.string.sources_title)) },
+        TopAppBar(title = { Text(if (state.selected == ZLibrarySources.ID) "Z-Library"
+            else installed?.definition?.displayName ?: stringResource(R.string.sources_title)) },
             navigationIcon = { IconButton(onClick = { back() }) {
                 Icon(painterResource(R.drawable.arrow_back_24px), stringResource(R.string.sources_back))
             } })
@@ -95,6 +97,10 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
             state.message?.let { message -> item { Text(stringResource(message), color = MaterialTheme.colorScheme.primary) } }
             if (state.preview != null) {
                 item { Preview(state, model) }
+            } else if (state.selected == ZLibrarySources.ID) {
+                item { ZLibrarySettingsEditor(state.zLibrary, state.busy,
+                    onEnabled = model::setZLibraryEnabled, onSave = model::saveZLibrary,
+                    onSearch = { onSearch(ZLibrarySources.ID) }) }
             } else if (installed != null) {
                 item {
                     val definition = installed.definition
@@ -180,7 +186,16 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                     }
                 }
                 if (state.installed.isEmpty()) item { Text(stringResource(R.string.sources_empty)) }
-                items(state.registry.filter { it.metadata.builtIn }, key = { it.metadata.id.toString() }) { entry ->
+                item {
+                    ListItem(headlineContent = { Text("Z-Library") },
+                        supportingContent = { Text(stringResource(R.string.zlibrary_source_summary)) },
+                        trailingContent = {
+                            if (state.zLibrary.settings.available) IconButton(onClick = { onSearch(ZLibrarySources.ID) }, enabled = !state.busy) {
+                                Icon(painterResource(R.drawable.search_24px), stringResource(R.string.explore_search))
+                            }
+                        }, modifier = Modifier.clickable(enabled = !state.busy) { model.select(ZLibrarySources.ID) })
+                }
+                items(state.registry.filter { it.metadata.builtIn && it.metadata.id != ZLibrarySources.ID }, key = { it.metadata.id.toString() }) { entry ->
                     ListItem(headlineContent = { Text(entry.metadata.item.name) }, supportingContent = { Text(stringResource(R.string.sources_builtin)) },
                         trailingContent = {
                             if (SourceCapability.Search in entry.metadata.capabilities) IconButton(onClick = { onSearch(entry.metadata.id) }) {

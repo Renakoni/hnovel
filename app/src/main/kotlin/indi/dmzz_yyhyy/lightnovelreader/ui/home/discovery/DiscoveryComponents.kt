@@ -37,19 +37,7 @@ internal fun DiscoveryEmpty(message: String, onManageSources: () -> Unit) {
 @Composable
 internal fun DiscoveryFailure(error: DiscoveryError, retry: () -> Unit, manage: () -> Unit, back: (() -> Unit)?, field: String? = null,
     permission: DiscoveryPermission? = null) {
-    val message = when (error) {
-        DiscoveryError.Unsupported -> R.string.discovery_unsupported
-        DiscoveryError.AuthenticationRequired -> R.string.discovery_login_required
-        DiscoveryError.PermissionDenied -> R.string.discovery_permission
-        DiscoveryError.AddressDenied -> R.string.sources_address_denied
-        DiscoveryError.Dns -> R.string.sources_dns_failed
-        DiscoveryError.InvalidRules -> R.string.discovery_invalid_rules
-        DiscoveryError.Limit -> R.string.discovery_limit
-        DiscoveryError.Network -> R.string.discovery_network
-        DiscoveryError.InvalidRequest -> R.string.discovery_invalid_target
-        DiscoveryError.InvalidResponse -> R.string.discovery_invalid_response
-        DiscoveryError.Unavailable -> R.string.discovery_unavailable
-    }
+    val message = indi.dmzz_yyhyy.lightnovelreader.data.web.sourceFailureMessage(error)
     Column(Modifier.padding(16.dp)) {
         Text(stringResource(message), color = MaterialTheme.colorScheme.error)
         if (error == DiscoveryError.PermissionDenied) permission?.let { SourcePermissionLabel(it.origin, it.resourceKind) }
