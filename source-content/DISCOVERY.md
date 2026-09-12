@@ -91,6 +91,14 @@ the page's string map before running their action. Buttons receive `isLongClick`
 Presentation `style` is not interpreted as a layout program: the host owns the linear
 layout. Unknown row types/fields and invalid choices produce field-qualified errors.
 
+In `exploreUrl`, exactly the `title`, `url` and `style` keys with blank string title/URL
+and object-valued style form a layout spacer. Such grid filler produces no category
+or action. It is skipped before duplicate-target occurrence IDs are assigned; error
+indices still refer to the original array. Nonblank titles with blank URLs remain
+headings. An unnamed nonblank target is invalid at `exploreUrl[index].title`; an ID,
+type, action, viewName or unknown field never becomes an inert spacer. Styles remain
+presentation metadata, not permission for source-defined layouts.
+
 | Script API / field | Host behavior |
 | --- | --- |
 | `infoMap.get()`, `get(key)`, `put(key,value)`, bracket access | Current page's string-map draft |
@@ -155,7 +163,9 @@ inside a discovery action.
 
 ## Bounds, errors, and verification
 
-- At most 128 combined rows, 64 choices per control, 16 deferred actions per interaction,
+- At most 1,024 raw rows per field and 1,024 combined normalized rows, including
+  exploreScreen and the custom button; no truncation. Catalogue growth does not change
+  the separate limits of 64 choices per control, 16 deferred actions per interaction,
   128 draft fields, 4,096 characters per value, and 32,768 total draft characters.
 - Existing Rhino instruction, script, bridge, rule-call, IPC, and execution deadlines
   still apply. No new network/browser authority is granted by a catalogue or action.
@@ -163,7 +173,10 @@ inside a discovery action.
   reports `ruleExplore.page` before issuing HTTP. Nonempty duplicate-only pages terminate
   pagination. A failed request retains its cursor and previous books for retry.
 - Missing discovery, authentication/browser requirements, permission denial, network
-  failure, and invalid rules remain distinct host errors. Parse/action errors retain
+  failure, processing limits, and invalid rules remain distinct host errors.
+  ContentError.Limit maps to the additive DiscoveryError.Limit case and a dedicated
+  shared UI message. Raw-row overflow names its field; combined-row overflow names
+  exploreUrl. Duplicate IDs still report InvalidRules/exploreUrl.id. Parse/action errors retain
   locations such as `exploreUrl[0].type` or `discovery.actions[0].open` in the UI and
   diagnostics. A search-only source is not removed from search or direct-link reading.
 - `RuleDiscoveryTest` uses actual imported definitions, the production worker wire and
@@ -174,4 +187,22 @@ inside a discovery action.
   callbacks, refresh counts, cancellation, scrolling, and independent result filters.
 - The browser-port fixture records the existing port and forwards to local HTTP; it is
   not an actual WebView. Robolectric and JVM wire tests are not real Android Binder/
-  isolated-process evidence. No new emulator run or remote CI verification is claimed.
+  isolated-process evidence. Actual device checks are recorded separately from these tests.
+
+## Public catalogue regression (#133)
+
+Pinned, unchanged catalogue values and provenance are in
+[test fixtures](src/testFixtures/resources/README.md). Qidian retains all 326 rows
+(322 selectable); Dubu normalizes to 14, Aitu to 72 and Jiuai to 22. Titles, URLs,
+order and stable IDs are tested. Source 9 is disabled upstream; parser success does
+not authorize or activate it. Missing exploreUrl and disabled discovery still use
+the existing search/reading capabilities, without generated categories.
+
+Yueyou remains explicitly invalid at `exploreUrl[19].title`: its target
+`/l/f/2103/{{page}}.html` has no title. The source definition needs an upstream label;
+no actionable category is silently discarded or given an invented meaning. This
+catalogue validation does not disable its search or reading APIs.
+
+The new regressions cover complete/static/dynamic catalogues, exact spacer shape,
+original diagnostics, 1,024-row and separate form limits. Host tests verify a single
+feed preview, original targets, and scrolling/selecting item 326 in both screens.

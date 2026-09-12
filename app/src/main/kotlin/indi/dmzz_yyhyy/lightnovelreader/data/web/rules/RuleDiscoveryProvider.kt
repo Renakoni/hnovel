@@ -78,6 +78,7 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
         ContentError.PermissionDenied -> DiscoveryError.PermissionDenied
         ContentError.Network -> DiscoveryError.Network
         ContentError.Unavailable -> DiscoveryError.Unavailable
+        ContentError.Limit -> DiscoveryError.Limit
         else -> DiscoveryError.InvalidRules
     }) }
 }
