@@ -82,6 +82,14 @@ class Wenku8DiscoveryTest {
         assertEquals(2, calls.size)
     }
 
+    @Test fun emptyCategoryDirectoryAndMalformedTagEncodingAreNotNetworkFailures() = runBlocking {
+        assertTrue(Wenku8Discovery(host) { Jsoup.parse("<html></html>") }.categories().get()!!.isEmpty())
+        assertEquals(Err(DiscoveryError.InvalidResponse), Wenku8Discovery(host) {
+            Jsoup.parse("<a href='tags.php?t=%XX'>Broken tag</a>")
+        }.categories())
+        assertEquals(Err(DiscoveryError.Network), Wenku8Discovery(host) { throw java.io.IOException() }.categories())
+    }
+
     @Test fun localFilteringRetainsPagingAndSortSemantics() = runBlocking {
         val calls = mutableListOf<String>()
         val provider = Wenku8Discovery(host) { url -> calls.add(url); Jsoup.parse(cards(2, if ("page=2" in url) "2/2" else "1/2")) }

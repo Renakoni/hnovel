@@ -41,6 +41,12 @@ class CorpusIntegrityTest {
         val features = manifest.getAsJsonArray("features")
         val featureIds = features.map { it.asJsonObject.string("id") }
         assertEquals(featureIds.size, featureIds.toSet().size)
+        assertEquals(requiredFeatureIds, featureIds.toSet())
+        val repository = File(System.getProperty("compatibility.projectDir")).parentFile
+        assertTrue(File(repository, manifest.string("acceptanceReport")).isFile)
+        val testRoots = repository.listFiles().orEmpty().flatMap { module ->
+            listOf(File(module, "src/test/kotlin"), File(module, "src/androidTest/kotlin"))
+        }.filter { it.isDirectory }
         val referencedCases = mutableSetOf<String>()
         val testIds = mutableSetOf<String>()
         for (entry in features) {
@@ -49,19 +55,14 @@ class CorpusIntegrityTest {
             assertTrue(feature.string("requirement").isNotBlank())
             assertTrue(feature.string("evidence").isNotBlank())
             assertTrue(testIds.add(feature.string("testId")))
-            val implemented = featureIdsImplemented.contains(feature.string("id"))
-            val partial = feature.string("id") in setOf("URL", "HTTP", "STORAGE")
-            // Real entry points exist, but these feature groups still have incomplete acceptance.
-            val implementation = when {
-                implemented -> "implemented"
-                partial -> "partial"
-                else -> "planned"
-            }
-            assertEquals(implementation, feature.string("implementation"))
-            if (partial) assertEquals("product-contract", feature.string("verification"))
-            if (implemented || partial) {
-                assertTrue(feature.getAsJsonArray("productTests").size() > 0)
-                assertTrue(feature.string("verification").startsWith("product-"))
+            // Required features cannot disappear or be relabeled unsupported to pass acceptance.
+            assertEquals("implemented", feature.string("implementation"))
+            assertTrue(feature.string("verification").startsWith("product-"))
+            val productTests = feature.getAsJsonArray("productTests")
+            assertTrue(productTests.size() > 0)
+            for (test in productTests) {
+                val path = test.asString.replace('.', '/') + ".kt"
+                assertTrue("Missing product test ${test.asString}", testRoots.any { File(it, path).isFile })
             }
             val fixtures = feature.getAsJsonArray("fixtures").map { it.asString }
             if (feature.string("verification") == "reference-fixture") assertTrue(fixtures.isNotEmpty())
@@ -71,7 +72,8 @@ class CorpusIntegrityTest {
             }
         }
         assertEquals(caseIds, referencedCases)
-        assertEquals(featureIdsImplemented.size, manifest.get("productImplementedCount").asInt)
+        // This validates references; only running the owning JVM/Android jobs proves they pass.
+        assertEquals(requiredFeatureIds.size, manifest.get("productImplementedCount").asInt)
         for (case in cases) {
             assertTrue(case.string("evidence").isNotBlank())
             assertTrue(case.string("oracle") in setOf("pinned-selector", "rhino-contract", "mixed-contract"))
@@ -82,8 +84,9 @@ class CorpusIntegrityTest {
         report.writeText(FixtureCorpus.gson.toJson(manifest) + "\n")
     }
 
-    private val featureIdsImplemented = setOf("FORMAT", "HTML", "JSON", "XPATH", "REGEX", "COMPOSITION", "REPLACEMENT", "SANDBOX", "IDENTIFIERS", "VARIABLES", "JS", "ENCODING", "FILES", "SEARCH", "DETAIL", "TOC", "CONTENT", "IMAGES",
-        "DISCOVERY", "EXTENSION-FLAGS", "EXTENSION-INFOMAP", "EXTENSION-UI")
+    private val requiredFeatureIds = setOf("FORMAT", "HTML", "JSON", "XPATH", "REGEX", "COMPOSITION", "REPLACEMENT", "SANDBOX", "IDENTIFIERS", "VARIABLES", "JS", "ENCODING", "FILES", "SEARCH", "DETAIL", "TOC", "CONTENT", "IMAGES",
+        "DISCOVERY", "EXTENSION-FLAGS", "EXTENSION-INFOMAP", "EXTENSION-UI", "URL", "HTTP", "COOKIE", "STORAGE", "LOGIN",
+        "WEBVIEW", "WEBVIEW-ISOLATION", "EXTENSION-LOGIN-UI", "DIAGNOSTICS", "REVISIONS", "INTEGRATION")
 
     @Test
     fun syntheticSourcesCoverTheRequiredFamiliesWithoutPluginPackages() {

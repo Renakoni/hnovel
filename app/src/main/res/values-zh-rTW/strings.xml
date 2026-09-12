@@ -659,4 +659,10 @@
     <string name="key_local_book_sort_chapter_count">以章節數量排序</string>
     <string name="restart">重新啟動</string>
     <string name="never_read">從未閱讀</string>
+    <string name="sources_profile_standard">標準閱讀書源</string>
+    <string name="sources_profile_extension">擴展閱讀書源</string>
+    <string name="sources_profile_help">按書源作者的說明選擇。擴展模式支援動態登入表單和擴展控制項。</string>
+    <string name="sources_apply_field">執行欄位動作</string>
+    <string name="source_diagnostics_login_form">檢查登入表單</string>
+    <string name="source_verification_code">圖片驗證碼</string>
 </resources>

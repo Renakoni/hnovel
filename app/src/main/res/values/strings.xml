@@ -703,4 +703,9 @@
     <string name="bookshelf_pin_selected">Pin / unpin selected books</string>
     <string name="bookshelf_remove_selected">Remove from this bookshelf</string>
     <string name="bookshelf_collect_selected">Add to bookshelves</string>
+    <string name="sources_profile_standard">Standard Legado source</string>
+    <string name="sources_profile_extension">Extended Legado source</string>
+    <string name="sources_profile_help">Follow the source author’s instructions. Extended mode supports scripted login forms and additional controls.</string>
+    <string name="sources_apply_field">Apply field action</string>
+    <string name="source_diagnostics_login_form">Check login form</string>
 </resources>

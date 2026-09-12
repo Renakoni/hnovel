@@ -107,6 +107,32 @@ class RuleDiscoveryProviderTest {
         }
     }
 
+    @Test fun missingDisabledEmptyAndInvalidCataloguesRemainDifferentWithoutFetchingBooks() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            val cases = listOf(
+                fixture.raw("missing") to false,
+                JsonObject(definition(fixture.raw("disabled")) + ("enabledExplore" to JsonPrimitive(false))) to false,
+                JsonObject(definition(fixture.raw("empty")) + ("exploreUrl" to JsonPrimitive("[]"))) to true,
+                JsonObject(definition(fixture.raw("invalid")) + ("exploreUrl" to JsonPrimitive("[{\"title\":\"Broken\",\"type\":\"nativeView\"}]"))) to true
+            )
+            for ((index, value) in cases.withIndex()) fixture.source { value.first }.use { source ->
+                val provider = RuleDiscoveryProvider(source)
+                assertEquals(value.second, provider.hasCategories)
+                assertEquals(value.second, provider.hasFeed)
+                assertTrue(source.canSearch)
+                when (index) {
+                    0, 1 -> assertEquals(Err(DiscoveryError.Unsupported), provider.catalog())
+                    2 -> assertTrue(provider.catalog().get()!!.categories.isEmpty())
+                    3 -> {
+                        assertEquals(Err(DiscoveryError.InvalidRules), provider.catalog())
+                        assertEquals("exploreUrl[0].type", provider.failureField)
+                    }
+                }
+            }
+            assertEquals(0, fixture.documents.get())
+        }
+    }
+
     @Test fun formKeysIgnoreViewNamesAndConfigurationRefreshDoesNotNavigate() = runBlocking {
         RuleSourceFixture().use { fixture ->
             val source = fixture.source { raw -> JsonObject(definition(raw) + ("exploreUrl" to JsonPrimitive("""[

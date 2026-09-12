@@ -10,7 +10,9 @@
     {
       "id": "advanced-sample-20260908",
       "kind": "extension-target",
-      "scope": "Static capability inventory of a private sample; extension host provenance unresolved. Not an official Legado version and not a claim the live source works."
+      "scope": "Target extension vocabulary, with pinned Luoyacheng/legado source evidence and explicit host contracts. The private sample remains static shape evidence, not proof of live-source execution.",
+      "revision": "8b87c5aba4df91c39a3a0939a68a1180b9f2ee1c",
+      "reference": "https://github.com/Luoyacheng/legado"
     },
     {
       "id": "unknown",
@@ -18,7 +20,7 @@
       "scope": "Must report unknown fields/API explicitly; cannot auto-label as supported."
     }
   ],
-  "productImplementedCount": 22,
+  "productImplementedCount": 33,
   "features": [
     {
       "id": "FORMAT",
@@ -47,7 +49,7 @@
         "HTML-DEFAULT",
         "HTML-EMPTY"
       ],
-      "evidence": "Production source-rules evaluator tested; pinned selector cases compare with hand-derived expectations and unchanged reference. Routing/replacement tests are explicit contracts, not a full upstream AnalyzeRule oracle. Execution-process hard termination remains #86.",
+      "evidence": "Production source-rules evaluator tested; pinned selector cases compare with hand-derived expectations and unchanged reference. Routing/replacement tests are explicit contracts, not a full upstream AnalyzeRule oracle. Execution-process termination is verified separately by the SANDBOX entry.",
       "productTests": [
         "hnovel.rules.RuleEvaluatorTest",
         "hnovel.compatibility.ProductRuleFixtureTest"
@@ -65,7 +67,7 @@
         "JSON-FILTER",
         "JSON-SCALAR-JOIN"
       ],
-      "evidence": "Production source-rules evaluator tested; pinned selector cases compare with hand-derived expectations and unchanged reference. Routing/replacement tests are explicit contracts, not a full upstream AnalyzeRule oracle. Execution-process hard termination remains #86.",
+      "evidence": "Production source-rules evaluator tested; pinned selector cases compare with hand-derived expectations and unchanged reference. Routing/replacement tests are explicit contracts, not a full upstream AnalyzeRule oracle. Execution-process termination is verified separately by the SANDBOX entry.",
       "productTests": [
         "hnovel.rules.RuleEvaluatorTest",
         "hnovel.compatibility.ProductRuleFixtureTest"
@@ -81,7 +83,7 @@
       "fixtures": [
         "XPATH-TEXT"
       ],
-      "evidence": "Production source-rules evaluator tested; pinned selector cases compare with hand-derived expectations and unchanged reference. Routing/replacement tests are explicit contracts, not a full upstream AnalyzeRule oracle. Execution-process hard termination remains #86.",
+      "evidence": "Production source-rules evaluator tested; pinned selector cases compare with hand-derived expectations and unchanged reference. Routing/replacement tests are explicit contracts, not a full upstream AnalyzeRule oracle. Execution-process termination is verified separately by the SANDBOX entry.",
       "productTests": [
         "hnovel.rules.RuleEvaluatorTest",
         "hnovel.compatibility.ProductRuleFixtureTest"
@@ -100,7 +102,7 @@
         "REGEX-OPTIONAL-ALL",
         "REGEX-OPTIONAL-FIRST"
       ],
-      "evidence": "Production source-rules evaluator tested; pinned selector cases compare with hand-derived expectations and unchanged reference. Routing/replacement tests are explicit contracts, not a full upstream AnalyzeRule oracle. Execution-process hard termination remains #86.",
+      "evidence": "Production source-rules evaluator tested; pinned selector cases compare with hand-derived expectations and unchanged reference. Routing/replacement tests are explicit contracts, not a full upstream AnalyzeRule oracle. Execution-process termination is verified separately by the SANDBOX entry.",
       "productTests": [
         "hnovel.rules.RuleEvaluatorTest",
         "hnovel.compatibility.ProductRuleFixtureTest"
@@ -120,7 +122,7 @@
         "JSON-INTERLEAVE-TAIL",
         "RULE-NESTED"
       ],
-      "evidence": "Production source-rules evaluator tested; pinned selector cases compare with hand-derived expectations and unchanged reference. Routing/replacement tests are explicit contracts, not a full upstream AnalyzeRule oracle. Execution-process hard termination remains #86.",
+      "evidence": "Production source-rules evaluator tested; pinned selector cases compare with hand-derived expectations and unchanged reference. Routing/replacement tests are explicit contracts, not a full upstream AnalyzeRule oracle. Execution-process termination is verified separately by the SANDBOX entry.",
       "productTests": [
         "hnovel.rules.RuleEvaluatorTest",
         "hnovel.compatibility.ProductRuleFixtureTest"
@@ -134,7 +136,7 @@
       "implementation": "implemented",
       "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Production source-rules evaluator tested; pinned selector cases compare with hand-derived expectations and unchanged reference. Routing/replacement tests are explicit contracts, not a full upstream AnalyzeRule oracle. Execution-process hard termination remains #86.",
+      "evidence": "Production source-rules evaluator tested; pinned selector cases compare with hand-derived expectations and unchanged reference. Routing/replacement tests are explicit contracts, not a full upstream AnalyzeRule oracle. Execution-process termination is verified separately by the SANDBOX entry.",
       "productTests": [
         "hnovel.rules.RuleEvaluatorTest"
       ]
@@ -170,7 +172,7 @@
         "JS-SHARED-STATE",
         "MIXED-HTML-JS"
       ],
-      "evidence": "Rhino 1.8.1 runs global-completion scripts, ordered external jsLib segments, nested rule scripts and request templates with shared budgets and source-owned library state. Target worker tools are implemented; privileged login/browser/UI ports remain #88/#89/#91. This is the bounded novel-source data profile, not arbitrary Java interoperability.",
+      "evidence": "Rhino 1.8.1 runs global-completion scripts, ordered external jsLib segments, nested rule scripts and request templates with shared budgets and source-owned library state. Worker tools and bounded login/browser/discovery ports are implemented and covered by their own feature entries below. This is the bounded novel-source data profile, not arbitrary Java interoperability.",
       "productTests": [
         "hnovel.rhino.RhinoScriptEngineTest",
         "hnovel.execution.SourceLibraryTest",
@@ -184,15 +186,16 @@
       "owner": "https://github.com/Renakoni/hnovel/issues/85",
       "requirement": "URL 模板/相对路径、页面参数、编码/charset、方法/body/header/重定向与 retry。",
       "testId": "CONFORMANCE-URL",
-      "implementation": "partial",
+      "implementation": "implemented",
       "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Static request compiler and scoped broker plus worker-only @js/<js>, @result, balanced expression templates and URL-option js are implemented. Whole expanded batches and nested option/header/body JSON are bounded. Static placeholders preserve charset-aware field escaping. Browser options remain deferred.",
+      "evidence": "RequestCompiler and worker ScriptRequestTemplates handle URL/charset/page templates, methods, bodies, source headers, redirects and bounded retries. Browser options now pass to the existing broker browser port. get/head/post deliberately require absolute URLs and expose the first response, matching the pinned Jsoup entry points.",
       "productTests": [
         "hnovel.network.RequestCompilerTest",
-        "hnovel.execution.SourceLibraryTest",
+        "hnovel.network.SourceBrokerTest",
         "hnovel.compatibility.ProductRequestContractTest",
-        "hnovel.rhino.ScriptRequestTemplatesTest"
+        "hnovel.rhino.ScriptRequestTemplatesTest",
+        "hnovel.content.RuleSourceTest"
       ]
     },
     {
@@ -200,17 +203,17 @@
       "owner": "https://github.com/Renakoni/hnovel/issues/85",
       "requirement": "java.ajax/ajaxAll/connect/get/head/post，响应体/头、来源限流、取消、授权与真实请求目标检查。",
       "testId": "CONFORMANCE-HTTP",
-      "implementation": "partial",
+      "implementation": "implemented",
       "verification": "product-contract",
       "fixtures": [],
-      "evidence": "The #87 response data surface now includes original bytes/streams, mutable Connection.Response methods, buffer/parse consumption, charset detection and closed StrResponse raw-body metadata. Pinned Jsoup differential and Binder tests pass. Session Cookie/login and browser integration remain explicitly owned by #88/#89; raw transport histories are not reconstructed.",
+      "evidence": "SourceExecutionBroker uses source-owned permissions, request/rate/byte budgets, cancellation and revocation-guarded commits. Actual local HTTP, response bytes/charset, same-domain accounts, dynamic headers, browser headers, batch ordering and redirect semantics are tested. Browser subprocess behavior requires the Android checks as well as the JVM contracts.",
       "productTests": [
         "hnovel.execution.NetworkBridgeTest",
+        "hnovel.network.SourceBrokerTest",
+        "hnovel.rhino.ResponseContractTest",
+        "hnovel.content.RuleSourceTest",
         "indi.dmzz_yyhyy.lightnovelreader.sourceexecution.IsolatedExecutionInstrumentedTest",
-        "hnovel.rhino.ScriptResponseTest",
-        "hnovel.rhino.ScriptDomTest",
-        "hnovel.rhino.ScriptRequestTemplatesTest",
-        "hnovel.rhino.ResponseContractTest"
+        "indi.dmzz_yyhyy.lightnovelreader.sourceexecution.SourceBrowserInstrumentedTest"
       ]
     },
     {
@@ -218,24 +221,35 @@
       "owner": "https://github.com/Renakoni/hnovel/issues/88",
       "requirement": "enabledCookieJar、cookie/getCookie、请求头优先级、同域不同来源账号隔离。",
       "testId": "CONFORMANCE-COOKIE",
-      "implementation": "planned",
-      "verification": "future-fixture",
+      "implementation": "implemented",
+      "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Pinned reference source inspection; production implementation pending."
+      "evidence": "SourceSession/SourceCookies own the automatic jar, explicit Cookie APIs, header precedence and account persistence. Logout revokes old commits and removes only that source's authentication. Local HTTP plus real browser/Binder tests cover same-domain sources, path ordering, HttpOnly, cookie-disabled sources and late responses.",
+      "productTests": [
+        "hnovel.network.SourceLoginCookiesTest",
+        "hnovel.network.SourceBrokerTest",
+        "hnovel.execution.ScriptExecutionTest",
+        "indi.dmzz_yyhyy.lightnovelreader.data.web.rules.SourceLoginServiceTest",
+        "indi.dmzz_yyhyy.lightnovelreader.sourceexecution.SourceAccountInstrumentedTest",
+        "indi.dmzz_yyhyy.lightnovelreader.sourceexecution.SourceBrowserInstrumentedTest"
+      ]
     },
     {
       "id": "STORAGE",
       "owner": "https://github.com/Renakoni/hnovel/issues/85",
       "requirement": "cache get/put/delete、source 变量/配置与受限存储、TTL/配额；不得访问宿主仓库。",
       "testId": "CONFORMANCE-STORAGE",
-      "implementation": "partial",
+      "implementation": "implemented",
       "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Source/cache methods, scoped external libraries and controlled resource/archive tools run through account storage with quotas, TTL and revocation-guarded commits. All resource cache hits recheck origins. Session Cookie/login state integration remains #88.",
+      "evidence": "Source/config/content/resources and general browser localStorage belong to the source/profile; LoginInfo, LoginHeader and Cookie stores belong to the account generation. Quotas, TTL, explicit deletion, revoked writes and reconstruction are tested. Logout retains books, reading progress, content/images and source.put/cache values; ordinary cache TTL and eviction still apply.",
       "productTests": [
+        "hnovel.network.SourceBrokerTest",
         "hnovel.execution.ScriptExecutionTest",
         "hnovel.execution.SourceLibraryTest",
-        "hnovel.execution.ResourceBridgeTest"
+        "hnovel.execution.ResourceBridgeTest",
+        "indi.dmzz_yyhyy.lightnovelreader.data.web.rules.SourceLoginServiceTest",
+        "indi.dmzz_yyhyy.lightnovelreader.data.web.rules.MixedSourceAcceptanceTest"
       ]
     },
     {
@@ -278,32 +292,49 @@
       "owner": "https://github.com/Renakoni/hnovel/issues/88",
       "requirement": "loginUrl/login()、loginUi 表单、loginCheckJs、登录头/信息和账号代次。",
       "testId": "CONFORMANCE-LOGIN",
-      "implementation": "planned",
-      "verification": "reference-fixture",
+      "implementation": "implemented",
+      "verification": "product-contract",
       "fixtures": [
         "LOGIN-CONTRACT"
       ],
-      "evidence": "Hand-authored login contract under Rhino with a recording host double; Android account/Cookie implementations pending."
+      "evidence": "RuleSource and SourceLoginService run static forms, loginUrl/login(), loginCheckJs response hooks, login information/headers and browser login under one revision/account attempt. UI starts the new account before evaluating its form; cancellation/removal/revision changes cannot revive the previous attempt. Dynamic source headers and image verification are exercised through production worker/broker paths.",
+      "productTests": [
+        "hnovel.content.RuleSourceTest",
+        "hnovel.content.RuleLoginFormTest",
+        "indi.dmzz_yyhyy.lightnovelreader.data.web.rules.SourceLoginServiceTest",
+        "indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.sources.SourcesViewModelTest",
+        "indi.dmzz_yyhyy.lightnovelreader.sourceexecution.SourceBrowserInstrumentedTest"
+      ]
     },
     {
       "id": "WEBVIEW",
       "owner": "https://github.com/Renakoni/hnovel/issues/89",
       "requirement": "WebView 渲染/DOM 返回、startBrowserAwait/验证码和会话同步。",
       "testId": "CONFORMANCE-WEBVIEW",
-      "implementation": "planned",
-      "verification": "android-required",
+      "implementation": "implemented",
+      "verification": "product-android",
       "fixtures": [],
-      "evidence": "Pinned reference source inspection; production implementation pending."
+      "evidence": "AndroidSourceBrowser and the disposable SourceBrowserService implement DOM rendering, foreground startBrowser/Await, image getVerificationCode and source Cookie synchronization. API 24/35 instrumentation exercises actual Chromium, Binder, dynamic headers, POST login and manually entered verification text. JVM bridge doubles only prove dispatch/contracts; they are not the platform acceptance result.",
+      "productTests": [
+        "hnovel.execution.ScriptExecutionTest",
+        "hnovel.content.RuleSourceTest",
+        "indi.dmzz_yyhyy.lightnovelreader.sourceexecution.SourceBrowserInstrumentedTest"
+      ]
     },
     {
       "id": "WEBVIEW-ISOLATION",
       "owner": "https://github.com/Renakoni/hnovel/issues/89",
       "requirement": "Cookie/localStorage/Service Worker/子资源网络和迟到回调隔离，最低系统版本验证。",
       "testId": "CONFORMANCE-WEBVIEW-ISOLATION",
-      "implementation": "planned",
-      "verification": "android-required",
+      "implementation": "implemented",
+      "verification": "product-android",
       "fixtures": [],
-      "evidence": "Pinned reference source inspection; production implementation pending."
+      "evidence": "One disposable browser process owns the WebView directory, including API 24. Native network/file/content access, Service Workers, frames and WebSockets cannot bypass the broker; browser fetch/XHR/forms use checked source requests. API 24/35 tests verify same-domain source separation, preserved source localStorage after logout, denied worker registration, late-cookie cancellation and process-directory cleanup.",
+      "productTests": [
+        "indi.dmzz_yyhyy.lightnovelreader.sourceexecution.SourceBrowserInstrumentedTest",
+        "indi.dmzz_yyhyy.lightnovelreader.data.web.BrowserSessionRegistryTest",
+        "indi.dmzz_yyhyy.lightnovelreader.data.web.BrowserRequestPolicyTest"
+      ]
     },
     {
       "id": "SANDBOX",
@@ -331,12 +362,13 @@
       "implementation": "implemented",
       "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Real imported RuleSource + WorkerRuntime/wire + host broker and local HTTP fixtures, Android production adapter + Room/CacheBookWork/Coil, and real Binder instrumentation. See docs/vnr-checkpoint-after-rhino.md for remaining browser/login/update/UI boundaries and quotas; not full upstream WebBook differential execution.",
+      "evidence": "RuleSource, imported source adapters and source-qualified repositories run through production worker/broker paths. Local HTTP, Room, WorkManager, Coil and both reader controllers cover parsing, paging, cache/update/export and offline reconstruction; real Binder is checked separately on Android. Account changes revoke requests but retain source-owned library/content/images. Current ownership, quotas and intentional differences are documented in docs/source-compatibility-acceptance.md.",
       "productTests": [
         "hnovel.content.RuleSourceTest",
         "indi.dmzz_yyhyy.lightnovelreader.data.web.rules.ImportedRuleSourcesTest",
         "indi.dmzz_yyhyy.lightnovelreader.data.image.SourceImageTest",
-        "indi.dmzz_yyhyy.lightnovelreader.sourceexecution.IsolatedExecutionInstrumentedTest"
+        "indi.dmzz_yyhyy.lightnovelreader.sourceexecution.IsolatedExecutionInstrumentedTest",
+        "indi.dmzz_yyhyy.lightnovelreader.data.web.rules.MixedSourceAcceptanceTest"
       ]
     },
     {
@@ -347,12 +379,13 @@
       "implementation": "implemented",
       "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Real imported RuleSource + WorkerRuntime/wire + host broker and local HTTP fixtures, Android production adapter + Room/CacheBookWork/Coil, and real Binder instrumentation. See docs/vnr-checkpoint-after-rhino.md for remaining browser/login/update/UI boundaries and quotas; not full upstream WebBook differential execution.",
+      "evidence": "RuleSource, imported source adapters and source-qualified repositories run through production worker/broker paths. Local HTTP, Room, WorkManager, Coil and both reader controllers cover parsing, paging, cache/update/export and offline reconstruction; real Binder is checked separately on Android. Account changes revoke requests but retain source-owned library/content/images. Current ownership, quotas and intentional differences are documented in docs/source-compatibility-acceptance.md.",
       "productTests": [
         "hnovel.content.RuleSourceTest",
         "indi.dmzz_yyhyy.lightnovelreader.data.web.rules.ImportedRuleSourcesTest",
         "indi.dmzz_yyhyy.lightnovelreader.data.image.SourceImageTest",
-        "indi.dmzz_yyhyy.lightnovelreader.sourceexecution.IsolatedExecutionInstrumentedTest"
+        "indi.dmzz_yyhyy.lightnovelreader.sourceexecution.IsolatedExecutionInstrumentedTest",
+        "indi.dmzz_yyhyy.lightnovelreader.data.web.rules.MixedSourceAcceptanceTest"
       ]
     },
     {
@@ -363,12 +396,13 @@
       "implementation": "implemented",
       "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Real imported RuleSource + WorkerRuntime/wire + host broker and local HTTP fixtures, Android production adapter + Room/CacheBookWork/Coil, and real Binder instrumentation. See docs/vnr-checkpoint-after-rhino.md for remaining browser/login/update/UI boundaries and quotas; not full upstream WebBook differential execution.",
+      "evidence": "RuleSource, imported source adapters and source-qualified repositories run through production worker/broker paths. Local HTTP, Room, WorkManager, Coil and both reader controllers cover parsing, paging, cache/update/export and offline reconstruction; real Binder is checked separately on Android. Account changes revoke requests but retain source-owned library/content/images. Current ownership, quotas and intentional differences are documented in docs/source-compatibility-acceptance.md.",
       "productTests": [
         "hnovel.content.RuleSourceTest",
         "indi.dmzz_yyhyy.lightnovelreader.data.web.rules.ImportedRuleSourcesTest",
         "indi.dmzz_yyhyy.lightnovelreader.data.image.SourceImageTest",
-        "indi.dmzz_yyhyy.lightnovelreader.sourceexecution.IsolatedExecutionInstrumentedTest"
+        "indi.dmzz_yyhyy.lightnovelreader.sourceexecution.IsolatedExecutionInstrumentedTest",
+        "indi.dmzz_yyhyy.lightnovelreader.data.web.rules.MixedSourceAcceptanceTest"
       ]
     },
     {
@@ -381,28 +415,30 @@
       "fixtures": [
         "PAGES-CONTRACT"
       ],
-      "evidence": "Real imported RuleSource + WorkerRuntime/wire + host broker and local HTTP fixtures, Android production adapter + Room/CacheBookWork/Coil, and real Binder instrumentation. See docs/vnr-checkpoint-after-rhino.md for remaining browser/login/update/UI boundaries and quotas; not full upstream WebBook differential execution.",
+      "evidence": "RuleSource, imported source adapters and source-qualified repositories run through production worker/broker paths. Local HTTP, Room, WorkManager, Coil and both reader controllers cover parsing, paging, cache/update/export and offline reconstruction; real Binder is checked separately on Android. Account changes revoke requests but retain source-owned library/content/images. Current ownership, quotas and intentional differences are documented in docs/source-compatibility-acceptance.md.",
       "productTests": [
         "hnovel.content.RuleSourceTest",
         "indi.dmzz_yyhyy.lightnovelreader.data.web.rules.ImportedRuleSourcesTest",
         "indi.dmzz_yyhyy.lightnovelreader.data.image.SourceImageTest",
-        "indi.dmzz_yyhyy.lightnovelreader.sourceexecution.IsolatedExecutionInstrumentedTest"
+        "indi.dmzz_yyhyy.lightnovelreader.sourceexecution.IsolatedExecutionInstrumentedTest",
+        "indi.dmzz_yyhyy.lightnovelreader.data.web.rules.MixedSourceAcceptanceTest"
       ]
     },
     {
       "id": "IMAGES",
       "owner": "https://github.com/Renakoni/hnovel/issues/90",
-      "requirement": "coverDecodeJs、正文图片转换与来源/会话专用 headers/cache。",
+      "requirement": "coverDecodeJs、正文图片转换与来源/书籍/处理修订缓存；请求使用当前会话 headers，换账号保留阅读图片。",
       "testId": "CONFORMANCE-IMAGES",
       "implementation": "implemented",
       "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Real imported RuleSource + WorkerRuntime/wire + host broker and local HTTP fixtures, Android production adapter + Room/CacheBookWork/Coil, and real Binder instrumentation. See docs/vnr-checkpoint-after-rhino.md for remaining browser/login/update/UI boundaries and quotas; not full upstream WebBook differential execution.",
+      "evidence": "RuleSource, imported source adapters and source-qualified repositories run through production worker/broker paths. Local HTTP, Room, WorkManager, Coil and both reader controllers cover parsing, paging, cache/update/export and offline reconstruction; real Binder is checked separately on Android. Account changes revoke requests but retain source-owned library/content/images. Current ownership, quotas and intentional differences are documented in docs/source-compatibility-acceptance.md.",
       "productTests": [
         "hnovel.content.RuleSourceTest",
         "indi.dmzz_yyhyy.lightnovelreader.data.web.rules.ImportedRuleSourcesTest",
         "indi.dmzz_yyhyy.lightnovelreader.data.image.SourceImageTest",
-        "indi.dmzz_yyhyy.lightnovelreader.sourceexecution.IsolatedExecutionInstrumentedTest"
+        "indi.dmzz_yyhyy.lightnovelreader.sourceexecution.IsolatedExecutionInstrumentedTest",
+        "indi.dmzz_yyhyy.lightnovelreader.data.web.rules.MixedSourceAcceptanceTest"
       ]
     },
     {
@@ -421,7 +457,10 @@
         "indi.dmzz_yyhyy.lightnovelreader.data.web.rules.RuleDiscoveryProviderTest",
         "indi.dmzz_yyhyy.lightnovelreader.ui.home.categories.CategoriesViewModelTest",
         "indi.dmzz_yyhyy.lightnovelreader.ui.home.categories.CategoriesScreenTest",
-        "indi.dmzz_yyhyy.lightnovelreader.ui.home.discovery.DiscoveryResultsViewModelTest"
+        "indi.dmzz_yyhyy.lightnovelreader.ui.home.discovery.DiscoveryResultsViewModelTest",
+        "indi.dmzz_yyhyy.lightnovelreader.defaultplugin.wenku8.explore.Wenku8DiscoveryTest",
+        "indi.dmzz_yyhyy.lightnovelreader.ui.home.explore.ExploreHomeViewModelTest",
+        "indi.dmzz_yyhyy.lightnovelreader.data.web.rules.MixedSourceAcceptanceTest"
       ]
     },
     {
@@ -444,10 +483,16 @@
       "owner": "https://github.com/Renakoni/hnovel/issues/88",
       "requirement": "样本 loginUi 为 @js: 脚本，与固定 BaseSource.loginUi() 直接解析 JSON 不同；需明确扩展方言执行与表单协议。",
       "testId": "CONFORMANCE-EXTENSION-LOGIN-UI",
-      "implementation": "planned",
-      "verification": "future-fixture",
+      "implementation": "implemented",
+      "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Pinned reference source inspection; production implementation pending."
+      "evidence": "Pinned extension BaseSource/RowUi/SourceLoginDialog evidence drives an explicit profile-gated contract: @js:/<js> forms, login helper prelude, result values, default/chars/viewName, text/password/button/toggle/select, upLoginData and reLoginView. Host owns layout and explicit field actions; arbitrary fork layouts/long-click login semantics are not claimed. Unknown target fields/types fail with locations. Forms, service cancellation, profile selection and real Compose submission are tested.",
+      "productTests": [
+        "hnovel.content.RuleLoginFormTest",
+        "indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.sources.SourcesScreenTest",
+        "indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.sources.SourcesViewModelTest",
+        "indi.dmzz_yyhyy.lightnovelreader.data.web.rules.MixedSourceAcceptanceTest"
+      ]
     },
     {
       "id": "EXTENSION-INFOMAP",
@@ -500,30 +545,54 @@
       "owner": "https://github.com/Renakoni/hnovel/issues/93",
       "requirement": "java.log/logType/toast/longToast、阶段/位置/版本错误、取消和脱敏，未知 API 不静默成功。",
       "testId": "CONFORMANCE-DIAGNOSTICS",
-      "implementation": "planned",
-      "verification": "future-fixture",
+      "implementation": "implemented",
+      "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Pinned reference source inspection; production implementation pending."
+      "evidence": "ContentTrace, bounded script logging and SourceDiagnostics emit redacted stage/field/result/version reports. Disposable anonymous execution uses production search/detail/directory/content/discovery/login-form code with installed grants, never the normal account's cookies or mutable state. Cancellation and unknown APIs remain failures; counts/reference presence do not certify a public site's availability.",
+      "productTests": [
+        "hnovel.rhino.RhinoScriptEngineTest",
+        "hnovel.content.RuleSourceTest",
+        "indi.dmzz_yyhyy.lightnovelreader.data.web.rules.SourceDiagnosticsTest",
+        "indi.dmzz_yyhyy.lightnovelreader.data.web.rules.MixedSourceAcceptanceTest"
+      ]
     },
     {
       "id": "REVISIONS",
       "owner": "https://github.com/Renakoni/hnovel/issues/94",
       "requirement": "规则身份与版本/profile 分离，更新原子激活、回退、权限新增、并发请求修订校验。",
       "testId": "CONFORMANCE-REVISIONS",
-      "implementation": "planned",
-      "verification": "future-fixture",
+      "implementation": "implemented",
+      "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Pinned reference source inspection; production implementation pending."
+      "evidence": "SourceRevisionUpdates validates a staged definition and grants before atomically publishing an installed snapshot/registry replacement. Stable source/book IDs survive update and rollback; failed initialization, permissions or durable writes leave the old runtime usable. Removal during validation cannot be undone, and old tickets cannot commit into the replacement.",
+      "productTests": [
+        "indi.dmzz_yyhyy.lightnovelreader.data.web.rules.SourceRevisionUpdatesTest",
+        "indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.sources.SourcesViewModelTest",
+        "indi.dmzz_yyhyy.lightnovelreader.data.web.rules.MixedSourceAcceptanceTest"
+      ]
     },
     {
       "id": "INTEGRATION",
       "owner": "https://github.com/Renakoni/hnovel/issues/95",
       "requirement": "内置+标准+目标扩展直接导入后搜索/阅读/任务/模式/离线闭环，必需能力不得静默降为非目标。",
       "testId": "CONFORMANCE-INTEGRATION",
-      "implementation": "planned",
-      "verification": "future-fixture",
+      "implementation": "implemented",
+      "verification": "product-contract",
       "fixtures": [],
-      "evidence": "Pinned reference source inspection; production implementation pending."
+      "evidence": "MixedSourceAcceptanceTest runs actual Wenku8 parsing and directly imported standard/extension definitions with a real WorkerRuntime/wire/broker, one file Room database and WorkManager. Same-domain/same-book rule sources complete login, discovery/search, shelf, cache, EPUB, reading statistics, updates/rollback/diagnostics, account revocation, reconstruction and removal. Both real reader controllers render retained source-owned chapters through the production decoder/injector after removal. External documents/settings are controlled fixtures; no public novel website or private account is used. Separate API 24/35 tests provide Chromium/process evidence.",
+      "productTests": [
+        "indi.dmzz_yyhyy.lightnovelreader.data.web.rules.MixedSourceAcceptanceTest",
+        "indi.dmzz_yyhyy.lightnovelreader.data.web.HostMultiSourceIntegrationTest",
+        "indi.dmzz_yyhyy.lightnovelreader.ui.home.MainNavigationTest",
+        "indi.dmzz_yyhyy.lightnovelreader.ui.home.explore.ExploreSearchViewModelTest",
+        "indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.flip.FlipCachedChapterTest",
+        "indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.scroll.ScrollCachedChapterTest",
+        "indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.flip.FlipPaginationCoordinatorTest",
+        "indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.scroll.ScrollProgressTimingTest",
+        "indi.dmzz_yyhyy.lightnovelreader.sourceexecution.IsolatedExecutionInstrumentedTest",
+        "indi.dmzz_yyhyy.lightnovelreader.sourceexecution.SourceBrowserInstrumentedTest"
+      ]
     }
-  ]
+  ],
+  "acceptanceReport": "docs/source-compatibility-acceptance.md"
 }

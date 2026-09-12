@@ -79,11 +79,11 @@ class RuleSourceFixture(browser: BrowserExecutor? = null) : AutoCloseable {
         }
     }
 
-    fun source(label: String = "A", customize: (JsonObject) -> JsonObject = { it }): RuleSource {
+    fun source(label: String = "A", profile: String = LEGADO_PROFILE, customize: (JsonObject) -> JsonObject = { it }): RuleSource {
         val store = SourceDefinitionStore(Files.createTempDirectory("rule-source-definitions"))
         val importer = SourceDefinitionImporter(store)
         val raw = raw(label)
-        val preview = importer.preview(customize(raw).toString())
+        val preview = importer.preview(customize(raw).toString(), profile)
         assertEquals(emptyList<ImportIssue>(), preview.issues)
         assertNull(importer.commit(preview, listOf(ImportSelection(0, ImportDecision.Add))).error)
         val definition = store.list().single()

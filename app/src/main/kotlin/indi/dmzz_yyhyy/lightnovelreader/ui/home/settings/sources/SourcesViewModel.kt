@@ -92,27 +92,25 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
             selectSource(id)
             openedFromDiscovery = id
             if (signIn) {
-                val form = login.form(id)
-                attempt = login.begin(id)
-                mutable.update { it.copy(loginForm = form, loginStatus = LoginStatus.LoggedOut) }
+                openLogin(id)
             }
         }
     }
 
-    fun previewText(text: String) = launch { showPreview(sources.importer.preview(text)) }
-    fun previewFile(uri: Uri) = launch {
+    fun previewText(text: String, profile: String = LEGADO_PROFILE) = launch { showPreview(sources.importer.preview(text, profile)) }
+    fun previewFile(uri: Uri, profile: String = LEGADO_PROFILE) = launch {
         val name = context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
             if (it.moveToFirst()) it.getString(0) else "source.json"
         } ?: "source.json"
-        val preview = context.contentResolver.openInputStream(uri)?.use { sources.importer.previewStream(it, name) }
+        val preview = context.contentResolver.openInputStream(uri)?.use { sources.importer.previewStream(it, name, profile) }
             ?: error("Source file unavailable")
         showPreview(preview)
     }
-    fun previewUrl(url: String) = launch {
+    fun previewUrl(url: String, profile: String = LEGADO_PROFILE) = launch {
         val root = File(context.cacheDir, "source-import-${UUID.randomUUID()}")
         try { SourceBroker(root.toPath()).use { broker ->
-            val session = broker.open(SourceScope("import", UUID.randomUUID().toString(), LEGADO_PROFILE), listOf(NetworkGrant(origin(url))))
-            showPreview(sources.importer.previewUrl(url, session))
+            val session = broker.open(SourceScope("import", UUID.randomUUID().toString(), profile), listOf(NetworkGrant(origin(url))))
+            showPreview(sources.importer.previewUrl(url, session, profile))
         } } finally { root.deleteRecursively() }
     }
     private fun showPreview(preview: ImportPreview, target: Identifier? = null) {
@@ -179,17 +177,27 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
         sources.remove(id); reload()
         mutable.update { it.copy(selected = null, message = R.string.sources_removed) }
     }
-    fun beginLogin(id: Identifier) = launch {
-        val form = login.form(id)
-        attempt = login.begin(id)
-        mutable.update { it.copy(loginForm = form, loginStatus = LoginStatus.LoggedOut) }
+    fun beginLogin(id: Identifier) = launch { openLogin(id) }
+    private suspend fun openLogin(id: Identifier) {
+        // Keep a handle even if cancellation arrives just after the account has rotated.
+        val active = withContext(NonCancellable) { login.begin(id).also { attempt = it } }
+        try {
+            val form = login.form(active)
+            currentCoroutineContext().ensureActive()
+            mutable.update { it.copy(loginForm = form, loginStatus = LoginStatus.LoggedOut) }
+        } catch (failure: Exception) {
+            withContext(NonCancellable) { login.cancel(active) }
+            if (attempt === active) attempt = null
+            throw failure
+        }
     }
     fun submitLogin(values: Map<String, String>, action: String? = null) = launch {
         val active = checkNotNull(attempt)
         login.submit(active, values, action)
         val status = login.status(active.source)
         if (action == null) attempt = null
-        mutable.update { it.copy(loginStatus = status, loginForm = if (action == null) null else it.loginForm) }
+        val form = if (action == null) null else login.form(active)
+        mutable.update { it.copy(loginStatus = status, loginForm = form) }
     }
     fun logout(id: Identifier) = launch { login.logout(id); mutable.update { it.copy(loginStatus = LoginStatus.LoggedOut) } }
     fun cancelLogin() {

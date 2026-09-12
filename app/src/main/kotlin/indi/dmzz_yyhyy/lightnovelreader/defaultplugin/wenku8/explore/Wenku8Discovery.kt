@@ -28,7 +28,9 @@ class Wenku8Discovery(private val host: String, private val fetch: suspend (Stri
     }
 
     override suspend fun categories(): Result<List<DiscoveryCategory>, DiscoveryError> = request {
-        Ok(Wenku8DiscoveryParser.categories(fetch("$host/modules/article/tags.php")))
+        val document = fetch("$host/modules/article/tags.php")
+        try { Ok(Wenku8DiscoveryParser.categories(document)) }
+        catch (_: IllegalArgumentException) { Err(DiscoveryError.InvalidResponse) }
     }
 
     override fun filters(target: String): List<DiscoveryFilter> = buildList {

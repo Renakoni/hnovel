@@ -5,6 +5,10 @@ import android.content.ContextWrapper
 import hnovel.content.RuleSourceFixture
 import hnovel.imports.ImportDecision
 import hnovel.imports.ImportSelection
+import hnovel.imports.EXTENSION_PROFILE
+import hnovel.network.StorageArea
+import hnovel.network.StorageRequest
+import hnovel.network.StorageRequestKey
 import hnovel.network.NetworkGrant
 import indi.dmzz_yyhyy.lightnovelreader.data.web.*
 import indi.dmzz_yyhyy.lightnovelreader.data.web.rules.*
@@ -26,6 +30,47 @@ import java.nio.file.Files
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [27], application = Application::class)
 class SourcesViewModelTest {
+    @Test fun dynamicLoginFormBelongsToTheNewAccountAndCancellingItsLoadRetiresTheAttempt(): Unit = runBlocking {
+        Dispatchers.setMain(Dispatchers.Unconfined)
+        val root = Files.createTempDirectory("dynamic-login").toFile()
+        val context = object : ContextWrapper(RuntimeEnvironment.getApplication()) {
+            override fun getFilesDir() = File(root, "files")
+            override fun getCacheDir() = File(root, "cache")
+        }
+        RuleSourceFixture().use { fixture ->
+            val registry = WebSourceRegistry(fixture.authority)
+            val accounts = SourceSessionManager(fixture.authority)
+            val sources = ImportedRuleSources(context, registry, fixture.authority, accounts, fixture.runner)
+            val login = SourceLoginService(sources, accounts)
+            val model = SourcesViewModel(context, sources, SourceRevisionUpdates(context, sources, accounts, fixture.runner, fixture.authority), login, registry)
+            suspend fun idle() = withTimeout(10000) { model.state.first { !it.busy } }
+            try {
+                idle()
+                val raw = JsonObject(fixture.raw() + mapOf("loginUrl" to JsonPrimitive("function login(){}"),
+                    "loginUi" to JsonPrimitive("@js:var saved=source.getLoginInfoMap();JSON.stringify([{name:'user',default:saved?saved.get('user'):'new-account'}])")))
+                model.previewText(raw.toString(), EXTENSION_PROFILE)
+                val preview = idle().preview!!
+                assertEquals(EXTENSION_PROFILE, preview.candidates.single().profile)
+                val committed = sources.importer.commit(preview, listOf(ImportSelection(0, ImportDecision.Add)))
+                val id = sources.activate(committed.items.single().reference!!, listOf(NetworkGrant(fixture.server.url("/").toString(), true)))
+                sources.loginTarget(id).session.write(StorageRequest(StorageArea.Account, StorageRequestKey.LOGIN_INFO, "{\"user\":\"old-account\"}"))
+                model.beginLogin(id)
+                assertEquals("new-account", idle().loginForm!!.values["user"])
+                model.cancelLogin(); idle()
+                val previous = accounts.current(id).generation
+                val entered = CompletableDeferred<Unit>()
+                fixture.afterRun = { entered.complete(Unit); awaitCancellation() }
+                model.beginLogin(id)
+                withTimeout(10000) { entered.await() }
+                model.cancel()
+                withTimeout(10000) { accounts.changes.first { (it[id] ?: 0) >= previous + 2 } }
+                assertNull(idle().loginForm)
+                assertEquals(LoginStatus.LoggedOut, login.status(id))
+                assertEquals(0, fixture.documents.get())
+            } finally { model.cancel(); sources.stop(); Dispatchers.resetMain(); root.deleteRecursively() }
+        }
+    }
+
     @Test fun discoveryLoginSelectsTheOriginAndDoesNotRestartOnRecreation(): Unit = runBlocking {
         Dispatchers.setMain(Dispatchers.Unconfined)
         val root = Files.createTempDirectory("discovery-settings").toFile()

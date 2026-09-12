@@ -4,20 +4,17 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -25,6 +22,8 @@ import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
 import androidx.navigation.toRoute
 import indi.dmzz_yyhyy.lightnovelreader.R
+import hnovel.imports.EXTENSION_PROFILE
+import hnovel.imports.LEGADO_PROFILE
 import indi.dmzz_yyhyy.lightnovelreader.data.web.SourceCapability
 import indi.dmzz_yyhyy.lightnovelreader.data.web.rules.ImportedRuleSources
 import indi.dmzz_yyhyy.lightnovelreader.data.web.rules.LoginStatus
@@ -67,7 +66,8 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
     var url by remember { mutableStateOf("") }
     var deleting by remember { mutableStateOf(false) }
     var rollback by remember { mutableStateOf(false) }
-    val file = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(model::previewFile) }
+    var profile by rememberSaveable { mutableStateOf(LEGADO_PROFILE) }
+    val file = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let { uri -> model.previewFile(uri, profile) } }
     val installed = state.installed.find { ImportedRuleSources.id(it.definition) == state.selected }
     fun back() {
         when {
@@ -103,6 +103,7 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                             Button(onClick = { onSearch(state.selected!!) }, enabled = !state.busy) { Text(stringResource(R.string.explore_search)) }
                         }
                         Text(stringResource(R.string.sources_format, definition.format))
+                        Text(stringResource(if (definition.profile == EXTENSION_PROFILE) R.string.sources_profile_extension else R.string.sources_profile_standard))
                         Text(stringResource(R.string.sources_revision, definition.revision.toString()))
                         Text(stringResource(when (state.loginStatus) {
                             LoginStatus.Authenticated -> R.string.sources_logged_in
@@ -134,11 +135,18 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                 if (adding) item {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(stringResource(R.string.sources_add_help))
+                        Text(stringResource(R.string.sources_profile_help))
+                        for ((value, label) in listOf(LEGADO_PROFILE to R.string.sources_profile_standard, EXTENSION_PROFILE to R.string.sources_profile_extension)) {
+                            Row(Modifier.fillMaxWidth().clickable(enabled = !state.busy) { profile = value }) {
+                                RadioButton(selected = profile == value, onClick = { profile = value }, enabled = !state.busy)
+                                Text(stringResource(label), Modifier.padding(top = 12.dp))
+                            }
+                        }
                         OutlinedTextField(url, { url = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.sources_url)) }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
-                        Button(onClick = { model.previewUrl(url) }, enabled = !state.busy && url.isNotBlank()) { Text(stringResource(R.string.sources_preview_url)) }
+                        Button(onClick = { model.previewUrl(url, profile) }, enabled = !state.busy && url.isNotBlank()) { Text(stringResource(R.string.sources_preview_url)) }
                         OutlinedButton(onClick = { file.launch(arrayOf("*/*")) }, enabled = !state.busy) { Text(stringResource(R.string.sources_file)) }
                         OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth().heightIn(min = 140.dp, max = 280.dp), label = { Text(stringResource(R.string.sources_paste)) })
-                        Button(onClick = { model.previewText(text) }, enabled = !state.busy && text.isNotBlank()) { Text(stringResource(R.string.sources_preview)) }
+                        Button(onClick = { model.previewText(text, profile) }, enabled = !state.busy && text.isNotBlank()) { Text(stringResource(R.string.sources_preview)) }
                     }
                 }
                 if (state.installed.isEmpty()) item { Text(stringResource(R.string.sources_empty)) }
@@ -161,18 +169,7 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
         }
     }
     state.loginForm?.let { form ->
-        val values = remember(form) { mutableStateMapOf<String, String>() }
-        AlertDialog(onDismissRequest = model::cancelLogin, title = { Text(stringResource(R.string.sources_login)) },
-            text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (form.browserUrl != null) Text(stringResource(R.string.sources_browser_login))
-                form.fields.forEach { field ->
-                    if (field.type == "button") OutlinedButton(onClick = { model.submitLogin(values.toMap(), field.name) }, enabled = !state.busy) { Text(field.name) }
-                    else OutlinedTextField(values[field.name].orEmpty(), { values[field.name] = it }, label = { Text(field.name) }, enabled = !state.busy,
-                        visualTransformation = if (field.type == "password") PasswordVisualTransformation() else VisualTransformation.None,
-                        keyboardOptions = KeyboardOptions(keyboardType = if (field.type == "password") KeyboardType.Password else KeyboardType.Text))
-                }
-            } }, confirmButton = { TextButton(onClick = { model.submitLogin(values.toMap()) }, enabled = !state.busy) { Text(stringResource(R.string.sources_login)) } },
-            dismissButton = { TextButton(onClick = model::cancelLogin) { Text(stringResource(android.R.string.cancel)) } })
+        SourceLoginDialog(form, state.busy, model::submitLogin, model::cancelLogin)
     }
 }
 

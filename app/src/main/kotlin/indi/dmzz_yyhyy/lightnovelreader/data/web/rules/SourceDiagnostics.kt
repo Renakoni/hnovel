@@ -18,7 +18,7 @@ import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
-@Serializable enum class DiagnosticStage { Search, Information, Directory, Content, Discovery }
+@Serializable enum class DiagnosticStage { Search, Information, Directory, Content, Discovery, LoginForm }
 @Serializable data class SourceDiagnosticReport(val sourceId: String, val profile: String, val revision: String,
     val accountGeneration: Long, val stage: DiagnosticStage, val result: String,
     val field: String?, val count: Int, val events: List<ContentTraceEvent>, val truncated: Boolean,
@@ -60,6 +60,7 @@ class SourceDiagnostics @Inject constructor(@ApplicationContext private val cont
                     }
                     try { RuleSource(definition.definition, ticket, authority, session, runner, trace).use { rules ->
                         count = when (stage) {
+                            DiagnosticStage.LoginForm -> rules.loginForm().fields.size
                             DiagnosticStage.Search -> rules.search(keyword).size
                             DiagnosticStage.Information -> { rules.information(bookUrl); 1 }
                             DiagnosticStage.Directory -> rules.directory(bookUrl).size

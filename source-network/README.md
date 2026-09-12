@@ -3,11 +3,12 @@
 `SourceBroker.open` is a **trusted host operation**. It binds stable source namespace/id,
 engine profile, account generation, exact-origin grants and quotas into a `SourceSession`.
 IPC callers submit `BrokerRequest`/`StorageRequest`; neither DTO can choose another
-source or obtain a client, path, repository or broker. #86 must bind each execution
+source or obtain a client, path, repository or broker. `source-execution` binds each
 process to the host-created session; these JVM objects alone do not authenticate IPC.
 
-The broker is not wired to an untrusted import or script entry point in this PR.
-It is independent of the #84 branch; #86/#87 compose the services later.
+Imported rules reach this broker through `source-content` and the execution bridge.
+The Android app supplies the optional browser port. Current integration evidence and
+account semantics are summarized in [VNR-23 acceptance](../docs/source-compatibility-acceptance.md).
 
 ## URL compilation
 
@@ -18,9 +19,10 @@ query/form separators; JSON object bodies serialize substituted string values sa
 GB2312 and other JVM charsets are supported; the legacy `escape` option emits `%XX`/
 `%uXXXX`. Existing encoded URL octets are retained. Forms encode their individual fields.
 JSON request bodies are supplied as valid JSON strings/objects (a raw JavaScript expression
-in a body is not static JSON). Unknown options, malformed requests, JS and browser
-requirements are explicit rejected results, never silently ignored. #87 evaluates dynamic
-URL/header/body expressions before this compiler; #89 handles browser requests.
+in a body is not static JSON). Unknown options and malformed requests are rejected.
+The static compiler reports ScriptRequired for expressions; the production worker evaluates
+dynamic URL/header/body expressions first. Browser options compile to data and dispatch
+through BrowserExecutor; an absent port reports BrowserRequired.
 
 ## Network and credentials
 
@@ -64,8 +66,8 @@ require closing the existing session first. No current-source global or UI state
 
 Persistent cookies retain absolute expiry; session cookies remain in memory. Cookie persistence
 has its own private namespace, inaccessible through account KV. Cookie persistence failures are
-reported instead of silently switching to an unauthenticated jar. Full login/logout/browser
-cookie coordination belongs to #88/#89.
+reported instead of silently switching to an unauthenticated jar. SourceLoginService and
+AndroidSourceBrowser coordinate login/logout and browser cookies through these sessions.
 
 KV accepts opaque keys, never paths. Namespaces and filenames are hashes of unambiguous stable
 components; writes enforce bytes/entry quotas before atomic replacement. Path checks reject
@@ -77,13 +79,16 @@ restrictions are #86's responsibility.
 `RequestVariables` is a separate bounded frame, copied per invocation, with snapshot reads.
 Neither is durable source configuration. HTTP GET caching is opt-in, keyed by URL/response
 charset/effective headers (including scoped credentials); it is a host cache with a fixed TTL,
-not a claim to implement all HTTP cache directives. Cookie changes invalidate it. Cache-only
-misses fail without DNS/network, response arrays are copied, and retirement clears caches.
+not a claim to implement all HTTP cache directives. Cookie/account changes preserve cached
+bodies; changed effective headers choose their own entries, and hits never replay Set-Cookie.
+Source-account/runtime replacement inherits the same source caches. Cache-only misses fail
+without DNS/network, response arrays are copied, and ordinary TTL/eviction still apply.
 
 Serializable DTOs define the later IPC payloads. Their diagnostic strings omit headers,
 bodies, keys and URLs; failure results contain stage/code/attempt, not exception messages
 with paths or secrets. Payloads necessarily carry data for the caller but are never logged
-by this module. No JS engine, login UI, browser or Android process sandbox is implemented here.
+by this module. JS execution, login UI, Chromium and the Android process boundary live in
+their owning modules; BrowserExecutor is only their source-bound request port here.
 
 ## Verification
 
@@ -95,5 +100,5 @@ TTL/quotas, path containment, DNS rebinding/IPv6/literals, concurrency, rate, ca
 timeout, retry and serializable/redacted result contracts are covered.
 
 The existing compatibility sources also run their static search URL through the production
-compiler. Their full URL/HTTP/storage profile entries remain **partial** until process binding
-and script entry points land; broker tests are not falsely labelled a full upstream JS oracle.
+compiler. The current URL/HTTP/storage entries link broker, execution, content and platform
+tests; this module alone is not a full upstream JavaScript or Android browser oracle.

@@ -6,6 +6,7 @@ import android.content.Intent
 import android.os.*
 import android.webkit.*
 import hnovel.network.*
+import indi.dmzz_yyhyy.lightnovelreader.R
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.*
 import java.io.ByteArrayInputStream
@@ -21,7 +22,7 @@ class SourceBrowserService : Service() {
     private lateinit var bootstrap: String
     internal var webView: WebView? = null
     internal var activity: SourceBrowserActivity? = null
-    internal val pageTitle get() = job.options.title
+    internal val pageTitle get() = if (job.options.verificationCode) getString(R.string.source_verification_code) else job.options.title
     @Volatile private var mainResponse: BrokerResponse? = null
     @Volatile private var mainUrl = ""
     private var firstRequest = true
@@ -125,6 +126,8 @@ class SourceBrowserService : Service() {
 
     private fun intercept(incoming: WebResourceRequest): WebResourceResponse = try {
         check(!finished.get() && incoming.url.scheme?.lowercase() in setOf("http", "https"))
+        // The host verification document embeds its image and needs no favicon or other subresources.
+        if (job.options.verificationCode && !incoming.isForMainFrame) return denied()
         val initial = incoming.isForMainFrame && firstRequest
         if (initial) firstRequest = false
         val response = if (initial && job.options.html != null) BrokerResponse(200, job.request.url,
@@ -133,8 +136,10 @@ class SourceBrowserService : Service() {
         ?: request(if (initial) job.request else BrokerRequest("browser", incoming.url.toString(),
             method = incoming.method.also { check(it == "GET" || it == "HEAD") }, headers = incoming.requestHeaders), initial = initial)
         if (!job.options.overrideUrl && matches(response.finalUrl)) handler.post { completeText(response.finalUrl) }
-        val type = response.headers.entries.firstOrNull { it.key.equals("Content-Type", true) }?.value?.firstOrNull()
+        val responseType = response.headers.entries.firstOrNull { it.key.equals("Content-Type", true) }?.value?.firstOrNull()
             ?.substringBefore(';') ?: if (incoming.isForMainFrame) "text/html" else "application/octet-stream"
+        val verification = incoming.isForMainFrame && job.options.verificationCode
+        val type = if (verification) "text/html" else responseType
         var body = response.body
         if (incoming.isForMainFrame) {
             check(type == "text/html" || type == "application/xhtml+xml")
@@ -146,13 +151,23 @@ class SourceBrowserService : Service() {
                 return denied()
             }
             val storage = rpc("storage", buildJsonObject { put("url", mainUrl) })
-            val doc = org.jsoup.Jsoup.parse(response.text(), mainUrl)
+            val doc = if (verification) {
+                check(response.status in 200..299 && responseType.startsWith("image/"))
+                org.jsoup.Jsoup.parse("""<html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+                    <body><img id="verification-image" style="max-width:100%"><p><label for="verification-code"></label></p>
+                    <input id="verification-code" type="text" maxlength="4096" autocomplete="off"></body></html>""", mainUrl).apply {
+                    selectFirst("#verification-image")!!.attr("src", "data:$responseType;base64," + android.util.Base64.encodeToString(response.body, android.util.Base64.NO_WRAP))
+                    selectFirst("label")!!.text(getString(R.string.source_verification_code))
+                }
+            } else org.jsoup.Jsoup.parse(response.text(), mainUrl)
             val script = "(function(){var initial=${storage.replace("<", "\\u003c")};Object.keys(initial).forEach(function(k){localStorage.setItem(k,initial[k]);});})();\n" + bootstrap
             doc.head().prependElement("script").appendChild(org.jsoup.nodes.DataNode(script))
             body = doc.outerHtml().toByteArray()
         }
-        val headers = response.headers.filterKeys { it.lowercase() !in setOf("set-cookie", "content-encoding", "content-length", "content-security-policy") }
+        val headers = response.headers.filterKeys { it.lowercase() !in setOf("set-cookie", "content-encoding", "content-length", "content-security-policy") &&
+            !(verification && it.equals("Content-Type", true)) }
             .mapValues { it.value.joinToString(", ") }.toMutableMap()
+        if (verification) headers["Content-Type"] = "text/html; charset=UTF-8"
         headers["Content-Security-Policy"] = CSP
         WebResourceResponse(type, if (incoming.isForMainFrame) "UTF-8" else response.charset,
             response.status.takeIf { it in 200..299 || it in 400..599 } ?: 502, "Response", headers, ByteArrayInputStream(body))
@@ -164,7 +179,8 @@ class SourceBrowserService : Service() {
 
     internal fun evaluate() {
         if (finished.get()) return
-        val script = job.options.script.ifBlank { "document.documentElement.outerHTML" }
+        val script = if (job.options.verificationCode) "document.getElementById('verification-image').naturalWidth > 0 ? document.getElementById('verification-code').value : null"
+            else job.options.script.ifBlank { "document.documentElement.outerHTML" }
         webView?.evaluateJavascript("(function(){try {var value=eval(${JsonPrimitive(script)});var state={};for(var i=0;i<localStorage.length;i++){var key=localStorage.key(i);state[key]=localStorage.getItem(key);}SourceBrowser.call('storage',JSON.stringify({url:location.href,value:state}));return JSON.stringify({value:value});}catch(e){return '{}';}})()") { result ->
             try {
                 val encoded = Json.parseToJsonElement(result).jsonPrimitive.content

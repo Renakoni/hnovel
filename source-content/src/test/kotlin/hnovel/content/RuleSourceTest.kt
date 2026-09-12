@@ -45,16 +45,17 @@ class RuleSourceTest {
                             if(java.webView(null,'${url}view','')!=='accepted')throw 'view header';
                             if(java.webViewGetSource(null,'${url}source','','')!=='accepted')throw 'source header';
                             if(java.webViewGetOverrideUrl(null,'${url}override','','')!=='accepted')throw 'override header';
+                            if(java.getVerificationCode('${url}captcha')!=='accepted')throw 'captcha header';
                             java.startBrowser('/start','verify');
                             if(java.startBrowserAwait('/rendered','verify',false).body()!=='accepted')throw 'rendered header';
                             if(java.startBrowserAwait('/await','verify').body()!=='accepted')throw 'refetch header';
                         }
                     """.trimIndent())
                 )) }).use { source -> source.login(emptyMap()) }
-                assertEquals(listOf("/view", "/source", "/override", "/start", "/rendered", "/await"), browserPaths)
+                assertEquals(listOf("/view", "/source", "/override", "/captcha", "/start", "/rendered", "/await"), browserPaths)
                 assertEquals(browserPaths + "/await", seen.toList())
                 assertTrue(missing.toString(), missing.isEmpty())
-                assertEquals(if (dynamic) 7 else 0, tokens.get())
+                assertEquals(if (dynamic) 8 else 0, tokens.get())
             }
         }
     }
