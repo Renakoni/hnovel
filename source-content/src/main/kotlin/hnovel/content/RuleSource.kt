@@ -267,7 +267,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         var merged = pages.joinToString("\n")
         val replacement = spec.content.string("replaceRegex")
         if (replacement.isNotBlank()) merged = context.text(replacement, RuleValue.Text(merged), "ruleContent.replaceRegex", unescape = false)
-        val parts = context.script(contentMarkupScript, RuleValue.Text(merged), "ruleContent.parts").items().map {
+        val parts = context.markup(merged).items().map {
             Json.decodeFromString(ContentPart.serializer(), it.text())
         }.map { part -> if (part.image != null) part.copy(image = sourceLink(context.baseUrl, part.image)) else part }
         if (parts.isEmpty()) throw SourceContentException(ContentError.EmptyContent, "ruleContent.content")
