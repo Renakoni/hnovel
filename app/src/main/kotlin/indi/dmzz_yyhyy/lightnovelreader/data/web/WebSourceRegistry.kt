@@ -78,24 +78,22 @@ class WebSourceRegistry internal constructor(private val dispatcher: CoroutineDi
     }
 
     fun unregister(id: Identifier) {
-        val entry = synchronized(lock) {
+        synchronized(lock) {
             executionAuthority.revokeSource(id.id, id.namespace)
-            entries.remove(id).also { publish() }
+            entries.remove(id)?.retire()
+            publish()
         }
-        entry?.retire()
     }
 
     private fun remove(entry: Entry) {
-        val removed = synchronized(lock) {
-            if (entries[entry.metadata.id] !== entry) false
-            else {
-                executionAuthority.revokeSource(entry.metadata.id.id, entry.metadata.id.namespace)
-                entries.remove(entry.metadata.id)
-                publish()
-                true
-            }
+        synchronized(lock) {
+            if (entries[entry.metadata.id] !== entry) return
+            executionAuthority.revokeSource(entry.metadata.id.id, entry.metadata.id.namespace)
+            entries.remove(entry.metadata.id)
+            // Inline observers must already see retired handles when a disabled source disappears.
+            entry.retire()
+            publish()
         }
-        if (removed) entry.retire()
     }
 
     suspend fun resolve(id: Identifier): SourceResolution {

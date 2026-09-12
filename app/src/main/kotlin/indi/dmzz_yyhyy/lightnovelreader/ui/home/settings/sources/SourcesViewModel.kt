@@ -81,8 +81,10 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
     fun select(id: Identifier?) = launch { selectSource(id) }
     private suspend fun selectSource(id: Identifier?) {
         reload() // Includes the current session's redacted refusals, including background image loads.
-        mutable.update { it.copy(selected = id, preview = null, updateTarget = null) }
-        if (id != null && mutable.value.installed.any { ImportedRuleSources.id(it.definition) == id }) {
+        mutable.update { it.copy(selected = id, preview = null, updateTarget = null,
+            loginStatus = LoginStatus.LoggedOut, variable = "") }
+        if (id != null && registry.sources.value.any { it.metadata.id == id && it.metadata.capabilities.isNotEmpty() } &&
+            mutable.value.installed.any { ImportedRuleSources.id(it.definition) == id }) {
             val target = sources.loginTarget(id)
             val variable = target.session.read(StorageRequest(StorageArea.Config, "variable")) as StorageResult.Value
             val status = login.status(id)
@@ -95,7 +97,7 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
         launch {
             selectSource(id)
             openedFromDiscovery = id
-            if (signIn) {
+            if (signIn && registry.sources.value.any { it.metadata.id == id && SourceCapability.Login in it.metadata.capabilities }) {
                 openLogin(id)
             }
         }
@@ -128,7 +130,7 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
         val preview = checkNotNull(snapshot.preview)
         require(selected.isNotEmpty())
         val candidates = preview.candidates.filter { it.index in selected }
-        require(candidates.size == selected.size && candidates.all { it.enabled })
+        require(candidates.size == selected.size)
         val target = snapshot.updateTarget?.let { id -> snapshot.installed.single { ImportedRuleSources.id(it.definition) == id } }
         if (target != null) require(candidates.size == 1)
         val grants = candidates.associate { it.index to grants(permissions.getValue(it.index)) }
@@ -168,14 +170,27 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
         else showPreview(checked.preview, id)
     }
     fun rollback(id: Identifier, permissions: String) = launch {
-        updates.rollback(id, grants(permissions)); reload()
+        updates.rollback(id, grants(permissions)); selectSource(id)
         mutable.update { it.copy(message = R.string.sources_saved) }
     }
-    fun saveConfiguration(id: Identifier, variable: String, permissions: String) = launch {
-        require(variable.length <= 32768)
-        updates.updatePermissions(id, grants(permissions))
-        check(sources.loginTarget(id).session.write(StorageRequest(StorageArea.Config, "variable", variable)) is StorageResult.Value)
-        reload(); mutable.update { it.copy(variable = variable, message = R.string.sources_saved) }
+    fun setEnabled(id: Identifier, enabled: Boolean) = launch {
+        sources.setPreferences(id, enabled = enabled); selectSource(id)
+    }
+    fun setDiscoveryVisible(id: Identifier, visible: Boolean) = launch {
+        sources.setPreferences(id, discoveryVisible = visible); selectSource(id)
+    }
+    fun saveConfiguration(id: Identifier, variable: String?, permissions: String) = launch {
+        require(variable == null || variable.length <= 32768)
+        val approved = grants(permissions)
+        // An inactive editor passes null, so approving grants cannot overwrite stored configuration
+        // with its empty placeholder. Save active configuration before removing the last grant.
+        if (variable != null && approved.isEmpty())
+            check(sources.loginTarget(id).session.write(StorageRequest(StorageArea.Config, "variable", variable)) is StorageResult.Value)
+        updates.updatePermissions(id, approved)
+        if (variable != null && approved.isNotEmpty())
+            check(sources.loginTarget(id).session.write(StorageRequest(StorageArea.Config, "variable", variable)) is StorageResult.Value)
+        selectSource(id)
+        mutable.update { it.copy(message = R.string.sources_saved) }
     }
     fun remove(id: Identifier) = launch {
         sources.remove(id); reload()
@@ -226,6 +241,6 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
             return URI(uri.scheme.lowercase(), null, uri.host, uri.port, "/", null, null).toString()
         }
         fun grants(text: String): List<NetworkGrant> = text.lines().filter { it.isNotBlank() }.map { NetworkGrant(origin(it)) }
-            .distinctBy { it.origin }.also { require(it.isNotEmpty() && it.size <= 32) }
+            .distinctBy { it.origin }.also { require(it.size <= 32) }
     }
 }

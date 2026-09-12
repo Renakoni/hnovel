@@ -93,6 +93,25 @@ class WebSourceRegistryTest {
     }
 
     @Test(timeout = 10000)
+    fun removalRetiresOldRuntimeBeforeInlineObserversSeeTheSourceDisappear() = runBlocking {
+        for (byRegistration in listOf(false, true)) {
+            val registry = WebSourceRegistry()
+            val meta = metadata("removal")
+            val registration = registry.register(CountingSource(meta.id), meta)
+            val runtime = registry.ready(meta.id)
+            val availableAtPublication = async(Dispatchers.Unconfined) {
+                registry.sources.first { it.isEmpty() }
+                runtime.isAvailable
+            }
+            try {
+                if (byRegistration) registration.unregister() else registry.unregister(meta.id)
+                assertFalse(availableAtPublication.await())
+                assertTrue(registry.resolve(meta.id) is SourceResolution.Missing)
+            } finally { availableAtPublication.cancelAndJoin(); registry.unregister(meta.id) }
+        }
+    }
+
+    @Test(timeout = 10000)
     fun failedReplacementPersistenceKeepsTheOldRuntimeAndSnapshotAvailable() = runBlocking {
         val authority = hnovel.execution.ExecutionAuthority()
         val registry = WebSourceRegistry(authority)

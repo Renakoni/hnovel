@@ -30,6 +30,55 @@ import java.nio.file.Files
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [27], application = Application::class)
 class SourcesViewModelTest {
+    @Test fun disabledImportsCanBeSelectedAndPermissionsNeverEraseInactiveConfiguration(): Unit = runBlocking {
+        Dispatchers.setMain(Dispatchers.Unconfined)
+        val root = Files.createTempDirectory("source-preferences-ui").toFile()
+        val context = object : ContextWrapper(RuntimeEnvironment.getApplication()) {
+            override fun getFilesDir() = File(root, "files")
+            override fun getCacheDir() = File(root, "cache")
+        }
+        RuleSourceFixture().use { fixture ->
+            val registry = WebSourceRegistry(fixture.authority)
+            val accounts = SourceSessionManager(fixture.authority)
+            val sources = ImportedRuleSources(context, registry, fixture.authority, accounts, fixture.runner)
+            val updates = SourceRevisionUpdates(context, sources, accounts, fixture.runner, fixture.authority)
+            val model = SourcesViewModel(context, sources, updates, SourceLoginService(sources, accounts), registry)
+            suspend fun idle() = withTimeout(10000) { model.state.first { !it.busy } }
+            try {
+                idle()
+                val raw = JsonObject(fixture.raw() + mapOf("bookSourceUrl" to JsonPrimitive("https://fixture.invalid/"),
+                    "enabled" to JsonPrimitive(false)))
+                model.previewText(raw.toString()); idle()
+                model.commit(setOf(0), mapOf(0 to ""), false)
+                val installed = idle().installed.single()
+                val id = ImportedRuleSources.id(installed.definition)
+                assertFalse(installed.preferences.enabled)
+                assertTrue(registry.sources.value.isEmpty())
+                model.select(id)
+                assertEquals(id, idle().selected)
+                assertNull(idle().message)
+                model.setEnabled(id, true); idle()
+                assertTrue(registry.resolve(id) is SourceResolution.Missing)
+                model.saveConfiguration(id, null, "https://fixture.invalid/"); idle()
+                assertTrue(registry.resolve(id) is SourceResolution.Ready)
+                model.saveConfiguration(id, "keep this", "https://fixture.invalid/")
+                assertEquals("keep this", idle().variable)
+                model.setEnabled(id, false)
+                assertEquals("", idle().variable)
+                model.saveConfiguration(id, null, ""); idle()
+                model.saveConfiguration(id, null, "https://fixture.invalid/"); idle()
+                assertTrue(registry.resolve(id) is SourceResolution.Missing)
+                model.setEnabled(id, true)
+                assertEquals("keep this", idle().variable)
+                model.saveConfiguration(id, "saved before revocation", ""); idle()
+                assertTrue(registry.resolve(id) is SourceResolution.Missing)
+                model.saveConfiguration(id, null, "https://fixture.invalid/")
+                assertEquals("saved before revocation", idle().variable)
+                assertEquals(0, fixture.server.requestCount)
+            } finally { model.cancel(); sources.stop(); Dispatchers.resetMain(); root.deleteRecursively() }
+        }
+    }
+
     @Test fun dynamicLoginFormBelongsToTheNewAccountAndCancellingItsLoadRetiresTheAttempt(): Unit = runBlocking {
         Dispatchers.setMain(Dispatchers.Unconfined)
         val root = Files.createTempDirectory("dynamic-login").toFile()
