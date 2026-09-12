@@ -59,6 +59,11 @@ class ExploreSearchViewModel internal constructor(
     private var active = false
     private var work: Job? = null
     private var suggestions: Job? = null
+    // One generation owns both a search/open attempt and any SingleBook navigation it queues.
+    // Only cancelWork() and a load() that passes its guards advance it. Query/type/source/account
+    // changes, submissions, search retries and leaving the entry cancel that generation.
+    // Commands expire on the next advance or while inactive; no-op load() calls must not retire them.
+    // suggest() and suggestion-only retries use suggestionSerial without invalidating navigation.
     private var epoch = 0L
     private var suggestionSerial = 0L
     private val outgoing = Channel<SearchNavigation>(Channel.BUFFERED)
@@ -149,7 +154,9 @@ class ExploreSearchViewModel internal constructor(
     fun updateSuggestions(keyword: String) {
         if (uiState.query != keyword) {
             cancelWork()
-            // Editing supersedes a pending direct-book jump as well as the old request.
+            // Editing retires the old request and any queued direct-book jump. Keep partial results
+            // as a static snapshot without a spinner; "complete" prevents load() from restarting the
+            // old submitted query while draft edits refresh suggestions. Submitting resumes results.
             mutableState.isLoadingComplete = true
             mutableState.query = keyword
             saved["search.query"] = keyword

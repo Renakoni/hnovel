@@ -54,6 +54,9 @@ abstract class DiscoveryPageViewModel(
     private val mutableState = MutableStateFlow(DiscoveryPageState(loadingSources = true))
     val state = mutableState.asStateFlow()
     private var versions = emptyMap<Identifier, DiscoveryVersion>()
+    // category./explore. keys own this entry's persisted selection. Bare namespace/sourceId
+    // are Route.Main.Categories arguments, used only as the initial fallback. Later shortcuts
+    // to a restored entry must be consumed through select(), not by rewriting route arguments.
     private var requested = (saved.get<String>("$key.namespace") ?: saved.get<String>("namespace"))?.let { namespace ->
         (saved.get<String>("$key.source") ?: saved.get<String>("sourceId"))?.let { Identifier(namespace, it) }
     }
