@@ -32,7 +32,7 @@ fun NavGraphBuilder.categoriesDestination() {
         CategoriesScreen(state, model::select,
             onCategory = { category -> model.result(category)?.let { nav.navigate(it) } },
             model::scroll, model::refresh,
-            onManageSources = { nav.navigate(Route.Main.Settings.Sources) },
+            onManageSources = { nav.navigate(state.selected?.let { Route.Main.Settings.SourceDetail(it.namespace, it.id) } ?: Route.Main.Settings.Sources) },
             onSettings = nav::navigateToSettingsDestination, onBack = { nav.popBackStackIfResumed() },
             onInput = { id, value -> model.interact(id, value) }, onAction = { id, longClick -> model.interact(id, longClick = longClick) })
     }
@@ -48,7 +48,7 @@ fun NavGraphBuilder.categoriesDestination() {
         }
         DiscoveryResultsScreen(state, model::filter, model::loadMore, model::refresh, model::scroll,
             onBook = { nav.navigateToBookDetailDestination(it.storageKey) },
-            onManageSources = { nav.navigate(Route.Main.Settings.Sources) },
+            onManageSources = { nav.navigate(Route.Main.Settings.SourceDetail(model.sourceId.namespace, model.sourceId.id)) },
             onSettings = nav::navigateToSettingsDestination, onBack = { nav.popBackStackIfResumed() })
     }
 }

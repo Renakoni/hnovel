@@ -1,4 +1,14 @@
 <resources>
+    <string name="sources_origin_candidates_help">引用或被拦截的站点仅作为候选。请逐一核对，加入草稿后保存才会授权；不会显示路径或凭据。</string>
+    <string name="sources_denied_origins">此来源被拦截的请求</string>
+    <string name="sources_denied_count">%1$d 项站点请求待核对</string>
+    <string name="sources_origin_add">加入授权草稿</string>
+    <string name="sources_origin_in_draft">已在授权草稿中</string>
+    <string name="sources_resource_image">封面或正文图片</string>
+    <string name="sources_resource_script">书源脚本库</string>
+    <string name="sources_resource_api">API 请求</string>
+    <string name="sources_resource_import">书源导入</string>
+    <string name="sources_resource_document">页面或正文请求</string>
     <string name="sources_back">返回</string>
     <string name="sources_title">书源</string>
     <string name="sources_manage_help">添加、配置、登录和更新书源</string>

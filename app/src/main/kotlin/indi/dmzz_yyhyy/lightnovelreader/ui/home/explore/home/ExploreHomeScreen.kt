@@ -90,7 +90,7 @@ fun ExploreHomeScreen(
                     PullToRefreshBox(isRefreshing = content.loading, onRefresh = onRefresh, modifier = Modifier.fillMaxSize()) {
                         LazyColumn(state = list, modifier = Modifier.fillMaxSize()) {
                             content.error?.let { error -> item(key = "error") {
-                                DiscoveryFailure(error, onRefresh, onManageSources, back = null, field = content.errorField)
+                                DiscoveryFailure(error, onRefresh, onManageSources, back = null, field = content.errorField, permission = content.errorPermission)
                             } }
                             items(content.filters, key = { "input:" + it.id }) { filter ->
                                 Column(Modifier.padding(horizontal = 16.dp)) {

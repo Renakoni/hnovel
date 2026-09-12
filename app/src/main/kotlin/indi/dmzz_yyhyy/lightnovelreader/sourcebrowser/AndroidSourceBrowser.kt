@@ -58,6 +58,7 @@ class AndroidSourceBrowser @Inject constructor(@ApplicationContext private val c
                                 val response = session.execute(BrokerRequest("browser", url.toString(),
                                     method = args["method"]?.jsonPrimitive?.content ?: "GET", headers = headers,
                                     body = args["body"]?.takeUnless { it == JsonNull }?.jsonPrimitive?.content,
+                                    kind = args["kind"]?.jsonPrimitive?.content?.let(ResourceKind::valueOf) ?: ResourceKind.Document,
                                     timeoutMillis = request.timeoutMillis, maxResponseBytes = 1024 * 1024), guard)
                                 current(); Json.encodeToString(response)
                             }

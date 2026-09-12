@@ -4,13 +4,42 @@ import hnovel.imports.EXTENSION_PROFILE
 import hnovel.network.BrowserExecutor
 import hnovel.network.BrokerResult
 import hnovel.network.FailureCode
+import hnovel.network.OriginDenial
 import hnovel.network.RequestStage
+import hnovel.network.ResourceKind
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.*
 import org.junit.Assert.*
 import org.junit.Test
 
 class RuleLoginFormTest {
+    @Test fun directAndRedirectedBrowserLoginKeepTheDeniedOriginWithoutItsQuery() = runBlocking {
+        val deniedUrl = "https://login.invalid/verify?token=synthetic-secret"
+        var navigations = 0
+        val browser = BrowserExecutor { session, request, options, guard ->
+            assertTrue(options.interactive)
+            navigations++
+            session.execute(request.copy(browser = null), guard)
+        }
+        RuleSourceFixture(browser).use { fixture ->
+            fixture.server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
+                override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest) =
+                    okhttp3.mockwebserver.MockResponse().setResponseCode(302).setHeader("Location", deniedUrl)
+            }
+            for (loginUrl in listOf(deniedUrl, fixture.server.url("/login").toString())) {
+                fixture.source { raw -> JsonObject(raw + ("loginUrl" to JsonPrimitive(loginUrl))) }.use { source ->
+                    val failure = runCatching { source.login(emptyMap()) }.exceptionOrNull() as SourceContentException
+                    assertEquals(ContentError.PermissionDenied, failure.code)
+                    assertEquals("loginUrl", failure.field)
+                    assertEquals(OriginDenial("https://login.invalid:443", ResourceKind.Document), failure.denial)
+                    assertFalse(failure.toString().contains("synthetic-secret"))
+                }
+            }
+            assertEquals(1, navigations)
+            assertEquals(1, fixture.server.requestCount)
+        }
+    }
+
     @Test fun directBrowserLoginPreservesBrokerFailures() = runBlocking {
         var code = FailureCode.Network
         val browser = BrowserExecutor { _, _, options, _ ->

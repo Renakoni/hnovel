@@ -10,6 +10,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.web.*
 import io.nightfish.lightnovelreader.api.Route
 import io.nightfish.lightnovelreader.api.identifier.Identifier
 import io.nightfish.lightnovelreader.api.web.discovery.DiscoveryError
+import io.nightfish.lightnovelreader.api.web.discovery.DiscoveryPermission
 import io.nightfish.lightnovelreader.api.web.discovery.DiscoveryFilter
 import io.nightfish.lightnovelreader.api.web.discovery.DiscoveryEnvironment
 import kotlinx.coroutines.Job
@@ -34,6 +35,7 @@ data class DiscoveryResultsState(
     val scroll: DiscoveryScroll = DiscoveryScroll(),
     val resetId: Long = 0,
     val errorField: String? = null,
+    val errorPermission: DiscoveryPermission? = null,
 )
 
 /** One ViewModel per navigation entry. Only lightweight identity/filter values survive process death. */
@@ -126,6 +128,7 @@ class DiscoveryResultsViewModel internal constructor(
         mutableState.value = state.value.copy(loading = true, error = null)
         pending = viewModelScope.launch {
             var failureField: String? = null
+            var permissionFailure: DiscoveryPermission? = null
             val result = discoveryRequest {
                 if (session == null) {
                     val source = registry.discovery(sourceId).getOrElse { return@discoveryRequest Err(it) }
@@ -135,7 +138,7 @@ class DiscoveryResultsViewModel internal constructor(
                     // Source-search actions have no discovery filters. Catalogue JS would be unused
                     // and may persist infoMap; raw explore targets still need it even without a category ID.
                     if (source.hasCategories && !target.startsWith(DISCOVERY_SEARCH_PREFIX)) {
-                        val catalog = source.catalog().getOrElse { failureField = source.failureField; return@discoveryRequest Err(it) }
+                        val catalog = source.catalog().getOrElse { failureField = source.failureField; permissionFailure = source.permissionFailure; return@discoveryRequest Err(it) }
                         catalogValues = catalog.values
                         if (route.categoryId != null) target = catalog.categories.singleOrNull { it.id == route.categoryId }
                             ?.target?.target?.takeIf(String::isNotBlank) ?: return@discoveryRequest Err(DiscoveryError.InvalidRequest)
@@ -149,12 +152,12 @@ class DiscoveryResultsViewModel internal constructor(
                     saveFilters(values)
                     mutableState.value = state.value.copy(definitions = opened.filters, filters = values)
                 }
-                requireNotNull(session).loadMore().onErr { failureField = session?.failureField }
+                requireNotNull(session).loadMore().onErr { failureField = session?.failureField; permissionFailure = session?.permissionFailure }
             }
             if (token != serial || !active) return@launch
             result.onOk { mutableState.value = state.value.copy(books = it.books, loading = false,
-                loaded = true, hasMore = it.nextCursor != null, errorField = null) }
-                .onErr { mutableState.value = state.value.copy(loading = false, error = it, errorField = failureField) }
+                loaded = true, hasMore = it.nextCursor != null, errorField = null, errorPermission = null) }
+                .onErr { mutableState.value = state.value.copy(loading = false, error = it, errorField = failureField, errorPermission = permissionFailure) }
         }
     }
 }

@@ -151,7 +151,7 @@ fun ExploreSearchScreen(
                     Text(exploreSearchUiState.sourceName, Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
                         style = MaterialTheme.typography.labelLarge)
                     (exploreSearchUiState.failure ?: exploreSearchUiState.suggestionFailure)?.let { failure ->
-                        DiscoveryFailure(failure.error, refresh, onManageSources, onClickBack, failure.field)
+                        DiscoveryFailure(failure.error, refresh, onManageSources, onClickBack, failure.field, failure.permission)
                     }
                     val hasHistory = exploreSearchUiState.historyList.isNotEmpty()
                     val showHistory = exploreSearchUiState.suggestions.isEmpty() || searchKeyword.isEmpty()
@@ -293,7 +293,7 @@ fun ExploreSearchScreen(
             Text(exploreSearchUiState.sourceName, Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
                 style = MaterialTheme.typography.labelLarge)
             exploreSearchUiState.failure?.let { failure ->
-                DiscoveryFailure(failure.error, refresh, onManageSources, onClickBack, failure.field)
+                DiscoveryFailure(failure.error, refresh, onManageSources, onClickBack, failure.field, failure.permission)
             }
             if (exploreSearchUiState.isLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
             if (exploreSearchUiState.isLoadingComplete && exploreSearchUiState.searchResult.isEmpty() && exploreSearchUiState.failure == null) {

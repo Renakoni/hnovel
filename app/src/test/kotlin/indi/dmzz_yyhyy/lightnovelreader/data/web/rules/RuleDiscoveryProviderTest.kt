@@ -28,6 +28,22 @@ import org.robolectric.annotation.Config
 @Config(sdk = [27], application = Application::class)
 class RuleDiscoveryProviderTest {
     @get:Rule val directory = TemporaryFolder()
+
+    @Test fun deniedCategoryPageReportsOnlyItsOriginAndResourcePurpose() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            fixture.source(customize = { raw -> JsonObject(raw + mapOf(
+                "exploreUrl" to JsonPrimitive("""[{"title":"Books","url":"https://api.invalid:8443/private?token=secret"}]"""),
+                "ruleExplore" to raw.getValue("ruleSearch"))) }).use { source ->
+                val provider = RuleDiscoveryProvider(source)
+                val category = provider.catalog().get()!!.categories.single()
+                assertEquals(Err(DiscoveryError.PermissionDenied), provider.page(DiscoveryRequest(category.target)))
+                assertEquals(DiscoveryPermission("https://api.invalid:8443", "Document"), provider.permissionFailure)
+                assertEquals(0, fixture.server.requestCount)
+                provider.catalog()
+                assertNull(provider.permissionFailure)
+            }
+        }
+    }
     private fun definition(raw: JsonObject) = JsonObject(raw + mapOf(
         "exploreUrl" to JsonPrimitive("[{\"title\":\"Sort\",\"type\":\"select\",\"chars\":[\"new\",\"popular\"]},{\"title\":\"Books\",\"url\":\"/search?sort={{infoMap.Sort}}&page={{page}}\"}]"),
         "ruleExplore" to raw.getValue("ruleSearch")))

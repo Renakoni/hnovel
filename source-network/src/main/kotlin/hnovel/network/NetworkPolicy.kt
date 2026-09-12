@@ -21,7 +21,8 @@ internal class NetworkPolicy(grants: List<NetworkGrant>, private val resolver: D
 
     fun check(url: HttpUrl): NetworkGrant {
         if (url.username.isNotEmpty() || url.password.isNotEmpty()) throw BrokerFailure(RequestStage.Permission, FailureCode.InvalidRequest)
-        val grant = grants[origin(url)] ?: throw BrokerFailure(RequestStage.Permission, FailureCode.OriginDenied)
+        val grant = grants[origin(url)] ?: throw BrokerFailure(RequestStage.Permission, FailureCode.OriginDenied,
+            origin(url).takeIf { it.length <= 512 && url.host.length <= 253 })
         // OkHttp may bypass Dns for literal addresses, so reject them before any connection.
         if (url.host.contains(':') || url.host.all { it.isDigit() || it == '.' }) checkAddress(InetAddress.getByName(url.host), grant)
         return grant
@@ -43,7 +44,7 @@ internal class NetworkPolicy(grants: List<NetworkGrant>, private val resolver: D
     }
 
     companion object {
-        fun origin(url: HttpUrl) = "${url.scheme}://${url.host}:${url.port}"
+        fun origin(url: HttpUrl) = "${url.scheme}://${if (':' in url.host) "[${url.host}]" else url.host}:${url.port}"
 
         /** Reject non-global ranges, including IPv4-mapped/private and IPv6 transition addresses. */
         internal fun isPublicAddress(address: InetAddress): Boolean {

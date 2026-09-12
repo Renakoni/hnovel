@@ -56,6 +56,25 @@ and navigation refusals preserve broker codes over Binder. A page may handle a f
 subresource/XHR itself. Script failures use the host's latest bridge refusal only when
 the worker returns BridgeDenied; handled failures do not replace successful rule results.
 
+### Origin approval feedback (#139)
+
+An `OriginDenied` result may include `OriginDenial`: a canonical scheme/host/explicit
+port plus ResourceKind. Its constructor rejects noncanonical values, paths, queries
+and user information, including data received over browser IPC. Other failure kinds
+do not generate website-approval requests.
+
+Each source/account session remembers at most 32 distinct origin/kind refusals for the
+source-management screen. These are transient diagnostics, never grants. Closing the
+session clears them; account/revision replacements do not inherit them. Request
+refusals are published under the same host commit guard as request results. Background
+workers can record a refusal but cannot navigate, show a prompt or grant access.
+
+The import preview separately scans validated definition fields for at most 32 literal
+HTTP(S) origin/purpose candidates. It does not execute JavaScript or infer unresolved
+hosts. Adding a candidate changes only the visible draft; saving goes through the
+existing revision/account validation and replacement path. Exact-origin and address
+checks continue to apply to approved CDN/API/redirect targets.
+
 ### Enforcement
 
 - Grants authorize exact scheme/host/port combinations; multiple origins are explicit.

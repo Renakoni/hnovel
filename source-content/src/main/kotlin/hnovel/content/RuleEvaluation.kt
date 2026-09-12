@@ -88,7 +88,7 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
                 FailureCode.Timeout, FailureCode.InputLimit, FailureCode.OutputLimit -> ContentError.Limit
                 FailureCode.BridgeDenied -> networkFailure?.code?.contentError() ?: ContentError.PermissionDenied
                 else -> ContentError.InvalidRule
-            }, field)
+            }, field, networkFailure?.denial.takeIf { result.code == FailureCode.BridgeDenied })
             is ExecutionResult.Success -> Json.decodeFromString(ExecutedRule.serializer(), result.output)
         }
     }
