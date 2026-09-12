@@ -2,6 +2,8 @@
 
 对应 [#82](https://github.com/Renakoni/hnovel/issues/82)。核对宿主 main：`ad62f4c0199f663475973885ed26511848990476`。本 PR 交付测试框架和可核验契约，不交付 App 内规则执行或导入功能。
 
+> 本文保留 VNR-10 建立时的研究边界。后续生产功能、扩展源码依据、分类能力、账号语义及最终测试归属以 [VNR-23 验收报告](source-compatibility-acceptance.md) 和当前矩阵为准；文中的「待实现/待补证」是当时状态。
+
 ## 兼容目标
 
 | Profile | 定义 | 当前证据 |

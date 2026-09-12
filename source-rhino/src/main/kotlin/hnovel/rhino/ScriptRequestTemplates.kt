@@ -24,7 +24,7 @@ internal class ScriptRequestTemplates(private val scope: Scriptable, private val
     private fun dispatch(cx: Context, bridge: HostBridge, name: String, args: List<JsonElement>): JsonElement {
         val prepared = prepare(cx, name, args)
         val inherits = name in setOf("java.ajax", "java.ajaxAll", "java.connect", "java.cacheFile", "java.downloadFile", "java.importScript",
-            "java.webView", "java.webViewGetSource", "java.webViewGetOverrideUrl", "java.startBrowser", "java.startBrowserAwait", "browser.refetch") &&
+            "java.webView", "java.webViewGetSource", "java.webViewGetOverrideUrl", "java.startBrowser", "java.startBrowserAwait", "java.getVerificationCode", "browser.refetch") &&
             !(name == "java.connect" && args.getOrNull(1)?.let { it != JsonNull } == true) &&
             !(name == "java.ajaxAll" && prepared[0].jsonArray.isEmpty()) &&
             !(name == "java.importScript" && !prepared[0].jsonPrimitive.content.startsWith("http", true)) &&

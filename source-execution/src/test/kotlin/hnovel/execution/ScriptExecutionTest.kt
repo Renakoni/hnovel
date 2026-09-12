@@ -15,6 +15,42 @@ import java.util.concurrent.TimeUnit
 class ScriptExecutionTest {
     @get:Rule val directory = TemporaryFolder()
 
+    @Test fun imageVerificationRequiresForegroundAndReturnsOnlyNonblankInput() = runBlocking {
+        val authority = ExecutionAuthority()
+        var calls = 0
+        var answer = " A7c "
+        val browser = BrowserExecutor { _, request, options, guard ->
+            assertTrue(options.interactive)
+            assertTrue(options.verificationCode)
+            assertTrue(request.url.endsWith("/captcha.png"))
+            guard.commit { calls++ }
+            BrokerResult.Success(BrokerResponse(200, request.url, emptyMap(), answer.toByteArray(), "UTF-8", 0))
+        }
+        MockWebServer().use { server ->
+            server.start()
+            SourceBroker(directory.root.toPath(), browser = browser).use { broker ->
+                val id = authority.issue("A", "legado", "1", "verification")
+                val base = server.url("/").toString()
+                val session = broker.open(SourceScope("verification", "A", "legado"), listOf(NetworkGrant(base, true)))
+                SourceExecutionBroker(id, authority, session, ExecutionLimits(), base).use { bridge ->
+                    assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied), runScript(id, bridge, "java.getVerificationCode('/captcha.png')"))
+                    assertTrue(bridge.interactionRequired)
+                    assertEquals(0, calls)
+                }
+                SourceExecutionBroker(id, authority, session, ExecutionLimits(), base, allowInteraction = true).use { bridge ->
+                    assertEquals(ExecutionResult.Success("\" A7c \""), runScript(id, bridge, "java.getVerificationCode('/captcha.png')"))
+                    answer = " "
+                    assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied), runScript(id, bridge, "java.getVerificationCode('/captcha.png')"))
+                    assertEquals(2, calls)
+                    authority.revoke(id)
+                    assertTrue(runCatching { bridge.call("java.getVerificationCode", listOf(JsonPrimitive(base + "captcha.png"))) }.isFailure)
+                    assertEquals(2, calls)
+                }
+                assertEquals(0, server.requestCount)
+            }
+        }
+    }
+
     @Test fun browserVerificationRequiresForegroundAndReturnsTheRequestedResponse() = runBlocking {
         val authority = ExecutionAuthority()
         val opened = mutableListOf<String>()

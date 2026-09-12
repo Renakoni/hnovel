@@ -11,6 +11,9 @@ import io.mockk.mockk
 import io.mockk.verify
 import hnovel.imports.ImportOrigin
 import hnovel.imports.SourceDefinition
+import hnovel.imports.EXTENSION_PROFILE
+import hnovel.content.LoginField
+import hnovel.content.LoginForm
 import indi.dmzz_yyhyy.lightnovelreader.data.web.*
 import indi.dmzz_yyhyy.lightnovelreader.data.web.rules.ImportedRuleSources
 import indi.dmzz_yyhyy.lightnovelreader.data.web.rules.InstalledRuleSource
@@ -67,5 +70,32 @@ class SourcesScreenTest {
         org.junit.Assert.assertEquals(id, selected)
         compose.runOnIdle { state = state.copy(registry = listOf(entry.copy(metadata = entry.metadata.copy(capabilities = emptySet())))) }
         compose.onNodeWithText("Search this source").assertDoesNotExist()
+    }
+
+    @Test fun extensionModeIsPassedToTheImportPreview() {
+        activity.get().setContent { MaterialTheme { SourcesScreen(SourceManagementState(), model, onDiagnostics = {}) {} } }
+        compose.onNodeWithText("Add book source").performClick()
+        compose.onNodeWithText("Extended Legado source").performScrollTo().performClick()
+        compose.onNodeWithText("Source file URL").performScrollTo().performTextInput("https://fixture.invalid/extended.json")
+        compose.onNodeWithText("Download and preview").performScrollTo().performClick()
+        verify(exactly = 1) { model.previewUrl("https://fixture.invalid/extended.json", EXTENSION_PROFILE) }
+        verify(exactly = 0) { model.commit(any(), any(), any()) }
+    }
+
+    @Test fun loginControlsSubmitDefaultsAndTheCurrentSourceFormValues() {
+        val form = LoginForm(listOf(LoginField("user", "text", label = "Account"), LoginField("password", "password"),
+            LoginField("region", "select", choices = listOf("east", "west"), label = "Region"),
+            LoginField("remember", "toggle", choices = listOf("no", "yes"), label = "Remember")), null,
+            mapOf("user" to "alice", "password" to "", "region" to "east", "remember" to "no"))
+        var submitted: Map<String, String>? = null
+        activity.get().setContent { MaterialTheme { SourceLoginDialog(form, false, { values, action ->
+            org.junit.Assert.assertNull(action); submitted = values
+        }, {}) } }
+        compose.onNodeWithText("Account").performTextReplacement("carol")
+        compose.onNodeWithText("Region: east").performScrollTo().performClick()
+        compose.onNodeWithText("west").performClick()
+        compose.onNodeWithText("Remember: no").performScrollTo().performClick()
+        compose.onAllNodesWithText("Sign in").filter(hasClickAction()).onFirst().performClick()
+        org.junit.Assert.assertEquals(mapOf("user" to "carol", "password" to "", "region" to "west", "remember" to "yes"), submitted)
     }
 }

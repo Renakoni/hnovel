@@ -673,4 +673,9 @@
     <string name="bookshelf_pin_selected">置顶 / 取消置顶</string>
     <string name="bookshelf_remove_selected">从当前书架移除</string>
     <string name="bookshelf_collect_selected">添加到书架</string>
+    <string name="sources_profile_standard">标准阅读书源</string>
+    <string name="sources_profile_extension">扩展阅读书源</string>
+    <string name="sources_profile_help">按书源作者的说明选择。扩展模式支持动态登录表单和扩展控件。</string>
+    <string name="sources_apply_field">执行字段动作</string>
+    <string name="source_diagnostics_login_form">检查登录表单</string>
 </resources>

@@ -1,5 +1,10 @@
 # #87 bridge capability acceptance
 
+This is the worker capability report established for #87. Subsequent source routing,
+login, Chromium, discovery and revision integration is recorded in
+[VNR-23 acceptance](../docs/source-compatibility-acceptance.md). Account changes retire
+execution authority while retaining source/profile content, resources and general data.
+
 The merged #113 supplies the isolated executor, source/account broker, external
 libraries and rule-task integration. PR #108 completes the #87 worker bridge
 profile on that baseline. Its closure does not close the later login, browser,
@@ -50,7 +55,7 @@ ArchiveSizeLimitExceeded, mapped by the bridge to ResultTooLarge and execution
 OutputLimit. Invalid paths/types and the entry-count validation remain bridge
 rejections. Native decoder cleanup runs on both successful and failed extraction.
 
-Extraction publishes one account-storage record under `/archives/<unique-token>`.
+Extraction publishes one source/profile configuration record under `/archives/<unique-token>`.
 Each extraction gets its own opaque token, even for the same resource URL;
 consuming one cannot delete another extraction published between its read and delete.
 Quota failure cannot commit a directory prefix. Individual child paths are

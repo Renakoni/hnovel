@@ -14,7 +14,7 @@ The existing `JVM unit tests` CI job runs this task alongside the app tests. It 
 - `rhino-contract`: Rhino executes a synthetic script against a recording **host double**. This validates the test contract, not the real Legado Java bridge, login implementation, or browser.
 - `mixed-contract`: a pinned HTML selector feeds a synthetic script. This does not exercise upstream `AnalyzeRule` routing or the complete `WebBook` pipeline.
 
-The first corpus has 21 executable cases and six synthetic source definitions. `coverage.json` maps the broader target to implementation Issues and future test IDs, and records current per-feature product evidence. URL/HTTP/storage retain their explicit partial-acceptance boundaries. No skipped test is used to make missing product functionality look green; JVM host doubles are not Android browser or process-isolation evidence.
+The first corpus has 21 executable cases and six synthetic source definitions. `coverage.json` maps all 33 required feature families to implementation Issues and executable product tests. The VNR-23 audit updates stale entries and closes implementation gaps; [the current acceptance report](../docs/source-compatibility-acceptance.md) distinguishes host contracts from pinned differential and Android evidence. No skipped test is used to make missing functionality look green; JVM host doubles are not Android browser or process-isolation evidence.
 
 `ReferenceRunner` calls the pinned selectors directly. It intentionally does not reimplement the whole rule interpreter as a supposedly independent oracle. The three small JVM shims replace only an Android shrinker annotation, `TextUtils.join`, and disabled debug logging. They do not supply fake parser results.
 
@@ -37,7 +37,7 @@ Results are in `build/reports/tests/test` and `build/test-results/test`. The cov
 4. When a real production operation lands, compare its result with the same independently reviewed expectation and applicable reference operation. Add the production dependency/adapter to this test module then, and replace the all-planned integrity gate with explicit per-feature execution results. Production code must never depend on this reference module.
 5. A reference upgrade must update the revision, dependency versions, raw checksums, expectations, and documented behavioral differences together. Keep deliberate deviations explicit, especially reference bugs.
 
-Mismatch, unknown-operation, missing-resource, duplicate-ID, and broken ownership checks fail the suite. Vendored Kotlin files retain LF line endings so checksums are identical on Windows and Linux.
+Mismatch, unknown-operation, missing-resource, duplicate-ID, broken ownership, missing required feature and missing product-test references fail the suite. The integrity gate requires all 33 implementation entries; it does not execute tests in other modules. Run the app/source JVM tasks and API 24/35 jobs for actual acceptance. Vendored Kotlin files retain LF line endings so checksums are identical on Windows and Linux.
 
 The synthetic Rhino runner applies an instruction limit to stop accidental fixture loops. This is **not** the future Android execution sandbox, and this task is not an entry point for evaluating untrusted user scripts.
 
@@ -49,7 +49,7 @@ See [the baseline and known limits](../docs/source-compatibility-baseline.md) an
 
 ## Broker backend evidence (#85)
 
-Tests now depend on production `source-network`. `ProductRequestContractTest` compiles the six existing synthetic search URLs without network access; `SourceBrokerTest` separately exercises real local MockWebServer requests, policy and state isolation. This is backend contract evidence, not a full upstream AnalyzeUrl/JavaScript/browser oracle. Process binding and script entry points remain pending under #86/#87/#89.
+Tests now depend on production `source-network`. `ProductRequestContractTest` compiles the six existing synthetic search URLs without network access; `SourceBrokerTest` separately exercises real local MockWebServer requests, policy and state isolation. This is backend contract evidence, not a full upstream AnalyzeUrl/JavaScript/browser oracle. Process binding, script and browser entry points have their own production tests referenced by the matrix.
 
 ## Production import evidence (#83)
 

@@ -1,5 +1,10 @@
 # Rule-source discovery and actions (#91)
 
+The login form adapter added by #95 shares the bounded worker interaction envelope,
+but owns a separate account-attempt draft and does not evaluate `exploreUrl`.
+Login `upLoginData`/`reLoginView`, profile selection and verification behavior are
+documented in [the current acceptance report](../docs/source-compatibility-acceptance.md).
+
 `RuleDiscoverySession` adapts imported novel definitions to the host discovery contract.
 It uses the existing `RuleSource` / worker wire / source broker path, not a second script
 engine. `RuleDiscoveryProvider` binds this data to the source tabs and result pages from

@@ -25,6 +25,7 @@ class AndroidSourceBrowser @Inject constructor(@ApplicationContext private val c
         guard: RequestCommitGuard): BrokerResult = serial.withLock { withContext(Dispatchers.IO) {
         require(options.title.length <= 1024 && options.script.length <= 65536 && options.sourceRegex.length <= 2048 &&
             options.delayMillis in 0..30000 && (options.html?.length ?: 0) <= 196608)
+        require(!options.verificationCode || options.interactive)
         val connected = CompletableDeferred<IBrowserService>()
         val died = CompletableDeferred<Unit>()
         val result = CompletableDeferred<BrokerResult>()

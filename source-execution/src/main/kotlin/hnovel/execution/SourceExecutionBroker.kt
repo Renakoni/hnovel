@@ -43,7 +43,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
         require(args.size == 3)
         val operation = args[0].jsonPrimitive.content
         require(operation in setOf("java.ajax", "java.ajaxAll", "java.connect", "java.cacheFile", "java.downloadFile", "java.importScript",
-            "java.webView", "java.webViewGetSource", "java.webViewGetOverrideUrl", "java.startBrowser", "java.startBrowserAwait", "browser.refetch"))
+            "java.webView", "java.webViewGetSource", "java.webViewGetOverrideUrl", "java.startBrowser", "java.startBrowserAwait", "java.getVerificationCode", "browser.refetch"))
         return callWithHeaders(operation, args[1].jsonArray, headerMap(args[2]))
     }
 
@@ -51,6 +51,19 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
         val requestNumber = reserveRequest()
         return ownedWork {
             when (name) {
+                "java.getVerificationCode" -> {
+                    if (!allowInteraction) {
+                        interactionRequired = true
+                        error("Foreground source login required")
+                    }
+                    require(args.size == 1)
+                    val url = java.net.URI(baseUrl).resolve(args.single().jsonPrimitive.content).toString()
+                    val response = fetch(BrokerRequest("verification-$requestNumber", url, headers = sourceHeaders,
+                        browser = BrowserOptions(interactive = true, verificationCode = true)))
+                    val value = response.text()
+                    check(response.status in 200..299 && value.isNotBlank() && value.length <= 4096)
+                    JsonPrimitive(value)
+                }
                 "java.startBrowser", "java.startBrowserAwait", "browser.refetch" -> {
                     if (!allowInteraction) {
                         interactionRequired = true

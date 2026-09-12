@@ -85,6 +85,7 @@ fun NavGraphBuilder.sourceDiagnosticDestination() {
                                 DiagnosticStage.Directory -> R.string.source_diagnostics_directory
                                 DiagnosticStage.Content -> R.string.source_diagnostics_content
                                 DiagnosticStage.Discovery -> R.string.source_diagnostics_discovery
+                                DiagnosticStage.LoginForm -> R.string.source_diagnostics_login_form
                             }))
                         }
                     }
