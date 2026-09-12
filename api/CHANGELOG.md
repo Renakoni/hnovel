@@ -1,5 +1,12 @@
 # Plugin API changes
 
+## Unreleased — source network diagnostics (#138)
+
+- Append `DiscoveryError.AddressDenied` and `DiscoveryError.Dns`; an address-policy
+  rejection or failed DNS lookup no longer asks the user to approve another website.
+  Existing enum entries and provider signatures remain unchanged. Exhaustive consumers
+  must handle the appended cases on recompilation; no external API artifact is published.
+
 ## Unreleased — discovery processing limits (#133)
 
 - Append `DiscoveryError.Limit` so bounded catalogue/result work can report a

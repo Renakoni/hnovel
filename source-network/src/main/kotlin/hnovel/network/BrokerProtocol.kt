@@ -13,7 +13,7 @@ data class SourceScope(val namespace: String, val sourceId: String, val profile:
 @Serializable enum class RequestStage { Parse, Permission, Queue, Connect, Response, Storage }
 @Serializable enum class FailureCode {
     InvalidRequest, UnknownOption, ScriptRequired, BrowserRequired, OriginDenied, AddressDenied,
-    RedirectLimit, RedirectBodyDenied, Timeout, Network, ResponseTooLarge, CacheMiss, StorageQuota, StorageUnavailable,
+    RedirectLimit, RedirectBodyDenied, Timeout, Network, ResponseTooLarge, CacheMiss, StorageQuota, StorageUnavailable, Dns,
 }
 
 @Serializable data class BrokerRequest(

@@ -30,6 +30,41 @@ class SourceBrokerTest {
         return (result as BrokerResult.Success).response
     }
 
+    @Test fun dnsNoRecordsAndFakeIpKeepDifferentCodes() = runBlocking {
+        for ((resolver, expected) in listOf(
+            Dns { throw java.net.UnknownHostException() } to FailureCode.Dns,
+            Dns { emptyList() } to FailureCode.Dns,
+            Dns { listOf(InetAddress.getByName("198.18.0.1")) } to FailureCode.AddressDenied,
+            Dns { listOf(InetAddress.getByName("198.19.255.254")) } to FailureCode.AddressDenied,
+            Dns { listOf(InetAddress.getByName("93.184.216.34"), InetAddress.getByName("169.254.169.254")) } to FailureCode.AddressDenied
+        )) SourceBroker(directory.newFolder().toPath(), resolver).use { broker ->
+            val session = broker.open(scope(), listOf(NetworkGrant("https://source.invalid/")))
+            val failure = session.execute(BrokerRequest("dns", "https://source.invalid/")) as BrokerResult.Failure
+            assertEquals(expected, failure.code)
+        }
+    }
+
+    @Test fun directSocketsDoNotDelegateDestinationResolutionToASystemHttpProxy() = runBlocking {
+        val previous = java.net.ProxySelector.getDefault()
+        java.net.ProxySelector.setDefault(object : java.net.ProxySelector() {
+            override fun select(uri: java.net.URI): List<java.net.Proxy> =
+                if (uri.scheme == "socket") listOf(java.net.Proxy.NO_PROXY) // JVM socket-level SOCKS lookup.
+                else error("Must not select an HTTP proxy")
+            override fun connectFailed(uri: java.net.URI, address: java.net.SocketAddress, error: java.io.IOException) = Unit
+        })
+        try {
+            MockWebServer().use { server ->
+                server.start(); server.enqueue(MockResponse().setBody("direct"))
+                val url = server.url("/").newBuilder().host("direct.invalid").build()
+                SourceBroker(directory.root.toPath(), Dns { listOf(InetAddress.getByName("127.0.0.1")) }).use { broker ->
+                    val session = broker.open(scope(), listOf(grant(url)))
+                    assertEquals("direct", success(session.execute(request(url))).text())
+                    assertEquals(1, server.requestCount)
+                }
+            }
+        } finally { java.net.ProxySelector.setDefault(previous) }
+    }
+
     @Test fun sameDomainDoesNotShareCookiesCacheProfilesOrResponseArrays() = runBlocking {
         MockWebServer().use { server ->
             server.start()

@@ -65,6 +65,8 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         sourceUrl = url
         enabledCookieJar = cookiesEnabled
     }
+    // VPN/TUN still routes these sockets. An HTTP proxy would move DNS/peer validation to
+    // an unchecked destination; keep direct sockets until that transport has its own policy.
     private val client = OkHttpClient.Builder().proxy(Proxy.NO_PROXY).followRedirects(false).followSslRedirects(false)
         .retryOnConnectionFailure(false).cookieJar(CookieJar.NO_COOKIES).cache(null)
         .addNetworkInterceptor { chain ->
@@ -171,6 +173,7 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
             } catch (cancelled: CancellationException) { throw cancelled }
               catch (failure: BrokerFailure) { BrokerResult.Failure(failure.stage, failure.code) }
               catch (_: IllegalArgumentException) { BrokerResult.Failure(RequestStage.Parse, FailureCode.InvalidRequest) }
+              catch (_: java.net.UnknownHostException) { BrokerResult.Failure(RequestStage.Connect, FailureCode.Dns) }
               catch (_: IOException) { BrokerResult.Failure(RequestStage.Connect, FailureCode.Network) }
         }
         return try { work.await().also { checkOpen() } } finally { work.cancel() }
@@ -217,7 +220,11 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
             } catch (failure: BrokerFailure) { throw failure }
               catch (failure: IOException) {
                 if (attempt == request.retry) return BrokerResult.Failure(RequestStage.Connect,
-                    if (failure is java.io.InterruptedIOException) FailureCode.Timeout else FailureCode.Network, attempt)
+                    when (failure) {
+                        is java.net.UnknownHostException -> FailureCode.Dns
+                        is java.io.InterruptedIOException -> FailureCode.Timeout
+                        else -> FailureCode.Network
+                    }, attempt)
             }
         }
         error("Unreachable retry state")

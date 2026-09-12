@@ -33,6 +33,31 @@ through BrowserExecutor; an absent port reports BrowserRequired.
 
 ## Network and credentials
 
+### Supported connection modes (#138)
+
+Direct Wi-Fi/mobile connections and OS VPN/TUN routes use the same direct sockets and
+system DNS. A VPN must return real public destination addresses (for example Clash
+`redir-host`, or a source-domain Fake-IP exclusion). The app does not bypass the VPN.
+HTTP/system proxy settings are deliberately not used: with an ordinary HTTP proxy,
+checking the local DNS answer and proxy peer does not validate the proxy's destination.
+There is no per-source transport switch or silently substituted public resolver.
+
+Fake-IP (`198.18.0.0/15`) and HTTP-proxy transport support remain deferred. Do not grant
+private-address access or additional origins as a workaround. Use real DNS with VPN/TUN,
+or a direct network when the upstream is reachable there. An NXDOMAIN/empty lookup is
+`Dns`; a non-public answer is `AddressDenied`; a missing exact-origin grant is
+`OriginDenied`. Only the last case belongs to the site's permission editor. A Fake-IP
+resolver can also synthesize an address for a nonexistent domain, in which case the
+observable failure is correctly `AddressDenied`, not an invented NXDOMAIN.
+
+Documents, images, API and downloaded scripts all use SourceSession. Android Chromium
+has native network loads disabled and forwards requests to that same session; main-frame
+and navigation refusals preserve broker codes over Binder. A page may handle a failed
+subresource/XHR itself. Script failures use the host's latest bridge refusal only when
+the worker returns BridgeDenied; handled failures do not replace successful rule results.
+
+### Enforcement
+
 - Grants authorize exact scheme/host/port combinations; multiple origins are explicit.
   All document/image/script/API/import requests use the same check. Only HTTP(S) is accepted.
 - DNS policy is installed in the **actual connection resolver**. Every returned address

@@ -16,6 +16,10 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
     private var closed = false
     var interactionRequired = false
         private set
+    /** Host-owned reason for the latest bridge call only; a script cannot manufacture it.
+     * Consumers use it only for BridgeDenied, never to override handled errors or successful rules. */
+    @Volatile var requestFailure: BrokerResult.Failure? = null
+        private set
 
     init {
         require(identity.namespace == session.scope.namespace && identity.sourceId == session.scope.sourceId &&
@@ -39,6 +43,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
     }
 
     suspend fun call(name: String, args: List<JsonElement>): JsonElement {
+        requestFailure = null
         if (name != "request.withHeaders") return callWithHeaders(name, args, emptyMap())
         require(args.size == 3)
         val operation = args[0].jsonPrimitive.content
@@ -218,8 +223,16 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
 
     private suspend fun fetch(request: BrokerRequest, maxResponseBytes: Int = BridgeWire.MAX_BYTES): BrokerResponse {
         val result = session.execute(request.copy(timeoutMillis = limits.timeoutMillis, maxResponseBytes = maxResponseBytes), RequestCommitGuard { action -> authorized(action) })
+        if (result is BrokerResult.Failure) requestFailure = result
         check(result is BrokerResult.Success) { "Broker request failed" }
         return result.response
+    }
+
+    private fun checkPermission(url: String) {
+        session.permissionFailure(url)?.let { code ->
+            requestFailure = BrokerResult.Failure(RequestStage.Permission, code)
+            error("Resource permission denied")
+        }
     }
 
     /** Logical source/account resources. A script path is never passed to the host filesystem. */
@@ -238,7 +251,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
             stored.value?.let { Json.parseToJsonElement(it).jsonObject }
         }
         fun checkGrants(record: JsonObject) = authorized {
-            for (field in listOf("url", "finalUrl")) check(session.permissionFailure(record.getValue(field).jsonPrimitive.content) == null) { "Resource origin denied" }
+            for (field in listOf("url", "finalUrl")) checkPermission(record.getValue(field).jsonPrimitive.content)
         }
         fun bytes(record: JsonObject) = java.util.Base64.getDecoder().decode(record.getValue("bytes").jsonPrimitive.content)
         fun text(record: JsonObject, charset: String? = null): String = bytes(record).toString(java.nio.charset.Charset.forName(
@@ -268,7 +281,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
         require(suffix.matches(Regex("[a-zA-Z0-9]{1,12}"))) { "Invalid resource type" }
         val rule = if (options != null) rawUrl.substring(0, optionStart!!.range.first) + "," + JsonObject(options - "type") else rawUrl
         val request = compiled(number, rule, sourceHeaders).copy(kind = ResourceKind.Script)
-        authorized { check(session.permissionFailure(request.url) == null) { "Resource origin denied" } }
+        authorized { checkPermission(request.url) }
         val hash = java.security.MessageDigest.getInstance("SHA-256").digest(rawUrl.toByteArray())
             .joinToString("") { "%02x".format(it.toInt() and 255) }
         val path = "/resources/$hash.$suffix"
@@ -310,7 +323,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
             return value.value?.let { Json.parseToJsonElement(it).jsonObject }
         }
         fun grants(record: JsonObject) {
-            for (field in listOf("url", "finalUrl")) check(session.permissionFailure(record.getValue(field).jsonPrimitive.content) == null)
+            for (field in listOf("url", "finalUrl")) checkPermission(record.getValue(field).jsonPrimitive.content)
         }
         if (name == "resource.storeArchive") {
             require(path.matches(Regex("resources/[0-9a-f]{64}\\.[a-zA-Z0-9]{1,12}")))
@@ -360,10 +373,11 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
 
     /** Downloads data only; library code is evaluated exclusively in the isolated worker. */
     suspend fun loadLibrary(definition: String): List<String> = ownedWork {
+        requestFailure = null
         var size = 0L
         SourceLibraryDefinition.urls(definition).map { url ->
             val requestNumber = reserveRequest()
-            check(session.permissionFailure(url) == null) { "Library origin denied" }
+            checkPermission(url)
             val digest = java.security.MessageDigest.getInstance("SHA-256").digest(url.toByteArray(Charsets.UTF_8))
                 .joinToString("") { "%02x".format(it.toInt() and 255) }
             val key = "library:$digest"
@@ -372,6 +386,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
             val entry = cached.value?.let { Json.parseToJsonElement(it).jsonObject } ?: run {
                 val response = session.execute(BrokerRequest("library-$requestNumber", url,
                     timeoutMillis = limits.timeoutMillis, kind = ResourceKind.Script), RequestCommitGuard { action -> authorized(action) })
+                if (response is BrokerResult.Failure) requestFailure = response
                 check(response is BrokerResult.Success && response.response.status in 200..299) { "Library download failed" }
                 val code = response.response.text()
                 if (code.length.toLong() + 1 + size > SourceLibraryDefinition.MAX_CHARS) throw LibraryTooLarge()
@@ -383,7 +398,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
                     }
                 }
             }
-            check(session.permissionFailure(entry.getValue("url").jsonPrimitive.content) == null) { "Library redirect origin denied" }
+            checkPermission(entry.getValue("url").jsonPrimitive.content)
             entry.getValue("code").jsonPrimitive.content.also { code ->
                 size += code.length.toLong() + 1
                 if (size > SourceLibraryDefinition.MAX_CHARS) throw LibraryTooLarge()

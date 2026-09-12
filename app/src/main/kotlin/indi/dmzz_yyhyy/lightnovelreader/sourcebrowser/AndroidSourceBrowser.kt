@@ -41,7 +41,9 @@ class AndroidSourceBrowser @Inject constructor(@ApplicationContext private val c
                         current(); require(arguments.length <= 65536 && calls.incrementAndGet() <= 1024)
                         val args = Json.parseToJsonElement(arguments).jsonObject
                         val url = args.getValue("url").jsonPrimitive.content.toHttpUrl()
-                        check(session.permissionFailure(url.toString()) == null)
+                        // Network operations must return the broker's typed refusal across Binder.
+                        // Cookie/storage operations still need a preflight before accessing state.
+                        if (operation !in setOf("initialRequest", "request")) check(session.permissionFailure(url.toString()) == null)
                         when (operation) {
                             "initialRequest" -> {
                                 check(url == request.url.toHttpUrl())

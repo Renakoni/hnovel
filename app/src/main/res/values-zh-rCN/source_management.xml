@@ -40,6 +40,9 @@
     <string name="sources_action_failed">操作失败，请检查输入和权限后重试。</string>
     <string name="sources_rule_failed">书源规则无法运行，请检查定义或重新登录。</string>
     <string name="sources_permission_denied">尚未授权所需站点。</string>
+    <string name="sources_address_denied">站点解析到了私网或保留地址。如果 VPN 使用 Fake-IP，请改用真实 DNS（如 redir-host）或尝试直连。增加站点授权无法解决此问题。</string>
+    <string name="sources_dns_failed">无法解析站点域名。请检查网络、DNS 和书源地址后重试。</string>
+    <string name="sources_network_help">可使用直连或返回真实 DNS 地址的 VPN/TUN。暂不支持 Fake-IP 及 Wi-Fi／系统 HTTP 代理。</string>
     <string name="sources_revision_failed">修订未启用，原书源仍保留。请检查后重试更新。</string>
     <string name="sources_no_update_url">此书源没有更新地址，请导入新版文件或粘贴更新后的定义。</string>
     <string name="sources_up_to_date">未发现更新。</string>

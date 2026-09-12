@@ -2,7 +2,9 @@ package indi.dmzz_yyhyy.lightnovelreader.data.web.rules
 
 import android.app.Application
 import android.content.ContextWrapper
+import hnovel.content.ContentError
 import hnovel.content.RuleSourceFixture
+import hnovel.content.SourceContentException
 import hnovel.imports.*
 import hnovel.network.*
 import indi.dmzz_yyhyy.lightnovelreader.data.web.*
@@ -21,6 +23,44 @@ import java.nio.file.Files
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [27], application = Application::class)
 class SourceLoginServiceTest {
+    @Test fun browserLoginNetworkFailurePreservesStatusWhileHttpAuthenticationFailureRequiresLogin() = runBlocking {
+        val root = Files.createTempDirectory("browser-login-status").toFile()
+        val context = object : ContextWrapper(RuntimeEnvironment.getApplication()) { override fun getFilesDir() = root }
+        val browser = BrowserExecutor { session, request, options, guard ->
+            assertTrue(options.interactive)
+            session.execute(request.copy(browser = null), guard)
+        }
+        RuleSourceFixture().use { fixture ->
+            val registry = WebSourceRegistry(fixture.authority)
+            val accounts = SourceSessionManager(fixture.authority)
+            val sources = ImportedRuleSources(context, registry, fixture.authority, accounts, fixture.runner, browser = browser)
+            val login = SourceLoginService(sources, accounts)
+            try {
+                val raw = JsonObject(fixture.raw() +
+                    ("loginUrl" to JsonPrimitive(fixture.server.url("/book/one").toString())))
+                val saved = sources.importer.commit(sources.importer.preview(raw.toString()), listOf(ImportSelection(0, ImportDecision.Add)))
+                assertNull(saved.error)
+                val id = sources.activate(saved.items.single().reference!!, listOf(NetworkGrant(fixture.server.url("/").toString(), true)))
+                val attempt = login.begin(id)
+                fixture.status = 503
+                val network = runCatching { login.submit(attempt, emptyMap()) }.exceptionOrNull() as SourceContentException
+                assertEquals(ContentError.Network, network.code)
+                assertEquals(LoginStatus.LoggedOut, login.status(id))
+                fixture.status = 401
+                val authentication = runCatching { login.submit(attempt, emptyMap()) }.exceptionOrNull() as SourceContentException
+                assertEquals(ContentError.LoginRequired, authentication.code)
+                assertEquals(LoginStatus.Required, login.status(id))
+                fixture.status = 200
+                login.submit(attempt, emptyMap())
+                assertEquals(LoginStatus.Authenticated, login.status(id))
+                fixture.status = 503
+                assertEquals(ContentError.Network,
+                    (runCatching { login.submit(attempt, emptyMap()) }.exceptionOrNull() as SourceContentException).code)
+                assertEquals(LoginStatus.Authenticated, login.status(id))
+            } finally { sources.stop(); root.deleteRecursively() }
+        }
+    }
+
     @Test fun twoSourcesShareAnOriginButNotAccountsAndLogoutPurgesOnlyItsOwnSecrets() = runBlocking {
         val root = Files.createTempDirectory("login-host").toFile()
         val context = object : ContextWrapper(RuntimeEnvironment.getApplication()) { override fun getFilesDir() = root }

@@ -59,15 +59,25 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
         if (!authority.accepts(identity)) throw SourceContentException(ContentError.Unavailable, field)
         if (calls.incrementAndGet() > 4096) throw SourceContentException(ContentError.Limit, field)
         val started = System.nanoTime()
+        var networkFailure: hnovel.network.BrokerResult.Failure? = null
         val result = SourceExecutionBroker(identity, authority, session, limits, baseUrl, keyword, page,
             allowInteraction = interactive).use {
-            runner.execute(identity, task, limits, it).also { _ ->
+            val executed = try { runner.execute(identity, task, limits, it) }
+            catch (cancelled: java.util.concurrent.CancellationException) { throw cancelled }
+            catch (failure: Exception) {
+                // Host-side library loading can fail before the worker receives the task.
+                if (it.requestFailure != null) ExecutionResult.Failure(FailureCode.BridgeDenied) else throw failure
+            }
+            executed.also { _ ->
                 if (it.interactionRequired) throw SourceContentException(ContentError.LoginRequired, field)
+                networkFailure = it.requestFailure
             }
         }
         trace.record(ContentTraceEvent("rule", field, (System.nanoTime() - started) / 1_000_000,
             inputChars, (result as? ExecutionResult.Success)?.output?.length ?: 0,
-            (result as? ExecutionResult.Failure)?.code?.name ?: "Success",
+            if (result is ExecutionResult.Failure && result.code == FailureCode.BridgeDenied)
+                networkFailure?.code?.name ?: result.code.name
+            else (result as? ExecutionResult.Failure)?.code?.name ?: "Success",
             (result as? ExecutionResult.Failure)?.ruleError?.code,
             (result as? ExecutionResult.Failure)?.ruleError?.location?.offset))
         currentCoroutineContext().ensureActive()
@@ -76,7 +86,7 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
             is ExecutionResult.Failure -> throw SourceContentException(when (result.code) {
                 FailureCode.Revoked, FailureCode.InvalidIdentity -> ContentError.Unavailable
                 FailureCode.Timeout, FailureCode.InputLimit, FailureCode.OutputLimit -> ContentError.Limit
-                FailureCode.BridgeDenied -> ContentError.PermissionDenied
+                FailureCode.BridgeDenied -> networkFailure?.code?.contentError() ?: ContentError.PermissionDenied
                 else -> ContentError.InvalidRule
             }, field)
             is ExecutionResult.Success -> Json.decodeFromString(ExecutedRule.serializer(), result.output)

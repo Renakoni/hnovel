@@ -64,6 +64,9 @@ private class ScriptBridge(private val bridge: HostBridge, private val rules: Sc
                     throw RequestRejected(realm.errorIn(scope, "invalid request options"))
                 }
                 catch (rejected: RequestRejected) { throw rejected }
+                // request.prepare can evaluate nested source code. Preserve its script/bridge
+                // exception instead of relabelling a caught network error followed by a source error.
+                catch (error: JavaScriptException) { throw error }
                 catch (_: Exception) {
                     if (Thread.currentThread().isInterrupted) throw ScriptCancelled()
                     if (pureTool || name.removePrefix("java.") in ScriptCryptoObjects.factories) throw JavaScriptException(realm.errorIn(scope, "invalid tool argument"), "script-tool", 1)

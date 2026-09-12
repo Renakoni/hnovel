@@ -62,6 +62,9 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
                 is SourceContentException -> when (failure.code) {
                     hnovel.content.ContentError.LoginRequired -> R.string.sources_login_required
                     hnovel.content.ContentError.PermissionDenied -> R.string.sources_permission_denied
+                    hnovel.content.ContentError.AddressDenied -> R.string.sources_address_denied
+                    hnovel.content.ContentError.Dns -> R.string.sources_dns_failed
+                    hnovel.content.ContentError.Network -> R.string.discovery_network
                     else -> R.string.sources_rule_failed
                 }
                 else -> R.string.sources_action_failed
