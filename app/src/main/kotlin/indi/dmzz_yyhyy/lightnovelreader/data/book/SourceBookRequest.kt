@@ -20,9 +20,11 @@ internal suspend fun <T> WebSourceRegistry.request(
     is SourceResolution.Ready -> try {
         block(resolution.runtime)
     } catch (failure: Exception) {
-        // Retiring this registration cancels its requests, not the caller's lifecycle.
-        // Actual caller cancellation and unrelated source failures must still propagate.
+        // Caller lifecycle cancellation always wins, even if this registration retired too.
         currentCoroutineContext().ensureActive()
+        // Only a retired runtime's cancellation/unavailability becomes SourceUnavailable.
+        // IOException and other provider failures must propagate even after retirement:
+        // relabeling them would hide the actual fault and give callers the wrong recovery path.
         if (resolution.runtime.isAvailable ||
             (failure !is CancellationException && failure !is SourceUnavailableException)) throw failure
         Err(WebRequestError("Data source unavailable", "Source was removed or replaced (${book.sourceId})", failure, WebRequestErrorKind.SourceUnavailable))

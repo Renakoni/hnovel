@@ -138,6 +138,9 @@ fun BookInfoBottomSheet(
 
             InfoItem(
                 title = stringResource(R.string.detail_info_id),
+                // Only lnr1.* keys identify their source unambiguously. Under the no-migration policy,
+                // older bare keys use the fixed Wenku8 bridge; this display cannot recover the actual
+                // owner of an ambiguous historical key.
                 content = bookInformation.id.let { if (it.isEmpty()) it else BookIdentity.book(it).remoteId },
                 titleStyle = titleStyle,
                 contentStyle = contentStyle,
