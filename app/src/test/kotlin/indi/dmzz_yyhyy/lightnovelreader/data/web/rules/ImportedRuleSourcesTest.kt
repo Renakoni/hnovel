@@ -111,7 +111,9 @@ class ImportedRuleSourcesTest {
                 assertEquals(bound.map { it.storageKey }.toSet(), shelves.getBookshelf(1)!!.allBookIds.toSet())
                 assertEquals(bound[0].remoteId, bound[1].remoteId)
                 val before = fixture.documents.get()
-                service.remove(a); service.remove(b)
+                service.setPreferences(a, enabled = false); service.setPreferences(b, enabled = false)
+                assertTrue(registry.resolve(a) is SourceResolution.Missing)
+                assertTrue(registry.resolve(b) is SourceResolution.Missing)
                 loader.memoryCache?.clear()
                 for (book in bound) {
                     val chapter = local.getBookVolumes(book.storageKey)!!.volumes.single().chapters.first()
@@ -123,6 +125,12 @@ class ImportedRuleSourcesTest {
                 }
                 assertEquals(before, fixture.documents.get())
                 assertEquals(30, local.getUserReadingData(bound[1].storageKey).totalReadTime)
+                service.setPreferences(a, enabled = true)
+                assertEquals(a, (registry.resolve(a) as SourceResolution.Ready).runtime.id)
+                assertEquals(bound.map { it.storageKey }.toSet(), shelves.getBookshelf(1)!!.allBookIds.toSet())
+                assertEquals(99, local.getUserReadingData(bound[0].storageKey).totalReadTime)
+                service.remove(a); service.remove(b)
+                assertTrue(books.getIsBookCached(bound[0].storageKey))
             } finally { service.stop(); registry.unregister(EmptyWebDataSource.id); db.close(); loader.shutdown(); cache.shutdown(); coil3.SingletonImageLoader.reset() }
         }
     }

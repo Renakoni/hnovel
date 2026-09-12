@@ -14,6 +14,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -27,6 +29,7 @@ import hnovel.imports.LEGADO_PROFILE
 import hnovel.imports.SourceOriginCandidates
 import indi.dmzz_yyhyy.lightnovelreader.data.web.SourceCapability
 import indi.dmzz_yyhyy.lightnovelreader.data.web.rules.ImportedRuleSources
+import indi.dmzz_yyhyy.lightnovelreader.data.web.rules.InstalledRuleSource
 import indi.dmzz_yyhyy.lightnovelreader.data.web.rules.LoginStatus
 import io.nightfish.lightnovelreader.api.Route
 import io.nightfish.lightnovelreader.api.identifier.Identifier
@@ -97,25 +100,41 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                     val definition = installed.definition
                     val raw = remember(definition) { Json.parseToJsonElement(definition.rawJson).jsonObject }
                     var configuration by remember(definition.contentDigest, state.variable) { mutableStateOf(state.variable) }
-                    var permissions by remember(installed) { mutableStateOf(installed.origins.joinToString("\n") { it.origin }) }
+                    var permissions by remember(definition, installed.origins) { mutableStateOf(installed.origins.joinToString("\n") { it.origin }) }
+                    val capabilities = state.registry.find { it.metadata.id == state.selected }?.metadata?.capabilities.orEmpty()
+                    val active = capabilities.isNotEmpty()
                     val variableLabel = raw["variableComment"]?.jsonPrimitive?.content.orEmpty().ifBlank { stringResource(R.string.sources_configuration) }
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        if (state.registry.any { it.metadata.id == state.selected && SourceCapability.Search in it.metadata.capabilities }) {
+                        val enabledLabel = stringResource(R.string.sources_enabled)
+                        val discoveryLabel = stringResource(R.string.sources_discovery_visible)
+                        ListItem(headlineContent = { Text(enabledLabel) },
+                            supportingContent = { Text(stringResource(sourceStatus(installed, active))) },
+                            trailingContent = { Switch(installed.preferences.enabled,
+                                { model.setEnabled(state.selected!!, it) }, enabled = !state.busy,
+                                modifier = Modifier.semantics { contentDescription = enabledLabel }) })
+                        ListItem(headlineContent = { Text(discoveryLabel) },
+                            supportingContent = { Text(stringResource(if (installed.hasDiscovery)
+                                R.string.sources_discovery_help else R.string.sources_no_discovery)) },
+                            trailingContent = { Switch(installed.hasDiscovery && installed.preferences.discoveryVisible,
+                                { model.setDiscoveryVisible(state.selected!!, it) }, enabled = !state.busy && installed.hasDiscovery,
+                                modifier = Modifier.semantics { contentDescription = discoveryLabel }) })
+                        Text(stringResource(R.string.sources_disabled_help), style = MaterialTheme.typography.bodySmall)
+                        if (SourceCapability.Search in capabilities) {
                             Button(onClick = { onSearch(state.selected!!) }, enabled = !state.busy) { Text(stringResource(R.string.explore_search)) }
                         }
                         Text(stringResource(R.string.sources_format, definition.format))
                         Text(stringResource(if (definition.profile == EXTENSION_PROFILE) R.string.sources_profile_extension else R.string.sources_profile_standard))
                         Text(stringResource(R.string.sources_revision, definition.revision.toString()))
-                        Text(stringResource(when (state.loginStatus) {
-                            LoginStatus.Authenticated -> R.string.sources_logged_in
-                            LoginStatus.Required -> R.string.sources_login_required
-                            LoginStatus.LoggedOut -> R.string.sources_logged_out
-                        }))
-                        if (state.registry.any { it.metadata.id == state.selected && SourceCapability.Login in it.metadata.capabilities }) {
+                        if (SourceCapability.Login in capabilities) {
+                            Text(stringResource(when (state.loginStatus) {
+                                LoginStatus.Authenticated -> R.string.sources_logged_in
+                                LoginStatus.Required -> R.string.sources_login_required
+                                LoginStatus.LoggedOut -> R.string.sources_logged_out
+                            }))
                             Button(onClick = { model.beginLogin(state.selected!!) }, enabled = !state.busy) { Text(stringResource(R.string.sources_login)) }
                             OutlinedButton(onClick = { model.logout(state.selected!!) }, enabled = !state.busy) { Text(stringResource(R.string.sources_logout)) }
                         }
-                        OutlinedTextField(configuration, { configuration = it }, Modifier.fillMaxWidth(), label = { Text(variableLabel) }, enabled = !state.busy)
+                        if (active) OutlinedTextField(configuration, { configuration = it }, Modifier.fillMaxWidth(), label = { Text(variableLabel) }, enabled = !state.busy)
                         Text(stringResource(R.string.sources_permissions_help))
                         Text(stringResource(R.string.sources_network_help), style = MaterialTheme.typography.bodySmall)
                         if (installed.deniedOrigins.isNotEmpty()) {
@@ -126,9 +145,11 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                             }
                         }
                         OutlinedTextField(permissions, { permissions = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.sources_permissions)) }, enabled = !state.busy)
-                        Button(onClick = { model.saveConfiguration(state.selected!!, configuration, permissions) }, enabled = !state.busy) { Text(stringResource(R.string.sources_save)) }
+                        Button(onClick = { model.saveConfiguration(state.selected!!, configuration.takeIf { active }, permissions) }, enabled = !state.busy) {
+                            Text(stringResource(if (active) R.string.sources_save else R.string.sources_save_permissions))
+                        }
                         OutlinedButton(onClick = { model.checkUpdate(state.selected!!) }, enabled = !state.busy) { Text(stringResource(R.string.sources_check_update)) }
-                        OutlinedButton(onClick = { onDiagnostics(state.selected!!) }, enabled = !state.busy) { Text(stringResource(R.string.sources_diagnostics)) }
+                        OutlinedButton(onClick = { onDiagnostics(state.selected!!) }, enabled = !state.busy && active) { Text(stringResource(R.string.sources_diagnostics)) }
                         if (installed.previous != null) OutlinedButton(onClick = { rollback = true }, enabled = !state.busy) { Text(stringResource(R.string.sources_rollback)) }
                         TextButton(onClick = { deleting = true }, enabled = !state.busy) { Text(stringResource(R.string.sources_delete), color = MaterialTheme.colorScheme.error) }
                     }
@@ -172,7 +193,9 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                     val available = state.registry.any { it.metadata.id == id && it.metadata.capabilities.isNotEmpty() }
                     ListItem(headlineContent = { Text(source.definition.displayName) },
                         supportingContent = { Column {
-                            Text(stringResource(if (available) R.string.sources_available else R.string.sources_unavailable))
+                            Text(stringResource(sourceStatus(source, available)))
+                            if (!source.hasDiscovery) Text(stringResource(R.string.sources_no_discovery))
+                            else if (!source.preferences.discoveryVisible) Text(stringResource(R.string.sources_discovery_hidden))
                             if (source.deniedOrigins.isNotEmpty()) Text(stringResource(R.string.sources_denied_count, source.deniedOrigins.size))
                         } },
                         modifier = Modifier.clickable(enabled = !state.busy) { model.select(id) })
@@ -198,7 +221,7 @@ private fun Preview(state: SourceManagementState, model: SourcesViewModel) {
         preview.candidates.forEach { candidate ->
             if (candidate.index !in permissions) permissions[candidate.index] = runCatching { SourcesViewModel.origin(candidate.importKey) }.getOrDefault("")
             Row {
-                Checkbox(selected[candidate.index] == true, { selected[candidate.index] = it }, enabled = !state.busy && candidate.enabled)
+                Checkbox(selected[candidate.index] == true, { selected[candidate.index] = it }, enabled = !state.busy)
                 Column(Modifier.weight(1f)) {
                     Text(candidate.displayName)
                     Text(stringResource(if (candidate.existing == null) R.string.sources_new else R.string.sources_replace))
@@ -225,4 +248,12 @@ private fun Preview(state: SourceManagementState, model: SourcesViewModel) {
             enabled = !state.busy && selected.values.any { it }) { Text(stringResource(R.string.sources_apply)) }
         TextButton(onClick = model::dismissPreview, enabled = !state.busy) { Text(stringResource(android.R.string.cancel)) }
     }
+}
+
+private fun sourceStatus(source: InstalledRuleSource, available: Boolean): Int = when {
+    !source.preferences.enabled -> if (source.preferences.enabledSetByUser)
+        R.string.sources_disabled_by_user else R.string.sources_disabled_by_default
+    source.origins.isEmpty() -> R.string.sources_awaiting_permissions
+    available -> R.string.sources_available
+    else -> R.string.sources_unavailable
 }

@@ -13,13 +13,14 @@ import kotlinx.serialization.json.*
 /** One registered revision/account. Source retirement revokes its ticket; it never chooses another source. */
 class RuleSource(val definition: SourceDefinition, private val identity: ExecutionIdentity,
     private val authority: ExecutionAuthority, private val session: SourceSession,
-    private val runner: RuleTaskRunner, private val trace: ContentTrace = ContentTrace.None) : AutoCloseable {
+    private val runner: RuleTaskRunner, private val trace: ContentTrace = ContentTrace.None,
+    private val discoveryEnabled: Boolean = definition.enabledExplore) : AutoCloseable {
     internal val spec = RuleSourceDefinition(definition)
     private val store = RuleBookStore(session, authority, identity)
     private val serial = Mutex()
     val canSearch get() = spec.searchUrl.isNotBlank()
     val canLogin get() = spec.loginUrl.isNotBlank() || spec.loginUi.isNotBlank()
-    val canDiscover get() = definition.enabledExplore && spec.exploreUrl.isNotBlank()
+    val canDiscover get() = discoveryEnabled && spec.exploreUrl.isNotBlank()
 
     fun openDiscovery(sessionId: String, values: Map<String, String> = emptyMap(),
         environment: RuleDiscoveryEnvironment = RuleDiscoveryEnvironment()) = RuleDiscoverySession(this, sessionId, values, environment)

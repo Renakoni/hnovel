@@ -80,10 +80,11 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         }.build()
     val closed get() = !lifetime.isActive
 
-    /** Host-only revision handoff, including session cookies. Caller fences old commits with revocation. */
+    /** Host-only revision/re-enable handoff. A closed session may retain memory-only cookies;
+     * exact scope equality still forbids transfer across sources, profiles or account generations. */
     fun inheritCookies(previous: SourceSession) {
         require(scope == previous.scope)
-        checkOpen(); previous.checkOpen()
+        checkOpen()
         cookies.restoreMemory(previous.cookies.snapshot())
     }
 

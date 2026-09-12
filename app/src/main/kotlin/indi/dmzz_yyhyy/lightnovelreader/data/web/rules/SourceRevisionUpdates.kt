@@ -76,11 +76,12 @@ class SourceRevisionUpdates @Inject constructor(@ApplicationContext context: Con
 
     private suspend fun replace(before: InstalledRuleSource, next: SourceDefinition, grants: List<NetworkGrant>) {
         if (next.profile != before.definition.profile) throw RevisionException(RevisionError.ProfileChanged)
-        if (!next.enabled || grants.isEmpty() || grants.size > 32) throw RevisionException(RevisionError.InvalidCandidate)
+        if (grants.size > 32) throw RevisionException(RevisionError.InvalidCandidate)
         if (next.contentDigest == before.definition.contentDigest && grants == before.origins) return
         val id = ImportedRuleSources.id(before.definition)
         val generation = accounts.current(id).generation
-        validate(next, grants)
+        // Stored, disabled definitions and sources awaiting grants execute no initialization code.
+        if (before.preferences.enabled && grants.isNotEmpty()) validate(next, grants)
         currentCoroutineContext().ensureActive()
         if (accounts.current(id).generation != generation) throw RevisionException(RevisionError.Stale)
         sources.replaceRevision(before.definition, next, grants, generation)

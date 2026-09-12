@@ -61,7 +61,9 @@ class SourcesScreenTest {
         val id = ImportedRuleSources.id(definition)
         val state = SourceManagementState(installed = listOf(InstalledRuleSource(definition,
             listOf(hnovel.network.NetworkGrant("https://books.invalid/")), null,
-            listOf(hnovel.network.OriginDenial("https://cdn.invalid:443", hnovel.network.ResourceKind.Image)))), selected = id)
+            listOf(hnovel.network.OriginDenial("https://cdn.invalid:443", hnovel.network.ResourceKind.Image)))), selected = id,
+            registry = listOf(SourceListing(SourceMetadata(WebDataSourceItem(id, "Owner", "fixture"),
+                setOf(SourceCapability.Search)), SourceStatus.Ready)))
         activity.get().setContent { MaterialTheme { SourcesScreen(state, model, onDiagnostics = {}) {} } }
         compose.onNodeWithText("https://cdn.invalid:443").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Cover or content image").assertExists()
@@ -87,6 +89,44 @@ class SourcesScreenTest {
         org.junit.Assert.assertEquals(id, selected)
         compose.runOnIdle { state = state.copy(registry = listOf(entry.copy(metadata = entry.metadata.copy(capabilities = emptySet())))) }
         compose.onNodeWithText("Search this source").assertDoesNotExist()
+    }
+
+    @Test fun disabledDefinitionIsSelectableInPreviewWithoutBeingEnabled() {
+        val directory = java.nio.file.Files.createTempDirectory("disabled-preview").toFile()
+        try {
+            val importer = hnovel.imports.SourceDefinitionImporter(hnovel.imports.SourceDefinitionStore(directory.toPath()))
+            val preview = importer.preview("""{"bookSourceUrl":"https://fixture.invalid/","bookSourceName":"Disabled source","bookSourceType":0,"enabled":false}""")
+            org.junit.Assert.assertEquals(1, preview.candidates.size)
+            activity.get().setContent { MaterialTheme { SourcesScreen(SourceManagementState(preview = preview), model, onDiagnostics = {}) {} } }
+            compose.onNode(isToggleable()).assertIsEnabled().assertIsOff().performClick()
+            compose.onNodeWithText("Approve permissions and apply selected sources").performScrollTo().performClick()
+            verify(exactly = 1) { model.commit(setOf(0), mapOf(0 to "https://fixture.invalid/"), false) }
+            verify(exactly = 0) { model.setEnabled(any(), any()) }
+        } finally { directory.deleteRecursively() }
+    }
+
+    @Test fun preferenceSwitchesAreIndependentAndDoNotDiscardPermissionDrafts() {
+        val definition = SourceDefinition("disabled", "legado", "fixture", "https://fixture.invalid/", "Disabled", false,
+            false, ImportOrigin(ImportOrigin.Kind.Paste), "digest", 1, """{"exploreUrl":"All::/books"}""")
+        val id = ImportedRuleSources.id(definition)
+        val installed = InstalledRuleSource(definition, listOf(hnovel.network.NetworkGrant("https://fixture.invalid/")), null)
+        var state by mutableStateOf(SourceManagementState(installed = listOf(installed), selected = id))
+        activity.get().setContent { MaterialTheme { SourcesScreen(state, model, onDiagnostics = {}) {} } }
+        compose.onNodeWithContentDescription("Enable source").assertIsOff()
+        compose.onNodeWithText("Disabled by the source definition").assertExists()
+        compose.onNodeWithText("Allowed site origins, one per line").performScrollTo().performTextReplacement("https://draft.invalid/")
+        compose.onNodeWithContentDescription("Show in Explore and Categories").performScrollTo().assertIsOff().performClick()
+        verify(exactly = 1) { model.setDiscoveryVisible(id, true) }
+        verify(exactly = 0) { model.setEnabled(any(), any()) }
+        compose.runOnIdle { state = state.copy(installed = listOf(installed.copy(preferences = installed.preferences.copy(discoveryVisible = true)))) }
+        compose.onNodeWithText("https://draft.invalid/").performScrollTo().assertExists()
+        compose.onNodeWithText("Save permissions").performScrollTo().performClick()
+        verify(exactly = 1) { model.saveConfiguration(id, null, "https://draft.invalid/") }
+        compose.onNodeWithContentDescription("Enable source").performScrollTo().performClick()
+        verify(exactly = 1) { model.setEnabled(id, true) }
+        compose.runOnIdle { state = state.copy(installed = listOf(installed.copy(definition = definition.copy(rawJson = "{}")))) }
+        compose.onNodeWithContentDescription("Show in Explore and Categories").assertIsNotEnabled()
+        compose.onNodeWithText("This source does not declare a discovery catalogue.").assertExists()
     }
 
     @Test fun extensionModeIsPassedToTheImportPreview() {
