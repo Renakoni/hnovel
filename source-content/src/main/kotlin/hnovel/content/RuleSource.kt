@@ -119,7 +119,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
                 timeoutMillis = 60000, browser = BrowserOptions(interactive = true)),
                 RequestCommitGuard { authority.authorized(identity, it) })
             when (response) {
-                is BrokerResult.Failure -> throw SourceContentException(response.code.contentError(), "loginUrl")
+                is BrokerResult.Failure -> throw SourceContentException(response.code.contentError(), "loginUrl", response.denial)
                 is BrokerResult.Success -> checkStatus(response.response.status, "loginUrl")
             }
             authority.authorized(identity) { check(session.write(StorageRequest(StorageArea.Account, "login/status", "authenticated")) is StorageResult.Value) }
