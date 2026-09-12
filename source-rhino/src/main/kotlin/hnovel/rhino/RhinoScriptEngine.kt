@@ -8,6 +8,7 @@ import hnovel.rules.*
 fun interface HostBridge { fun call(name: String, args: List<JsonElement>): JsonElement }
 
 private class BridgeRejected(value: Any) : JavaScriptException(value, "host-bridge", 1)
+private class RequestRejected(value: Any) : JavaScriptException(value, "request-options", 1)
 
 internal val bridgeLimitKey = Any()
 internal val scriptLibraryKey = Any()
@@ -58,6 +59,11 @@ private class ScriptBridge(private val bridge: HostBridge, private val rules: Sc
                 catch (large: ResultTooLarge) { throw large }
                 catch (unsupported: UnsupportedResult) { throw unsupported }
                 catch (cancelled: java.util.concurrent.CancellationException) { throw ScriptCancelled() }
+                catch (_: RequestOptionsException) {
+                    if (Thread.currentThread().isInterrupted) throw ScriptCancelled()
+                    throw RequestRejected(realm.errorIn(scope, "invalid request options"))
+                }
+                catch (rejected: RequestRejected) { throw rejected }
                 catch (_: Exception) {
                     if (Thread.currentThread().isInterrupted) throw ScriptCancelled()
                     if (pureTool || name.removePrefix("java.") in ScriptCryptoObjects.factories) throw JavaScriptException(realm.errorIn(scope, "invalid tool argument"), "script-tool", 1)
@@ -120,7 +126,7 @@ sealed interface ScriptResult {
     }
     data class Failure(val code: FailureCode, val message: String) : ScriptResult
 }
-enum class FailureCode { Timeout, Cancelled, Syntax, Runtime, ResultTooLarge, UnsupportedResult, BridgeDenied }
+enum class FailureCode { Timeout, Cancelled, Syntax, Runtime, ResultTooLarge, UnsupportedResult, BridgeDenied, RequestSyntax }
 
 internal class ScriptBudgetExceeded : Error()
 private class ScriptCancelled : Error()
@@ -221,6 +227,7 @@ class RhinoScriptEngine(private val bridge: HostBridge, private val limits: Scri
           catch (_: EvaluatorException) { ScriptResult.Failure(FailureCode.Runtime, "script failed") }
           catch (_: StackOverflowError) { ScriptResult.Failure(FailureCode.Runtime, "script stack exhausted") }
           catch (_: BridgeRejected) { ScriptResult.Failure(FailureCode.BridgeDenied, "host bridge denied") }
+          catch (_: RequestRejected) { ScriptResult.Failure(FailureCode.RequestSyntax, "invalid request options") }
           catch (_: JavaScriptException) { ScriptResult.Failure(FailureCode.Runtime, "script failed") }
           catch (_: Exception) { ScriptResult.Failure(FailureCode.Runtime, "script failed") }
     }

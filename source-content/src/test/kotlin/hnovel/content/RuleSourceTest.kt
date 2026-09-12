@@ -374,11 +374,14 @@ class RuleSourceTest {
     }
 
     @Test fun revocationAndCancellationDiscardLateRuleWrites() = runBlocking {
-        for (cancel in listOf(false, true)) RuleSourceFixture().use { fixture -> fixture.source().use { source ->
+        for (cancel in listOf(false, true)) RuleSourceFixture().use { fixture -> fixture.source(customize = { raw ->
+            JsonObject(raw + ("ruleContent" to JsonObject(raw.getValue("ruleContent").jsonObject +
+                ("title" to JsonPrimitive("@js:chapter.putVariable('chapterKey','pending');'Pending title'")))))
+        }).use { source ->
             val id = source.search("title").single().id
             source.directory(id)
             val entered = CompletableDeferred<Unit>(); val release = CompletableDeferred<Unit>()
-            fixture.afterRun = { task -> if (task is ExecutionTask.Rule && task.location.field == "ruleContent.parts") {
+            fixture.afterRun = { task -> if (task is ExecutionTask.ContentMarkup) {
                 entered.complete(Unit)
                 withContext(NonCancellable) { release.await() }
             } }

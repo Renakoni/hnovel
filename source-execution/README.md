@@ -24,6 +24,14 @@ The Application skips Hilt and host/plugin initialization in isolated UIDs. Both
 
 Resource controls apply to selectors and scripts alike. JVM workers use a 64 MiB maximum Java heap, a 1 MiB thread stack and exit on OOM; the host still imposes the wall deadline. Android checks managed allocated heap plus Debug native allocated heap before/after calls and every 25 ms, including idle retained scopes; exceeding 96 MiB kills the worker. OOM likewise kills it without serializing/reusing damaged state, and Binder death returns ProcessExited. This is a sampled allocation budget, not a hard RSS/virtual-memory cap: an allocation may overshoot between samples, mappings are not fully measured, and OS process termination remains the fallback. Rhino separately caps interpreter recursion at 1000 frames. Neither ClassShutter nor the sampling monitor alone proves isolation.
 
+`ExecutionTask.ContentMarkup` is a trusted worker operation for chapter HTML. It
+returns the existing `ExecutedRule` value envelope with no writes and never runs
+source libraries or exposes a host bridge. It shares the host identity, deadline,
+cancellation and wire limits with other tasks. Native traversal removes repeated
+Rhino DOM wrapping/tree serialization; untrusted script instruction limits stay
+unchanged. Budget failures retain `ruleContent.parts` and a redacted markup code;
+UTF-8 output is checked including the envelope, before crossing back to the host.
+
 ## Verification
 
 `./gradlew :source-execution:test :app:testDebugUnitTest` covers JVM protocol/host regressions. Real Android tests run with:

@@ -30,6 +30,8 @@ private class WorkerOutputLimit : RuntimeException()
 @Serializable sealed interface ExecutionTask {
  @Serializable data class Echo(val value: String): ExecutionTask
  @Serializable data class Sleep(val millis: Long): ExecutionTask
+ @Serializable data class ContentMarkup(val html: String,
+  val location: RuleLocation = RuleLocation("ruleContent.parts")) : ExecutionTask
  @Serializable data class Script(val code: String, val result: JsonElement = JsonNull, val bookId: String? = null,
   val chapterId: String? = null, val key: String = "", val page: Int = 1, val baseUrl: String = "",
   val libraryCode: String? = null, val book: JsonObject = JsonObject(emptyMap()),
@@ -53,7 +55,7 @@ fun ExecutionTask.libraryCode(): String? = when (this) {
  @Serializable data class Success(val output: String): ExecutionResult
  @Serializable data class Failure(val code: FailureCode, val ruleError: RuleError? = null): ExecutionResult
 }
-@Serializable enum class FailureCode { Timeout, ProcessExited, InvalidIdentity, OutputLimit, InvalidTask, Cancelled, Revoked, Busy, InputLimit, ScriptSyntax, ScriptRuntime, BridgeDenied, RuleRuntime }
+@Serializable enum class FailureCode { Timeout, ProcessExited, InvalidIdentity, OutputLimit, InvalidTask, Cancelled, Revoked, Busy, InputLimit, ScriptSyntax, ScriptRuntime, BridgeDenied, RuleRuntime, RequestSyntax }
 
 /** Host authority for source identities. The worker never gets a method to issue or change a ticket. */
 class ExecutionAuthority {
@@ -206,6 +208,7 @@ class WorkerRuntime(private val archives: hnovel.rhino.ArchiveDecoder = hnovel.r
   if (SourceLibraryDefinition.isUrlMap(wire.task.libraryCode()) && wire.libraryScripts == null)
    return kotlinx.serialization.json.Json.encodeToString(ExecutionResult.serializer(), ExecutionResult.Failure(FailureCode.BridgeDenied))
   val result = when (val task = wire.task) {
+   is ExecutionTask.ContentMarkup -> WorkerContentMarkup.evaluate(task, wire.limits)
    is ExecutionTask.Rule -> WorkerRuleEvaluator.evaluate(task, wire.identity, wire.limits, bridge,
     library(wire.identity, task.libraryCode, wire.libraryScripts), archives)
    is ExecutionTask.Echo -> if (task.value.toByteArray().size > wire.limits.maxOutputBytes) ExecutionResult.Failure(FailureCode.OutputLimit) else ExecutionResult.Success(task.value)
@@ -222,6 +225,7 @@ class WorkerRuntime(private val archives: hnovel.rhino.ArchiveDecoder = hnovel.r
       hnovel.rhino.FailureCode.Cancelled -> FailureCode.Cancelled
       hnovel.rhino.FailureCode.Syntax -> FailureCode.ScriptSyntax
       hnovel.rhino.FailureCode.BridgeDenied -> FailureCode.BridgeDenied
+      hnovel.rhino.FailureCode.RequestSyntax -> FailureCode.RequestSyntax
       hnovel.rhino.FailureCode.ResultTooLarge -> FailureCode.OutputLimit
       else -> FailureCode.ScriptRuntime
      })

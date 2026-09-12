@@ -19,10 +19,12 @@ import io.nightfish.lightnovelreader.api.web.search.SearchProvider
 import io.nightfish.lightnovelreader.api.web.search.SearchResult
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -63,6 +65,57 @@ class WebSourceRegistryTest {
         WebDataSourceItem(Identifier("fixture", name), "Same display name", "fixture"),
         setOf(SourceCapability.Directory, SourceCapability.ChapterContent), builtIn,
     )
+
+    @Test(timeout = 10000)
+    fun replacementRetiresOldRuntimeBeforeObserversSeeTheNewGeneration() = runBlocking {
+        val authority = hnovel.execution.ExecutionAuthority()
+        val registry = WebSourceRegistry(authority)
+        val before = metadata("replacement").copy(revision = "1", accountGeneration = 1)
+        val registration = registry.register(CountingSource(before.id), before)
+        val old = registry.ready(before.id)
+        val after = before.copy(revision = "2", accountGeneration = 2)
+        val ticket = authority.issue(after.id.id, "legado", after.revision, after.id.namespace, after.accountGeneration)
+        // Observe inline at publication so the test does not depend on IO-thread timing.
+        val oldAvailableAtPublication = async(Dispatchers.Unconfined) {
+            registry.sources.first { sources -> sources.any { it.metadata == after } }
+            old.isAvailable
+        }
+        try {
+            registry.replace(registration, CountingSource(after.id), after, ticket) {}
+            assertFalse(oldAvailableAtPublication.await())
+            assertEquals(after, registry.ready(after.id).metadata)
+            assertThrows(SourceUnavailableException::class.java) { old.imageHeaders() }
+            Unit
+        } finally {
+            oldAvailableAtPublication.cancelAndJoin()
+            registry.unregister(before.id)
+        }
+    }
+
+    @Test(timeout = 10000)
+    fun failedReplacementPersistenceKeepsTheOldRuntimeAndSnapshotAvailable() = runBlocking {
+        val authority = hnovel.execution.ExecutionAuthority()
+        val registry = WebSourceRegistry(authority)
+        val before = metadata("replacement").copy(revision = "1")
+        val registration = registry.register(CountingSource(before.id), before)
+        val old = registry.ready(before.id)
+        val snapshot = registry.sources.value
+        val after = before.copy(revision = "2")
+        val ticket = authority.issue(after.id.id, "legado", after.revision, after.id.namespace, after.accountGeneration)
+        val candidate = CountingSource(after.id)
+        try {
+            assertThrows(IllegalStateException::class.java) {
+                registry.replace(registration, candidate, after, ticket) { error("Cannot persist replacement") }
+            }
+            assertTrue(old.isAvailable)
+            assertSame(old, registry.ready(before.id))
+            assertEquals(snapshot, registry.sources.value)
+        } finally {
+            authority.revoke(ticket)
+            candidate.close()
+            registry.unregister(before.id)
+        }
+    }
 
     @Test(timeout = 10000)
     fun registrationIsLazySnapshotsAreStableAndDifferentAdaptersUseTheSameConsumer() = runBlocking {

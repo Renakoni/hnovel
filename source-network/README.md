@@ -20,6 +20,13 @@ GB2312 and other JVM charsets are supported; the legacy `escape` option emits `%
 `%uXXXX`. Existing encoded URL octets are retained. Forms encode their individual fields.
 JSON request bodies are supplied as valid JSON strings/objects (a raw JavaScript expression
 in a body is not static JSON). Unknown options and malformed requests are rejected.
+`RequestOptionsJson` in `source-rules` owns the data grammar shared with the worker:
+JSON plus single-quoted strings, including escaped quotes and nested header/body strings.
+It does not evaluate object expressions or accept comments, unquoted keys or trailing commas.
+Input and normalized JSON are bounded to 65,536 characters and 64 nesting levels;
+embedded JSON strings are checked again before parsing. Network authorization stays here.
+Source-level headers and explicit `java.connect` header strings use this grammar too;
+the worker sends explicit connect headers as canonical JSON to the existing host port.
 The static compiler reports ScriptRequired for expressions; the production worker evaluates
 dynamic URL/header/body expressions first. Browser options compile to data and dispatch
 through BrowserExecutor; an absent port reports BrowserRequired.

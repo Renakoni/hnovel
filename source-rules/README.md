@@ -5,6 +5,15 @@ accepts text/nodes/capture groups, a field location, an explicit request context
 an output kind and a budget. It returns a value (including empty) or a structured
 stage/field/offset/error code. Error objects contain neither content nor credentials.
 
+`ContentMarkup` converts already-extracted chapter HTML into ordered text/image
+values inside the worker. It uses an iterative Jsoup traversal, without Rhino or
+source libraries. Block elements and `<br>` keep paragraph boundaries; inline
+spacing, single entity decoding and image positions are preserved. Script/style/
+noscript subtrees are ignored. Image URLs remain raw for the content owner to
+resolve against the chapter URL. Input/output and cooperative execution budgets
+still apply, with at most 16,384 visited nodes and the rule budget's default depth
+of 64. Parsing has pre/post checks and remains behind the process deadline.
+
 `RuleContext` copies source/book/chapter input variables, resolves nearest nonempty
 values first, and owns request-local writes. Reuse it only for fields in the same
 request/book; create a fresh context for concurrent requests. The later host broker
@@ -18,6 +27,12 @@ ordered &&/||/%% composition; @put/@get; rule templates and script stages.
 Script templates and `<js>`/`@js:` payloads cross `RuleScriptPort` with explicit
 intermediate values. An absent port reports ScriptPortUnavailable. This module
 does not instantiate Rhino or expose a network client, repository or Java bridge.
+
+`RequestOptionsJson` also owns bounded request-option data parsing for both the host
+compiler and worker templates. JSON and single-quoted strings share escape/depth/size
+semantics; nested body/header JSON is data, never an executable object expression.
+Its redacted failures carry no request contents. URL compilation and authorization
+remain in `source-network`, and explicit request scripts remain worker work.
 
 The fixed target is hectorqin/legado@da17bb2bed44f30b12a524c2457e32a20b16fa41.
 See THIRD_PARTY.md for selector ancestry. Deliberate/fixed-profile details:
