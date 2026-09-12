@@ -39,7 +39,9 @@ fun NavGraphBuilder.settingsSourcesDestination() {
         val nav = LocalNavController.current
         val model = hiltViewModel<SourcesViewModel>()
         val state by model.state.collectAsStateWithLifecycle()
-        SourcesScreen(state, model, onDiagnostics = { id -> nav.navigate(Route.Main.Settings.SourceDiagnostic(id.namespace, id.id)) }) { nav.popBackStack() }
+        SourcesScreen(state, model,
+            onDiagnostics = { id -> nav.navigate(Route.Main.Settings.SourceDiagnostic(id.namespace, id.id)) },
+            onSearch = { id -> nav.navigate(Route.Main.Explore.Search(id.namespace, id.id)) }) { nav.popBackStack() }
     }
     composable<Route.Main.Settings.SourceDetail> { entry ->
         val route = entry.toRoute<Route.Main.Settings.SourceDetail>()
@@ -50,14 +52,16 @@ fun NavGraphBuilder.settingsSourcesDestination() {
             model.state.first { !it.busy }
             model.openFromDiscovery(Identifier(route.namespace, route.sourceId), route.login)
         }
-        SourcesScreen(state, model, onDiagnostics = { id -> nav.navigate(Route.Main.Settings.SourceDiagnostic(id.namespace, id.id)) }) { nav.popBackStack() }
+        SourcesScreen(state, model,
+            onDiagnostics = { id -> nav.navigate(Route.Main.Settings.SourceDiagnostic(id.namespace, id.id)) },
+            onSearch = { id -> nav.navigate(Route.Main.Explore.Search(id.namespace, id.id)) }) { nav.popBackStack() }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
-    onDiagnostics: (io.nightfish.lightnovelreader.api.identifier.Identifier) -> Unit, onBack: () -> Unit) {
+    onDiagnostics: (Identifier) -> Unit, onSearch: (Identifier) -> Unit = {}, onBack: () -> Unit) {
     var adding by remember { mutableStateOf(false) }
     var text by remember { mutableStateOf("") }
     var url by remember { mutableStateOf("") }
@@ -95,6 +99,9 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                     var permissions by remember(installed) { mutableStateOf(installed.origins.joinToString("\n") { it.origin }) }
                     val variableLabel = raw["variableComment"]?.jsonPrimitive?.content.orEmpty().ifBlank { stringResource(R.string.sources_configuration) }
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        if (state.registry.any { it.metadata.id == state.selected && SourceCapability.Search in it.metadata.capabilities }) {
+                            Button(onClick = { onSearch(state.selected!!) }, enabled = !state.busy) { Text(stringResource(R.string.explore_search)) }
+                        }
                         Text(stringResource(R.string.sources_format, definition.format))
                         Text(stringResource(R.string.sources_revision, definition.revision.toString()))
                         Text(stringResource(when (state.loginStatus) {
@@ -136,7 +143,12 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                 }
                 if (state.installed.isEmpty()) item { Text(stringResource(R.string.sources_empty)) }
                 items(state.registry.filter { it.metadata.builtIn }, key = { it.metadata.id.toString() }) { entry ->
-                    ListItem(headlineContent = { Text(entry.metadata.item.name) }, supportingContent = { Text(stringResource(R.string.sources_builtin)) })
+                    ListItem(headlineContent = { Text(entry.metadata.item.name) }, supportingContent = { Text(stringResource(R.string.sources_builtin)) },
+                        trailingContent = {
+                            if (SourceCapability.Search in entry.metadata.capabilities) IconButton(onClick = { onSearch(entry.metadata.id) }) {
+                                Icon(painterResource(R.drawable.search_24px), stringResource(R.string.explore_search))
+                            }
+                        })
                 }
                 items(state.installed, key = { it.definition.sourceId }) { source ->
                     val id = ImportedRuleSources.id(source.definition)

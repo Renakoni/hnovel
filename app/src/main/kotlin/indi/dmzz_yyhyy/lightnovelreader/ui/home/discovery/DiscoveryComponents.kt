@@ -33,7 +33,7 @@ internal fun DiscoveryEmpty(message: String, onManageSources: () -> Unit) {
 }
 
 @Composable
-internal fun DiscoveryFailure(error: DiscoveryError, retry: () -> Unit, manage: () -> Unit, back: () -> Unit, field: String? = null) {
+internal fun DiscoveryFailure(error: DiscoveryError, retry: () -> Unit, manage: () -> Unit, back: (() -> Unit)?, field: String? = null) {
     val message = when (error) {
         DiscoveryError.Unsupported -> R.string.discovery_unsupported
         DiscoveryError.AuthenticationRequired -> R.string.discovery_login_required
@@ -50,7 +50,7 @@ internal fun DiscoveryFailure(error: DiscoveryError, retry: () -> Unit, manage: 
         Row {
             TextButton(onClick = retry) { Text(stringResource(R.string.discovery_retry)) }
             TextButton(onClick = manage) { Text(stringResource(R.string.sources_title)) }
-            if (error == DiscoveryError.InvalidRequest || error == DiscoveryError.Unavailable)
+            if (back != null && (error == DiscoveryError.InvalidRequest || error == DiscoveryError.Unavailable))
                 TextButton(onClick = back) { Text(stringResource(R.string.sources_back)) }
         }
     }

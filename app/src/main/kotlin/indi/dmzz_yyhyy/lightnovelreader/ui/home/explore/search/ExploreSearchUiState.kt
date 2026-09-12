@@ -7,18 +7,22 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import com.github.michaelbull.result.Result
-import com.google.android.material.bottomsheet.BottomSheetBehavior.State
+import androidx.compose.runtime.Stable
+import indi.dmzz_yyhyy.lightnovelreader.data.explore.SourceSearchFailure
 import io.nightfish.lightnovelreader.api.book.BookInformation
 import io.nightfish.lightnovelreader.api.error.WebRequestError
 import io.nightfish.lightnovelreader.api.util.LocalString
 import kotlinx.coroutines.flow.Flow
 
-@State
+@Stable
 interface ExploreSearchUiState {
-    val isFocused: Boolean
     val isLoading: Boolean
     val isLoadingComplete: Boolean
-    val errorMessage: String
+    val sourceName: String
+    val query: String
+    val submittedKeyword: String
+    val failure: SourceSearchFailure?
+    val suggestionFailure: SourceSearchFailure?
     val historyList: List<String>
     val suggestions: List<String>
     val searchTypeIdList: List<String>
@@ -33,11 +37,14 @@ interface ExploreSearchUiState {
     fun setSearchBarExpandedState(state: Boolean)
 }
 
-class MutableExploreSearchUiState : ExploreSearchUiState {
-    override var isFocused: Boolean by mutableStateOf(true)
+class MutableExploreSearchUiState(private val onExpanded: (Boolean) -> Unit = {}) : ExploreSearchUiState {
     override var isLoading: Boolean by mutableStateOf(true)
     override var isLoadingComplete: Boolean by mutableStateOf(false)
-    override var errorMessage: String by mutableStateOf("")
+    override var sourceName: String by mutableStateOf("")
+    override var query: String by mutableStateOf("")
+    override var submittedKeyword: String by mutableStateOf("")
+    override var failure: SourceSearchFailure? by mutableStateOf(null)
+    override var suggestionFailure: SourceSearchFailure? by mutableStateOf(null)
     override var historyList: List<String> by mutableStateOf(emptyList())
     override var suggestions: List<String> by mutableStateOf(emptyList())
     override var searchTypeIdList = mutableStateListOf<String>()
@@ -53,5 +60,6 @@ class MutableExploreSearchUiState : ExploreSearchUiState {
     }
     override fun setSearchBarExpandedState(state: Boolean) {
         searchBarExpanded = state
+        onExpanded(state)
     }
 }

@@ -152,7 +152,7 @@ interface WebBookDataSource {
      */
     fun progressBookTagClick(tag: String, navController: NavController) {  }
 
-    /** Data-only tag target within this source; the host owns navigation. */
+    /** Data-only discovery target within this source; the host owns the result session and navigation. */
     fun bookTagPage(tag: String): String? = null
 
     /**

@@ -12,7 +12,7 @@ import com.github.michaelbull.result.getOrElse
 import com.github.michaelbull.result.runCatching
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.wenku8.book.BookRequestDispatcher
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.wenku8.explore.Wenku8ExplorePageProvider
-import indi.dmzz_yyhyy.lightnovelreader.ui.home.explore.expanded.navigateToExploreExpandDestination
+import io.nightfish.lightnovelreader.api.Route
 import indi.dmzz_yyhyy.lightnovelreader.utils.ImageUtils
 import indi.dmzz_yyhyy.lightnovelreader.utils.network.UserAgentGenerator
 import indi.dmzz_yyhyy.lightnovelreader.utils.ofId
@@ -247,11 +247,12 @@ class Wenku8Api : WebBookDataSource, AutoCloseable {
     }
 
 
-    override fun bookTagPage(tag: String): String? = tag.takeIf { it in tagList }
+    override fun bookTagPage(tag: String): String? = tag.takeIf { it in tagList }?.let { "tag:$it" }
 
     override fun progressBookTagClick(tag: String, navController: NavController) {
-        if (tagList.contains(tag))
-            navController.navigateToExploreExpandDestination(tag)
+        bookTagPage(tag)?.let { target ->
+            navController.navigate(Route.Main.DiscoveryResults(id.namespace, id.id, target, tag, java.util.UUID.randomUUID().toString()))
+        }
     }
 
     override suspend fun getCoverUriInVolume(

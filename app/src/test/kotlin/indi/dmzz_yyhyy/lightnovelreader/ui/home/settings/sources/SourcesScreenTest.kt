@@ -4,10 +4,18 @@ import android.app.Application
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.*
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import io.mockk.mockk
 import io.mockk.verify
+import hnovel.imports.ImportOrigin
+import hnovel.imports.SourceDefinition
+import indi.dmzz_yyhyy.lightnovelreader.data.web.*
+import indi.dmzz_yyhyy.lightnovelreader.data.web.rules.ImportedRuleSources
+import indi.dmzz_yyhyy.lightnovelreader.data.web.rules.InstalledRuleSource
+import io.nightfish.lightnovelreader.api.identifier.Identifier
+import io.nightfish.lightnovelreader.api.web.WebDataSourceItem
 import org.junit.After
 import org.junit.Before
 import org.junit.Rule
@@ -42,5 +50,22 @@ class SourcesScreenTest {
         verify(exactly = 0) { model.commit(any(), any(), any()) }
         compose.onNodeWithText("Choose local file").assertExists()
         compose.onNodeWithText("Paste source JSON").assertExists()
+    }
+
+    @Test fun importedSearchOnlySourceHasAnExplicitSearchEntryWithItsIdentity() {
+        val definition = SourceDefinition("search-only", "legado", "fixture", "https://fixture.invalid/", "Search only", true,
+            false, ImportOrigin(ImportOrigin.Kind.Paste), "digest", 1, "{}")
+        val id = ImportedRuleSources.id(definition)
+        val entry = SourceListing(SourceMetadata(WebDataSourceItem(id, "Search only", "fixture"), setOf(SourceCapability.Search)), SourceStatus.Ready)
+        var state by mutableStateOf(SourceManagementState(
+            installed = listOf(InstalledRuleSource(definition, emptyList(), null)), registry = listOf(entry), selected = id))
+        var selected: Identifier? = null
+        activity.get().setContent { MaterialTheme {
+            SourcesScreen(state, model, onDiagnostics = {}, onSearch = { selected = it }) {}
+        } }
+        compose.onNodeWithText("Search this source").performClick()
+        org.junit.Assert.assertEquals(id, selected)
+        compose.runOnIdle { state = state.copy(registry = listOf(entry.copy(metadata = entry.metadata.copy(capabilities = emptySet())))) }
+        compose.onNodeWithText("Search this source").assertDoesNotExist()
     }
 }

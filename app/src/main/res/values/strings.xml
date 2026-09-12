@@ -705,4 +705,8 @@
     <string name="restart">Restart</string>
     <string name="current_web_data_source_not_founded">Did not found the current web data source, please check you plugin and data source settings</string>
     <string name="never_read">Never read</string>
+    <string name="explore_more">Show more</string>
+    <string name="explore_search">Search this source</string>
+    <string name="explore_no_sources">No sources support Explore. Add a source in source management, or search a source that supports search.</string>
+    <string name="explore_empty">This source has no exploration content.</string>
 </resources>

@@ -10,6 +10,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import indi.dmzz_yyhyy.lightnovelreader.data.web.*
+import indi.dmzz_yyhyy.lightnovelreader.ui.home.discovery.*
 import io.nightfish.lightnovelreader.api.identifier.Identifier
 import io.nightfish.lightnovelreader.api.web.WebDataSourceItem
 import io.nightfish.lightnovelreader.api.web.discovery.*
@@ -44,8 +45,8 @@ class CategoriesScreenTest {
     @Test fun sourceTabsAndCategoryClicksKeepOwningIdentityAndBackCallback() {
         val a = Identifier("fixture", "a")
         val b = Identifier("fixture", "b")
-        var state by mutableStateOf(CategoriesState(listOf(listing(a, "Source A"), listing(b, "Source B")), a,
-            mapOf(a to CategoryContent(listOf(category(a)), loaded = true), b to CategoryContent(listOf(category(b)), loaded = true))))
+        var state by mutableStateOf(DiscoveryPageState(listOf(listing(a, "Source A"), listing(b, "Source B")), a,
+            mapOf(a to DiscoveryPageContent(listOf(category(a)), loaded = true), b to DiscoveryPageContent(listOf(category(b)), loaded = true))))
         val clicked = mutableListOf<SourceDiscoveryCategory>()
         var backs = 0
         activity.get().setContent { MaterialTheme {
@@ -63,8 +64,8 @@ class CategoriesScreenTest {
     @Test fun oneSourceStillDisplaysItsTab() {
         val id = Identifier("fixture", "one")
         activity.get().setContent { MaterialTheme {
-            CategoriesScreen(CategoriesState(listOf(listing(id, "Only source")), id,
-                mapOf(id to CategoryContent(listOf(category(id)), loaded = true))), {}, {}, { _, _ -> }, {}, {}, {}, {})
+            CategoriesScreen(DiscoveryPageState(listOf(listing(id, "Only source")), id,
+                mapOf(id to DiscoveryPageContent(listOf(category(id)), loaded = true))), {}, {}, { _, _ -> }, {}, {}, {}, {})
         } }
         compose.onNodeWithText("Only source").assertIsSelected()
         compose.onNodeWithText("Same category").assertExists()
@@ -73,7 +74,7 @@ class CategoriesScreenTest {
     @Test fun emptyStateOpensSourceManagement() {
         var opened = 0
         activity.get().setContent { MaterialTheme {
-            CategoriesScreen(CategoriesState(), {}, {}, { _, _ -> }, {}, { opened++ }, {}, {})
+            CategoriesScreen(DiscoveryPageState(), {}, {}, { _, _ -> }, {}, { opened++ }, {}, {})
         } }
         compose.onNodeWithText("No enabled book source provides categories. Add or enable a source in source management.").assertExists()
         compose.onNodeWithText("Book sources").performClick()
@@ -84,11 +85,11 @@ class CategoriesScreenTest {
         val id = Identifier("fixture", "actions")
         val values = mutableListOf<Pair<String, String>>()
         val actions = mutableListOf<Pair<String, Boolean>>()
-        val page = CategoryContent(listOf(category(id)), loaded = true,
+        val page = DiscoveryPageContent(listOf(category(id)), loaded = true,
             filters = listOf(DiscoveryFilter.Choice("Sort", "Sort", linkedMapOf("new" to "New", "popular" to "Popular"), "new")),
             values = mapOf("Sort" to "new"), buttons = listOf(DiscoveryButton("login", "Sign in")))
         activity.get().setContent { MaterialTheme {
-            CategoriesScreen(CategoriesState(listOf(listing(id, "Rule source")), id, mapOf(id to page)),
+            CategoriesScreen(DiscoveryPageState(listOf(listing(id, "Rule source")), id, mapOf(id to page)),
                 {}, {}, { _, _ -> }, {}, {}, {}, {}, onInput = { key, value -> values += key to value },
                 onAction = { key, long -> actions += key to long })
         } }
@@ -102,7 +103,7 @@ class CategoriesScreenTest {
     }
 
     @Test fun waitingForTheFirstSnapshotDoesNotDisplayTheEmptySourceMessage() {
-        var state by mutableStateOf(CategoriesState(loadingSources = true))
+        var state by mutableStateOf(DiscoveryPageState(loadingSources = true))
         activity.get().setContent { MaterialTheme {
             CategoriesScreen(state, {}, {}, { _, _ -> }, {}, {}, {}, {})
         } }

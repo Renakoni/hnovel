@@ -1,5 +1,21 @@
 # Plugin API changes
 
+## Unreleased — source-scoped Explore (#79)
+
+- `Route.Main.Explore.Search` now requires a namespace and source ID;
+  `Categories` accepts an optional initial source. The source selection is local to
+  that navigation entry. Shared search history never supplies a source.
+- The old `Explore.Expanded` route is replaced by `DiscoveryResults`. A tag's
+  `bookTagPage` value is a discovery target, not a legacy expanded-provider key.
+  Plugins navigating with the old route must migrate and recompile.
+- `DiscoverySection.categoryId` lets a result session regenerate a dynamic target
+  using its own filter values. `DiscoveryProvider.hasInteractions` tells the host
+  to include the provider's catalogue forms and actions in its feed.
+- These route/schema and constructor changes are not a source or binary
+  compatibility guarantee. Old serialized search/expanded routes cannot be
+  restored with a guessed source. This remains the monorepo's `0.4-SNAPSHOT` API;
+  no artifact is published or compatibility version advanced by this change.
+
 ## Unreleased — rule-source discovery (#91 / PR #126)
 
 This change is developed against the monorepo's `0.4-SNAPSHOT` artifact and
