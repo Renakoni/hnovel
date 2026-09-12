@@ -50,11 +50,9 @@ class LocalDataManager @Inject constructor(
     }
 
     val currentAppDataVersion = 1
-    val webDataSourceUserDataPathSet = mutableSetOf<String>()
-
-    fun registerWebDataSourceUserData(path: String) {
-        webDataSourceUserDataPathSet.add(path)
-    }
+    // Library-wide lists travel with a backup; they are not a selected source's settings.
+    private val libraryUserDataPaths = setOf(UserDataPath.ReadingBooks.path,
+        UserDataPath.CompletedDownloadBookList.path, UserDataPath.Search.History.path)
 
     suspend fun exportAppLocalData(
         localBookCache: Boolean = true,
@@ -70,7 +68,7 @@ class LocalDataManager @Inject constructor(
         }.let(localDataList::add)
         val globalLocalData = LocalData.empty()
             .copy(userDataEntities = if (settings) userDataDao.getAllEntities().filter {
-                !webDataSourceUserDataPathSet.contains(it.path) &&
+                !libraryUserDataPaths.contains(it.path) &&
                         it.path != UserDataPath.Settings.Data.StorageUsageSnapshot.path
             }
             else emptyList())
@@ -99,7 +97,7 @@ class LocalDataManager @Inject constructor(
             formattingRuleDao = formattingRuleDao,
             userReadingDataDao = userReadingDataDao,
             userDataDao = userDataDao,
-            webDataSourceUserDataPathSet = webDataSourceUserDataPathSet
+            libraryUserDataPaths = libraryUserDataPaths
         ).apply {
             this.localBookCache.enable = localBookCache
             this.bookshelf.enable = bookshelf
@@ -217,6 +215,7 @@ class LocalDataManager @Inject constructor(
         } }
     }
 
+    /** Explicit overwrite restore only. Source registration and browsing never call this. */
     suspend fun cleanDatabaseWithoutGlobalUserData() {
         statsRepository.withStatisticsResetLock {
           bookBookInformationDao.clear()
@@ -229,7 +228,7 @@ class LocalDataManager @Inject constructor(
           userReadingDataDao.clear()
 
           for (entity in userDataDao.getAllEntities()) {
-              if (!webDataSourceUserDataPathSet.contains(entity.path)) continue
+              if (!libraryUserDataPaths.contains(entity.path)) continue
               userDataDao.remove(entity.path)
           }
           runCatching {
@@ -238,10 +237,4 @@ class LocalDataManager @Inject constructor(
         }
     }
 
-    init {
-        registerWebDataSourceUserData(UserDataPath.Settings.Data.WebDataSourceId.path)
-        registerWebDataSourceUserData(UserDataPath.ReadingBooks.path)
-        registerWebDataSourceUserData(UserDataPath.CompletedDownloadBookList.path)
-        registerWebDataSourceUserData(UserDataPath.Search.History.path)
-    }
 }

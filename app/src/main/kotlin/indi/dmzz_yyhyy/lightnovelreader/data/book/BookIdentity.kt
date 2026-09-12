@@ -61,7 +61,8 @@ object BookIdentity {
         return fields
     }
 
-    /** Temporary legacy host ingress: bare IDs mean Wenku8, never the browsing selection. */
+    /** Native ID ingress (the debug book-ID shortcut): bare IDs mean Wenku8, never a browsing selection.
+     * Imported-source callers supply a SourceBookId storage key; this is not a database migration. */
     fun book(id: String): SourceBookId = if (id.startsWith("lnr1.")) SourceBookId.fromStorageKey(id)
         else SourceBookId(wenku8, id)
 

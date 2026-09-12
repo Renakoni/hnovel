@@ -157,22 +157,6 @@ object Route {
                 @Serializable
                 object AppList
             }
-            /** 数据源切换界面路由组 */
-            @Serializable
-            object SourceChange {
-                /** 数据源切换列表界面路由 */
-                @Serializable
-                object List
-                /**
-                 * 数据源详细设置界面路由
-                 *
-                 * @param sourceId 目标数据源的唯一标识
-                 */
-                @Serializable
-                data class Settings(
-                    val sourceId: String
-                )
-            }
             /** 调试信息界面路由 */
             @Serializable
             object Debug

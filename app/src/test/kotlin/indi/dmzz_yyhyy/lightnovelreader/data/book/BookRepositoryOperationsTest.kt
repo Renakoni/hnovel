@@ -161,7 +161,6 @@ class BookRepositoryOperationsTest {
             assertEquals(com.github.michaelbull.result.Ok(cover), repository.volumeCover(book, volume, mapOf(chapter.id to chapter), context))
             coVerify(exactly = 1) { runtime.volumeCover("same", remoteVolume, mutableMapOf("chapter" to remoteContent), context) }
         }
-        verify(exactly = 0) { fixture.provider.value }
     }
 
     @Test

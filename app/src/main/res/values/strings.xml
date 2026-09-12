@@ -75,7 +75,6 @@
     <string name="download_item_failed">%s failed, please check your network or seek developer assistance</string>
     <string name="book_updated_to_title">Updated to:</string>
     <string name="book_word_count_limit">Word limit: </string>
-    <string name="source_available_title">Available sources</string>
     <string name="unavailable">Unavailable</string>
     <string name="overview">Overview</string>
     <string name="settings">Settings</string>
@@ -100,10 +99,6 @@
     <string name="reader_reached_start">This is the beginning.</string>
     <string name="reader_reached_end">You\'ve reached the end…</string>
     <string name="font_file_error">Font file is incorrect or corrupted, please check and import again</string>
-    <string name="settings_data_source_pending_title">Switch to %s</string>
-    <string name="settings_data_source_pending_desc">
-        The operation will clear cached data and restart the app. Your current data can be restored when switching back to "%s".
-    </string>
     <string name="plugin_invalid_title">Invalid plugin</string>
     <string name="plugin_invalid_desc">Unable to get plugin info; the plugin may be invalid or corrupted.</string>
     <string name="plugin_disabled">Unavailable</string>
@@ -241,8 +236,6 @@
     <string name="settings_import_data_desc">Import user data from a selected .lnr file</string>
     <string name="settings_storage_manager">Storage Usage</string>
     <string name="settings_storage_manager_desc">Review how storage is used by the app, cache, plugins, and local files.</string>
-    <string name="settings_select_data_source">Data Source</string>
-    <string name="settings_select_data_source_desc">Switch the app\'s data source</string>
     <string name="settings_plugins">Plugins</string>
     <string name="settings_plugins_desc">Install and manage Plugins</string>
     <string name="settings_app_logs">App Logs</string>
@@ -403,7 +396,6 @@
     <string name="bookshelf_group_title_updated">Updated (%s)</string>
     <string name="bookshelf_group_title_pinned">Pinned (%s)</string>
     <string name="bookshelf_group_title_all">All (%s)</string>
-    <string name="data_source_provider">Provider: %s</string>
     <string name="read_progress">Read %s</string>
     <string name="read_minutes">%d min</string>
     <string name="translators">Translate Contributors</string>
@@ -493,7 +485,6 @@
     <string name="dialog_snap_settings_text">Includes app and reader settings</string>
     <string name="dialog_snap_bookmarks">Bookmarks</string>
     <string name="dialog_snap_bookmarks_text">Includes all book bookmarks</string>
-    <string name="dialog_select_data_source_text">Select the data source. This will clear the cache and switch the app\'s data source. Your current user data will remain intact and can be restored upon switching back.</string>
     <string name="dialog_slider_custom">Enter Value</string>
     <string name="dialog_slider_custom_illegal_value">Please enter a valid number.</string>
     <string name="dialog_color_picker">Color Palette</string>
@@ -703,7 +694,6 @@
     <string name="key_local_book_sort_last_read">Sort by last read</string>
     <string name="key_local_book_sort_chapter_count">Sort by chapter count</string>
     <string name="restart">Restart</string>
-    <string name="current_web_data_source_not_founded">Did not found the current web data source, please check you plugin and data source settings</string>
     <string name="never_read">Never read</string>
     <string name="explore_more">Show more</string>
     <string name="explore_search">Search this source</string>

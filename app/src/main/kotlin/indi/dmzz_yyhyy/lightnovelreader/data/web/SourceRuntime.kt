@@ -4,11 +4,9 @@ import io.nightfish.lightnovelreader.api.image.SourceImageProvider
 
 import android.content.Context
 import android.util.Log
-import androidx.navigation.NavController
 import indi.dmzz_yyhyy.lightnovelreader.data.web.proxy.ProxyCachedWebBookDataSource
 import indi.dmzz_yyhyy.lightnovelreader.data.web.proxy.ProxyCoalescingWebBookDataSource
 import indi.dmzz_yyhyy.lightnovelreader.data.web.proxy.ProxyPriorityWebBookDataSource
-import indi.dmzz_yyhyy.lightnovelreader.data.web.proxy.ProxyWebBookDataSource
 import io.nightfish.lightnovelreader.api.book.ChapterContent
 import io.nightfish.lightnovelreader.api.book.Volume
 import io.nightfish.lightnovelreader.api.util.Cache
@@ -87,8 +85,6 @@ class SourceRuntime internal constructor(
         chapters: MutableMap<String, ChapterContent>, context: Context) =
         execute { source.getCoverUriInVolume(bookId, volume, chapters, context) }
 
-    internal val explorePages get() = run { checkAvailable(); legacyExplore }
-
     val discovery: SourceDiscovery? by lazy { source.discoveryProvider?.let { SourceDiscovery(this, it) } }
 
     fun imageHeaders(): Map<String, String> {
@@ -120,45 +116,6 @@ class SourceRuntime internal constructor(
             checkAvailable()
             return source.searchProvider.getSearchSuggestions(history, keyword)
         }
-    }
-
-    private val legacyExplore by lazy { guardExploreProvider(this, source.explorePageProvider) }
-
-    /** Temporary synchronous API facade. onLoad cannot restart a source-owned poller. */
-    private val legacySource = object : WebBookDataSource by source {
-        // Data consumers must use the source-binding facade above, not the legacy raw API.
-        override val discoveryProvider get() = null
-        override fun onLoad() = checkAvailable()
-        override val cache get() = null
-        override val searchProvider get() = search
-        override val imageHeader get() = imageHeaders()
-        override fun bookTagPage(tag: String) = this@SourceRuntime.bookTagPage(tag)
-        override val explorePageProvider get() = run { checkAvailable(); legacyExplore }
-        override val offLine get() = !isAvailable || source.offLine
-        override val isOffLineFlow get() = source.isOffLineFlow.also { checkAvailable() }
-        override suspend fun isOffLine() = execute { source.isOffLine() }
-        override suspend fun getBookInformation(id: String) = this@SourceRuntime.getBookInformation(id)
-        override suspend fun getBookVolumes(id: String) = this@SourceRuntime.getBookVolumes(id)
-        override suspend fun getChapterContent(chapterId: String, bookId: String) =
-            this@SourceRuntime.getChapterContent(chapterId, bookId)
-        override fun progressBookTagClick(tag: String, navController: NavController) {
-            checkAvailable()
-            source.progressBookTagClick(tag, navController)
-        }
-        override suspend fun getCoverUriInVolume(bookId: String, volume: Volume,
-            volumeChapterContentMap: MutableMap<String, ChapterContent>, context: Context) =
-            execute { source.getCoverUriInVolume(bookId, volume, volumeChapterContentMap, context) }
-    }
-
-    internal val legacyProxy = object : ProxyWebBookDataSource {
-        override val origin: WebBookDataSource get() = legacySource
-        override val proxiedWebBookDataSource: ProxyWebBookDataSource get() = this
-        override suspend fun getBookInformation(id: String, priority: WebDataSourcePriority) =
-            this@SourceRuntime.getBookInformation(id, priority)
-        override suspend fun getBookVolumes(id: String, priority: WebDataSourcePriority) =
-            this@SourceRuntime.getBookVolumes(id, priority)
-        override suspend fun getChapterContent(chapterId: String, bookId: String, priority: WebDataSourcePriority) =
-            this@SourceRuntime.getChapterContent(chapterId, bookId, priority)
     }
 
     internal fun retire() {

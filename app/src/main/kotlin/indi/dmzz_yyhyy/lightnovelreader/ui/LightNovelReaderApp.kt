@@ -21,7 +21,6 @@ fun LightNovelReaderApp(
     onReaderActiveChanged: (Boolean) -> Unit,
     readerStyle: ReaderStyle,
     intentFlow: Flow<Intent>,
-    webBookDataSourceFoundedFlow: Flow<Boolean>,
 ) {
     val navController = rememberNavController()
     val updatesAvailableDialogViewModel = hiltViewModel<UpdatesAvailableDialogViewModel>()
@@ -44,7 +43,6 @@ fun LightNovelReaderApp(
         navController = navController,
         onBuildNavHost = onBuildNavHost,
         onReaderActiveChanged = onReaderActiveChanged,
-        readerStyle = readerStyle,
-        webBookDataSourceFoundedFlow = webBookDataSourceFoundedFlow
+        readerStyle = readerStyle
     )
 }

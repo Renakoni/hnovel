@@ -37,8 +37,6 @@ import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.logcat.navigateToSettin
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.logcat.settingsLogcatDestination
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.pluginmanager.navigateToSettingsPluginManagerHomeDestination
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.pluginmanager.settingsPluginManagerNavigation
-import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.sourcechange.navigateToSettingsSourceChangeDestination
-import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.sourcechange.settingsSourceChangeDestination
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.sources.settingsSourcesDestination
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.sources.sourceDiagnosticDestination
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.textformatting.editTextFormattingRuleDialog
@@ -84,7 +82,6 @@ fun NavGraphBuilder.settingsDestination() {
             onBack = { navController.popBackStackIfResumed() }
         )
     }
-    settingsSourceChangeDestination()
     settingsSourcesDestination()
     sourceDiagnosticDestination()
     exportUserDataDialog()

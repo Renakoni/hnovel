@@ -29,6 +29,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import indi.dmzz_yyhyy.lightnovelreader.R
+import indi.dmzz_yyhyy.lightnovelreader.data.book.BookIdentity
 import indi.dmzz_yyhyy.lightnovelreader.data.book.get
 import indi.dmzz_yyhyy.lightnovelreader.utils.dateFormatter
 import io.nightfish.lightnovelreader.api.book.BookInformation
@@ -137,7 +138,10 @@ fun BookInfoBottomSheet(
 
             InfoItem(
                 title = stringResource(R.string.detail_info_id),
-                content = bookInformation.id,
+                // Only lnr1.* keys identify their source unambiguously. Under the no-migration policy,
+                // older bare keys use the fixed Wenku8 bridge; this display cannot recover the actual
+                // owner of an ambiguous historical key.
+                content = bookInformation.id.let { if (it.isEmpty()) it else BookIdentity.book(it).remoteId },
                 titleStyle = titleStyle,
                 contentStyle = contentStyle,
                 icon = painterResource(R.drawable.info_24px)

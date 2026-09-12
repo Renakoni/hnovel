@@ -2,6 +2,7 @@ package indi.dmzz_yyhyy.lightnovelreader.data.web
 
 import android.app.Application
 import com.github.michaelbull.result.Ok
+import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.get
 import io.mockk.every
 import io.mockk.mockk
@@ -11,8 +12,9 @@ import io.nightfish.lightnovelreader.api.identifier.Identifier
 import io.nightfish.lightnovelreader.api.util.Cache
 import io.nightfish.lightnovelreader.api.web.WebBookDataSource
 import io.nightfish.lightnovelreader.api.web.WebDataSourceItem
-import io.nightfish.lightnovelreader.api.web.explore.ExplorePageProvider
-import io.nightfish.lightnovelreader.api.web.explore.ExploreTapPageDataSource
+import io.nightfish.lightnovelreader.api.web.discovery.DiscoveryProvider
+import io.nightfish.lightnovelreader.api.web.discovery.DiscoverySection
+import io.nightfish.lightnovelreader.api.web.discovery.DiscoveryError
 import io.nightfish.lightnovelreader.api.web.search.SearchProvider
 import io.nightfish.lightnovelreader.api.web.search.SearchResult
 import kotlinx.coroutines.CompletableDeferred
@@ -254,7 +256,7 @@ class WebSourceRegistryTest {
     private suspend fun WebSourceRegistry.ready(id: Identifier) = (resolve(id) as SourceResolution.Ready).runtime
 
     @Test(timeout = 10000)
-    fun removingSourceStopsSearchAndExploreSubscriptionsWithoutCancellingTheirConsumer() = runBlocking {
+    fun removingSourceStopsSearchAndDiscoveryWithoutCancellingTheirConsumer() = runBlocking {
         val registry = WebSourceRegistry()
         val searchResult = SearchResult.MultipleBook("book")
         val search = mockk<SearchProvider>()
@@ -262,24 +264,23 @@ class WebSourceRegistryTest {
             emit(searchResult)
             awaitCancellation()
         }
-        val page = mockk<ExploreTapPageDataSource>()
-        every { page.getRowsFlow() } returns flow {
-            emit(emptyList())
-            awaitCancellation()
+        val pageObserved = CompletableDeferred<Unit>()
+        val explore = object : DiscoveryProvider {
+            override val hasFeed = true
+            override suspend fun feed(): Result<List<DiscoverySection>, DiscoveryError> {
+                pageObserved.complete(Unit)
+                awaitCancellation()
+            }
         }
-        val explore = mockk<ExplorePageProvider.DefaultExplorePageProvider>()
-        every { explore.exploreTapPageDataSourceMap } returns mapOf("home" to page)
         val source = object : CountingSource(metadata("observed").id) {
             override val searchProvider = search
-            override val explorePageProvider = explore
+            override val discoveryProvider = explore
         }
-        registry.register(source, metadata("observed"))
+        registry.register(source, metadata("observed").copy(capabilities = setOf(SourceCapability.Explore)))
         try {
             val runtime = registry.ready(source.id)
-            val oldPage = (runtime.legacyProxy.explorePageProvider as ExplorePageProvider.DefaultExplorePageProvider)
-                .exploreTapPageDataSourceMap.getValue("home")
+            val oldPage = requireNotNull(runtime.discovery)
             val searchObserved = CompletableDeferred<Unit>()
-            val pageObserved = CompletableDeferred<Unit>()
             val searching = launch {
                 runtime.search.search(mockk(), "keyword").collect {
                     assertSame(searchResult, it)
@@ -287,7 +288,7 @@ class WebSourceRegistryTest {
                 }
             }
             val browsing = launch {
-                oldPage.getRowsFlow().collect { assertTrue(it.isEmpty()); pageObserved.complete(Unit) }
+                oldPage.feed()
             }
             searchObserved.await()
             pageObserved.await()
@@ -297,7 +298,7 @@ class WebSourceRegistryTest {
             assertTrue(browsing.isCancelled)
             assertTrue(isActive)
             assertThrows(SourceUnavailableException::class.java) {
-                runBlocking { oldPage.getRowsFlow().collect {} }
+                runBlocking { oldPage.feed() }
             }
             Unit
         } finally { registry.unregister(source.id) }

@@ -74,7 +74,6 @@
     <string name="download_item_failed">%s 失败, 请检查您的网络环境或寻求开发者帮助</string>
     <string name="book_updated_to_title">更新至:</string>
     <string name="book_word_count_limit">字数限制:</string>
-    <string name="source_available_title">可用数据源</string>
     <string name="unavailable">不可用</string>
     <string name="overview">概览</string>
     <string name="settings">设置</string>
@@ -97,10 +96,6 @@
     <string name="reader_reached_start">故事才刚刚开始</string>
     <string name="reader_reached_end">已经结束了…</string>
     <string name="font_file_error">字体文件错误或已损坏, 请您检查后导入</string>
-    <string name="settings_data_source_pending_title">切换到 %s</string>
-    <string name="settings_data_source_pending_desc">
-        应用将清除缓存并重启。当前数据将在下次切换回「%s」时可用。
-    </string>
     <string name="plugin_invalid_title">无效插件</string>
     <string name="plugin_invalid_desc">无法获取插件信息，插件可能无效或损坏</string>
     <string name="plugin_disabled">不可用</string>
@@ -228,8 +223,6 @@
     <string name="settings_import_data_desc">从选定的 .lnr 文件导入用户数据</string>
     <string name="settings_storage_manager">存储使用</string>
     <string name="settings_storage_manager_desc">查看软件缓存, 插件存储使用情况</string>
-    <string name="settings_select_data_source">数据源</string>
-    <string name="settings_select_data_source_desc">切换软件数据源</string>
     <string name="settings_plugins">扩展插件</string>
     <string name="settings_plugins_desc">安装和管理扩展插件</string>
     <string name="settings_app_logs">应用日志</string>
@@ -388,7 +381,6 @@
     <string name="bookshelf_group_title_updated">已更新 (%s)</string>
     <string name="bookshelf_group_title_pinned">已固定 (%s)</string>
     <string name="bookshelf_group_title_all">全部 (%s)</string>
-    <string name="data_source_provider">提供者: %s</string>
     <string name="read_progress">已读 %s</string>
     <string name="read_minutes">%d 分钟</string>
     <string name="translators">翻译贡献者</string>
@@ -476,7 +468,6 @@
     <string name="dialog_snap_settings_text">包括应用设置和阅读器设置</string>
     <string name="dialog_snap_bookmarks">书签</string>
     <string name="dialog_snap_bookmarks_text">包括全部书本的书签信息</string>
-    <string name="dialog_select_data_source_text">选择使用的数据源，这将清除缓存并切换软件数据源。当前的用户数据不会丢失，并将在下次切换回当前数据源时恢复。</string>
     <string name="dialog_slider_custom">输入值</string>
     <string name="dialog_slider_custom_illegal_value">请输入合法的数值</string>
     <string name="dialog_color_picker">调色盘</string>
@@ -673,7 +664,6 @@
     <string name="key_local_book_sort_last_read">按 最后阅读时间 排序</string>
     <string name="key_local_book_sort_chapter_count">按 章节数量 排序</string>
     <string name="restart">重启</string>
-    <string name="current_web_data_source_not_founded">当前网络数据源不可用，请检查插件与数据源设置</string>
     <string name="never_read">未读</string>
     <string name="explore_more">查看更多</string>
     <string name="explore_search">搜索此来源</string>

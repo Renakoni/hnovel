@@ -77,7 +77,6 @@ class SourceWorkerTest {
         }
         assertEquals(listOf(a.storageKey, a.storageKey, b.storageKey, b.storageKey), items.map { it.bookId })
         assertTrue(items.all { it.progress == 1f })
-        verify(exactly = 0) { fixture.provider.value }
     }
 
     @Test fun missingSourceAndLoginRequiredAreTerminalFailuresWithSafeRecoverableReasons() = runTest {

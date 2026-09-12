@@ -21,17 +21,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.currentBackStackEntryAsState
-import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.ui.LocalBottomBarController
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.bookNavigation
 import indi.dmzz_yyhyy.lightnovelreader.ui.bookmanager.bookManager
@@ -50,12 +46,10 @@ import indi.dmzz_yyhyy.lightnovelreader.utils.expandEnter
 import indi.dmzz_yyhyy.lightnovelreader.utils.expandExit
 import indi.dmzz_yyhyy.lightnovelreader.utils.expandPopEnter
 import indi.dmzz_yyhyy.lightnovelreader.utils.expandPopExit
-import indi.dmzz_yyhyy.lightnovelreader.utils.showSnackbar
 import io.nightfish.lightnovelreader.api.Route
 import io.nightfish.lightnovelreader.api.ui.LocalNavController
 import io.nightfish.lightnovelreader.api.ui.LocalReaderStyle
 import io.nightfish.lightnovelreader.api.ui.ReaderStyle
-import kotlinx.coroutines.flow.Flow
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
 @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
@@ -65,7 +59,6 @@ fun LightNovelReaderNavHost(
     onBuildNavHost: NavGraphBuilder.() -> Unit,
     onReaderActiveChanged: (Boolean) -> Unit,
     readerStyle: ReaderStyle,
-    webBookDataSourceFoundedFlow: Flow<Boolean>
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -84,20 +77,6 @@ fun LightNovelReaderNavHost(
         val currentDest = backStackEntry?.destination
         val selectedRoute = currentDest.currentMainRoute()
         val hasBottomBarByRoute = selectedRoute != null
-        val coroutineScope = rememberCoroutineScope()
-        val currentWebDataSourceNotFounded = stringResource(R.string.current_web_data_source_not_founded)
-
-        val webBookDataSourceFounded by webBookDataSourceFoundedFlow.collectAsStateWithLifecycle(true)
-        LaunchedEffect(webBookDataSourceFounded) {
-            if (!webBookDataSourceFounded) {
-                showSnackbar(
-                    coroutineScope = coroutineScope,
-                    hostState = snackbarHostState,
-                    message = currentWebDataSourceNotFounded
-                )
-            }
-        }
-
         LaunchedEffect(selectedRoute) {
             bottomBarVisible = true
         }

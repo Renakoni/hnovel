@@ -1,5 +1,19 @@
 # Plugin API changes
 
+## Unreleased — retire global source selection (#81)
+
+- Remove `WebBookDataSourceManagerApi.getWebDataSource()`,
+  `UserDataPath.Settings.Data.WebDataSourceId` and `Route.Main.Settings.SourceChange`.
+  The manager registers/unregisters sources; the host resolves requests using the
+  source identity in a book, image, discovery session or saved work input.
+- Remove the host's mutable provider and synchronous runtime facade. Native
+  volume-cover and tag callbacks remain bound to the owning runtime. A bare
+  debug book ID has the fixed Wenku8 meaning; imported-source clients supply
+  source-qualified keys and cannot use a selected-source fallback.
+- These removals break old source/API consumers and serialized source-change
+  routes. They do not provide old APK source compatibility, migrate old data or
+  publish/change the API artifact version. Non-source plugin APIs are unchanged.
+
 ## Unreleased — source-scoped Explore (#79)
 
 - `Route.Main.Explore.Search` now requires a namespace and source ID;

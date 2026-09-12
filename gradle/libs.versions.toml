@@ -118,6 +118,7 @@ navigation-ui-ktx = { module = "androidx.navigation:navigation-ui-ktx", version.
 navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "nav" }
 desugar_jdk_libs = { module = "com.android.tools:desugar_jdk_libs_nio", version.ref = "desugar" }
 work-runtime-ktx = { module = "androidx.work:work-runtime-ktx", version.ref = "work" }
+work-testing = { module = "androidx.work:work-testing", version.ref = "work" }
 swipe = { module = "me.saket.swipe:swipe", version.ref = "swipe" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinSerialization" }
 kotlinx-serialization-cbor = { module = "org.jetbrains.kotlinx:kotlinx-serialization-cbor", version.ref = "kotlinSerialization" }

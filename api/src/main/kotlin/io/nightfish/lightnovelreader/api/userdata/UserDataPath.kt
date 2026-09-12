@@ -157,8 +157,6 @@ sealed class UserDataPath(
         }
         /** 数据设置路径组 @since Api 2 */
         data object Data: UserDataPath("data", Settings) {
-            /** 网页数据源ID @since Api 2 */
-            data object WebDataSourceId : UserDataPath("web_data_source_id", Data)
             /** 日志级别设置 @since Api 2 */
             data object LogLevel : UserDataPath("log_level", Data)
             /** 是否使用代理 @since Api 2 */

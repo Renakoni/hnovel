@@ -55,7 +55,7 @@ fun BookBlock(onClickOpenBook: (String) -> Unit) {
         OutlinedTextField(
             value = bookId,
             onValueChange = { bookId = it },
-            label = { Text("书本ID") },
+            label = { Text("Wenku8 ID / 来源限定书籍键") },
             maxLines = 1,
             modifier = Modifier
                 .fillMaxWidth()

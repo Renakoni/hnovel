@@ -5,6 +5,8 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import indi.dmzz_yyhyy.lightnovelreader.data.book.BookIdentity
+import indi.dmzz_yyhyy.lightnovelreader.data.book.SourceChapterId
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.LightNovelReaderDatabase
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.BookInformationEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.BookRecordEntity
@@ -194,11 +196,12 @@ class BenchmarkFixtureReceiver : BroadcastReceiver() {
         const val ACTION_SEED = "indi.dmzz_yyhyy.lightnovelreader.benchmark.SEED"
         // The built-in Wenku8 source parses book IDs as integers when it
         // performs its background refresh, so the fixture ID must be numeric.
-        const val BOOK_ID = "9999999"
-        const val VOLUME_ID = "benchmark-volume"
-        const val SECOND_VOLUME_ID = "benchmark-volume-2"
-        const val CHAPTER_ONE_ID = "benchmark-chapter-1"
-        const val CHAPTER_TWO_ID = "benchmark-chapter-2"
+        private val book = BookIdentity.book("9999999")
+        val BOOK_ID = book.storageKey
+        val VOLUME_ID = BookIdentity.volumeKey(book, "benchmark-volume")
+        val SECOND_VOLUME_ID = BookIdentity.volumeKey(book, "benchmark-volume-2")
+        val CHAPTER_ONE_ID = SourceChapterId(book, "benchmark-chapter-1").storageKey
+        val CHAPTER_TWO_ID = SourceChapterId(book, "benchmark-chapter-2").storageKey
         const val BOOKSHELF_ID = 1_000_001
 
         private val LONG_TEXT = buildString {

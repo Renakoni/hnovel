@@ -74,7 +74,6 @@
     <string name="download_item_failed">%s failed, please check your network or seek developer assistance</string>
     <string name="book_updated_to_title">Updated to:</string>
     <string name="book_word_count_limit">Word limit: </string>
-    <string name="source_available_title">Available sources</string>
     <string name="unavailable">Unavailable</string>
     <string name="overview">Overview</string>
     <string name="settings">Settings</string>
@@ -97,10 +96,6 @@
     <string name="reader_reached_start">This is the beginning.</string>
     <string name="reader_reached_end">You\'ve reached the end…</string>
     <string name="font_file_error">Font file is incorrect or corrupted, please check and import again</string>
-    <string name="settings_data_source_pending_title">Switch to %s</string>
-    <string name="settings_data_source_pending_desc">
-        The operation will clear cached data and restart the app. Your current data can be restored when switching back to \"%s\".
-    </string>
     <string name="plugin_invalid_title">Invalid plugin</string>
     <string name="plugin_invalid_desc">Unable to get plugin info; the plugin may be invalid or corrupted.</string>
     <string name="plugin_disabled">Unavailable</string>
@@ -230,8 +225,6 @@
     <string name="settings_import_data_desc">Импорт данных пользователя из выбранного файла .lnr</string>
     <string name="settings_storage_manager">Storage Usage</string>
     <string name="settings_storage_manager_desc">Review how storage is used by the app, cache, plugins, and local files.</string>
-    <string name="settings_select_data_source">Источник данных</string>
-    <string name="settings_select_data_source_desc">Очистить кэш и переключить источник данных приложения. Ваши текущие данные будут сохранены и восстановлены при возврате.</string>
     <string name="settings_plugins">Plugins</string>
     <string name="settings_plugins_desc">Install and manage Plugins</string>
     <string name="settings_app_logs">Логи приложения</string>
@@ -390,7 +383,6 @@
     <string name="bookshelf_group_title_updated">Обновлено (%s)</string>
     <string name="bookshelf_group_title_pinned">Закреплено (%s)</string>
     <string name="bookshelf_group_title_all">Все (%s)</string>
-    <string name="data_source_provider">Источник: %s</string>
     <string name="read_progress">Прочитано %s</string>
     <string name="read_minutes">%d мин</string>
     <string name="translators">Переводчики</string>
@@ -478,7 +470,6 @@
     <string name="dialog_snap_settings_text">Включает настройки приложения и читалки.</string>
     <string name="dialog_snap_bookmarks">Закладки</string>
     <string name="dialog_snap_bookmarks_text">Включает все закладки книг.</string>
-    <string name="dialog_select_data_source_text">Выберите источник данных. Это очистит кэш и переключит источник данных приложения. Текущие пользовательские данные сохранятся и восстановятся при возврате.</string>
     <string name="dialog_slider_custom">Введите значение</string>
     <string name="dialog_slider_custom_illegal_value">Пожалуйста, введите допустимое число</string>
     <string name="dialog_color_picker">Color Palette</string>
@@ -675,6 +666,5 @@
     <string name="key_local_book_sort_last_read">Sort by last read</string>
     <string name="key_local_book_sort_chapter_count">Sort by chapter count</string>
     <string name="restart">Restart</string>
-    <string name="current_web_data_source_not_founded">Did not found the current web data source, please check you plugin and data source settings</string>
     <string name="never_read">Never read</string>
 </resources>
