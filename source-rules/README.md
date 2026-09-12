@@ -19,6 +19,12 @@ Script templates and `<js>`/`@js:` payloads cross `RuleScriptPort` with explicit
 intermediate values. An absent port reports ScriptPortUnavailable. This module
 does not instantiate Rhino or expose a network client, repository or Java bridge.
 
+`RequestOptionsJson` also owns bounded request-option data parsing for both the host
+compiler and worker templates. JSON and single-quoted strings share escape/depth/size
+semantics; nested body/header JSON is data, never an executable object expression.
+Its redacted failures carry no request contents. URL compilation and authorization
+remain in `source-network`, and explicit request scripts remain worker work.
+
 The fixed target is hectorqin/legado@da17bb2bed44f30b12a524c2457e32a20b16fa41.
 See THIRD_PARTY.md for selector ancestry. Deliberate/fixed-profile details:
 

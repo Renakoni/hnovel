@@ -53,7 +53,7 @@ fun ExecutionTask.libraryCode(): String? = when (this) {
  @Serializable data class Success(val output: String): ExecutionResult
  @Serializable data class Failure(val code: FailureCode, val ruleError: RuleError? = null): ExecutionResult
 }
-@Serializable enum class FailureCode { Timeout, ProcessExited, InvalidIdentity, OutputLimit, InvalidTask, Cancelled, Revoked, Busy, InputLimit, ScriptSyntax, ScriptRuntime, BridgeDenied, RuleRuntime }
+@Serializable enum class FailureCode { Timeout, ProcessExited, InvalidIdentity, OutputLimit, InvalidTask, Cancelled, Revoked, Busy, InputLimit, ScriptSyntax, ScriptRuntime, BridgeDenied, RuleRuntime, RequestSyntax }
 
 /** Host authority for source identities. The worker never gets a method to issue or change a ticket. */
 class ExecutionAuthority {
@@ -222,6 +222,7 @@ class WorkerRuntime(private val archives: hnovel.rhino.ArchiveDecoder = hnovel.r
       hnovel.rhino.FailureCode.Cancelled -> FailureCode.Cancelled
       hnovel.rhino.FailureCode.Syntax -> FailureCode.ScriptSyntax
       hnovel.rhino.FailureCode.BridgeDenied -> FailureCode.BridgeDenied
+      hnovel.rhino.FailureCode.RequestSyntax -> FailureCode.RequestSyntax
       hnovel.rhino.FailureCode.ResultTooLarge -> FailureCode.OutputLimit
       else -> FailureCode.ScriptRuntime
      })

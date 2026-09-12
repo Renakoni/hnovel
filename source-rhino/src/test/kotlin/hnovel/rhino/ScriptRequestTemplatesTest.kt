@@ -5,6 +5,33 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ScriptRequestTemplatesTest {
+    @Test fun singleQuotedOptionsRemainDataAndOptionScriptsStillRunInTheWorker() {
+        val rule = """/search,{'method':'POST','body':'keyword={{key}}','header':{'X-Test':'it\'s "quoted"'}}"""
+        assertEquals(rule, expanded(rule))
+        assertEquals("https://example.org/new,{\"method\":\"POST\"}",
+            expanded("""/search,{'method':'POST','js':'baseUrl+"/new"'}"""))
+    }
+
+    @Test fun invalidRequestOptionsAreRedactedParseFailuresWithoutHostCalls() {
+        var calls = 0
+        val engine = RhinoScriptEngine(HostBridge { _, _ -> calls++; JsonNull })
+        for (rule in listOf("/search,{'body':'secret-unterminated}", "/search,{'body':function(){}}",
+            "/search,{'header':\"{'X':'secret-unterminated}\"}",
+            "/search,{'method':'POST','body':\"{'q':'secret-unterminated}\"}")) {
+            val result = engine.evaluate("java.ajax(${JsonPrimitive(rule)})", frame) as ScriptResult.Failure
+            assertEquals("RequestSyntax", result.code.name)
+            assertFalse(result.message.contains("secret"))
+            assertEquals(0, calls)
+            val nested = "@js:java.ajax(${JsonPrimitive(rule)});'/search'"
+            val nestedResult = engine.evaluate("java.ajax(${JsonPrimitive(nested)})", frame) as ScriptResult.Failure
+            assertEquals("RequestSyntax", nestedResult.code.name)
+            assertEquals(0, calls)
+        }
+        assertEquals(ScriptResult.Success("true"), engine.evaluate(
+            "try { java.ajax(\"/search,{'body':'secret-unterminated}\"); false } catch(e) { e instanceof Error && String(e).indexOf('secret') < 0 }", frame))
+        assertEquals(0, calls)
+    }
+
     private val frame = ScriptFrame("a", "legado", variables=mapOf("result" to JsonPrimitive("outer")), key="a b", page=2, baseUrl="https://example.org/books/")
     private fun expanded(rule: String): String {
         var actual = ""
@@ -51,7 +78,8 @@ class ScriptRequestTemplatesTest {
     }
 
     @Test fun headerObjectsAndJsonStringsPreserveValuesWithoutRequestTemplateExpansion() {
-        for (header in listOf("@js:({Authorization:'{{key}}'})", "@js:JSON.stringify({Authorization:'{{key}}'})")) {
+        for (header in listOf("@js:({Authorization:'{{key}}'})", "@js:JSON.stringify({Authorization:'{{key}}'})",
+            "{'Authorization':'{{key}}'}", "@js:${JsonPrimitive("{'Authorization':'{{key}}'}")}")) {
             val engine = RhinoScriptEngine(HostBridge { name, args ->
                 assertEquals("request.withHeaders", name)
                 assertEquals("{{key}}", args[2].jsonObject.getValue("Authorization").jsonPrimitive.content)
@@ -59,6 +87,17 @@ class ScriptRequestTemplatesTest {
             })
             assertEquals(ScriptResult.Success("\"ok\""), engine.evaluate("java.ajax('/next')", frame.copy(sourceHeaderRule=header)))
         }
+    }
+
+    @Test fun explicitConnectHeadersAreCanonicalDataBeforeCrossingTheBridge() {
+        var calls = 0
+        val engine = RhinoScriptEngine(HostBridge { _, _ -> calls++; JsonNull })
+        val header = "{'X-Test':'it\\'s \"quoted\"'}"
+        val result = engine.evaluate("host.call('request.prepare','/next',${JsonPrimitive(header)})", frame)
+        assertEquals(ScriptResult.Success(buildJsonArray {
+            add("/next"); add("{\"X-Test\":\"it's \\\"quoted\\\"\"}")
+        }.toString()), result)
+        assertEquals(0, calls)
     }
 
     @Test fun runawayAndOversizedTemplatesNeverReachHost() {
