@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.ContextWrapper
 import com.github.michaelbull.result.*
 import hnovel.content.RuleSourceFixture
+import hnovel.content.DiscoveryCatalogFixtures
 import hnovel.execution.ExecutionAuthority
 import hnovel.imports.*
 import hnovel.network.NetworkGrant
@@ -85,13 +86,71 @@ class RuleDiscoveryProviderTest {
         }
     }
 
+    @Test fun realQidianCatalogReachesTheHostWithoutLosingTargetsOrFetchingBooks() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            val rows = DiscoveryCatalogFixtures.rows(0)
+            fixture.source { raw -> JsonObject(definition(raw) + ("exploreUrl" to JsonPrimitive(rows.toString()))) }.use { source ->
+                val provider = RuleDiscoveryProvider(source)
+                val catalog = provider.catalog().get()!!
+                assertEquals(326, catalog.categories.size)
+                assertEquals(rows.map { it.jsonObject.getValue("url").jsonPrimitive.content }, catalog.categories.map { it.target })
+                assertEquals(catalog.categories, provider.categories().get())
+                assertEquals(0, fixture.documents.get())
+            }
+        }
+    }
+
+    @Test fun largeFeedLoadsOnlyOnePreviewAndTheLastCategoryUsesItsOwnTarget() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            val rows = buildJsonArray { repeat(326) { i -> add(buildJsonObject {
+                put("title", "Category $i"); put("url", "/search?category=$i&page={{page}}")
+            }) } }
+            val rule = fixture.source { raw -> JsonObject(definition(raw) + ("exploreUrl" to JsonPrimitive(rows.toString()))) }
+            val id = Identifier("rules", rule.definition.sourceId)
+            val registry = WebSourceRegistry()
+            registry.register(RuleWebBookDataSource(id, rule), SourceMetadata(WebDataSourceItem(id, "Large source", "Test"),
+                setOf(SourceCapability.Categories, SourceCapability.Explore)))
+            try {
+                val source = (registry.resolve(id) as SourceResolution.Ready).runtime.discovery!!
+                val categories = source.categories().get()!!
+                assertEquals(0, fixture.documents.get())
+                val feed = source.feed().get()!!
+                assertEquals(326, feed.size)
+                assertEquals(categories.map { it.id }, feed.map { it.categoryId })
+                assertEquals(categories.map { it.target }, feed.map { it.more })
+                assertEquals(listOf(1) + List(325) { 0 }, feed.map { it.books.size })
+                assertEquals(1, fixture.documents.get())
+                assertEquals("/search?category=0&page=1", fixture.server.takeRequest().path)
+                val last = source.open(categories.last().target).loadMore().get()!!
+                assertEquals(id, last.books.single().id.sourceId)
+                assertEquals("/search?category=325&page=1", fixture.server.takeRequest().path)
+                assertEquals(2, fixture.documents.get())
+            } finally { registry.unregister(id) }
+        }
+    }
+
+    @Test fun catalogLimitAndUnnamedTargetsHaveDifferentHostErrorsAndLocations() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            val large = buildJsonArray { repeat(1025) { i -> add(buildJsonObject { put("title", "Row $i"); put("url", "/$i") }) } }
+            for ((rows, error, field) in listOf(
+                Triple(large, DiscoveryError.Limit, "exploreUrl"),
+                Triple(DiscoveryCatalogFixtures.rows(18), DiscoveryError.InvalidRules, "exploreUrl[19].title"),
+            )) fixture.source { raw -> JsonObject(definition(raw) + ("exploreUrl" to JsonPrimitive(rows.toString()))) }.use { source ->
+                val provider = RuleDiscoveryProvider(source)
+                assertEquals(Err(error), provider.catalog())
+                assertEquals(field, provider.failureField)
+            }
+            assertEquals(0, fixture.documents.get())
+        }
+    }
+
     @Test fun pageLimitKeepsTheLastAllowedBooksAndReportsTheNextAttemptWithoutFetching() = runBlocking {
         RuleSourceFixture().use { fixture ->
             val provider = RuleDiscoveryProvider(fixture.source(customize = ::definition))
             val last = provider.page(DiscoveryRequest("/search", "64")).get()!!
             assertEquals(1, last.books.size)
             assertEquals("65", last.nextCursor)
-            assertEquals(Err(DiscoveryError.InvalidRules), provider.page(DiscoveryRequest("/search", last.nextCursor)))
+            assertEquals(Err(DiscoveryError.Limit), provider.page(DiscoveryRequest("/search", last.nextCursor)))
             assertEquals("ruleExplore.page", provider.failureField)
             assertEquals(1, fixture.documents.get())
         }

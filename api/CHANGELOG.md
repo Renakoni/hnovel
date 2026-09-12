@@ -1,5 +1,15 @@
 # Plugin API changes
 
+## Unreleased — discovery processing limits (#133)
+
+- Append `DiscoveryError.Limit` so bounded catalogue/result work can report a
+  processing limit separately from incompatible rules. Existing discovery DTOs,
+  provider signatures and enum entries are unchanged.
+- Exhaustive consumers must handle the new case when recompiling; previously
+  compiled consumers that receive it can fail an exhaustive dispatch. This does
+  not publish an API artifact, change compatibility groups or claim external
+  plugin binary compatibility. See [catalogue bounds](../source-content/DISCOVERY.md).
+
 ## Unreleased — retire global source selection (#81)
 
 - Remove `WebBookDataSourceManagerApi.getWebDataSource()`,

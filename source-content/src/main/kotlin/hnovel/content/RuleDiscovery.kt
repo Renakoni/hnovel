@@ -34,7 +34,8 @@ class RuleDiscoverySession internal constructor(private val source: RuleSource, 
         }
         val all = rows + if (source.spec.customButton) listOf(RuleDiscoveryRow("custom-button", "Source action", "button",
             action = source.spec.content.string("callBackJs"), field = "ruleContent.callBackJs")) else emptyList()
-        if (all.size > 128 || all.map { it.id }.distinct().size != all.size)
+        if (all.size > MAX_CATALOG_ROWS) throw SourceContentException(ContentError.Limit, "exploreUrl")
+        if (all.map { it.id }.distinct().size != all.size)
             throw SourceContentException(ContentError.InvalidRule, "exploreUrl.id")
         val draft = readValues(context).toMutableMap()
         all.filter { it.type in inputTypes }.forEach { row ->
@@ -132,15 +133,20 @@ class RuleDiscoverySession internal constructor(private val source: RuleSource, 
                 }
             }
         } else value
-        if (raw !is JsonArray || raw.size > 128) throw SourceContentException(ContentError.InvalidRule, field)
+        if (raw !is JsonArray) throw SourceContentException(ContentError.InvalidRule, field)
+        if (raw.size > MAX_CATALOG_ROWS) throw SourceContentException(ContentError.Limit, field)
         val occurrences = mutableMapOf<String, Int>()
-        return raw.mapIndexed { index, item ->
+        return raw.mapIndexedNotNull { index, item ->
             val location = "$field[$index]"
             val row = item as? JsonObject ?: throw SourceContentException(ContentError.InvalidRule, location)
             // Keep style acceptance aligned with LoginForm.parse: sources may declare it, but the
             // host owns layout. Tightening either row schema must preserve this shared decision.
             val unknown = row.keys - setOf("id", "title", "url", "type", "action", "chars", "default", "viewName", "style")
             if (unknown.isNotEmpty()) throw SourceContentException(ContentError.InvalidRule, "$location.${unknown.first()}")
+            // Legado's blank title/url/style rows only fill its grid. The host owns layout;
+            // skip this exact inert shape before assigning IDs, preserving original error indices.
+            // An unnamed target, control, action or viewName must still report its schema error.
+            if (field == "exploreUrl" && layoutSeparator(row)) return@mapIndexedNotNull null
             val name = row.string("title")
             val type = row.string("type").ifBlank { "url" }
             if (type !in inputTypes + setOf("url", "button") || field == "exploreScreen" && type == "url")
@@ -162,6 +168,11 @@ class RuleDiscoverySession internal constructor(private val source: RuleSource, 
             RuleDiscoveryRow(key, name, type, url, row.string("action"), choices, default, location, row.string("viewName"))
         }
     }
+
+    private fun layoutSeparator(row: JsonObject) = row.keys == separatorKeys && row["style"] is JsonObject &&
+        listOf("title", "url").all { key ->
+            (row[key] as? JsonPrimitive)?.let { it.isString && it.content.isBlank() } == true
+        }
 
     private fun actions(context: RuleEvaluation): List<RuleDiscoveryAction> =
         ((context.discovery?.get("actions") as? JsonArray).orEmpty()).also {
@@ -229,5 +240,11 @@ class RuleDiscoverySession internal constructor(private val source: RuleSource, 
             throw SourceContentException(ContentError.Limit, "infoMap")
     }
     private fun jsonValues(value: Map<String, String>) = JsonObject(value.mapValues { JsonPrimitive(it.value) })
-    companion object { private val inputTypes = setOf("text", "toggle", "select") }
+    companion object {
+        // Catalogue rows are not infoMap entries. Larger real catalogues keep the existing
+        // 128-value / 32,768-character form-state limits and 64-choice control limits.
+        private const val MAX_CATALOG_ROWS = 1024
+        private val separatorKeys = setOf("title", "url", "style")
+        private val inputTypes = setOf("text", "toggle", "select")
+    }
 }

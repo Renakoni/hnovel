@@ -85,6 +85,23 @@ class ExploreHomeScreenTest {
         compose.onNodeWithText("Categories").assertDoesNotExist()
     }
 
+    @Test fun largeFeedCanOpenTheLastSectionWithoutLosingItsCategoryOrSource() {
+        val id = Identifier("fixture", "Large source")
+        val sections = List(326) { index -> SourceDiscoverySection("$index", "Category $index", emptyList(),
+            SourceDiscoveryTarget(id, "/category/$index"), "category-$index") }
+        val opened = mutableListOf<SourceDiscoverySection>()
+        activity.get().setContent { MaterialTheme {
+            ExploreHomeScreen(DiscoveryPageState(listOf(listing(id)), id,
+                mapOf(id to DiscoveryPageContent(loaded = true, sections = sections))),
+                {}, { _, _ -> }, {}, { opened += it }, {}, {}, {}, {}, { _, _ -> }, { _, _ -> }, {})
+        } }
+        compose.onNode(hasScrollToIndexAction() and SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange))
+            .performScrollToIndex(sections.lastIndex)
+        compose.onNodeWithText("Category 325").assertExists()
+        compose.onAllNodesWithContentDescription("Show more").onLast().performClick()
+        assertEquals(listOf(sections.last()), opened)
+    }
+
     @Test fun emptySourceStateOffersManagementAndNoFakeTabs() {
         var opened = 0
         activity.get().setContent { MaterialTheme {

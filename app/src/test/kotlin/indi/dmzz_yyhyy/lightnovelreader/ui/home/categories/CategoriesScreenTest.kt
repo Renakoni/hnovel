@@ -9,11 +9,17 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import com.github.michaelbull.result.get
+import hnovel.content.DiscoveryCatalogFixtures
+import hnovel.content.RuleSourceFixture
 import indi.dmzz_yyhyy.lightnovelreader.data.web.*
+import indi.dmzz_yyhyy.lightnovelreader.data.web.rules.RuleDiscoveryProvider
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.discovery.*
 import io.nightfish.lightnovelreader.api.identifier.Identifier
 import io.nightfish.lightnovelreader.api.web.WebDataSourceItem
 import io.nightfish.lightnovelreader.api.web.discovery.*
+import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.*
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -70,6 +76,42 @@ class CategoriesScreenTest {
         } }
         compose.onNodeWithText("Only source").assertIsSelected()
         compose.onNodeWithText("Same category").assertExists()
+    }
+
+    @Test fun qidianCatalogScrollsPast128RowsAndSelectsItsLastOriginalTarget() {
+        val (id, categories) = runBlocking {
+            RuleSourceFixture().use { fixture ->
+                fixture.source { raw -> JsonObject(raw + mapOf(
+                    "exploreUrl" to JsonPrimitive(DiscoveryCatalogFixtures.rows(0).toString()),
+                    "ruleExplore" to raw.getValue("ruleSearch"))) }.use { source ->
+                    val id = Identifier("rules", source.definition.sourceId)
+                    id to RuleDiscoveryProvider(source).catalog().get()!!.categories.map {
+                        SourceDiscoveryCategory(it.id, it.title, SourceDiscoveryTarget(id, it.target))
+                    }
+                }
+            }
+        }
+        assertEquals(326, categories.size)
+        val clicked = mutableListOf<SourceDiscoveryCategory>()
+        activity.get().setContent { MaterialTheme {
+            CategoriesScreen(DiscoveryPageState(listOf(listing(id, "Qidian")), id,
+                mapOf(id to DiscoveryPageContent(categories, loaded = true))), {}, { clicked += it }, { _, _ -> }, {}, {}, {}, {})
+        } }
+        compose.onNode(hasScrollToIndexAction()).performScrollToIndex(categories.lastIndex)
+        compose.onNodeWithText(categories.last().title).performClick()
+        assertEquals(listOf(categories.last()), clicked)
+        assertTrue(clicked.single().target.target.isNotBlank())
+    }
+
+    @Test fun processingLimitIsVisibleWithItsSourceField() {
+        val id = Identifier("fixture", "limited")
+        activity.get().setContent { MaterialTheme {
+            CategoriesScreen(DiscoveryPageState(listOf(listing(id, "Large source")), id,
+                mapOf(id to DiscoveryPageContent(error = DiscoveryError.Limit, errorField = "exploreUrl"))),
+                {}, {}, { _, _ -> }, {}, {}, {}, {})
+        } }
+        compose.onNodeWithText("The source exceeded a processing limit. Check source diagnostics or update the source.").assertExists()
+        compose.onNodeWithText("Source rule: exploreUrl").assertExists()
     }
 
     @Test fun emptyStateOpensSourceManagement() {

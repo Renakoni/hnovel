@@ -39,6 +39,7 @@ internal fun DiscoveryFailure(error: DiscoveryError, retry: () -> Unit, manage: 
         DiscoveryError.AuthenticationRequired -> R.string.discovery_login_required
         DiscoveryError.PermissionDenied -> R.string.discovery_permission
         DiscoveryError.InvalidRules -> R.string.discovery_invalid_rules
+        DiscoveryError.Limit -> R.string.discovery_limit
         DiscoveryError.Network -> R.string.discovery_network
         DiscoveryError.InvalidRequest -> R.string.discovery_invalid_target
         DiscoveryError.InvalidResponse -> R.string.discovery_invalid_response

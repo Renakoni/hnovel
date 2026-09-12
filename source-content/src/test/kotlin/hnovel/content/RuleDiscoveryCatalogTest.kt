@@ -1,0 +1,157 @@
+package hnovel.content
+
+import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.*
+import org.junit.Assert.*
+import org.junit.Test
+
+class RuleDiscoveryCatalogTest {
+    private fun definition(raw: JsonObject, rows: JsonArray) = JsonObject(raw + mapOf(
+        "exploreUrl" to JsonPrimitive(rows.toString()), "ruleExplore" to raw.getValue("ruleSearch")))
+
+    @Test fun qidianCatalogRetainsAll326RowsAndEveryTarget() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            val input = DiscoveryCatalogFixtures.rows(0)
+            fixture.source { definition(it, input) }.use { source ->
+                val session = source.openDiscovery("qidian")
+                val catalog = session.catalog()
+                assertEquals(326, catalog.rows.size)
+                assertEquals(input.map { it.jsonObject.getValue("title").jsonPrimitive.content }, catalog.rows.map { it.title })
+                assertEquals(input.map { it.jsonObject.getValue("url").jsonPrimitive.content }, catalog.rows.map { it.url })
+                assertEquals(322, catalog.rows.count { it.url.isNotBlank() })
+                assertEquals(326, catalog.rows.map { it.id }.toSet().size)
+                assertEquals(catalog, session.catalog(refresh = true))
+                assertEquals(0, fixture.documents.get())
+            }
+        }
+    }
+
+    @Test fun dubuStyleSpacerDoesNotRejectTheCatalog() = separators(9, 14)
+    @Test fun aituStyleSpacersDoNotRejectTheCatalog() = separators(17, 72)
+    @Test fun jiuaiStyleSpacersDoNotRejectTheCatalog() = separators(19, 22)
+
+    @Test fun unnamedTargetsAndUnknownSchemaKeepTheirOriginalArrayLocations() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            fixture.source("yueyou") { definition(it, DiscoveryCatalogFixtures.rows(18)) }.use { source ->
+                val error = failure { source.openDiscovery("yueyou").catalog() }
+                assertEquals(ContentError.InvalidRule, error.code)
+                assertEquals("exploreUrl[19].title", error.field)
+            }
+            val spacer = DiscoveryCatalogFixtures.rows(9).last().jsonObject
+            for ((row, field) in listOf(
+                JsonObject(spacer + ("unknown" to JsonPrimitive(true))) to "unknown",
+                JsonObject(spacer + ("type" to JsonPrimitive("nativeView"))) to "type",
+                JsonObject(spacer + ("type" to JsonPrimitive("text"))) to "title",
+                JsonObject(spacer + ("action" to JsonPrimitive("java.open('login')"))) to "title",
+                JsonObject(spacer + ("viewName" to JsonPrimitive("'Missing name'"))) to "title",
+                JsonObject(spacer - "style") to "title",
+                JsonObject(spacer + ("style" to JsonPrimitive("not an object"))) to "title",
+            )) fixture.source("invalid-$field") { definition(it, JsonArray(listOf(spacer, row))) }.use { source ->
+                val error = failure { source.openDiscovery("invalid").catalog() }
+                assertEquals(ContentError.InvalidRule, error.code)
+                assertEquals("exploreUrl[1].$field", error.field)
+            }
+        }
+    }
+
+    @Test fun completeCatalogHasAnExplicitLimitAndNeverTruncatesExcessRows() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            fixture.source("maximum") { definition(it, urls(1024)) }.use { source ->
+                assertEquals(1024, source.openDiscovery("maximum").catalog().rows.size)
+            }
+            val spacer = DiscoveryCatalogFixtures.rows(9).last()
+            for (rows in listOf(urls(1025), JsonArray(List(1025) { spacer })))
+                fixture.source("excess") { definition(it, rows) }.use { source ->
+                    val error = failure { source.openDiscovery("excess").catalog() }
+                    assertEquals(ContentError.Limit, error.code)
+                    assertEquals("exploreUrl", error.field)
+                }
+            assertEquals(0, fixture.documents.get())
+        }
+    }
+
+    @Test fun combinedLimitCountsScreenControlsAndTheCustomButton() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            val cases = listOf(
+                buildJsonObject { put("exploreScreen", """[{"id":"button","title":"Action","type":"button"}]""") },
+                buildJsonObject {
+                    put("customButton", true); put("eventListener", true)
+                    put("ruleContent", buildJsonObject { put("callBackJs", "java.refreshExplore()") })
+                },
+            )
+            for (extra in cases) fixture.source { JsonObject(definition(it, urls(1024)) + extra) }.use { source ->
+                val error = failure { source.openDiscovery("combined").catalog() }
+                assertEquals(ContentError.Limit, error.code)
+                assertEquals("exploreUrl", error.field)
+            }
+        }
+    }
+
+    @Test fun catalogueGrowthDoesNotEnlargeInputStateOrChoiceBudgets() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            for (count in listOf(128, 129)) {
+                val inputs = List(count) { i -> buildJsonObject { put("title", "Input$i"); put("type", "text") } }
+                fixture.source("inputs-$count") { definition(it, JsonArray(urls(326) + inputs)) }.use { source ->
+                    if (count == 128) {
+                        val catalog = source.openDiscovery("allowed").catalog()
+                        assertEquals(454, catalog.rows.size)
+                        assertEquals(128, catalog.values.size)
+                    } else {
+                        val error = failure { source.openDiscovery("excess").catalog() }
+                        assertEquals(ContentError.Limit, error.code)
+                        assertEquals("infoMap", error.field)
+                    }
+                }
+            }
+            val choice = buildJsonObject {
+                put("title", "Choice"); put("type", "select")
+                putJsonArray("chars") { repeat(65) { add("$it") } }
+            }
+            fixture.source { definition(it, JsonArray(urls(326) + choice)) }.use { source ->
+                assertEquals("exploreUrl[326].chars", failure { source.openDiscovery("choices").catalog() }.field)
+            }
+        }
+    }
+
+    @Test fun dynamicCatalogUsesTheSameSizeAndSeparatorContract() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            fixture.source { raw -> JsonObject(definition(raw, JsonArray(emptyList())) +
+                ("exploreUrl" to JsonPrimitive("""
+                    @js:var rows=[{title:'',url:'',style:{}}];
+                    for(var i=0;i<326;i++)rows.push({title:'Books '+i,url:'/search?row='+i});rows
+                """.trimIndent()))) }.use { source ->
+                val catalog = source.openDiscovery("dynamic").catalog()
+                assertEquals(326, catalog.rows.size)
+                assertEquals("Books 325", catalog.rows.last().title)
+                assertEquals("/search?row=325", catalog.rows.last().url)
+                assertEquals("exploreUrl[326]", catalog.rows.last().field)
+                assertEquals(0, fixture.documents.get())
+            }
+        }
+    }
+
+    private fun urls(count: Int) = JsonArray(List(count) { index ->
+        buildJsonObject { put("title", "Books $index"); put("url", "/search?row=$index") }
+    })
+
+    private suspend fun failure(block: suspend () -> Unit): SourceContentException = try {
+        block(); throw AssertionError("Expected an explicit discovery failure")
+    } catch (error: SourceContentException) { error }
+
+    private fun separators(index: Int, expected: Int) = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            val input = DiscoveryCatalogFixtures.rows(index)
+            val meaningful = JsonArray(input.filter { it.jsonObject.getValue("title").jsonPrimitive.content.isNotBlank() })
+            fixture.source("spaced") { definition(it, input) }.use { source ->
+                val catalog = source.openDiscovery("spaced").catalog()
+                assertEquals(expected, catalog.rows.size)
+                assertEquals(meaningful.map { it.jsonObject.getValue("title").jsonPrimitive.content }, catalog.rows.map { it.title })
+                assertEquals(meaningful.map { it.jsonObject.getValue("url").jsonPrimitive.content }, catalog.rows.map { it.url })
+                fixture.source("compact") { definition(it, meaningful) }.use { compact ->
+                    assertEquals(compact.openDiscovery("compact").catalog().rows.map { it.id }, catalog.rows.map { it.id })
+                }
+                assertEquals(0, fixture.documents.get())
+            }
+        }
+    }
+}
