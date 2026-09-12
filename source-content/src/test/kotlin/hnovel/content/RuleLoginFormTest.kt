@@ -2,12 +2,42 @@ package hnovel.content
 
 import hnovel.imports.EXTENSION_PROFILE
 import hnovel.network.BrowserExecutor
+import hnovel.network.BrokerResult
+import hnovel.network.FailureCode
+import hnovel.network.RequestStage
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.*
 import org.junit.Assert.*
 import org.junit.Test
 
 class RuleLoginFormTest {
+    @Test fun directBrowserLoginPreservesBrokerFailures() = runBlocking {
+        var code = FailureCode.Network
+        val browser = BrowserExecutor { _, _, options, _ ->
+            assertTrue(options.interactive)
+            BrokerResult.Failure(RequestStage.Connect, code)
+        }
+        RuleSourceFixture(browser).use { fixture ->
+            fixture.source { raw -> JsonObject(raw +
+                ("loginUrl" to JsonPrimitive(fixture.server.url("/login").toString()))) }.use { source ->
+                for ((failureCode, expected) in listOf(
+                    FailureCode.OriginDenied to ContentError.PermissionDenied,
+                    FailureCode.AddressDenied to ContentError.AddressDenied,
+                    FailureCode.Dns to ContentError.Dns,
+                    FailureCode.Network to ContentError.Network,
+                    FailureCode.Timeout to ContentError.Limit,
+                    FailureCode.BrowserRequired to ContentError.BrowserRequired,
+                )) {
+                    code = failureCode
+                    val failure = runCatching { source.login(emptyMap()) }.exceptionOrNull() as SourceContentException
+                    assertEquals(failureCode.name, expected, failure.code)
+                    assertEquals("loginUrl", failure.field)
+                }
+                assertEquals(0, fixture.server.requestCount)
+            }
+        }
+    }
+
     @Test fun browserFieldActionsKeepTheirTargetAndReportAuthenticationFailures() = runBlocking {
         val paths = mutableListOf<String>()
         val browser = BrowserExecutor { session, request, options, guard ->

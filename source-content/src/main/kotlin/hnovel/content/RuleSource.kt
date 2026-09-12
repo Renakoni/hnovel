@@ -118,8 +118,10 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             val response = session.execute(BrokerRequest("login", form.browserUrl, headers = context.headers(),
                 timeoutMillis = 60000, browser = BrowserOptions(interactive = true)),
                 RequestCommitGuard { authority.authorized(identity, it) })
-            if (response !is BrokerResult.Success) throw SourceContentException(ContentError.LoginRequired, "loginUrl")
-            checkStatus(response.response.status, "loginUrl")
+            when (response) {
+                is BrokerResult.Failure -> throw SourceContentException(response.code.contentError(), "loginUrl")
+                is BrokerResult.Success -> checkStatus(response.response.status, "loginUrl")
+            }
             authority.authorized(identity) { check(session.write(StorageRequest(StorageArea.Account, "login/status", "authenticated")) is StorageResult.Value) }
             return@operation
         }

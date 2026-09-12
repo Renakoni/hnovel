@@ -38,7 +38,9 @@ class SourceLoginService @Inject constructor(private val sources: ImportedRuleSo
             withContext(NonCancellable) { cancel(attempt) }
             throw cancelled
         } catch (failure: Exception) {
-            if (accounts.current(attempt.source).generation == attempt.generation) {
+            // A transport/grant failure does not establish that the credentials were rejected.
+            if (failure is SourceContentException && failure.code == ContentError.LoginRequired &&
+                accounts.current(attempt.source).generation == attempt.generation) {
                 target.session.write(StorageRequest(StorageArea.Account, "login/status", "required"))
             }
             throw failure
