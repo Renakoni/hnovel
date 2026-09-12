@@ -23,9 +23,11 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
 
     suspend fun headers(): Map<String, String> {
         if (headerRule.isBlank()) return emptyMap()
-        val value = if (headerRule.trimStart().startsWith('{')) Json.parseToJsonElement(headerRule)
-            else Json.parseToJsonElement(script(headerRule, RuleValue.Empty, "header").text())
-        return value.jsonObject.mapValues { it.value.jsonPrimitive.content }
+        val text = if (headerRule.trimStart().startsWith('{')) headerRule
+            else script(headerRule, RuleValue.Empty, "header").text()
+        val value = try { RequestOptionsJson.headers(JsonPrimitive(text)) }
+            catch (_: RequestOptionsException) { throw SourceContentException(ContentError.InvalidRule, "header") }
+        return value.mapValues { it.value.jsonPrimitive.content }
     }
 
     suspend fun value(rule: String, input: RuleValue, field: String, output: OutputKind = OutputKind.Text,

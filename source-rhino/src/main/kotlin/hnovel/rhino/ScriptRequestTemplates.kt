@@ -54,7 +54,7 @@ internal class ScriptRequestTemplates(private val scope: Scriptable, private val
                 if (result is JsonPrimitive) result.content else result.toString()
             }
             if (text.length > limit) throw ResultTooLarge()
-            return JsonObject(Json.parseToJsonElement(text).jsonObject.mapValues { JsonPrimitive(it.value.jsonPrimitive.content) })
+            return JsonObject(RequestOptionsJson.headers(JsonPrimitive(text)).mapValues { JsonPrimitive(it.value.jsonPrimitive.content) })
         } finally { resolvingHeaders = false }
     }
 
@@ -74,7 +74,14 @@ internal class ScriptRequestTemplates(private val scope: Scriptable, private val
             val first = args[urlIndex]
             val expanded = if (name == "java.ajaxAll") JsonArray(first.jsonArray.map(::item))
                 else item((first as? JsonArray)?.firstOrNull() ?: first)
-            return args.toMutableList().apply { this[urlIndex] = expanded }.also {
+            return args.toMutableList().apply {
+                this[urlIndex] = expanded
+                val header = args.getOrNull(1)
+                if (name == "java.connect" && header != null && header != JsonNull) {
+                    if (header !is JsonPrimitive || !header.isString) throw RequestOptionsException()
+                    this[1] = JsonPrimitive(RequestOptionsJson.headers(header).toString())
+                }
+            }.also {
                 if (JsonArray(it).toString().length > limit) throw ResultTooLarge()
             }
         } finally { depth-- }
@@ -125,7 +132,7 @@ internal class ScriptRequestTemplates(private val scope: Scriptable, private val
             }
             value = expanded.toString()
             val optionStart = Regex(",\\s*(?=\\{)").find(value) ?: return value
-            val options = Json.parseToJsonElement(value.substring(optionStart.range.last + 1)).jsonObject
+            val options = RequestOptionsJson.options(value.substring(optionStart.range.last + 1))
             val script = options["js"]?.jsonPrimitive?.content ?: return value
             // URL-option JS receives the resolved URL, and baseUrl follows its authority.
             val raw = value.substring(0, optionStart.range.first).trim()

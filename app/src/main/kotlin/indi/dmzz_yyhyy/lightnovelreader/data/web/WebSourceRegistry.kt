@@ -64,9 +64,11 @@ class WebSourceRegistry internal constructor(private val dispatcher: CoroutineDi
             next = Entry(snapshot, { source }, source)
             executionAuthority.replaceSource(ticket) { persist() }
             entries[metadata.id] = next
+            // Observers may resume inline in publish(); the old handle must already be
+            // unavailable. Retirement schedules resource cleanup without waiting for it.
+            previous.retire()
             publish()
         }
-        previous.retire()
         return SourceRegistration(snapshot) { remove(next) }.also { it.owner = next }
     }
 

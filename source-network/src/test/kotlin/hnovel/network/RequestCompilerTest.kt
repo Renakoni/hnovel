@@ -6,6 +6,31 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RequestCompilerTest {
+    @Test fun singleQuotedOptionsPreserveEscapesAndCharsetAwareSubstitution() {
+        val single = """/search/,{'method':'POST','charset':'GB2312','body':'keyword={{key}}','header':{'X-Literal':'It\'s "quoted"\\end','X-Key':'{{key}}'}}"""
+        val strict = """/search/,{"method":"POST","charset":"GB2312","body":"keyword={{key}}","header":{"X-Literal":"It's \"quoted\"\\end","X-Key":"{{key}}"}}"""
+        val actual = request(single, "校园&role=admin")
+        assertEquals(request(strict, "校园&role=admin"), actual)
+        assertEquals("keyword=%D0%A3%D4%B0%26role%3Dadmin", actual.body)
+        assertEquals("It's \"quoted\"\\end", actual.headers["X-Literal"])
+    }
+
+    @Test fun singleQuotedNestedBodiesAndEncodedHeadersUseTheSameDataGrammar() {
+        val single = """/search,{'method':'POST','header':"{'X-Test':'a\\\\b'}",'body':{'q':'{{key}}','values':['it\'s',true,null,{'n':2}]}}"""
+        val strict = """/search,{"method":"POST","header":{"X-Test":"a\\b"},"body":{"q":"{{key}}","values":["it's",true,null,{"n":2}]}}"""
+        assertEquals(request(strict, "a\"b"), request(single, "a\"b"))
+        assertEquals(request("""/search,{"method":"POST","body":{"q":"{{key}}"}}"""),
+            request("""/search,{'method':'POST','body':"{'q':'{{key}}'}"}"""))
+    }
+
+    @Test fun requestDataDoesNotAcceptExecutableObjectSyntaxOrMalformedStrings() {
+        for (options in listOf("{'method':(function(){return 'POST'})()}", "{method:'POST'}",
+            "{'method':'POST',}", "{'body':'unterminated}", "{'header':\"{'X':'unterminated}\"}")) {
+            assertEquals(options, CompiledRequest.Rejected(FailureCode.InvalidRequest),
+                compiler.compile("r", "/search,$options", "https://fixture.invalid/"))
+        }
+    }
+
     @Test fun nestedJsonInsideOptionStringsIsBoundedBeforeParsing() {
         val nested = "[".repeat(2000) + "0" + "]".repeat(2000)
         val denied = CompiledRequest.Rejected(FailureCode.InvalidRequest)
