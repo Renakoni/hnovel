@@ -31,7 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.navigation.NavController
 import androidx.navigation.NavDestination
-import androidx.navigation.NavDestination.Companion.hierarchy
+import androidx.navigation.NavDestination.Companion.hasRoute
 import io.nightfish.lightnovelreader.api.Route
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -137,14 +137,14 @@ private fun partition(arr: MutableList<Int>, left: Int, right: Int): Int {
 
 fun NavDestination?.currentMainRoute(): Any? {
     if (this == null) return null
-    return hierarchy.firstNotNullOfOrNull { dest ->
-        when (dest.route) {
-            Route.Main.Reading.Home::class.qualifiedName -> Route.Main.Reading
-            Route.Main.Bookshelf.Home::class.qualifiedName -> Route.Main.Bookshelf
-            Route.Main.Explore.Home::class.qualifiedName -> Route.Main.Explore
-            Route.Main.Settings.Home::class.qualifiedName -> Route.Main.Settings
-            else -> null
-        }
+    return when {
+        hasRoute<Route.Main.Reading.Home>() -> Route.Main.Reading
+        hasRoute<Route.Main.Bookshelf.Home>() -> Route.Main.Bookshelf
+        hasRoute<Route.Main.Explore.Home>() -> Route.Main.Explore
+        // Canonical bottom-tab marker, independent of this entry's source arguments.
+        // navigateToMainRoot also matches Categories by type for source-qualified shortcuts.
+        hasRoute<Route.Main.Categories>() -> Route.Main.Categories()
+        else -> null
     }
 }
 

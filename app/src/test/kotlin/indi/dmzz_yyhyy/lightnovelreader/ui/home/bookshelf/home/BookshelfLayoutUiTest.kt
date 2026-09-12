@@ -92,7 +92,7 @@ class BookshelfLayoutUiTest {
                 MaterialTheme {
                     Column(Modifier.fillMaxSize()) {
                         val behavior = TopAppBarDefaults.pinnedScrollBehavior()
-                        BookshelfHomeTopBar(behavior, MaterialTheme.colorScheme.surface, state, {}, {}, {}, {})
+                        BookshelfHomeTopBar(behavior, MaterialTheme.colorScheme.surface, state, {}, {}, {}, {}, {})
                         BookshelfHomeContent(state, listState, gridState, behavior)
                     }
                 }

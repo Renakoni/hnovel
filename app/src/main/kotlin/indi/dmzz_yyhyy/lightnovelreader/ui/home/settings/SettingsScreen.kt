@@ -4,17 +4,16 @@ import android.net.Uri
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme.colorScheme
 import androidx.compose.material3.MaterialTheme.typography
 import androidx.compose.material3.Text
@@ -22,7 +21,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
@@ -40,7 +38,6 @@ import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.list.DisplaySettingsLis
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.list.ExtensionsSettingsList
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.list.ReadingSettingsList
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.list.UpdatesSettingsList
-import indi.dmzz_yyhyy.lightnovelreader.utils.bottomBarSpacer
 import indi.dmzz_yyhyy.lightnovelreader.utils.navigationBarSpacer
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
@@ -60,13 +57,14 @@ fun SettingsScreen(
     onClickTextFormatting: () -> Unit,
     onClickStorageManager: () -> Unit,
     clearReadingCache: suspend () -> Unit,
-    onOptOut: () -> Unit
+    onOptOut: () -> Unit,
+    onBack: () -> Unit,
 ) {
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
     val listState = rememberLazyListState()
 
     Column {
-        TopBar(scrollBehavior)
+        SettingsTopBar(scrollBehavior, onBack)
         LazyColumn(
             Modifier.fillMaxSize(), listState
         ) {
@@ -158,7 +156,6 @@ fun SettingsScreen(
                     }
                 }
             }
-            bottomBarSpacer()
             navigationBarSpacer()
         }
     }
@@ -167,8 +164,9 @@ fun SettingsScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun TopBar(
-    scrollBehavior: TopAppBarScrollBehavior
+internal fun SettingsTopBar(
+    scrollBehavior: TopAppBarScrollBehavior,
+    onBack: () -> Unit,
 ) {
     TopAppBar(
         title = {
@@ -177,11 +175,10 @@ private fun TopBar(
             )
         },
         navigationIcon = {
-            Box(Modifier.size(48.dp)) {
+            IconButton(onClick = onBack) {
                 Icon(
-                    modifier = Modifier.align(Alignment.Center),
-                    painter = painterResource(id = R.drawable.outline_settings_24px),
-                    contentDescription = null
+                    painter = painterResource(id = R.drawable.arrow_back_24px),
+                    contentDescription = stringResource(R.string.sources_back)
                 )
             }
         },

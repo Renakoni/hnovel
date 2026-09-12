@@ -16,6 +16,7 @@ import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.detail.navigateToBookDetailDestination
 import indi.dmzz_yyhyy.lightnovelreader.ui.dialog.AddBookToBookshelfDialog
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.bookshelf.edit.navigateToBookshelfEditDestination
+import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.navigateToSettingsDestination
 import io.nightfish.lightnovelreader.api.Route
 import io.nightfish.lightnovelreader.api.bookshelf.Bookshelf
 import io.nightfish.lightnovelreader.api.ui.LocalNavController
@@ -60,7 +61,8 @@ fun NavGraphBuilder.bookshelfHomeDestination(sharedTransitionScope: SharedTransi
         }
         BookshelfHomeScreen(
             init = bookshelfHomeViewModel::load,
-            uiState = uiState
+            uiState = uiState,
+            onSettings = navController::navigateToSettingsDestination
         )
     }
 

@@ -42,23 +42,24 @@ class CategoriesScreenTest {
         SourceMetadata(WebDataSourceItem(id, name, "fixture"), setOf(SourceCapability.Categories)), SourceStatus.Ready)
     private fun category(id: Identifier) = SourceDiscoveryCategory("category", "Same category", SourceDiscoveryTarget(id, "tag"))
 
-    @Test fun sourceTabsAndCategoryClicksKeepOwningIdentityAndBackCallback() {
+    @Test fun sourceTabsAndCategoryClicksKeepOwningIdentityAndSettingsCallback() {
         val a = Identifier("fixture", "a")
         val b = Identifier("fixture", "b")
         var state by mutableStateOf(DiscoveryPageState(listOf(listing(a, "Source A"), listing(b, "Source B")), a,
             mapOf(a to DiscoveryPageContent(listOf(category(a)), loaded = true), b to DiscoveryPageContent(listOf(category(b)), loaded = true))))
         val clicked = mutableListOf<SourceDiscoveryCategory>()
-        var backs = 0
+        var settings = 0
         activity.get().setContent { MaterialTheme {
-            CategoriesScreen(state, { state = state.copy(selected = it) }, { clicked += it }, { _, _ -> }, {}, {}, {}, { backs++ })
+            CategoriesScreen(state, { state = state.copy(selected = it) }, { clicked += it }, { _, _ -> }, {}, {}, { settings++ }, {})
         } }
         compose.onNodeWithText("Source A").assertIsSelected()
         compose.onNodeWithText("Same category").performClick()
         compose.onNodeWithText("Source B").performClick().assertIsSelected()
         compose.onNodeWithText("Same category").performClick()
-        compose.onNodeWithContentDescription("Back").performClick()
+        compose.onNodeWithContentDescription("Settings").performClick()
+        compose.onNodeWithContentDescription("Back").assertDoesNotExist()
         assertEquals(listOf(a, b), clicked.map { it.target.sourceId })
-        assertEquals(1, backs)
+        assertEquals(1, settings)
     }
 
     @Test fun oneSourceStillDisplaysItsTab() {

@@ -44,6 +44,7 @@ import java.io.File
 fun BookshelfHomeScreen(
     init: () -> Unit,
     uiState: BookshelfHomeUiState,
+    onSettings: () -> Unit,
 ) {
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -136,7 +137,8 @@ fun BookshelfHomeScreen(
             },
             onImportBookshelf = {
                 selectBookshelfDataFile(importBookshelfLauncher)
-            }
+            },
+            onSettings = onSettings
         )
 
         BookshelfHomeContent(
