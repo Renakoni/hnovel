@@ -37,8 +37,8 @@ internal fun SourceLoginDialog(form: LoginForm, busy: Boolean,
                         var expanded by remember(field.name) { mutableStateOf(false) }
                         Box {
                             OutlinedButton(onClick = { expanded = true }, enabled = !busy) { Text("${field.label}: ${values[field.name].orEmpty()}") }
-                            DropdownMenu(expanded && !busy, onDismissRequest = { expanded = false }) {
-                                field.choices.forEach { choice -> DropdownMenuItem(text = { Text(choice) }, onClick = { expanded = false; change(choice) }) }
+                            DropdownMenu(expanded, onDismissRequest = { expanded = false }) {
+                                field.choices.forEach { choice -> DropdownMenuItem(text = { Text(choice) }, enabled = !busy, onClick = { expanded = false; change(choice) }) }
                             }
                         }
                     }

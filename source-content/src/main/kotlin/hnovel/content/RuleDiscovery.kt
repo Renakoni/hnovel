@@ -137,6 +137,8 @@ class RuleDiscoverySession internal constructor(private val source: RuleSource, 
         return raw.mapIndexed { index, item ->
             val location = "$field[$index]"
             val row = item as? JsonObject ?: throw SourceContentException(ContentError.InvalidRule, location)
+            // Keep style acceptance aligned with LoginForm.parse: sources may declare it, but the
+            // host owns layout. Tightening either row schema must preserve this shared decision.
             val unknown = row.keys - setOf("id", "title", "url", "type", "action", "chars", "default", "viewName", "style")
             if (unknown.isNotEmpty()) throw SourceContentException(ContentError.InvalidRule, "$location.${unknown.first()}")
             val name = row.string("title")

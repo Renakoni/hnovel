@@ -17,6 +17,8 @@ enum class LoginStatus { LoggedOut, Authenticated, Required }
 /** No Activity is launched from a rule/worker. Foreground UI explicitly owns a cancellable login attempt. */
 @Singleton
 class SourceLoginService @Inject constructor(private val sources: ImportedRuleSources, private val accounts: SourceSessionManager) {
+    // loginForm() may suspend across logout, revision change or removal. Validate the same attempt
+    // before loading and before returning, rejecting any form produced by a retired attempt.
     suspend fun form(attempt: LoginAttempt): LoginForm = target(attempt).rules.loginForm().also { target(attempt) }
     suspend fun status(source: Identifier): LoginStatus = withContext(Dispatchers.IO) {
         val target = sources.loginTarget(source)

@@ -30,6 +30,8 @@ data class LoginForm(val fields: List<LoginField>, val browserUrl: String?, val 
             val fields = rows.mapIndexed { index, value ->
                 fun invalid(key: String): Nothing = throw SourceContentException(ContentError.InvalidRule, "loginUi[$index].$key")
                 val row = value as? JsonObject ?: invalid("row")
+                // Like RuleDiscoverySession.rows in RuleDiscovery.kt, accept style while the host owns
+                // layout. Keep this compatibility decision aligned when tightening either row schema.
                 val allowed = setOf("name", "type", "action", "style") + if (extended) setOf("default", "chars", "viewName") else emptySet()
                 row.keys.firstOrNull { it !in allowed }?.let { invalid(it) }
                 fun string(key: String): String? = row[key]?.takeUnless { it == JsonNull }?.let {
