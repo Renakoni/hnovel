@@ -50,6 +50,8 @@ fun NavController.navigateToHomeNavigation() {
     navigate(Route.Main)
 }
 
+// NavHost derives hasBottomBarByRoute from currentMainRoute() != null. Settings and its
+// secondary destinations return null there, which hides this bar without changing NavHost.
 @OptIn(ExperimentalAnimationGraphicsApi::class)
 @Composable
 fun HomeNavigateBar(
@@ -98,12 +100,17 @@ fun HomeNavigateBar(
     }
 }
 
+// CategorySourceSelection consumes this one-shot shortcut through select() once sources load.
+// It is separate from namespace/sourceId route arguments (initial fallback) and the persisted
+// category.namespace/category.source selection owned by DiscoveryPageViewModel.
 internal const val CATEGORY_SOURCE_REQUEST = "category.sourceRequest"
 
 /** Bottom roots restore their own stack. An explicit category shortcut changes only its source. */
 internal fun <T : Any> NavController.navigateToMainRoot(route: T) {
     if (!isResumed()) return
     val current = currentDestination.currentMainRoute()
+    // Equality handles singleton roots and the canonical empty Categories tab marker. A Categories
+    // shortcut with source arguments differs by data-class equality but still targets that same root.
     val sameRoot = current == route || (current is Route.Main.Categories && route is Route.Main.Categories)
     if (!sameRoot) navigate(route) {
         launchSingleTop = true
@@ -111,6 +118,8 @@ internal fun <T : Any> NavController.navigateToMainRoot(route: T) {
         popUpTo(graph.findStartDestination().id) { saveState = true }
     }
     if (route is Route.Main.Categories && route.namespace != null && route.sourceId != null) {
+        // Compose Navigation adds/restores the entry synchronously in navigate(), before transitions
+        // finish. An asynchronous navigator would need to await that entry before writing this request.
         getBackStackEntry<Route.Main.Categories>().savedStateHandle[CATEGORY_SOURCE_REQUEST] = Json.encodeToString<Route.Main.Categories>(route)
     }
 }

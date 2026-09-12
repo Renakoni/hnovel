@@ -141,6 +141,8 @@ fun NavDestination?.currentMainRoute(): Any? {
         hasRoute<Route.Main.Reading.Home>() -> Route.Main.Reading
         hasRoute<Route.Main.Bookshelf.Home>() -> Route.Main.Bookshelf
         hasRoute<Route.Main.Explore.Home>() -> Route.Main.Explore
+        // Canonical bottom-tab marker, independent of this entry's source arguments.
+        // navigateToMainRoot also matches Categories by type for source-qualified shortcuts.
         hasRoute<Route.Main.Categories>() -> Route.Main.Categories()
         else -> null
     }
