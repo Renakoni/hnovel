@@ -12,6 +12,7 @@ import hnovel.network.StorageRequestKey
 import hnovel.network.NetworkGrant
 import indi.dmzz_yyhyy.lightnovelreader.data.web.*
 import indi.dmzz_yyhyy.lightnovelreader.data.web.rules.*
+import indi.dmzz_yyhyy.lightnovelreader.data.web.zlibrary.ZLibrarySources
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.resetMain
@@ -42,7 +43,8 @@ class SourcesViewModelTest {
             val accounts = SourceSessionManager(fixture.authority)
             val sources = ImportedRuleSources(context, registry, fixture.authority, accounts, fixture.runner)
             val updates = SourceRevisionUpdates(context, sources, accounts, fixture.runner, fixture.authority)
-            val model = SourcesViewModel(context, sources, updates, SourceLoginService(sources, accounts), registry)
+            val model = SourcesViewModel(context, sources, updates, SourceLoginService(sources, accounts), registry,
+                ZLibrarySources(context, registry, hnovel.network.StorageCipher.Plain))
             suspend fun idle() = withTimeout(10000) { model.state.first { !it.busy } }
             try {
                 idle()
@@ -91,7 +93,8 @@ class SourcesViewModelTest {
             val accounts = SourceSessionManager(fixture.authority)
             val sources = ImportedRuleSources(context, registry, fixture.authority, accounts, fixture.runner)
             val login = SourceLoginService(sources, accounts)
-            val model = SourcesViewModel(context, sources, SourceRevisionUpdates(context, sources, accounts, fixture.runner, fixture.authority), login, registry)
+            val model = SourcesViewModel(context, sources, SourceRevisionUpdates(context, sources, accounts, fixture.runner, fixture.authority), login, registry,
+                ZLibrarySources(context, registry, hnovel.network.StorageCipher.Plain))
             suspend fun idle() = withTimeout(10000) { model.state.first { !it.busy } }
             try {
                 idle()
@@ -137,7 +140,8 @@ class SourcesViewModelTest {
                 "loginUi" to JsonPrimitive("[{\"name\":\"user\"}]")))
             val committed = sources.importer.commit(sources.importer.preview(raw.toString()), listOf(ImportSelection(0, ImportDecision.Add)))
             val id = sources.activate(committed.items.single().reference!!, listOf(NetworkGrant(fixture.server.url("/").toString(), true)))
-            val model = SourcesViewModel(context, sources, updates, login, registry)
+            val model = SourcesViewModel(context, sources, updates, login, registry,
+                ZLibrarySources(context, registry, hnovel.network.StorageCipher.Plain))
             suspend fun idle() = withTimeout(10000) { model.state.first { !it.busy } }
             try {
                 idle()
@@ -168,7 +172,8 @@ class SourcesViewModelTest {
             val sources = ImportedRuleSources(context, registry, fixture.authority, accounts, fixture.runner)
             val updates = SourceRevisionUpdates(context, sources, accounts, fixture.runner, fixture.authority)
             val login = SourceLoginService(sources, accounts)
-            val model = SourcesViewModel(context, sources, updates, login, registry)
+            val model = SourcesViewModel(context, sources, updates, login, registry,
+                ZLibrarySources(context, registry, hnovel.network.StorageCipher.Plain))
             suspend fun idle() = withTimeout(10000) { model.state.first { !it.busy } }
             try {
                 idle()

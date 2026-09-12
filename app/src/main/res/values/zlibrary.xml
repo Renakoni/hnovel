@@ -1,0 +1,21 @@
+<resources>
+    <string name="zlibrary_source_summary">Search books by language and format</string>
+    <string name="zlibrary_capabilities">Search and view book information and covers in the app. Sign-in, file downloads and reading are not available yet.</string>
+    <string name="zlibrary_mirror">API site</string>
+    <string name="zlibrary_mirror_help">Use a site origin without a path. Changing sites keeps your books linked. The selected site must also be in the permissions below.</string>
+    <string name="zlibrary_save">Save site and permissions</string>
+    <string name="zlibrary_settings_failed">Settings could not be restored. Review the site and permissions, then save to recover.</string>
+    <string name="zlibrary_search_hint">Book title or author (up to 500 results)</string>
+    <string name="zlibrary_filter_all">All languages and formats</string>
+    <string name="zlibrary_filter_chinese">Chinese · All formats</string>
+    <string name="zlibrary_filter_english">English · All formats</string>
+    <string name="zlibrary_filter_epub">EPUB · All languages</string>
+    <string name="zlibrary_filter_pdf">PDF · All languages</string>
+    <string name="zlibrary_filter_chinese_epub">Chinese · EPUB</string>
+    <string name="zlibrary_filter_chinese_pdf">Chinese · PDF</string>
+    <string name="zlibrary_filter_english_epub">English · EPUB</string>
+    <string name="zlibrary_filter_english_pdf">English · PDF</string>
+    <string name="source_rate_limited">This site is receiving too many requests. Wait a little, then retry.</string>
+    <string name="source_metadata_only">This source provides book information. Reading in the app is not available yet.</string>
+    <string name="source_reading_unavailable">Reading is unavailable. Enable the source or open a book with saved offline content.</string>
+</resources>

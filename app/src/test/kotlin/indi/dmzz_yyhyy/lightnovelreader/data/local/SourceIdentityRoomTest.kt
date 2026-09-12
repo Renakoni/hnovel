@@ -57,7 +57,7 @@ class SourceIdentityRoomTest {
         db = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), LightNovelReaderDatabase::class.java)
             .allowMainThreadQueries().build()
         local = LocalBookDataSource(db.bookInformationDao(), db.bookVolumesDao(), db.chapterContentDao(), db.userReadingDataDao())
-        shelves = BookshelfRepository(db.bookshelfDao(), mockk())
+        shelves = BookshelfRepository(db.bookshelfDao(), mockk(), indi.dmzz_yyhyy.lightnovelreader.data.web.WebSourceRegistry())
         val coordinator = StatisticsWriteCoordinator()
         stats = StatsRepository(db.bookRecordDao(), db.dailyCountDao(), mockk(), coordinator)
         backup = LocalDataManager(db, db.bookInformationDao(), db.bookRecordDao(), db.dailyCountDao(),

@@ -100,7 +100,7 @@ class HostMultiSourceIntegrationTest {
             directory.root.resolve("library.db").absolutePath).allowMainThreadQueries().build()
         manager = WebBookDataSourceManager(WebSourceRegistry())
         local = LocalBookDataSource(db.bookInformationDao(), db.bookVolumesDao(), db.chapterContentDao(), db.userReadingDataDao())
-        shelves = BookshelfRepository(db.bookshelfDao(), workManager)
+        shelves = BookshelfRepository(db.bookshelfDao(), workManager, manager.registry)
         // Disable optional display transformations; storage and content decoding use production adapters.
         val text = TextProcessingRepository(mockk { every { enabled } returns false },
             mockk { every { enabled } returns false }, ContentComponentRegistry())

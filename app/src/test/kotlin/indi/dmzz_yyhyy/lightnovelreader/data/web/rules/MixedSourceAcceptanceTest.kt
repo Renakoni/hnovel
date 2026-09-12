@@ -128,7 +128,7 @@ class MixedSourceAcceptanceTest {
                 db = Room.databaseBuilder(context, LightNovelReaderDatabase::class.java, File(directory.root, "library.db").absolutePath)
                     .allowMainThreadQueries().build()
                 local = LocalBookDataSource(db.bookInformationDao(), db.bookVolumesDao(), db.chapterContentDao(), db.userReadingDataDao())
-                shelves = BookshelfRepository(db.bookshelfDao(), work)
+                shelves = BookshelfRepository(db.bookshelfDao(), work, registry)
                 val text = TextProcessingRepository(mockk { every { enabled } returns false }, mockk { every { enabled } returns false }, ContentComponentRegistry())
                 chapters = ChapterRepository(registry, local, text)
                 readingData = BookReadingDataRepository(local)

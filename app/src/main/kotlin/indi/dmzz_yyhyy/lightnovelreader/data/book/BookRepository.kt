@@ -33,6 +33,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -42,6 +43,11 @@ internal fun WorkManager.observeSubmittedUniqueWork(name: String, operation: Ope
     // These names enqueue a single KEEP request, without APPEND/dependencies. KEEP retains
     // the active request or deletes the terminal record before inserting its replacement.
     emitAll(getWorkInfosForUniqueWorkFlow(name).map { it.singleOrNull() })
+}
+
+data class BookReadingAvailability(val online: Boolean, val local: Boolean, val metadataOnly: Boolean,
+    val generation: Long?) {
+    val available get() = online || local
 }
 
 @Singleton
@@ -56,6 +62,22 @@ class BookRepository @Inject constructor(
 ): BookRepositoryApi {
     companion object {
         private const val TAG = "BookRepository"
+    }
+
+    /** Declared reading capabilities and saved directories are separate from source availability.
+     * A disabled source can still supply offline chapters; a metadata-only source cannot supply a TOC. */
+    fun readingAvailability(bookId: String): Flow<BookReadingAvailability> {
+        val book = BookIdentity.book(bookId)
+        return sourceRegistry.sources.map { sources ->
+            val entry = sources.find { it.metadata.id == book.sourceId }
+            val capabilities = entry?.metadata?.capabilities.orEmpty()
+            val online = entry?.metadata?.supportsReading == true &&
+                entry?.status != indi.dmzz_yyhyy.lightnovelreader.data.web.SourceStatus.Failed
+            BookReadingAvailability(online,
+                !online && localBookDataSource.getBookVolumes(book.storageKey)?.volumes?.any { it.chapters.isNotEmpty() } == true,
+                entry != null && indi.dmzz_yyhyy.lightnovelreader.data.web.SourceCapability.Directory !in capabilities,
+                entry?.generation)
+        }.distinctUntilChanged()
     }
 
 

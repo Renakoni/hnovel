@@ -51,9 +51,9 @@ class WebSourceRegistry internal constructor(private val dispatcher: CoroutineDi
 
     /** Durable commit precedes publication under the same lock as resolve/remove. No missing-source gap. */
     internal fun replace(expected: SourceRegistration, source: WebBookDataSource, metadata: SourceMetadata,
-        ticket: hnovel.execution.ExecutionIdentity, persist: () -> Unit): SourceRegistration {
+        ticket: hnovel.execution.ExecutionIdentity? = null, persist: () -> Unit): SourceRegistration {
         require(source.id == metadata.id && metadata.id == expected.metadata.id)
-        require(ticket.sourceId == metadata.id.id && ticket.namespace == metadata.id.namespace &&
+        require(ticket == null || ticket.sourceId == metadata.id.id && ticket.namespace == metadata.id.namespace &&
             ticket.revision == metadata.revision && ticket.accountGeneration == metadata.accountGeneration)
         val snapshot = metadata.copy(capabilities = Collections.unmodifiableSet(metadata.capabilities.toSet()))
         val previous: Entry
@@ -62,7 +62,12 @@ class WebSourceRegistry internal constructor(private val dispatcher: CoroutineDi
             previous = checkNotNull(entries[metadata.id])
             check(previous === expected.owner) { "Source registration changed" }
             next = Entry(snapshot, { source }, source)
-            executionAuthority.replaceSource(ticket) { persist() }
+            if (ticket != null) executionAuthority.replaceSource(ticket) { persist() }
+            else {
+                // Native HTTP adapters have no script ticket; their runtime still owns all work.
+                persist()
+                executionAuthority.revokeSource(metadata.id.id, metadata.id.namespace)
+            }
             entries[metadata.id] = next
             // Observers may resume inline in publish(); the old handle must already be
             // unavailable. Retirement schedules resource cleanup without waiting for it.

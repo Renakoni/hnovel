@@ -129,6 +129,8 @@ class BookRepositoryOperationsTest {
             every { env.workManager.getWorkInfosForUniqueWorkFlow(name) } returns infos
             val observed = if (export) {
                 DetailViewModel(env.repository(), mockk(), mockk(), env.workManager)
+                    // This test starts at an enabled export action; capability gating has its own tests.
+                    .apply { (uiState as indi.dmzz_yyhyy.lightnovelreader.ui.book.detail.MutableDetailUiState).readingAvailable = true }
                     .exportToEpub(Uri.parse("content://exports/new.epub"), book.storageKey, "Title")
             } else env.repository().cacheBook(book.storageKey)
             val first = async { observed.first() }

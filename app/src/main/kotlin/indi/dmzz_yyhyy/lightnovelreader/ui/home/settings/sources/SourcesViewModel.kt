@@ -14,6 +14,7 @@ import hnovel.network.*
 import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.data.web.*
 import indi.dmzz_yyhyy.lightnovelreader.data.web.rules.*
+import indi.dmzz_yyhyy.lightnovelreader.data.web.zlibrary.*
 import io.nightfish.lightnovelreader.api.identifier.Identifier
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -27,13 +28,15 @@ data class SourceManagementState(val installed: List<InstalledRuleSource> = empt
     val registry: List<SourceListing> = emptyList(), val selected: Identifier? = null,
     val preview: ImportPreview? = null, val updateTarget: Identifier? = null,
     val busy: Boolean = false, val message: Int? = null, val loginForm: LoginForm? = null,
-    val loginStatus: LoginStatus = LoginStatus.LoggedOut, val variable: String = "")
+    val loginStatus: LoginStatus = LoginStatus.LoggedOut, val variable: String = "",
+    val zLibrary: ZLibraryState = ZLibraryState())
 
 /** Screen state survives rotation; previews grant nothing and each explicit mutation has a single owner. */
 @HiltViewModel
 class SourcesViewModel @Inject constructor(@ApplicationContext private val context: Context,
     private val sources: ImportedRuleSources, private val updates: SourceRevisionUpdates,
-    private val login: SourceLoginService, private val registry: WebSourceRegistry) : ViewModel() {
+    private val login: SourceLoginService, private val registry: WebSourceRegistry,
+    private val zLibrary: ZLibrarySources) : ViewModel() {
     private val mutable = MutableStateFlow(SourceManagementState())
     val state = mutable.asStateFlow()
     private var operation: Job? = null
@@ -43,6 +46,7 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
 
     init {
         viewModelScope.launch { registry.sources.collect { list -> mutable.update { it.copy(registry = list) } } }
+        viewModelScope.launch { zLibrary.state.collect { state -> mutable.update { it.copy(zLibrary = state) } } }
         refresh()
     }
 
@@ -81,6 +85,7 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
     fun select(id: Identifier?) = launch { selectSource(id) }
     private suspend fun selectSource(id: Identifier?) {
         reload() // Includes the current session's redacted refusals, including background image loads.
+        if (id == ZLibrarySources.ID) zLibrary.refresh()
         mutable.update { it.copy(selected = id, preview = null, updateTarget = null,
             loginStatus = LoginStatus.LoggedOut, variable = "") }
         if (id != null && registry.sources.value.any { it.metadata.id == id && it.metadata.capabilities.isNotEmpty() } &&
@@ -178,6 +183,14 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
     }
     fun setDiscoveryVisible(id: Identifier, visible: Boolean) = launch {
         sources.setPreferences(id, discoveryVisible = visible); selectSource(id)
+    }
+    fun setZLibraryEnabled(enabled: Boolean) = launch {
+        zLibrary.update(zLibrary.state.value.settings.copy(enabled = enabled))
+    }
+    fun saveZLibrary(origin: String, permissions: String) = launch {
+        zLibrary.update(zLibrary.state.value.settings.copy(origin = origin,
+            origins = permissions.lines().filter(String::isNotBlank)))
+        mutable.update { it.copy(message = R.string.sources_saved) }
     }
     fun saveConfiguration(id: Identifier, variable: String?, permissions: String) = launch {
         require(variable == null || variable.length <= 32768)

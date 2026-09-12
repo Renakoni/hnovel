@@ -60,6 +60,8 @@ data class SourceSearchFailure(val error: DiscoveryError, val field: String? = n
 
 /** Render typed failures without displaying exception messages, URLs or source credentials. */
 internal fun searchFailure(failure: Throwable): SourceSearchFailure = when (failure) {
+    is SourceRequestException -> SourceSearchFailure(failure.error,
+        permission = failure.denial?.let { DiscoveryPermission(it.origin, it.kind.name) })
     is SourceContentException -> SourceSearchFailure(when (failure.code) {
         ContentError.MissingCapability -> DiscoveryError.Unsupported
         ContentError.LoginRequired, ContentError.BrowserRequired -> DiscoveryError.AuthenticationRequired

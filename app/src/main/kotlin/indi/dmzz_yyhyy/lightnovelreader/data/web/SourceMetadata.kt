@@ -15,6 +15,7 @@ data class SourceMetadata(
     val accountGeneration: Long = 0,
 ) {
     val id: Identifier get() = item.id
+    val supportsReading: Boolean get() = SourceCapability.Directory in capabilities && SourceCapability.ChapterContent in capabilities
 }
 
 enum class SourceStatus { Registered, Initializing, Ready, Failed }

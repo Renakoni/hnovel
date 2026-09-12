@@ -23,7 +23,10 @@ import indi.dmzz_yyhyy.lightnovelreader.data.work.ExportBookToEPUBWork
 import indi.dmzz_yyhyy.lightnovelreader.data.book.observeSubmittedUniqueWork
 import io.nightfish.lightnovelreader.api.web.WebDataSourcePriority
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -37,6 +40,7 @@ class DetailViewModel @Inject constructor(
     private val _uiState = MutableDetailUiState()
     var exportSettings = ExportSettings()
     private var book: indi.dmzz_yyhyy.lightnovelreader.data.book.SourceBookId? = null
+    private var informationJob: Job? = null
     val uiState: DetailUiState = _uiState
 
     var isInitialized by mutableStateOf(false)
@@ -47,21 +51,15 @@ class DetailViewModel @Inject constructor(
         if (isInitialized) return
         book = indi.dmzz_yyhyy.lightnovelreader.data.book.BookIdentity.book(bookId)
         isInitialized = true
+        loadInformation(bookId)
         viewModelScope.launch(Dispatchers.IO) {
-            bookRepository.getBookInformationFlow(bookId, WebDataSourcePriority.High).collect { result ->
-                result.onOk {
-                    val bookshelfBookMetadata = bookshelfRepository.getBookshelfBookMetadata(bookId) ?: return@onOk
-                    bookshelfBookMetadata.bookShelfIds.forEach { bookshelfId ->
-                        bookshelfRepository.deleteBookFromBookshelfUpdatedBookIds(bookshelfId, bookId)
-                    }
-                    bookshelfRepository.updateBookshelfBookMetadataLastUpdateTime(bookId, it.lastUpdated)
-                }
-                _uiState.bookInformation = result
-            }
-        }
-        viewModelScope.launch(Dispatchers.IO) {
-            bookRepository.getBookVolumesFlow(bookId, WebDataSourcePriority.High).collect {
-                _uiState.bookVolumes = it
+            bookRepository.readingAvailability(bookId).collectLatest { availability ->
+                _uiState.readingAvailable = availability.available
+                _uiState.canCache = availability.online
+                _uiState.metadataOnly = availability.metadataOnly
+                if (availability.available) bookRepository.getBookVolumesFlow(bookId, WebDataSourcePriority.High).collect {
+                    _uiState.bookVolumes = it
+                } else _uiState.bookVolumes = null
             }
         }
         viewModelScope.launch(Dispatchers.IO) {
@@ -84,7 +82,25 @@ class DetailViewModel @Inject constructor(
         }
     }
 
+    fun retryInformation() { book?.let { loadInformation(it.storageKey) } }
+
+    private fun loadInformation(bookId: String) {
+        informationJob?.cancel()
+        informationJob = viewModelScope.launch(Dispatchers.IO) {
+            _uiState.bookInformation = null
+            bookRepository.getBookInformationFlow(bookId, WebDataSourcePriority.High).collect { result ->
+                result.onOk {
+                    val metadata = bookshelfRepository.getBookshelfBookMetadata(bookId) ?: return@onOk
+                    metadata.bookShelfIds.forEach { shelf -> bookshelfRepository.deleteBookFromBookshelfUpdatedBookIds(shelf, bookId) }
+                    bookshelfRepository.updateBookshelfBookMetadataLastUpdateTime(bookId, it.lastUpdated)
+                }
+                _uiState.bookInformation = result
+            }
+        }
+    }
+
     fun cacheBook(bookId: String): Flow<WorkInfo?> {
+        if (!_uiState.canCache) return flowOf(null)
         val isCachedFlow = bookRepository.cacheBook(bookId)
         viewModelScope.launch(Dispatchers.IO) {
             isCachedFlow.collect { workInfo ->
@@ -100,6 +116,7 @@ class DetailViewModel @Inject constructor(
 
 
     fun exportToEpub(uri: Uri, bookId: String, title: String): Flow<WorkInfo?> {
+        if (!_uiState.readingAvailable) return flowOf(null)
         val key = indi.dmzz_yyhyy.lightnovelreader.data.book.BookIdentity.bookKey(bookId)
         val workRequest = OneTimeWorkRequestBuilder<ExportBookToEPUBWork>()
             .setInputData(

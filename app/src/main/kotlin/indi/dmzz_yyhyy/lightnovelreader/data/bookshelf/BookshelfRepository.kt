@@ -22,7 +22,8 @@ import javax.inject.Singleton
 
 @Singleton
 class BookshelfRepository @Inject constructor(
-    private val bookshelfDao: BookshelfDao, private val workManager: WorkManager
+    private val bookshelfDao: BookshelfDao, private val workManager: WorkManager,
+    private val sourceRegistry: indi.dmzz_yyhyy.lightnovelreader.data.web.WebSourceRegistry
 ) : BookshelfRepositoryApi {
     override suspend fun getAllBookshelfIds(): List<Int> = bookshelfDao.getAllBookshelfIds()
 
@@ -122,7 +123,10 @@ class BookshelfRepository @Inject constructor(
             lastUpdate = bookInformation.lastUpdated,
             bookshelfIds = listOf(bookshelfId)
         )
-        if (bookshelf.autoCache && bookshelf.allBookIds.contains(bookId)) {
+        // Metadata-only sources can be bookmarked, but an automatic cache would always fail.
+        val sourceId = BookIdentity.book(bookId).sourceId
+        val canCache = sourceRegistry.sources.value.any { it.metadata.id == sourceId && it.metadata.supportsReading }
+        if (canCache && bookshelf.autoCache && bookshelf.allBookIds.contains(bookId)) {
             val workRequest = OneTimeWorkRequestBuilder<CacheBookWork>().setInputData(
                     workDataOf(
                         "bookId" to bookId
