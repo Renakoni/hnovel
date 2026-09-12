@@ -22,6 +22,23 @@ import java.util.concurrent.ConcurrentLinkedQueue
 class SourceBrowserInstrumentedTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
 
+    @Test fun dnsAndAddressFailuresRemainTypedAcrossBrowserBinder(): Unit = runBlocking {
+        for ((dns, expected) in listOf(
+            okhttp3.Dns { throw java.net.UnknownHostException() } to hnovel.network.FailureCode.Dns,
+            okhttp3.Dns { listOf(java.net.InetAddress.getByName("198.18.0.1")) } to hnovel.network.FailureCode.AddressDenied
+        )) {
+            val root = File(context.cacheDir, "browser-network-${System.nanoTime()}")
+            try {
+                SourceBroker(root.toPath(), dns, browser = AndroidSourceBrowser(context)).use { broker ->
+                    val session = broker.open(SourceScope("network", "A", "legado"), listOf(NetworkGrant("https://source.invalid/")))
+                    val result = session.execute(BrokerRequest("browser", "https://source.invalid/", browser = BrowserOptions()))
+                    assertTrue(result.toString(), result is BrokerResult.Failure)
+                    assertEquals(expected, (result as BrokerResult.Failure).code)
+                }
+            } finally { root.deleteRecursively() }
+        }
+    }
+
     @Test fun imageVerificationUsesSourceHeadersAndReturnsTheEnteredCodeAcrossBinder(): Unit = runBlocking {
         ActivityScenario.launch(BrowserTestHostActivity::class.java).use {
             MockWebServer().use { server ->

@@ -444,12 +444,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         if (!authority.accepts(identity)) throw SourceContentException(ContentError.Unavailable, field)
         val response = when (result) {
             is BrokerResult.Success -> result.response
-            is BrokerResult.Failure -> throw SourceContentException(when (result.code) {
-                hnovel.network.FailureCode.OriginDenied, hnovel.network.FailureCode.AddressDenied -> ContentError.PermissionDenied
-                hnovel.network.FailureCode.ResponseTooLarge, hnovel.network.FailureCode.Timeout -> ContentError.Limit
-                hnovel.network.FailureCode.BrowserRequired -> ContentError.BrowserRequired
-                else -> ContentError.Network
-            }, field)
+            is BrokerResult.Failure -> throw SourceContentException(result.code.contentError(), field)
         }
         if (kind == ResourceKind.Image) checkStatus(response.status, field)
         return response

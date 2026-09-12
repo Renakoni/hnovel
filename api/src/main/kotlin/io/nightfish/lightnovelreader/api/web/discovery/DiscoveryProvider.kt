@@ -39,7 +39,7 @@ sealed interface DiscoveryFilter {
 
 enum class DiscoveryError {
     Unsupported, AuthenticationRequired, PermissionDenied, InvalidRules, Network,
-    InvalidRequest, InvalidResponse, Unavailable, Limit,
+    InvalidRequest, InvalidResponse, Unavailable, Limit, AddressDenied, Dns,
 }
 
 /** Shared providers are stateless. openSession may create a page-owned provider for rule drafts. */

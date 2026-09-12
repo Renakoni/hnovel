@@ -13,6 +13,8 @@ import java.io.ByteArrayInputStream
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 
+private class BrowserRequestFailure(val failure: BrokerResult.Failure) : Exception(failure.code.name)
+
 /** Disposable browser. Chromium has no native network path; every admitted request goes to the broker. */
 class SourceBrowserService : Service() {
     private val handler = Handler(Looper.getMainLooper())
@@ -120,6 +122,7 @@ class SourceBrowserService : Service() {
             put("headers", JsonObject(request.headers.mapValues { JsonPrimitive(it.value) }))
             request.body?.let { put("body", it) }
         }))
+        if (result is BrokerResult.Failure) throw BrowserRequestFailure(result)
         check(result is BrokerResult.Success)
         return result.response
     }
@@ -171,6 +174,9 @@ class SourceBrowserService : Service() {
         headers["Content-Security-Policy"] = CSP
         WebResourceResponse(type, if (incoming.isForMainFrame) "UTF-8" else response.charset,
             response.status.takeIf { it in 200..299 || it in 400..599 } ?: 502, "Response", headers, ByteArrayInputStream(body))
+    } catch (failure: BrowserRequestFailure) {
+        if (incoming.isForMainFrame) complete(failure.failure)
+        denied()
     } catch (_: Exception) { if (incoming.isForMainFrame) fail(); denied() }
 
     @Volatile private var redirected: BrokerResponse? = null
@@ -215,6 +221,7 @@ class SourceBrowserService : Service() {
             val args = Json.parseToJsonElement(arguments).jsonObject
             if (operation !in setOf("request", "navigate")) return@runCatching rpc(operation, args)
             val result = Json.decodeFromString<BrokerResult>(rpc("request", args))
+            if (result is BrokerResult.Failure && operation == "navigate") complete(result)
             check(result is BrokerResult.Success)
             if (operation == "navigate") {
                 redirected = result.response

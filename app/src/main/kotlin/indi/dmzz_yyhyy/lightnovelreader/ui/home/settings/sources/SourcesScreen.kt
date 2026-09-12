@@ -116,6 +116,7 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                         }
                         OutlinedTextField(configuration, { configuration = it }, Modifier.fillMaxWidth(), label = { Text(variableLabel) }, enabled = !state.busy)
                         Text(stringResource(R.string.sources_permissions_help))
+                        Text(stringResource(R.string.sources_network_help), style = MaterialTheme.typography.bodySmall)
                         OutlinedTextField(permissions, { permissions = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.sources_permissions)) }, enabled = !state.busy)
                         Button(onClick = { model.saveConfiguration(state.selected!!, configuration, permissions) }, enabled = !state.busy) { Text(stringResource(R.string.sources_save)) }
                         OutlinedButton(onClick = { model.checkUpdate(state.selected!!) }, enabled = !state.busy) { Text(stringResource(R.string.sources_check_update)) }
