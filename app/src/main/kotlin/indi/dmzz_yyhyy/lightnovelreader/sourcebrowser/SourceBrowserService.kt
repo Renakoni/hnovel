@@ -126,6 +126,8 @@ class SourceBrowserService : Service() {
 
     private fun intercept(incoming: WebResourceRequest): WebResourceResponse = try {
         check(!finished.get() && incoming.url.scheme?.lowercase() in setOf("http", "https"))
+        // The host verification document embeds its image and needs no favicon or other subresources.
+        if (job.options.verificationCode && !incoming.isForMainFrame) return denied()
         val initial = incoming.isForMainFrame && firstRequest
         if (initial) firstRequest = false
         val response = if (initial && job.options.html != null) BrokerResponse(200, job.request.url,

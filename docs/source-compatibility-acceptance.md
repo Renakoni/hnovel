@@ -27,7 +27,7 @@
 
 登录里的 HTTP(S) 按钮和 `java.showBrowser` 通过现有浏览器端口打开并检查响应；登录 URL 自身是网页地址时，字段按钮仍使用自己的目标。失败的动作不发布 `upLoginData` 草稿。显式 Cookie、网络及 `source.put` 等操作仍遵循各自的提交语义，不承诺整段 JavaScript 事务回滚。
 
-`java.getVerificationCode(imageUrl)` 依据固定参考 `JsExtensions.kt`、`SourceVerificationHelp.kt`、`VerificationCodeDialog.kt`：在当前来源的前台登录操作内获取图片、等待用户输入并返回非空原文。来源 headers、Cookie、站点授权、请求预算及撤销检查沿用 broker；后台调用报告需要前台交互。Android 在现有临时浏览器进程内显示图片与输入框，输入不写入通用存储，源脚本收到返回值后自行处理。空输入、无效图片或取消不能变成成功验证码。
+`java.getVerificationCode(imageUrl)` 依据固定参考 `JsExtensions.kt`、`SourceVerificationHelp.kt`、`VerificationCodeDialog.kt`：在当前来源的前台登录操作内获取图片、等待用户输入并返回非空原文。来源 headers、Cookie、站点授权、请求预算及撤销检查沿用 broker；后台调用报告需要前台交互。Android 在现有临时浏览器进程内显示图片与输入框，宿主页面嵌入已取回的图片并拒绝浏览器自动图标及其他子资源请求。输入不写入通用存储，源脚本收到返回值后自行处理。空输入、无效图片或取消不能变成成功验证码。
 
 动态发现的完整有限动作协议和偏差见 [DISCOVERY.md](../source-content/DISCOVERY.md)。宿主拥有纵向布局；`style` 不作为任意布局程序执行。登录控件的长按协议、任意 fork 原生控件、其他阅读/书架事件总线不在已确认协议内。`upConfig` 的来源本地语义、主题/阅读设置快照和安装伪标识的差别继续明确保留。
 
