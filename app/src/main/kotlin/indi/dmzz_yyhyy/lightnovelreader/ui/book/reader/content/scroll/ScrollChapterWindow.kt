@@ -129,10 +129,9 @@ internal class ScrollChapterWindow(
     }
 
     private fun resetContentList() {
-        uiState.contentList.clear()
-        uiState.contentList.add(null)
-        uiState.contentList.add(null)
-        uiState.contentList.add(null)
+        // Settings observers and chapter collectors can read/write slots during a reset.
+        // Keep the fixed-size window addressable instead of publishing an empty list.
+        uiState.contentList.fill(null)
     }
 
     fun changeChapter(id: String) {

@@ -5,6 +5,7 @@ import androidx.compose.foundation.lazy.LazyListItemInfo
 import androidx.compose.foundation.lazy.LazyListLayoutInfo
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.unit.IntSize
 import com.github.michaelbull.result.Err
 import com.github.michaelbull.result.Ok
@@ -69,6 +70,28 @@ class ScrollModeContractTest {
         assertEquals(listOf("render/Title", "write/start/book", "write/end/requested", "preload/start/next", "preload/end/next"), env.events)
         assertNull(mode.uiState.contentList[0])
         assertNull(mode.uiState.contentList[2])
+    }
+
+    @Test
+    fun chapterResetKeepsAllThreeSlotsAddressableToObservers() {
+        open(continuousScrolling = true)
+        env.emit("requested", Ok(env.chapter("requested", "prev", "next")))
+        env.emit("prev", Ok(env.chapter("prev")))
+        env.emit("next", Ok(env.chapter("next")))
+        val slots = mode.uiState.contentList
+        val observedSizes = mutableListOf<Int>()
+
+        Snapshot.observe(
+            readObserver = null,
+            writeObserver = { state ->
+                if (state === slots) observedSizes += slots.size
+            },
+        ) { mode.changeChapter("replacement") }
+
+        assertTrue("The reset must publish a chapter-window update", observedSizes.isNotEmpty())
+        assertTrue("Observed window sizes: $observedSizes", observedSizes.all { it == 3 })
+        assertEquals(listOf(null, null, null), slots.toList())
+        assertEquals("replacement", mode.requestedChapterId)
     }
 
     @Test

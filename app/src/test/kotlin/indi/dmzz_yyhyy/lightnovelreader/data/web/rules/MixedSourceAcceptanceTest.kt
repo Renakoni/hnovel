@@ -279,7 +279,8 @@ class MixedSourceAcceptanceTest {
                     val content = books.getChapterContentFlow(requireNotNull(reading.lastReadChapterId), book.storageKey).last().get()!!
                     assertTrue(content.content.toString().contains(listOf("Wenku8 first", "A first", "B first")[index]))
                     for (flip in listOf(true, false)) {
-                        val modeScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+                        // Controller failures belong to this test, including during teardown.
+                        val modeScope = CoroutineScope(Job(coroutineContext.job) + Dispatchers.Default)
                         val mode: ReaderModeController = if (flip) FlipReaderController(chapterLoader, readingData, modeScope, { _, _ -> })
                             else ScrollReaderController(chapterLoader, readingData, modeScope, object : ContinuousScrollSettings {
                                 override fun getFlow() = flowOf(false)
