@@ -46,10 +46,11 @@ internal object WorkerRuleEvaluator {
                 hnovel.rhino.FailureCode.Cancelled -> FailureCode.Cancelled
                 hnovel.rhino.FailureCode.Syntax -> FailureCode.ScriptSyntax
                 hnovel.rhino.FailureCode.BridgeDenied -> FailureCode.BridgeDenied
+                hnovel.rhino.FailureCode.RequestSyntax -> FailureCode.RequestSyntax
                 hnovel.rhino.FailureCode.ResultTooLarge -> FailureCode.OutputLimit
                 null -> if (result.error.stage == RuleStage.Budget) FailureCode.Timeout else FailureCode.RuleRuntime
                 else -> FailureCode.ScriptRuntime
-            }, result.error)
+            }, if (scriptFailure == hnovel.rhino.FailureCode.RequestSyntax) result.error.copy(stage = RuleStage.Parse) else result.error)
         }
     }
 

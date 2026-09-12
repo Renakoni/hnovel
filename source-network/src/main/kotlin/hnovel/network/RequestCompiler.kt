@@ -1,5 +1,6 @@
 package hnovel.network
 
+import hnovel.rules.RequestOptionsJson
 import kotlinx.serialization.json.*
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.net.URLEncoder
@@ -16,7 +17,7 @@ class RequestCompiler {
                 return CompiledRequest.Rejected(FailureCode.ScriptRequired)
             }
             val optionStart = Regex(",\\s*(?=\\{)").find(rule)
-            val options = optionStart?.let { parseJson(rule.substring(it.range.last + 1)).jsonObject } ?: buildJsonObject {}
+            val options = optionStart?.let { RequestOptionsJson.options(rule.substring(it.range.last + 1)) } ?: buildJsonObject {}
             if (options.keys.any { it in setOf("js") }) return CompiledRequest.Rejected(FailureCode.ScriptRequired)
             if ("serverID" in options) return CompiledRequest.Rejected(FailureCode.BrowserRequired)
             if (options.keys.any { it !in setOf("method", "body", "headers", "header", "charset", "retry", "webView", "webJs", "webViewDelayTime") }) return CompiledRequest.Rejected(FailureCode.UnknownOption)
@@ -50,7 +51,7 @@ class RequestCompiler {
             if (method !in setOf("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD")) return CompiledRequest.Rejected(FailureCode.InvalidRequest)
             val mergedHeaders = headers.toMutableMap()
             val optionHeaders = options["headers"] ?: options["header"]
-            val parsedHeaders = if (optionHeaders is JsonPrimitive) parseJson(optionHeaders.content).jsonObject else optionHeaders?.jsonObject
+            val parsedHeaders = optionHeaders?.jsonObject
             parsedHeaders?.forEach { (key, value) ->
                 mergedHeaders.keys.removeAll { it.equals(key, true) }
                 mergedHeaders[key] = expand(value.jsonPrimitive.content, false)
@@ -70,7 +71,7 @@ class RequestCompiler {
                 isForm -> raw.split('&').joinToString("&") { field -> field.split('=', limit = 2)
                     .joinToString("=") { encode(expand(it, false), charset) } }
                 raw.trimStart().startsWith('{') || raw.trimStart().startsWith('[') ->
-                    expandJson(parseJson(raw)).toString()
+                    expandJson(RequestOptionsJson.parse(raw)).toString()
                 else -> expand(raw, false)
             } }
             if (body != null && method in setOf("GET", "HEAD")) return CompiledRequest.Rejected(FailureCode.InvalidRequest)
@@ -85,25 +86,6 @@ class RequestCompiler {
                 if (charset == "escape") "UTF-8" else charset, retry = retry, kind = kind, browser = browser))
         } catch (failure: BrokerFailure) { CompiledRequest.Rejected(failure.code) }
           catch (_: Exception) { CompiledRequest.Rejected(FailureCode.InvalidRequest) }
-    }
-
-    /** URL options/header/body strings are untrusted nested JSON, even inside a valid IPC string. */
-    private fun parseJson(text: String): JsonElement {
-        var depth = 0
-        var quoted = false
-        var escaped = false
-        for (char in text) {
-            if (quoted) {
-                if (escaped) escaped = false
-                else if (char == '\\') escaped = true
-                else if (char == '"') quoted = false
-            } else when (char) {
-                '"' -> quoted = true
-                '{', '[' -> { if (++depth > 64) throw BrokerFailure(RequestStage.Parse, FailureCode.InvalidRequest) }
-                '}', ']' -> depth--
-            }
-        }
-        return Json.parseToJsonElement(text)
     }
 
     private fun encode(value: String, charset: String): String = if (charset == "escape") buildString {
