@@ -1,5 +1,14 @@
 # Plugin API changes
 
+## Unreleased — source origin approval feedback (#139)
+
+- Add optional `DiscoveryProvider.permissionFailure` and `DiscoveryPermission` to
+  carry an exact redacted origin and resource purpose alongside `PermissionDenied`.
+  Providers without these details keep the default null value. Host UI validates
+  the origin again and never displays a path, query or credentials from this DTO.
+  No external API artifact is published; consumers of the changed interface should
+  recompile with this source revision.
+
 ## Unreleased — source network diagnostics (#138)
 
 - Append `DiscoveryError.AddressDenied` and `DiscoveryError.Dns`; an address-policy

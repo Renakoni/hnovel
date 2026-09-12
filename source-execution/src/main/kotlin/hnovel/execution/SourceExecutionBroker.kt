@@ -181,7 +181,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
                     require(args.size == if (post) 3 else 2)
                     val request = BrokerRequest("script-$requestNumber", args[0].jsonPrimitive.content,
                         method = name.substringAfter('.').uppercase(), headers = headerMap(args[if (post) 2 else 1]),
-                        body = if (post) args[1].jsonPrimitive.content else null, followRedirects = false)
+                        body = if (post) args[1].jsonPrimitive.content else null, followRedirects = false, kind = ResourceKind.Api)
                     fetch(request, hnovel.rhino.ScriptLimits.DEFAULT_BRIDGE_CHARS).scriptSnapshot(true)
                 }
                 "cache.get", "source.get", "source.getVariable" -> authorized {
@@ -211,7 +211,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
     }
 
     private fun compiled(number: Int, rule: String, headers: Map<String, String>): BrokerRequest {
-        val compiled = RequestCompiler().compile("script-$number", rule, baseUrl, keyword, page, headers)
+        val compiled = RequestCompiler().compile("script-$number", rule, baseUrl, keyword, page, headers, kind = ResourceKind.Api)
         check(compiled is CompiledRequest.Ready) { "Request requires an unsupported option" }
         return compiled.request
     }
@@ -228,9 +228,9 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
         return result.response
     }
 
-    private fun checkPermission(url: String) {
-        session.permissionFailure(url)?.let { code ->
-            requestFailure = BrokerResult.Failure(RequestStage.Permission, code)
+    private fun checkPermission(url: String, kind: ResourceKind = ResourceKind.Document) {
+        session.permissionFailureDetail(url, kind)?.let { failure ->
+            requestFailure = failure
             error("Resource permission denied")
         }
     }
@@ -281,7 +281,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
         require(suffix.matches(Regex("[a-zA-Z0-9]{1,12}"))) { "Invalid resource type" }
         val rule = if (options != null) rawUrl.substring(0, optionStart!!.range.first) + "," + JsonObject(options - "type") else rawUrl
         val request = compiled(number, rule, sourceHeaders).copy(kind = ResourceKind.Script)
-        authorized { checkPermission(request.url) }
+        authorized { checkPermission(request.url, request.kind) }
         val hash = java.security.MessageDigest.getInstance("SHA-256").digest(rawUrl.toByteArray())
             .joinToString("") { "%02x".format(it.toInt() and 255) }
         val path = "/resources/$hash.$suffix"
@@ -377,7 +377,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
         var size = 0L
         SourceLibraryDefinition.urls(definition).map { url ->
             val requestNumber = reserveRequest()
-            checkPermission(url)
+            checkPermission(url, ResourceKind.Script)
             val digest = java.security.MessageDigest.getInstance("SHA-256").digest(url.toByteArray(Charsets.UTF_8))
                 .joinToString("") { "%02x".format(it.toInt() and 255) }
             val key = "library:$digest"
@@ -398,7 +398,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
                     }
                 }
             }
-            checkPermission(entry.getValue("url").jsonPrimitive.content)
+            checkPermission(entry.getValue("url").jsonPrimitive.content, ResourceKind.Script)
             entry.getValue("code").jsonPrimitive.content.also { code ->
                 size += code.length.toLong() + 1
                 if (size > SourceLibraryDefinition.MAX_CHARS) throw LibraryTooLarge()

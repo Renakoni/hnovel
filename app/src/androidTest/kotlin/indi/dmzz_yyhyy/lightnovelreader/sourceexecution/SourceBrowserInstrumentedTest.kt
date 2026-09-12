@@ -22,6 +22,24 @@ import java.util.concurrent.ConcurrentLinkedQueue
 class SourceBrowserInstrumentedTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
 
+    @Test fun redirectRefusalPreservesRedactedOriginAcrossBrowserBinder(): Unit = runBlocking {
+        MockWebServer().use { source -> MockWebServer().use { cdn ->
+            source.start(); cdn.start()
+            source.enqueue(MockResponse().setResponseCode(302).setHeader("Location", cdn.url("/private?signature=secret")))
+            val root = File(context.cacheDir, "browser-origin-${System.nanoTime()}")
+            try {
+                SourceBroker(root.toPath(), browser = AndroidSourceBrowser(context)).use { broker ->
+                    val session = broker.open(SourceScope("permission", "A", "legado"), listOf(NetworkGrant(source.url("/").toString(), true)))
+                    val result = session.execute(BrokerRequest("browser", source.url("/").toString(), browser = BrowserOptions())) as BrokerResult.Failure
+                    assertEquals(hnovel.network.FailureCode.OriginDenied, result.code)
+                    assertEquals(OriginDenial(sourceOrigin(cdn.url("/").toString())!!, ResourceKind.Document), result.denial)
+                    assertEquals(listOf(result.denial), session.deniedOrigins)
+                    assertEquals(0, cdn.requestCount)
+                }
+            } finally { root.deleteRecursively() }
+        } }
+    }
+
     @Test fun dnsAndAddressFailuresRemainTypedAcrossBrowserBinder(): Unit = runBlocking {
         for ((dns, expected) in listOf(
             okhttp3.Dns { throw java.net.UnknownHostException() } to hnovel.network.FailureCode.Dns,

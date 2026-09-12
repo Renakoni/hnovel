@@ -29,6 +29,7 @@ data class DiscoveryPageContent(
     val buttons: List<DiscoveryButton> = emptyList(),
     val acting: Boolean = false,
     val errorField: String? = null,
+    val errorPermission: DiscoveryPermission? = null,
     val sections: List<SourceDiscoverySection> = emptyList(),
     val resetId: Long = 0,
 )
@@ -137,7 +138,7 @@ abstract class DiscoveryPageViewModel(
         pending = viewModelScope.launch {
             val result = discoveryRequest { discovery.interact(id, value, longClick) }
             if (serial != token || !active || state.value.selected != source) return@launch
-            result.onErr { put(source, state.value.content.getValue(source).copy(acting = false, error = it, errorField = discovery.failureField)) }
+            result.onErr { put(source, state.value.content.getValue(source).copy(acting = false, error = it, errorField = discovery.failureField, errorPermission = discovery.permissionFailure)) }
                 .onOk { update ->
                     put(source, applyCatalog(state.value.content.getValue(source), update.catalog))
                     // Record invalidation before an emitted action can stop/cancel this page's work.
@@ -162,7 +163,7 @@ abstract class DiscoveryPageViewModel(
         val token = Any()
         browserToken = token
         browser?.cancel()
-        put(command.source, state.value.content.getValue(command.source).copy(loading = false, acting = true, error = null, errorField = null))
+        put(command.source, state.value.content.getValue(command.source).copy(loading = false, acting = true, error = null, errorField = null, errorPermission = null))
         browser = viewModelScope.launch {
             val result = discoveryRequest { discovery.openBrowser(action) }
             // Its Activity covers this destination. Completion may precede onStart, after UI
@@ -170,7 +171,7 @@ abstract class DiscoveryPageViewModel(
             if (browserToken !== token) return@launch
             browserToken = null
             browser = null
-            result.onErr { put(command.source, state.value.content.getValue(command.source).copy(acting = false, error = it, errorField = discovery.failureField)) }
+            result.onErr { put(command.source, state.value.content.getValue(command.source).copy(acting = false, error = it, errorField = discovery.failureField, errorPermission = discovery.permissionFailure)) }
                 .onOk { refresh() }
         }
     }
@@ -213,7 +214,7 @@ abstract class DiscoveryPageViewModel(
 
     private fun applyCatalog(previous: DiscoveryPageContent, catalog: SourceDiscoveryCatalog) = previous.copy(
         categories = catalog.categories, filters = catalog.filters, values = catalog.values, buttons = catalog.buttons,
-        loaded = true, loading = false, acting = false, error = null, errorField = null)
+        loaded = true, loading = false, acting = false, error = null, errorField = null, errorPermission = null)
 
     protected open suspend fun loadFeed(discovery: SourceDiscovery) = discovery.feed()
 
@@ -239,12 +240,12 @@ abstract class DiscoveryPageViewModel(
                     val sections = loadFeed(discovery).getOrElse { return@discoveryRequest Err(it) }
                     content = content.copy(sections = sections)
                 }
-                Ok(content.copy(loaded = true, loading = false, acting = false, error = null, errorField = null))
+                Ok(content.copy(loaded = true, loading = false, acting = false, error = null, errorField = null, errorPermission = null))
             }
             if (serial != token || !active || state.value.selected != id) return@launch
             val current = state.value.content[id] ?: previous
             result.onOk { refreshCatalog -= id; put(id, it.copy(scroll = current.scroll)) }
-                .onErr { put(id, current.copy(error = it, loading = false, errorField = sessions[id]?.failureField)) }
+                .onErr { put(id, current.copy(error = it, loading = false, errorField = sessions[id]?.failureField, errorPermission = sessions[id]?.permissionFailure)) }
         }
     }
 }

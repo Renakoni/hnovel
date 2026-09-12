@@ -80,6 +80,7 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
     fun refresh() = launch { reload() }
     fun select(id: Identifier?) = launch { selectSource(id) }
     private suspend fun selectSource(id: Identifier?) {
+        reload() // Includes the current session's redacted refusals, including background image loads.
         mutable.update { it.copy(selected = id, preview = null, updateTarget = null) }
         if (id != null && mutable.value.installed.any { ImportedRuleSources.id(it.definition) == id }) {
             val target = sources.loginTarget(id)

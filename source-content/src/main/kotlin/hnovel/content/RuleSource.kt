@@ -446,7 +446,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         if (!authority.accepts(identity)) throw SourceContentException(ContentError.Unavailable, field)
         val response = when (result) {
             is BrokerResult.Success -> result.response
-            is BrokerResult.Failure -> throw SourceContentException(result.code.contentError(), field)
+            is BrokerResult.Failure -> throw SourceContentException(result.code.contentError(), field, result.denial)
         }
         if (kind == ResourceKind.Image) checkStatus(response.status, field)
         return response

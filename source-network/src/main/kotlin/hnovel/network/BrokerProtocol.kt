@@ -1,6 +1,16 @@
 package hnovel.network
 
 import kotlinx.serialization.Serializable
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+
+/** Display/approval identity only. Never retains paths, query parameters, fragments or credentials. */
+fun sourceOrigin(address: String): String? = address.toHttpUrlOrNull()?.takeIf {
+    it.username.isEmpty() && it.password.isEmpty() && it.host.length <= 253
+}?.let(NetworkPolicy::origin)?.takeIf { it.length <= 512 }
+
+@Serializable data class OriginDenial(val origin: String, val kind: ResourceKind) {
+    init { require(sourceOrigin(origin) == origin) }
+}
 
 /** Assigned by the host, never accepted as an authority claim from a script request. */
 data class SourceScope(val namespace: String, val sourceId: String, val profile: String, val accountGeneration: Long = 0) {
@@ -45,7 +55,8 @@ data class SourceScope(val namespace: String, val sourceId: String, val profile:
 
 @Serializable sealed interface BrokerResult {
     @Serializable data class Success(val response: BrokerResponse) : BrokerResult
-    @Serializable data class Failure(val stage: RequestStage, val code: FailureCode, val attempt: Int = 0) : BrokerResult
+    @Serializable data class Failure(val stage: RequestStage, val code: FailureCode, val attempt: Int = 0,
+        val denial: OriginDenial? = null) : BrokerResult
 }
 
 @Serializable sealed interface CompiledRequest {
@@ -85,7 +96,7 @@ class RequestVariables(initial: Map<String, String> = emptyMap(), private val ma
     fun snapshot(): Map<String, String> = values.toMap()
 }
 
-internal class BrokerFailure(val stage: RequestStage, val code: FailureCode) : java.io.IOException(code.name)
+internal class BrokerFailure(val stage: RequestStage, val code: FailureCode, val deniedOrigin: String? = null) : java.io.IOException(code.name)
 
 /** The execution owner serializes request dispatch and local response commits with revocation. */
 fun interface RequestCommitGuard {

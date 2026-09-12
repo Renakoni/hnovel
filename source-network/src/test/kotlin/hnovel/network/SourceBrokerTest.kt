@@ -178,7 +178,8 @@ class SourceBrokerTest {
             SourceBroker(directory.root.toPath()).use { broker ->
                 val a = broker.open(scope(), listOf(grant(first.url("/"))))
                 first.enqueue(MockResponse().setResponseCode(302).addHeader("Location", target.toString()))
-                assertEquals(BrokerResult.Failure(RequestStage.Permission, FailureCode.OriginDenied), a.execute(request(first.url("/"))))
+                assertEquals(BrokerResult.Failure(RequestStage.Permission, FailureCode.OriginDenied,
+                    denial = OriginDenial(sourceOrigin(target.toString())!!, ResourceKind.Document)), a.execute(request(first.url("/"))))
                 val b = broker.open(scope("b"), listOf(grant(first.url("/")), grant(target, false)))
                 first.enqueue(MockResponse().setResponseCode(302).addHeader("Location", target.toString()))
                 assertEquals(BrokerResult.Failure(RequestStage.Permission, FailureCode.AddressDenied), b.execute(request(first.url("/"))))
@@ -389,7 +390,8 @@ class SourceBrokerTest {
                 assertEquals(BrokerResult.Failure(RequestStage.Permission, FailureCode.InvalidRequest), session.execute(request(server.url("/")).copy(headers = mapOf("Host" to "other.invalid"))))
                 assertEquals(0, server.requestCount)
                 for (kind in ResourceKind.entries) {
-                    assertEquals(BrokerResult.Failure(RequestStage.Permission, FailureCode.OriginDenied),
+                    assertEquals(BrokerResult.Failure(RequestStage.Permission, FailureCode.OriginDenied,
+                        denial = OriginDenial("https://ungranted.invalid:443", kind)),
                         session.execute(BrokerRequest("resource", "https://ungranted.invalid/", kind = kind)))
                 }
                 server.enqueue(MockResponse().setBody("too large"))

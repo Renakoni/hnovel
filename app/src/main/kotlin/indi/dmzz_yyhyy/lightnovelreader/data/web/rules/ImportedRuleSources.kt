@@ -119,7 +119,7 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
     suspend fun installedSources(): List<InstalledRuleSource> = withContext(Dispatchers.IO) {
         restore()
         lock.withLock { active.values.map { InstalledRuleSource(it.installed.definition,
-            it.installed.origins, it.installed.previous?.definition) } }
+            it.installed.origins, it.installed.previous?.definition, it.session?.deniedOrigins.orEmpty()) } }
     }
 
     /** Validated candidate is compared again at commit; remove/account changes cannot resurrect it. */
@@ -248,7 +248,8 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
     }
 }
 
-data class InstalledRuleSource(val definition: SourceDefinition, val origins: List<NetworkGrant>, val previous: SourceDefinition?)
+data class InstalledRuleSource(val definition: SourceDefinition, val origins: List<NetworkGrant>, val previous: SourceDefinition?,
+    val deniedOrigins: List<hnovel.network.OriginDenial> = emptyList())
 
 internal data class RuleLoginTarget(val source: Identifier, val revision: String, val generation: Long,
     val rules: RuleSource, val session: hnovel.network.SourceSession)

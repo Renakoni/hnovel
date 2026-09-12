@@ -47,6 +47,9 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
     private val browser: BrowserExecutor? = null) : AutoCloseable {
     internal val grants = grants.map { it.copy(headers = it.headers.toMap()) }
     private val policy = NetworkPolicy(this.grants, dns)
+    private val denied = linkedSetOf<OriginDenial>()
+    /** Ephemeral, bounded and source/account owned; revision replacement does not inherit these requests. */
+    val deniedOrigins: List<OriginDenial> get() = synchronized(this) { denied.toList() }
     private val lifetime = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val permits = Semaphore(limits.concurrency)
     private val rate = Mutex()
@@ -147,11 +150,20 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
     }
 
     /** Checks current grants for a cached resource without opening a connection. */
-    fun permissionFailure(url: String): FailureCode? {
+    fun permissionFailure(url: String): FailureCode? = permissionFailureDetail(url)?.code
+
+    fun permissionFailureDetail(url: String, kind: ResourceKind = ResourceKind.Document): BrokerResult.Failure? {
         checkOpen()
-        val parsed = url.toHttpUrlOrNull() ?: return FailureCode.InvalidRequest
+        val parsed = url.toHttpUrlOrNull() ?: return BrokerResult.Failure(RequestStage.Parse, FailureCode.InvalidRequest)
         return try { policy.check(parsed); null }
-        catch (failure: BrokerFailure) { failure.code }
+        catch (failure: BrokerFailure) { permissionResult(failure, kind) }
+    }
+
+    @Synchronized private fun permissionResult(failure: BrokerFailure, kind: ResourceKind): BrokerResult.Failure {
+        checkOpen()
+        val detail = failure.deniedOrigin?.let { OriginDenial(it, kind) }
+        if (detail != null && denied.size < 32) denied.add(detail)
+        return BrokerResult.Failure(failure.stage, failure.code, denial = detail)
     }
 
     suspend fun execute(request: BrokerRequest, guard: RequestCommitGuard = RequestCommitGuard { it() }): BrokerResult {
@@ -171,7 +183,11 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
             } catch (_: TimeoutCancellationException) {
                 BrokerResult.Failure(stage, FailureCode.Timeout)
             } catch (cancelled: CancellationException) { throw cancelled }
-              catch (failure: BrokerFailure) { BrokerResult.Failure(failure.stage, failure.code) }
+              catch (failure: BrokerFailure) {
+                  var result: BrokerResult.Failure? = null
+                  guard.commit { result = permissionResult(failure, snapshot.kind) }
+                  checkNotNull(result)
+              }
               catch (_: IllegalArgumentException) { BrokerResult.Failure(RequestStage.Parse, FailureCode.InvalidRequest) }
               catch (_: java.net.UnknownHostException) { BrokerResult.Failure(RequestStage.Connect, FailureCode.Dns) }
               catch (_: IOException) { BrokerResult.Failure(RequestStage.Connect, FailureCode.Network) }
@@ -336,6 +352,7 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
     private fun checkOpen() { if (closed) throw CancellationException("Source session retired") }
     @Synchronized override fun close() {
         lifetime.cancel()
+        denied.clear()
         client.dispatcher.cancelAll()
         client.connectionPool.evictAll()
         client.dispatcher.executorService.shutdown()

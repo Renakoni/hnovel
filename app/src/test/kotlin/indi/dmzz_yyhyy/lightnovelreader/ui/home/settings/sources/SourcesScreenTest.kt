@@ -55,6 +55,23 @@ class SourcesScreenTest {
         compose.onNodeWithText("Paste source JSON").assertExists()
     }
 
+    @Test fun blockedCoverOriginOnlyChangesTheDraftUntilTheOwnerIsSaved() {
+        val definition = SourceDefinition("owner", "legado", "fixture", "https://books.invalid/", "Owner", true,
+            false, ImportOrigin(ImportOrigin.Kind.Paste), "digest", 1, "{}")
+        val id = ImportedRuleSources.id(definition)
+        val state = SourceManagementState(installed = listOf(InstalledRuleSource(definition,
+            listOf(hnovel.network.NetworkGrant("https://books.invalid/")), null,
+            listOf(hnovel.network.OriginDenial("https://cdn.invalid:443", hnovel.network.ResourceKind.Image)))), selected = id)
+        activity.get().setContent { MaterialTheme { SourcesScreen(state, model, onDiagnostics = {}) {} } }
+        compose.onNodeWithText("https://cdn.invalid:443").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Cover or content image").assertExists()
+        compose.onNodeWithText("Add to permission draft").performScrollTo().performClick()
+        verify(exactly = 0) { model.saveConfiguration(any(), any(), any()) }
+        compose.onNodeWithText("In permission draft").assertIsNotEnabled()
+        compose.onNodeWithText("Save configuration and permissions").performScrollTo().performClick()
+        verify(exactly = 1) { model.saveConfiguration(id, "", "https://books.invalid/\nhttps://cdn.invalid:443") }
+    }
+
     @Test fun importedSearchOnlySourceHasAnExplicitSearchEntryWithItsIdentity() {
         val definition = SourceDefinition("search-only", "legado", "fixture", "https://fixture.invalid/", "Search only", true,
             false, ImportOrigin(ImportOrigin.Kind.Paste), "digest", 1, "{}")

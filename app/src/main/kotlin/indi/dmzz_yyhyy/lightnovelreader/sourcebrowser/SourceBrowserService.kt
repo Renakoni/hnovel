@@ -119,6 +119,7 @@ class SourceBrowserService : Service() {
     private fun request(request: BrokerRequest, initial: Boolean = false): BrokerResponse {
         val result = Json.decodeFromString<BrokerResult>(rpc(if (initial) "initialRequest" else "request", buildJsonObject {
             put("url", request.url); put("method", request.method)
+            put("kind", request.kind.name)
             put("headers", JsonObject(request.headers.mapValues { JsonPrimitive(it.value) }))
             request.body?.let { put("body", it) }
         }))
@@ -137,7 +138,12 @@ class SourceBrowserService : Service() {
             mapOf("Content-Type" to listOf("text/html; charset=UTF-8")), job.options.html!!.toByteArray(), "UTF-8", 0)
         else redirected?.takeIf { incoming.isForMainFrame && it.finalUrl == incoming.url.toString() }?.also { redirected = null }
         ?: request(if (initial) job.request else BrokerRequest("browser", incoming.url.toString(),
-            method = incoming.method.also { check(it == "GET" || it == "HEAD") }, headers = incoming.requestHeaders), initial = initial)
+            method = incoming.method.also { check(it == "GET" || it == "HEAD") }, headers = incoming.requestHeaders,
+            kind = if (incoming.isForMainFrame) ResourceKind.Document else when {
+                incoming.requestHeaders["Accept"]?.contains("image/") == true -> ResourceKind.Image
+                incoming.url.path?.endsWith(".js") == true -> ResourceKind.Script
+                else -> ResourceKind.Document
+            }), initial = initial)
         if (!job.options.overrideUrl && matches(response.finalUrl)) handler.post { completeText(response.finalUrl) }
         val responseType = response.headers.entries.firstOrNull { it.key.equals("Content-Type", true) }?.value?.firstOrNull()
             ?.substringBefore(';') ?: if (incoming.isForMainFrame) "text/html" else "application/octet-stream"
@@ -220,7 +226,8 @@ class SourceBrowserService : Service() {
             require(operation in setOf("request", "navigate", "cookie", "storage") && arguments.length <= 65536)
             val args = Json.parseToJsonElement(arguments).jsonObject
             if (operation !in setOf("request", "navigate")) return@runCatching rpc(operation, args)
-            val result = Json.decodeFromString<BrokerResult>(rpc("request", args))
+            val result = Json.decodeFromString<BrokerResult>(rpc("request", JsonObject(args +
+                ("kind" to JsonPrimitive(if (operation == "navigate") ResourceKind.Document.name else ResourceKind.Api.name)))))
             if (result is BrokerResult.Failure && operation == "navigate") complete(result)
             check(result is BrokerResult.Success)
             if (operation == "navigate") {

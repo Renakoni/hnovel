@@ -29,6 +29,7 @@ class SourceDiscovery internal constructor(private val runtime: SourceRuntime, p
     val hasCategories get() = provider.hasCategories && SourceCapability.Categories in runtime.metadata.capabilities
     val hasInteractions get() = provider.hasInteractions
     val failureField get() = provider.failureField
+    val permissionFailure get() = provider.permissionFailure
 
     fun forSession(id: String, values: Map<String, String> = emptyMap(), environment: DiscoveryEnvironment = DiscoveryEnvironment()): SourceDiscovery {
         runtime.checkAvailable()
@@ -94,6 +95,7 @@ class SourceDiscovery internal constructor(private val runtime: SourceRuntime, p
 class DiscoverySession internal constructor(private val source: SourceDiscovery, private val target: String) {
     val filters = source.filters(target)
     val failureField get() = source.failureField
+    val permissionFailure get() = source.permissionFailure
     private val mutex = Mutex()
     private var values: Map<String, String> = emptyMap()
     private var cursor: String? = null

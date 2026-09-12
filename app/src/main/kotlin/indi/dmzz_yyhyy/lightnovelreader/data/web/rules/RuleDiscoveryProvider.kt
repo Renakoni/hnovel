@@ -16,6 +16,8 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
     override val hasInteractions = true
     override var failureField: String? = null
         private set
+    override var permissionFailure: DiscoveryPermission? = null
+        private set
     private var current: DiscoveryCatalog? = null
     override fun openSession(id: String, values: Map<String, String>, environment: DiscoveryEnvironment) =
         RuleDiscoveryProvider(source, source.openDiscovery(id, values, RuleDiscoveryEnvironment(environment.themeMode,
@@ -70,9 +72,14 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
         } }, catalog.values, catalog.rows.filter { it.type == "button" }.map { DiscoveryButton(it.id, it.title) })
 
     private fun book(book: RuleBook) = DiscoveryBook(book.id, book.title, book.author, book.coverUrl)
-    private suspend fun <T> request(block: suspend () -> T): Result<T, DiscoveryError> = try { failureField = null; Ok(block()) }
+    private suspend fun <T> request(block: suspend () -> T): Result<T, DiscoveryError> = try {
+        failureField = null; permissionFailure = null; Ok(block())
+    }
     catch (cancelled: CancellationException) { throw cancelled }
-    catch (failure: SourceContentException) { failureField = failure.field; Err(when (failure.code) {
+    catch (failure: SourceContentException) {
+        failureField = failure.field
+        permissionFailure = failure.denial?.let { DiscoveryPermission(it.origin, it.kind.name) }
+        Err(when (failure.code) {
         ContentError.MissingCapability -> DiscoveryError.Unsupported
         ContentError.LoginRequired, ContentError.BrowserRequired -> DiscoveryError.AuthenticationRequired
         ContentError.PermissionDenied -> DiscoveryError.PermissionDenied

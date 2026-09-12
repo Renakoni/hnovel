@@ -3,6 +3,7 @@ package indi.dmzz_yyhyy.lightnovelreader.data.web.rules
 import android.app.Application
 import android.content.ContextWrapper
 import com.github.michaelbull.result.get
+import com.github.michaelbull.result.getError
 import hnovel.content.RuleSourceFixture
 import hnovel.content.RuleTaskRunner
 import hnovel.imports.*
@@ -36,6 +37,44 @@ class SourceRevisionUpdatesTest {
         assertNull(commit.error)
         assertNull(commit.items.single().error)
         return sources.definitions.list().single()
+    }
+
+    @Test fun approvingACoverOriginRetiresOnlyItsOwnerAndClearsOldRequests() = runBlocking {
+        val host = Host()
+        RuleSourceFixture().use { fixture -> okhttp3.mockwebserver.MockWebServer().use { cdn ->
+            cdn.start()
+            val accounts = SourceSessionManager(fixture.authority)
+            val registry = WebSourceRegistry(fixture.authority)
+            val sources = ImportedRuleSources(host, registry, fixture.authority, accounts, fixture.runner)
+            try {
+                val grants = listOf(NetworkGrant(fixture.server.url("/").toString(), true))
+                val a = sources.activate(candidate(sources, fixture.raw()).reference(), grants)
+                val rawB = fixture.raw("B")
+                val preview = sources.importer.preview(rawB.toString())
+                val committed = sources.importer.commit(preview, listOf(ImportSelection(0, ImportDecision.Add)))
+                val b = sources.activate(committed.items.single().reference!!, grants)
+                val oldA = (registry.resolve(a) as SourceResolution.Ready).runtime
+                val runtimeB = (registry.resolve(b) as SourceResolution.Ready).runtime
+                val cover = cdn.url("/cover.png?signature=secret").toString()
+                val failure = oldA.imageBytes("book", cover, true).getError()!!.throwable as hnovel.content.SourceContentException
+                assertEquals(hnovel.network.ResourceKind.Image, failure.denial!!.kind)
+                assertEquals(hnovel.network.sourceOrigin(cover), failure.denial!!.origin)
+                assertEquals(0, cdn.requestCount)
+                assertEquals(1, sources.installedSources().single { ImportedRuleSources.id(it.definition) == a }.deniedOrigins.size)
+                assertTrue(sources.installedSources().single { ImportedRuleSources.id(it.definition) == b }.deniedOrigins.isEmpty())
+                val updates = SourceRevisionUpdates(host, sources, accounts, fixture.runner, fixture.authority)
+                updates.updatePermissions(a, grants + NetworkGrant(cdn.url("/").toString(), true))
+                assertFalse(oldA.isAvailable); assertTrue(runtimeB.isAvailable)
+                assertTrue(sources.installedSources().single { ImportedRuleSources.id(it.definition) == a }.deniedOrigins.isEmpty())
+                cdn.enqueue(okhttp3.mockwebserver.MockResponse().setBody(okio.Buffer().write(byteArrayOf(1, 2, 3))))
+                val next = (registry.resolve(a) as SourceResolution.Ready).runtime
+                assertArrayEquals(byteArrayOf(3, 2, 1), next.imageBytes("book", cover, true).get()!!)
+                assertTrue(runtimeB.imageBytes("book", cover, true).isErr)
+                assertEquals(1, cdn.requestCount)
+                sources.rotateAccount(b)
+                assertTrue(sources.installedSources().single { ImportedRuleSources.id(it.definition) == b }.deniedOrigins.isEmpty())
+            } finally { sources.stop(); host.root.deleteRecursively() }
+        } }
     }
 
     @Test fun updateAndRollbackPreserveIdentityRetireOldRuntimeAndRestoreFromOneSnapshot() = runBlocking {

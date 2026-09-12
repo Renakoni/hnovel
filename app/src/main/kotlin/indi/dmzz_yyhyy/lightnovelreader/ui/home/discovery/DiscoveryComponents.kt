@@ -12,6 +12,8 @@ import androidx.compose.ui.unit.dp
 import indi.dmzz_yyhyy.lightnovelreader.R
 import io.nightfish.lightnovelreader.api.web.discovery.DiscoveryError
 import io.nightfish.lightnovelreader.api.web.discovery.DiscoveryFilter
+import io.nightfish.lightnovelreader.api.web.discovery.DiscoveryPermission
+import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.sources.SourcePermissionLabel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -33,7 +35,8 @@ internal fun DiscoveryEmpty(message: String, onManageSources: () -> Unit) {
 }
 
 @Composable
-internal fun DiscoveryFailure(error: DiscoveryError, retry: () -> Unit, manage: () -> Unit, back: (() -> Unit)?, field: String? = null) {
+internal fun DiscoveryFailure(error: DiscoveryError, retry: () -> Unit, manage: () -> Unit, back: (() -> Unit)?, field: String? = null,
+    permission: DiscoveryPermission? = null) {
     val message = when (error) {
         DiscoveryError.Unsupported -> R.string.discovery_unsupported
         DiscoveryError.AuthenticationRequired -> R.string.discovery_login_required
@@ -49,6 +52,7 @@ internal fun DiscoveryFailure(error: DiscoveryError, retry: () -> Unit, manage: 
     }
     Column(Modifier.padding(16.dp)) {
         Text(stringResource(message), color = MaterialTheme.colorScheme.error)
+        if (error == DiscoveryError.PermissionDenied) permission?.let { SourcePermissionLabel(it.origin, it.resourceKind) }
         field?.let { Text(stringResource(R.string.discovery_rule_field, it), style = MaterialTheme.typography.bodySmall) }
         Row {
             TextButton(onClick = retry) { Text(stringResource(R.string.discovery_retry)) }

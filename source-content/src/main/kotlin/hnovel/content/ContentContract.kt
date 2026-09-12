@@ -24,7 +24,8 @@ internal fun hnovel.network.FailureCode.contentError(): ContentError = when (thi
 }
 
 /** Only stable codes and definition field names cross into UI/logging. */
-class SourceContentException(val code: ContentError, val field: String) : Exception("${code.name}: $field")
+class SourceContentException(val code: ContentError, val field: String,
+    val denial: hnovel.network.OriginDenial? = null) : Exception("${code.name}: $field")
 
 @Serializable data class ScriptState(
     val metadata: JsonObject = JsonObject(emptyMap()),

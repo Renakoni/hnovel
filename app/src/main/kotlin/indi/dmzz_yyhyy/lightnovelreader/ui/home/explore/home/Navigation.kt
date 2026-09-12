@@ -25,7 +25,7 @@ fun NavGraphBuilder.exploreHomeDestination() {
             onBook = { nav.navigateToBookDetailDestination(it.storageKey) },
             onSearch = { model.search()?.let { nav.navigate(it) } },
             onCategories = { model.categories()?.let { nav.navigateToMainRoot(it) } },
-            onManageSources = { nav.navigate(Route.Main.Settings.Sources) },
+            onManageSources = { nav.navigate(state.selected?.let { Route.Main.Settings.SourceDetail(it.namespace, it.id) } ?: Route.Main.Settings.Sources) },
             onInput = { id, value -> model.interact(id, value) },
             onAction = { id, longClick -> model.interact(id, longClick = longClick) },
             onSettings = nav::navigateToSettingsDestination)

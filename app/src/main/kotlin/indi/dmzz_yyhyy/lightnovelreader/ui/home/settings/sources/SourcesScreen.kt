@@ -24,6 +24,7 @@ import androidx.navigation.toRoute
 import indi.dmzz_yyhyy.lightnovelreader.R
 import hnovel.imports.EXTENSION_PROFILE
 import hnovel.imports.LEGADO_PROFILE
+import hnovel.imports.SourceOriginCandidates
 import indi.dmzz_yyhyy.lightnovelreader.data.web.SourceCapability
 import indi.dmzz_yyhyy.lightnovelreader.data.web.rules.ImportedRuleSources
 import indi.dmzz_yyhyy.lightnovelreader.data.web.rules.LoginStatus
@@ -117,6 +118,13 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                         OutlinedTextField(configuration, { configuration = it }, Modifier.fillMaxWidth(), label = { Text(variableLabel) }, enabled = !state.busy)
                         Text(stringResource(R.string.sources_permissions_help))
                         Text(stringResource(R.string.sources_network_help), style = MaterialTheme.typography.bodySmall)
+                        if (installed.deniedOrigins.isNotEmpty()) {
+                            Text(stringResource(R.string.sources_denied_origins), style = MaterialTheme.typography.titleMedium)
+                            Text(stringResource(R.string.sources_origin_candidates_help))
+                            installed.deniedOrigins.forEach { request ->
+                                SourcePermissionCandidate(request.origin, request.kind.name, permissions, state.busy) { permissions = it }
+                            }
+                        }
                         OutlinedTextField(permissions, { permissions = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.sources_permissions)) }, enabled = !state.busy)
                         Button(onClick = { model.saveConfiguration(state.selected!!, configuration, permissions) }, enabled = !state.busy) { Text(stringResource(R.string.sources_save)) }
                         OutlinedButton(onClick = { model.checkUpdate(state.selected!!) }, enabled = !state.busy) { Text(stringResource(R.string.sources_check_update)) }
@@ -163,7 +171,10 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                     val id = ImportedRuleSources.id(source.definition)
                     val available = state.registry.any { it.metadata.id == id && it.metadata.capabilities.isNotEmpty() }
                     ListItem(headlineContent = { Text(source.definition.displayName) },
-                        supportingContent = { Text(stringResource(if (available) R.string.sources_available else R.string.sources_unavailable)) },
+                        supportingContent = { Column {
+                            Text(stringResource(if (available) R.string.sources_available else R.string.sources_unavailable))
+                            if (source.deniedOrigins.isNotEmpty()) Text(stringResource(R.string.sources_denied_count, source.deniedOrigins.size))
+                        } },
                         modifier = Modifier.clickable(enabled = !state.busy) { model.select(id) })
                 }
             }
@@ -194,8 +205,17 @@ private fun Preview(state: SourceManagementState, model: SourcesViewModel) {
                     if (!candidate.enabled) Text(stringResource(R.string.sources_disabled_definition))
                 }
             }
-            if (selected[candidate.index] == true) OutlinedTextField(permissions[candidate.index].orEmpty(), { permissions[candidate.index] = it },
-                Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.sources_permissions)) }, enabled = !state.busy)
+            if (selected[candidate.index] == true) {
+                val origins = remember(candidate) { SourceOriginCandidates.discover(Json.parseToJsonElement(candidate.rawJson).jsonObject) }
+                Text(stringResource(R.string.sources_origin_candidates_help))
+                origins.forEach { origin ->
+                    SourcePermissionCandidate(origin.origin, origin.kind.name, permissions[candidate.index].orEmpty(), state.busy) {
+                        permissions[candidate.index] = it
+                    }
+                }
+                OutlinedTextField(permissions[candidate.index].orEmpty(), { permissions[candidate.index] = it },
+                    Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.sources_permissions)) }, enabled = !state.busy)
+            }
         }
         if (state.updateTarget != null) Row {
             Checkbox(approveIdentity, { approveIdentity = it }, enabled = !state.busy)

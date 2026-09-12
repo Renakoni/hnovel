@@ -7,6 +7,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.book.SourceBookId
 import indi.dmzz_yyhyy.lightnovelreader.data.web.*
 import io.nightfish.lightnovelreader.api.identifier.Identifier
 import io.nightfish.lightnovelreader.api.web.discovery.DiscoveryError
+import io.nightfish.lightnovelreader.api.web.discovery.DiscoveryPermission
 import io.nightfish.lightnovelreader.api.web.search.SearchResult
 import io.nightfish.lightnovelreader.api.web.search.SearchType
 import kotlinx.coroutines.currentCoroutineContext
@@ -55,7 +56,7 @@ class SourceSearch internal constructor(private val runtime: SourceRuntime, val 
     }
 }
 
-data class SourceSearchFailure(val error: DiscoveryError, val field: String? = null)
+data class SourceSearchFailure(val error: DiscoveryError, val field: String? = null, val permission: DiscoveryPermission? = null)
 
 /** Render typed failures without displaying exception messages, URLs or source credentials. */
 internal fun searchFailure(failure: Throwable): SourceSearchFailure = when (failure) {
@@ -68,7 +69,7 @@ internal fun searchFailure(failure: Throwable): SourceSearchFailure = when (fail
         ContentError.Network -> DiscoveryError.Network
         ContentError.Unavailable -> DiscoveryError.Unavailable
         else -> DiscoveryError.InvalidRules
-    }, failure.field)
+    }, failure.field, failure.denial?.let { DiscoveryPermission(it.origin, it.kind.name) })
     is java.io.IOException -> SourceSearchFailure(DiscoveryError.Network)
     else -> SourceSearchFailure(DiscoveryError.Unavailable)
 }

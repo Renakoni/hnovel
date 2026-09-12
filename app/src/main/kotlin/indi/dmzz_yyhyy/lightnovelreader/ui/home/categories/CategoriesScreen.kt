@@ -51,7 +51,7 @@ fun CategoriesScreen(
                 val id = state.selected
                 val content = state.content[id] ?: DiscoveryPageContent()
                 if (content.loading || content.acting) LinearProgressIndicator(Modifier.fillMaxWidth())
-                content.error?.let { DiscoveryFailure(it, onRefresh, onManageSources, onBack, content.errorField) }
+                content.error?.let { DiscoveryFailure(it, onRefresh, onManageSources, onBack, content.errorField, content.errorPermission) }
                 if (id != null) key(id, content.resetId) {
                     val list = rememberLazyListState(content.scroll.index, content.scroll.offset)
                     LaunchedEffect(list) {

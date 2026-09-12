@@ -1,4 +1,14 @@
 <resources>
+    <string name="sources_origin_candidates_help">Referenced or blocked sites are suggestions only. Review each site, add it to the draft, then save to authorize it. Paths and credentials are never shown.</string>
+    <string name="sources_denied_origins">Blocked requests for this source</string>
+    <string name="sources_denied_count">%1$d site requests need review</string>
+    <string name="sources_origin_add">Add to permission draft</string>
+    <string name="sources_origin_in_draft">In permission draft</string>
+    <string name="sources_resource_image">Cover or content image</string>
+    <string name="sources_resource_script">Source script library</string>
+    <string name="sources_resource_api">API request</string>
+    <string name="sources_resource_import">Source import</string>
+    <string name="sources_resource_document">Page or content request</string>
     <string name="sources_back">Back</string>
     <string name="sources_title">Book sources</string>
     <string name="sources_manage_help">Add, configure, sign in and update book sources</string>

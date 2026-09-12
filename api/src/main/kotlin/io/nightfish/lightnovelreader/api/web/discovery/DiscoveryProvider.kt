@@ -42,9 +42,13 @@ enum class DiscoveryError {
     InvalidRequest, InvalidResponse, Unavailable, Limit, AddressDenied, Dns,
 }
 
+/** Source-bound, redacted exact origin; resourceKind is a host resource label, never a URL or header. */
+data class DiscoveryPermission(val origin: String, val resourceKind: String)
+
 /** Shared providers are stateless. openSession may create a page-owned provider for rule drafts. */
 interface DiscoveryProvider {
     val failureField: String? get() = null
+    val permissionFailure: DiscoveryPermission? get() = null
     val hasFeed: Boolean get() = false
     val hasCategories: Boolean get() = false
     /** A feed page also displays this provider's catalogue inputs and actions. */
