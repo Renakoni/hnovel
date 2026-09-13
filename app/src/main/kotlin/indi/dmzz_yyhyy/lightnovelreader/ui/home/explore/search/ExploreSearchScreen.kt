@@ -125,7 +125,7 @@ fun ExploreSearchScreen(
                             ) },
                             leadingIcon = {
                                 IconButton(onClick = onClickBack) {
-                                    Icon(painter = painterResource(R.drawable.arrow_back_24px), contentDescription = "back")
+                                    Icon(painter = painterResource(R.drawable.arrow_back_24px), contentDescription = stringResource(R.string.sources_back))
                                 }
                             },
                             trailingIcon = {
@@ -135,11 +135,11 @@ fun ExploreSearchScreen(
                                             exploreSearchUiState.setSearchBarExpandedState(true)
                                             updateSuggestions("")
                                         }) {
-                                            Icon(painter = painterResource(R.drawable.close_24px), contentDescription = "clear")
+                                            Icon(painter = painterResource(R.drawable.close_24px), contentDescription = stringResource(R.string.search_clear_query))
                                         }
                                     if (exploreSearchUiState.searchBarExpanded)
                                         IconButton(onClick = { exploreSearchUiState.setDropdownMenuExpandedState(true) }) {
-                                            Icon(painter = painterResource(R.drawable.filter_alt_24px), contentDescription = "filter")
+                                            Icon(painter = painterResource(R.drawable.filter_alt_24px), contentDescription = stringResource(R.string.search_choose_type))
                                         }
                                 }
                             },
@@ -235,7 +235,7 @@ fun ExploreSearchScreen(
                                         IconButton(onClick = { onClickDeleteHistory(history) }) {
                                             Icon(
                                                 painter = painterResource(R.drawable.close_24px),
-                                                contentDescription = "delete",
+                                                contentDescription = stringResource(R.string.search_delete_history),
                                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                         }

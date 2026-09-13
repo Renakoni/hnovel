@@ -10,11 +10,13 @@ import hnovel.network.StorageArea
 import hnovel.network.StorageRequest
 import hnovel.network.StorageRequestKey
 import hnovel.network.NetworkGrant
+import io.mockk.*
 import indi.dmzz_yyhyy.lightnovelreader.data.web.*
 import indi.dmzz_yyhyy.lightnovelreader.data.web.rules.*
 import indi.dmzz_yyhyy.lightnovelreader.data.web.zlibrary.ZLibrarySources
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import kotlinx.serialization.json.*
@@ -31,6 +33,43 @@ import java.nio.file.Files
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [27], application = Application::class)
 class SourcesViewModelTest {
+    @Test fun initializationFailureKeepsSettingsOpenWithoutReadingRuntimeAccountData(): Unit = runBlocking {
+        Dispatchers.setMain(Dispatchers.Unconfined)
+        val root = Files.createTempDirectory("source-initialization-ui").toFile()
+        val context = object : ContextWrapper(RuntimeEnvironment.getApplication()) {
+            override fun getFilesDir() = File(root, "files")
+            override fun getCacheDir() = File(root, "cache")
+        }
+        val definition = hnovel.imports.SourceDefinition("broken", "legado", "fixture", "https://fixture.invalid/", "Broken", true,
+            false, hnovel.imports.ImportOrigin(hnovel.imports.ImportOrigin.Kind.Paste), "digest", 1, "{}")
+        val id = ImportedRuleSources.id(definition)
+        val registry = WebSourceRegistry(hnovel.execution.ExecutionAuthority())
+        val source = mockk<io.nightfish.lightnovelreader.api.web.WebBookDataSource>()
+        every { source.id } returns id
+        every { source.onLoad() } throws IllegalStateException("controlled initialization failure")
+        val registration = registry.register(SourceMetadata(io.nightfish.lightnovelreader.api.web.WebDataSourceItem(id, "Broken", "fixture"),
+            setOf(SourceCapability.Search, SourceCapability.Login))) { source }
+        val sources = mockk<ImportedRuleSources>()
+        coEvery { sources.installedSources() } returns listOf(InstalledRuleSource(definition, listOf(NetworkGrant("https://fixture.invalid/")), null))
+        val login = mockk<SourceLoginService>(relaxed = true)
+        val zLibrary = mockk<ZLibrarySources>()
+        every { zLibrary.state } returns MutableStateFlow(indi.dmzz_yyhyy.lightnovelreader.data.web.zlibrary.ZLibraryState())
+        val model = SourcesViewModel(context, sources, mockk(), login, registry, zLibrary)
+        suspend fun idle() = withTimeout(10000) { model.state.first { !it.busy } }
+        try {
+            idle()
+            assertEquals(SourceStatus.Registered, registry.sources.value.single().status)
+            model.select(id)
+            assertEquals(id, idle().selected)
+            withTimeout(10000) { model.state.first { it.registry.singleOrNull()?.status == SourceStatus.Failed } }
+            verify(exactly = 1) { source.onLoad() }
+            coVerify(exactly = 0) { sources.loginTarget(any()) }
+            coVerify(exactly = 0) { login.status(any()) }
+            model.beginLogin(id); idle()
+            coVerify(exactly = 0) { login.begin(any()) }
+        } finally { model.cancel(); registration.unregister(); Dispatchers.resetMain(); root.deleteRecursively() }
+    }
+
     @Test fun disabledImportsCanBeSelectedAndPermissionsNeverEraseInactiveConfiguration(): Unit = runBlocking {
         Dispatchers.setMain(Dispatchers.Unconfined)
         val root = Files.createTempDirectory("source-preferences-ui").toFile()

@@ -21,7 +21,7 @@
     <string name="sources_preview">预览书源</string>
     <string name="sources_empty">尚未添加书源。添加后可阅读更多站点的书籍。</string>
     <string name="sources_builtin">内置书源</string>
-    <string name="sources_available">可用</string>
+    <string name="sources_available">已启用</string>
     <string name="sources_unavailable">不可用 · 请检查书源设置</string>
     <string name="sources_format">格式：%1$s</string>
     <string name="sources_revision">修订：%1$s</string>
@@ -54,7 +54,7 @@
     <string name="sources_disabled_help">停用会取消此来源的请求，已保存的书籍、阅读进度和离线内容会保留。</string>
     <string name="sources_save_permissions">保存权限</string>
     <string name="sources_identity_approval">允许所选更新更改来源地址，同时保留现有书籍与此书源的关联。</string>
-    <string name="sources_apply">批准权限并应用所选书源</string>
+    <string name="sources_apply">应用所选来源</string>
     <string name="sources_import_problem">%1$s · %2$s</string>
     <string name="sources_import_invalid">部分条目无法导入。请查看预览并选择有效条目。</string>
     <string name="sources_action_failed">操作失败，请检查输入和权限后重试。</string>

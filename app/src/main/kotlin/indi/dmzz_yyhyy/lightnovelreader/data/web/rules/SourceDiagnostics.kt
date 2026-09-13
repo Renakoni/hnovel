@@ -32,7 +32,7 @@ class SourceDiagnostics @Inject constructor(@ApplicationContext private val cont
     private val sources: ImportedRuleSources, private val runner: RuleTaskRunner,
     private val authority: ExecutionAuthority, private val accounts: SourceSessionManager,
     private val registry: WebSourceRegistry, private val cipher: StorageCipher,
-    private val browser: BrowserExecutor? = null) {
+    private val browser: BrowserExecutor? = null, private val history: SourceCheckHistory = SourceCheckHistory(context)) {
     suspend fun run(source: Identifier, stage: DiagnosticStage, keyword: String, bookUrl: String, chapterUrl: String, exploreUrl: String = ""): SourceDiagnosticReport =
         withContext(Dispatchers.IO) {
             val definition = sources.installedSources().single { ImportedRuleSources.id(it.definition) == source }
@@ -77,5 +77,6 @@ class SourceDiagnostics @Inject constructor(@ApplicationContext private val cont
             catch (_: Exception) { result = "HostFailure" }
             finally { authority.revoke(ticket); directory.deleteRecursively() }
             SourceDiagnosticReport(source.id, ticket.profile, ticket.revision, account, stage, result, field, count, events.toList(), truncated)
+                .also { history.record(it, stage == DiagnosticStage.Discovery && exploreUrl.isNotBlank()) }
         }
 }
