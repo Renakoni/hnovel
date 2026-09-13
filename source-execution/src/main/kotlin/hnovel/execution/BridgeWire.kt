@@ -9,8 +9,10 @@ object BridgeWire {
     fun arguments(bytes: ByteArray): List<JsonElement> = Json.parseToJsonElement(validate(bytes)).jsonArray
 
     /** Shared preflight for every untrusted worker message, including execution results. */
-    fun validate(bytes: ByteArray): String {
-        require(bytes.size <= MAX_BYTES) { "Bridge request too large" }
+    fun validate(bytes: ByteArray): String = validate(bytes, MAX_BYTES)
+
+    internal fun validate(bytes: ByteArray, maxBytes: Int): String {
+        require(bytes.size <= maxBytes) { "Bridge request too large" }
         val text = bytes.toString(Charsets.UTF_8)
         var quoted = false
         var escaped = false

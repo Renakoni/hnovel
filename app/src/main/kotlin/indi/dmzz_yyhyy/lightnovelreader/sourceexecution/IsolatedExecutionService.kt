@@ -52,7 +52,7 @@ class IsolatedExecutionService : Service() {
 
         override fun execute(request: ByteArray, callback: IExecutionCallback, broker: IExecutionBroker?) {
             enforceHost()
-            if (request.size > MAX_IPC_BYTES) {
+            if (request.size > ExecutionWire.MAX_INPUT_BYTES) {
                 deliver(callback, ExecutionWire.encodeResult(ExecutionResult.Failure(FailureCode.InputLimit)))
                 return
             }

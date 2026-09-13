@@ -143,6 +143,7 @@ private fun ImportField(field: String?) {
 }
 
 private fun importNotice(code: String): Int = when (code) {
+    "KnownPackageAdaptation" -> R.string.sources_notice_known_package
     "ExecutionCompatibilityPending" -> R.string.sources_notice_execution
     "UnclassifiedField" -> R.string.sources_notice_unknown
     "ExternalOrderRetainedNotApplied" -> R.string.sources_notice_order

@@ -23,7 +23,7 @@
 | `legado-text-da17bb2` | 小说 JSON 单对象/数组、选择器、脚本、请求、登录、浏览器、发现及阅读流水线 | [hectorqin/legado 固定提交](https://github.com/hectorqin/legado/tree/da17bb2bed44f30b12a524c2457e32a20b16fa41)，Rhino 1.8.1；只对矩阵中指定的小说数据和交互契约负责 |
 | `advanced-sample-20260908` | 上述小说链路及已确认动态发现、配置动作、脚本登录表单 | [Luoyacheng/legado 固定提交](https://github.com/Luoyacheng/legado/tree/8b87c5aba4df91c39a3a0939a68a1180b9f2ee1c) 提供扩展实现依据；profile ID 保留原标识，不等于整套 fork 的所有功能 |
 | 未识别格式/API | 预览保留并报告未知字段；运行时未知规则/桥接明确失败 | 导入成功不能证明所有脚本可执行，不能自动认定未知方言兼容 |
-| APK / `.lnrp`、音频/漫画播放器 | 不通过这条小说来源导入流程加载 | 原规划非目标；私有样本只作为不含脚本、接口和认证值的成员形态研究 |
+| 两个已知 `.lnrp` 发布文件 | 本地选择原文件，以完整 SHA-256 映射到应用维护的小说 JSON 定义 | 见 [已知 LNRP 导入与在线验收](known-lnrp-import.md)；不安装或执行插件，未知包/版本明确拒绝；音频/漫画播放器不在范围内 |
 
 标准登录表单是 JSON 数组。扩展模式额外允许 `@js:` / `<js>` 生成数组或 JSON 字符串，运行 `loginUrl` 中的帮助函数，以 `result` 传入当前表单值。支持 `default`、`chars`、`viewName` 和 text/password/button/toggle/select；`java.upLoginData` 更新当前草稿，`java.reLoginView` 请求重新计算表单。普通提交不重复执行表单生成脚本。默认值、提交值、行数、选项和输出都受限；未知行字段/类型提供 `loginUi[index].field` 位置。
 

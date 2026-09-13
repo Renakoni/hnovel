@@ -795,7 +795,7 @@ class IsolatedExecutionInstrumentedTest {
             assertNull(service.asBinder().queryLocalInterface(IIsolatedExecutionService.Stub.DESCRIPTOR))
             assertForeignUidRejected(service.asBinder())
             val result = CompletableDeferred<ExecutionResult>()
-            service.execute(ByteArray(IsolatedExecutionService.MAX_IPC_BYTES + 1), object : IExecutionCallback.Stub() {
+            service.execute(ByteArray(ExecutionWire.MAX_INPUT_BYTES + 1), object : IExecutionCallback.Stub() {
                 override fun onResult(bytes: ByteArray) { result.complete(ExecutionWire.decodeResult(bytes)) }
             }, null)
             assertEquals(ExecutionResult.Failure(FailureCode.InputLimit), withTimeout(5000) { result.await() })
