@@ -79,7 +79,7 @@ class FanqieSourceTest {
                             val id = url.queryParameter("book_id")!!
                             val count = if (id == bookIds.first()) 1347 else 5
                             val chapters = (0 until count).map { index -> buildJsonObject {
-                                put("itemId", "$id-$index"); put("title", "Chapter $index"); put("needPay", 0)
+                                put("itemId", "$id-$index"); put("title", "第 $index 章 山川异域，风月同天"); put("needPay", 0)
                             } }
                             buildJsonObject { put("data", buildJsonObject {
                                 put("volumeNameList", buildJsonArray { add("First volume"); add("Second volume") })
