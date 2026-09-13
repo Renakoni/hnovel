@@ -211,6 +211,9 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                                 Text(stringResource(label), Modifier.padding(top = 12.dp))
                             }
                         }
+                        OutlinedButton(onClick = { model.previewFanqie() }, enabled = !state.busy) {
+                            Text(stringResource(R.string.sources_fanqie))
+                        }
                         Text(stringResource(R.string.sources_collections), style = MaterialTheme.typography.titleMedium)
                         for ((label, address) in listOf(
                             "XIU2" to "https://legado.aoaostar.com/sources/71e56d4f.json",

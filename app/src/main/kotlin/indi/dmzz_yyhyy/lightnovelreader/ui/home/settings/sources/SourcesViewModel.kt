@@ -121,6 +121,11 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
     }
 
     fun previewText(text: String, profile: String = AUTO_PROFILE) = launch { showPreview(sources.importer.preview(text, profile)) }
+    fun previewFanqie() = launch {
+        val text = checkNotNull(SourceDefinitionImporter::class.java.getResourceAsStream("/known-sources/fanqie-taijiwang.json"))
+            .bufferedReader(Charsets.UTF_8).use { it.readText() }
+        showPreview(sources.importer.preview(text, AUTO_PROFILE))
+    }
     fun openImportLink(url: String) {
         if (openedImportLink == url) return
         openedImportLink = url

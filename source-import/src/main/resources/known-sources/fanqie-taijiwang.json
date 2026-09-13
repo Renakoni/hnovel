@@ -1,0 +1,45 @@
+{
+  "bookSourceName": "番茄小说（太极服务）",
+  "bookSourceUrl": "https://fq.taijiwang.top",
+  "bookSourceType": 0,
+  "bookSourceGroup": "小说",
+  "bookSourceComment": "通过 fq.taijiwang.top 提供的太极服务搜索和阅读番茄小说，保留完整分卷目录。无需安装插件；服务可用性由上游维护。",
+  "enabled": true,
+  "enabledExplore": false,
+  "lastUpdateTime": 1789257600000,
+  "searchUrl": "https://fq.taijiwang.top/api/search?key={{key}}&tab_type=3&offset={{(page-1)*10}}",
+  "ruleSearch": {
+    "bookList": "$.data.search_tabs[?(@.tab_type == 3)].data[*].book_data[0]",
+    "name": "$.book_name",
+    "author": "$.author",
+    "bookUrl": "$.book_id##^##https://fq.taijiwang.top/api/detail?book_id=",
+    "coverUrl": "$.thumb_url",
+    "intro": "$.abstract",
+    "kind": "$.tags",
+    "wordCount": "$.word_number",
+    "lastChapter": "$.last_chapter_title",
+    "updateTime": "$.last_publish_time"
+  },
+  "ruleBookInfo": {
+    "init": "$.data.data",
+    "name": "$.book_name",
+    "author": "$.author",
+    "coverUrl": "$.thumb_url",
+    "intro": "$.abstract",
+    "kind": "$.tags",
+    "wordCount": "$.word_number",
+    "lastChapter": "$.last_chapter_title",
+    "updateTime": "$.last_publish_time",
+    "tocUrl": "$.book_id##^##https://fq.taijiwang.top/api/book?book_id="
+  },
+  "ruleToc": {
+    "chapterList": "@js:var data=JSON.parse(result).data.data;var rows=[];data.chapterListWithVolume.forEach(function(chapters,index){var title=data.volumeNameList[index];if(title)rows.push({title:title,isVolume:true});chapters.forEach(function(chapter){rows.push({title:chapter.title,url:'https://fq.taijiwang.top/api/content?item_id='+chapter.itemId+'&tab=%E5%B0%8F%E8%AF%B4',needPay:chapter.needPay});});});rows;",
+    "chapterName": "$.title",
+    "chapterUrl": "$.url",
+    "isVolume": "$.isVolume",
+    "isPay": "$.needPay"
+  },
+  "ruleContent": {
+    "content": "$.data.content@js:result.replace(/\\r\\n?/g,'\\n').replace(/\\n/g,'<br>');"
+  }
+}
