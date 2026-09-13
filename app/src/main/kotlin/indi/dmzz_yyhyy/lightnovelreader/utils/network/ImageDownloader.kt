@@ -11,6 +11,7 @@ import com.github.michaelbull.result.onErr
 import com.github.michaelbull.result.onOk
 import indi.dmzz_yyhyy.lightnovelreader.data.book.SourceBookId
 import indi.dmzz_yyhyy.lightnovelreader.utils.ImageUtils
+import indi.dmzz_yyhyy.lightnovelreader.utils.DefaultBookCoverRenderer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -27,7 +28,8 @@ class ImageDownloader(
     var count = 0
         private set
 
-    data class Task(val file: File, val uri: Uri, val cover: Boolean = false)
+    data class Task(val file: File, val uri: Uri, val cover: Boolean = false,
+        val defaultCover: DefaultBookCoverRenderer.Text? = null)
 
     suspend fun run(): ListenableWorker.Result = withContext(Dispatchers.IO) {
         Log.i("ImageDownloader", "total tasks: ${tasks.size}")
@@ -54,6 +56,15 @@ class ImageDownloader(
                         "ImageDownloader",
                         "task $count failed for ${book.fileKey}: ${t.javaClass.simpleName}"
                     )
+                    task.defaultCover?.let { text ->
+                        // Only a book/volume cover has a local substitute. Content image failures still fail export.
+                        try {
+                            DefaultBookCoverRenderer.writeTo(context, task.file, text.title, text.bookId, text.author)
+                        } catch (_: Exception) { return@withContext ListenableWorker.Result.failure() }
+                        count++
+                        onProgress(count, tasks.size)
+                        return@forEach
+                    }
                     return@withContext ListenableWorker.Result.failure()
                 }
             count++

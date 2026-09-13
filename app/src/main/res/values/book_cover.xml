@@ -1,0 +1,4 @@
+<resources>
+    <string name="cover_untitled">Untitled</string>
+    <string name="cover_description">Cover of %1$s</string>
+</resources>

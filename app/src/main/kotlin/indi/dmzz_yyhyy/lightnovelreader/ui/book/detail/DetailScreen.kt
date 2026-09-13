@@ -729,6 +729,9 @@ private fun BookCardBlock(
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+    var coverFallback by remember(bookInformation.id, bookInformation.coverUri) {
+        mutableStateOf(bookInformation.coverUri.toString().isBlank())
+    }
     val updateText = if (bookInformation.isComplete) {
         stringResource(R.string.book_completed)
     } else {
@@ -751,12 +754,14 @@ private fun BookCardBlock(
                 .wrapContentSize()
                 .clickable(
                     onClick = {
-                        if (bookInformation.coverUri == Uri.EMPTY) {
+                        if (coverFallback) {
                             coroutineScope.launch {
                                 val uri = withContext(Dispatchers.IO) {
                                     DefaultBookCoverRenderer.cacheUri(
                                         context,
-                                        bookInformation.title
+                                        bookInformation.title,
+                                        bookInformation.id,
+                                        bookInformation.author
                                     )
                                 }
                                 onClickCover(uri)
@@ -773,7 +778,9 @@ private fun BookCardBlock(
                 width = 122.dp,
                 uri = bookInformation.coverUri,
                 title = bookInformation.title,
-                rounded = 8.dp
+                author = bookInformation.author,
+                rounded = 8.dp,
+                onFallbackChanged = { coverFallback = it }
             )
         }
         Column(

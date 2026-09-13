@@ -59,7 +59,7 @@ fun DiscoveryResultsScreen(
 internal fun DiscoveryBookCard(book: SourceDiscoveryBook, onClick: () -> Unit) {
     Card(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
         Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Cover(book.id.storageKey, 72.dp, 108.dp, Uri.parse(book.coverUrl), book.title)
+            Cover(book.id.storageKey, 72.dp, 108.dp, Uri.parse(book.coverUrl), book.title, author = book.author)
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(book.title, style = MaterialTheme.typography.titleMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)
                 Text(book.author, style = MaterialTheme.typography.bodyMedium)
