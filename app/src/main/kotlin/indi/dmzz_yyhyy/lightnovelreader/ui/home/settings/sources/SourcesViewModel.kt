@@ -73,6 +73,7 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
                     hnovel.content.ContentError.AddressDenied -> R.string.sources_address_denied
                     hnovel.content.ContentError.Dns -> R.string.sources_dns_failed
                     hnovel.content.ContentError.Network -> R.string.discovery_network
+                    hnovel.content.ContentError.UnsupportedDependency -> R.string.sources_dependency_unavailable
                     else -> R.string.sources_rule_failed
                 }
                 else -> R.string.sources_action_failed

@@ -13,12 +13,13 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
     var bookId: String? = null, var chapterId: String? = null, var book: ScriptState = ScriptState(),
     var chapter: ScriptState = ScriptState(), var baseUrl: String, val keyword: String = "", var page: Int = 1,
     private val calls: java.util.concurrent.atomic.AtomicInteger = java.util.concurrent.atomic.AtomicInteger(),
-    private val headerRule: String = "", private val interactive: Boolean = false, private val trace: ContentTrace = ContentTrace.None) {
+    private val headerRule: String = "", private val interactive: Boolean = false, private val trace: ContentTrace = ContentTrace.None,
+    private val sourceLoginUrl: String = "") {
     var discovery: JsonObject? = null
     private val limits = ExecutionLimits(timeoutMillis = if (interactive) 60000 else 5000, maxOutputBytes = 196608)
 
     fun fork(bookId: String? = this.bookId, chapterId: String? = this.chapterId) =
-        RuleEvaluation(identity, authority, session, runner, library, bookId, chapterId, book.copy(), chapter.copy(), baseUrl, keyword, page, calls, headerRule, interactive, trace)
+        RuleEvaluation(identity, authority, session, runner, library, bookId, chapterId, book.copy(), chapter.copy(), baseUrl, keyword, page, calls, headerRule, interactive, trace, sourceLoginUrl)
             .also { it.discovery = discovery }
 
     suspend fun headers(): Map<String, String> {
@@ -35,7 +36,8 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
         val task = ExecutionTask.Rule(rule, input, output, RuleLocation(field), bookId, chapterId,
             keyword, page, baseUrl, library, book.inherited + chapter.inherited, book.variables,
             chapter.variables, book.metadata, chapter.metadata, book.bigVariables, chapter.bigVariables,
-            unescapeHtml = unescape, sourceHeaderRule = if (field == "header") "" else headerRule, discovery = discovery)
+            unescapeHtml = unescape, sourceHeaderRule = if (field == "header") "" else headerRule, discovery = discovery,
+            sourceLoginUrl = sourceLoginUrl)
         val executed = execute(task, field, input.toString().length)
         if (discovery != null) discovery = executed.discovery ?: throw SourceContentException(ContentError.InvalidRule, field)
         book = book.copy(metadata = executed.book ?: book.metadata,
@@ -73,7 +75,10 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
                 networkFailure = it.requestFailure
             }
         }
-        trace.record(ContentTraceEvent("rule", field, (System.nanoTime() - started) / 1_000_000,
+        val failure = result as? ExecutionResult.Failure
+        val dependency = failure?.takeIf { it.code == FailureCode.UnsupportedDependency }?.dependency
+        val failureField = if (dependency != null && failure.ruleError?.location?.field == "jsLib") "jsLib" else field
+        trace.record(ContentTraceEvent("rule", failureField, (System.nanoTime() - started) / 1_000_000,
             inputChars, (result as? ExecutionResult.Success)?.output?.length ?: 0,
             if (result is ExecutionResult.Failure && result.code == FailureCode.BridgeDenied)
                 networkFailure?.code?.name ?: result.code.name
@@ -87,8 +92,9 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
                 FailureCode.Revoked, FailureCode.InvalidIdentity -> ContentError.Unavailable
                 FailureCode.Timeout, FailureCode.InputLimit, FailureCode.OutputLimit -> ContentError.Limit
                 FailureCode.BridgeDenied -> networkFailure?.code?.contentError() ?: ContentError.PermissionDenied
+                FailureCode.UnsupportedDependency -> ContentError.UnsupportedDependency
                 else -> ContentError.InvalidRule
-            }, field, networkFailure?.denial.takeIf { result.code == FailureCode.BridgeDenied })
+            }, failureField, networkFailure?.denial.takeIf { result.code == FailureCode.BridgeDenied }, dependency)
             is ExecutionResult.Success -> Json.decodeFromString(ExecutedRule.serializer(), result.output)
         }
     }
