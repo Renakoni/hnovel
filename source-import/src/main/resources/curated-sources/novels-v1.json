@@ -1,0 +1,104 @@
+[
+  {
+    "bookSourceName": "番茄小说·公开文本",
+    "bookSourceUrl": "https://fanqienovel.com/",
+    "bookSourceType": 0,
+    "enabled": true,
+    "enabledExplore": false,
+    "header": "{\"User-Agent\":\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36\"}",
+    "lastUpdateTime": 1789286400000,
+    "bookSourceComment": "hnovel v1：直连官方公开文本页面；搜索排除听书，目录排除付费和锁定章节。仅解码已核验的 dc027189e0ba4cd 字体；未知映射显式失败。与复杂番茄原样本不是同一个适配方案。",
+    "searchUrl": "https://novel.snssdk.com/api/novel/channel/homepage/search/search/v1/?device_platform=android&parent_enterfrom=novel_channel_search.tab.&aid=1967&offset={{(page-1)*10}}&q={{key}}",
+    "ruleSearch": {
+      "bookList": "@js:(function(){var data=JSON.parse(result);if(data.code!==0)throw Error('Search failed');return data.data.ret_data.filter(function(b){return String(b.genre)==='0'||String(b.genre)==='6';});})()",
+      "name": "$.title",
+      "author": "$.author",
+      "intro": "$.abstract",
+      "coverUrl": "$.thumb_url",
+      "bookUrl": "https://fanqienovel.com/page/{{$.book_id}}"
+    },
+    "ruleBookInfo": {
+      "name": "h1@text",
+      "author": ".author-name-text@text",
+      "intro": "[name=description]@content",
+      "tocUrl": "link[rel=canonical]@href##/page/(\\d+)/?$##/api/reader/directory/detail?bookId=$1"
+    },
+    "ruleToc": {
+      "chapterList": "@js:(function(){var data=JSON.parse(result);if(data.code!==0)throw Error('Directory failed');return [].concat.apply([],data.data.chapterListWithVolume).filter(function(c){return Number(c.needPay||0)===0&&!c.isChapterLock;});})()",
+      "chapterName": "$.title",
+      "chapterUrl": "https://fanqienovel.com/reader/{{$.itemId}}"
+    },
+    "jsLib": "var glyphRules=[[/\\ue3e8/g,\"D\"],[/\\ue3e9/g,\"在\"],[/\\ue3ea/g,\"主\"],[/\\ue3eb/g,\"特\"],[/\\ue3ec/g,\"家\"],[/\\ue3ed/g,\"军\"],[/\\ue3ee/g,\"然\"],[/\\ue3ef/g,\"表\"],[/\\ue3f0/g,\"场\"],[/\\ue3f1/g,\"4\"],[/\\ue3f2/g,\"要\"],[/\\ue3f3/g,\"只\"],[/\\ue3f4/g,\"v\"],[/\\ue3f5/g,\"和\"],[/\\ue3f7/g,\"6\"],[/\\ue3f8/g,\"别\"],[/\\ue3f9/g,\"还\"],[/\\ue3fa/g,\"g\"],[/\\ue3fb/g,\"现\"],[/\\ue3fc/g,\"儿\"],[/\\ue3fd/g,\"岁\"],[/\\ue400/g,\"此\"],[/\\ue401/g,\"象\"],[/\\ue402/g,\"月\"],[/\\ue403/g,\"3\"],[/\\ue404/g,\"出\"],[/\\ue405/g,\"战\"],[/\\ue406/g,\"工\"],[/\\ue407/g,\"相\"],[/\\ue408/g,\"o\"],[/\\ue409/g,\"男\"],[/\\ue40a/g,\"直\"],[/\\ue40b/g,\"失\"],[/\\ue40c/g,\"世\"],[/\\ue40d/g,\"F\"],[/\\ue40e/g,\"都\"],[/\\ue40f/g,\"平\"],[/\\ue410/g,\"文\"],[/\\ue411/g,\"什\"],[/\\ue412/g,\"V\"],[/\\ue413/g,\"O\"],[/\\ue414/g,\"将\"],[/\\ue415/g,\"真\"],[/\\ue416/g,\"T\"],[/\\ue417/g,\"那\"],[/\\ue418/g,\"当\"],[/\\ue41a/g,\"会\"],[/\\ue41b/g,\"立\"],[/\\ue41c/g,\"些\"],[/\\ue41d/g,\"u\"],[/\\ue41e/g,\"是\"],[/\\ue41f/g,\"十\"],[/\\ue420/g,\"张\"],[/\\ue421/g,\"学\"],[/\\ue422/g,\"气\"],[/\\ue423/g,\"大\"],[/\\ue424/g,\"爱\"],[/\\ue425/g,\"两\"],[/\\ue426/g,\"命\"],[/\\ue427/g,\"全\"],[/\\ue428/g,\"后\"],[/\\ue429/g,\"东\"],[/\\ue42a/g,\"性\"],[/\\ue42b/g,\"通\"],[/\\ue42c/g,\"被\"],[/\\ue42d/g,\"1\"],[/\\ue42e/g,\"它\"],[/\\ue42f/g,\"乐\"],[/\\ue430/g,\"接\"],[/\\ue431/g,\"而\"],[/\\ue432/g,\"感\"],[/\\ue433/g,\"车\"],[/\\ue434/g,\"山\"],[/\\ue435/g,\"公\"],[/\\ue436/g,\"了\"],[/\\ue437/g,\"常\"],[/\\ue438/g,\"以\"],[/\\ue439/g,\"何\"],[/\\ue43a/g,\"可\"],[/\\ue43b/g,\"话\"],[/\\ue43c/g,\"先\"],[/\\ue43d/g,\"p\"],[/\\ue43e/g,\"i\"],[/\\ue43f/g,\"叫\"],[/\\ue440/g,\"轻\"],[/\\ue441/g,\"M\"],[/\\ue442/g,\"士\"],[/\\ue443/g,\"w\"],[/\\ue444/g,\"着\"],[/\\ue445/g,\"变\"],[/\\ue446/g,\"尔\"],[/\\ue447/g,\"快\"],[/\\ue448/g,\"l\"],[/\\ue449/g,\"个\"],[/\\ue44a/g,\"说\"],[/\\ue44b/g,\"少\"],[/\\ue44c/g,\"色\"],[/\\ue44d/g,\"里\"],[/\\ue44e/g,\"安\"],[/\\ue44f/g,\"花\"],[/\\ue450/g,\"远\"],[/\\ue451/g,\"7\"],[/\\ue452/g,\"难\"],[/\\ue453/g,\"师\"],[/\\ue454/g,\"放\"],[/\\ue455/g,\"t\"],[/\\ue456/g,\"报\"],[/\\ue457/g,\"认\"],[/\\ue458/g,\"面\"],[/\\ue459/g,\"道\"],[/\\ue45a/g,\"S\"],[/\\ue45c/g,\"克\"],[/\\ue45d/g,\"地\"],[/\\ue45e/g,\"度\"],[/\\ue45f/g,\"I\"],[/\\ue460/g,\"好\"],[/\\ue461/g,\"机\"],[/\\ue462/g,\"U\"],[/\\ue463/g,\"民\"],[/\\ue464/g,\"写\"],[/\\ue465/g,\"把\"],[/\\ue466/g,\"万\"],[/\\ue467/g,\"同\"],[/\\ue468/g,\"水\"],[/\\ue469/g,\"新\"],[/\\ue46a/g,\"没\"],[/\\ue46b/g,\"书\"],[/\\ue46c/g,\"电\"],[/\\ue46d/g,\"吃\"],[/\\ue46e/g,\"像\"],[/\\ue46f/g,\"斯\"],[/\\ue470/g,\"5\"],[/\\ue471/g,\"为\"],[/\\ue472/g,\"y\"],[/\\ue473/g,\"白\"],[/\\ue474/g,\"几\"],[/\\ue475/g,\"日\"],[/\\ue476/g,\"教\"],[/\\ue477/g,\"看\"],[/\\ue478/g,\"但\"],[/\\ue479/g,\"第\"],[/\\ue47a/g,\"加\"],[/\\ue47b/g,\"候\"],[/\\ue47c/g,\"作\"],[/\\ue47d/g,\"上\"],[/\\ue47e/g,\"拉\"],[/\\ue47f/g,\"住\"],[/\\ue480/g,\"有\"],[/\\ue481/g,\"法\"],[/\\ue482/g,\"r\"],[/\\ue483/g,\"事\"],[/\\ue484/g,\"应\"],[/\\ue485/g,\"位\"],[/\\ue486/g,\"利\"],[/\\ue487/g,\"你\"],[/\\ue488/g,\"声\"],[/\\ue489/g,\"身\"],[/\\ue48a/g,\"国\"],[/\\ue48b/g,\"问\"],[/\\ue48c/g,\"马\"],[/\\ue48d/g,\"女\"],[/\\ue48e/g,\"他\"],[/\\ue48f/g,\"Y\"],[/\\ue490/g,\"比\"],[/\\ue491/g,\"父\"],[/\\ue492/g,\"x\"],[/\\ue493/g,\"A\"],[/\\ue494/g,\"H\"],[/\\ue495/g,\"N\"],[/\\ue496/g,\"s\"],[/\\ue497/g,\"X\"],[/\\ue498/g,\"边\"],[/\\ue499/g,\"美\"],[/\\ue49a/g,\"对\"],[/\\ue49b/g,\"所\"],[/\\ue49c/g,\"金\"],[/\\ue49d/g,\"活\"],[/\\ue49e/g,\"回\"],[/\\ue49f/g,\"意\"],[/\\ue4a0/g,\"到\"],[/\\ue4a1/g,\"z\"],[/\\ue4a2/g,\"从\"],[/\\ue4a3/g,\"j\"],[/\\ue4a4/g,\"知\"],[/\\ue4a5/g,\"又\"],[/\\ue4a6/g,\"内\"],[/\\ue4a7/g,\"因\"],[/\\ue4a8/g,\"点\"],[/\\ue4a9/g,\"Q\"],[/\\ue4aa/g,\"三\"],[/\\ue4ab/g,\"定\"],[/\\ue4ac/g,\"8\"],[/\\ue4ad/g,\"R\"],[/\\ue4ae/g,\"b\"],[/\\ue4af/g,\"正\"],[/\\ue4b0/g,\"或\"],[/\\ue4b1/g,\"夫\"],[/\\ue4b2/g,\"向\"],[/\\ue4b3/g,\"德\"],[/\\ue4b4/g,\"听\"],[/\\ue4b5/g,\"更\"],[/\\ue4b7/g,\"得\"],[/\\ue4b8/g,\"告\"],[/\\ue4b9/g,\"并\"],[/\\ue4ba/g,\"本\"],[/\\ue4bb/g,\"q\"],[/\\ue4bc/g,\"过\"],[/\\ue4bd/g,\"记\"],[/\\ue4be/g,\"L\"],[/\\ue4bf/g,\"让\"],[/\\ue4c0/g,\"打\"],[/\\ue4c1/g,\"f\"],[/\\ue4c2/g,\"人\"],[/\\ue4c3/g,\"就\"],[/\\ue4c4/g,\"者\"],[/\\ue4c5/g,\"去\"],[/\\ue4c6/g,\"原\"],[/\\ue4c7/g,\"满\"],[/\\ue4c8/g,\"体\"],[/\\ue4c9/g,\"做\"],[/\\ue4ca/g,\"经\"],[/\\ue4cb/g,\"K\"],[/\\ue4cc/g,\"走\"],[/\\ue4cd/g,\"如\"],[/\\ue4ce/g,\"孩\"],[/\\ue4cf/g,\"c\"],[/\\ue4d0/g,\"G\"],[/\\ue4d1/g,\"给\"],[/\\ue4d2/g,\"使\"],[/\\ue4d3/g,\"物\"],[/\\ue4d5/g,\"最\"],[/\\ue4d6/g,\"笑\"],[/\\ue4d7/g,\"部\"],[/\\ue4d9/g,\"员\"],[/\\ue4da/g,\"等\"],[/\\ue4db/g,\"受\"],[/\\ue4dc/g,\"k\"],[/\\ue4dd/g,\"行\"],[/\\ue4de/g,\"一\"],[/\\ue4df/g,\"条\"],[/\\ue4e0/g,\"果\"],[/\\ue4e1/g,\"动\"],[/\\ue4e2/g,\"光\"],[/\\ue4e3/g,\"门\"],[/\\ue4e4/g,\"头\"],[/\\ue4e5/g,\"见\"],[/\\ue4e6/g,\"往\"],[/\\ue4e7/g,\"自\"],[/\\ue4e8/g,\"解\"],[/\\ue4e9/g,\"成\"],[/\\ue4ea/g,\"处\"],[/\\ue4eb/g,\"天\"],[/\\ue4ec/g,\"能\"],[/\\ue4ed/g,\"于\"],[/\\ue4ee/g,\"名\"],[/\\ue4ef/g,\"其\"],[/\\ue4f0/g,\"发\"],[/\\ue4f1/g,\"总\"],[/\\ue4f2/g,\"母\"],[/\\ue4f3/g,\"的\"],[/\\ue4f4/g,\"死\"],[/\\ue4f5/g,\"手\"],[/\\ue4f6/g,\"入\"],[/\\ue4f7/g,\"路\"],[/\\ue4f8/g,\"进\"],[/\\ue4f9/g,\"心\"],[/\\ue4fa/g,\"来\"],[/\\ue4fb/g,\"h\"],[/\\ue4fc/g,\"时\"],[/\\ue4fd/g,\"力\"],[/\\ue4fe/g,\"多\"],[/\\ue4ff/g,\"开\"],[/\\ue500/g,\"已\"],[/\\ue501/g,\"许\"],[/\\ue502/g,\"d\"],[/\\ue503/g,\"至\"],[/\\ue504/g,\"由\"],[/\\ue505/g,\"很\"],[/\\ue506/g,\"界\"],[/\\ue507/g,\"n\"],[/\\ue508/g,\"小\"],[/\\ue509/g,\"与\"],[/\\ue50a/g,\"Z\"],[/\\ue50b/g,\"想\"],[/\\ue50c/g,\"代\"],[/\\ue50d/g,\"么\"],[/\\ue50e/g,\"分\"],[/\\ue50f/g,\"生\"],[/\\ue510/g,\"口\"],[/\\ue511/g,\"再\"],[/\\ue512/g,\"妈\"],[/\\ue513/g,\"望\"],[/\\ue514/g,\"次\"],[/\\ue515/g,\"西\"],[/\\ue516/g,\"风\"],[/\\ue517/g,\"种\"],[/\\ue518/g,\"带\"],[/\\ue519/g,\"J\"],[/\\ue51b/g,\"实\"],[/\\ue51c/g,\"情\"],[/\\ue51d/g,\"才\"],[/\\ue51e/g,\"这\"],[/\\ue520/g,\"E\"],[/\\ue521/g,\"我\"],[/\\ue522/g,\"神\"],[/\\ue523/g,\"格\"],[/\\ue524/g,\"长\"],[/\\ue525/g,\"觉\"],[/\\ue526/g,\"间\"],[/\\ue527/g,\"年\"],[/\\ue528/g,\"眼\"],[/\\ue529/g,\"无\"],[/\\ue52a/g,\"不\"],[/\\ue52b/g,\"亲\"],[/\\ue52c/g,\"关\"],[/\\ue52d/g,\"结\"],[/\\ue52e/g,\"0\"],[/\\ue52f/g,\"友\"],[/\\ue530/g,\"信\"],[/\\ue531/g,\"下\"],[/\\ue532/g,\"却\"],[/\\ue533/g,\"重\"],[/\\ue534/g,\"己\"],[/\\ue535/g,\"老\"],[/\\ue536/g,\"2\"],[/\\ue537/g,\"音\"],[/\\ue538/g,\"字\"],[/\\ue539/g,\"m\"],[/\\ue53a/g,\"呢\"],[/\\ue53b/g,\"明\"],[/\\ue53c/g,\"之\"],[/\\ue53d/g,\"前\"],[/\\ue53e/g,\"高\"],[/\\ue53f/g,\"P\"],[/\\ue540/g,\"B\"],[/\\ue541/g,\"目\"],[/\\ue542/g,\"太\"],[/\\ue543/g,\"e\"],[/\\ue544/g,\"9\"],[/\\ue545/g,\"起\"],[/\\ue546/g,\"稜\"],[/\\ue547/g,\"她\"],[/\\ue548/g,\"也\"],[/\\ue549/g,\"W\"],[/\\ue54a/g,\"用\"],[/\\ue54b/g,\"方\"],[/\\ue54c/g,\"子\"],[/\\ue54d/g,\"英\"],[/\\ue54e/g,\"每\"],[/\\ue54f/g,\"理\"],[/\\ue550/g,\"便\"],[/\\ue551/g,\"四\"],[/\\ue552/g,\"数\"],[/\\ue553/g,\"期\"],[/\\ue554/g,\"中\"],[/\\ue555/g,\"C\"],[/\\ue556/g,\"外\"],[/\\ue557/g,\"样\"],[/\\ue558/g,\"a\"],[/\\ue559/g,\"海\"],[/\\ue55a/g,\"们\"],[/\\ue55b/g,\"任\"]];\nfunction decodeFont(text){for(var i=0;i<glyphRules.length;i++)text=text.replace(glyphRules[i][0],glyphRules[i][1]);if(/[\\uE000-\\uF8FF]/.test(text))throw Error('Unknown text glyph');return text;}",
+    "ruleContent": {
+      "content": "@js:(function(){var html=java.getString('.muye-reader-content@html');if(/[\\uE000-\\uF8FF]/.test(html)){var urls=java.getString('style@html').match(/url\\([^)]*\\)/g)||[];var fonts=urls.filter(function(v){return v.indexOf('.woff')>=0;}).map(function(v){return v.slice(4,-1).replace(/^['\"]|['\"]$/g,'').split('/').pop();});if(!fonts.length||!fonts.every(function(v){return /^dc027189e0ba4cd(?:-[0-9]+)?\\.woff2?$/.test(v);}))throw Error('Unknown font version');}var doc=org.jsoup.Jsoup.parse(decodeFont(html));doc.select('img,svg,script,style,button').remove();if(!doc.body().text().trim())throw Error('No public chapter text');return doc.body().html();})()"
+    }
+  },
+  {
+    "bookSourceName": "SF轻小说·公开章节",
+    "bookSourceUrl": "https://book.sfacg.com/",
+    "bookSourceType": 0,
+    "enabled": true,
+    "enabledExplore": false,
+    "header": "{\"User-Agent\":\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36\"}",
+    "lastUpdateTime": 1789286400000,
+    "bookSourceComment": "hnovel v1：官方移动搜索与网页公开章节。搜索接口只提供一页，后续页返回空列表；目录只收录普通公开章节链接，VIP 章节不纳入。纯图片章节没有文本时会失败。",
+    "searchUrl": "https://m.sfacg.com/API/HTML5.ashx?op=search&keyword={{key}}",
+    "ruleSearch": {
+      "bookList": "@js:page>1?[]:JSON.parse(result).Novels",
+      "name": "$.NovelName",
+      "author": "$.AuthorName",
+      "bookUrl": "https://book.sfacg.com/Novel/{{$.NovelID}}/"
+    },
+    "ruleBookInfo": {
+      "name": "h1.title > span.text@textNodes",
+      "author": ".author-name@text",
+      "intro": ".introduce@text",
+      "tocUrl": "@js:'https://m.sfacg.com/i/'+/\\/Novel\\/(\\d+)/.exec(baseUrl)[1]+'/'"
+    },
+    "ruleToc": {
+      "chapterList": ".mulu_list a[href^=/c/]:not(:has(.icon-lock2))",
+      "chapterName": "li@text",
+      "chapterUrl": "@href"
+    },
+    "ruleContent": {
+      "content": ".yuedu.Content_Frame@html@js:(function(){var doc=org.jsoup.Jsoup.parse(result);doc.select('img,svg,script,style').remove();if(!doc.body().text().trim())throw Error('No public chapter text');return doc.body().html();})()"
+    }
+  },
+  {
+    "bookSourceName": "努努书坊·四大名著",
+    "bookSourceUrl": "https://www.kanunu8.com/",
+    "bookSourceType": 0,
+    "enabled": true,
+    "enabledExplore": true,
+    "header": "{\"User-Agent\":\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36\"}",
+    "lastUpdateTime": 1789286400000,
+    "bookSourceComment": "hnovel v1：只收录四大名著，按网站古典目录中的书名或作者匹配；不是全站搜索。GB18030 解码保留中文正文，只展示文本，不收录其他文学类别。",
+    "searchUrl": "https://www.kanunu8.com/files/old/",
+    "exploreUrl": "[{\"title\":\"四大名著\",\"url\":\"https://www.kanunu8.com/files/old/\"}]",
+    "ruleSearch": {
+      "bookList": "@js:(function(){if(page>1)return [];var out=[],seen={};var nodes=org.jsoup.Jsoup.parse(result).select('a[href^=/files/old/2011/244]');for(var i=0;i<nodes.size();i++){var a=nodes.get(i),url=a.attr('href'),text=a.text();if(!/^\\/files\\/old\\/2011\\/244[6-9]\\.html$/.test(url)||seen[url])continue;seen[url]=true;var pos=text.indexOf(':');if(pos<0)pos=text.indexOf('：');var book={name:text.slice(pos+1).trim(),author:pos<0?'':text.slice(0,pos).trim(),url:'https://www.kanunu8.com'+url};if(key&&text.indexOf(key)<0)continue;out.push(book);}return out;})()",
+      "name": "$.name",
+      "author": "$.author",
+      "bookUrl": "$.url"
+    },
+    "ruleExplore": {
+      "bookList": "@js:(function(){if(page>1)return [];var out=[],seen={};var nodes=org.jsoup.Jsoup.parse(result).select('a[href^=/files/old/2011/244]');for(var i=0;i<nodes.size();i++){var a=nodes.get(i),url=a.attr('href'),text=a.text();if(!/^\\/files\\/old\\/2011\\/244[6-9]\\.html$/.test(url)||seen[url])continue;seen[url]=true;var pos=text.indexOf(':');if(pos<0)pos=text.indexOf('：');var book={name:text.slice(pos+1).trim(),author:pos<0?'':text.slice(0,pos).trim(),url:'https://www.kanunu8.com'+url};;out.push(book);}return out;})()",
+      "name": "$.name",
+      "author": "$.author",
+      "bookUrl": "$.url"
+    },
+    "ruleBookInfo": {
+      "name": "h2@text",
+      "author": "title@text##.* - 小说在线阅读 - (.+) - 努努书坊##$1",
+      "intro": "[name=description]@content"
+    },
+    "ruleToc": {
+      "chapterList": "@js:java.getElements('td a[href^=\"'+/\\/(\\d+)\\.html/.exec(baseUrl)[1]+'/\"]')",
+      "chapterName": "a@text",
+      "chapterUrl": "a@href"
+    },
+    "ruleContent": {
+      "content": "td[width=820] > p@html"
+    }
+  }
+]
