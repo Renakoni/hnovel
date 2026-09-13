@@ -29,14 +29,14 @@ data class SourceManagementState(val installed: List<InstalledRuleSource> = empt
     val preview: ImportPreview? = null, val updateTarget: Identifier? = null,
     val busy: Boolean = false, val message: Int? = null, val loginForm: LoginForm? = null,
     val loginStatus: LoginStatus = LoginStatus.LoggedOut, val variable: String = "",
-    val zLibrary: ZLibraryState = ZLibraryState())
+    val zLibrary: ZLibraryState = ZLibraryState(), val checks: Map<String, SourceCheckSummary> = emptyMap())
 
 /** Screen state survives rotation; previews grant nothing and each explicit mutation has a single owner. */
 @HiltViewModel
 class SourcesViewModel @Inject constructor(@ApplicationContext private val context: Context,
     private val sources: ImportedRuleSources, private val updates: SourceRevisionUpdates,
     private val login: SourceLoginService, private val registry: WebSourceRegistry,
-    private val zLibrary: ZLibrarySources) : ViewModel() {
+    private val zLibrary: ZLibrarySources, private val checkHistory: SourceCheckHistory = SourceCheckHistory(context)) : ViewModel() {
     private val mutable = MutableStateFlow(SourceManagementState())
     val state = mutable.asStateFlow()
     private var operation: Job? = null
@@ -47,6 +47,10 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
     init {
         viewModelScope.launch { registry.sources.collect { list -> mutable.update { it.copy(registry = list) } } }
         viewModelScope.launch { zLibrary.state.collect { state -> mutable.update { it.copy(zLibrary = state) } } }
+        viewModelScope.launch {
+            checkHistory.restore()
+            checkHistory.results.collect { results -> mutable.update { it.copy(checks = results) } }
+        }
         refresh()
     }
 
@@ -83,17 +87,22 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
     }
     fun refresh() = launch { reload() }
     fun select(id: Identifier?) = launch { selectSource(id) }
+    fun initializeSource(id: Identifier) = launch {
+        if (mutable.value.selected == id) selectSource(id) else registry.resolve(id)
+    }
     private suspend fun selectSource(id: Identifier?) {
         reload() // Includes the current session's redacted refusals, including background image loads.
         if (id == ZLibrarySources.ID) zLibrary.refresh()
         mutable.update { it.copy(selected = id, preview = null, updateTarget = null,
             loginStatus = LoginStatus.LoggedOut, variable = "") }
-        if (id != null && registry.sources.value.any { it.metadata.id == id && it.metadata.capabilities.isNotEmpty() } &&
-            mutable.value.installed.any { ImportedRuleSources.id(it.definition) == id }) {
-            val target = sources.loginTarget(id)
-            val variable = target.session.read(StorageRequest(StorageArea.Config, "variable")) as StorageResult.Value
-            val status = login.status(id)
-            mutable.update { it.copy(loginStatus = status, variable = variable.value.orEmpty()) }
+        if (id != null && registry.sources.value.any { it.metadata.id == id && it.metadata.capabilities.isNotEmpty() }) {
+            if (registry.resolve(id) !is SourceResolution.Ready) return
+            if (mutable.value.installed.any { ImportedRuleSources.id(it.definition) == id }) {
+                val target = sources.loginTarget(id)
+                val variable = target.session.read(StorageRequest(StorageArea.Config, "variable")) as StorageResult.Value
+                val status = login.status(id)
+                mutable.update { it.copy(loginStatus = status, variable = variable.value.orEmpty()) }
+            }
         }
     }
 
@@ -102,7 +111,7 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
         launch {
             selectSource(id)
             openedFromDiscovery = id
-            if (signIn && registry.sources.value.any { it.metadata.id == id && SourceCapability.Login in it.metadata.capabilities }) {
+            if (signIn && registry.sources.value.any { it.metadata.id == id && it.status == SourceStatus.Ready && SourceCapability.Login in it.metadata.capabilities }) {
                 openLogin(id)
             }
         }
@@ -211,6 +220,7 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
     }
     fun beginLogin(id: Identifier) = launch { openLogin(id) }
     private suspend fun openLogin(id: Identifier) {
+        check(registry.resolve(id) is SourceResolution.Ready) { "Source is not initialized" }
         // Keep a handle even if cancellation arrives just after the account has rotated.
         val active = withContext(NonCancellable) { login.begin(id).also { attempt = it } }
         try {

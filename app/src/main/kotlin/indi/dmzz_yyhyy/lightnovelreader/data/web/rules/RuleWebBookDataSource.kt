@@ -7,6 +7,7 @@ import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.onErr
 import com.github.michaelbull.result.onOk
 import hnovel.content.*
+import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.data.web.EmptyWebDataSource
 import io.nightfish.lightnovelreader.api.book.*
 import io.nightfish.lightnovelreader.api.content.builder.ContentBuilder
@@ -15,7 +16,7 @@ import io.nightfish.lightnovelreader.api.content.component.SimpleTextComponentDa
 import io.nightfish.lightnovelreader.api.error.*
 import io.nightfish.lightnovelreader.api.identifier.Identifier
 import io.nightfish.lightnovelreader.api.image.SourceImageProvider
-import io.nightfish.lightnovelreader.api.util.local
+import io.nightfish.lightnovelreader.api.util.LocalString
 import io.nightfish.lightnovelreader.api.web.WebBookDataSource
 import io.nightfish.lightnovelreader.api.web.search.*
 import kotlinx.coroutines.CancellationException
@@ -32,7 +33,7 @@ internal class RuleWebBookDataSource(override val id: Identifier, private val so
     override suspend fun isOffLine() = false
     override val discoveryProvider = RuleDiscoveryProvider(source)
     override val searchProvider = object : SearchProvider {
-        override val searchTypes = if (source.canSearch) listOf(SearchType("keyword", "Search".local(), "Book title or author".local())) else emptyList()
+        override val searchTypes = if (source.canSearch) listOf(SearchType("keyword", LocalString(R.string.sources_search_type), LocalString(R.string.sources_search_hint))) else emptyList()
         override fun search(searchType: SearchType, keyword: String) = flow {
             val seen = mutableSetOf<String>()
             for (page in 1..64) {

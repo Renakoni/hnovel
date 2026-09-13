@@ -21,7 +21,7 @@
     <string name="sources_preview">Preview sources</string>
     <string name="sources_empty">No added sources yet. Add one to read from more sites.</string>
     <string name="sources_builtin">Built in</string>
-    <string name="sources_available">Available</string>
+    <string name="sources_available">Enabled</string>
     <string name="sources_unavailable">Unavailable · Review source settings</string>
     <string name="sources_format">Format: %1$s</string>
     <string name="sources_revision">Revision: %1$s</string>
@@ -54,7 +54,7 @@
     <string name="sources_disabled_help">Disabling stops this source’s requests. Saved books, reading progress and offline content are kept.</string>
     <string name="sources_save_permissions">Save permissions</string>
     <string name="sources_identity_approval">Allow the selected update to change its source address while keeping my books linked to this source.</string>
-    <string name="sources_apply">Approve permissions and apply selected sources</string>
+    <string name="sources_apply">Apply selected</string>
     <string name="sources_import_problem">%1$s · %2$s</string>
     <string name="sources_import_invalid">Some entries cannot be imported. Review the preview before selecting valid entries.</string>
     <string name="sources_action_failed">The action failed. Check the input and permissions, then retry.</string>

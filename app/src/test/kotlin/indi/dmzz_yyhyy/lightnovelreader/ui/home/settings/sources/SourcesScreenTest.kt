@@ -44,6 +44,123 @@ class SourcesScreenTest {
     }
     @After fun destroy() { activity.pause().stop().destroy() }
 
+    @Test @Config(qualifiers = "en-rUS-w320dp-h640dp")
+    fun longImportKeepsConfirmationReachableBeforeScrollingThroughCandidates() {
+        val directory = java.nio.file.Files.createTempDirectory("long-source-preview").toFile()
+        try {
+            val importer = hnovel.imports.SourceDefinitionImporter(hnovel.imports.SourceDefinitionStore(directory.toPath()))
+            val raw = (0 until 22).joinToString(prefix = "[", postfix = "]") { index ->
+                """{"bookSourceUrl":"https://source$index.invalid/","bookSourceName":"Source $index","bookSourceType":0,"customOrder":$index,"extensionFlag":"synthetic-private-value"}"""
+            }
+            val preview = importer.preview(raw)
+            activity.get().setContent { MaterialTheme { SourcesScreen(SourceManagementState(preview = preview), model, onDiagnostics = {}) {} } }
+            compose.onNodeWithText("Apply selected").assertIsDisplayed().assertIsNotEnabled()
+            compose.onNodeWithText("Select visible").performClick()
+            compose.onNodeWithText("22 of 22 selected").assertIsDisplayed()
+            verify(exactly = 0) { model.commit(any(), any(), any()) }
+            compose.onNodeWithText("Apply selected").performClick()
+            verify(exactly = 1) { model.commit((0 until 22).toSet(), (0 until 22).associateWith { "https://source$it.invalid/" }, false) }
+        } finally { directory.deleteRecursively() }
+    }
+
+    @Test fun filtersKeepSelectionAndPermissionDraftsUntilExplicitConfirmation() {
+        val directory = java.nio.file.Files.createTempDirectory("filtered-source-preview").toFile()
+        try {
+            val importer = hnovel.imports.SourceDefinitionImporter(hnovel.imports.SourceDefinitionStore(directory.toPath()))
+            fun raw(index: Int) = """{"bookSourceUrl":"https://source$index.invalid/","bookSourceName":"Source $index","bookSourceType":0}"""
+            importer.commit(importer.preview(raw(0)), listOf(hnovel.imports.ImportSelection(0, hnovel.imports.ImportDecision.Add)))
+            val preview = importer.preview("[${raw(0)},${raw(1)}]")
+            activity.get().setContent { MaterialTheme { SourcesScreen(SourceManagementState(preview = preview), model, onDiagnostics = {}) {} } }
+            compose.onNodeWithText("Updates").performClick()
+            compose.onNodeWithText("Select visible").performClick()
+            compose.onNodeWithText("Allowed site origins, one per line").performScrollTo().performTextReplacement("https://approved.invalid/")
+            compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("New"))
+            compose.onNodeWithText("New").performClick()
+            compose.onNodeWithText("Select visible").performClick()
+            compose.onNodeWithText("2 of 2 selected").assertIsDisplayed()
+            compose.onNodeWithText("Updates").performClick()
+            compose.onNodeWithText("https://approved.invalid/").performScrollTo().assertExists()
+            verify(exactly = 0) { model.commit(any(), any(), any()) }
+            compose.onNodeWithText("Apply selected").performClick()
+            verify(exactly = 1) { model.commit(setOf(0, 1), mapOf(0 to "https://approved.invalid/", 1 to "https://source1.invalid/"), false) }
+        } finally { directory.deleteRecursively() }
+    }
+
+    @Test fun batchSelectionSkipsConflictingDefinitionsAndManualChoiceKeepsOnlyOneVersion() {
+        val directory = java.nio.file.Files.createTempDirectory("duplicate-source-preview").toFile()
+        try {
+            val importer = hnovel.imports.SourceDefinitionImporter(hnovel.imports.SourceDefinitionStore(directory.toPath()))
+            val preview = importer.preview("""[
+                {"bookSourceUrl":"https://same.invalid/","bookSourceName":"Variant A","bookSourceType":0},
+                {"bookSourceUrl":"https://same.invalid/","bookSourceName":"Variant B","bookSourceType":0},
+                {"bookSourceUrl":"https://other.invalid/","bookSourceName":"Other","bookSourceType":0}]
+            """)
+            activity.get().setContent { MaterialTheme { SourcesScreen(SourceManagementState(preview = preview), model, onDiagnostics = {}) {} } }
+            compose.onNodeWithText("Select visible").performClick()
+            compose.onNodeWithText("1 of 3 selected").assertIsDisplayed()
+            compose.onNodeWithText("Variant A").performScrollTo().performClick()
+            compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Variant B"))
+            compose.onNodeWithText("Variant B").performClick()
+            compose.onNodeWithText("2 of 3 selected").assertIsDisplayed()
+            compose.onNodeWithText("Apply selected").performClick()
+            verify(exactly = 1) { model.commit(setOf(1, 2), mapOf(1 to "https://same.invalid/", 2 to "https://other.invalid/"), false) }
+        } finally { directory.deleteRecursively() }
+    }
+
+    @Test fun importNotesShowMeaningAndFieldNamesWithoutSourceValuesOrInternalCodes() {
+        val directory = java.nio.file.Files.createTempDirectory("source-preview-notes").toFile()
+        try {
+            val importer = hnovel.imports.SourceDefinitionImporter(hnovel.imports.SourceDefinitionStore(directory.toPath()))
+            val preview = importer.preview("""{"bookSourceUrl":"https://fixture.invalid/","bookSourceName":"Source","bookSourceType":0,"unknownField":"synthetic-private-value"}""")
+            activity.get().setContent { MaterialTheme { SourcesScreen(SourceManagementState(preview = preview), model, onDiagnostics = {}) {} } }
+            compose.onNodeWithText("Import notes (2)").performScrollTo().performClick()
+            compose.onNodeWithText("Field: unknownField").assertExists()
+            compose.onNodeWithText("An unrecognized field is retained. Its behavior is not guaranteed.").assertExists()
+            compose.onNodeWithText("ExecutionCompatibilityPending", substring = true).assertDoesNotExist()
+            compose.onNodeWithText("synthetic-private-value", substring = true).assertDoesNotExist()
+        } finally { directory.deleteRecursively() }
+    }
+
+    @Test fun recentCheckKeepsItsStageAndIsMarkedStaleAfterRevisionOrAccountChanges() {
+        val definition = SourceDefinition("checked", "legado", "fixture", "https://fixture.invalid/", "Checked", true,
+            false, ImportOrigin(ImportOrigin.Kind.Paste), "digest", 1, "{}")
+        val id = ImportedRuleSources.id(definition)
+        val summary = indi.dmzz_yyhyy.lightnovelreader.data.web.rules.SourceCheckSummary("old-digest", 3,
+            indi.dmzz_yyhyy.lightnovelreader.data.web.rules.DiagnosticStage.Search, "Success", 2, 1789254000000)
+        var state by mutableStateOf(SourceManagementState(installed = listOf(InstalledRuleSource(definition,
+            listOf(hnovel.network.NetworkGrant("https://fixture.invalid/")), null)), selected = id,
+            registry = listOf(SourceListing(SourceMetadata(WebDataSourceItem(id, "Checked", "fixture"),
+                setOf(SourceCapability.Search), revision = "digest", accountGeneration = 4), SourceStatus.Ready)),
+            checks = mapOf(definition.sourceId to summary)))
+        activity.get().setContent { MaterialTheme { SourcesScreen(state, model, onDiagnostics = {}) {} } }
+        val stale = "Checked before the source or account changed. Check again for a current result."
+        compose.onNodeWithText(stale).assertExists()
+        compose.runOnIdle { state = state.copy(checks = mapOf(definition.sourceId to summary.copy(revision = "digest"))) }
+        compose.onNodeWithText(stale).assertExists()
+        compose.runOnIdle { state = state.copy(checks = mapOf(definition.sourceId to summary.copy(revision = "digest", accountGeneration = 4))) }
+        compose.onNodeWithText(stale).assertDoesNotExist()
+        compose.onNodeWithText("Search · completed", substring = true).assertExists()
+        compose.onNodeWithText("Latest anonymous check only", substring = true).assertExists()
+    }
+
+    @Test fun enabledSearchOnlySourceDoesNotClaimVerificationOrOfferEmptyConfiguration() {
+        val definition = SourceDefinition("unchecked", "legado", "fixture", "https://fixture.invalid/", "Unchecked", true,
+            false, ImportOrigin(ImportOrigin.Kind.Paste), "digest", 1, "{}")
+        val id = ImportedRuleSources.id(definition)
+        val state = SourceManagementState(installed = listOf(InstalledRuleSource(definition,
+            listOf(hnovel.network.NetworkGrant("https://fixture.invalid/")), null)), selected = id,
+            registry = listOf(SourceListing(SourceMetadata(WebDataSourceItem(id, "Unchecked", "fixture"),
+                setOf(SourceCapability.Search)), SourceStatus.Ready)))
+        activity.get().setContent { MaterialTheme { SourcesScreen(state, model, onDiagnostics = {}) {} } }
+        compose.onNodeWithText("Not checked yet").assertExists()
+        compose.onNodeWithText("Available").assertDoesNotExist()
+        compose.onNodeWithText("Source configuration").assertDoesNotExist()
+        compose.onNodeWithText("Signed out").assertDoesNotExist()
+        compose.onNodeWithText("Format: legado").assertDoesNotExist()
+        compose.onNodeWithText("Save permissions").performScrollTo().performClick()
+        verify(exactly = 1) { model.saveConfiguration(id, null, "https://fixture.invalid/") }
+    }
+
     @Test fun emptyStateOpensExplicitPreviewFlowWithoutImportingAutomatically() {
         activity.get().setContent { MaterialTheme { SourcesScreen(SourceManagementState(), model, onDiagnostics = {}) {} } }
         compose.onNodeWithText("Add book source").performClick()
@@ -70,8 +187,8 @@ class SourcesScreenTest {
         compose.onNodeWithText("Add to permission draft").performScrollTo().performClick()
         verify(exactly = 0) { model.saveConfiguration(any(), any(), any()) }
         compose.onNodeWithText("In permission draft").assertIsNotEnabled()
-        compose.onNodeWithText("Save configuration and permissions").performScrollTo().performClick()
-        verify(exactly = 1) { model.saveConfiguration(id, "", "https://books.invalid/\nhttps://cdn.invalid:443") }
+        compose.onNodeWithText("Save permissions").performScrollTo().performClick()
+        verify(exactly = 1) { model.saveConfiguration(id, null, "https://books.invalid/\nhttps://cdn.invalid:443") }
     }
 
     @Test fun importedSearchOnlySourceHasAnExplicitSearchEntryWithItsIdentity() {
@@ -91,6 +208,56 @@ class SourcesScreenTest {
         compose.onNodeWithText("Search this source").assertDoesNotExist()
     }
 
+    @Test fun initializationStateControlsImportedStatusAndRuntimeActions() {
+        val definition = SourceDefinition("initializing", "legado", "fixture", "https://fixture.invalid/", "Loading source", true,
+            false, ImportOrigin(ImportOrigin.Kind.Paste), "digest", 1, "{}")
+        val id = ImportedRuleSources.id(definition)
+        val entry = SourceListing(SourceMetadata(WebDataSourceItem(id, "Loading source", "fixture"),
+            setOf(SourceCapability.Search, SourceCapability.Login)), SourceStatus.Registered)
+        var state by mutableStateOf(SourceManagementState(installed = listOf(InstalledRuleSource(definition,
+            listOf(hnovel.network.NetworkGrant("https://fixture.invalid/")), null)), registry = listOf(entry)))
+        activity.get().setContent { MaterialTheme { SourcesScreen(state, model, onDiagnostics = {}) {} } }
+        compose.onNode(hasScrollAction()).performScrollToNode(hasText("Not initialized"))
+        compose.onNodeWithText("Not initialized").assertExists()
+        compose.runOnIdle { state = state.copy(selected = id) }
+        compose.onNodeWithText("Initialize source").performScrollTo().assertIsEnabled().performClick()
+        verify(exactly = 1) { model.initializeSource(id) }
+        val diagnostics = activity.get().getString(indi.dmzz_yyhyy.lightnovelreader.R.string.sources_diagnostics)
+        for ((status, label) in listOf(SourceStatus.Registered to "Not initialized",
+            SourceStatus.Initializing to "Initializing…", SourceStatus.Failed to "Initialization failed · Review source settings")) {
+            compose.runOnIdle { state = state.copy(registry = listOf(entry.copy(status = status))) }
+            compose.onNodeWithText(label).performScrollTo().assertExists()
+            compose.onNodeWithText("Enabled").assertDoesNotExist()
+            compose.onNodeWithText("Search this source").assertDoesNotExist()
+            compose.onNodeWithText("Signed out").assertDoesNotExist()
+            compose.onNodeWithText(diagnostics).performScrollTo().assertIsNotEnabled()
+            compose.onNodeWithText("Save permissions").performScrollTo().assertIsEnabled()
+        }
+        compose.runOnIdle { state = state.copy(registry = listOf(entry.copy(status = SourceStatus.Ready))) }
+        compose.onNodeWithText("Enabled").performScrollTo().assertExists()
+        compose.onNodeWithText("Search this source").performScrollTo().assertIsEnabled()
+        compose.onNodeWithText(diagnostics).performScrollTo().assertIsEnabled()
+        compose.onNodeWithText("Initialize source").assertDoesNotExist()
+    }
+
+    @Test fun builtInSearchRequiresReadyAndRegisteredSourcesCanBeInitialized() {
+        val id = Identifier("builtin", "fixture")
+        val entry = SourceListing(SourceMetadata(WebDataSourceItem(id, "Built-in fixture", "fixture"),
+            setOf(SourceCapability.Search), builtIn = true), SourceStatus.Registered)
+        var state by mutableStateOf(SourceManagementState(registry = listOf(entry)))
+        var searched: Identifier? = null
+        activity.get().setContent { MaterialTheme { SourcesScreen(state, model, onDiagnostics = {}, onSearch = { searched = it }) {} } }
+        compose.onNodeWithContentDescription("Search this source").assertDoesNotExist()
+        compose.onNodeWithText("Initialize source").performScrollTo().performClick()
+        verify(exactly = 1) { model.initializeSource(id) }
+        compose.runOnIdle { state = state.copy(registry = listOf(entry.copy(status = SourceStatus.Failed))) }
+        compose.onNodeWithText("Initialization failed · Review source settings").assertExists()
+        compose.onNodeWithContentDescription("Search this source").assertDoesNotExist()
+        compose.runOnIdle { state = state.copy(registry = listOf(entry.copy(status = SourceStatus.Ready))) }
+        compose.onNodeWithContentDescription("Search this source").performClick()
+        org.junit.Assert.assertEquals(id, searched)
+    }
+
     @Test fun disabledDefinitionIsSelectableInPreviewWithoutBeingEnabled() {
         val directory = java.nio.file.Files.createTempDirectory("disabled-preview").toFile()
         try {
@@ -99,7 +266,7 @@ class SourcesScreenTest {
             org.junit.Assert.assertEquals(1, preview.candidates.size)
             activity.get().setContent { MaterialTheme { SourcesScreen(SourceManagementState(preview = preview), model, onDiagnostics = {}) {} } }
             compose.onNode(isToggleable()).assertIsEnabled().assertIsOff().performClick()
-            compose.onNodeWithText("Approve permissions and apply selected sources").performScrollTo().performClick()
+            compose.onNodeWithText("Apply selected").performClick()
             verify(exactly = 1) { model.commit(setOf(0), mapOf(0 to "https://fixture.invalid/"), false) }
             verify(exactly = 0) { model.setEnabled(any(), any()) }
         } finally { directory.deleteRecursively() }
@@ -143,7 +310,9 @@ class SourcesScreenTest {
         val native = indi.dmzz_yyhyy.lightnovelreader.data.web.zlibrary.ZLibrarySources
         val settings = indi.dmzz_yyhyy.lightnovelreader.data.web.zlibrary.ZLibrarySettings()
         val state = SourceManagementState(selected = native.ID,
-            zLibrary = indi.dmzz_yyhyy.lightnovelreader.data.web.zlibrary.ZLibraryState(settings))
+            zLibrary = indi.dmzz_yyhyy.lightnovelreader.data.web.zlibrary.ZLibraryState(settings),
+            registry = listOf(SourceListing(SourceMetadata(WebDataSourceItem(native.ID, "Z-Library", "fixture"),
+                setOf(SourceCapability.Search), builtIn = true), SourceStatus.Ready)))
         var selected: Identifier? = null
         activity.get().setContent { MaterialTheme { SourcesScreen(state, model, onDiagnostics = {}, onSearch = { selected = it }) {} } }
         compose.onNodeWithText("Search this source").performClick()
