@@ -166,6 +166,7 @@ private fun Group(
                 height = 87.dp,
                 uri = it.coverUri,
                 title = it.title,
+                author = it.author,
                 rounded = 8.dp
             )
             Spacer(Modifier.width(10.dp))
