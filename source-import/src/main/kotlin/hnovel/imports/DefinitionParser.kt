@@ -92,14 +92,20 @@ class LegadoSourceAdapter : SourceFormatAdapter {
             "loginUrl", "loginUi", "loginCheckJs", "coverDecodeJs", "bookSourceComment", "variableComment",
             "exploreUrl", "exploreScreen", "searchUrl")
         strings.forEach(::string)
-        val numbers = setOf("concurrentRate", "customOrder", "lastUpdateTime", "respondTime", "weight")
+        val numbers = setOf("customOrder", "lastUpdateTime", "respondTime", "weight")
         numbers.forEach(::number)
+        // Legado keeps intervals and request/window rates as nullable text. Preserve the numeric
+        // form accepted by earlier imports too; this field does not configure the host broker.
+        value["concurrentRate"]?.takeUnless { it == JsonNull }?.let { rate ->
+            if (rate !is JsonPrimitive || !rate.isString && rate.longOrNull == null)
+                throw ImportFailure(ImportCode.InvalidField, "concurrentRate")
+        }
         val rules = setOf("ruleExplore", "ruleSearch", "ruleBookInfo", "ruleToc", "ruleContent", "ruleReview")
         rules.forEach { field ->
             val rule = value[field]
             if (rule != null && rule != JsonNull && rule !is JsonObject) throw ImportFailure(ImportCode.InvalidField, field)
         }
-        val known = strings + numbers + rules + setOf("bookSourceUrl", "bookSourceName", "bookSourceType", "enabled", "enabledExplore", "enabledCookieJar", "customButton", "eventListener")
+        val known = strings + numbers + rules + setOf("bookSourceUrl", "bookSourceName", "bookSourceType", "enabled", "enabledExplore", "enabledCookieJar", "customButton", "eventListener", "concurrentRate")
         val notices = value.keys.filter { it !in known }.map { ImportNotice("UnclassifiedField", it) }.toMutableList()
         // Parsing a rule object is not a claim that its fields or scripts are executable.
         notices.add(ImportNotice("ExecutionCompatibilityPending"))
