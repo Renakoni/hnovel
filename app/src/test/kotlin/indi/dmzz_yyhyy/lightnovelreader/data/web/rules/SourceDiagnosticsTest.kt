@@ -69,6 +69,8 @@ class SourceDiagnosticsTest {
                 val network = diagnostics.run(id, DiagnosticStage.Information, "", fixture.server.url("/book/one").toString(), "")
                 assertEquals("Network", network.result)
                 assertTrue(network.events.any { it.result == "HTTP_503" })
+                val completedHistory = SourceCheckHistory(context).also { it.restore() }.results.value
+                assertEquals("Network", completedHistory.getValue(id.id).result)
                 assertEquals(target.generation, accounts.current(id).generation)
                 fixture.status = 200
                 val started = CompletableDeferred<Unit>()
@@ -83,6 +85,7 @@ class SourceDiagnosticsTest {
                 val pending = launch { diagnostics.run(id, DiagnosticStage.Information, "", fixture.server.url("/book/one").toString(), "") }
                 withTimeout(5000) { started.await() }
                 pending.cancelAndJoin()
+                assertEquals(completedHistory, SourceCheckHistory(context).also { it.restore() }.results.value)
                 assertTrue(target.session.cookie(fixture.server.url("/").toString()).contains(secret))
                 assertFalse(target.session.cookie(fixture.server.url("/").toString()).contains("late="))
                 assertFalse(context.cacheDir.listFiles().orEmpty().any { it.name.startsWith("diagnostic-") })

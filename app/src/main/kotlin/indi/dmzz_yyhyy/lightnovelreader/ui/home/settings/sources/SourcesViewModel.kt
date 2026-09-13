@@ -29,14 +29,14 @@ data class SourceManagementState(val installed: List<InstalledRuleSource> = empt
     val preview: ImportPreview? = null, val updateTarget: Identifier? = null,
     val busy: Boolean = false, val message: Int? = null, val loginForm: LoginForm? = null,
     val loginStatus: LoginStatus = LoginStatus.LoggedOut, val variable: String = "",
-    val zLibrary: ZLibraryState = ZLibraryState())
+    val zLibrary: ZLibraryState = ZLibraryState(), val checks: Map<String, SourceCheckSummary> = emptyMap())
 
 /** Screen state survives rotation; previews grant nothing and each explicit mutation has a single owner. */
 @HiltViewModel
 class SourcesViewModel @Inject constructor(@ApplicationContext private val context: Context,
     private val sources: ImportedRuleSources, private val updates: SourceRevisionUpdates,
     private val login: SourceLoginService, private val registry: WebSourceRegistry,
-    private val zLibrary: ZLibrarySources) : ViewModel() {
+    private val zLibrary: ZLibrarySources, private val checkHistory: SourceCheckHistory = SourceCheckHistory(context)) : ViewModel() {
     private val mutable = MutableStateFlow(SourceManagementState())
     val state = mutable.asStateFlow()
     private var operation: Job? = null
@@ -47,6 +47,10 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
     init {
         viewModelScope.launch { registry.sources.collect { list -> mutable.update { it.copy(registry = list) } } }
         viewModelScope.launch { zLibrary.state.collect { state -> mutable.update { it.copy(zLibrary = state) } } }
+        viewModelScope.launch {
+            checkHistory.restore()
+            checkHistory.results.collect { results -> mutable.update { it.copy(checks = results) } }
+        }
         refresh()
     }
 

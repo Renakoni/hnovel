@@ -12,6 +12,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -26,7 +27,7 @@ import androidx.navigation.toRoute
 import indi.dmzz_yyhyy.lightnovelreader.R
 import hnovel.imports.EXTENSION_PROFILE
 import hnovel.imports.LEGADO_PROFILE
-import hnovel.imports.SourceOriginCandidates
+import indi.dmzz_yyhyy.lightnovelreader.ui.components.SectionHeader
 import indi.dmzz_yyhyy.lightnovelreader.data.web.SourceCapability
 import indi.dmzz_yyhyy.lightnovelreader.data.web.rules.ImportedRuleSources
 import indi.dmzz_yyhyy.lightnovelreader.data.web.rules.InstalledRuleSource
@@ -92,12 +93,12 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                 Icon(painterResource(R.drawable.arrow_back_24px), stringResource(R.string.sources_back))
             } })
     }) { padding ->
-        LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (state.preview != null) {
+            SourceImportPreview(state, model, Modifier.padding(padding))
+        } else LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (state.busy) item { LinearProgressIndicator(Modifier.fillMaxWidth()); TextButton(onClick = model::cancel) { Text(stringResource(android.R.string.cancel)) } }
             state.message?.let { message -> item { Text(stringResource(message), color = MaterialTheme.colorScheme.primary) } }
-            if (state.preview != null) {
-                item { Preview(state, model) }
-            } else if (state.selected == ZLibrarySources.ID) {
+            if (state.selected == ZLibrarySources.ID) {
                 item { ZLibrarySettingsEditor(state.zLibrary, state.busy,
                     onEnabled = model::setZLibraryEnabled, onSave = model::saveZLibrary,
                     onSearch = { onSearch(ZLibrarySources.ID) }) }
@@ -107,9 +108,13 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                     val raw = remember(definition) { Json.parseToJsonElement(definition.rawJson).jsonObject }
                     var configuration by remember(definition.contentDigest, state.variable) { mutableStateOf(state.variable) }
                     var permissions by remember(definition, installed.origins) { mutableStateOf(installed.origins.joinToString("\n") { it.origin }) }
-                    val capabilities = state.registry.find { it.metadata.id == state.selected }?.metadata?.capabilities.orEmpty()
+                    var showDetails by rememberSaveable(definition.sourceId) { mutableStateOf(false) }
+                    val entry = state.registry.find { it.metadata.id == state.selected }
+                    val capabilities = entry?.metadata?.capabilities.orEmpty()
                     val active = capabilities.isNotEmpty()
+                    val hasConfiguration = active && (raw["variableComment"]?.jsonPrimitive?.content?.isNotBlank() == true || state.variable.isNotEmpty())
                     val variableLabel = raw["variableComment"]?.jsonPrimitive?.content.orEmpty().ifBlank { stringResource(R.string.sources_configuration) }
+                    val check = state.checks[definition.sourceId]
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         val enabledLabel = stringResource(R.string.sources_enabled)
                         val discoveryLabel = stringResource(R.string.sources_discovery_visible)
@@ -125,12 +130,10 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                                 { model.setDiscoveryVisible(state.selected!!, it) }, enabled = !state.busy && installed.hasDiscovery,
                                 modifier = Modifier.semantics { contentDescription = discoveryLabel }) })
                         Text(stringResource(R.string.sources_disabled_help), style = MaterialTheme.typography.bodySmall)
+                        SourceCheckStatus(check, check?.revision == definition.contentDigest && check.accountGeneration == entry?.metadata?.accountGeneration, details = true)
                         if (SourceCapability.Search in capabilities) {
                             Button(onClick = { onSearch(state.selected!!) }, enabled = !state.busy) { Text(stringResource(R.string.explore_search)) }
                         }
-                        Text(stringResource(R.string.sources_format, definition.format))
-                        Text(stringResource(if (definition.profile == EXTENSION_PROFILE) R.string.sources_profile_extension else R.string.sources_profile_standard))
-                        Text(stringResource(R.string.sources_revision, definition.revision.toString()))
                         if (SourceCapability.Login in capabilities) {
                             Text(stringResource(when (state.loginStatus) {
                                 LoginStatus.Authenticated -> R.string.sources_logged_in
@@ -140,7 +143,8 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                             Button(onClick = { model.beginLogin(state.selected!!) }, enabled = !state.busy) { Text(stringResource(R.string.sources_login)) }
                             OutlinedButton(onClick = { model.logout(state.selected!!) }, enabled = !state.busy) { Text(stringResource(R.string.sources_logout)) }
                         }
-                        if (active) OutlinedTextField(configuration, { configuration = it }, Modifier.fillMaxWidth(), label = { Text(variableLabel) }, enabled = !state.busy)
+                        if (hasConfiguration) OutlinedTextField(configuration, { configuration = it }, Modifier.fillMaxWidth(), label = { Text(variableLabel) }, enabled = !state.busy)
+                        HorizontalDivider()
                         Text(stringResource(R.string.sources_permissions_help))
                         Text(stringResource(R.string.sources_network_help), style = MaterialTheme.typography.bodySmall)
                         if (installed.deniedOrigins.isNotEmpty()) {
@@ -151,11 +155,20 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                             }
                         }
                         OutlinedTextField(permissions, { permissions = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.sources_permissions)) }, enabled = !state.busy)
-                        Button(onClick = { model.saveConfiguration(state.selected!!, configuration.takeIf { active }, permissions) }, enabled = !state.busy) {
-                            Text(stringResource(if (active) R.string.sources_save else R.string.sources_save_permissions))
+                        Button(onClick = { model.saveConfiguration(state.selected!!, configuration.takeIf { hasConfiguration }, permissions) }, enabled = !state.busy) {
+                            Text(stringResource(if (hasConfiguration) R.string.sources_save else R.string.sources_save_permissions))
                         }
                         OutlinedButton(onClick = { model.checkUpdate(state.selected!!) }, enabled = !state.busy) { Text(stringResource(R.string.sources_check_update)) }
                         OutlinedButton(onClick = { onDiagnostics(state.selected!!) }, enabled = !state.busy && active) { Text(stringResource(R.string.sources_diagnostics)) }
+                        TextButton(onClick = { showDetails = !showDetails }) {
+                            Text(stringResource(if (showDetails) R.string.sources_hide_details else R.string.sources_details))
+                        }
+                        if (showDetails) {
+                            Text(stringResource(R.string.sources_format, definition.format), style = MaterialTheme.typography.bodySmall)
+                            Text(stringResource(if (definition.profile == EXTENSION_PROFILE) R.string.sources_profile_extension else R.string.sources_profile_standard),
+                                style = MaterialTheme.typography.bodySmall)
+                            Text(stringResource(R.string.sources_revision, definition.revision.toString()), style = MaterialTheme.typography.bodySmall)
+                        }
                         if (installed.previous != null) OutlinedButton(onClick = { rollback = true }, enabled = !state.busy) { Text(stringResource(R.string.sources_rollback)) }
                         TextButton(onClick = { deleting = true }, enabled = !state.busy) { Text(stringResource(R.string.sources_delete), color = MaterialTheme.colorScheme.error) }
                     }
@@ -185,7 +198,7 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                         Button(onClick = { model.previewText(text, profile) }, enabled = !state.busy && text.isNotBlank()) { Text(stringResource(R.string.sources_preview)) }
                     }
                 }
-                if (state.installed.isEmpty()) item { Text(stringResource(R.string.sources_empty)) }
+                item { SectionHeader(text = stringResource(R.string.sources_builtin_group)) }
                 item {
                     ListItem(headlineContent = { Text("Z-Library") },
                         supportingContent = { Text(stringResource(R.string.zlibrary_source_summary)) },
@@ -193,75 +206,42 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                             if (state.zLibrary.settings.available) IconButton(onClick = { onSearch(ZLibrarySources.ID) }, enabled = !state.busy) {
                                 Icon(painterResource(R.drawable.search_24px), stringResource(R.string.explore_search))
                             }
-                        }, modifier = Modifier.clickable(enabled = !state.busy) { model.select(ZLibrarySources.ID) })
+                        }, modifier = Modifier.clip(MaterialTheme.shapes.large).clickable(enabled = !state.busy) { model.select(ZLibrarySources.ID) },
+                        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer))
                 }
                 items(state.registry.filter { it.metadata.builtIn && it.metadata.id != ZLibrarySources.ID }, key = { it.metadata.id.toString() }) { entry ->
                     ListItem(headlineContent = { Text(entry.metadata.item.name) }, supportingContent = { Text(stringResource(R.string.sources_builtin)) },
+                        modifier = Modifier.clip(MaterialTheme.shapes.large),
+                        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
                         trailingContent = {
                             if (SourceCapability.Search in entry.metadata.capabilities) IconButton(onClick = { onSearch(entry.metadata.id) }) {
                                 Icon(painterResource(R.drawable.search_24px), stringResource(R.string.explore_search))
                             }
                         })
                 }
+                item { SectionHeader(text = stringResource(R.string.sources_imported_group)) }
+                if (state.installed.isEmpty()) item { Text(stringResource(R.string.sources_empty)) }
                 items(state.installed, key = { it.definition.sourceId }) { source ->
                     val id = ImportedRuleSources.id(source.definition)
-                    val available = state.registry.any { it.metadata.id == id && it.metadata.capabilities.isNotEmpty() }
+                    val entry = state.registry.find { it.metadata.id == id }
+                    val available = entry?.metadata?.capabilities?.isNotEmpty() == true
+                    val check = state.checks[source.definition.sourceId]
                     ListItem(headlineContent = { Text(source.definition.displayName) },
                         supportingContent = { Column {
                             Text(stringResource(sourceStatus(source, available)))
+                            SourceCheckStatus(check, check?.revision == source.definition.contentDigest && check.accountGeneration == entry?.metadata?.accountGeneration)
                             if (!source.hasDiscovery) Text(stringResource(R.string.sources_no_discovery))
                             else if (!source.preferences.discoveryVisible) Text(stringResource(R.string.sources_discovery_hidden))
                             if (source.deniedOrigins.isNotEmpty()) Text(stringResource(R.string.sources_denied_count, source.deniedOrigins.size))
                         } },
-                        modifier = Modifier.clickable(enabled = !state.busy) { model.select(id) })
+                        modifier = Modifier.clip(MaterialTheme.shapes.large).clickable(enabled = !state.busy) { model.select(id) },
+                        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer))
                 }
             }
         }
     }
     state.loginForm?.let { form ->
         SourceLoginDialog(form, state.busy, model::submitLogin, model::cancelLogin)
-    }
-}
-
-@Composable
-private fun Preview(state: SourceManagementState, model: SourcesViewModel) {
-    val preview = state.preview!!
-    val selected = remember(preview) { mutableStateMapOf<Int, Boolean>() }
-    val permissions = remember(preview) { mutableStateMapOf<Int, String>() }
-    var approveIdentity by remember(preview) { mutableStateOf(false) }
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(stringResource(R.string.sources_preview), style = MaterialTheme.typography.titleLarge)
-        Text(stringResource(R.string.sources_permissions_help))
-        preview.issues.forEach { Text(stringResource(R.string.sources_import_problem, it.code.name, it.field.orEmpty())) }
-        preview.candidates.forEach { candidate ->
-            if (candidate.index !in permissions) permissions[candidate.index] = runCatching { SourcesViewModel.origin(candidate.importKey) }.getOrDefault("")
-            Row {
-                Checkbox(selected[candidate.index] == true, { selected[candidate.index] = it }, enabled = !state.busy)
-                Column(Modifier.weight(1f)) {
-                    Text(candidate.displayName)
-                    Text(stringResource(if (candidate.existing == null) R.string.sources_new else R.string.sources_replace))
-                    if (!candidate.enabled) Text(stringResource(R.string.sources_disabled_definition))
-                }
-            }
-            if (selected[candidate.index] == true) {
-                val origins = remember(candidate) { SourceOriginCandidates.discover(Json.parseToJsonElement(candidate.rawJson).jsonObject) }
-                Text(stringResource(R.string.sources_origin_candidates_help))
-                origins.forEach { origin ->
-                    SourcePermissionCandidate(origin.origin, origin.kind.name, permissions[candidate.index].orEmpty(), state.busy) {
-                        permissions[candidate.index] = it
-                    }
-                }
-                OutlinedTextField(permissions[candidate.index].orEmpty(), { permissions[candidate.index] = it },
-                    Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.sources_permissions)) }, enabled = !state.busy)
-            }
-        }
-        if (state.updateTarget != null) Row {
-            Checkbox(approveIdentity, { approveIdentity = it }, enabled = !state.busy)
-            Text(stringResource(R.string.sources_identity_approval), Modifier.weight(1f))
-        }
-        Button(onClick = { model.commit(selected.filterValues { it }.keys.toSet(), permissions.toMap(), approveIdentity) },
-            enabled = !state.busy && selected.values.any { it }) { Text(stringResource(R.string.sources_apply)) }
-        TextButton(onClick = model::dismissPreview, enabled = !state.busy) { Text(stringResource(android.R.string.cancel)) }
     }
 }
 
