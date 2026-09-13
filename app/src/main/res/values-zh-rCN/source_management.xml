@@ -13,7 +13,7 @@
     <string name="sources_title">书源</string>
     <string name="sources_manage_help">添加、配置、登录和更新书源</string>
     <string name="sources_add">添加书源</string>
-    <string name="sources_add_help">通过 URL、本地文件或粘贴文本添加 JSON 书源。此处不支持插件包（.lnrp / APK）。</string>
+    <string name="sources_add_help">通过 URL、本地文件或粘贴文本添加 JSON 书源，也可从本地导入已适配版本的 .lnrp / APK 书源包。</string>
     <string name="sources_url">书源文件 URL</string>
     <string name="sources_preview_url">下载并预览</string>
     <string name="sources_file">选择本地文件</string>

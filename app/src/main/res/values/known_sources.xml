@@ -1,0 +1,3 @@
+<resources>
+    <string name="sources_notice_known_package">Recognized package version. Importing app-maintained source definitions; no plugin installation is needed. Source updates are delivered with app updates: import this file again to preview them. Check each source before use; upstream sites may be unavailable.</string>
+</resources>

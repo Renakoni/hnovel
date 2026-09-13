@@ -27,6 +27,10 @@ private class WorkerOutputLimit : RuntimeException()
 @Serializable data class ExecutionLimits(val timeoutMillis: Long = 5000, val maxOutputBytes: Int = 65536, val maxRequests: Int = 16) {
  init { require(timeoutMillis in 1..60000 && maxOutputBytes in 1..4 * 1024 * 1024 && maxRequests in 0..1024) }
 }
+
+// RuleSource already grants a 192 KiB result budget. Keep its script input, native data methods and
+// response reads consistent with that host-owned budget; larger callers cannot expand the IPC cap.
+internal val ExecutionLimits.scriptDataLimit: Int get() = maxOutputBytes.coerceIn(ScriptLimits.DEFAULT_BRIDGE_CHARS, 192 * 1024)
 @Serializable sealed interface ExecutionTask {
  @Serializable data class Echo(val value: String): ExecutionTask
  @Serializable data class Sleep(val millis: Long): ExecutionTask
@@ -98,7 +102,7 @@ class IsolatedExecutor(private val javaCommand: String = javaHome(), private val
  fun execute(identity: ExecutionIdentity, task: ExecutionTask, limits: ExecutionLimits = ExecutionLimits()): ExecutionResult {
   if (identity.sourceId.isBlank() || (authority != null && !authority.accepts(identity))) return ExecutionResult.Failure(FailureCode.InvalidIdentity)
   val input = ExecutionWire.encode(identity, task, limits)
-  if (input.size > BridgeWire.MAX_BYTES) return ExecutionResult.Failure(FailureCode.InputLimit)
+  if (input.size > ExecutionWire.MAX_INPUT_BYTES) return ExecutionResult.Failure(FailureCode.InputLimit)
   val deadline = System.nanoTime() + limits.timeoutMillis * 1_000_000
   val process = try { ProcessBuilder(javaCommand, "-Xmx64m", "-Xss1m", "-XX:+ExitOnOutOfMemoryError",
    "-cp", classPath, WorkerMain::class.java.name).start() }
@@ -165,6 +169,9 @@ class IsolatedExecutor(private val javaCommand: String = javaHome(), private val
 
 /** Shared Android/JVM wire encoding; the authority stays in the host. */
 object ExecutionWire {
+ // Real novel pages can exceed 256 KiB before selection. Requests have a separate bounded allowance;
+ // worker results and reverse host calls retain BridgeWire's 256 KiB ceiling.
+ const val MAX_INPUT_BYTES = 512 * 1024
  fun encode(identity: ExecutionIdentity, task: ExecutionTask, limits: ExecutionLimits, libraryScripts: List<String>? = null): ByteArray =
   kotlinx.serialization.json.Json.encodeToString(Wire.serializer(), Wire(identity, task, limits, libraryScripts)).toByteArray(Charsets.UTF_8)
  fun encodeResult(result: ExecutionResult): ByteArray =
@@ -203,7 +210,10 @@ class WorkerRuntime(private val archives: hnovel.rhino.ArchiveDecoder = hnovel.r
  }
 
  @Synchronized fun executeSerialized(input: String, bridge: HostBridge = HostBridge { _, _ -> error("No host broker") }): String {
-  val wire = try { kotlinx.serialization.json.Json.decodeFromString(Wire.serializer(), input) }
+  if (input.length > ExecutionWire.MAX_INPUT_BYTES || input.toByteArray(Charsets.UTF_8).size > ExecutionWire.MAX_INPUT_BYTES)
+   return kotlinx.serialization.json.Json.encodeToString(ExecutionResult.serializer(), ExecutionResult.Failure(FailureCode.InputLimit))
+  val wire = try { kotlinx.serialization.json.Json.decodeFromString(Wire.serializer(),
+   BridgeWire.validate(input.toByteArray(Charsets.UTF_8), ExecutionWire.MAX_INPUT_BYTES)) }
     catch (_: Exception) { return kotlinx.serialization.json.Json.encodeToString(ExecutionResult.serializer(), ExecutionResult.Failure(FailureCode.InvalidTask)) }
   if (SourceLibraryDefinition.isUrlMap(wire.task.libraryCode()) && wire.libraryScripts == null)
    return kotlinx.serialization.json.Json.encodeToString(ExecutionResult.serializer(), ExecutionResult.Failure(FailureCode.BridgeDenied))
@@ -216,7 +226,8 @@ class WorkerRuntime(private val archives: hnovel.rhino.ArchiveDecoder = hnovel.r
    is ExecutionTask.Script -> {
     val frame = ScriptFrame(wire.identity.sourceId, wire.identity.profile, task.bookId, task.chapterId,
      mapOf("result" to task.result), task.key, task.page, task.baseUrl, book = task.book, chapter = task.chapter, chineseConverter = task.chineseConverter)
-    when (val evaluated = RhinoScriptEngine(bridge, ScriptLimits(maxResultChars = wire.limits.maxOutputBytes), archives)
+    when (val evaluated = RhinoScriptEngine(bridge, ScriptLimits(maxResultChars = wire.limits.maxOutputBytes,
+     maxBridgeChars = wire.limits.scriptDataLimit), archives)
      .evaluate(task.code, frame, library(wire.identity, task.libraryCode, wire.libraryScripts))) {
      is ScriptResult.Success -> if (evaluated.json.toByteArray(Charsets.UTF_8).size > wire.limits.maxOutputBytes)
       ExecutionResult.Failure(FailureCode.OutputLimit) else ExecutionResult.Success(evaluated.json)

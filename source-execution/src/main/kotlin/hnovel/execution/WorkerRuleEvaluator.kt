@@ -26,7 +26,8 @@ internal object WorkerRuleEvaluator {
             val frame = ScriptFrame(identity.sourceId, identity.profile, task.bookId, task.chapterId,
                 mapOf("result" to input(request.input)), task.key, task.page, task.baseUrl, current, task.input, budget, task.book, task.chapter, task.chineseConverter,
                 sourceHeaderRule = task.sourceHeaderRule, discovery = discovery)
-            when (val result = RhinoScriptEngine(bridge, ScriptLimits(maxResultChars = limits.maxOutputBytes), archives)
+            when (val result = RhinoScriptEngine(bridge, ScriptLimits(maxResultChars = limits.maxOutputBytes,
+                maxBridgeChars = limits.scriptDataLimit), archives)
                 .evaluate(request.script, frame, library)) {
                 is ScriptResult.Success -> value(Json.parseToJsonElement(result.json))
                 is ScriptResult.Failure -> { scriptFailure = result.code; throw RuleScriptFailure(result.code.name) }

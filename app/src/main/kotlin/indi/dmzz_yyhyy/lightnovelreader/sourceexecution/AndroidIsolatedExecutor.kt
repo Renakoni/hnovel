@@ -49,7 +49,7 @@ class AndroidIsolatedExecutor @Inject constructor(@ApplicationContext context: C
         if (broker != null && !broker.matchesTaskContext(task)) return@withContext failure(FailureCode.InvalidTask)
         if (!authority.accepts(identity)) return@withContext failure(FailureCode.InvalidIdentity)
         val request = ExecutionWire.encode(identity, task, limits)
-        if (request.size > IsolatedExecutionService.MAX_IPC_BYTES) return@withContext failure(FailureCode.InputLimit)
+        if (request.size > ExecutionWire.MAX_INPUT_BYTES) return@withContext failure(FailureCode.InputLimit)
         if (!workerLock.tryLock()) return@withContext failure(FailureCode.Busy)
         try {
             // A new bind must never reuse a worker whose previous shutdown has not completed.
@@ -120,7 +120,7 @@ class AndroidIsolatedExecutor @Inject constructor(@ApplicationContext context: C
                     } finally { loading.cancel() }
                 } else null
                 val request = ExecutionWire.encode(identity, task, limits, scripts)
-                if (request.size > IsolatedExecutionService.MAX_IPC_BYTES) return@withTimeoutOrNull failure(FailureCode.InputLimit)
+                if (request.size > ExecutionWire.MAX_INPUT_BYTES) return@withTimeoutOrNull failure(FailureCode.InputLimit)
                 val workerUid = service.workerUid()
                 if (workerUid == Process.myUid()) return@withTimeoutOrNull failure(FailureCode.InvalidIdentity)
                 if (!authority.accepts(identity)) return@withTimeoutOrNull failure(FailureCode.Revoked)
