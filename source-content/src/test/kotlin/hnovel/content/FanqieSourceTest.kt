@@ -80,8 +80,12 @@ class FanqieSourceTest {
                             val count = if (id == bookIds.first()) 1347 else 5
                             val chapters = (0 until count).map { index -> buildJsonObject {
                                 put("itemId", "$id-$index"); put("title", "第 $index 章 山川异域，风月同天"); put("needPay", 0)
+                                put("firstPassTime", "1753416301"); put("realChapterOrder", (index + 1).toString())
+                                put("isChapterLock", false); put("isPaidPublication", false); put("isPaidStory", false)
+                                put("volume_name", if (index < count / 2) "First volume" else "Second volume")
                             } }
                             buildJsonObject { put("data", buildJsonObject {
+                                put("allItemIds", JsonArray(chapters.map { it.getValue("itemId") }))
                                 put("volumeNameList", buildJsonArray { add("First volume"); add("Second volume") })
                                 put("chapterListWithVolume", buildJsonArray {
                                     add(JsonArray(chapters.take(count / 2))); add(JsonArray(chapters.drop(count / 2)))

@@ -214,7 +214,9 @@ class RhinoScriptEngine(private val bridge: HostBridge, private val limits: Scri
                 }
                 scope.put("book", scope, book)
                 scope.put("chapter", scope, chapter)
-                scope.put("result", scope, JsonScriptData(context, scope, limits.maxBridgeChars).convert(frame.variables["result"] ?: JsonNull))
+                // The rule input is already inside the worker; reverse host-call limits do not apply.
+                val inputLimit = frame.ruleBudget?.limits?.maxInputChars ?: limits.maxBridgeChars
+                scope.put("result", scope, JsonScriptData(context, scope, inputLimit).convert(frame.variables["result"] ?: JsonNull))
                 scope.put("key", scope, frame.key)
                 scope.put("page", scope, frame.page)
                 scope.put("baseUrl", scope, frame.baseUrl)

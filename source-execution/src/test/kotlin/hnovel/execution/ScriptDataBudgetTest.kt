@@ -1,6 +1,9 @@
 package hnovel.execution
 
 import hnovel.rhino.HostBridge
+import hnovel.rules.OutputKind
+import hnovel.rules.RuleValue
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 import org.junit.Assert.*
 import org.junit.Test
@@ -33,6 +36,27 @@ class ScriptDataBudgetTest {
             assertEquals(ExecutionResult.Failure(FailureCode.OutputLimit), evaluate(70000, 65536))
             assertEquals(ExecutionResult.Success("70000"), evaluate(70000, 196608))
             assertEquals(ExecutionResult.Failure(FailureCode.OutputLimit), evaluate(196608, 4 * 1024 * 1024))
+        }
+    }
+
+    @Test fun ruleScriptsReadLargeInputsWithoutExpandingResultsOrHostCalls() {
+        val identity = ExecutionAuthority().issue("large-catalogue", "legado", "1")
+        WorkerRuntime().use { worker ->
+            fun evaluate(rule: String): ExecutionResult {
+                val task = ExecutionTask.Rule(rule, RuleValue.Text("x".repeat(320000)), OutputKind.Text)
+                val wire = ExecutionWire.encode(identity, task, ExecutionLimits(maxOutputBytes = 1024))
+                return ExecutionWire.decodeResult(worker.executeSerialized(wire.toString(Charsets.UTF_8),
+                    HostBridge { _, _ -> error("Oversized data must not reach the host") }).toByteArray())
+            }
+            for (rule in listOf("@js:result.length", "@js:java.getString('@js:result.length')")) {
+                val result = evaluate(rule)
+                assertTrue(result.toString(), result is ExecutionResult.Success)
+                assertEquals(RuleValue.Text("320000"), Json.decodeFromString(ExecutedRule.serializer(),
+                    (result as ExecutionResult.Success).output).value)
+            }
+            for (rule in listOf("@js:result", "@js:host.call('store',result)")) {
+                assertEquals(FailureCode.OutputLimit, (evaluate(rule) as ExecutionResult.Failure).code)
+            }
         }
     }
 }
