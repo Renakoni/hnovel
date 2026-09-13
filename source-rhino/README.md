@@ -30,6 +30,16 @@ Modern createSymmetricCrypto/createAsymmetricCrypto/createSign return native JS 
 
 java.getString/getStringList/getElement/getElements evaluate selectors and nested script stages in the current ContextFactory, sharing input, variable writes, depth, rule budget and instruction counter. HTML/XML results expose closed worker-local DOM data/mutation methods and callback adapters; JSON elements retain their types. DOM handles serialize as markup between rule stages. Typed Java Class/Evaluator overloads and network factories are outside the data profile.
 
+`org.jsoup.Jsoup.parse(html[, baseUri])` is an in-memory parser entry point over the
+same DOM facades, available during jsLib initialization as well as ordinary rule
+calls. It exposes no Java class or `connect` method. `java.setContent(content[, baseUrl])`
+replaces the current invocation's selector input and returns the same `java` facade;
+HTML text and JSON objects/arrays can feed subsequent selector calls. An explicit
+base URL affects selector URL results and DOM views only, not the invocation globals,
+book identity or host network authority. Omitted/null base URL retains the current
+selector base. Explicit input to `getString` remains a temporary read. Replacing
+content shares the existing budgets and does not carry state into another invocation.
+
 ajax/connect/ajaxAll and resource-download ports evaluate @js:/<js>, @result stages, balanced expression templates and URL-option js in the worker. Option js receives the resolved URL and its authority as baseUrl. Nested computation uses the same instruction observer, temporarily restores invocation globals and bounds the complete expanded batch before host dispatch. Static key/page/baseUrl placeholders retain the established host compiler's charset-aware escaping for URL/body/header fields; arbitrary expression results are script-produced text. The host then compiles and authorizes the actual target. Browser options remain explicit deferred capabilities.
 
 URL-option data uses the shared bounded `RequestOptionsJson` grammar, including single-quoted strings and embedded header/body JSON. Malformed data throws a catchable redacted Error and reports `RequestSyntax`, including through nested request-template calls. Rule execution retains its original field and reports the Parse stage; these failures never request network permission. Actual broker denials retain their separate bridge result.
