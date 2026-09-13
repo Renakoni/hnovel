@@ -233,6 +233,7 @@ private fun ExploreBookCard(
                 height = 138.dp,
                 uri = Uri.parse(book.coverUrl),
                 title = book.title,
+                author = book.author,
                 rounded = 6.dp
             )
         }

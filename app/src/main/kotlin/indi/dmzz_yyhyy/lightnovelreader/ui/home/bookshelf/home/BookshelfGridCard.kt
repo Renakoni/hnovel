@@ -66,7 +66,7 @@ internal fun BookshelfGridCard(
             val coverHeight = coverWidth * (144f / 94f)
             Box(Modifier.size(coverWidth, coverHeight).clip(RoundedCornerShape(8.dp))) {
                 if (item != null) {
-                    Cover(id, coverWidth, coverHeight, item.bookInformation.coverUri, item.bookInformation.title)
+                    Cover(id, coverWidth, coverHeight, item.bookInformation.coverUri, item.bookInformation.title, author = item.bookInformation.author)
                 } else {
                     Box(
                         Modifier.fillMaxSize()
