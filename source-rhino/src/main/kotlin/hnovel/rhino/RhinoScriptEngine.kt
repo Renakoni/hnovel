@@ -100,6 +100,10 @@ private class ScriptBridge(private val bridge: HostBridge, private val rules: Sc
             "putLoginInfo", "removeLoginInfo", "getLoginHeader", "getLoginHeaderMap", "putLoginHeader", "removeLoginHeader"))
         source.defineProperty("id", frame.sourceId, ScriptableObject.READONLY)
         source.defineProperty("profile", frame.profile, ScriptableObject.READONLY)
+        // Definitions can explicitly eval this prelude from search/discovery. Reading it does not
+        // initiate login, and the worker never receives a mutable Android Source object.
+        source.defineProperty("loginUrl", frame.sourceLoginUrl, ScriptableObject.READONLY or ScriptableObject.PERMANENT)
+        method(source, "getLoginUrl") { _, _, args -> require(args.isEmpty()); frame.sourceLoginUrl }
         method(javaBridge, "getSource") { _, _, args -> require(args.isEmpty()); source }
         frame.discovery?.install(context, scope, javaBridge, source)
         if (frame.discovery != null) method(javaBridge, "removeCookie") { cx, active, args ->
@@ -113,7 +117,7 @@ data class ScriptFrame(val sourceId: String, val profile: String, val bookId: St
     val baseUrl: String = "", val ruleContext: RuleContext? = null, val ruleInput: RuleValue? = null,
     val ruleBudget: RuleBudget? = null, val book: JsonObject = JsonObject(emptyMap()),
     val chapter: JsonObject = JsonObject(emptyMap()), val chineseConverter: Int = 0, val sourceHeaderRule: String = "",
-    val discovery: ScriptDiscovery? = null)
+    val discovery: ScriptDiscovery? = null, val sourceLoginUrl: String = "")
 
 data class ScriptLimits(val instructionLimit: Int = 100_000, val maxResultChars: Int = 256 * 1024,
     val maxScriptChars: Int = 256 * 1024, val maxBridgeChars: Int = DEFAULT_BRIDGE_CHARS,
@@ -127,9 +131,10 @@ sealed interface ScriptResult {
     data class Success(val json: String) : ScriptResult {
         override fun toString() = "ScriptSuccess(chars=${json.length})"
     }
-    data class Failure(val code: FailureCode, val message: String) : ScriptResult
+    data class Failure(val code: FailureCode, val message: String, val dependency: ScriptDependency? = null,
+        val inLibrary: Boolean = false) : ScriptResult
 }
-enum class FailureCode { Timeout, Cancelled, Syntax, Runtime, ResultTooLarge, UnsupportedResult, BridgeDenied, RequestSyntax }
+enum class FailureCode { Timeout, Cancelled, Syntax, Runtime, ResultTooLarge, UnsupportedResult, BridgeDenied, RequestSyntax, UnsupportedDependency }
 
 internal class ScriptBudgetExceeded : Error()
 private class ScriptCancelled : Error()
@@ -232,6 +237,16 @@ class RhinoScriptEngine(private val bridge: HostBridge, private val limits: Scri
           catch (_: BridgeRejected) { ScriptResult.Failure(FailureCode.BridgeDenied, "host bridge denied") }
           catch (_: RequestRejected) { ScriptResult.Failure(FailureCode.RequestSyntax, "invalid request options") }
           catch (_: JavaScriptException) { ScriptResult.Failure(FailureCode.Runtime, "script failed") }
+          catch (error: EcmaError) {
+              // Classify only engine-generated missing bindings. Source-created Errors, ordinary
+              // missing variables, typeof probes and caught fallbacks retain normal JS semantics.
+              val dependency = if (error.name == "ReferenceError") ScriptDependency.entries.firstOrNull {
+                  error.errorMessage.contains("\"${it.binding}\"") || error.errorMessage.contains("'${it.binding}'")
+              } else null
+              if (dependency == null) ScriptResult.Failure(FailureCode.Runtime, "script failed")
+              else ScriptResult.Failure(FailureCode.UnsupportedDependency, "runtime dependency unavailable", dependency,
+                  error.sourceName()?.startsWith("source-library-") == true)
+          }
           catch (_: Exception) { ScriptResult.Failure(FailureCode.Runtime, "script failed") }
     }
 }

@@ -16,8 +16,12 @@ import hnovel.execution.ExecutionWire
 import hnovel.execution.FailureCode
 import hnovel.execution.SourceExecutionBroker
 import hnovel.execution.ExecutedRule
+import hnovel.rules.RuleError
+import hnovel.rules.RuleLocation
+import hnovel.rules.RuleStage
 import hnovel.rules.RuleValue
 import hnovel.rules.OutputKind
+import hnovel.rules.ScriptDependency
 import hnovel.network.SourceBroker
 import hnovel.network.SourceScope
 import hnovel.network.NetworkGrant
@@ -727,8 +731,11 @@ class IsolatedExecutionInstrumentedTest {
             ExecutionTask.Script("/(a+)+$/.test('a'.repeat(40)+'!')"), ExecutionLimits(timeoutMillis = 4000)))
         val b = authority.issue("source-b", "legado", "1")
         assertEquals(ExecutionResult.Success("42"), executor.execute(b, ExecutionTask.Script("21*2"), limits))
-        assertEquals(ExecutionResult.Failure(FailureCode.ScriptRuntime), executor.execute(b,
+        assertEquals(ExecutionResult.Failure(FailureCode.UnsupportedDependency,
+            RuleError(RuleStage.Script, RuleLocation("script"), "UnsupportedDependency.Packages"),
+            ScriptDependency.Packages), executor.execute(b,
             ExecutionTask.Script("Packages.java.lang.System.exit(0)"), limits))
+        assertEquals(ExecutionResult.Success("42"), executor.execute(b, ExecutionTask.Script("21*2"), limits))
     }
 
     @Test fun cancellingAjaxReleasesBrokerPermitForTheNextInvocation() = runBlocking {

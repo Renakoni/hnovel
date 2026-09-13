@@ -5,6 +5,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import hnovel.content.*
 import hnovel.execution.ExecutionAuthority
 import hnovel.network.*
+import hnovel.rules.ScriptDependency
 import indi.dmzz_yyhyy.lightnovelreader.data.web.SourceSessionManager
 import indi.dmzz_yyhyy.lightnovelreader.data.web.WebSourceRegistry
 import io.nightfish.lightnovelreader.api.identifier.Identifier
@@ -22,7 +23,8 @@ import javax.inject.Singleton
 @Serializable data class SourceDiagnosticReport(val sourceId: String, val profile: String, val revision: String,
     val accountGeneration: Long, val stage: DiagnosticStage, val result: String,
     val field: String?, val count: Int, val events: List<ContentTraceEvent>, val truncated: Boolean,
-    val engine: String = "rhino-1.8.1 / legado-da17bb2", val authentication: String = "isolated-anonymous") {
+    val engine: String = "rhino-1.8.1 / legado-da17bb2", val authentication: String = "isolated-anonymous",
+    val dependency: ScriptDependency? = null) {
     fun export(): String = Json { prettyPrint = true }.encodeToString(this)
 }
 
@@ -47,6 +49,7 @@ class SourceDiagnostics @Inject constructor(@ApplicationContext private val cont
             } }
             var result = "Success"
             var field: String? = null
+            var dependency: ScriptDependency? = null
             var count = 0
             try {
                 SourceBroker(directory.toPath(), cipher = cipher, browser = browser).use { broker ->
@@ -73,10 +76,11 @@ class SourceDiagnostics @Inject constructor(@ApplicationContext private val cont
                     } } finally { monitor.cancelAndJoin() }
                 }
             } catch (cancelled: CancellationException) { throw cancelled }
-            catch (failure: SourceContentException) { result = failure.code.name; field = failure.field }
+            catch (failure: SourceContentException) { result = failure.code.name; field = failure.field; dependency = failure.dependency }
             catch (_: Exception) { result = "HostFailure" }
             finally { authority.revoke(ticket); directory.deleteRecursively() }
-            SourceDiagnosticReport(source.id, ticket.profile, ticket.revision, account, stage, result, field, count, events.toList(), truncated)
+            SourceDiagnosticReport(source.id, ticket.profile, ticket.revision, account, stage, result, field, count, events.toList(), truncated,
+                dependency = dependency)
                 .also { history.record(it, stage == DiagnosticStage.Discovery && exploreUrl.isNotBlank()) }
         }
 }
