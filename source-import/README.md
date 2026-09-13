@@ -16,6 +16,12 @@ imply executing all its rules. Duplicate JSON property names, malformed JSON,
 unsupported book types, unknown profiles and excessive nesting are explicit errors.
 Limits apply to UTF-8 bytes and to every array entry, including invalid ones.
 
+Legado's `concurrentRate` may be null or text, including an empty string, a delay
+such as `"1000"`, or a request/window expression such as `"30/5000"`. Legacy integer
+values are also accepted. The original value is retained; import does not install
+a scheduler or override the host broker's request limits. Objects, arrays, booleans
+and fractional numbers remain invalid for this field.
+
 The format adapter recognizes Legado JSON; profiles use the identifiers from the
 compatibility manifest. The extension profile is an explicit caller choice, not
 inferred from the display name or advertised as a fully supported execution dialect.
