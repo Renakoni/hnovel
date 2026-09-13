@@ -39,7 +39,7 @@ internal val ExecutionLimits.scriptDataLimit: Int get() = maxOutputBytes.coerceI
  @Serializable data class Script(val code: String, val result: JsonElement = JsonNull, val bookId: String? = null,
   val chapterId: String? = null, val key: String = "", val page: Int = 1, val baseUrl: String = "",
   val libraryCode: String? = null, val book: JsonObject = JsonObject(emptyMap()),
-  val chapter: JsonObject = JsonObject(emptyMap()), val chineseConverter: Int = 0) : ExecutionTask
+  val chapter: JsonObject = JsonObject(emptyMap()), val chineseConverter: Int = 0, val sourceLoginUrl: String = "") : ExecutionTask
  @Serializable data class Rule(val rule: String, val input: RuleValue, val output: OutputKind = OutputKind.TextList,
   val location: RuleLocation = RuleLocation("rule"), val bookId: String? = null, val chapterId: String? = null,
   val key: String = "", val page: Int = 1, val baseUrl: String = "", val libraryCode: String? = null,
@@ -47,7 +47,8 @@ internal val ExecutionLimits.scriptDataLimit: Int get() = maxOutputBytes.coerceI
   val chapterVariables: Map<String, String> = emptyMap(), val book: JsonObject = JsonObject(emptyMap()),
   val chapter: JsonObject = JsonObject(emptyMap()), val bookBigVariables: Map<String, String> = emptyMap(),
   val chapterBigVariables: Map<String, String> = emptyMap(), val chineseConverter: Int = 0,
-  val unescapeHtml: Boolean = true, val sourceHeaderRule: String = "", val discovery: JsonObject? = null) : ExecutionTask
+  val unescapeHtml: Boolean = true, val sourceHeaderRule: String = "", val discovery: JsonObject? = null,
+  val sourceLoginUrl: String = "") : ExecutionTask
 }
 
 fun ExecutionTask.libraryCode(): String? = when (this) {
@@ -57,9 +58,10 @@ fun ExecutionTask.libraryCode(): String? = when (this) {
 }
 @Serializable sealed interface ExecutionResult {
  @Serializable data class Success(val output: String): ExecutionResult
- @Serializable data class Failure(val code: FailureCode, val ruleError: RuleError? = null): ExecutionResult
+ @Serializable data class Failure(val code: FailureCode, val ruleError: RuleError? = null,
+  val dependency: ScriptDependency? = null): ExecutionResult
 }
-@Serializable enum class FailureCode { Timeout, ProcessExited, InvalidIdentity, OutputLimit, InvalidTask, Cancelled, Revoked, Busy, InputLimit, ScriptSyntax, ScriptRuntime, BridgeDenied, RuleRuntime, RequestSyntax }
+@Serializable enum class FailureCode { Timeout, ProcessExited, InvalidIdentity, OutputLimit, InvalidTask, Cancelled, Revoked, Busy, InputLimit, ScriptSyntax, ScriptRuntime, BridgeDenied, RuleRuntime, RequestSyntax, UnsupportedDependency }
 
 /** Host authority for source identities. The worker never gets a method to issue or change a ticket. */
 class ExecutionAuthority {
@@ -225,7 +227,8 @@ class WorkerRuntime(private val archives: hnovel.rhino.ArchiveDecoder = hnovel.r
    is ExecutionTask.Sleep -> { Thread.sleep(task.millis); ExecutionResult.Success("slept") }
    is ExecutionTask.Script -> {
     val frame = ScriptFrame(wire.identity.sourceId, wire.identity.profile, task.bookId, task.chapterId,
-     mapOf("result" to task.result), task.key, task.page, task.baseUrl, book = task.book, chapter = task.chapter, chineseConverter = task.chineseConverter)
+     mapOf("result" to task.result), task.key, task.page, task.baseUrl, book = task.book, chapter = task.chapter,
+     chineseConverter = task.chineseConverter, sourceLoginUrl = task.sourceLoginUrl)
     when (val evaluated = RhinoScriptEngine(bridge, ScriptLimits(maxResultChars = wire.limits.maxOutputBytes,
      maxBridgeChars = wire.limits.scriptDataLimit), archives)
      .evaluate(task.code, frame, library(wire.identity, task.libraryCode, wire.libraryScripts))) {
@@ -237,9 +240,11 @@ class WorkerRuntime(private val archives: hnovel.rhino.ArchiveDecoder = hnovel.r
       hnovel.rhino.FailureCode.Syntax -> FailureCode.ScriptSyntax
       hnovel.rhino.FailureCode.BridgeDenied -> FailureCode.BridgeDenied
       hnovel.rhino.FailureCode.RequestSyntax -> FailureCode.RequestSyntax
+      hnovel.rhino.FailureCode.UnsupportedDependency -> FailureCode.UnsupportedDependency
       hnovel.rhino.FailureCode.ResultTooLarge -> FailureCode.OutputLimit
       else -> FailureCode.ScriptRuntime
-     })
+     }, evaluated.dependency?.let { RuleError(RuleStage.Script,
+      RuleLocation(if (evaluated.inLibrary) "jsLib" else "script"), "UnsupportedDependency.${it.name}") }, evaluated.dependency)
     }
    }
   }

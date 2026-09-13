@@ -421,7 +421,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
     internal fun evaluation(book: RuleBook? = null, chapter: RuleChapter? = null, keyword: String = "", page: Int = 1, interactive: Boolean = false): RuleEvaluation {
         val result = RuleEvaluation(identity, authority, session, runner, spec.library, book?.id, chapter?.id,
             book?.state ?: ScriptState(), chapter?.state ?: ScriptState(), book?.id ?: spec.baseUrl, keyword, page,
-            headerRule = spec.header, interactive = interactive, trace = trace)
+            headerRule = spec.header, interactive = interactive, trace = trace, sourceLoginUrl = spec.loginUrl)
         book?.let {
             result.bookField("bookUrl", it.id)
             if ("name" !in result.book.metadata) result.bookField("name", it.title)

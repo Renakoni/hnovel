@@ -11,7 +11,7 @@ fun interface RuleTaskRunner {
 }
 
 enum class ContentError { Unavailable, LoginRequired, MissingCapability, BrowserRequired, PermissionDenied,
-    Network, InvalidRule, EmptyContent, RepeatedPage, Limit, Storage, AddressDenied, Dns }
+    Network, InvalidRule, EmptyContent, RepeatedPage, Limit, Storage, AddressDenied, Dns, UnsupportedDependency }
 
 /** Same interpretation for direct requests and host-denied script requests. No URL crosses this boundary. */
 internal fun hnovel.network.FailureCode.contentError(): ContentError = when (this) {
@@ -25,7 +25,7 @@ internal fun hnovel.network.FailureCode.contentError(): ContentError = when (thi
 
 /** Only stable codes and definition field names cross into UI/logging. */
 class SourceContentException(val code: ContentError, val field: String,
-    val denial: hnovel.network.OriginDenial? = null) : Exception("${code.name}: $field")
+    val denial: hnovel.network.OriginDenial? = null, val dependency: hnovel.rules.ScriptDependency? = null) : Exception("${code.name}: $field")
 
 @Serializable data class ScriptState(
     val metadata: JsonObject = JsonObject(emptyMap()),
