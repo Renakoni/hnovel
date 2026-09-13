@@ -29,6 +29,8 @@ import hnovel.imports.EXTENSION_PROFILE
 import hnovel.imports.LEGADO_PROFILE
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.SectionHeader
 import indi.dmzz_yyhyy.lightnovelreader.data.web.SourceCapability
+import indi.dmzz_yyhyy.lightnovelreader.data.web.SourceListing
+import indi.dmzz_yyhyy.lightnovelreader.data.web.SourceStatus
 import indi.dmzz_yyhyy.lightnovelreader.data.web.rules.ImportedRuleSources
 import indi.dmzz_yyhyy.lightnovelreader.data.web.rules.InstalledRuleSource
 import indi.dmzz_yyhyy.lightnovelreader.data.web.rules.LoginStatus
@@ -99,8 +101,9 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
             if (state.busy) item { LinearProgressIndicator(Modifier.fillMaxWidth()); TextButton(onClick = model::cancel) { Text(stringResource(android.R.string.cancel)) } }
             state.message?.let { message -> item { Text(stringResource(message), color = MaterialTheme.colorScheme.primary) } }
             if (state.selected == ZLibrarySources.ID) {
-                item { ZLibrarySettingsEditor(state.zLibrary, state.busy,
+                item { ZLibrarySettingsEditor(state.zLibrary, state.busy, state.registry.find { it.metadata.id == ZLibrarySources.ID },
                     onEnabled = model::setZLibraryEnabled, onSave = model::saveZLibrary,
+                    onInitialize = { model.initializeSource(ZLibrarySources.ID) },
                     onSearch = { onSearch(ZLibrarySources.ID) }) }
             } else if (installed != null) {
                 item {
@@ -110,7 +113,7 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                     var permissions by remember(definition, installed.origins) { mutableStateOf(installed.origins.joinToString("\n") { it.origin }) }
                     var showDetails by rememberSaveable(definition.sourceId) { mutableStateOf(false) }
                     val entry = state.registry.find { it.metadata.id == state.selected }
-                    val capabilities = entry?.metadata?.capabilities.orEmpty()
+                    val capabilities = entry.readyCapabilities()
                     val active = capabilities.isNotEmpty()
                     val hasConfiguration = active && (raw["variableComment"]?.jsonPrimitive?.content?.isNotBlank() == true || state.variable.isNotEmpty())
                     val variableLabel = raw["variableComment"]?.jsonPrimitive?.content.orEmpty().ifBlank { stringResource(R.string.sources_configuration) }
@@ -119,7 +122,7 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                         val enabledLabel = stringResource(R.string.sources_enabled)
                         val discoveryLabel = stringResource(R.string.sources_discovery_visible)
                         ListItem(headlineContent = { Text(enabledLabel) },
-                            supportingContent = { Text(stringResource(sourceStatus(installed, active))) },
+                            supportingContent = { Text(stringResource(sourceStatus(installed, entry))) },
                             trailingContent = { Switch(installed.preferences.enabled,
                                 { model.setEnabled(state.selected!!, it) }, enabled = !state.busy,
                                 modifier = Modifier.semantics { contentDescription = enabledLabel }) })
@@ -131,6 +134,9 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                                 modifier = Modifier.semantics { contentDescription = discoveryLabel }) })
                         Text(stringResource(R.string.sources_disabled_help), style = MaterialTheme.typography.bodySmall)
                         SourceCheckStatus(check, check?.revision == definition.contentDigest && check.accountGeneration == entry?.metadata?.accountGeneration, details = true)
+                        if (entry?.status == SourceStatus.Registered) {
+                            OutlinedButton(onClick = { model.initializeSource(state.selected!!) }, enabled = !state.busy) { Text(stringResource(R.string.sources_initialize)) }
+                        }
                         if (SourceCapability.Search in capabilities) {
                             Button(onClick = { onSearch(state.selected!!) }, enabled = !state.busy) { Text(stringResource(R.string.explore_search)) }
                         }
@@ -200,22 +206,32 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                 }
                 item { SectionHeader(text = stringResource(R.string.sources_builtin_group)) }
                 item {
+                    val entry = state.registry.find { it.metadata.id == ZLibrarySources.ID }
                     ListItem(headlineContent = { Text("Z-Library") },
-                        supportingContent = { Text(stringResource(R.string.zlibrary_source_summary)) },
+                        supportingContent = { Column {
+                            Text(stringResource(R.string.zlibrary_source_summary))
+                            Text(stringResource(zLibraryStatus(state.zLibrary, entry)))
+                        } },
                         trailingContent = {
-                            if (state.zLibrary.settings.available) IconButton(onClick = { onSearch(ZLibrarySources.ID) }, enabled = !state.busy) {
+                            if (state.zLibrary.settings.available && SourceCapability.Search in entry.readyCapabilities()) IconButton(onClick = { onSearch(ZLibrarySources.ID) }, enabled = !state.busy) {
                                 Icon(painterResource(R.drawable.search_24px), stringResource(R.string.explore_search))
                             }
                         }, modifier = Modifier.clip(MaterialTheme.shapes.large).clickable(enabled = !state.busy) { model.select(ZLibrarySources.ID) },
                         colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer))
                 }
                 items(state.registry.filter { it.metadata.builtIn && it.metadata.id != ZLibrarySources.ID }, key = { it.metadata.id.toString() }) { entry ->
-                    ListItem(headlineContent = { Text(entry.metadata.item.name) }, supportingContent = { Text(stringResource(R.string.sources_builtin)) },
+                    ListItem(headlineContent = { Text(entry.metadata.item.name) }, supportingContent = { Column {
+                        Text(stringResource(R.string.sources_builtin))
+                        Text(stringResource(sourceRuntimeStatus(entry)))
+                    } },
                         modifier = Modifier.clip(MaterialTheme.shapes.large),
                         colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
                         trailingContent = {
-                            if (SourceCapability.Search in entry.metadata.capabilities) IconButton(onClick = { onSearch(entry.metadata.id) }) {
+                            if (SourceCapability.Search in entry.readyCapabilities()) IconButton(onClick = { onSearch(entry.metadata.id) }, enabled = !state.busy) {
                                 Icon(painterResource(R.drawable.search_24px), stringResource(R.string.explore_search))
+                            }
+                            else if (entry.status == SourceStatus.Registered) TextButton(onClick = { model.initializeSource(entry.metadata.id) }, enabled = !state.busy) {
+                                Text(stringResource(R.string.sources_initialize))
                             }
                         })
                 }
@@ -224,11 +240,10 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                 items(state.installed, key = { it.definition.sourceId }) { source ->
                     val id = ImportedRuleSources.id(source.definition)
                     val entry = state.registry.find { it.metadata.id == id }
-                    val available = entry?.metadata?.capabilities?.isNotEmpty() == true
                     val check = state.checks[source.definition.sourceId]
                     ListItem(headlineContent = { Text(source.definition.displayName) },
                         supportingContent = { Column {
-                            Text(stringResource(sourceStatus(source, available)))
+                            Text(stringResource(sourceStatus(source, entry)))
                             SourceCheckStatus(check, check?.revision == source.definition.contentDigest && check.accountGeneration == entry?.metadata?.accountGeneration)
                             if (!source.hasDiscovery) Text(stringResource(R.string.sources_no_discovery))
                             else if (!source.preferences.discoveryVisible) Text(stringResource(R.string.sources_discovery_hidden))
@@ -245,10 +260,20 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
     }
 }
 
-private fun sourceStatus(source: InstalledRuleSource, available: Boolean): Int = when {
+private fun sourceStatus(source: InstalledRuleSource, entry: SourceListing?): Int = when {
     !source.preferences.enabled -> if (source.preferences.enabledSetByUser)
         R.string.sources_disabled_by_user else R.string.sources_disabled_by_default
     source.origins.isEmpty() -> R.string.sources_awaiting_permissions
-    available -> R.string.sources_available
-    else -> R.string.sources_unavailable
+    else -> sourceRuntimeStatus(entry)
+}
+
+internal fun SourceListing?.readyCapabilities(): Set<SourceCapability> =
+    if (this?.status == SourceStatus.Ready) metadata.capabilities else emptySet()
+
+internal fun sourceRuntimeStatus(entry: SourceListing?): Int = when (entry?.status) {
+    SourceStatus.Registered -> R.string.sources_registered
+    SourceStatus.Initializing -> R.string.sources_initializing
+    SourceStatus.Failed -> R.string.sources_initialization_failed
+    SourceStatus.Ready -> if (entry.metadata.capabilities.isNotEmpty()) R.string.sources_available else R.string.sources_unavailable
+    null -> R.string.sources_unavailable
 }
