@@ -94,6 +94,10 @@ private class ScriptBridge(private val bridge: HostBridge, private val rules: Sc
             "put", "getString", "getStringList", "getElement", "getElements", "importScript", "cacheFile", "downloadFile",
             "readFile", "readTxtFile", "deleteFile", "toURL", "webView", "webViewGetSource", "webViewGetOverrideUrl",
             "startBrowser", "startBrowserAwait", "getVerificationCode") + ScriptTools.methods + ScriptCryptoObjects.factories + fonts.methods + resources.methods)
+        method(javaBridge, "setContent") { cx, activeScope, args ->
+            call(cx, activeScope, "java.setContent", args)
+            javaBridge
+        }
         objectFor("cache", listOf("get", "put", "delete"))
         objectFor("cookie", listOf("getCookie", "getKey", "setCookie", "replaceCookie", "removeCookie"))
         val source = objectFor("source", listOf("get", "put", "getVariable", "setVariable", "getKey", "getLoginInfo", "getLoginInfoMap",
@@ -176,6 +180,8 @@ class RhinoScriptEngine(private val bridge: HostBridge, private val limits: Scri
                 if (Thread.currentThread().isInterrupted) throw ScriptCancelled()
                 val realm = library?.realm ?: ScriptRealm(context)
                 ScriptRealm.install(context, realm)
+                context.putThreadLocal(bridgeLimitKey, limits.maxBridgeChars)
+                if (library?.realm == null) ScriptParsers.install(context, realm.global)
                 if (library != null) context.putThreadLocal(scriptLibraryKey, library)
                 val scope = if (library == null) realm.global else {
                     val shared = library.scope ?: NativeObject().apply {
@@ -190,7 +196,6 @@ class RhinoScriptEngine(private val bridge: HostBridge, private val limits: Scri
                     }
                     NativeObject().apply { prototype = shared }
                 }
-                context.putThreadLocal(bridgeLimitKey, limits.maxBridgeChars)
                 val ruleContext = frame.ruleContext ?: RuleContext(frame.sourceId, frame.bookId, frame.chapterId, frame.baseUrl)
                 val bookData = ruleContext.bookMetadata?.let { Json.parseToJsonElement(it).jsonObject } ?: frame.book
                 val chapterData = ruleContext.chapterMetadata?.let { Json.parseToJsonElement(it).jsonObject } ?: frame.chapter

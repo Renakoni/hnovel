@@ -43,6 +43,24 @@ import org.junit.runner.RunWith
 class IsolatedExecutionInstrumentedTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
 
+    @Test fun textParserAndSelectorInputStayLocalAcrossBinderCalls() = runBlocking {
+        val authority = ExecutionAuthority()
+        val executor = AndroidIsolatedExecutor(context, authority)
+        val id = authority.issue("text-parsers", "legado", "1")
+        val library = "var title=org.jsoup.Jsoup.parse('<p>小说</p>').text();"
+        try {
+            val task = ExecutionTask.Script("""
+                java.setContent('<a href="next">正文</a>','https://text.invalid/');
+                [title,java.getString('a@text'),java.getString('a@href',null,true),
+                 baseUrl,typeof org.jsoup.Jsoup.connect,typeof Packages]
+            """, libraryCode = library, baseUrl = "https://source.invalid/")
+            assertEquals(ExecutionResult.Success("""["小说","正文","https://text.invalid/next","https://source.invalid/","undefined","undefined"]"""),
+                executor.execute(id, task))
+            assertEquals(ExecutionResult.Success("\"\""), executor.execute(id,
+                task.copy(code = "java.getString('a@text')")))
+        } finally { executor.close() }
+    }
+
     @Test fun coldStartupIsBoundedSeparatelyAndSuccessfulCallsReuseTheWorker() = runBlocking {
         val binds = java.util.concurrent.atomic.AtomicInteger()
         val connections = java.util.concurrent.ConcurrentHashMap<ServiceConnection, ServiceConnection>()
