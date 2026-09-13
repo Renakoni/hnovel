@@ -14,6 +14,8 @@ import indi.dmzz_yyhyy.lightnovelreader.ui.dialog.navigateUpdatesAvailableDialog
 import indi.dmzz_yyhyy.lightnovelreader.ui.navigation.LightNovelReaderNavHost
 import io.nightfish.lightnovelreader.api.ui.ReaderStyle
 import kotlinx.coroutines.flow.Flow
+import hnovel.imports.sourceImportUrl
+import io.nightfish.lightnovelreader.api.Route
 
 @Composable
 fun LightNovelReaderApp(
@@ -35,7 +37,9 @@ fun LightNovelReaderApp(
         intentFlow.collect { intent ->
             if (intent.action == Intent.ACTION_VIEW) {
                 val uri = intent.data ?: return@collect
-                navController.navigateToPluginInstallerDialog(uri.toString())
+                if (uri.scheme == "legado") {
+                    sourceImportUrl(uri.toString())?.let { navController.navigate(Route.Main.Settings.SourceImport(it)) }
+                } else navController.navigateToPluginInstallerDialog(uri.toString())
             }
         }
     }

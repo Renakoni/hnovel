@@ -49,6 +49,33 @@ class WorkerRuleTest {
             bookVariables = emptyMap(), chapterVariables = emptyMap()))))
     }
 
+    @Test fun scriptTemplatesReadTheOriginalDocumentBeforeContentDecoding() {
+        val html = RuleValue.Text("<body data-order='normal'><article>chapter</article></body>")
+        val rule = """article@text<js>var order="{{@@body@data-order}}";order+':'+result.toUpperCase()</js>"""
+        assertEquals(RuleValue.Text("normal:CHAPTER"), value(run(ExecutionTask.Rule(rule, html, OutputKind.Text))).value)
+        assertEquals(RuleValue.Text("normal"), value(run(ExecutionTask.Rule(
+            """@js:"{{@@body@data-order}}"""", html, OutputKind.Text))).value)
+    }
+
+    @Test fun completeCataloguePayloadFitsBinderAndExpansionRemainsBounded() {
+        val chapters = JsonArray((0 until 1600).map { index -> buildJsonObject {
+            put("id", index); put("title", "Chapter $index"); put("metadata", "x".repeat(512))
+        } })
+        val task = ExecutionTask.Rule("$[*]", RuleValue.Text(chapters.toString()), OutputKind.Elements)
+        val limits = ExecutionLimits(maxOutputBytes = 2 * 1024 * 1024)
+        val raw = ExecutionWire.encode(id, task, limits)
+        assertTrue(raw.size > ExecutionWire.MAX_INPUT_PACKET_BYTES)
+        val request = checkNotNull(ExecutionPayload.pack(raw, ExecutionWire.MAX_INPUT_PACKET_BYTES))
+        val reply = WorkerMain.executeSerialized(ExecutionPayload.unpack(request, ExecutionWire.MAX_INPUT_BYTES).toString(Charsets.UTF_8)).toByteArray()
+        assertTrue(reply.size > BridgeWire.MAX_BYTES)
+        val packet = checkNotNull(ExecutionPayload.pack(reply, BridgeWire.MAX_BYTES))
+        val result = value(ExecutionWire.decodeResult(ExecutionPayload.unpack(packet, ExecutionWire.MAX_RESULT_BYTES)))
+        val rows = (result.value as RuleValue.Items).values
+        assertEquals(1600, rows.size)
+        assertEquals(1599, Json.parseToJsonElement((rows.last() as RuleValue.Node).content).jsonObject.getValue("id").jsonPrimitive.int)
+        assertThrows(IllegalArgumentException::class.java) { ExecutionPayload.unpack(request, raw.size - 1) }
+    }
+
     @Test fun scriptErrorsKeepStageFieldAndOffsetWithoutExposingCode() {
         val rule = "tag.h1@text<js>return 'secret'</js>"
         val failure = run(ExecutionTask.Rule(rule, RuleValue.Text("<h1>A</h1>"), location = RuleLocation("ruleBookInfo.name", 7)))

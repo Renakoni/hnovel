@@ -21,13 +21,14 @@ import kotlinx.serialization.json.jsonObject
 @Composable
 internal fun SourceImportPreview(state: SourceManagementState, model: SourcesViewModel, modifier: Modifier = Modifier) {
     val preview = checkNotNull(state.preview)
-    var selected by rememberSaveable(preview) { mutableStateOf(emptyList<Int>()) }
+    var selected by rememberSaveable(preview) { mutableStateOf(if (state.updateTarget == null)
+        preview.candidates.deduplicated().map { it.index } else emptyList<Int>()) }
     var filter by rememberSaveable(preview) { mutableIntStateOf(0) }
     var approveIdentity by rememberSaveable(preview) { mutableStateOf(false) }
     var permissions by rememberSaveable(preview, stateSaver = mapSaver<Map<Int, String>>(
         save = { values -> values.mapKeys { it.key.toString() } },
         restore = { values -> values.map { it.key.toInt() to it.value as String }.toMap() })) {
-        mutableStateOf(preview.candidates.associate { it.index to runCatching { SourcesViewModel.origin(it.importKey) }.getOrDefault("") })
+        mutableStateOf(emptyMap())
     }
     val visible = preview.candidates.filter { when (filter) { 1 -> it.existing == null; 2 -> it.existing != null; else -> true } }
     fun select(candidate: SourceCandidate, checked: Boolean) {
@@ -41,6 +42,8 @@ internal fun SourceImportPreview(state: SourceManagementState, model: SourcesVie
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(stringResource(R.string.sources_preview), style = MaterialTheme.typography.titleLarge)
                     Text(stringResource(R.string.sources_permissions_help), style = MaterialTheme.typography.bodySmall)
+                    val ignored = preview.issues.count { it.code == ImportCode.UnsupportedType }
+                    if (ignored > 0) Text(stringResource(R.string.sources_non_text_skipped, ignored), style = MaterialTheme.typography.bodySmall)
                     if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
                     state.message?.let { Text(stringResource(it), color = MaterialTheme.colorScheme.error) }
                     if (state.updateTarget == null) {
@@ -51,8 +54,8 @@ internal fun SourceImportPreview(state: SourceManagementState, model: SourcesVie
                         }
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             TextButton(onClick = {
-                                selected = (selected + visible.filter { it.duplicateIndexes.isEmpty() }.map { it.index }).distinct()
-                            }, enabled = !state.busy && visible.any { it.duplicateIndexes.isEmpty() }) { Text(stringResource(R.string.sources_select_visible)) }
+                                selected = (preview.candidates.filter { it.index in selected } + visible).deduplicated().map { it.index }
+                            }, enabled = !state.busy && visible.isNotEmpty()) { Text(stringResource(R.string.sources_select_visible)) }
                             TextButton(onClick = { selected = emptyList() }, enabled = !state.busy && selected.isNotEmpty()) {
                                 Text(stringResource(R.string.sources_clear_selection))
                             }
@@ -60,7 +63,7 @@ internal fun SourceImportPreview(state: SourceManagementState, model: SourcesVie
                     }
                 }
             }
-            items(preview.issues) { issue ->
+            items(preview.issues.filter { it.code != ImportCode.UnsupportedType }) { issue ->
                 Surface(color = MaterialTheme.colorScheme.errorContainer, shape = MaterialTheme.shapes.medium) {
                     Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(stringResource(importProblem(issue.code)), style = MaterialTheme.typography.bodyMedium)
@@ -99,14 +102,15 @@ internal fun SourceImportPreview(state: SourceManagementState, model: SourcesVie
                             }
                         }
                         if (checked) {
+                            val draft = permissions[candidate.index] ?: state.previewOrigins[candidate.index].orEmpty()
                             val origins = remember(candidate) { SourceOriginCandidates.discover(Json.parseToJsonElement(candidate.rawJson).jsonObject) }
                             Text(stringResource(R.string.sources_origin_candidates_help), style = MaterialTheme.typography.bodySmall)
                             origins.forEach { origin ->
-                                SourcePermissionCandidate(origin.origin, origin.kind.name, permissions[candidate.index].orEmpty(), state.busy) {
+                                SourcePermissionCandidate(origin.origin, origin.kind.name, draft, state.busy) {
                                     permissions = permissions + (candidate.index to it)
                                 }
                             }
-                            OutlinedTextField(permissions[candidate.index].orEmpty(), { permissions = permissions + (candidate.index to it) },
+                            OutlinedTextField(draft, { permissions = permissions + (candidate.index to it) },
                                 Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.sources_permissions)) }, enabled = !state.busy)
                         }
                     }
@@ -127,7 +131,7 @@ internal fun SourceImportPreview(state: SourceManagementState, model: SourcesVie
                         style = MaterialTheme.typography.labelLarge)
                     TextButton(onClick = { if (state.busy) model.cancel() else model.dismissPreview() }) { Text(stringResource(android.R.string.cancel)) }
                 }
-                Button(onClick = { model.commit(selected.toSet(), permissions.filterKeys { it in selected }, approveIdentity) },
+                Button(onClick = { model.commit(selected.toSet(), selected.associateWith { permissions[it] ?: state.previewOrigins[it].orEmpty() }, approveIdentity) },
                     modifier = Modifier.fillMaxWidth(), enabled = !state.busy && selected.isNotEmpty()) { Text(stringResource(R.string.sources_apply)) }
             }
         }

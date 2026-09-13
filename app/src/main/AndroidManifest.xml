@@ -55,6 +55,12 @@
         <category android:name="android.intent.category.BROWSABLE"/>
         <data android:scheme="lightnovelreader"/>
       </intent-filter>
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+        <category android:name="android.intent.category.BROWSABLE"/>
+        <data android:scheme="legado" android:host="import" android:path="/bookSource"/>
+      </intent-filter>
     </activity>
     <activity-alias
         android:name=".PluginInstallAlias"

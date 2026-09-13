@@ -12,7 +12,7 @@ class IsolatedExecutorTest {
   val limits = ExecutionLimits(timeoutMillis = 15000, maxOutputBytes = 400_000)
   assertEquals(ExecutionResult.Success(text), executor.execute(id, ExecutionTask.Echo(text), limits))
   assertEquals(ExecutionResult.Failure(FailureCode.InputLimit), executor.execute(id, ExecutionTask.Echo("x".repeat(ExecutionWire.MAX_INPUT_BYTES)), limits))
-  assertEquals(ExecutionResult.Failure(FailureCode.OutputLimit), executor.execute(id, ExecutionTask.Script("'x'.repeat(300000)"), limits))
+  assertEquals(ExecutionResult.Failure(FailureCode.OutputLimit), executor.execute(id, ExecutionTask.Script("'x'.repeat(500000)"), limits))
  }
  @Test fun allocationFailureStaysInChildAndTheNextInvocationSucceeds() {
   val executor = IsolatedExecutor()

@@ -27,6 +27,7 @@ import javax.inject.Inject
 data class SourceManagementState(val installed: List<InstalledRuleSource> = emptyList(),
     val registry: List<SourceListing> = emptyList(), val selected: Identifier? = null,
     val preview: ImportPreview? = null, val updateTarget: Identifier? = null,
+    val previewOrigins: Map<Int, String> = emptyMap(),
     val busy: Boolean = false, val message: Int? = null, val loginForm: LoginForm? = null,
     val loginStatus: LoginStatus = LoginStatus.LoggedOut, val variable: String = "",
     val zLibrary: ZLibraryState = ZLibraryState(), val checks: Map<String, SourceCheckSummary> = emptyMap())
@@ -43,6 +44,7 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
     private var attempt: LoginAttempt? = null
     private var operationGeneration = 0
     private var openedFromDiscovery: Identifier? = null
+    private var openedImportLink: String? = null
 
     init {
         viewModelScope.launch { registry.sources.collect { list -> mutable.update { it.copy(registry = list) } } }
@@ -118,8 +120,13 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
         }
     }
 
-    fun previewText(text: String, profile: String = LEGADO_PROFILE) = launch { showPreview(sources.importer.preview(text, profile)) }
-    fun previewFile(uri: Uri, profile: String = LEGADO_PROFILE) = launch {
+    fun previewText(text: String, profile: String = AUTO_PROFILE) = launch { showPreview(sources.importer.preview(text, profile)) }
+    fun openImportLink(url: String) {
+        if (openedImportLink == url) return
+        openedImportLink = url
+        previewUrl(url)
+    }
+    fun previewFile(uri: Uri, profile: String = AUTO_PROFILE) = launch {
         val name = context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
             if (it.moveToFirst()) it.getString(0) else "source.json"
         } ?: "source.json"
@@ -127,18 +134,21 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
             ?: error("Source file unavailable")
         showPreview(preview)
     }
-    fun previewUrl(url: String, profile: String = LEGADO_PROFILE) = launch {
+    fun previewUrl(url: String, profile: String = AUTO_PROFILE) = launch {
+        val address = sourceImportUrl(url) ?: error("Invalid book-source link")
         val root = File(context.cacheDir, "source-import-${UUID.randomUUID()}")
-        try { SourceBroker(root.toPath()).use { broker ->
-            val session = broker.open(SourceScope("import", UUID.randomUUID().toString(), profile), listOf(NetworkGrant(origin(url))))
-            showPreview(sources.importer.previewUrl(url, session, profile))
+        try { SourceBroker(root.toPath(), limits = BrokerLimits(maxResponseBytes = ImportLimits().maxBytes)).use { broker ->
+            val session = broker.open(SourceScope("import", UUID.randomUUID().toString(), profile), listOf(NetworkGrant(origin(address))))
+            showPreview(sources.importer.previewUrl(address, session, profile))
         } } finally { root.deleteRecursively() }
     }
     private fun showPreview(preview: ImportPreview, target: Identifier? = null) {
+        val origins = preview.candidates.associate { it.index to SourceOriginCandidates.discover(Json.parseToJsonElement(it.rawJson).jsonObject)
+            .map { candidate -> candidate.origin }.distinct().joinToString("\n") }
         mutable.update { it.copy(preview = preview, updateTarget = target,
-            message = if (preview.issues.isNotEmpty()) R.string.sources_import_invalid else null) }
+            previewOrigins = origins, message = if (preview.issues.any { issue -> issue.code != ImportCode.UnsupportedType }) R.string.sources_import_invalid else null) }
     }
-    fun dismissPreview() { if (!state.value.busy) mutable.update { it.copy(preview = null, updateTarget = null) } }
+    fun dismissPreview() { if (!state.value.busy) mutable.update { it.copy(preview = null, previewOrigins = emptyMap(), updateTarget = null) } }
 
     fun commit(selected: Set<Int>, permissions: Map<Int, String>, allowIdentityChange: Boolean) = launch {
         val snapshot = mutable.value
@@ -158,23 +168,29 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
         val committed = sources.importer.commit(preview, selections)
         var failed = committed.error != null
         try {
+            val definitions = sources.definitions.list().associateBy { it.reference() }
+            val installed = snapshot.installed.associateBy { ImportedRuleSources.id(it.definition) }
+            val additions = linkedMapOf<DefinitionReference, List<NetworkGrant>>()
             for (item in committed.items) {
                 val reference = item.reference
                 if (reference == null || item.error != null) { failed = true; continue }
                 try {
-                    val definition = sources.definitions.list().single { it.reference() == reference }
+                    val definition = definitions.getValue(reference)
                     val id = ImportedRuleSources.id(definition)
-                    if (snapshot.installed.any { ImportedRuleSources.id(it.definition) == id })
-                        updates.apply(id, reference, grants.getValue(item.index), allowIdentityChange)
-                    else sources.activate(reference, grants.getValue(item.index))
+                    val previous = installed[id]
+                    if (previous != null) {
+                        if (previous.definition != definition || previous.origins != grants.getValue(item.index))
+                            updates.apply(id, reference, grants.getValue(item.index), allowIdentityChange)
+                    } else additions[reference] = grants.getValue(item.index)
                 } catch (cancelled: CancellationException) { throw cancelled }
                 catch (_: Exception) { failed = true }
             }
+            if (additions.isNotEmpty() && sources.activateBatch(additions).size != additions.size) failed = true
         } finally {
             // Import definitions are already committed. Retrying requires a fresh preview of that state.
             withContext(NonCancellable) {
                 reload()
-                mutable.update { it.copy(preview = null, updateTarget = null) }
+                mutable.update { it.copy(preview = null, previewOrigins = emptyMap(), updateTarget = null) }
             }
         }
         mutable.update { it.copy(message = if (failed) R.string.sources_import_partial else R.string.sources_saved) }

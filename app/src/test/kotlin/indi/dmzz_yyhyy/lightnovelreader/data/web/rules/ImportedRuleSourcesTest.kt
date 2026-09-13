@@ -182,6 +182,36 @@ class ImportedRuleSourcesTest {
         }
     }
 
+    @Test fun collectionActivationRestoresMoreThan256SourcesAndReportsABindingFailure() = runBlocking {
+        val host = context()
+        RuleSourceFixture().use { fixture ->
+            val accounts = SourceSessionManager(fixture.authority)
+            var registry = WebSourceRegistry(fixture.authority)
+            var sources = ImportedRuleSources(host, registry, fixture.authority, accounts, fixture.runner)
+            try {
+                val raw = kotlinx.serialization.json.JsonArray((0 until 300).map { index -> JsonObject(fixture.raw() + mapOf(
+                    "bookSourceUrl" to kotlinx.serialization.json.JsonPrimitive(fixture.server.url("/source/$index").toString()),
+                    "enabled" to kotlinx.serialization.json.JsonPrimitive(index != 0))) })
+                val preview = sources.importer.preview(raw.toString(), AUTO_PROFILE)
+                val committed = sources.importer.commit(preview, preview.candidates.map { ImportSelection(it.index, ImportDecision.Add) })
+                assertNull(committed.error)
+                val grants = committed.items.mapIndexed { index, item -> item.reference!! to listOf(NetworkGrant(
+                    if (index == 299) "invalid origin" else fixture.server.url("/").toString(), true)) }.toMap()
+                assertEquals(299, sources.activateBatch(grants).size)
+                assertEquals(300, sources.installedSources().size)
+                assertEquals(298, registry.sources.value.size)
+                sources.stop()
+                registry = WebSourceRegistry(fixture.authority)
+                sources = ImportedRuleSources(host, registry, fixture.authority, accounts, fixture.runner)
+                sources.restore()
+                assertFalse(sources.restorationFailed)
+                assertEquals(300, sources.installedSources().size)
+                assertEquals(298, registry.sources.value.size)
+                assertEquals(0, fixture.documents.get())
+            } finally { sources.stop(); host.filesDir.deleteRecursively() }
+        }
+    }
+
     @Test fun persistedAccountEpochsSurviveManagerRecreationWithoutColonKeyCollisions() {
         val context = context()
         val a = Identifier("fixture:epoch", "x")

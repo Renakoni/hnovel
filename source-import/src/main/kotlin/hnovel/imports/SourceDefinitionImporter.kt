@@ -54,14 +54,15 @@ class SourceDefinitionImporter(private val store: SourceDefinitionStore,
 
     /** The host supplies a dedicated, authorized import session, never a source's login session. */
     suspend fun previewUrl(url: String, session: SourceSession, profile: String = LEGADO_PROFILE): ImportPreview {
-        if (isPlugin(url.substringBefore('?').substringBefore('#'))) return failure(ImportCode.PluginPackage)
-        return when (val result = session.execute(BrokerRequest("source-import", url, kind = ResourceKind.Import))) {
+        val address = sourceImportUrl(url) ?: return failure(ImportCode.DownloadFailed)
+        if (isPlugin(address.substringBefore('?').substringBefore('#'))) return failure(ImportCode.PluginPackage)
+        return when (val result = session.execute(BrokerRequest("source-import", address, kind = ResourceKind.Import, maxResponseBytes = limits.maxBytes))) {
             is BrokerResult.Failure -> ImportPreview(emptyList(), listOf(ImportIssue(null, ImportCode.DownloadFailed, result.code.name)))
             is BrokerResult.Success -> {
                 val response = result.response
                 if (response.status !in 200..299) failure(ImportCode.DownloadFailed)
                 else if (isPlugin(response.finalUrl.substringBefore('?').substringBefore('#'))) failure(ImportCode.PluginPackage)
-                else parseBytes(response.body, ImportOrigin(ImportOrigin.Kind.Url, url, response.finalUrl), profile)
+                else parseBytes(response.body, ImportOrigin(ImportOrigin.Kind.Url, address, response.finalUrl), profile)
             }
         }
     }
@@ -79,7 +80,7 @@ class SourceDefinitionImporter(private val store: SourceDefinitionStore,
 
     private fun parse(text: String, origin: ImportOrigin, profile: String, notices: List<ImportNotice> = emptyList()): ImportPreview {
         if (text.length > limits.maxBytes || text.toByteArray(Charsets.UTF_8).size > limits.maxBytes) return failure(ImportCode.TooLarge)
-        if (adapters.none { profile in it.profiles }) return failure(ImportCode.UnsupportedProfile)
+        if (profile != AUTO_PROFILE && adapters.none { profile in it.profiles }) return failure(ImportCode.UnsupportedProfile)
         val root = try { parseDefinitionJson(text, limits.maxDepth) }
         catch (failure: ImportFailure) { return failure(failure.code) }
         catch (_: Exception) { return failure(ImportCode.InvalidJson) }
@@ -92,24 +93,34 @@ class SourceDefinitionImporter(private val store: SourceDefinitionStore,
         val saved = try { store.list() } catch (failure: ImportFailure) { return failure(failure.code) }
         val issues = mutableListOf<ImportIssue>()
         val valid = mutableListOf<SourceCandidate>()
+        val savedByKey = saved.groupBy { it.importKey }
+        val savedByName = saved.groupBy { it.displayName }
         rows.forEachIndexed { index, row ->
             try {
                 if (row !is JsonObject) throw ImportFailure(ImportCode.InvalidShape)
-                val adapter = adapters.singleOrNull { it.recognizes(row) && profile in it.profiles }
+                val detected = if (profile != AUTO_PROFILE) profile else {
+                    val key = (row["bookSourceUrl"] as? JsonPrimitive)?.content
+                    savedByKey[key]?.singleOrNull()?.profile ?: if (
+                        (row["loginUi"] as? JsonPrimitive)?.content?.trim()?.let { it.startsWith("@js:", true) || it.startsWith("<js>", true) } == true ||
+                        listOf("customButton", "eventListener").any { (row[it] as? JsonPrimitive)?.booleanOrNull == true }
+                    ) EXTENSION_PROFILE else LEGADO_PROFILE
+                }
+                val adapter = adapters.singleOrNull { it.recognizes(row) && detected in it.profiles }
                     ?: throw ImportFailure(ImportCode.UnsupportedFormat)
                 val value = adapter.validate(row)
-                val existing = saved.firstOrNull { it.profile == profile && it.importKey == value.key }
-                valid.add(SourceCandidate(index, adapter.format, profile, value.key, value.name, value.enabled, value.enabledExplore,
+                val existing = savedByKey[value.key]?.firstOrNull { it.profile == detected }
+                valid.add(SourceCandidate(index, adapter.format, detected, value.key, value.name, value.enabled, value.enabledExplore,
                     canonical(row).toString(), origin, notices + value.notices, existing?.reference(),
-                    saved.filter { it != existing && (it.importKey == value.key || it.displayName == value.name) }.map { it.reference() }, emptyList()))
+                    (savedByKey[value.key].orEmpty() + savedByName[value.name].orEmpty()).distinctBy { it.sourceId }
+                        .filter { it != existing }.map { it.reference() }, emptyList()))
             } catch (failure: ImportFailure) { issues.add(ImportIssue(index, failure.code, failure.field)) }
               catch (_: IllegalArgumentException) { issues.add(ImportIssue(index, ImportCode.InvalidField)) }
         }
-        val groups = valid.groupBy { it.profile to it.importKey }
+        val groups = valid.groupBy { it.importKey }
         val candidates = valid.map { candidate ->
             SourceCandidate(candidate.index, candidate.format, candidate.profile, candidate.importKey, candidate.displayName,
                 candidate.enabled, candidate.enabledExplore, candidate.rawJson, candidate.origin, candidate.notices,
-                candidate.existing, candidate.possibleMatches, groups.getValue(candidate.profile to candidate.importKey)
+                candidate.existing, candidate.possibleMatches, groups.getValue(candidate.importKey)
                     .filter { it.index != candidate.index }.map { it.index })
         }
         return ImportPreview(candidates, issues.toList())

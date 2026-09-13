@@ -11,6 +11,7 @@ import hnovel.execution.ExecutionLimits
 import hnovel.execution.ExecutionResult
 import hnovel.execution.ExecutionTask
 import hnovel.execution.ExecutionWire
+import hnovel.execution.ExecutionPayload
 import hnovel.execution.FailureCode
 import hnovel.execution.SourceExecutionBroker
 import hnovel.execution.BridgeWire
@@ -121,6 +122,8 @@ class AndroidIsolatedExecutor @Inject constructor(@ApplicationContext context: C
                 } else null
                 val request = ExecutionWire.encode(identity, task, limits, scripts)
                 if (request.size > ExecutionWire.MAX_INPUT_BYTES) return@withTimeoutOrNull failure(FailureCode.InputLimit)
+                val packet = ExecutionPayload.pack(request, ExecutionWire.MAX_INPUT_PACKET_BYTES)
+                    ?: return@withTimeoutOrNull failure(FailureCode.InputLimit)
                 val workerUid = service.workerUid()
                 if (workerUid == Process.myUid()) return@withTimeoutOrNull failure(FailureCode.InvalidIdentity)
                 if (!authority.accepts(identity)) return@withTimeoutOrNull failure(FailureCode.Revoked)
@@ -140,13 +143,13 @@ class AndroidIsolatedExecutor @Inject constructor(@ApplicationContext context: C
                         } finally { callingBroker.set(false) }
                     }
                 }
-                service.execute(request, object : IExecutionCallback.Stub() {
+                service.execute(packet, object : IExecutionCallback.Stub() {
                     override fun onResult(bytes: ByteArray) {
                         if (Binder.getCallingUid() != workerUid || finished.get()) return
                         val reply = if (!authority.accepts(identity)) failure(FailureCode.Revoked)
                         else if (bytes.size > IsolatedExecutionService.MAX_IPC_BYTES) failure(FailureCode.OutputLimit)
                         else try {
-                            val decoded = ExecutionWire.decodeResult(bytes)
+                            val decoded = ExecutionWire.decodeResult(ExecutionPayload.unpack(bytes, ExecutionWire.MAX_RESULT_BYTES))
                             if (decoded is ExecutionResult.Success && decoded.output.toByteArray(Charsets.UTF_8).size > limits.maxOutputBytes)
                                 failure(FailureCode.OutputLimit) else decoded
                         } catch (_: Exception) { failure(FailureCode.InvalidTask) }

@@ -53,13 +53,12 @@ class SourcesScreenTest {
                 """{"bookSourceUrl":"https://source$index.invalid/","bookSourceName":"Source $index","bookSourceType":0,"customOrder":$index,"extensionFlag":"synthetic-private-value"}"""
             }
             val preview = importer.preview(raw)
-            activity.get().setContent { MaterialTheme { SourcesScreen(SourceManagementState(preview = preview), model, onDiagnostics = {}) {} } }
-            compose.onNodeWithText("Apply selected").assertIsDisplayed().assertIsNotEnabled()
-            compose.onNodeWithText("Select visible").performClick()
+            activity.get().setContent { MaterialTheme { SourcesScreen(previewState(preview), model, onDiagnostics = {}) {} } }
+            compose.onNodeWithText("Apply selected").assertIsDisplayed().assertIsEnabled()
             compose.onNodeWithText("22 of 22 selected").assertIsDisplayed()
             verify(exactly = 0) { model.commit(any(), any(), any()) }
             compose.onNodeWithText("Apply selected").performClick()
-            verify(exactly = 1) { model.commit((0 until 22).toSet(), (0 until 22).associateWith { "https://source$it.invalid/" }, false) }
+            verify(exactly = 1) { model.commit((0 until 22).toSet(), (0 until 22).associateWith { "https://source$it.invalid:443" }, false) }
         } finally { directory.deleteRecursively() }
     }
 
@@ -70,7 +69,7 @@ class SourcesScreenTest {
             fun raw(index: Int) = """{"bookSourceUrl":"https://source$index.invalid/","bookSourceName":"Source $index","bookSourceType":0}"""
             importer.commit(importer.preview(raw(0)), listOf(hnovel.imports.ImportSelection(0, hnovel.imports.ImportDecision.Add)))
             val preview = importer.preview("[${raw(0)},${raw(1)}]")
-            activity.get().setContent { MaterialTheme { SourcesScreen(SourceManagementState(preview = preview), model, onDiagnostics = {}) {} } }
+            activity.get().setContent { MaterialTheme { SourcesScreen(previewState(preview), model, onDiagnostics = {}) {} } }
             compose.onNodeWithText("Updates").performClick()
             compose.onNodeWithText("Select visible").performClick()
             compose.onNodeWithText("Allowed site origins, one per line").performScrollTo().performTextReplacement("https://approved.invalid/")
@@ -82,11 +81,11 @@ class SourcesScreenTest {
             compose.onNodeWithText("https://approved.invalid/").performScrollTo().assertExists()
             verify(exactly = 0) { model.commit(any(), any(), any()) }
             compose.onNodeWithText("Apply selected").performClick()
-            verify(exactly = 1) { model.commit(setOf(0, 1), mapOf(0 to "https://approved.invalid/", 1 to "https://source1.invalid/"), false) }
+            verify(exactly = 1) { model.commit(setOf(0, 1), mapOf(0 to "https://approved.invalid/", 1 to "https://source1.invalid:443"), false) }
         } finally { directory.deleteRecursively() }
     }
 
-    @Test fun batchSelectionSkipsConflictingDefinitionsAndManualChoiceKeepsOnlyOneVersion() {
+    @Test fun batchSelectionDeduplicatesDefinitionsAndManualChoiceKeepsOnlyOneVersion() {
         val directory = java.nio.file.Files.createTempDirectory("duplicate-source-preview").toFile()
         try {
             val importer = hnovel.imports.SourceDefinitionImporter(hnovel.imports.SourceDefinitionStore(directory.toPath()))
@@ -95,15 +94,14 @@ class SourcesScreenTest {
                 {"bookSourceUrl":"https://same.invalid/","bookSourceName":"Variant B","bookSourceType":0},
                 {"bookSourceUrl":"https://other.invalid/","bookSourceName":"Other","bookSourceType":0}]
             """)
-            activity.get().setContent { MaterialTheme { SourcesScreen(SourceManagementState(preview = preview), model, onDiagnostics = {}) {} } }
+            activity.get().setContent { MaterialTheme { SourcesScreen(previewState(preview), model, onDiagnostics = {}) {} } }
             compose.onNodeWithText("Select visible").performClick()
-            compose.onNodeWithText("1 of 3 selected").assertIsDisplayed()
-            compose.onNodeWithText("Variant A").performScrollTo().performClick()
+            compose.onNodeWithText("2 of 3 selected").assertIsDisplayed()
             compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Variant B"))
             compose.onNodeWithText("Variant B").performClick()
             compose.onNodeWithText("2 of 3 selected").assertIsDisplayed()
             compose.onNodeWithText("Apply selected").performClick()
-            verify(exactly = 1) { model.commit(setOf(1, 2), mapOf(1 to "https://same.invalid/", 2 to "https://other.invalid/"), false) }
+            verify(exactly = 1) { model.commit(setOf(1, 2), mapOf(1 to "https://same.invalid:443", 2 to "https://other.invalid:443"), false) }
         } finally { directory.deleteRecursively() }
     }
 
@@ -164,9 +162,9 @@ class SourcesScreenTest {
     @Test fun emptyStateOpensExplicitPreviewFlowWithoutImportingAutomatically() {
         activity.get().setContent { MaterialTheme { SourcesScreen(SourceManagementState(), model, onDiagnostics = {}) {} } }
         compose.onNodeWithText("Add book source").performClick()
-        compose.onNodeWithText("Source file URL").performTextInput("https://fixture.invalid/source.json")
-        compose.onNodeWithText("Download and preview").performClick()
-        verify(exactly = 1) { model.previewUrl("https://fixture.invalid/source.json") }
+        compose.onNodeWithText("Source file URL").performScrollTo().performTextInput("https://fixture.invalid/source.json")
+        compose.onNodeWithText("Download and preview").performScrollTo().performClick()
+        verify(exactly = 1) { model.previewUrl("https://fixture.invalid/source.json", hnovel.imports.AUTO_PROFILE) }
         verify(exactly = 0) { model.commit(any(), any(), any()) }
         compose.onNodeWithText("Choose local file").assertExists()
         compose.onNodeWithText("Paste source JSON").assertExists()
@@ -264,10 +262,10 @@ class SourcesScreenTest {
             val importer = hnovel.imports.SourceDefinitionImporter(hnovel.imports.SourceDefinitionStore(directory.toPath()))
             val preview = importer.preview("""{"bookSourceUrl":"https://fixture.invalid/","bookSourceName":"Disabled source","bookSourceType":0,"enabled":false}""")
             org.junit.Assert.assertEquals(1, preview.candidates.size)
-            activity.get().setContent { MaterialTheme { SourcesScreen(SourceManagementState(preview = preview), model, onDiagnostics = {}) {} } }
-            compose.onNode(isToggleable()).assertIsEnabled().assertIsOff().performClick()
+            activity.get().setContent { MaterialTheme { SourcesScreen(previewState(preview), model, onDiagnostics = {}) {} } }
+            compose.onNode(isToggleable()).assertIsEnabled().assertIsOn()
             compose.onNodeWithText("Apply selected").performClick()
-            verify(exactly = 1) { model.commit(setOf(0), mapOf(0 to "https://fixture.invalid/"), false) }
+            verify(exactly = 1) { model.commit(setOf(0), mapOf(0 to "https://fixture.invalid:443"), false) }
             verify(exactly = 0) { model.setEnabled(any(), any()) }
         } finally { directory.deleteRecursively() }
     }
@@ -295,6 +293,11 @@ class SourcesScreenTest {
         compose.onNodeWithContentDescription("Show in Explore and Categories").assertIsNotEnabled()
         compose.onNodeWithText("This source does not declare a discovery catalogue.").assertExists()
     }
+
+    private fun previewState(preview: hnovel.imports.ImportPreview) = SourceManagementState(preview = preview,
+        previewOrigins = preview.candidates.associate { candidate -> candidate.index to
+            hnovel.imports.SourceOriginCandidates.discover(kotlinx.serialization.json.Json.parseToJsonElement(candidate.rawJson)
+                as kotlinx.serialization.json.JsonObject).joinToString("\n") { it.origin } })
 
     @Test fun extensionModeIsPassedToTheImportPreview() {
         activity.get().setContent { MaterialTheme { SourcesScreen(SourceManagementState(), model, onDiagnostics = {}) {} } }

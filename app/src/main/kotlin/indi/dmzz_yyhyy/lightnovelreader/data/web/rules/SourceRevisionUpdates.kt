@@ -36,13 +36,13 @@ class SourceRevisionUpdates @Inject constructor(@ApplicationContext context: Con
             ?: throw RevisionException(RevisionError.NoUpdateAddress)
         val root = scratch()
         try {
-            SourceBroker(root.toPath()).use { broker ->
+            SourceBroker(root.toPath(), limits = BrokerLimits(maxResponseBytes = ImportLimits().maxBytes)).use { broker ->
                 val grant = downloadGrant ?: NetworkGrant(origin(address))
                 require(origin(grant.origin) == origin(address) && grant.headers.isEmpty())
                 val session = broker.open(SourceScope("update-download", UUID.randomUUID().toString(), installed.profile),
                     listOf(grant))
                 val preview = sources.importer.previewUrl(address, session, installed.profile)
-                RevisionCheck(installed, preview, preview.issues.isEmpty() && preview.candidates.any {
+                RevisionCheck(installed, preview, preview.candidates.deduplicated().any {
                     it.importKey == installed.importKey && it.rawJson == installed.rawJson
                 })
             }

@@ -24,7 +24,7 @@ object SourceOriginCandidates {
                         if (found.size >= 32) break
                         val origin = sourceOrigin(match.value) ?: continue
                         // Unresolved template authorities are not actionable website candidates.
-                        if (origin.any { it in "{}$," }) continue
+                        if (origin.any { it in "{}$,*|!" } || sourceOrigin(origin) != origin) continue
                         found += OriginCandidate(origin, kind)
                     }
                 }

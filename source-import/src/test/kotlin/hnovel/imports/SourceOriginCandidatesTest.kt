@@ -33,4 +33,15 @@ class SourceOriginCandidatesTest {
         assertEquals(32, candidates.distinct().size)
         assertTrue(candidates.none { "secret" in it.origin || "private" in it.origin })
     }
+
+    @Test fun cleanupPatternsDoNotBecomeWebsitePermissions() {
+        val raw = buildJsonObject {
+            put("bookSourceUrl", "https://books.invalid/")
+            putJsonObject("ruleContent") {
+                put("replaceRegex", "https://www.books.invalid.*.html|footer##")
+                put("content", "article@text")
+            }
+        }
+        assertEquals(listOf(OriginCandidate("https://books.invalid:443", ResourceKind.Document)), SourceOriginCandidates.discover(raw))
+    }
 }

@@ -26,6 +26,24 @@ import java.util.UUID
 
 @RunWith(AndroidJUnit4::class)
 class KnownSourceExecutionInstrumentedTest {
+    @Test fun completeCatalogueFitsTheExistingBinderPacketLimit() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val authority = ExecutionAuthority()
+        val identity = authority.issue("large-catalogue", LEGADO_PROFILE, "1")
+        val executor = AndroidIsolatedExecutor(context, authority)
+        try {
+            val chapters = JsonArray((0 until 1600).map { index -> buildJsonObject {
+                put("id", index); put("title", "Chapter $index"); put("metadata", "x".repeat(512))
+            } })
+            val task = ExecutionTask.Rule("$[*]", RuleValue.Text(chapters.toString()), OutputKind.Elements)
+            val result = executor.execute(identity, task, ExecutionLimits(timeoutMillis = 15000, maxOutputBytes = 2 * 1024 * 1024))
+            assertTrue(result.toString(), result is ExecutionResult.Success)
+            val rows = Json.decodeFromString(ExecutedRule.serializer(), (result as ExecutionResult.Success).output).value as RuleValue.Items
+            assertEquals(1600, rows.values.size)
+            assertEquals(1599, Json.parseToJsonElement((rows.values.last() as RuleValue.Node).content).jsonObject.getValue("id").jsonPrimitive.int)
+        } finally { executor.close() }
+    }
+
     @Test fun realPageSizeIsSelectedInsideTheIsolatedWorker() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val authority = ExecutionAuthority()

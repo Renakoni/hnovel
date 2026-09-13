@@ -188,6 +188,14 @@ class SourceRevisionUpdatesTest {
                         val first = sources.definitions.list().single()
                         val id = sources.activate(first.reference(), listOf(NetworkGrant(fixture.server.url("/").toString(), true)))
                         val updates = SourceRevisionUpdates(host, sources, accounts, fixture.runner, fixture.authority)
+                        val collection = JsonArray(listOf(fixture.raw(), buildJsonObject {
+                            put("bookSourceUrl", "https://audio.invalid/"); put("bookSourceType", 1)
+                            put("bookSourceComment", "x".repeat(4 * 1024 * 1024))
+                        }))
+                        server.enqueue(okhttp3.mockwebserver.MockResponse().setBody(collection.toString()))
+                        val unchanged = updates.check(id, grant)
+                        assertTrue(unchanged.unchanged)
+                        assertEquals(ImportCode.UnsupportedType, unchanged.preview.issues.single().code)
                         server.enqueue(okhttp3.mockwebserver.MockResponse().setBody(JsonObject(fixture.raw() +
                             ("jsLib" to JsonPrimitive("throw new Error('must not execute at check');"))).toString()))
                         val check = updates.check(id, grant)

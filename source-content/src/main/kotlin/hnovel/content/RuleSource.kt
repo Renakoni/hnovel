@@ -221,7 +221,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         refreshed.book
     }
 
-    suspend fun directory(bookId: String): List<RuleChapter> = operation("ruleToc") {
+    suspend fun directory(bookId: String): List<RuleChapter> = operation("ruleToc", timeoutMillis = 120000) {
         val id = sourceLink(spec.baseUrl, bookId)
         directory(record(id)).also(store::write).chapters
     }

@@ -5,6 +5,7 @@ import java.security.MessageDigest
 
 const val LEGADO_PROFILE = "legado-text-da17bb2"
 const val EXTENSION_PROFILE = "advanced-sample-20260908"
+const val AUTO_PROFILE = "auto"
 
 @Serializable
 data class ImportOrigin(val kind: Kind, val location: String? = null, val finalUrl: String? = null) {
@@ -76,8 +77,8 @@ data class ImportItemResult(val index: Int, val outcome: ImportOutcome,
     val reference: DefinitionReference? = null, val error: ImportCode? = null)
 data class ImportCommit(val items: List<ImportItemResult>, val error: ImportCode? = null)
 
-data class ImportLimits(val maxBytes: Int = 2 * 1024 * 1024, val maxEntries: Int = 256,
-    val maxDepth: Int = 64, val maxStoredBytes: Int = 16 * 1024 * 1024, val maxStoredEntries: Int = 1024) {
+data class ImportLimits(val maxBytes: Int = 32 * 1024 * 1024, val maxEntries: Int = 8192,
+    val maxDepth: Int = 64, val maxStoredBytes: Int = 64 * 1024 * 1024, val maxStoredEntries: Int = 8192) {
     init { require(maxBytes > 0 && maxEntries > 0 && maxDepth in 1..128 && maxStoredBytes > 0 && maxStoredEntries > 0) }
 }
 

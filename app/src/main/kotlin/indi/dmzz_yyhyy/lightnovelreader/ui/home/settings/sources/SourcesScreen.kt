@@ -27,6 +27,7 @@ import androidx.navigation.toRoute
 import indi.dmzz_yyhyy.lightnovelreader.R
 import hnovel.imports.EXTENSION_PROFILE
 import hnovel.imports.LEGADO_PROFILE
+import hnovel.imports.AUTO_PROFILE
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.SectionHeader
 import indi.dmzz_yyhyy.lightnovelreader.data.web.SourceCapability
 import indi.dmzz_yyhyy.lightnovelreader.data.web.SourceListing
@@ -42,6 +43,19 @@ import kotlinx.serialization.json.*
 import kotlinx.coroutines.flow.first
 
 fun NavGraphBuilder.settingsSourcesDestination() {
+    composable<Route.Main.Settings.SourceImport> { entry ->
+        val route = entry.toRoute<Route.Main.Settings.SourceImport>()
+        val nav = LocalNavController.current
+        val model = hiltViewModel<SourcesViewModel>()
+        val state by model.state.collectAsStateWithLifecycle()
+        LaunchedEffect(model) {
+            model.state.first { !it.busy }
+            model.openImportLink(route.url)
+        }
+        SourcesScreen(state, model,
+            onDiagnostics = { id -> nav.navigate(Route.Main.Settings.SourceDiagnostic(id.namespace, id.id)) },
+            onSearch = { id -> nav.navigate(Route.Main.Explore.Search(id.namespace, id.id)) }) { nav.popBackStack() }
+    }
     composable<Route.Main.Settings.Sources> {
         val nav = LocalNavController.current
         val model = hiltViewModel<SourcesViewModel>()
@@ -74,7 +88,7 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
     var url by remember { mutableStateOf("") }
     var deleting by remember { mutableStateOf(false) }
     var rollback by remember { mutableStateOf(false) }
-    var profile by rememberSaveable { mutableStateOf(LEGADO_PROFILE) }
+    var profile by rememberSaveable { mutableStateOf(AUTO_PROFILE) }
     val file = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let { uri -> model.previewFile(uri, profile) } }
     val installed = state.installed.find { ImportedRuleSources.id(it.definition) == state.selected }
     fun back() {
@@ -191,11 +205,19 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(stringResource(R.string.sources_add_help))
                         Text(stringResource(R.string.sources_profile_help))
-                        for ((value, label) in listOf(LEGADO_PROFILE to R.string.sources_profile_standard, EXTENSION_PROFILE to R.string.sources_profile_extension)) {
+                        for ((value, label) in listOf(AUTO_PROFILE to R.string.sources_profile_auto, LEGADO_PROFILE to R.string.sources_profile_standard, EXTENSION_PROFILE to R.string.sources_profile_extension)) {
                             Row(Modifier.fillMaxWidth().clickable(enabled = !state.busy) { profile = value }) {
                                 RadioButton(selected = profile == value, onClick = { profile = value }, enabled = !state.busy)
                                 Text(stringResource(label), Modifier.padding(top = 12.dp))
                             }
+                        }
+                        Text(stringResource(R.string.sources_collections), style = MaterialTheme.typography.titleMedium)
+                        for ((label, address) in listOf(
+                            "XIU2" to "https://legado.aoaostar.com/sources/71e56d4f.json",
+                            "aoaostar" to "https://legado.aoaostar.com/sources/b778fe6b.json",
+                            "shidahuilang" to "https://raw.githubusercontent.com/shidahuilang/shuyuan-bak/main/good.json"
+                        )) {
+                            OutlinedButton(onClick = { model.previewUrl(address, profile) }, enabled = !state.busy) { Text(label) }
                         }
                         OutlinedTextField(url, { url = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.sources_url)) }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
                         Button(onClick = { model.previewUrl(url, profile) }, enabled = !state.busy && url.isNotBlank()) { Text(stringResource(R.string.sources_preview_url)) }
