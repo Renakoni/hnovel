@@ -12,13 +12,13 @@ class RuleEvaluator(private val unescapeHtml: Boolean = true, private val script
     private val parser = RuleParser()
 
     fun evaluate(rule: String, input: RuleValue, context: RuleContext, output: OutputKind = OutputKind.TextList,
-        location: RuleLocation = RuleLocation("rule"), budget: RuleBudget = RuleBudget()): RuleResult = try {
+        location: RuleLocation = RuleLocation("rule"), budget: RuleBudget = RuleBudget(), urlBase: String = context.baseUrl): RuleResult = try {
         budget.checkValue(input, budget.limits.maxInputChars)
         val value = run(rule, input, input, context, output, location, budget, 0)
         budget.checkValue(value, budget.limits.maxOutputChars)
         RuleResult.Success(when (output) {
-            OutputKind.Url -> RuleValue.Text(absolute(context.baseUrl, value.items().firstOrNull()?.text().orEmpty(), true))
-            OutputKind.UrlList -> RuleValue.Items(value.items().map { absolute(context.baseUrl, it.text(), false) }
+            OutputKind.Url -> RuleValue.Text(absolute(urlBase, value.items().firstOrNull()?.text().orEmpty(), true))
+            OutputKind.UrlList -> RuleValue.Items(value.items().map { absolute(urlBase, it.text(), false) }
                 .filter { it.isNotEmpty() }.distinct().map(RuleValue::Text))
             else -> value
         })
