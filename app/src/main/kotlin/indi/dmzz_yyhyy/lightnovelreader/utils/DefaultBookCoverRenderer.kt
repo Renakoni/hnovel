@@ -9,142 +9,114 @@ import android.net.Uri
 import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
-import androidx.core.content.ContextCompat
+import android.text.TextUtils
+import android.util.AtomicFile
 import androidx.core.graphics.createBitmap
-import androidx.core.graphics.drawable.DrawableCompat
+import androidx.core.graphics.withSave
 import androidx.core.graphics.withTranslation
 import androidx.core.net.toUri
 import indi.dmzz_yyhyy.lightnovelreader.R
 import java.io.File
+import java.security.MessageDigest
 
+/** Local artwork shared by thumbnails, the image viewer and EPUB; never a cached remote response. */
 object DefaultBookCoverRenderer {
     const val DEFAULT_WIDTH = 600
     const val DEFAULT_HEIGHT = 870
+    private const val STYLE_VERSION = "v2"
+    data class Text(val bookId: String, val title: String, val author: String = "")
 
-    private const val BACKGROUND_COLOR = 0xFF302F36.toInt()
-    private const val BORDER_COLOR = 0xFF45434B.toInt()
-    private const val DECORATION_COLOR = 0xFF44424A.toInt()
-    private const val CONTENT_COLOR = 0xFFC9C7CF.toInt()
+    // Fixed ink/paper pairs remain legible in both app themes and in exported files.
+    private val palettes = listOf(
+        intArrayOf(0xFF243D43.toInt(), 0xFFF4EBDC.toInt(), 0xFFCBAA74.toInt()),
+        intArrayOf(0xFF2D374F.toInt(), 0xFFEAE6DE.toInt(), 0xFFBBA277.toInt()),
+        intArrayOf(0xFF493A45.toInt(), 0xFFF5ECE2.toInt(), 0xFFD5AF95.toInt()),
+        intArrayOf(0xFF334738.toInt(), 0xFFF0EFDC.toInt(), 0xFFB5BE87.toInt()),
+        intArrayOf(0xFF663F36.toInt(), 0xFFF4E7D6.toInt(), 0xFFD5B68A.toInt())
+    )
 
-    fun render(
-        context: Context,
-        title: String,
-        width: Int = DEFAULT_WIDTH,
-        height: Int = DEFAULT_HEIGHT
-    ): Bitmap {
-        val bitmap = createBitmap(width, height)
-        val canvas = Canvas(bitmap)
-        canvas.drawColor(BACKGROUND_COLOR)
+    fun displayTitle(context: Context, title: String) = title.trim().ifBlank { context.getString(R.string.cover_untitled) }
 
-        val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = BORDER_COLOR
-            style = Paint.Style.STROKE
-            strokeWidth = width * 0.009f
-        }
-        canvas.drawRect(
-            width * 0.055f,
-            height * 0.045f,
-            width * 0.945f,
-            height * 0.955f,
-            strokePaint
-        )
-        strokePaint.strokeWidth = width * 0.004f
-        canvas.drawRect(
-            width * 0.105f,
-            height * 0.08f,
-            width * 0.895f,
-            height * 0.92f,
-            strokePaint
-        )
+    /** Layout is constructed once per input, then scaled as artwork, not as UI text in sp. */
+    class Artwork(context: Context, text: Text) {
+        private val title = displayTitle(context, text.title).take(512)
+        private val author = text.author.trim().take(256)
+        private val colors = palettes[(digest(text.bookId.ifBlank { "$title\u0000$author" })[0].toInt() and 255) % palettes.size]
+        private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val titleLayout = layout(title, if (title.length <= 6) 86f else if (title.length <= 20) 72f else 60f, 4, true)
+        private val authorLayout = layout(author, 30f, 2, false)
 
-        val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = DECORATION_COLOR
-            strokeWidth = width * 0.006f
-            strokeCap = Paint.Cap.ROUND
-        }
-        drawCenteredLine(canvas, linePaint, width, height * 0.115f, 0.28f)
-        drawCenteredLine(canvas, linePaint, width, height * 0.16f, 0.20f)
-        drawCenteredLine(canvas, linePaint, width, height * 0.565f, 0.42f)
-        drawCenteredLine(canvas, linePaint, width, height * 0.80f, 0.46f)
-        drawCenteredLine(canvas, linePaint, width, height * 0.88f, 0.30f)
-
-        drawTitle(canvas, title, width, height)
-        drawBookIcon(context, canvas, width, height)
-        return bitmap
-    }
-
-    fun writeTo(
-        context: Context,
-        file: File,
-        title: String
-    ) {
-        file.parentFile?.mkdirs()
-        file.outputStream().use {
-            val format = if (file.extension.equals("png", ignoreCase = true)) {
-                Bitmap.CompressFormat.PNG
-            } else {
-                Bitmap.CompressFormat.JPEG
+        private fun layout(value: String, size: Float, lines: Int, bold: Boolean): StaticLayout {
+            val textPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = colors[1]
+                textSize = size
+                typeface = Typeface.create("sans-serif", if (bold) Typeface.BOLD else Typeface.NORMAL)
             }
-            render(context, title).compress(format, 100, it)
+            return StaticLayout.Builder.obtain(value, 0, value.length, textPaint, 448)
+                .setAlignment(Layout.Alignment.ALIGN_NORMAL).setIncludePad(false)
+                .setMaxLines(lines).setEllipsize(TextUtils.TruncateAt.END).setLineSpacing(8f, 1f).build()
+        }
+
+        fun draw(canvas: Canvas, width: Float, height: Float) = canvas.withSave {
+            scale(width / DEFAULT_WIDTH, height / DEFAULT_HEIGHT)
+            clipRect(0f, 0f, DEFAULT_WIDTH.toFloat(), DEFAULT_HEIGHT.toFloat())
+            drawColor(colors[0])
+            paint.style = Paint.Style.FILL
+            paint.color = colors[2]
+            paint.alpha = 40
+            drawRect(0f, 0f, 20f, 870f, paint)
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 2f
+            paint.alpha = 130
+            drawRect(40f, 38f, 562f, 832f, paint)
+            paint.alpha = 40
+            drawCircle(556f, 822f, 207f, paint)
+            drawCircle(556f, 822f, 231f, paint)
+            paint.alpha = 255
+            paint.strokeWidth = 4f
+            drawLine(76f, 150f, 142f, 150f, paint)
+            withTranslation(76f, 218f) { titleLayout.draw(this) }
+            if (author.isNotEmpty()) withTranslation(76f, 586f) { authorLayout.draw(this) }
+            // A small open-book mark, also drawn locally in the exported artwork.
+            paint.strokeWidth = 3f
+            drawLine(76f, 739f, 111f, 748f, paint)
+            drawLine(111f, 748f, 146f, 739f, paint)
+            drawLine(76f, 739f, 76f, 779f, paint)
+            drawLine(146f, 739f, 146f, 779f, paint)
+            drawLine(76f, 779f, 111f, 788f, paint)
+            drawLine(111f, 788f, 146f, 779f, paint)
+            drawLine(111f, 748f, 111f, 788f, paint)
         }
     }
 
-    fun cacheUri(context: Context, title: String): Uri {
-        val file = File(
-            File(context.cacheDir, "default_book_covers"),
-            "v1_${title.hashCode().toUInt().toString(16)}.png"
-        )
-        if (!file.exists()) writeTo(context, file, title)
+    fun render(context: Context, title: String, width: Int = DEFAULT_WIDTH, height: Int = DEFAULT_HEIGHT,
+        bookId: String = "", author: String = ""): Bitmap = createBitmap(width, height).also {
+        Artwork(context, Text(bookId, title, author)).draw(Canvas(it), width.toFloat(), height.toFloat())
+    }
+
+    fun writeTo(context: Context, file: File, title: String, bookId: String = "", author: String = "") {
+        file.parentFile?.mkdirs()
+        val bitmap = render(context, title, bookId = bookId, author = author)
+        val atomic = AtomicFile(file)
+        val output = atomic.startWrite()
+        try {
+            val format = if (file.extension.equals("png", true)) Bitmap.CompressFormat.PNG else Bitmap.CompressFormat.JPEG
+            check(bitmap.compress(format, 100, output))
+            atomic.finishWrite(output)
+        } catch (failure: Exception) { atomic.failWrite(output); throw failure }
+        finally { bitmap.recycle() }
+    }
+
+    @Synchronized
+    fun cacheUri(context: Context, title: String, bookId: String = "", author: String = ""): Uri {
+        // Length framing includes all actual artwork inputs; FB/Ea and changed authors cannot collide.
+        val fields = listOf(STYLE_VERSION, bookId, displayTitle(context, title).take(512), author.trim().take(256),
+            DEFAULT_WIDTH.toString(), DEFAULT_HEIGHT.toString())
+        val key = digest(fields.joinToString("") { "${it.length}:$it" }).joinToString("") { "%02x".format(it) }
+        val file = File(File(context.cacheDir, "default_book_covers"), "${STYLE_VERSION}_$key.png")
+        if (!file.exists() || file.length() == 0L) writeTo(context, file, title, bookId, author)
         return file.toUri()
     }
 
-    private fun drawCenteredLine(
-        canvas: Canvas,
-        paint: Paint,
-        width: Int,
-        y: Float,
-        widthFraction: Float
-    ) {
-        val halfLength = width * widthFraction / 2f
-        canvas.drawLine(width / 2f - halfLength, y, width / 2f + halfLength, y, paint)
-    }
-
-    private fun drawTitle(canvas: Canvas, title: String, width: Int, height: Int) {
-        val displayTitle = title.ifBlank { "未命名" }
-        val textSize = when {
-            displayTitle.length <= 6 -> width * 0.13f
-            displayTitle.length <= 12 -> width * 0.105f
-            else -> width * 0.085f
-        }
-        val textPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = CONTENT_COLOR
-            this.textSize = textSize
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        }
-        val layoutWidth = (width * 0.72f).toInt()
-        val layout = StaticLayout.Builder
-            .obtain(displayTitle, 0, displayTitle.length, textPaint, layoutWidth)
-            .setAlignment(Layout.Alignment.ALIGN_CENTER)
-            .setIncludePad(false)
-            .setMaxLines(3)
-            .setEllipsize(android.text.TextUtils.TruncateAt.END)
-            .build()
-        canvas.withTranslation(
-            (width - layoutWidth) / 2f,
-            height * 0.36f - layout.height / 2f
-        ) {
-            layout.draw(this)
-        }
-    }
-
-    private fun drawBookIcon(context: Context, canvas: Canvas, width: Int, height: Int) {
-        val drawable = ContextCompat.getDrawable(context, R.drawable.menu_book_24px) ?: return
-        val tintedDrawable = DrawableCompat.wrap(drawable).mutate()
-        DrawableCompat.setTint(tintedDrawable, CONTENT_COLOR)
-        val iconSize = (width * 0.17f).toInt()
-        val left = (width - iconSize) / 2
-        val top = (height * 0.64f).toInt()
-        tintedDrawable.setBounds(left, top, left + iconSize, top + iconSize)
-        tintedDrawable.draw(canvas)
-    }
+    private fun digest(value: String) = MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8))
 }

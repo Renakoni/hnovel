@@ -303,6 +303,7 @@ fun BookStack(
                         height = 90.dp * scale,
                         uri = it.coverUri,
                         title = it.title,
+                        author = it.author,
                         rounded = 6.dp
                     )
                 }?.onErr {
