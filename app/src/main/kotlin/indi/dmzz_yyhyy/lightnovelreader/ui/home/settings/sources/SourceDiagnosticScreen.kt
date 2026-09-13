@@ -94,6 +94,9 @@ fun NavGraphBuilder.sourceDiagnosticDestination() {
             if (state.busy) item { LinearProgressIndicator(); TextButton(onClick = model::cancel) { Text(stringResource(android.R.string.cancel)) } }
             if (state.failed) item { Text(stringResource(R.string.sources_action_failed)) }
             state.report?.let { report ->
+                report.dependency?.let { dependency -> item {
+                    Text(stringResource(R.string.source_diagnostics_dependency, dependency.binding, report.field.orEmpty(), report.profile))
+                } }
                 item { Text("${report.result} · ${report.field.orEmpty()} · ${report.count}") }
                 item { TextButton(onClick = { export.launch("source-diagnostic.json") }) { Text(stringResource(R.string.source_diagnostics_export)) } }
                 item { Text(report.export(), style = MaterialTheme.typography.bodySmall) }

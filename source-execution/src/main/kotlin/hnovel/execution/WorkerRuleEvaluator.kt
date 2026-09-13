@@ -20,17 +20,17 @@ internal object WorkerRuleEvaluator {
         context.bookMetadata = task.book.toString()
         context.chapterMetadata = task.chapter.toString()
         val discovery = task.discovery?.let(::ScriptDiscovery)
-        var scriptFailure: hnovel.rhino.FailureCode? = null
+        var scriptFailure: ScriptResult.Failure? = null
         val evaluator = RuleEvaluator(unescapeHtml = task.unescapeHtml) { request, current, budget ->
             budget.check()
             val frame = ScriptFrame(identity.sourceId, identity.profile, task.bookId, task.chapterId,
                 mapOf("result" to input(request.input)), task.key, task.page, task.baseUrl, current, task.input, budget, task.book, task.chapter, task.chineseConverter,
-                sourceHeaderRule = task.sourceHeaderRule, discovery = discovery)
+                sourceHeaderRule = task.sourceHeaderRule, discovery = discovery, sourceLoginUrl = task.sourceLoginUrl)
             when (val result = RhinoScriptEngine(bridge, ScriptLimits(maxResultChars = limits.maxOutputBytes,
                 maxBridgeChars = limits.scriptDataLimit), archives)
                 .evaluate(request.script, frame, library)) {
                 is ScriptResult.Success -> value(Json.parseToJsonElement(result.json))
-                is ScriptResult.Failure -> { scriptFailure = result.code; throw RuleScriptFailure(result.code.name) }
+                is ScriptResult.Failure -> { scriptFailure = result; throw RuleScriptFailure(result.code.name) }
             }
         }
         val budget = RuleBudget(RuleLimits(timeoutMillis = limits.timeoutMillis, maxOutputChars = limits.maxOutputBytes))
@@ -42,16 +42,21 @@ internal object WorkerRuleEvaluator {
                 if (json.toByteArray(Charsets.UTF_8).size > limits.maxOutputBytes) ExecutionResult.Failure(FailureCode.OutputLimit)
                 else ExecutionResult.Success(json)
             }
-            is RuleResult.Failure -> ExecutionResult.Failure(when (scriptFailure) {
+            is RuleResult.Failure -> ExecutionResult.Failure(when (scriptFailure?.code) {
                 hnovel.rhino.FailureCode.Timeout -> FailureCode.Timeout
                 hnovel.rhino.FailureCode.Cancelled -> FailureCode.Cancelled
                 hnovel.rhino.FailureCode.Syntax -> FailureCode.ScriptSyntax
                 hnovel.rhino.FailureCode.BridgeDenied -> FailureCode.BridgeDenied
                 hnovel.rhino.FailureCode.RequestSyntax -> FailureCode.RequestSyntax
+                hnovel.rhino.FailureCode.UnsupportedDependency -> FailureCode.UnsupportedDependency
                 hnovel.rhino.FailureCode.ResultTooLarge -> FailureCode.OutputLimit
                 null -> if (result.error.stage == RuleStage.Budget) FailureCode.Timeout else FailureCode.RuleRuntime
                 else -> FailureCode.ScriptRuntime
-            }, if (scriptFailure == hnovel.rhino.FailureCode.RequestSyntax) result.error.copy(stage = RuleStage.Parse) else result.error)
+            }, scriptFailure?.dependency?.let { dependency -> result.error.copy(
+                location = if (scriptFailure?.inLibrary == true) RuleLocation("jsLib") else result.error.location,
+                code = "UnsupportedDependency.${dependency.name}") }
+                ?: if (scriptFailure?.code == hnovel.rhino.FailureCode.RequestSyntax) result.error.copy(stage = RuleStage.Parse) else result.error,
+                scriptFailure?.dependency)
         }
     }
 
