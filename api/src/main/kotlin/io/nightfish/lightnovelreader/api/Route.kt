@@ -115,6 +115,8 @@ object Route {
             @Serializable
             object Sources
             @Serializable
+            data class SourceImport(val url: String)
+            @Serializable
             data class SourceDetail(val namespace: String, val sourceId: String, val login: Boolean = false)
             @Serializable
             data class SourceDiagnostic(val namespace: String, val sourceId: String)

@@ -59,7 +59,8 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
     private suspend fun execute(task: ExecutionTask, field: String, inputChars: Int): ExecutedRule {
         currentCoroutineContext().ensureActive()
         if (!authority.accepts(identity)) throw SourceContentException(ContentError.Unavailable, field)
-        if (calls.incrementAndGet() > 4096) throw SourceContentException(ContentError.Limit, field)
+        if (calls.incrementAndGet() > 65536) throw SourceContentException(ContentError.Limit, field)
+        val limits = if (field == "ruleToc.chapterList") this.limits.copy(maxOutputBytes = 2 * 1024 * 1024) else this.limits
         val started = System.nanoTime()
         var networkFailure: hnovel.network.BrokerResult.Failure? = null
         val result = SourceExecutionBroker(identity, authority, session, limits, baseUrl, keyword, page,

@@ -121,7 +121,7 @@ class IsolatedExecutor(private val javaCommand: String = javaHome(), private val
      while (true) {
       val count = stream.read(buffer)
       if (count < 0) break
-      if (output.size() + count > BridgeWire.MAX_BYTES) throw WorkerOutputLimit()
+      if (output.size() + count > ExecutionWire.MAX_RESULT_BYTES) throw WorkerOutputLimit()
       output.write(buffer, 0, count)
      }
      output.toByteArray()
@@ -171,15 +171,17 @@ class IsolatedExecutor(private val javaCommand: String = javaHome(), private val
 
 /** Shared Android/JVM wire encoding; the authority stays in the host. */
 object ExecutionWire {
- // Real novel pages can exceed 256 KiB before selection. Requests have a separate bounded allowance;
- // worker results and reverse host calls retain BridgeWire's 256 KiB ceiling.
- const val MAX_INPUT_BYTES = 512 * 1024
+ // Logical JSON can contain a complete catalogue. Android compresses these values before Binder;
+ // packets and reverse host calls retain their smaller transport limits.
+ const val MAX_INPUT_BYTES = 4 * 1024 * 1024
+ const val MAX_RESULT_BYTES = 4 * 1024 * 1024
+ const val MAX_INPUT_PACKET_BYTES = 512 * 1024
  fun encode(identity: ExecutionIdentity, task: ExecutionTask, limits: ExecutionLimits, libraryScripts: List<String>? = null): ByteArray =
   kotlinx.serialization.json.Json.encodeToString(Wire.serializer(), Wire(identity, task, limits, libraryScripts)).toByteArray(Charsets.UTF_8)
  fun encodeResult(result: ExecutionResult): ByteArray =
   kotlinx.serialization.json.Json.encodeToString(ExecutionResult.serializer(), result).toByteArray(Charsets.UTF_8)
  fun decodeResult(bytes: ByteArray): ExecutionResult =
-  kotlinx.serialization.json.Json.decodeFromString(ExecutionResult.serializer(), BridgeWire.validate(bytes))
+  kotlinx.serialization.json.Json.decodeFromString(ExecutionResult.serializer(), BridgeWire.validate(bytes, MAX_RESULT_BYTES))
 }
 
 /** Untrusted-side worker. It receives only the bound DTO and has no host repository/client references. */

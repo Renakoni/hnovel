@@ -41,7 +41,9 @@ class RuleEvaluator(private val unescapeHtml: Boolean = true, private val script
         if (plan.steps.isEmpty()) return RuleValue.Empty
         for (step in plan.steps) {
             val at = location.copy(offset = location.offset + step.offset)
-            value = if (step.script) script(step.text, value, context, at, budget)
+            value = if (step.script) script(interpolate(step.text, value, root, context, at, budget, depth + 1,
+                captures = false, selectorsOnly = true),
+                value, context, at, budget)
                 else select(step.text, value, root, context, output, at, budget, depth + 1)
             budget.checkValue(value, budget.limits.maxOutputChars)
         }
@@ -190,13 +192,13 @@ class RuleEvaluator(private val unescapeHtml: Boolean = true, private val script
     }
 
     private fun interpolate(text: String, input: RuleValue, root: RuleValue, context: RuleContext,
-        location: RuleLocation, budget: RuleBudget, depth: Int, captures: Boolean = true): String {
+        location: RuleLocation, budget: RuleBudget, depth: Int, captures: Boolean = true, selectorsOnly: Boolean = false): String {
         val out = StringBuilder()
         var index = 0
         while (index < text.length) {
             budget.check()
             when {
-                text.regionMatches(index, "@get:{", 0, 6, true) -> {
+                !selectorsOnly && text.regionMatches(index, "@get:{", 0, 6, true) -> {
                     val end = parser.balancedEnd(text, index + 5, location, budget)
                     out.append(context.get(text.substring(index + 6, end - 1)))
                     index = end
@@ -205,7 +207,8 @@ class RuleEvaluator(private val unescapeHtml: Boolean = true, private val script
                     val end = parser.balancedEnd(text, index, location, budget)
                     val expression = text.substring(index + 2, end - 2)
                     val at = location.copy(offset = location.offset + index + 2)
-                    out.append(if (expression.startsWith('@') || expression.startsWith("$.") || expression.startsWith("$[") || expression.startsWith("//")) {
+                    val selector = expression.startsWith('@') || expression.startsWith("$.") || expression.startsWith("$[") || expression.startsWith("//")
+                    out.append(if (selectorsOnly && !selector) text.substring(index, end) else if (selector) {
                         run(expression, root, root, context, OutputKind.Text, at, budget, depth + 1).text()
                     } else script(expression, input, context, at, budget).text())
                     index = end

@@ -67,7 +67,7 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
                 check(it.channel.size() <= MAX_SNAPSHOT_BYTES) { "Installed source snapshot exceeds quota" }
                 Json.decodeFromString(ListSerializer(InstalledSource.serializer()), it.readBytes().toString(Charsets.UTF_8))
             }.also { entries ->
-                check(entries.size <= 256 && entries.map { it.definition.sourceId }.distinct().size == entries.size)
+                check(entries.size <= ImportLimits().maxStoredEntries && entries.map { it.definition.sourceId }.distinct().size == entries.size)
             }
         } catch (_: java.io.FileNotFoundException) { emptyList() }
         catch (_: Exception) {
@@ -102,6 +102,28 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
                 }
             active[identity] = binding
             identity
+        }
+    }
+
+    /** One definition read and one durable write for a selected collection. */
+    suspend fun activateBatch(references: Map<DefinitionReference, List<NetworkGrant>>): List<Identifier> = withContext(Dispatchers.IO) {
+        restore()
+        lock.withLock {
+            check(!restorationFailed)
+            val current = definitions.list().associateBy { it.reference() }
+            val additions = references.map { (reference, origins) ->
+                val definition = checkNotNull(current[reference]) { "Definition preview is no longer current" }
+                require(origins.size <= 32 && id(definition) !in active)
+                InstalledSource(definition, origins.map { it.copy(headers = it.headers.toMap()) })
+            }
+            // Save once for a collection; opening one definition must not rewrite thousands of others.
+            save(active.values.map { it.installed } + additions)
+            additions.mapNotNull { installed ->
+                val identity = id(installed.definition)
+                val binding = restoreBinding(installed)
+                active[identity] = binding
+                identity.takeIf { binding.registration != null || !installed.preferences().enabled || installed.origins.isEmpty() }
+            }
         }
     }
 
@@ -238,7 +260,7 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
     }
 
     private fun save(installed: List<InstalledSource>) {
-        check(installed.size <= 256)
+        check(installed.size <= ImportLimits().maxStoredEntries)
         directory.mkdirs()
         val bytes = Json.encodeToString(ListSerializer(InstalledSource.serializer()), installed).toByteArray(Charsets.UTF_8)
         check(bytes.size <= MAX_SNAPSHOT_BYTES)
@@ -262,7 +284,7 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
     private data class Binding(val installed: InstalledSource, val registration: SourceRegistration?, val broker: SourceBroker?,
         val session: hnovel.network.SourceSession? = null, val rule: RuleSource? = null)
     companion object {
-        private const val MAX_SNAPSHOT_BYTES = 16 * 1024 * 1024
+        private const val MAX_SNAPSHOT_BYTES = 64 * 1024 * 1024
         fun id(definition: SourceDefinition) = Identifier("rules", definition.sourceId)
     }
 }

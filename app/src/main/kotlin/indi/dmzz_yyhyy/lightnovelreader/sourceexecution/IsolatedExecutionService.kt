@@ -9,6 +9,7 @@ import android.os.Process
 import android.os.RemoteException
 import hnovel.execution.ExecutionResult
 import hnovel.execution.ExecutionWire
+import hnovel.execution.ExecutionPayload
 import hnovel.execution.FailureCode
 import hnovel.execution.WorkerRuntime
 import hnovel.rhino.HostBridge
@@ -52,7 +53,7 @@ class IsolatedExecutionService : Service() {
 
         override fun execute(request: ByteArray, callback: IExecutionCallback, broker: IExecutionBroker?) {
             enforceHost()
-            if (request.size > ExecutionWire.MAX_INPUT_BYTES) {
+            if (request.size > ExecutionWire.MAX_INPUT_PACKET_BYTES) {
                 deliver(callback, ExecutionWire.encodeResult(ExecutionResult.Failure(FailureCode.InputLimit)))
                 return
             }
@@ -65,7 +66,7 @@ class IsolatedExecutionService : Service() {
                 try {
                     enforceMemoryBudget()
                     val result = try {
-                        runtime.executeSerialized(request.toString(Charsets.UTF_8), HostBridge { name, args ->
+                        runtime.executeSerialized(ExecutionPayload.unpack(request, ExecutionWire.MAX_INPUT_BYTES).toString(Charsets.UTF_8), HostBridge { name, args ->
                             val bytes = JsonArray(args).toString().toByteArray(Charsets.UTF_8)
                             check(bytes.size <= MAX_IPC_BYTES) { "Bridge request too large" }
                             val reply = checkNotNull(broker) { "Host broker required" }.call(name, bytes)
@@ -83,7 +84,7 @@ class IsolatedExecutionService : Service() {
                     // The result permits the next serialized call; mark idle before notifying the host.
                     released = true
                     running.set(false)
-                    deliver(callback, if (result.size <= MAX_IPC_BYTES) result else
+                    deliver(callback, ExecutionPayload.pack(result, MAX_IPC_BYTES) ?:
                         ExecutionWire.encodeResult(ExecutionResult.Failure(FailureCode.OutputLimit)))
                 } finally {
                     if (!released) running.set(false)

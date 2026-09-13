@@ -207,7 +207,7 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         }
         Charset.forName(request.charset)
         request.responseCharset?.let(Charset::forName)
-        if (request.headers.keys.any { it.lowercase() in setOf("host", "content-length", "transfer-encoding", "connection", "proxy-authorization", "proxy-connection") }) {
+        if (request.headers.keys.any { it.lowercase() in setOf("host", "content-length", "transfer-encoding", "proxy-authorization", "proxy-connection") }) {
             throw BrokerFailure(RequestStage.Permission, FailureCode.InvalidRequest)
         }
     }
@@ -297,7 +297,7 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
             }
         } }
         explicit.forEach { (key, value) -> headers.set(key, value) }
-        if (headers.build().names().any { it.lowercase() in setOf("host", "content-length", "transfer-encoding", "connection", "proxy-authorization", "proxy-connection") }) {
+        if (headers.build().names().any { it.lowercase() in setOf("host", "content-length", "transfer-encoding", "proxy-authorization", "proxy-connection") }) {
             throw BrokerFailure(RequestStage.Permission, FailureCode.InvalidRequest)
         }
         val cookie = if (enabledCookieJar) cookies.header(url, headers["Cookie"]) else headers["Cookie"].orEmpty()

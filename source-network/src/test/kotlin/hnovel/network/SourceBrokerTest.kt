@@ -100,10 +100,12 @@ class SourceBrokerTest {
                 session.execute(request(server.url("/login"))); server.recorded()
                 server.enqueue(MockResponse().setBody(okio.Buffer().write("校园".toByteArray(charset("GB18030"))))
                     .addHeader("Content-Type", "text/plain; charset=GB18030"))
-                val result = success(session.execute(request(server.url("/book")).copy(headers = mapOf("Cookie" to "name=explicit", "X-Token" to "request"))))
+                val result = success(session.execute(request(server.url("/book")).copy(headers = mapOf(
+                    "Cookie" to "name=explicit", "X-Token" to "request", "Connection" to "Close"))))
                 assertEquals("校园", result.text())
                 val recorded = server.recorded()
                 assertEquals("request", recorded.getHeader("X-Token"))
+                assertEquals("Close", recorded.getHeader("Connection"))
                 assertEquals("name=explicit; second=jar", recorded.getHeader("Cookie"))
             }
         }
