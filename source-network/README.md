@@ -104,9 +104,13 @@ checks continue to apply to approved CDN/API/redirect targets.
   the caller cancels its OkHttp call through body consumption and releases permits;
   closing/replacing the session cancels in-flight/queued requests and rejects old handles.
 - Response bytes are bounded, with a header bound as well. Response charset comes from an
-  explicit request override, then Content-Type, then UTF-8. Request encoding and response
-  decoding are distinct. The protocol returns bytes for images/scripts and an explicit
-  text decoder for callers.
+  explicit request override, then Content-Type, then a valid HTML head declaration, then
+  UTF-8. HTML detection inspects at most the first 8 KiB using the existing Jsoup parser,
+  for HTML/XHTML or a missing media type; comments, script strings and nested templates
+  are not declarations. There is no statistical encoding guess. Request encoding and
+  response decoding are distinct. The protocol retains the original bytes and nullable
+  HTTP/override charset separately from the effective text encoding. No source rule,
+  external resource or full response DOM is evaluated during charset selection.
 
 ## State and storage ownership
 

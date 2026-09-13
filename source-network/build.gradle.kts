@@ -6,6 +6,7 @@ kotlin { jvmToolchain(21); compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gr
 dependencies {
     implementation(project(":source-rules"))
     implementation(libs.okhttp)
+    implementation("org.jsoup:jsoup:1.16.2")
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.serialization.json)
     testImplementation(libs.junit)
