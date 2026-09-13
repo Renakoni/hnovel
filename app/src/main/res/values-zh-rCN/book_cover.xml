@@ -1,0 +1,4 @@
+<resources>
+    <string name="cover_untitled">未命名</string>
+    <string name="cover_description">《%1$s》的封面</string>
+</resources>
