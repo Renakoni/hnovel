@@ -328,17 +328,19 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
                                 bytes.write(buffer, 0, read)
                             }
                         }
-                        val charset = forcedCharset ?: body.contentType()?.charset(Charsets.UTF_8)?.name() ?: "UTF-8"
+                        val responseBytes = bytes.toByteArray()
+                        val declaredCharset = forcedCharset ?: body.contentType()?.charset()?.name()
+                        val charset = declaredCharset ?: htmlResponseCharset(responseBytes, body.contentType()) ?: "UTF-8"
                         guard.commit {
                             synchronized(this@SourceSession) {
                                 checkOpen()
                                 if (continuation.isActive) {
                                     if (enabledCookieJar) cookies.save(response.request.url, response.headers)
                                     continuation.resume(BrokerResponse(response.code, response.request.url.toString(),
-                                        response.headers.toMultimap().mapValues { it.value.toList() }, bytes.toByteArray(), charset, redirects,
+                                        response.headers.toMultimap().mapValues { it.value.toList() }, responseBytes, charset, redirects,
                                         message = response.message, protocol = response.protocol.toString(),
                                         sentAt = response.sentRequestAtMillis, receivedAt = response.receivedResponseAtMillis,
-                                        declaredCharset = forcedCharset ?: body.contentType()?.charset()?.name(), method = response.request.method))
+                                        declaredCharset = declaredCharset, method = response.request.method))
                                 }
                             }
                         }

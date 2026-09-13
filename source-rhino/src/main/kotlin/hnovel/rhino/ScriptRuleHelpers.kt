@@ -9,7 +9,8 @@ import org.jsoup.parser.Parser
 /** Nested AnalyzeRule helpers share the current Rhino context, variables and rule budget. */
 internal class ScriptRuleHelpers(private val scope: Scriptable, frame: ScriptFrame, private val limits: ScriptLimits) {
     private val context = frame.ruleContext ?: RuleContext(frame.sourceId, frame.bookId, frame.chapterId, frame.baseUrl)
-    private val root = frame.ruleInput ?: value(frame.variables["result"] ?: JsonNull)
+    private var root = frame.ruleInput ?: value(frame.variables["result"] ?: JsonNull)
+    private var baseUrl = context.baseUrl
     private val budget = frame.ruleBudget ?: RuleBudget(RuleLimits(maxInputChars = limits.maxBridgeChars,
         maxOutputChars = limits.maxBridgeChars))
     private var depth = 0
@@ -17,8 +18,8 @@ internal class ScriptRuleHelpers(private val scope: Scriptable, frame: ScriptFra
 
     fun elementView(cx: Context, active: Scriptable, data: JsonElement): Any? {
         fun convert(value: RuleValue): Any? = when (value) {
-            is RuleValue.Node -> if (value.kind == InputKind.Html) ScriptDom.wrap(cx, active, value.htmlElement(context.baseUrl))
-                else if (value.kind == InputKind.Xml) ScriptDom.fragment(cx, active, value.content, context.baseUrl, true)
+            is RuleValue.Node -> if (value.kind == InputKind.Html) ScriptDom.wrap(cx, active, value.htmlElement(baseUrl))
+                else if (value.kind == InputKind.Xml) ScriptDom.fragment(cx, active, value.content, baseUrl, true)
                 else JsonScriptData(cx, active, limits.maxBridgeChars).convert(json(value))
             is RuleValue.Items -> {
                 val nodes = value.values.map(::convert)
@@ -31,13 +32,23 @@ internal class ScriptRuleHelpers(private val scope: Scriptable, frame: ScriptFra
     }
 
     fun supports(name: String, args: List<JsonElement>) = name in setOf("java.getString", "java.getStringList",
-        "java.getElement", "java.getElements", "java.put") || name == "java.get" && args.size == 1
+        "java.getElement", "java.getElements", "java.setContent", "java.put") || name == "java.get" && args.size == 1
 
     fun call(cx: Context, name: String, args: List<JsonElement>): JsonElement {
         elements = null
         if (++depth > budget.limits.maxDepth) { depth--; throw ScriptBudgetExceeded() }
         try {
             budget.check()
+            if (name == "java.setContent") {
+                require(args.size in 1..2 && args[0] != JsonNull)
+                val nextBase = args.getOrNull(1)?.takeUnless { it == JsonNull }?.let {
+                    require(it is JsonPrimitive && it.isString)
+                    it.content
+                }
+                root = if (args[0] is JsonArray) RuleValue.Node(args[0].toString(), InputKind.Json) else value(args[0])
+                if (nextBase != null) baseUrl = nextBase
+                return JsonNull
+            }
             if (name == "java.get") return JsonPrimitive(context.get(args.single().jsonPrimitive.content))
             if (name == "java.put") {
                 require(args.size == 2)
@@ -70,7 +81,7 @@ internal class ScriptRuleHelpers(private val scope: Scriptable, frame: ScriptFra
                         .encode(evaluateGlobal(cx, scope, request.script, "nested-rule"))))
                 } finally { scope.put("result", scope, old) }
             }
-            val result = evaluator.evaluate(rule, input, context, output, RuleLocation(name), budget)
+            val result = evaluator.evaluate(rule, input, context, output, RuleLocation(name), budget, baseUrl)
             if (result is RuleResult.Failure) {
                 if (result.error.stage == RuleStage.Budget) throw ScriptBudgetExceeded()
                 error("Nested rule failed")

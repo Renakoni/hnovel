@@ -52,4 +52,45 @@ class ScriptRuleHelpersTest {
         assertEquals(FailureCode.Timeout, (result as ScriptResult.Failure).code)
         assertEquals(JsonPrimitive("One\nTwo"), run("java.getString('a@text')"))
     }
+
+    @Test fun setContentReplacesSelectorInputAndKeepsExplicitReadsTemporary() {
+        assertEquals(JsonArray(listOf(JsonPrimitive("First"), JsonPrimitive("temporary"), JsonPrimitive("First"),
+            JsonPrimitive("Second"), JsonPrimitive("Fourth"), JsonPrimitive("outside"), JsonPrimitive(true))), run("""
+            result='outside';
+            var same=java.setContent('<p>First</p>')===java;
+            var first=java.getString('p@text');
+            var temporary=java.getString('p@text','<p>temporary</p>');
+            var retained=java.getString('p@text');
+            java.setContent({chapter:{text:'Second'}});
+            var second=java.getString('$.chapter.text');
+            java.setContent([{title:'Third'},{title:'Fourth'}]);
+            [first,temporary,retained,second,java.getString('$[1].title'),result,same]
+        """))
+        assertEquals(JsonPrimitive("One\nTwo"), run("java.getString('a@text')"))
+    }
+
+    @Test fun setContentUrlBaseIsLocalToSelectorsAndDomViews() {
+        val context = RuleContext("a", baseUrl = frame.baseUrl)
+        assertEquals(JsonArray(listOf(JsonPrimitive("https://text.invalid/folder/next"),
+            JsonPrimitive("https://text.invalid/folder/next"), JsonPrimitive("https://text.invalid/folder/later"),
+            JsonPrimitive(frame.baseUrl))), run("""
+            java.setContent('<a href="next">Chapter</a>','https://text.invalid/folder/book');
+            var url=java.getString('a@href',null,true);
+            var dom=java.getElement('a').first().absUrl('href');
+            java.setContent('<a href="later">Later</a>',null);
+            [url,dom,java.getStringList('a@href',null,true)[0],baseUrl]
+        """, frame.copy(ruleContext = context)))
+        assertEquals(frame.baseUrl, context.baseUrl)
+    }
+
+    @Test fun invalidSetContentLeavesPreviousInputIntactAndCannotResetBudget() {
+        assertEquals(JsonPrimitive("One\nTwo"), run("""
+            try{java.setContent(null)}catch(e){}
+            try{java.setContent('<p>bad</p>',{})}catch(e){}
+            java.getString('a@text')
+        """))
+        val small = RhinoScriptEngine(HostBridge { _, _ -> error("No host") }, ScriptLimits(maxBridgeChars = 256))
+        val failure = small.evaluate("try{java.setContent('x'.repeat(512))}catch(e){'hidden'}", frame)
+        assertEquals(FailureCode.ResultTooLarge, (failure as ScriptResult.Failure).code)
+    }
 }
