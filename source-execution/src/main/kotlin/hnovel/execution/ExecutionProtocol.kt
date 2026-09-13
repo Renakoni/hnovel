@@ -27,6 +27,10 @@ private class WorkerOutputLimit : RuntimeException()
 @Serializable data class ExecutionLimits(val timeoutMillis: Long = 5000, val maxOutputBytes: Int = 65536, val maxRequests: Int = 16) {
  init { require(timeoutMillis in 1..60000 && maxOutputBytes in 1..4 * 1024 * 1024 && maxRequests in 0..1024) }
 }
+
+// RuleSource already grants a 192 KiB result budget. Keep its script input, native data methods and
+// response reads consistent with that host-owned budget; larger callers cannot expand the IPC cap.
+internal val ExecutionLimits.scriptDataLimit: Int get() = maxOutputBytes.coerceIn(ScriptLimits.DEFAULT_BRIDGE_CHARS, 192 * 1024)
 @Serializable sealed interface ExecutionTask {
  @Serializable data class Echo(val value: String): ExecutionTask
  @Serializable data class Sleep(val millis: Long): ExecutionTask
@@ -35,7 +39,7 @@ private class WorkerOutputLimit : RuntimeException()
  @Serializable data class Script(val code: String, val result: JsonElement = JsonNull, val bookId: String? = null,
   val chapterId: String? = null, val key: String = "", val page: Int = 1, val baseUrl: String = "",
   val libraryCode: String? = null, val book: JsonObject = JsonObject(emptyMap()),
-  val chapter: JsonObject = JsonObject(emptyMap()), val chineseConverter: Int = 0) : ExecutionTask
+  val chapter: JsonObject = JsonObject(emptyMap()), val chineseConverter: Int = 0, val sourceLoginUrl: String = "") : ExecutionTask
  @Serializable data class Rule(val rule: String, val input: RuleValue, val output: OutputKind = OutputKind.TextList,
   val location: RuleLocation = RuleLocation("rule"), val bookId: String? = null, val chapterId: String? = null,
   val key: String = "", val page: Int = 1, val baseUrl: String = "", val libraryCode: String? = null,
@@ -43,7 +47,8 @@ private class WorkerOutputLimit : RuntimeException()
   val chapterVariables: Map<String, String> = emptyMap(), val book: JsonObject = JsonObject(emptyMap()),
   val chapter: JsonObject = JsonObject(emptyMap()), val bookBigVariables: Map<String, String> = emptyMap(),
   val chapterBigVariables: Map<String, String> = emptyMap(), val chineseConverter: Int = 0,
-  val unescapeHtml: Boolean = true, val sourceHeaderRule: String = "", val discovery: JsonObject? = null) : ExecutionTask
+  val unescapeHtml: Boolean = true, val sourceHeaderRule: String = "", val discovery: JsonObject? = null,
+  val sourceLoginUrl: String = "") : ExecutionTask
 }
 
 fun ExecutionTask.libraryCode(): String? = when (this) {
@@ -53,9 +58,10 @@ fun ExecutionTask.libraryCode(): String? = when (this) {
 }
 @Serializable sealed interface ExecutionResult {
  @Serializable data class Success(val output: String): ExecutionResult
- @Serializable data class Failure(val code: FailureCode, val ruleError: RuleError? = null): ExecutionResult
+ @Serializable data class Failure(val code: FailureCode, val ruleError: RuleError? = null,
+  val dependency: ScriptDependency? = null): ExecutionResult
 }
-@Serializable enum class FailureCode { Timeout, ProcessExited, InvalidIdentity, OutputLimit, InvalidTask, Cancelled, Revoked, Busy, InputLimit, ScriptSyntax, ScriptRuntime, BridgeDenied, RuleRuntime, RequestSyntax }
+@Serializable enum class FailureCode { Timeout, ProcessExited, InvalidIdentity, OutputLimit, InvalidTask, Cancelled, Revoked, Busy, InputLimit, ScriptSyntax, ScriptRuntime, BridgeDenied, RuleRuntime, RequestSyntax, UnsupportedDependency }
 
 /** Host authority for source identities. The worker never gets a method to issue or change a ticket. */
 class ExecutionAuthority {
@@ -98,7 +104,7 @@ class IsolatedExecutor(private val javaCommand: String = javaHome(), private val
  fun execute(identity: ExecutionIdentity, task: ExecutionTask, limits: ExecutionLimits = ExecutionLimits()): ExecutionResult {
   if (identity.sourceId.isBlank() || (authority != null && !authority.accepts(identity))) return ExecutionResult.Failure(FailureCode.InvalidIdentity)
   val input = ExecutionWire.encode(identity, task, limits)
-  if (input.size > BridgeWire.MAX_BYTES) return ExecutionResult.Failure(FailureCode.InputLimit)
+  if (input.size > ExecutionWire.MAX_INPUT_BYTES) return ExecutionResult.Failure(FailureCode.InputLimit)
   val deadline = System.nanoTime() + limits.timeoutMillis * 1_000_000
   val process = try { ProcessBuilder(javaCommand, "-Xmx64m", "-Xss1m", "-XX:+ExitOnOutOfMemoryError",
    "-cp", classPath, WorkerMain::class.java.name).start() }
@@ -165,6 +171,9 @@ class IsolatedExecutor(private val javaCommand: String = javaHome(), private val
 
 /** Shared Android/JVM wire encoding; the authority stays in the host. */
 object ExecutionWire {
+ // Real novel pages can exceed 256 KiB before selection. Requests have a separate bounded allowance;
+ // worker results and reverse host calls retain BridgeWire's 256 KiB ceiling.
+ const val MAX_INPUT_BYTES = 512 * 1024
  fun encode(identity: ExecutionIdentity, task: ExecutionTask, limits: ExecutionLimits, libraryScripts: List<String>? = null): ByteArray =
   kotlinx.serialization.json.Json.encodeToString(Wire.serializer(), Wire(identity, task, limits, libraryScripts)).toByteArray(Charsets.UTF_8)
  fun encodeResult(result: ExecutionResult): ByteArray =
@@ -203,7 +212,10 @@ class WorkerRuntime(private val archives: hnovel.rhino.ArchiveDecoder = hnovel.r
  }
 
  @Synchronized fun executeSerialized(input: String, bridge: HostBridge = HostBridge { _, _ -> error("No host broker") }): String {
-  val wire = try { kotlinx.serialization.json.Json.decodeFromString(Wire.serializer(), input) }
+  if (input.length > ExecutionWire.MAX_INPUT_BYTES || input.toByteArray(Charsets.UTF_8).size > ExecutionWire.MAX_INPUT_BYTES)
+   return kotlinx.serialization.json.Json.encodeToString(ExecutionResult.serializer(), ExecutionResult.Failure(FailureCode.InputLimit))
+  val wire = try { kotlinx.serialization.json.Json.decodeFromString(Wire.serializer(),
+   BridgeWire.validate(input.toByteArray(Charsets.UTF_8), ExecutionWire.MAX_INPUT_BYTES)) }
     catch (_: Exception) { return kotlinx.serialization.json.Json.encodeToString(ExecutionResult.serializer(), ExecutionResult.Failure(FailureCode.InvalidTask)) }
   if (SourceLibraryDefinition.isUrlMap(wire.task.libraryCode()) && wire.libraryScripts == null)
    return kotlinx.serialization.json.Json.encodeToString(ExecutionResult.serializer(), ExecutionResult.Failure(FailureCode.BridgeDenied))
@@ -215,8 +227,10 @@ class WorkerRuntime(private val archives: hnovel.rhino.ArchiveDecoder = hnovel.r
    is ExecutionTask.Sleep -> { Thread.sleep(task.millis); ExecutionResult.Success("slept") }
    is ExecutionTask.Script -> {
     val frame = ScriptFrame(wire.identity.sourceId, wire.identity.profile, task.bookId, task.chapterId,
-     mapOf("result" to task.result), task.key, task.page, task.baseUrl, book = task.book, chapter = task.chapter, chineseConverter = task.chineseConverter)
-    when (val evaluated = RhinoScriptEngine(bridge, ScriptLimits(maxResultChars = wire.limits.maxOutputBytes), archives)
+     mapOf("result" to task.result), task.key, task.page, task.baseUrl, book = task.book, chapter = task.chapter,
+     chineseConverter = task.chineseConverter, sourceLoginUrl = task.sourceLoginUrl)
+    when (val evaluated = RhinoScriptEngine(bridge, ScriptLimits(maxResultChars = wire.limits.maxOutputBytes,
+     maxBridgeChars = wire.limits.scriptDataLimit), archives)
      .evaluate(task.code, frame, library(wire.identity, task.libraryCode, wire.libraryScripts))) {
      is ScriptResult.Success -> if (evaluated.json.toByteArray(Charsets.UTF_8).size > wire.limits.maxOutputBytes)
       ExecutionResult.Failure(FailureCode.OutputLimit) else ExecutionResult.Success(evaluated.json)
@@ -226,9 +240,11 @@ class WorkerRuntime(private val archives: hnovel.rhino.ArchiveDecoder = hnovel.r
       hnovel.rhino.FailureCode.Syntax -> FailureCode.ScriptSyntax
       hnovel.rhino.FailureCode.BridgeDenied -> FailureCode.BridgeDenied
       hnovel.rhino.FailureCode.RequestSyntax -> FailureCode.RequestSyntax
+      hnovel.rhino.FailureCode.UnsupportedDependency -> FailureCode.UnsupportedDependency
       hnovel.rhino.FailureCode.ResultTooLarge -> FailureCode.OutputLimit
       else -> FailureCode.ScriptRuntime
-     })
+     }, evaluated.dependency?.let { RuleError(RuleStage.Script,
+      RuleLocation(if (evaluated.inLibrary) "jsLib" else "script"), "UnsupportedDependency.${it.name}") }, evaluated.dependency)
     }
    }
   }

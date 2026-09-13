@@ -16,25 +16,40 @@ class SourceDefinitionImporter(private val store: SourceDefinitionStore,
     fun preview(text: String, profile: String = LEGADO_PROFILE): ImportPreview = parse(text, ImportOrigin(ImportOrigin.Kind.Paste), profile)
 
     fun previewFile(file: Path, profile: String = LEGADO_PROFILE): ImportPreview {
-        if (isPlugin(file.fileName.toString())) return failure(ImportCode.PluginPackage)
         return try { Files.newInputStream(file).use { previewStream(it, file.fileName.toString(), profile) } }
         catch (_: Exception) { failure(ImportCode.ReadFailed) }
     }
 
     /** The host can pass an Android ContentResolver stream. The caller owns and closes the stream. */
     fun previewStream(input: InputStream, displayName: String, profile: String = LEGADO_PROFILE): ImportPreview {
-        if (isPlugin(displayName)) return failure(ImportCode.PluginPackage)
         return try {
+            val stream = input.buffered()
+            stream.mark(4)
+            val magic = ByteArray(4)
+            var read = 0
+            while (read < magic.size) {
+                val count = stream.read(magic, read, magic.size - read)
+                if (count < 0) break
+                read += count
+            }
+            stream.reset()
+            if (isPlugin(displayName) || magic.contentEquals(byteArrayOf(80, 75, 3, 4))) {
+                val json = KnownPluginPackages.read(stream) ?: return failure(ImportCode.PluginPackage)
+                // Package mappings own their profile; toggling the JSON profile must not duplicate source identities.
+                return parse(json, ImportOrigin(ImportOrigin.Kind.File, displayName), LEGADO_PROFILE,
+                    listOf(ImportNotice("KnownPackageAdaptation")))
+            }
             val bytes = java.io.ByteArrayOutputStream()
             val buffer = ByteArray(8192)
             while (true) {
-                val count = input.read(buffer, 0, minOf(buffer.size, limits.maxBytes - bytes.size() + 1))
+                val count = stream.read(buffer, 0, minOf(buffer.size, limits.maxBytes - bytes.size() + 1))
                 if (count < 0) break
                 if (bytes.size() + count > limits.maxBytes) return failure(ImportCode.TooLarge)
                 bytes.write(buffer, 0, count)
             }
             parseBytes(bytes.toByteArray(), ImportOrigin(ImportOrigin.Kind.File, displayName), profile)
-        } catch (_: Exception) { failure(ImportCode.ReadFailed) }
+        } catch (failure: ImportFailure) { failure(failure.code) }
+        catch (_: Exception) { failure(ImportCode.ReadFailed) }
     }
 
     /** The host supplies a dedicated, authorized import session, never a source's login session. */
@@ -62,7 +77,7 @@ class SourceDefinitionImporter(private val store: SourceDefinitionStore,
         return parse(text, origin, profile)
     }
 
-    private fun parse(text: String, origin: ImportOrigin, profile: String): ImportPreview {
+    private fun parse(text: String, origin: ImportOrigin, profile: String, notices: List<ImportNotice> = emptyList()): ImportPreview {
         if (text.length > limits.maxBytes || text.toByteArray(Charsets.UTF_8).size > limits.maxBytes) return failure(ImportCode.TooLarge)
         if (adapters.none { profile in it.profiles }) return failure(ImportCode.UnsupportedProfile)
         val root = try { parseDefinitionJson(text, limits.maxDepth) }
@@ -85,7 +100,7 @@ class SourceDefinitionImporter(private val store: SourceDefinitionStore,
                 val value = adapter.validate(row)
                 val existing = saved.firstOrNull { it.profile == profile && it.importKey == value.key }
                 valid.add(SourceCandidate(index, adapter.format, profile, value.key, value.name, value.enabled, value.enabledExplore,
-                    canonical(row).toString(), origin, value.notices.toList(), existing?.reference(),
+                    canonical(row).toString(), origin, notices + value.notices, existing?.reference(),
                     saved.filter { it != existing && (it.importKey == value.key || it.displayName == value.name) }.map { it.reference() }, emptyList()))
             } catch (failure: ImportFailure) { issues.add(ImportIssue(index, failure.code, failure.field)) }
               catch (_: IllegalArgumentException) { issues.add(ImportIssue(index, ImportCode.InvalidField)) }

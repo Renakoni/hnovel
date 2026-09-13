@@ -153,7 +153,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
                         headerMap(BridgeWire.arguments("[${it.content}]".toByteArray()).single())
                     } ?: sourceHeaders
                     val request = compiled(requestNumber, args[0].jsonPrimitive.content, headers)
-                    fetch(request, hnovel.rhino.ScriptLimits.DEFAULT_BRIDGE_CHARS).scriptSnapshot(false)
+                    fetch(request, limits.scriptDataLimit).scriptSnapshot(false)
                 }
                 "java.ajaxAll" -> {
                     require(args.size == 1)
@@ -168,7 +168,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
                     coroutineScope {
                         val pending = requests.map { request -> async {
                             decoding.withPermit {
-                                fetch(request, hnovel.rhino.ScriptLimits.DEFAULT_BRIDGE_CHARS).scriptSnapshot(false).also {
+                                fetch(request, limits.scriptDataLimit).scriptSnapshot(false).also {
                                     check(responseBytes.addAndGet(it.toString().toByteArray().size.toLong() + 1) <= BridgeWire.MAX_BYTES) { "Batch response too large" }
                                 }
                             }
@@ -182,7 +182,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
                     val request = BrokerRequest("script-$requestNumber", args[0].jsonPrimitive.content,
                         method = name.substringAfter('.').uppercase(), headers = headerMap(args[if (post) 2 else 1]),
                         body = if (post) args[1].jsonPrimitive.content else null, followRedirects = false, kind = ResourceKind.Api)
-                    fetch(request, hnovel.rhino.ScriptLimits.DEFAULT_BRIDGE_CHARS).scriptSnapshot(true)
+                    fetch(request, limits.scriptDataLimit).scriptSnapshot(true)
                 }
                 "cache.get", "source.get", "source.getVariable" -> authorized {
                     require(args.size == if (name == "source.getVariable") 0 else 1)

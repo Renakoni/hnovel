@@ -86,6 +86,7 @@ fun BookCardContent(
                         height = 144.dp,
                         uri = bookInformation.coverUri,
                         title = bookInformation.title,
+                        author = bookInformation.author,
                         rounded = 8.dp
                     )
 

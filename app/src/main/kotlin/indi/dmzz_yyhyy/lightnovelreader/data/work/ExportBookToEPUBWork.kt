@@ -310,14 +310,15 @@ class ExportBookToEPUBWork @AssistedInject constructor(
     ): Result = withContext(Dispatchers.IO) {
         Log.d(TAG, "export ${selectedVolume.size} volumes")
         val epubs = mutableListOf<Pair<String, EpubBuilder>>()
-        if (bookInformation.coverUri == Uri.EMPTY) {
+        if (bookInformation.coverUri.toString().isBlank()) {
             DefaultBookCoverRenderer.writeTo(
                 applicationContext,
                 cover,
-                bookInformation.title
+                bookInformation.title, bookInformation.id, bookInformation.author
             )
         } else {
-            tasks.add(ImageDownloader.Task(cover, bookInformation.coverUri, cover = true))
+            tasks.add(ImageDownloader.Task(cover, bookInformation.coverUri, cover = true,
+                defaultCover = DefaultBookCoverRenderer.Text(bookInformation.id, bookInformation.title, bookInformation.author)))
         }
         for ((currentVolumeIndex, volume) in bookVolumes.volumes.withIndex()) {
             if (!selectedVolume.contains(volume.volumeId)) continue
@@ -347,7 +348,8 @@ class ExportBookToEPUBWork @AssistedInject constructor(
                         cover(cover)
                     } else {
                         val image = tempDir.resolve(url.hashCode().toString() + ".jpg")
-                        tasks.add(ImageDownloader.Task(image, url))
+                        tasks.add(ImageDownloader.Task(image, url,
+                            defaultCover = DefaultBookCoverRenderer.Text(bookInformation.id, bookInformation.title, bookInformation.author)))
                         cover(image)
                     }
                 }
@@ -450,14 +452,15 @@ class ExportBookToEPUBWork @AssistedInject constructor(
                 val progressForVolume = (30 * currentVolumeIndex) / volumesCount
                 downloadItem.progress = (20f + progressForVolume) / 100f
             }
-            if (bookInformation.coverUri == Uri.EMPTY) {
+            if (bookInformation.coverUri.toString().isBlank()) {
                 DefaultBookCoverRenderer.writeTo(
                     applicationContext,
                     cover,
-                    bookInformation.title
+                    bookInformation.title, bookInformation.id, bookInformation.author
                 )
             } else {
-                tasks.add(ImageDownloader.Task(cover, bookInformation.coverUri, cover = true))
+                tasks.add(ImageDownloader.Task(cover, bookInformation.coverUri, cover = true,
+                defaultCover = DefaultBookCoverRenderer.Text(bookInformation.id, bookInformation.title, bookInformation.author)))
             }
             cover(cover)
         }

@@ -20,6 +20,38 @@ import java.nio.file.Files
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [27], application = Application::class)
 class SourceDiagnosticsTest {
+    @Test fun missingLibraryDependencyReachesTheExportWithoutSourceCode(): Unit = runBlocking {
+        val root = Files.createTempDirectory("dependency-diagnostic").toFile()
+        val context = object : ContextWrapper(RuntimeEnvironment.getApplication()) {
+            override fun getFilesDir() = File(root, "files")
+            override fun getCacheDir() = File(root, "cache")
+        }
+        RuleSourceFixture().use { fixture ->
+            val registry = WebSourceRegistry(fixture.authority)
+            val accounts = SourceSessionManager(fixture.authority)
+            val sources = ImportedRuleSources(context, registry, fixture.authority, accounts, fixture.runner)
+            val diagnostics = SourceDiagnostics(context, sources, fixture.runner, fixture.authority, accounts, registry, StorageCipher.Plain)
+            try {
+                val raw = JsonObject(fixture.raw() + mapOf(
+                    "jsLib" to JsonPrimitive("var privateValue='synthetic-secret'; new JavaImporter();"),
+                    "searchUrl" to JsonPrimitive("@js:'/search'")
+                ))
+                val preview = sources.importer.preview(raw.toString(), EXTENSION_PROFILE)
+                val committed = sources.importer.commit(preview, listOf(ImportSelection(0, ImportDecision.Add)))
+                val id = sources.activate(committed.items.single().reference!!, listOf(NetworkGrant(fixture.server.url("/").toString(), true)))
+                val report = diagnostics.run(id, DiagnosticStage.Search, "fixture", "", "")
+                assertEquals("UnsupportedDependency", report.result)
+                assertEquals("jsLib", report.field)
+                assertEquals(hnovel.rules.ScriptDependency.JavaImporter, report.dependency)
+                assertEquals(EXTENSION_PROFILE, report.profile)
+                assertTrue(report.events.any { it.ruleCode == "UnsupportedDependency.JavaImporter" })
+                assertFalse(report.export().contains("synthetic-secret"))
+                assertFalse(report.export().contains("privateValue"))
+                assertEquals(0, fixture.documents.get())
+            } finally { sources.stop(); root.deleteRecursively() }
+        }
+    }
+
     @Test fun reportsProductionFailuresWithoutSecretsOrNormalSessionWrites(): Unit = runBlocking {
         val root = Files.createTempDirectory("diagnostics-host").toFile()
         val context = object : ContextWrapper(RuntimeEnvironment.getApplication()) {

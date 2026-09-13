@@ -1,0 +1,3 @@
+<resources>
+    <string name="sources_notice_known_package">已识别此版本的来源包，将导入应用维护的来源定义，无需安装插件。来源适配随应用更新发布，重新导入此文件即可预览更新。请逐个检查来源，部分上游站点可能暂不可用。</string>
+</resources>

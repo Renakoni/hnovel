@@ -431,7 +431,8 @@ private fun Card(
                 width = 64.dp,
                 height = 93.dp,
                 uri = bookInformation.coverUri,
-                title = bookInformation.title
+                title = bookInformation.title,
+                author = bookInformation.author
             )
             Box(Modifier.width(16.dp))
             Column(

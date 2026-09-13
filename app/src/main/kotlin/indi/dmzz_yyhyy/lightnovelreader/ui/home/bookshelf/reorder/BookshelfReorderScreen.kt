@@ -200,7 +200,8 @@ fun BookshelfReorderContent(
                                         width = 60.dp,
                                         height = 88.dp,
                                         uri = item.bookInformation.coverUri,
-                                        title = item.bookInformation.title
+                                        title = item.bookInformation.title,
+                                        author = item.bookInformation.author
                                     )
                                 }
 

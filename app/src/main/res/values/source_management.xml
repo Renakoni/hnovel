@@ -13,7 +13,7 @@
     <string name="sources_title">Book sources</string>
     <string name="sources_manage_help">Add, configure, sign in and update book sources</string>
     <string name="sources_add">Add book source</string>
-    <string name="sources_add_help">Add a JSON source by URL, local file or pasted text. Plugin packages (.lnrp / APK) cannot be added here.</string>
+    <string name="sources_add_help">Add a JSON source by URL, local file or pasted text. Supported versions of local .lnrp / APK source packages can also be imported.</string>
     <string name="sources_url">Source file URL</string>
     <string name="sources_preview_url">Download and preview</string>
     <string name="sources_file">Choose local file</string>
