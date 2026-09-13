@@ -1,0 +1,165 @@
+[
+  {
+    "bookSourceName": "爱丽丝书屋",
+    "bookSourceUrl": "https://www.alicesw.com/",
+    "bookSourceType": 0,
+    "enabled": true,
+    "enabledExplore": true,
+    "header": "{\"User-Agent\":\"Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36\",\"Referer\":\"https://www.alicesw.com/\"}",
+    "lastUpdateTime": 1789257600000,
+    "bookSourceComment": "hnovel maintained adapter v1; protocol verified 2026-09-13. Update the app and re-import the same known package to preview source changes. Anonymous novel reading only; site availability and account-only content are separate. Category names/links are a maintained snapshot of the public navigation, not a live catalogue request.",
+    "searchUrl": "https://www.alicesw.com/search.html?q={{key}}&p={{page}}&f=_all,{\"headers\":{\"User-Agent\":\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36\"}}",
+    "ruleSearch": {
+      "bookList": ".list-group > *",
+      "name": "h5 a@text##^\\d+\\.\\s*|全文阅读$##",
+      "author": ".mb-1 a@text",
+      "bookUrl": "h5 a@href",
+      "intro": ".content-txt@text"
+    },
+    "exploreUrl": "[{\"title\":\"全部\",\"url\":\"https://www.alicesw.com/all/parameters/update_time+desc.html?page={{page}},{\\\"headers\\\":{\\\"User-Agent\\\":\\\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36\\\"}}\"},{\"title\":\"科幻\",\"url\":\"https://www.alicesw.com/lists/71.html?page={{page}},{\\\"headers\\\":{\\\"User-Agent\\\":\\\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36\\\"}}\"},{\"title\":\"经典\",\"url\":\"https://www.alicesw.com/lists/79.html?page={{page}},{\\\"headers\\\":{\\\"User-Agent\\\":\\\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36\\\"}}\"},{\"title\":\"奇幻\",\"url\":\"https://www.alicesw.com/lists/75.html?page={{page}},{\\\"headers\\\":{\\\"User-Agent\\\":\\\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36\\\"}}\"},{\"title\":\"系统\",\"url\":\"https://www.alicesw.com/lists/69.html?page={{page}},{\\\"headers\\\":{\\\"User-Agent\\\":\\\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36\\\"}}\"},{\"title\":\"武侠\",\"url\":\"https://www.alicesw.com/lists/68.html?page={{page}},{\\\"headers\\\":{\\\"User-Agent\\\":\\\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36\\\"}}\"},{\"title\":\"乱伦\",\"url\":\"https://www.alicesw.com/lists/65.html?page={{page}},{\\\"headers\\\":{\\\"User-Agent\\\":\\\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36\\\"}}\"},{\"title\":\"都市\",\"url\":\"https://www.alicesw.com/lists/64.html?page={{page}},{\\\"headers\\\":{\\\"User-Agent\\\":\\\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36\\\"}}\"},{\"title\":\"乡村\",\"url\":\"https://www.alicesw.com/lists/63.html?page={{page}},{\\\"headers\\\":{\\\"User-Agent\\\":\\\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36\\\"}}\"},{\"title\":\"同人\",\"url\":\"https://www.alicesw.com/lists/73.html?page={{page}},{\\\"headers\\\":{\\\"User-Agent\\\":\\\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36\\\"}}\"},{\"title\":\"玄幻\",\"url\":\"https://www.alicesw.com/lists/62.html?page={{page}},{\\\"headers\\\":{\\\"User-Agent\\\":\\\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36\\\"}}\"},{\"title\":\"校园\",\"url\":\"https://www.alicesw.com/lists/61.html?page={{page}},{\\\"headers\\\":{\\\"User-Agent\\\":\\\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36\\\"}}\"},{\"title\":\"穿越\",\"url\":\"https://www.alicesw.com/lists/70.html?page={{page}},{\\\"headers\\\":{\\\"User-Agent\\\":\\\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36\\\"}}\"},{\"title\":\"反差\",\"url\":\"https://www.alicesw.com/lists/22.html?page={{page}},{\\\"headers\\\":{\\\"User-Agent\\\":\\\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36\\\"}}\"},{\"title\":\"凌辱\",\"url\":\"https://www.alicesw.com/lists/46.html?page={{page}},{\\\"headers\\\":{\\\"User-Agent\\\":\\\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36\\\"}}\"},{\"title\":\"堕落\",\"url\":\"https://www.alicesw.com/lists/18.html?page={{page}},{\\\"headers\\\":{\\\"User-Agent\\\":\\\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36\\\"}}\"},{\"title\":\"纯爱\",\"url\":\"https://www.alicesw.com/lists/19.html?page={{page}},{\\\"headers\\\":{\\\"User-Agent\\\":\\\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36\\\"}}\"},{\"title\":\"伪娘\",\"url\":\"https://www.alicesw.com/lists/52.html?page={{page}},{\\\"headers\\\":{\\\"User-Agent\\\":\\\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36\\\"}}\"},{\"title\":\"萝莉\",\"url\":\"https://www.alicesw.com/lists/48.html?page={{page}},{\\\"headers\\\":{\\\"User-Agent\\\":\\\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36\\\"}}\"},{\"title\":\"熟女\",\"url\":\"https://www.alicesw.com/lists/56.html?page={{page}},{\\\"headers\\\":{\\\"User-Agent\\\":\\\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36\\\"}}\"},{\"title\":\"正太\",\"url\":\"https://www.alicesw.com/lists/50.html?page={{page}},{\\\"headers\\\":{\\\"User-Agent\\\":\\\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36\\\"}}\"},{\"title\":\"明星\",\"url\":\"https://www.alicesw.com/lists/72.html?page={{page}},{\\\"headers\\\":{\\\"User-Agent\\\":\\\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36\\\"}}\"},{\"title\":\"NTR\",\"url\":\"https://www.alicesw.com/lists/54.html?page={{page}},{\\\"headers\\\":{\\\"User-Agent\\\":\\\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36\\\"}}\"},{\"title\":\"媚黑\",\"url\":\"https://www.alicesw.com/lists/53.html?page={{page}},{\\\"headers\\\":{\\\"User-Agent\\\":\\\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36\\\"}}\"},{\"title\":\"调教\",\"url\":\"https://www.alicesw.com/lists/58.html?page={{page}},{\\\"headers\\\":{\\\"User-Agent\\\":\\\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36\\\"}}\"},{\"title\":\"言情\",\"url\":\"https://www.alicesw.com/lists/59.html?page={{page}},{\\\"headers\\\":{\\\"User-Agent\\\":\\\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36\\\"}}\"},{\"title\":\"百合\",\"url\":\"https://www.alicesw.com/lists/47.html?page={{page}},{\\\"headers\\\":{\\\"User-Agent\\\":\\\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36\\\"}}\"},{\"title\":\"耽美\",\"url\":\"https://www.alicesw.com/lists/82.html?page={{page}},{\\\"headers\\\":{\\\"User-Agent\\\":\\\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36\\\"}}\"},{\"title\":\"重口\",\"url\":\"https://www.alicesw.com/lists/21.html?page={{page}},{\\\"headers\\\":{\\\"User-Agent\\\":\\\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36\\\"}}\"},{\"title\":\"其他\",\"url\":\"https://www.alicesw.com/lists/57.html?page={{page}},{\\\"headers\\\":{\\\"User-Agent\\\":\\\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36\\\"}}\"}]",
+    "ruleExplore": {
+      "bookList": ".rec_rullist > *",
+      "name": ".two a@text",
+      "bookUrl": ".two a@href"
+    },
+    "ruleBookInfo": {
+      "name": ".detail-box .top .xs-title@text",
+      "author": ".detail-box .top a[href*=f=author]@text",
+      "intro": ".jianjie@text",
+      "coverUrl": ".detail-box .imgbox img@src",
+      "tocUrl": "@js:source.getKey()+'other/chapters/id/'+/\\/novel\\/([^/]+)\\.html/.exec(baseUrl)[1]+'.html'"
+    },
+    "ruleToc": {
+      "chapterList": ".section-list a[href]",
+      "chapterName": "@text",
+      "chapterUrl": "@href"
+    },
+    "ruleContent": {
+      "content": "#chapterContent .content_txt@html",
+      "title": "#chapterContent h3@text"
+    }
+  },
+  {
+    "bookSourceName": "八叉书库",
+    "bookSourceUrl": "https://bcshuku.com/",
+    "bookSourceType": 0,
+    "enabled": true,
+    "enabledExplore": true,
+    "header": "{\"User-Agent\":\"Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36\",\"Referer\":\"https://bcshuku.com/\"}",
+    "lastUpdateTime": 1789257600000,
+    "bookSourceComment": "hnovel maintained adapter v1; protocol verified 2026-09-13. Update the app and re-import the same known package to preview source changes. Anonymous novel reading only; site availability and account-only content are separate. Category names/links are a maintained snapshot of the public navigation, not a live catalogue request.",
+    "searchUrl": "@js:(function(){var start=source.getKey()+'e/search/index.php?show=title,writer,byr&searchget=1&keyboard='+encodeURIComponent(key);var r=java.get(start,{'User-Agent':\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36\",Referer:source.getKey()});var id=/searchid=(\\d+)/.exec(r.header('Location')||'');if(!id)throw Error('Search session missing');return source.getKey()+'e/search/result/index.php?page='+(page-1)+'&searchid='+id[1];})()",
+    "ruleSearch": {
+      "bookList": ".one-row .home-truyendecu",
+      "name": ".caption h3@text",
+      "bookUrl": ".each_truyen a@href",
+      "coverUrl": ".each_truyen img@src"
+    },
+    "ruleExplore": {
+      "bookList": ".one-row .home-truyendecu",
+      "name": ".caption h3@text",
+      "bookUrl": ".each_truyen a@href",
+      "coverUrl": ".each_truyen img@src"
+    },
+    "exploreUrl": "[{\"title\":\"长篇\",\"url\":\"https://bcshuku.com/booklist1/{{page-1}}.html\"},{\"title\":\"综合\",\"url\":\"https://bcshuku.com/booklist2/{{page-1}}.html\"},{\"title\":\"武侠\",\"url\":\"https://bcshuku.com/booklist3/{{page-1}}.html\"},{\"title\":\"历史\",\"url\":\"https://bcshuku.com/booklist4/{{page-1}}.html\"},{\"title\":\"都市\",\"url\":\"https://bcshuku.com/booklist5/{{page-1}}.html\"},{\"title\":\"玄幻\",\"url\":\"https://bcshuku.com/booklist6/{{page-1}}.html\"},{\"title\":\"女生\",\"url\":\"https://bcshuku.com/booklist7/{{page-1}}.html\"},{\"title\":\"其他\",\"url\":\"https://bcshuku.com/booklist8/{{page-1}}.html\"},{\"title\":\"现代\",\"url\":\"https://bcshuku.com/booklist9/{{page-1}}.html\"}]",
+    "ruleBookInfo": {
+      "name": ".desc h3.title@text",
+      "author": ".info a[href*=writer]@text",
+      "intro": ".desc-text .short-content@text",
+      "coverUrl": ".book img@src"
+    },
+    "ruleToc": {
+      "chapterList": "#list-chapter ul.list-chapter li a",
+      "chapterName": "@text",
+      "chapterUrl": "@href",
+      "nextTocUrl": "#list-chapter a[rel=next]@href"
+    },
+    "ruleContent": {
+      "content": "@js:(function(){var m=/\\{\"url\"[^}]*\"chapter\"[^}]*\\}/.exec(result);if(!m)throw Error('Chapter parameters missing');var c=JSON.parse(m[0]);var body=['url','mobile','isk','novel','chapter'].map(function(k){if(c[k]===undefined)throw Error('Chapter parameter missing');return k+'='+encodeURIComponent(String(c[k]));}).join('&');var data=JSON.parse(java.post(source.getKey()+'conapi.php',body,{Origin:'https://bcshuku.com',Referer:baseUrl,'User-Agent':\"Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36\",'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8','X-Requested-With':'XMLHttpRequest'}).body());if(String(data.success)!=='1'||typeof data.content!=='string'||!data.content.trim())throw Error('Chapter response rejected');return data.content;})()"
+    }
+  },
+  {
+    "bookSourceName": "疯情书库",
+    "bookSourceUrl": "https://fqbook.cc/",
+    "bookSourceType": 0,
+    "enabled": true,
+    "enabledExplore": true,
+    "header": "{\"User-Agent\":\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36\",\"Referer\":\"https://fqbook.cc/\"}",
+    "lastUpdateTime": 1789257600000,
+    "bookSourceComment": "hnovel maintained adapter v1; protocol verified 2026-09-13. Update the app and re-import the same known package to preview source changes. Anonymous novel reading only; site availability and account-only content are separate. Category names/links are a maintained snapshot of the public navigation, not a live catalogue request.",
+    "searchUrl": "https://fqbook.cc/m/search.html?page={{page}}&searchword={{key}}",
+    "ruleSearch": {
+      "bookList": ".book-list > *",
+      "name": ".right .name@text",
+      "author": ".right .author@text",
+      "bookUrl": ".right .name@href",
+      "coverUrl": ".left img@src",
+      "intro": ".summary@text"
+    },
+    "ruleExplore": {
+      "bookList": ".book-all-list .bd ul > *",
+      "name": ".right .name@text",
+      "author": ".right .author@text",
+      "bookUrl": ".right .name@href",
+      "coverUrl": ".left img@src"
+    },
+    "exploreUrl": "[{\"title\":\"全部\",\"url\":\"https://fqbook.cc/m/category.html?pageNum={{page}}\"},{\"title\":\"穿越\",\"url\":\"https://fqbook.cc/m/category.html?pageNum={{page}}&pageSize=30&catId=chuanyue&size=-1&isFinish=-1&updT=-1&orderBy=-1\"},{\"title\":\"异能\",\"url\":\"https://fqbook.cc/m/category.html?pageNum={{page}}&pageSize=30&catId=yineng&size=-1&isFinish=-1&updT=-1&orderBy=-1\"},{\"title\":\"言情\",\"url\":\"https://fqbook.cc/m/category.html?pageNum={{page}}&pageSize=30&catId=yanqing&size=-1&isFinish=-1&updT=-1&orderBy=-1\"},{\"title\":\"玄幻\",\"url\":\"https://fqbook.cc/m/category.html?pageNum={{page}}&pageSize=30&catId=xuanhuan&size=-1&isFinish=-1&updT=-1&orderBy=-1\"},{\"title\":\"校园\",\"url\":\"https://fqbook.cc/m/category.html?pageNum={{page}}&pageSize=30&catId=xiaoyuan&size=-1&isFinish=-1&updT=-1&orderBy=-1\"},{\"title\":\"仙侠\",\"url\":\"https://fqbook.cc/m/category.html?pageNum={{page}}&pageSize=30&catId=xianxia&size=-1&isFinish=-1&updT=-1&orderBy=-1\"},{\"title\":\"乡土\",\"url\":\"https://fqbook.cc/m/category.html?pageNum={{page}}&pageSize=30&catId=xiangtu&size=-1&isFinish=-1&updT=-1&orderBy=-1\"},{\"title\":\"武侠\",\"url\":\"https://fqbook.cc/m/category.html?pageNum={{page}}&pageSize=30&catId=wuxia&size=-1&isFinish=-1&updT=-1&orderBy=-1\"},{\"title\":\"网游\",\"url\":\"https://fqbook.cc/m/category.html?pageNum={{page}}&pageSize=30&catId=wangyou&size=-1&isFinish=-1&updT=-1&orderBy=-1\"},{\"title\":\"同人\",\"url\":\"https://fqbook.cc/m/category.html?pageNum={{page}}&pageSize=30&catId=tongren&size=-1&isFinish=-1&updT=-1&orderBy=-1\"},{\"title\":\"女尊\",\"url\":\"https://fqbook.cc/m/category.html?pageNum={{page}}&pageSize=30&catId=nvzun&size=-1&isFinish=-1&updT=-1&orderBy=-1\"},{\"title\":\"历史\",\"url\":\"https://fqbook.cc/m/category.html?pageNum={{page}}&pageSize=30&catId=lishi&size=-1&isFinish=-1&updT=-1&orderBy=-1\"},{\"title\":\"惊悚\",\"url\":\"https://fqbook.cc/m/category.html?pageNum={{page}}&pageSize=30&catId=jingsong&size=-1&isFinish=-1&updT=-1&orderBy=-1\"},{\"title\":\"古典\",\"url\":\"https://fqbook.cc/m/category.html?pageNum={{page}}&pageSize=30&catId=gudian&size=-1&isFinish=-1&updT=-1&orderBy=-1\"},{\"title\":\"官场\",\"url\":\"https://fqbook.cc/m/category.html?pageNum={{page}}&pageSize=30&catId=guanchang&size=-1&isFinish=-1&updT=-1&orderBy=-1\"},{\"title\":\"都市\",\"url\":\"https://fqbook.cc/m/category.html?pageNum={{page}}&pageSize=30&catId=dushi&size=-1&isFinish=-1&updT=-1&orderBy=-1\"},{\"title\":\"单篇\",\"url\":\"https://fqbook.cc/m/category.html?pageNum={{page}}&pageSize=30&catId=danpian&size=-1&isFinish=-1&updT=-1&orderBy=-1\"},{\"title\":\"耽美\",\"url\":\"https://fqbook.cc/m/category.html?pageNum={{page}}&pageSize=30&catId=danmei&size=-1&isFinish=-1&updT=-1&orderBy=-1\"},{\"title\":\"职场\",\"url\":\"https://fqbook.cc/m/category.html?pageNum={{page}}&pageSize=30&catId=zhichang&size=-1&isFinish=-1&updT=-1&orderBy=-1\"}]",
+    "ruleBookInfo": {
+      "name": ".detail .right h2@text",
+      "author": ".detail .right p.info@text##(?s)^作者[：:]\\s*|\\s*字数[：:].*$##",
+      "intro": ".book-intro .bd@text",
+      "coverUrl": ".detail .left img@src",
+      "tocUrl": "@js:source.getKey()+'chapterList-'+/book-(\\d+)\\.html/.exec(baseUrl)[1]+'.html'"
+    },
+    "ruleToc": {
+      "chapterList": "div.page_main p.section_title, div.page_main ul.section_list li",
+      "chapterName": "@js:java.getString('a@text')||java.getString('@text')",
+      "chapterUrl": "a@href",
+      "isVolume": "@js:/class=[\"']section_title[\"']/.test(result)"
+    },
+    "ruleContent": {
+      "content": "@js:(function(){var m=/&v=([^\"\\s]+)/.exec(result),id=/read-(\\d+)\\.html/.exec(baseUrl);if(!m||!id)throw Error('Chapter parameters missing');var html=java.ajax(source.getKey()+'_getcontent.php?id='+id[1]+'&v='+m[1]);if(!html.trim())throw Error('Empty chapter');return html.replace(/^\\s*<h[1-6][^>]*>[\\s\\S]*?<\\/h[1-6]>/i,'');})()"
+    }
+  },
+  {
+    "bookSourceName": "禁漫天堂·小说",
+    "bookSourceUrl": "https://18mh.net/",
+    "bookSourceType": 0,
+    "enabled": true,
+    "enabledExplore": true,
+    "header": "{\"User-Agent\":\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36\",\"Referer\":\"https://18mh.net/\"}",
+    "lastUpdateTime": 1789257600000,
+    "bookSourceComment": "hnovel maintained adapter v1; protocol verified 2026-09-13. Update the app and re-import the same known package to preview source changes. Anonymous novel reading only; site availability and account-only content are separate. Novel images use the site public AES-CBC image encoding; no local HTTP decryption server. Current image origin candidate: https://xi.dzuxta.cn/ . Comics and video players are not supported. Category names/links are a maintained snapshot of the public navigation, not a live catalogue request.",
+    "searchUrl": "https://18mh.net/novel/search/{{key}}/page/{{page}}",
+    "ruleSearch": {
+      "bookList": "ul.dx-novel-list > *",
+      "name": "h2@text",
+      "author": "a[href*=/author/]@text",
+      "bookUrl": "a[href*=/novel/detail/]@href",
+      "coverUrl": "img@data-src"
+    },
+    "ruleExplore": {
+      "bookList": "ul.dx-novel-list > *",
+      "name": "h2@text",
+      "author": "a[href*=/author/]@text",
+      "bookUrl": "a[href*=/novel/detail/]@href",
+      "coverUrl": "img@data-src"
+    },
+    "exploreUrl": "[{\"title\":\"全部\",\"url\":\"https://18mh.net/novel/all/page/{{page}}\"},{\"title\":\"都市激情\",\"url\":\"https://18mh.net/novel/all/dsjq/page/{{page}}\"},{\"title\":\"校园春色\",\"url\":\"https://18mh.net/novel/all/xycs/page/{{page}}\"},{\"title\":\"乡村爱情\",\"url\":\"https://18mh.net/novel/all/xcaq/page/{{page}}\"},{\"title\":\"系统异能\",\"url\":\"https://18mh.net/novel/all/xtyn/page/{{page}}\"},{\"title\":\"家庭乱伦\",\"url\":\"https://18mh.net/novel/all/jtll/page/{{page}}\"},{\"title\":\"穿越重生\",\"url\":\"https://18mh.net/novel/all/cycs/page/{{page}}\"},{\"title\":\"经典武侠\",\"url\":\"https://18mh.net/novel/all/jdwx/page/{{page}}\"},{\"title\":\"同人改编\",\"url\":\"https://18mh.net/novel/all/trgb/page/{{page}}\"},{\"title\":\"科学幻想\",\"url\":\"https://18mh.net/novel/all/kxhx/page/{{page}}\"},{\"title\":\"东方玄幻\",\"url\":\"https://18mh.net/novel/all/dfxh/page/{{page}}\"},{\"title\":\"娱乐明星\",\"url\":\"https://18mh.net/novel/all/ylmx/page/{{page}}\"},{\"title\":\"历史架空\",\"url\":\"https://18mh.net/novel/all/lsjk/page/{{page}}\"},{\"title\":\"西方魔幻\",\"url\":\"https://18mh.net/novel/all/xfmh/page/{{page}}\"},{\"title\":\"贤者小说\",\"url\":\"https://18mh.net/novel/all/xzxs/page/{{page}}\"}]",
+    "ruleBookInfo": {
+      "name": ".detail-page__title@text",
+      "author": ".detail-page__meta-row a[href*=/author/]@text",
+      "intro": ".detail-intro__body@text",
+      "coverUrl": ".detail-page__poster-img@data-src"
+    },
+    "ruleToc": {
+      "chapterList": ".detail-page__catalog-item",
+      "chapterName": ".detail-page__chapter-title@text",
+      "chapterUrl": "@href"
+    },
+    "ruleContent": {
+      "content": "main div.article@html"
+    },
+    "coverDecodeJs": "(function(){var a=result[0]&255,b=result[1]&255;if((a===255&&b===216)||(a===137&&b===80)||(a===71&&b===73)||(a===82&&b===73))return result;return java.createSymmetricCrypto('AES/CBC/NoPadding','f5d965df75336270','97b60394abc2fbe1').decrypt(result);})()"
+  }
+]

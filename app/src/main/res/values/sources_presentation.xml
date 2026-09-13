@@ -35,7 +35,7 @@
     <string name="sources_import_invalid_format">The definition is not valid source JSON. Check its format and required fields.</string>
     <string name="sources_import_limit">The source file exceeds an import size, depth or entry limit.</string>
     <string name="sources_import_unsupported">This source format, profile or content type is not supported.</string>
-    <string name="sources_import_package">This is a plugin package, not an importable JSON source.</string>
+    <string name="sources_import_package">This package or version is not supported. Only known LNRP releases can import their maintained source definitions. You can also import source JSON.</string>
     <string name="sources_import_read_failed">The source file could not be read. Choose it again.</string>
     <string name="sources_import_download_failed">The file could not be downloaded. Check the address, connection and permissions.</string>
     <string name="sources_import_storage_failed">The source could not be saved. Check available storage and retry.</string>

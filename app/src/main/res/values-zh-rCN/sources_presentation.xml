@@ -35,7 +35,7 @@
     <string name="sources_import_invalid_format">来源 JSON 格式或必填字段有误，请检查定义。</string>
     <string name="sources_import_limit">文件大小、嵌套深度或来源数量超过导入限制。</string>
     <string name="sources_import_unsupported">暂不支持此来源格式、兼容模式或内容类型。</string>
-    <string name="sources_import_package">这是插件包，不能作为 JSON 书源导入。</string>
+    <string name="sources_import_package">暂不支持此来源包或版本。仅已适配的 LNRP 版本可以导入应用维护的来源定义，也可导入 JSON 书源。</string>
     <string name="sources_import_read_failed">无法读取来源文件，请重新选择。</string>
     <string name="sources_import_download_failed">无法下载来源文件，请检查地址、网络及权限。</string>
     <string name="sources_import_storage_failed">无法保存来源，请检查可用存储空间后重试。</string>

@@ -1,0 +1,12 @@
+[
+  {
+    "bookSourceName": "PotatoLib（上游待确认）",
+    "bookSourceUrl": "https://library.curiousers.org/",
+    "bookSourceType": 0,
+    "enabled": false,
+    "enabledExplore": false,
+    "header": "{\"User-Agent\":\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36\",\"Referer\":\"https://library.curiousers.org/\"}",
+    "lastUpdateTime": 1789257600000,
+    "bookSourceComment": "Known PotatoLib 1.0 (1) package identity only. The original upstream is unavailable (DNS NXDOMAIN observed); no current domain or source protocol is verified. Keep disabled. A future app update may supply a verified definition without changing this import identity."
+  }
+]
