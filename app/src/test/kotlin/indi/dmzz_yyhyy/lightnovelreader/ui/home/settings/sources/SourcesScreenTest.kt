@@ -208,6 +208,56 @@ class SourcesScreenTest {
         compose.onNodeWithText("Search this source").assertDoesNotExist()
     }
 
+    @Test fun initializationStateControlsImportedStatusAndRuntimeActions() {
+        val definition = SourceDefinition("initializing", "legado", "fixture", "https://fixture.invalid/", "Loading source", true,
+            false, ImportOrigin(ImportOrigin.Kind.Paste), "digest", 1, "{}")
+        val id = ImportedRuleSources.id(definition)
+        val entry = SourceListing(SourceMetadata(WebDataSourceItem(id, "Loading source", "fixture"),
+            setOf(SourceCapability.Search, SourceCapability.Login)), SourceStatus.Registered)
+        var state by mutableStateOf(SourceManagementState(installed = listOf(InstalledRuleSource(definition,
+            listOf(hnovel.network.NetworkGrant("https://fixture.invalid/")), null)), registry = listOf(entry)))
+        activity.get().setContent { MaterialTheme { SourcesScreen(state, model, onDiagnostics = {}) {} } }
+        compose.onNode(hasScrollAction()).performScrollToNode(hasText("Not initialized"))
+        compose.onNodeWithText("Not initialized").assertExists()
+        compose.runOnIdle { state = state.copy(selected = id) }
+        compose.onNodeWithText("Initialize source").performScrollTo().assertIsEnabled().performClick()
+        verify(exactly = 1) { model.initializeSource(id) }
+        val diagnostics = activity.get().getString(indi.dmzz_yyhyy.lightnovelreader.R.string.sources_diagnostics)
+        for ((status, label) in listOf(SourceStatus.Registered to "Not initialized",
+            SourceStatus.Initializing to "Initializing…", SourceStatus.Failed to "Initialization failed · Review source settings")) {
+            compose.runOnIdle { state = state.copy(registry = listOf(entry.copy(status = status))) }
+            compose.onNodeWithText(label).performScrollTo().assertExists()
+            compose.onNodeWithText("Enabled").assertDoesNotExist()
+            compose.onNodeWithText("Search this source").assertDoesNotExist()
+            compose.onNodeWithText("Signed out").assertDoesNotExist()
+            compose.onNodeWithText(diagnostics).performScrollTo().assertIsNotEnabled()
+            compose.onNodeWithText("Save permissions").performScrollTo().assertIsEnabled()
+        }
+        compose.runOnIdle { state = state.copy(registry = listOf(entry.copy(status = SourceStatus.Ready))) }
+        compose.onNodeWithText("Enabled").performScrollTo().assertExists()
+        compose.onNodeWithText("Search this source").performScrollTo().assertIsEnabled()
+        compose.onNodeWithText(diagnostics).performScrollTo().assertIsEnabled()
+        compose.onNodeWithText("Initialize source").assertDoesNotExist()
+    }
+
+    @Test fun builtInSearchRequiresReadyAndRegisteredSourcesCanBeInitialized() {
+        val id = Identifier("builtin", "fixture")
+        val entry = SourceListing(SourceMetadata(WebDataSourceItem(id, "Built-in fixture", "fixture"),
+            setOf(SourceCapability.Search), builtIn = true), SourceStatus.Registered)
+        var state by mutableStateOf(SourceManagementState(registry = listOf(entry)))
+        var searched: Identifier? = null
+        activity.get().setContent { MaterialTheme { SourcesScreen(state, model, onDiagnostics = {}, onSearch = { searched = it }) {} } }
+        compose.onNodeWithContentDescription("Search this source").assertDoesNotExist()
+        compose.onNodeWithText("Initialize source").performScrollTo().performClick()
+        verify(exactly = 1) { model.initializeSource(id) }
+        compose.runOnIdle { state = state.copy(registry = listOf(entry.copy(status = SourceStatus.Failed))) }
+        compose.onNodeWithText("Initialization failed · Review source settings").assertExists()
+        compose.onNodeWithContentDescription("Search this source").assertDoesNotExist()
+        compose.runOnIdle { state = state.copy(registry = listOf(entry.copy(status = SourceStatus.Ready))) }
+        compose.onNodeWithContentDescription("Search this source").performClick()
+        org.junit.Assert.assertEquals(id, searched)
+    }
+
     @Test fun disabledDefinitionIsSelectableInPreviewWithoutBeingEnabled() {
         val directory = java.nio.file.Files.createTempDirectory("disabled-preview").toFile()
         try {
@@ -260,7 +310,9 @@ class SourcesScreenTest {
         val native = indi.dmzz_yyhyy.lightnovelreader.data.web.zlibrary.ZLibrarySources
         val settings = indi.dmzz_yyhyy.lightnovelreader.data.web.zlibrary.ZLibrarySettings()
         val state = SourceManagementState(selected = native.ID,
-            zLibrary = indi.dmzz_yyhyy.lightnovelreader.data.web.zlibrary.ZLibraryState(settings))
+            zLibrary = indi.dmzz_yyhyy.lightnovelreader.data.web.zlibrary.ZLibraryState(settings),
+            registry = listOf(SourceListing(SourceMetadata(WebDataSourceItem(native.ID, "Z-Library", "fixture"),
+                setOf(SourceCapability.Search), builtIn = true), SourceStatus.Ready)))
         var selected: Identifier? = null
         activity.get().setContent { MaterialTheme { SourcesScreen(state, model, onDiagnostics = {}, onSearch = { selected = it }) {} } }
         compose.onNodeWithText("Search this source").performClick()
