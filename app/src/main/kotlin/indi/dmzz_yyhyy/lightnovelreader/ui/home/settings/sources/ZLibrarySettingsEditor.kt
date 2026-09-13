@@ -9,28 +9,27 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import indi.dmzz_yyhyy.lightnovelreader.R
+import indi.dmzz_yyhyy.lightnovelreader.data.web.SourceCapability
+import indi.dmzz_yyhyy.lightnovelreader.data.web.SourceListing
+import indi.dmzz_yyhyy.lightnovelreader.data.web.SourceStatus
 import indi.dmzz_yyhyy.lightnovelreader.data.web.zlibrary.ZLibrarySources
 import indi.dmzz_yyhyy.lightnovelreader.data.web.zlibrary.ZLibraryState
 
 @Composable
-internal fun ZLibrarySettingsEditor(state: ZLibraryState, busy: Boolean, onEnabled: (Boolean) -> Unit,
-    onSave: (String, String) -> Unit, onSearch: () -> Unit) {
+internal fun ZLibrarySettingsEditor(state: ZLibraryState, busy: Boolean, entry: SourceListing?, onEnabled: (Boolean) -> Unit,
+    onSave: (String, String) -> Unit, onInitialize: () -> Unit, onSearch: () -> Unit) {
     val settings = state.settings
     var origin by remember(settings.origin) { mutableStateOf(settings.origin) }
     var permissions by remember(settings.origins) { mutableStateOf(settings.origins.joinToString("\n")) }
     val enabledLabel = stringResource(R.string.sources_enabled)
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         ListItem(headlineContent = { Text(enabledLabel) },
-            supportingContent = { Text(stringResource(when {
-                state.restorationFailed -> R.string.zlibrary_settings_failed
-                !settings.enabled -> R.string.sources_disabled_by_user
-                !settings.available -> R.string.sources_awaiting_permissions
-                else -> R.string.sources_available
-            })) },
+            supportingContent = { Text(stringResource(zLibraryStatus(state, entry))) },
             trailingContent = { Switch(settings.enabled, onEnabled, enabled = !busy,
                 modifier = Modifier.semantics { contentDescription = enabledLabel }) })
         Text(stringResource(R.string.zlibrary_capabilities))
-        if (settings.available) Button(onClick = onSearch, enabled = !busy) { Text(stringResource(R.string.explore_search)) }
+        if (settings.available && SourceCapability.Search in entry.readyCapabilities()) Button(onClick = onSearch, enabled = !busy) { Text(stringResource(R.string.explore_search)) }
+        if (entry?.status == SourceStatus.Registered) OutlinedButton(onClick = onInitialize, enabled = !busy) { Text(stringResource(R.string.sources_initialize)) }
         Text(stringResource(R.string.sources_no_discovery), style = MaterialTheme.typography.bodySmall)
         OutlinedTextField(origin, { origin = it }, Modifier.fillMaxWidth(), enabled = !busy, singleLine = true,
             label = { Text(stringResource(R.string.zlibrary_mirror)) })
@@ -51,4 +50,11 @@ internal fun ZLibrarySettingsEditor(state: ZLibraryState, busy: Boolean, onEnabl
             label = { Text(stringResource(R.string.sources_permissions)) })
         Button(onClick = { onSave(origin, permissions) }, enabled = !busy) { Text(stringResource(R.string.zlibrary_save)) }
     }
+}
+
+internal fun zLibraryStatus(state: ZLibraryState, entry: SourceListing?): Int = when {
+    state.restorationFailed -> R.string.zlibrary_settings_failed
+    !state.settings.enabled -> R.string.sources_disabled_by_user
+    !state.settings.available -> R.string.sources_awaiting_permissions
+    else -> sourceRuntimeStatus(entry)
 }
