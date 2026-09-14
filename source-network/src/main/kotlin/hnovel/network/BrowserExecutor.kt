@@ -9,6 +9,7 @@ fun interface BrowserExecutor {
     /** Optional UI feedback; headless hosts may omit display without changing script results. */
     suspend fun showMessage(message: String, long: Boolean, guard: RequestCommitGuard) { guard.commit {} }
 
+    /** Admit via session.awaitBrowserAdmission after acquiring the execution slot, before dispatch. */
     suspend fun execute(session: SourceSession, request: BrokerRequest, options: BrowserOptions,
         guard: RequestCommitGuard): BrokerResult
     fun clearAccount(scope: SourceScope) {}

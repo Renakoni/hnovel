@@ -1,0 +1,31 @@
+{
+  "date": "2026-09-14",
+  "issue": 186,
+  "device": {"serial": "127.0.0.1:16416", "android": 12, "webView": "110.0.5481.154.1"},
+  "rate": "1/2000",
+  "measurement": "Owned loopback server arrival times; host admission time and server arrival time differ by IPC/rendering/network scheduling.",
+  "timingRuns": [
+    {"sourceRequestGapsMillis": [1963, 2033, 1956], "pageResourceMaxGapsMillis": [182, 273], "cancelledRequestsSent": 0},
+    {"sourceRequestGapsMillis": [1997, 1999, 1995], "pageResourceMaxGapsMillis": [176, 203], "cancelledRequestsSent": 0}
+  ],
+  "scenario": "Owned foreground browser waits 3.5s; queued background navigations share admission with an explicit HTTP API request; one queued navigation is cancelled; each background page loads iframe and fetch resources natively.",
+  "jvm": {"tests": 843, "failures": 0, "errors": 0, "skipped": 0},
+  "deviceRegression": {"passed": 11, "skipped": 1, "failures": 0, "skippedReason": "Environment probe requires explicit URL argument."},
+  "referenceSourceNodeTests": {"passed": 3},
+  "liveSite": {
+    "site": "https://hlib.cc",
+    "accountGeneration": 0,
+    "attempts": 1,
+    "action": "search",
+    "result": "BrowserRequired: searchUrl",
+    "elapsedSeconds": 8.66,
+    "continuedBatchReading": false,
+    "completeReadAccepted": false
+  },
+  "limits": [
+    "Pacing does not prove lower challenge frequency.",
+    "A fixed window permits N requests in that window; it is not a sliding-window guarantee.",
+    "Native page resources and redirects are intentionally outside source admission.",
+    "No new physical Android or external transport sample in this pacing run."
+  ]
+}

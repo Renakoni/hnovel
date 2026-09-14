@@ -224,6 +224,55 @@ class NativeBrowserInstrumentedTest {
         assertEquals(width / 2, result.getValue("half").jsonPrimitive.double, 1.0)
     } }
 
+    @Test fun sourcePacingSurvivesForegroundWaitAndLeavesPageResourcesNative(): Unit = runBlocking {
+        ActivityScenario.launch(BrowserTestHostActivity::class.java).use { fixture { broker, server ->
+            val starts = java.util.concurrent.ConcurrentHashMap<String, Long>()
+            val holding = CompletableDeferred<Unit>()
+            server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse {
+                    val path = request.path!!
+                    starts[path] = System.nanoTime() / 1_000_000
+                    if (path == "/hold") holding.complete(Unit)
+                    val body = when {
+                        path == "/hold" -> "<script>setTimeout(function(){window.answer='ready'},3500)</script>"
+                        path.startsWith("/page") -> """<iframe src="/frame$path"></iframe><script>
+                            fetch('/resource$path').then(r=>r.text()).then(function(){window.answer='ready'})
+                            </script>"""
+                        else -> "<title>ready</title>"
+                    }
+                    return MockResponse().setHeader("Content-Type", "text/html").setHeader("Cache-Control", "no-store")
+                        .setBody("<html><head><link rel='icon' href='data:,'></head><body>$body</body></html>")
+                }
+            }
+            val account = session(broker, server)
+            render(account, server.url("/warm").toString())
+            account.configureSource(server.url("/").toString(), true, browserRead = true, concurrentRate = "1/2000")
+            val foreground = async { render(account, server.url("/hold").toString(), "window.answer || null", interactive = true) }
+            withTimeout(15000) { holding.await() }
+            val cancelled = launch { render(account, server.url("/cancelled").toString()) }
+            val pages = (1..2).map { index -> async {
+                render(account, server.url("/page$index").toString(), "window.answer || null")
+            } }
+            delay(100)
+            cancelled.cancelAndJoin()
+            assertTrue(account.execute(BrokerRequest("api", server.url("/api").toString(), kind = ResourceKind.Api)) is BrokerResult.Success)
+            foreground.await()
+            pages.awaitAll()
+            val dispatches = listOf("/hold", "/api", "/page1", "/page2").map(starts::getValue).sorted()
+            val gaps = dispatches.zipWithNext { a, b -> b - a }
+            assertTrue("Source request gaps: $gaps", gaps.all { it >= 1700 })
+            assertFalse(starts.containsKey("/cancelled"))
+            val resourceGaps = (1..2).map { index ->
+                val page = starts.getValue("/page$index")
+                maxOf(starts.getValue("/resource/page$index"), starts.getValue("/frame/page$index")) - page
+            }
+            assertTrue("Native resource gaps: $resourceGaps", resourceGaps.all { it < 1500 })
+            InstrumentationRegistry.getInstrumentation().sendStatus(0, Bundle().apply {
+                putString("sourcePacing", "requestGapsMillis=$gaps;resourceGapsMillis=$resourceGaps;cancelledRequests=0")
+            })
+        } }
+    }
+
     /** Explicit local URL allows the same fixture to be run in Chrome and reference MD3. */
     @Test fun recordLocalEnvironment(): Unit = runBlocking {
         val args = InstrumentationRegistry.getArguments()

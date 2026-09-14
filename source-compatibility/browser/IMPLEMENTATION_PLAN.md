@@ -33,6 +33,7 @@ flowchart TD
 |---|---|---|
 | ImportedRuleSources / ExecutionAuthority | 来源定义版本、授权、账号代次、撤销 | 定义里的网址和脚本不能指定其他账号的状态目录 |
 | HTTP broker | 原始状态/头/协议、逐请求权限、HTTP Cookie jar、缓存 | 不接管已进入 Chromium 的网页子请求 |
+| SourceRequestPacer | 同一会话的 HTTP 和浏览器入口准入、固定窗口、可取消等待 | 不预约未来额度，不逐条限制 Chromium 内部请求；[语义和验收](REQUEST_PACING.md) |
 | NativeSourceBrowser | 原生入口准入、独立进程、串行、结果所有权和取消 | 不把 WebView 的安全模型说成 broker 的逐对端检查 |
 | NativeBrowserFiles | 进程停止后的目录归属和切换 | 不复制运行中的 SQLite；进程级状态不等于独立 persona |
 | NativeSourceBrowserService | 页面原生网络、脚本、iframe/Worker、DOM 提取 | 不注入特权页面桥；不改写 fetch/Cookie；拒绝错误证书 |
@@ -91,7 +92,7 @@ Chromix 本身也记录了未完成的匹配原生构建、物理设备与部分
 | 验证恢复 | PR #188、前台 UI、后台提示、导航/账号取消 | 可控本地挑战完整恢复；真实 hlib 一次用户操作继续读取；多来源不串回 | 10 项协调器单测及原请求就绪条件回归；MuMu 自动打开→放行→自动返回→原搜索通过。实站历史恢复通过，最新四入口首页挑战正在验收 |
 | 一致性探针 | realm-probe / consistency-probe，原生前后台与 MD3 后台数据 | 每项记录实值、缺失与异常；定位宿主引入的差异 | 已采集并修复真实布局，保留未验证领域 |
 | 传输对照 | 自有 TLS/H2 fixture 与同设备请求记录 | 能区分 Chromium 和 HTTP 引擎；记录信任配置与完整握手范围 | 原生前后台及 Android OkHttp 已采集；外部线路/QUIC 不在回环证明范围 |
-| 来源节奏 | PR #190，原生导航与 HTTP 来源请求的速率实现 | concurrentRate 真正执行、取消不补发、延迟后不突发 | 已在接续 PR 实现并完成 JVM/MuMu 时序测试；本 PR 不重复实现限速 |
+| 来源节奏 | 原生导航与 HTTP 来源请求的速率实现 | concurrentRate 真正执行、取消不补发、延迟后不突发 | #186 本分支已实现，完整 JVM 843 项通过、MuMu 时序及原生/验证组通过；实站一次搜索仍需验证，见[测量结果](pacing-results.json) |
 | 平台与长时回归 | 新 provider、真实 Android、资源与验证频率统计 | 同一条件下多次登录/冷启动/切账号/读取；保留失败次数 | 尚未完成 |
 
 首页按最新要求提供“日榜、周榜、月榜、文章”四个入口，标签为分类，章节标签不增加模型。首页/分类 UI 映射在 PR #192，不混入验证恢复 PR。

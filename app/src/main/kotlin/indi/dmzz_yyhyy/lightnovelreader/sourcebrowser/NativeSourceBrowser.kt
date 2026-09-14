@@ -101,6 +101,7 @@ internal class NativeSourceBrowser(private val context: Context) {
             current()
             val bound = connection ?: run { files.prepare(owner); bind(owner) }
             val remote = withTimeout(15000) { bound.ready.await() }
+            session.awaitBrowserAdmission()
             current()
             remote.start(Json.encodeToString(BrowserJob(request, options, owner, session.enabledCookieJar)), host)
             val response = select {

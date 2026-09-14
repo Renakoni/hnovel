@@ -96,7 +96,7 @@ class LegadoSourceAdapter : SourceFormatAdapter {
         val numbers = setOf("customOrder", "lastUpdateTime", "respondTime", "weight")
         numbers.forEach(::number)
         // Legado keeps intervals and request/window rates as nullable text. Preserve the numeric
-        // form accepted by earlier imports too; this field does not configure the host broker.
+        // form accepted by earlier imports too; RuleSource configures runtime admission pacing.
         value["concurrentRate"]?.takeUnless { it == JsonNull }?.let { rate ->
             if (rate !is JsonPrimitive || !rate.isString && rate.longOrNull == null)
                 throw ImportFailure(ImportCode.InvalidField, "concurrentRate")
