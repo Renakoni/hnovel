@@ -1,6 +1,8 @@
 package indi.dmzz_yyhyy.lightnovelreader.utils
 
 import android.net.Uri
+import android.graphics.Typeface
+import android.os.Build
 import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -15,7 +17,6 @@ import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImagePainter
@@ -27,6 +28,7 @@ import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.ui.LocalAppTheme
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.ReaderFontFamilySettings
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.ReaderSettings
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.ReaderFont
 import io.nightfish.lightnovelreader.api.userdata.UriUserData
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -39,12 +41,18 @@ import java.io.FileNotFoundException
 private const val KRAFT_PAPER_URL = "https://portal.curiousers.org/static/lnr/paper.webp"
 private const val KRAFT_PAPER_CACHE_KEY = "default_kraft_paper"
 
+internal fun loadReaderTypeface(file: File): Typeface = requireNotNull(
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) Typeface.Builder(file).build()
+    else Typeface.createFromFile(file).takeUnless { it === Typeface.DEFAULT }
+) { "Invalid reader font" }
+
 fun loadReaderFontFamilySafe(uri: Uri): FontFamily? {
     return try {
         if (uri == Uri.EMPTY) return null
+        ReaderFont.entries.firstOrNull { it.uri == uri }?.let { return it.family() }
         val fontFile = File(uri.path ?: return null)
         if (!fontFile.exists()) throw FileNotFoundException()
-        FontFamily(Font(fontFile))
+        FontFamily(loadReaderTypeface(fontFile))
     } catch (e: Exception) {
         Log.e("FontLoad", "Failed to load custom font", e)
         null

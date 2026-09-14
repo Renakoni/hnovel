@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="reader_layout_settings">Макет</string>
+    <string name="reader_layout_preview">Предпросмотр страницы</string>
+    <string name="reader_layout_typography">Текст и интервалы</string>
+    <string name="reader_font_system">Системный</string>
+    <string name="reader_font_system_description">Используется системный шрифт, если устройство предоставляет его приложениям.</string>
+    <string name="reader_font_serif">Source Han Serif</string>
+    <string name="reader_font_serif_description">Чёткий китайский шрифт с засечками, напоминающий печатную книгу.</string>
+    <string name="reader_font_wenkai">LXGW WenKai</string>
+    <string name="reader_font_wenkai_description">Мягкий рукописный стиль для спокойного чтения.</string>
+    <string name="reader_font_sample">永 Aa</string>
+    <string name="reader_font_import">Импорт шрифта</string>
+    <string name="reader_font_replace">Заменить импортированный шрифт</string>
+    <string name="reader_font_imported_description">Используется импортированный шрифт. Поддерживаются файлы TTF и OTF.</string>
+    <string name="reader_font_licenses">Лицензии шрифтов</string>
+    <string name="reader_layout_sample">Солнечный свет падал на страницы. Ветер приподнял занавеску у открытого окна. Она перевернула страницу и ещё раз прочла последнюю фразу, словно проверяя давнее обещание.\n«Пора идти?»\nЗа деревьями приближался поезд. Далёкий гудок вспугнул птиц на крыше. Она вложила закладку в книгу и посмотрела на залитую солнцем дорожку.\nЮноша у двери кивнул.\nОни неторопливо пошли вдоль реки к станции. Ночной дождь ещё блестел на траве. Пекарня только что открылась, и тёплый запах хлеба наполнил улицу.\n«Какая следующая остановка?»\n«Узнаем, когда приедем».\nОна улыбнулась и убрала книгу в сумку. Часы на станции показывали два. Ветер с дальнего конца платформы принёс запах незнакомого города. Впереди было столько непрочитанных историй и неизведанных мест.\n\nПоезд тронулся. Деревья за окном начали отступать. Новая страница ждала их.</string>
+</resources>

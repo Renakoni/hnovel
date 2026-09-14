@@ -3,8 +3,6 @@ package indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.theme
 import android.content.Context
 import android.net.Uri
 import android.os.Build
-import android.util.Log
-import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
@@ -53,15 +51,9 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.Font
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.rememberTextMeasurer
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
 import coil3.annotation.ExperimentalCoilApi
 import coil3.compose.rememberAsyncImagePainter
@@ -75,25 +67,23 @@ import indi.dmzz_yyhyy.lightnovelreader.ui.LocalAppTheme
 import indi.dmzz_yyhyy.lightnovelreader.ui.LocalDarkColorScheme
 import indi.dmzz_yyhyy.lightnovelreader.ui.LocalLightColorScheme
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.ReaderSettingsEditor
-import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.ReaderLayoutValues
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.ReaderFontEntry
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.ReaderLayoutPreview
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.ReaderLayoutSettings
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.ReaderTypographyControls
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.ThemeSettingsEditor
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.SectionHeader
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.SettingsMenuEntry
-import indi.dmzz_yyhyy.lightnovelreader.ui.components.SettingsSliderEntry
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.SettingsCategory
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.data.MenuOptions
 import indi.dmzz_yyhyy.lightnovelreader.utils.LocalSnackbarHost
 import indi.dmzz_yyhyy.lightnovelreader.utils.navigationBarSpacer
 import indi.dmzz_yyhyy.lightnovelreader.utils.readerBackgroundColor
 import indi.dmzz_yyhyy.lightnovelreader.utils.readerTextColor
-import indi.dmzz_yyhyy.lightnovelreader.utils.rememberReaderBackgroundPainter
-import indi.dmzz_yyhyy.lightnovelreader.utils.rememberReaderFontFamily
 import io.nightfish.lightnovelreader.api.ui.components.SettingsClickableEntry
 import io.nightfish.lightnovelreader.api.ui.components.SettingsSwitchEntry
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import java.io.File
 import java.io.FileInputStream
 
 @Composable
@@ -123,7 +113,7 @@ fun ThemeScreen(
                 BackgroundSettings(readerSettingState, context)
             }
             item {
-                ReaderTextSettings(readerSettingState, context, onClickChangeTextColor)
+                ReaderTextSettings(readerSettingState, onClickChangeTextColor)
             }
             navigationBarSpacer()
         }
@@ -384,9 +374,7 @@ fun ReaderThemeSettingsList(
 }
 
 @Composable
-fun ReaderTextSettings(settingState: ReaderSettingsEditor, context: Context, onClickChangeTextColor: () -> Unit) {
-    val coroutineScope = rememberCoroutineScope()
-    val textMeasurer = rememberTextMeasurer()
+fun ReaderTextSettings(settingState: ReaderSettingsEditor, onClickChangeTextColor: () -> Unit) {
     val onSecondaryContainer = colorScheme.onSecondaryContainer
     val background = colorScheme.background
     val currentColor = readerTextColor(settingState)
@@ -420,150 +408,19 @@ fun ReaderTextSettings(settingState: ReaderSettingsEditor, context: Context, onC
             }
         )
 
-        val fontPicker = rememberLauncherForActivityResult(
-            contract = ActivityResultContracts.GetContent()
-        ) { uri ->
-            uri ?: return@rememberLauncherForActivityResult
-            coroutineScope.launch(Dispatchers.IO) {
-                val fontFile = saveFontToLocal(context, uri) ?: run {
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(
-                            context,
-                            context.getString(R.string.font_file_error),
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
-                    return@launch
-                }
-
-                try {
-                    textMeasurer.measure(
-                        text = "",
-                        style = TextStyle(fontFamily = FontFamily(Font(fontFile)))
-                    )
-                    settingState.fontFamilyUriUserData.set(fontFile.toUri())
-                } catch (_: Exception) {
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(
-                            context,
-                            context.getString(R.string.font_file_error),
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
-                }
-            }
-        }
-
-        SettingsMenuEntry(
-            modifier = Modifier.background(colorScheme.surfaceContainer),
-            painter = painterResource(R.drawable.text_fields_24px),
-            title = stringResource(R.string.settings_theme_text_font),
-            description = stringResource(R.string.settings_theme_text_font_desc),
-            options = MenuOptions.SelectText,
-            selectedOptionKey = if (settingState.fontFamilyUri.toString().isEmpty())
-                MenuOptions.SelectText.Default else MenuOptions.SelectText.Customize,
-            onOptionChange = {
-                when (it) {
-                    MenuOptions.SelectText.Default -> settingState.fontFamilyUriUserData.asynchronousSet(Uri.EMPTY)
-                    MenuOptions.SelectText.Customize -> fontPicker.launch("*/*")
-                }
-            }
-        )
+        ReaderFontEntry(settingState, Modifier.background(colorScheme.surfaceContainer))
     }
-    BasePageItem(
-        Modifier
-            .fillMaxWidth()
-            .height(260.dp)
-            .padding(horizontal = 16.dp)
-            .padding(top = 0.dp, bottom = 16.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .clip(RoundedCornerShape(9.dp))
-                .fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            if (settingState.enableBackgroundImage) {
-                Image(
-                    modifier = Modifier.fillMaxSize(),
-                    painter = rememberReaderBackgroundPainter(settingState),
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop
-                )
-            } else {
-                Box(modifier = Modifier.fillMaxSize().background(readerBackgroundColor(settingState)))
-            }
-
-            Text(
-                modifier = Modifier.padding(horizontal = 18.dp),
-                text = stringResource(R.string.settings_about_oss),
-                fontSize = settingState.fontSize.sp,
-                lineHeight = (settingState.fontLineHeight + settingState.fontSize).sp,
-                fontWeight = FontWeight(settingState.fontWeigh.toInt()),
-                textAlign = TextAlign.Center,
-                fontFamily = rememberReaderFontFamily(settingState.fontFamilyUriUserData),
-                color = readerTextColor(settingState)
-            )
-        }
+    val stored = ReaderLayoutSettings.from(settingState)
+    var draft by remember(stored) { mutableStateOf(stored) }
+    val previewSettings = object : ReaderSettingsEditor by settingState {
+        override val fontSize = draft.fontSize
+        override val fontWeigh = draft.fontWeight
+        override val fontLineHeight = draft.lineSpacing
+        override val paragraphSpacing = draft.paragraphSpacing
     }
-
+    ReaderLayoutPreview(previewSettings, Modifier.fillMaxWidth().height(260.dp))
     SettingsCategory {
-        SettingsSliderEntry(
-            modifier = Modifier.background(colorScheme.surfaceContainer),
-            painter = painterResource(R.drawable.format_bold_24px),
-            title = stringResource(R.string.settings_theme_text_font_weight),
-            unit = "", valueRange = 100f..900f,
-            value = settingState.fontWeigh,
-            valueFormat = { (it / 100).toInt() * 100f },
-            floatUserData = settingState.fontWeighUserData
-        )
-
-        SettingsSliderEntry(
-            modifier = Modifier.background(colorScheme.surfaceContainer),
-            painter = painterResource(R.drawable.format_size_24px),
-            title = stringResource(R.string.settings_reader_font_size),
-            unit = "sp",
-            valueRange = 8f..64f,
-            value = settingState.fontSize,
-            floatUserData = settingState.fontSizeUserData
-        )
-
-        SettingsSliderEntry(
-            modifier = Modifier.background(colorScheme.surfaceContainer),
-            painter = painterResource(R.drawable.format_line_spacing_24px),
-            title = stringResource(R.string.settings_reader_line_spacing),
-            unit = "sp",
-            valueRange = 0f..32f,
-            value = settingState.fontLineHeight,
-            floatUserData = settingState.fontLineHeightUserData
-        )
-
-        SettingsSliderEntry(
-            modifier = Modifier.background(colorScheme.surfaceContainer),
-            title = stringResource(R.string.reader_paragraph_spacing),
-            unit = "sp",
-            valueRange = ReaderLayoutValues.paragraphSpacingRange,
-            value = settingState.paragraphSpacing,
-            floatUserData = settingState.paragraphSpacingUserData
-        )
-    }
-}
-
-private suspend fun saveFontToLocal(context: Context, uri: Uri): File? = withContext(Dispatchers.IO) {
-    val fontFile = context.filesDir.resolve("readerTextFont").apply {
-        if (exists()) delete()
-        createNewFile()
-    }
-    try {
-        context.contentResolver.openFileDescriptor(uri, "r")?.use { fd ->
-            FileInputStream(fd.fileDescriptor).use { input ->
-                fontFile.outputStream().use { output -> input.copyTo(output) }
-            }
-        }
-        fontFile
-    } catch (e: Exception) {
-        Log.e("ReaderTextFont", "Failed to import font", e)
-        null
+        ReaderTypographyControls(settingState, draft) { draft = it }
     }
 }
 
