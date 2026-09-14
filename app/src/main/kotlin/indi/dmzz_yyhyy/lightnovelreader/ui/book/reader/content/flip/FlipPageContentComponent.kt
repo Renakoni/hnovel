@@ -37,6 +37,7 @@ import com.github.michaelbull.result.onErr
 import com.github.michaelbull.result.onOk
 import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.ReaderSettings
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.LocalReaderTextLayout
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentError
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentLoading
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentUiState
@@ -93,9 +94,11 @@ private fun SimpleFlipPageTextComponent(
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     val layoutDirection = LocalLayoutDirection.current
-    var slippedContentComponentList by remember { mutableStateOf(emptyList<AbstractContentComponent<*>>()) }
+    var slippedContentComponentList by remember(chapterContent.id, chapterContent.content) { mutableStateOf(emptyList<AbstractContentComponent<*>>()) }
+    var pendingAnchor by remember(chapterContent.id, chapterContent.content) { mutableStateOf<ReaderContentAnchor?>(null) }
     var contentSize by remember { mutableStateOf(IntSize.Zero) }
     val readerStyle = LocalReaderStyle.current
+    val textLayout = LocalReaderTextLayout.current
     val textLocaleList = LocalTextLocaleList.current
     val horizontalPadding = with(density) {
         (paddingValues.calculateStartPadding(layoutDirection) + paddingValues.calculateEndPadding(layoutDirection)).toPx()
@@ -112,30 +115,21 @@ private fun SimpleFlipPageTextComponent(
         verticalPadding = verticalPadding,
         density = density,
         layoutDirection = layoutDirection,
-        fontSize = readerStyle.fontSize,
-        fontLineHeight = readerStyle.fontLineHeight,
-        fontWeight = readerStyle.fontWeight,
+        fontSize = textLayout?.settings?.fontSize ?: readerStyle.fontSize,
+        fontLineHeight = textLayout?.settings?.lineSpacing ?: readerStyle.fontLineHeight,
+        fontWeight = textLayout?.settings?.fontWeight ?: readerStyle.fontWeight,
         fontFamilyUri = settingState.fontFamilyUri,
         textLocaleList = textLocaleList,
+        textLayout = textLayout,
     )
     SideEffect { pagination.syncInput(paginationInput) }
     DisposableEffect(pagination) {
         onDispose { pagination.close() }
     }
-    LaunchedEffect(
-        chapterContent.id,
-        chapterContent.content,
-        contentSize,
-        horizontalPadding,
-        verticalPadding,
-        density,
-        layoutDirection,
-        readerStyle.fontSize,
-        readerStyle.fontLineHeight,
-        readerStyle.fontWeight,
-        settingState.fontFamilyUri,
-        textLocaleList,
-    ) {
+    LaunchedEffect(paginationInput) {
+        (slippedContentComponentList.getOrNull(uiState.pagerState.settledPage) as? ReaderPage)?.let {
+            pendingAnchor = it.anchor
+        }
         val width = contentSize.width - horizontalPadding
         val height = contentSize.height - verticalPadding
         if (width <= 0 || height <= 0) {
@@ -148,7 +142,11 @@ private fun SimpleFlipPageTextComponent(
         uiState.updatePageState(PagerState { 0 })
         pagination.submit(paginationInput, chapterContent.content, height, width) { result ->
             slippedContentComponentList = result
-            uiState.updatePageState(PagerState { result.size })
+            val anchor = pendingAnchor
+            val target = if (anchor == null) -1 else result.indexOfFirst { (it as? ReaderPage)?.contains(anchor) == true }
+            if (target >= 0) uiState.updateAnchoredPageState(PagerState(currentPage = target) { result.size })
+            else uiState.updatePageState(PagerState { result.size })
+            pendingAnchor = null
         }
     }
     val snackbarHostState = LocalSnackbarHost.current

@@ -51,7 +51,7 @@ internal class FlipReadingProgress(
         }
     }
 
-    fun updatePagerState(pagerState: PagerState) {
+    fun updatePagerState(pagerState: PagerState, anchored: Boolean = false) {
         progressPagerState = null
         currentPagerState = pagerState
         uiState.pagerState = pagerState
@@ -59,7 +59,11 @@ internal class FlipReadingProgress(
         restorationJob = null
         if (pagerState.pageCount > 0 && initialPagerPage == null)
             initialPagerPage = pagerState.settledPage
-        if (!recoveryPending) restorePendingProgress(allowCurrentProgress = true)
+        if (!recoveryPending && anchored) {
+            notRecoveredProgress = 0f
+            restorationApplied = true
+            enableProgressFor(pagerState)
+        } else if (!recoveryPending) restorePendingProgress(allowCurrentProgress = true)
     }
 
     fun resetForChapter() {

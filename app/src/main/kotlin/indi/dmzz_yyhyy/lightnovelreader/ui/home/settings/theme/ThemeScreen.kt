@@ -75,6 +75,7 @@ import indi.dmzz_yyhyy.lightnovelreader.ui.LocalAppTheme
 import indi.dmzz_yyhyy.lightnovelreader.ui.LocalDarkColorScheme
 import indi.dmzz_yyhyy.lightnovelreader.ui.LocalLightColorScheme
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.ReaderSettingsEditor
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.ReaderLayoutValues
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.ThemeSettingsEditor
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.SectionHeader
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.SettingsMenuEntry
@@ -535,6 +536,15 @@ fun ReaderTextSettings(settingState: ReaderSettingsEditor, context: Context, onC
             valueRange = 0f..32f,
             value = settingState.fontLineHeight,
             floatUserData = settingState.fontLineHeightUserData
+        )
+
+        SettingsSliderEntry(
+            modifier = Modifier.background(colorScheme.surfaceContainer),
+            title = stringResource(R.string.reader_paragraph_spacing),
+            unit = "sp",
+            valueRange = ReaderLayoutValues.paragraphSpacingRange,
+            value = settingState.paragraphSpacing,
+            floatUserData = settingState.paragraphSpacingUserData
         )
     }
 }

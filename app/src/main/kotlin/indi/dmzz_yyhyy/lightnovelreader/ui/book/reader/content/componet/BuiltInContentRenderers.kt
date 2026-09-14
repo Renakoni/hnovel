@@ -1,6 +1,7 @@
 package indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.componet
 
 import android.net.Uri
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Text
@@ -11,6 +12,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.isUnspecified
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.LocalReaderTextLayout
 import indi.dmzz_yyhyy.lightnovelreader.ui.LocalAppTheme
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.navigateToImageViewerDialog
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.ZoomableImage
@@ -21,8 +23,22 @@ import io.nightfish.lightnovelreader.api.userdata.UriUserData
 import indi.dmzz_yyhyy.lightnovelreader.ui.LocalReaderBookId
 
 @Composable
-internal fun ReaderTextContent(text: String, fontFamilyUriUserData: UriUserData, modifier: Modifier) {
+internal fun ReaderTextContent(text: String, fontFamilyUriUserData: UriUserData, modifier: Modifier, paginate: Boolean = false) {
     val combinedStyle = LocalReaderStyle.current
+    val layout = LocalReaderTextLayout.current
+    if (layout != null) {
+        BoxWithConstraints(modifier) {
+            val height = if (paginate) constraints.maxHeight else Int.MAX_VALUE
+            val fragments = remember(text, layout, constraints.maxWidth, height) {
+                val pages = layoutReaderText(listOf(ReaderTextSource(0, text)), constraints.maxWidth, height,
+                    layout.paragraphSpacingPx, layout.style, layout.measurer)
+                if (paginate) pages.firstOrNull().orEmpty() else pages.flatten()
+            }
+            ReaderTextFragments(fragments, layout.style,
+                readerTextColor(combinedStyle.textColor, combinedStyle.textDarkColor), Modifier)
+        }
+        return
+    }
     SimpleTextComponentContent(
         modifier = modifier,
         text = text,
@@ -35,7 +51,7 @@ internal fun ReaderTextContent(text: String, fontFamilyUriUserData: UriUserData,
 }
 
 @Composable
-private fun readerTextColor(textColor: Color, textDarkColor: Color): Color {
+internal fun readerTextColor(textColor: Color, textDarkColor: Color): Color {
     val localTheme = LocalAppTheme.current
     val isDark = localTheme.isDark
     val onSurface = localTheme.colorScheme.onSurface

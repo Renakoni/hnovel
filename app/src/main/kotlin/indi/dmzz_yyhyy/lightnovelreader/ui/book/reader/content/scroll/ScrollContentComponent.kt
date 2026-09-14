@@ -51,6 +51,8 @@ import com.github.michaelbull.result.map
 import com.github.michaelbull.result.onErr
 import com.github.michaelbull.result.onOk
 import indi.dmzz_yyhyy.lightnovelreader.R
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.LocalReaderTextLayout
+import indi.dmzz_yyhyy.lightnovelreader.data.content.component.SimpleTextComponent
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.ReaderSettings
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.ReaderFontFamilySettings
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentError
@@ -379,7 +381,12 @@ private fun TextContent(
                 Spacer(Modifier.height(16.dp))
             }
         }
-        for (component in content.content) {
+        val components = content.content.filterNot { it is SimpleTextComponent && it.data.text.isEmpty() }
+        val paragraphSpacing = LocalReaderTextLayout.current?.paragraphSpacingPx ?: 0
+        components.forEachIndexed { index, component ->
+            if (component is SimpleTextComponent && components.getOrNull(index - 1) is SimpleTextComponent) {
+                Spacer(Modifier.height(with(density) { paragraphSpacing.toDp() }))
+            }
             component.Content(modifier)
         }
     }

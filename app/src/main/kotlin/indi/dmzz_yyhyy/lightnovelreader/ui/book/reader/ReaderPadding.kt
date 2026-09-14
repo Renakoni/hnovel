@@ -15,6 +15,14 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 @Composable
+internal fun readerPadding(layout: ReaderLayoutSettings, indicatorHeight: Dp): PaddingValues =
+    if (layout.autoPadding) readerAutoPadding(indicatorHeight)
+    else PaddingValues(
+        top = layout.top.dp, bottom = layout.bottom.dp + indicatorHeight,
+        start = layout.start.dp, end = layout.end.dp,
+    )
+
+@Composable
 @OptIn(ExperimentalLayoutApi::class)
 internal fun readerAutoPadding(indicatorHeight: Dp): PaddingValues {
     // Controls overlay the page. System bar visibility must not resize its viewport either.

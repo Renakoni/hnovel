@@ -287,6 +287,22 @@ class FlipModeContractTest {
         assertTrue(oldTargets.isEmpty())
     }
 
+    @Test
+    fun aReflowAnchorIsNotReplacedByThePreviousPagePercentage() {
+        open()
+        env.emit("requested", Ok(env.chapter("requested")))
+        mode.updatePagerState(pager(10, mutableIntStateOf(5)))
+        env.runCurrent()
+        assertEquals(0.6f, mode.uiState.readingProgress)
+        mode.updatePagerState(pager(0))
+        env.runCurrent()
+        val targets = mutableListOf<Int>()
+        mode.uiState.updateAnchoredPageState(pager(20, mutableIntStateOf(8), targets))
+        env.runCurrent()
+        assertTrue(targets.isEmpty())
+        assertEquals(0.45f, mode.uiState.readingProgress)
+    }
+
     private fun pager(count: Int, page: androidx.compose.runtime.MutableIntState = mutableIntStateOf(0), targets: MutableList<Int> = mutableListOf()): PagerState = mockk {
         every { pageCount } returns count
         every { settledPage } answers { page.intValue }

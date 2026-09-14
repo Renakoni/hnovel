@@ -5,6 +5,7 @@ import androidx.compose.ui.text.intl.LocaleList
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.ReaderTextLayoutInput
 import io.nightfish.lightnovelreader.api.content.component.AbstractContentComponent
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -26,6 +27,7 @@ internal data class FlipPaginationInput(
     val fontWeight: Float,
     val fontFamilyUri: Uri,
     val textLocaleList: LocaleList,
+    val textLayout: ReaderTextLayoutInput? = null,
 )
 
 /** Runs one cancellable pagination request and publishes only its newest result. */
@@ -63,7 +65,9 @@ internal class FlipPaginationCoordinator(
         paginationJob?.cancel()
         paginationJob = scope.launch {
             val result = withContext(ioDispatcher) {
-                paginate(components, height, width)
+                val layout = (input as? FlipPaginationInput)?.textLayout
+                if (layout != null) paginateReaderComponents(components, height, width, layout)
+                else paginate(components, height, width)
             }
             if (request == requestId && latestInput == input) onComplete(result)
         }
