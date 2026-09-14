@@ -18,6 +18,7 @@ import io.nightfish.lightnovelreader.api.web.WebDataSourceItem
 import io.nightfish.lightnovelreader.api.web.discovery.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.test.*
+import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.json.Json
 import org.junit.After
 import org.junit.Assert.*
@@ -75,6 +76,114 @@ class ExploreHomeViewModelTest {
             catalogs++
             return Ok(listOf(DiscoveryCategory("all", "All", "all")))
         }
+    }
+
+    @Test fun firstPreviewIsUsableBeforeLaterModulesAndKeepsScrollUntilCompletion() = runTest(dispatcher) {
+        val finish = CompletableDeferred<Unit>()
+        val first = DiscoverySection("first", "First", listOf(DiscoveryBook("one", "Book one")), "/first")
+        val second = DiscoverySection("second", "Second", emptyList(), "/second")
+        val id = add("progressive", object : Feed() {
+            override fun feedUpdates() = flow<Result<List<DiscoverySection>, DiscoveryError>> {
+                emit(Ok(listOf(first)))
+                finish.await()
+                emit(Ok(listOf(first, second)))
+            }
+        })
+        val model = model()
+        runCurrent()
+        val partial = model.state.value.content.getValue(id)
+        assertEquals(listOf("First"), partial.sections.map { it.title })
+        assertTrue(partial.loading)
+        assertFalse(partial.loaded)
+        assertEquals(id, partial.sections.single().books.single().id.sourceId)
+        assertEquals("/first", model.more(partial.sections.single())!!.target)
+        io.mockk.verify { text.processExploreBooksRow(match { it.title == "Book one" }) }
+        model.scroll(id, DiscoveryScroll(1, 17))
+        finish.complete(Unit)
+        advanceUntilIdle()
+        val complete = model.state.value.content.getValue(id)
+        assertEquals(listOf("First", "Second"), complete.sections.map { it.title })
+        assertFalse(complete.loading)
+        assertTrue(complete.loaded)
+        assertEquals(DiscoveryScroll(1, 17), complete.scroll)
+    }
+
+    @Test fun laterModuleFailureKeepsPartialResultsAndRetryReplacesWithoutDuplicates() = runTest(dispatcher) {
+        var fail = true
+        val first = DiscoverySection("first", "First", emptyList(), "/first")
+        val second = DiscoverySection("second", "Second", emptyList(), "/second")
+        val id = add("progressive", object : Feed() {
+            override fun feedUpdates() = flow<Result<List<DiscoverySection>, DiscoveryError>> {
+                emit(Ok(listOf(first)))
+                if (fail) emit(Err(DiscoveryError.Network)) else emit(Ok(listOf(first, second)))
+            }
+        })
+        val model = model()
+        advanceUntilIdle()
+        val partial = model.state.value.content.getValue(id)
+        assertEquals(listOf("First"), partial.sections.map { it.title })
+        assertEquals(DiscoveryError.Network, partial.error)
+        assertFalse(partial.loading)
+        assertFalse(partial.loaded)
+        fail = false
+        model.refresh()
+        advanceUntilIdle()
+        val complete = model.state.value.content.getValue(id)
+        assertEquals(listOf("First", "Second"), complete.sections.map { it.title })
+        assertTrue(complete.loaded)
+        assertNull(complete.error)
+    }
+
+    @Test fun leavingAnIncompleteFeedCancelsItAndReturningLoadsRemainingPreviews() = runTest(dispatcher) {
+        var requests = 0
+        var cancelled = 0
+        val finish = CompletableDeferred<Unit>()
+        val id = add("a", object : Feed() {
+            override fun feedUpdates() = flow<Result<List<DiscoverySection>, DiscoveryError>> {
+                requests++
+                emit(Ok(listOf(DiscoverySection("first", "First", emptyList()))))
+                try { finish.await() } finally { if (!finish.isCompleted) cancelled++ }
+                emit(Ok(listOf(DiscoverySection("complete", "Complete", emptyList()))))
+            }
+        })
+        val other = add("b", Feed())
+        val model = model()
+        runCurrent()
+        model.select(other)
+        runCurrent()
+        assertEquals(1, cancelled)
+        assertFalse(model.state.value.content.getValue(id).loaded)
+        finish.complete(Unit)
+        advanceUntilIdle()
+        assertEquals("First", model.state.value.content.getValue(id).sections.single().title)
+        assertEquals("Same list", model.state.value.content.getValue(other).sections.single().title)
+        model.select(id)
+        advanceUntilIdle()
+        assertEquals(2, requests)
+        assertEquals("Complete", model.state.value.content.getValue(id).sections.single().title)
+    }
+
+    @Test fun accountChangeDiscardsPartialContentAndCancelsItsPendingModules() = runTest(dispatcher) {
+        var requests = 0
+        var cancelled = 0
+        val id = add("account", object : Feed() {
+            override fun feedUpdates() = flow<Result<List<DiscoverySection>, DiscoveryError>> {
+                val number = ++requests
+                emit(Ok(listOf(DiscoverySection("$number", "Account $number", emptyList()))))
+                try { awaitCancellation() } finally { cancelled++ }
+            }
+        })
+        val model = model()
+        runCurrent()
+        val old = model.state.value.content.getValue(id)
+        accounts.begin(id)
+        runCurrent()
+        val current = model.state.value.content.getValue(id)
+        assertEquals(2, requests)
+        assertEquals(1, cancelled)
+        assertNotEquals(old.resetId, current.resetId)
+        assertEquals("Account 2", current.sections.single().title)
+        assertFalse(current.loaded)
     }
 
     @Test fun realTabsFilterCapabilitiesLoadOnlySelectedAndKeepVisitedFeedAndScroll() = runTest(dispatcher) {

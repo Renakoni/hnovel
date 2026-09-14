@@ -10,6 +10,8 @@ import indi.dmzz_yyhyy.lightnovelreader.LightNovelReaderApplication
 import indi.dmzz_yyhyy.lightnovelreader.sourcebrowser.BrowserTestHostActivity
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.collect
+import com.github.michaelbull.result.get
 import kotlinx.serialization.json.*
 import org.junit.Assert.*
 import org.junit.Assume.assumeTrue
@@ -70,6 +72,33 @@ class HlibBrowserLiveInstrumentedTest {
             return@runBlocking
         }
         if (args.getString("hlibAction") in listOf("install", "update")) return@runBlocking
+        if (args.getString("hlibAction") == "feed") {
+            val entry = dagger.hilt.android.EntryPointAccessors.fromApplication(application,
+                indi.dmzz_yyhyy.lightnovelreader.sourcebrowser.SourceVerificationDebugEntryPoint::class.java)
+            val runtime = (entry.registry().resolve(id) as indi.dmzz_yyhyy.lightnovelreader.data.web.SourceResolution.Ready).runtime
+            indi.dmzz_yyhyy.lightnovelreader.sourcebrowser.VerificationTestHostActivity.coordinator = entry.coordinator()
+            try {
+                ActivityScenario.launch(indi.dmzz_yyhyy.lightnovelreader.sourcebrowser.VerificationTestHostActivity::class.java).use {
+                    kotlinx.coroutines.withContext(indi.dmzz_yyhyy.lightnovelreader.data.web.ForegroundSourceRequest()) {
+                        val discovery = runtime.discovery!!.forSession("live-progressive-feed")
+                        assertNotNull(discovery.homepageCatalog().get())
+                        val started = android.os.SystemClock.elapsedRealtime()
+                        val sizes = mutableListOf<Int>()
+                        kotlinx.coroutines.withTimeout(600000) {
+                            discovery.feedUpdates().collect { result ->
+                                val sections = result.get()
+                                assertNotNull("Homepage request failed", sections)
+                                assertTrue(sections!!.all { section -> section.books.isNotEmpty() })
+                                sizes += sections.size
+                                report("feed sections=${sections.size} elapsedMillis=${android.os.SystemClock.elapsedRealtime() - started}")
+                            }
+                        }
+                        assertEquals(listOf(1, 2, 3, 4), sizes)
+                    }
+                }
+            } finally { indi.dmzz_yyhyy.lightnovelreader.sourcebrowser.VerificationTestHostActivity.coordinator = null }
+            return@runBlocking
+        }
         if (args.getString("hlibAction") == "discovery") {
             val discovery = target.rules.openDiscovery("live-discovery")
             val home = discovery.catalog(homepage = true)

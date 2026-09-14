@@ -5,6 +5,10 @@ import android.content.ContextWrapper
 import com.github.michaelbull.result.*
 import hnovel.content.RuleSourceFixture
 import hnovel.content.DiscoveryCatalogFixtures
+import hnovel.content.RuleDiscoverySession
+import hnovel.content.SourceContentException
+import hnovel.content.ContentError
+import hnovel.content.SourceVerification
 import hnovel.execution.ExecutionAuthority
 import hnovel.imports.*
 import hnovel.network.NetworkGrant
@@ -12,8 +16,11 @@ import indi.dmzz_yyhyy.lightnovelreader.data.web.*
 import io.nightfish.lightnovelreader.api.identifier.Identifier
 import io.nightfish.lightnovelreader.api.web.WebDataSourceItem
 import io.nightfish.lightnovelreader.api.web.discovery.*
+import io.mockk.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.serialization.json.*
 import org.junit.Assert.*
 import org.junit.Rule
@@ -28,6 +35,80 @@ import org.robolectric.annotation.Config
 @Config(sdk = [27], application = Application::class)
 class RuleDiscoveryProviderTest {
     @get:Rule val directory = TemporaryFolder()
+
+    @Test fun challengeInSecondModuleRetriesOnlyThatModule() = runBlocking {
+        RuleSourceFixture().use { fixture -> fixture.source { raw -> JsonObject(definition(raw) +
+            ("homepageModules" to JsonPrimitive("""[
+                {"key":"first","type":"card","title":"First","url":"/search?module=1"},
+                {"key":"second","type":"card","title":"Second","url":"/search?module=2"}
+            ]"""))) }.use { source ->
+            val original = source.openDiscovery("original")
+            val catalog = original.catalog(homepage = true)
+            val books = original.page("/search", 1, emptyMap())
+            val verification = mockk<SourceVerification> {
+                every { kind } returns hnovel.network.BrowserChallengeKind.Cloudflare
+                coEvery { complete() } returns Unit
+            }
+            val session = mockk<RuleDiscoverySession>()
+            coEvery { session.catalog(homepage = true) } returns catalog
+            coEvery { session.page("/search?module=1", 1, any()) } returns books
+            var attempts = 0
+            coEvery { session.page("/search?module=2", 1, any()) } coAnswers {
+                if (++attempts == 1) throw SourceContentException(ContentError.BrowserRequired,
+                    "ruleExplore", verification = verification)
+                books
+            }
+            val owner = VerificationOwner(Identifier("rules", "progressive"), "revision", 0)
+            val listings = MutableStateFlow(listOf(SourceListing(SourceMetadata(
+                WebDataSourceItem(owner.source, "Fixture", ""), emptySet(), revision = owner.revision), SourceStatus.Ready)))
+            val coordinator = SourceVerificationCoordinator(mockk<WebSourceRegistry> { every { sources } returns listings })
+            val provider = RuleDiscoveryProvider(source, session, RuleRequestRecovery(coordinator, owner, "Fixture"))
+            val sizes = mutableListOf<Int>()
+            withContext(ForegroundSourceRequest()) { provider.feedUpdates().collect { sizes += it.get()!!.size } }
+            assertEquals(listOf(1, 2), sizes)
+            coVerify(exactly = 1) { session.page("/search?module=1", 1, any()) }
+            coVerify(exactly = 2) { session.page("/search?module=2", 1, any()) }
+            coVerify(exactly = 1) { verification.complete() }
+        } }
+    }
+
+    @Test fun stoppingAfterFirstHomepageSnapshotDoesNotFetchLaterModules() = runBlocking {
+        RuleSourceFixture().use { fixture -> fixture.source { raw -> JsonObject(definition(raw) +
+            ("homepageModules" to JsonPrimitive("""[
+                {"key":"first","type":"card","title":"First","url":"/search?module=1"},
+                {"key":"second","type":"card","title":"Second","url":"/search?module=2"}
+            ]"""))) }.use { source ->
+            val first = RuleDiscoveryProvider(source).feedUpdates().first().get()!!
+            assertEquals(listOf("First"), first.map { it.title })
+            assertEquals(1, first.single().books.size)
+            assertEquals(1, fixture.documents.get())
+            assertEquals("/search?module=1", fixture.server.takeRequest().path)
+        } }
+    }
+
+    @Test fun homepageSnapshotsAreImmutableAndLaterFailureKeepsEarlierSuccess() = runBlocking {
+        RuleSourceFixture().use { fixture -> fixture.source { raw -> JsonObject(definition(raw) +
+            ("homepageModules" to JsonPrimitive("""[
+                {"key":"first","type":"card","title":"First","url":"/search?module=1"},
+                {"key":"second","type":"card","title":"Second","url":"/search?module=2"}
+            ]"""))) }.use { source ->
+            val provider = RuleDiscoveryProvider(source)
+            val updates = mutableListOf<Result<List<DiscoverySection>, DiscoveryError>>()
+            provider.feedUpdates().collect {
+                updates += it
+                fixture.status = 503
+            }
+            assertEquals(2, updates.size)
+            assertEquals(listOf("First"), updates.first().get()!!.map { it.title })
+            assertEquals(Err(DiscoveryError.Network), updates.last())
+            fixture.status = 200
+            val complete = mutableListOf<List<DiscoverySection>>()
+            provider.feedUpdates().collect { complete += it.get()!! }
+            assertEquals(listOf(1, 2), complete.map { it.size })
+            assertEquals(listOf("First", "Second"), complete.last().map { it.title })
+            assertEquals(1, updates.first().get()!!.size)
+        } }
+    }
 
     @Test fun scopedResultFiltersStayOutOfHomepageCategoriesAndOtherLists() = runBlocking {
         RuleSourceFixture().use { fixture -> fixture.source { raw -> JsonObject(definition(raw) + mapOf(
