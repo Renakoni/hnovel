@@ -14,12 +14,13 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
     var chapter: ScriptState = ScriptState(), var baseUrl: String, val keyword: String = "", var page: Int = 1,
     private val calls: java.util.concurrent.atomic.AtomicInteger = java.util.concurrent.atomic.AtomicInteger(),
     private val headerRule: String = "", private val interactive: Boolean = false, private val trace: ContentTrace = ContentTrace.None,
-    private val sourceLoginUrl: String = "") {
+    private val sourceLoginUrl: String = "", private val sourceComment: String? = null) {
     var discovery: JsonObject? = null
-    private val limits = ExecutionLimits(timeoutMillis = if (interactive) 60000 else 5000, maxOutputBytes = 196608, maxRequests = 64)
+    private val limits = ExecutionLimits(timeoutMillis = if (interactive) 60000 else 30000, maxOutputBytes = 196608,
+        maxRequests = 64, maxDataBytes = BridgeWire.MAX_REPLY_BYTES)
 
     fun fork(bookId: String? = this.bookId, chapterId: String? = this.chapterId) =
-        RuleEvaluation(identity, authority, session, runner, library, bookId, chapterId, book.copy(), chapter.copy(), baseUrl, keyword, page, calls, headerRule, interactive, trace, sourceLoginUrl)
+        RuleEvaluation(identity, authority, session, runner, library, bookId, chapterId, book.copy(), chapter.copy(), baseUrl, keyword, page, calls, headerRule, interactive, trace, sourceLoginUrl, sourceComment)
             .also { it.discovery = discovery }
 
     suspend fun headers(): Map<String, String> {
@@ -37,7 +38,7 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
             keyword, page, baseUrl, library, book.inherited + chapter.inherited, book.variables,
             chapter.variables, book.metadata, chapter.metadata, book.bigVariables, chapter.bigVariables,
             unescapeHtml = unescape, sourceHeaderRule = if (field == "header") "" else headerRule, discovery = discovery,
-            sourceLoginUrl = sourceLoginUrl)
+            sourceLoginUrl = sourceLoginUrl, sourceComment = sourceComment)
         val executed = execute(task, field, input.toString().length)
         if (discovery != null) discovery = executed.discovery ?: throw SourceContentException(ContentError.InvalidRule, field)
         book = book.copy(metadata = executed.book ?: book.metadata,

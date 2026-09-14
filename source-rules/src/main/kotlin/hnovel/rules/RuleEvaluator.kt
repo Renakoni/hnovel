@@ -1,6 +1,7 @@
 package hnovel.rules
 
 import com.google.gson.JsonParser
+import kotlinx.serialization.json.*
 import hnovel.rules.selector.AnalyzeByJSonPath
 import hnovel.rules.selector.AnalyzeByJSoup
 import hnovel.rules.selector.AnalyzeByXPath
@@ -163,17 +164,22 @@ class RuleEvaluator(private val unescapeHtml: Boolean = true, private val script
             // Pinned %% stops at the first non-empty branch's length (including its uneven-tail quirk).
             val joined = if (operator == "%%" && branches.isNotEmpty()) branches.first().indices.flatMap { i -> branches.mapNotNull { it.getOrNull(i) } }
                 else branches.flatten()
-            return if (output == OutputKind.Text) RuleValue.Text(joined.joinToString("\n") { it.text() }) else RuleValue.Items(joined)
+            return if (output == OutputKind.Text) RuleValue.Text(joined.joinToString("\n") { it.text() }) else
+                RuleValue.Items(joined, InputKind.Html.takeIf { elements && joined.isEmpty() && mode in listOf("html", "css") })
         }
         return atStage(RuleStage.Select, location) {
             val body = input.text()
             val list = output in listOf(OutputKind.TextList, OutputKind.UrlList)
             when (mode) {
                 "json" -> {
-                    val selector = AnalyzeByJSonPath(body)
+                    // A selector/JS list is one JSON array, not newline-delimited documents.
+                    val json = if (input is RuleValue.Items) jsonInput(input).toString() else body
+                    budget.checkSize(json.length, budget.limits.maxInputChars)
+                    val selector = AnalyzeByJSonPath(json)
                     when {
+                        output == OutputKind.Element -> RuleValue.Node(com.google.gson.Gson().toJson(selector.getObject(local)), InputKind.Json)
                         elements -> {
-                            val selected = if (output == OutputKind.Element) listOf(selector.getObject(local)) else selector.getList(local).orEmpty()
+                            val selected = selector.getList(local).orEmpty()
                             RuleValue.Items(selected.map { RuleValue.Node(com.google.gson.Gson().toJson(it), InputKind.Json) })
                         }
                         list -> RuleValue.Items(selector.getStringList(local).map(RuleValue::Text))
@@ -193,7 +199,10 @@ class RuleEvaluator(private val unescapeHtml: Boolean = true, private val script
                         input.htmlElement() else body)
                     val expression = if (mode == "css") "@CSS:$local" else local
                     when {
-                        elements -> RuleValue.Items(selector.getElements(expression).map { RuleValue.Node(it.outerHtml(), InputKind.Html, it.parent()?.tagName()) })
+                        elements -> {
+                            val nodes = selector.getElements(expression).map { RuleValue.Node(it.outerHtml(), InputKind.Html, it.parent()?.tagName()) }
+                            RuleValue.Items(nodes, InputKind.Html.takeIf { nodes.isEmpty() })
+                        }
                         list -> RuleValue.Items(selector.getStringList(expression).map(RuleValue::Text))
                         output == OutputKind.Url -> RuleValue.Text(selector.getString0(expression))
                         else -> selector.getString(expression)?.let(RuleValue::Text) ?: RuleValue.Empty
@@ -243,6 +252,14 @@ class RuleEvaluator(private val unescapeHtml: Boolean = true, private val script
             (scripts ?: fail(RuleStage.Script, location, 0, "ScriptPortUnavailable"))
                 .evaluate(ScriptRequest(text, input, location), context, budget).also { budget.check() }
         }
+
+    private fun jsonInput(value: RuleValue): JsonElement = when (value) {
+        is RuleValue.Text -> JsonPrimitive(value.value)
+        is RuleValue.Node -> if (value.kind == InputKind.Json) Json.parseToJsonElement(value.content) else JsonPrimitive(value.content)
+        is RuleValue.Items -> JsonArray(value.values.map(::jsonInput))
+        is RuleValue.Captures -> JsonArray(value.groups.map(::JsonPrimitive))
+        RuleValue.Empty -> JsonNull
+    }
 
     private fun absolute(base: String, value: String, emptyUsesBase: Boolean): String = when {
         value.isBlank() -> if (emptyUsesBase) base else ""

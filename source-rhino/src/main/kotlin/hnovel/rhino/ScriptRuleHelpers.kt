@@ -30,7 +30,7 @@ internal class ScriptRuleHelpers(private val scope: Scriptable, frame: ScriptFra
                 else JsonScriptData(cx, active, limits.maxBridgeChars).convert(json(value))
             is RuleValue.Items -> {
                 val nodes = value.values.map(::convert)
-                if (nodes.isNotEmpty() && nodes.all { it is ScriptDomElement }) ScriptDom.elements(cx, active, nodes.map { (it as ScriptDomElement).element })
+                if ((nodes.isNotEmpty() || value.elementKind == InputKind.Html) && nodes.all { it is ScriptDomElement }) ScriptDom.elements(cx, active, nodes.map { (it as ScriptDomElement).element })
                 else ScriptRealm.current(cx).arrayIn(active, nodes.toTypedArray())
             }
             else -> JsonScriptData(cx, active, limits.maxBridgeChars).convert(json(value))
@@ -103,14 +103,11 @@ internal class ScriptRuleHelpers(private val scope: Scriptable, frame: ScriptFra
             }
             val selected = (result as RuleResult.Success).value
             if (name == "java.getElement" || name == "java.getElements") {
-                elements = if (name == "java.getElement" && selected is RuleValue.Items && selected.values.singleOrNull().let { it is RuleValue.Node && it.kind == InputKind.Json }) selected.values.single() else selected
+                elements = selected
             }
             return when (name) {
                 "java.getString" -> JsonPrimitive(text(selected).let { if (unescape) StringEscapeUtils.unescapeHtml4(it) else it })
                 "java.getStringList" -> JsonArray((if (selected is RuleValue.Text) selected.value.split('\n') else items(selected).map(::text)).map(::JsonPrimitive))
-                // JSON getObject returns one structured value; HTML/XPath getElement returns a node list.
-                "java.getElement" -> if (selected is RuleValue.Items && selected.values.singleOrNull().let { it is RuleValue.Node && it.kind == InputKind.Json })
-                    json(selected.values.single()) else json(selected)
                 else -> json(selected)
             }
         } catch (_: RuleBudgetExceeded) { throw ScriptBudgetExceeded() }
@@ -139,7 +136,9 @@ internal class ScriptRuleHelpers(private val scope: Scriptable, frame: ScriptFra
     private fun value(json: JsonElement): RuleValue = when (json) {
         JsonNull -> RuleValue.Empty
         is JsonPrimitive -> RuleValue.Text(json.content)
-        is JsonArray -> RuleValue.Items(json.map(::value))
+        is JsonArray -> RuleValue.Items(json.map {
+            if (it is JsonPrimitive && !it.isString) RuleValue.Node(it.toString(), InputKind.Json) else value(it)
+        })
         is JsonObject -> RuleValue.Node(json.toString(), InputKind.Json)
     }
 }

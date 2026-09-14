@@ -55,6 +55,24 @@ internal object ScriptDom {
             it.parameterTypes.none { parameter -> parameter == Class::class.java || parameter == Appendable::class.java || parameter.name == "org.jsoup.select.Evaluator" }
     }.groupBy { it.name } }
 
+    private val queries = names("select selectFirst expectFirst selectXpath is closest getElementsByTag getElementById getElementsByClass getElementsByAttribute getElementsByAttributeValue getElementsContainingText getElementsContainingOwnText hasAttr hasClass hasText")
+    private val getters = names("text wholeText wholeOwnText ownText html outerHtml toString data val attr tagName id className children childrenSize first last getAllElements")
+    private fun readOnly(name: String, args: Array<out Any>) = name in queries ||
+        args.isEmpty() && name in getters || name == "attr" && args.size == 1
+
+    private fun checkNode(node: Node, force: Boolean) {
+        val context = Context.getCurrentContext()
+        val limit = context.getThreadLocal(bridgeLimitKey) as Int
+        val root = node.root()
+        val checked = ScriptRealm.current(context).checkedDomLimits
+        // Every mutation still checks its owning tree. Only known pure reads can reuse it;
+        // retained DOM values must be checked again if a later invocation has a smaller budget.
+        if (force || checked[root]?.let { it > limit } != false) {
+            BoundedJsonResult(limit).encode(root.outerHtml())
+            checked[root] = limit
+        }
+    }
+
     fun parse(cx: Context, scope: Scriptable, html: String, baseUrl: String, xml: Boolean = false): ScriptableObject =
         node(cx, scope, Jsoup.parse(html, baseUrl, if (xml) Parser.xmlParser() else Parser.htmlParser()))
 
@@ -80,7 +98,7 @@ internal object ScriptDom {
         val realm = ScriptRealm.current(cx)
         val checkState: (() -> Unit)? = when (value) {
             is ResponseSnapshot -> { { value.checkSize(Context.getCurrentContext().getThreadLocal(bridgeLimitKey) as Int) } }
-            is Node -> { { BoundedJsonResult(Context.getCurrentContext().getThreadLocal(bridgeLimitKey) as Int).encode(value.root().outerHtml()); Unit } }
+            is Node -> { { checkNode(value, true) } }
             else -> ownerCheck
         }
         if (value == null) return null
@@ -106,12 +124,17 @@ internal object ScriptDom {
                 val selected = candidates.sortedBy { it.isVarArgs }.firstNotNullOfOrNull { method ->
                     arguments(method.parameterTypes, method.isVarArgs, args)?.let { method to it }
                 } ?: error("Unsupported DOM overload")
+                if (!readOnly(name, args)) ScriptRealm.current(context).checkedDomLimits.clear()
                 // Derived maps/lists retain this check, including void-returning mutations.
                 val returned = try { selected.first.invoke(value, *selected.second) }
                 catch (failure: java.lang.reflect.InvocationTargetException) {
                     when (val cause = failure.cause) { is Error -> throw cause; is java.util.concurrent.CancellationException -> throw cause; else -> throw IllegalArgumentException("Invalid DOM operation") }
                 }
-                finally { checkState?.invoke() }
+                finally {
+                    if (readOnly(name, args) && value is Node) checkNode(value, false)
+                    else if (readOnly(name, args) && value is Elements && value.isNotEmpty()) value.forEach { checkNode(it, false) }
+                    else checkState?.invoke()
+                }
                 if (value is Elements) {
                     for (i in value.size until (result as NativeArray).length.toInt()) result.delete(i)
                     result.put("length", result, value.size)
@@ -125,6 +148,7 @@ internal object ScriptDom {
                 val arrayFilter = if (result is NativeArray && name == "filter") ScriptableObject.getProperty(result, "filter") as? Callable else null
                 result.defineProperty(name, ScriptCalls.method(scope, "invalid DOM callback") { context, active, args ->
                     require(args.size == 1)
+                    ScriptRealm.current(context).checkedDomLimits.clear()
                     val callback = args[0]
                     if (arrayFilter != null && callback is Callable) return@method arrayFilter.call(context, active, result, args)
                     fun invoke(part: String, node: Node, depth: Int): Any? {

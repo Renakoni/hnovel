@@ -47,6 +47,31 @@ import org.junit.runner.RunWith
 class IsolatedExecutionInstrumentedTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
 
+    @Test fun largeResponseBatchesCrossThePipeAndKeepOutputBounded(): Unit = runBlocking {
+        val authority = ExecutionAuthority()
+        val executor = AndroidIsolatedExecutor(context, authority)
+        val root = java.io.File(context.cacheDir, "large-bridge-${System.nanoTime()}")
+        try {
+            MockWebServer().use { server ->
+                server.start()
+                val base = server.url("/").toString()
+                SourceBroker(root.toPath()).use { sessions ->
+                    val session = sessions.open(SourceScope("large-bridge", "A", "legado"), listOf(NetworkGrant(base, true)))
+                    val identity = authority.issue("A", "legado", "1", "large-bridge")
+                    val limits = ExecutionLimits(timeoutMillis = 30000, maxOutputBytes = 1024, maxDataBytes = 4 * 1024 * 1024)
+                    SourceExecutionBroker(identity, authority, session, limits, base).use { bridge ->
+                        server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
+                            override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest) = MockResponse()
+                                .setBody("x".repeat(700000) + request.path!!.last())
+                        }
+                        val task = ExecutionTask.Script("java.ajaxAll(['/0','/1','/2']).map(r=>r.body().slice(-1))", baseUrl = base)
+                        assertEquals(ExecutionResult.Success("[\"0\",\"1\",\"2\"]"), executor.execute(identity, task, limits, bridge))
+                    }
+                }
+            }
+        } finally { executor.close(); root.deleteRecursively() }
+    }
+
     @Test fun textParserAndSelectorInputStayLocalAcrossBinderCalls() = runBlocking {
         val authority = ExecutionAuthority()
         val executor = AndroidIsolatedExecutor(context, authority)

@@ -194,7 +194,17 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
             try {
                 validate(snapshot)
                 withTimeout(if (snapshot.browser?.interactive == true) 300000 else snapshot.timeoutMillis) {
-                    if (snapshot.browser != null) {
+                    if (snapshot.url.startsWith("data:")) {
+                        val encoded = Regex("^data:.*?;base64,([A-Za-z0-9+/=\\s]*)$").matchEntire(snapshot.url)
+                            ?.groupValues?.get(1) ?: throw BrokerFailure(RequestStage.Parse, FailureCode.InvalidRequest)
+                        val bytes = java.util.Base64.getDecoder().decode(encoded.filterNot(Char::isWhitespace))
+                        if (bytes.size > minOf(snapshot.maxResponseBytes ?: limits.maxResponseBytes, limits.maxResponseBytes))
+                            throw BrokerFailure(RequestStage.Response, FailureCode.ResponseTooLarge)
+                        guard.commit { checkOpen() }
+                        // Legado StrResponse falls back to this URL for non-HTTP input; no socket is opened.
+                        BrokerResult.Success(BrokerResponse(200, "http://localhost/", emptyMap(), bytes, snapshot.charset, 0,
+                            message = "OK", protocol = "data"))
+                    } else if (snapshot.browser != null) {
                         policy.check(snapshot.url.toHttpUrlOrNull() ?: throw BrokerFailure(RequestStage.Parse, FailureCode.InvalidRequest))
                         browser?.execute(this@SourceSession, snapshot.copy(browser = null), snapshot.browser, guard)
                             ?: BrokerResult.Failure(RequestStage.Parse, FailureCode.BrowserRequired)
@@ -212,7 +222,9 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
               catch (_: java.net.UnknownHostException) { BrokerResult.Failure(RequestStage.Connect, FailureCode.Dns) }
               catch (_: IOException) { BrokerResult.Failure(RequestStage.Connect, FailureCode.Network) }
         }
-        return try { work.await().also { checkOpen() } } finally { work.cancel() }
+        return try { work.await().also { checkOpen() }.let { result ->
+            if (result is BrokerResult.Success && snapshot.responseAsHex) result.copy(response = result.response.copy(textAsHex = true)) else result
+        } } finally { work.cancel() }
     }
 
     private fun validate(request: BrokerRequest) {

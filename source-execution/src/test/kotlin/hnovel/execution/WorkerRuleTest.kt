@@ -7,6 +7,24 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class WorkerRuleTest {
+    @Test fun jsonListsRemainStructuredAcrossScriptAndSelectorStages() {
+        val input = RuleValue.Text("""{"chapterlist":[{"chapterid":1},{"chapterid":2}]}""")
+        val task = ExecutionTask.Rule("""$.chapterlist[*]||$.[*]<js>result</js>$.[*]""",
+            input, OutputKind.Elements)
+        val rows = (value(run(task)).value as RuleValue.Items).values
+        assertEquals(listOf(1, 2), rows.map { Json.parseToJsonElement((it as RuleValue.Node).content)
+            .jsonObject.getValue("chapterid").jsonPrimitive.int })
+        val mixed = task.copy(rule = """<js>[7,true,null,"line\ntext",[2,3],{id:4}]</js>$.[*]<js>JSON.stringify(result)</js>""",
+            output = OutputKind.Elements)
+        assertEquals(RuleValue.Text("""[7,true,null,"line\ntext",[2,3],{"id":4}]"""), value(run(mixed)).value)
+        assertEquals(emptyList<RuleValue>(), (value(run(task.copy(input = RuleValue.Text("""{"chapterlist":[]}"""),
+            rule = """$.chapterlist[*]<js>result</js>$.[*]"""))).value as RuleValue.Items).values)
+    }
+    @Test fun singleJsonObjectsDoNotAcquireAnArrayWrapperBeforeLaterStages() {
+        val task = ExecutionTask.Rule("""$.data<js>result.book_id</js>""",
+            RuleValue.Text("""{"data":{"book_id":"9007199254740993101"}}"""), OutputKind.Element)
+        assertEquals(RuleValue.Text("9007199254740993101"), value(run(task)).value)
+    }
     @Test fun metadataAndScopedWritesCrossWireWithoutChangingBookIdentity() {
         val book = buildJsonObject { put("name", "Same book"); put("author", "Same author"); put("bookUrl", "/book"); put("wordCount", "10k"); put("kind", "novel,fiction") }
         val chapter = buildJsonObject { put("url", "one,{\"method\":\"POST\"}"); put("baseUrl", "https://fixture.invalid/toc/"); put("title", "One") }

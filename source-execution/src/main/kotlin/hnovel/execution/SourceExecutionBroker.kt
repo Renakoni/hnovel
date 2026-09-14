@@ -176,7 +176,8 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
                         val pending = requests.map { request -> async {
                             decoding.withPermit {
                                 fetch(request, limits.scriptDataLimit).scriptSnapshot(false).also {
-                                    check(responseBytes.addAndGet(it.toString().toByteArray().size.toLong() + 1) <= BridgeWire.MAX_BYTES) { "Batch response too large" }
+                                    check(responseBytes.addAndGet(it.toString().toByteArray().size.toLong() + 1) <=
+                                        (limits.maxDataBytes ?: BridgeWire.MAX_BYTES)) { "Batch response too large" }
                                 }
                             }
                         } }
@@ -228,8 +229,8 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
         item.content
     }
 
-    private suspend fun fetch(request: BrokerRequest, maxResponseBytes: Int = BridgeWire.MAX_BYTES): BrokerResponse {
-        val result = session.execute(request.copy(timeoutMillis = limits.timeoutMillis, maxResponseBytes = maxResponseBytes), RequestCommitGuard { action -> authorized(action) })
+    private suspend fun fetch(request: BrokerRequest, maxResponseBytes: Int = limits.maxDataBytes ?: BridgeWire.MAX_BYTES): BrokerResponse {
+        val result = session.execute(request.copy(timeoutMillis = limits.timeoutMillis, maxResponseBytes = minOf(maxResponseBytes, 4 * 1024 * 1024)), RequestCommitGuard { action -> authorized(action) })
         if (result is BrokerResult.Failure) requestFailure = result
         check(result is BrokerResult.Success) { "Broker request failed" }
         return result.response

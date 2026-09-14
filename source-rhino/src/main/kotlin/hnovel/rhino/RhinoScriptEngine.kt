@@ -98,6 +98,11 @@ private class ScriptBridge(private val bridge: HostBridge, private val rules: Sc
             call(cx, activeScope, "java.setContent", args)
             javaBridge
         }
+        // Legado log is also an identity expression. Keep source text out of host diagnostics.
+        method(javaBridge, "log") { _, _, args ->
+            require(args.size == 1)
+            args[0]
+        }
         objectFor("cache", listOf("get", "put", "delete"))
         objectFor("cookie", listOf("getCookie", "getKey", "setCookie", "replaceCookie", "removeCookie"))
         val source = objectFor("source", listOf("get", "put", "getVariable", "setVariable", "getKey", "getLoginInfo", "getLoginInfoMap",
@@ -108,6 +113,8 @@ private class ScriptBridge(private val bridge: HostBridge, private val rules: Sc
         // initiate login, and the worker never receives a mutable Android Source object.
         source.defineProperty("loginUrl", frame.sourceLoginUrl, ScriptableObject.READONLY or ScriptableObject.PERMANENT)
         method(source, "getLoginUrl") { _, _, args -> require(args.isEmpty()); frame.sourceLoginUrl }
+        source.defineProperty("bookSourceComment", frame.sourceComment, ScriptableObject.READONLY or ScriptableObject.PERMANENT)
+        method(source, "getBookSourceComment") { _, _, args -> require(args.isEmpty()); frame.sourceComment }
         method(javaBridge, "getSource") { _, _, args -> require(args.isEmpty()); source }
         frame.discovery?.install(context, scope, javaBridge, source)
         if (frame.discovery != null) method(javaBridge, "removeCookie") { cx, active, args ->
@@ -121,7 +128,7 @@ data class ScriptFrame(val sourceId: String, val profile: String, val bookId: St
     val baseUrl: String = "", val ruleContext: RuleContext? = null, val ruleInput: RuleValue? = null,
     val ruleBudget: RuleBudget? = null, val book: JsonObject = JsonObject(emptyMap()),
     val chapter: JsonObject = JsonObject(emptyMap()), val chineseConverter: Int = 0, val sourceHeaderRule: String = "",
-    val discovery: ScriptDiscovery? = null, val sourceLoginUrl: String = "")
+    val discovery: ScriptDiscovery? = null, val sourceLoginUrl: String = "", val sourceComment: String? = null)
 
 data class ScriptLimits(val instructionLimit: Int = 1_000_000, val maxResultChars: Int = 256 * 1024,
     val maxScriptChars: Int = 256 * 1024, val maxBridgeChars: Int = DEFAULT_BRIDGE_CHARS,

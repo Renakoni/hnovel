@@ -54,6 +54,28 @@ class DomContractTest {
         }
     }
 
+    @Test fun cachedQueriesStillCheckSmallerBudgetsAndMutationsThroughAliases() {
+        val input = frame.copy(variables = emptyMap())
+        ScriptLibrary("a", "legado", "var saved={};").use { library ->
+            assertEquals(ScriptResult.Success("\"A\""), engine.evaluate("""
+                saved.doc=org.jsoup.Jsoup.parse('<p>A</p><aside>'+new Array(301).join('x')+'</aside>');
+                saved.node=saved.doc.select('p').first();saved.node.text()
+            """, input, library))
+            val small = RhinoScriptEngine(HostBridge { _, _ -> error("No host") }, ScriptLimits(maxBridgeChars=128))
+            assertEquals(FailureCode.ResultTooLarge, (small.evaluate("saved.node.text()",input,library) as ScriptResult.Failure).code)
+        }
+        val bounded = RhinoScriptEngine(HostBridge { _, _ -> error("No host") }, ScriptLimits(maxBridgeChars=512))
+        ScriptLibrary("a", "legado", "var saved={};").use { library ->
+            assertEquals(ScriptResult.Success("\"A\""), bounded.evaluate("""
+                saved.doc=org.jsoup.Jsoup.parse('<p>A</p><aside>'+new Array(201).join('x')+'</aside>');
+                saved.node=saved.doc.select('p').first();saved.map=saved.node.dataset();saved.node.text()
+            """,input,library))
+            assertEquals(FailureCode.ResultTooLarge, (bounded.evaluate(
+                "saved.map.put('extra',new Array(281).join('x'));1",input,library) as ScriptResult.Failure).code)
+            assertEquals(ScriptResult.Success("\"undefined\""),bounded.evaluate("typeof saved.node",input,library))
+        }
+    }
+
     @Test fun failedNativeMutationDiscardsAllRetainedAliasesAndReinitializesLibrary() {
         val initial = frame.copy(variables=mapOf("result" to JsonPrimitive("<p>A</p>")))
         ScriptLibrary("a", "legado", "var saved={};var counter={value:0};").use { library ->

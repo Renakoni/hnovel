@@ -16,6 +16,13 @@ class ScriptDependencyTest {
             }
         } finally { java.util.Locale.setDefault(previous) }
     }
+    @Test fun sourceCommentKeepsExactTextAndCannotBeRewrittenByRules() {
+        val comment = " original\ncomment "
+        val result = engine.evaluate("source.bookSourceComment='changed';delete source.bookSourceComment;source.getBookSourceComment()",
+            frame.copy(sourceComment=comment)) as ScriptResult.Success
+        assertEquals(kotlinx.serialization.json.JsonPrimitive(comment), kotlinx.serialization.json.Json.parseToJsonElement(result.json))
+        assertEquals(ScriptResult.Success("null"),engine.evaluate("source.bookSourceComment",frame))
+    }
     private val frame = ScriptFrame("fixture", "legado")
     private val engine = RhinoScriptEngine(HostBridge { _, _ -> error("No host call expected") })
 

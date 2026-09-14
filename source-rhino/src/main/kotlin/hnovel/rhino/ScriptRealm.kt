@@ -4,6 +4,8 @@ import org.mozilla.javascript.*
 
 /** Capture intrinsic prototypes before library code can shadow the global constructors. */
 internal class ScriptRealm(context: Context) {
+    // Weak keys avoid keeping parsed pages alive after scripts release their DOM references.
+    val checkedDomLimits = java.util.WeakHashMap<org.jsoup.nodes.Node, Int>()
     val global: ScriptableObject = context.initSafeStandardObjects()
     private val objectPrototype = ScriptableObject.getObjectPrototype(global)
     private val arrayPrototype = ScriptableObject.getArrayPrototype(global)

@@ -16,6 +16,19 @@ class NetworkBridgeTest {
     private val authority = ExecutionAuthority()
     private val id = authority.issue("a", "legado", "1", "fixture")
 
+    @Test fun inlineTextAndConnectResponsesDoNotNeedANetworkGrant(): Unit = runBlocking {
+        SourceBroker(folder.root.toPath(), okhttp3.Dns { error("Inline data must not resolve DNS") }).use { sessions ->
+            val session = sessions.open(SourceScope("fixture", "a", "legado"), emptyList())
+            SourceExecutionBroker(id, authority, session, ExecutionLimits()).use { broker ->
+                assertEquals(ExecutionResult.Success("[\"chapter\",\"63686170746572\",\"http://localhost/\",200]"), script(broker, """
+                    var url='data:;base64,Y2hhcHRlcg==,{"type":"fixture"}';
+                    var r=java.connect(url);
+                    [java.hexDecodeToString(java.ajax(url)),r.body(),r.url(),r.raw().code()]
+                """))
+            }
+        }
+    }
+
     @Test fun webViewUserAgentIsAvailableToHeaderScriptsWithoutOpeningABrowser(): Unit = runBlocking {
         val browser = object : BrowserExecutor {
             override suspend fun defaultUserAgent() = "DeviceWebView/1.0/"
@@ -51,8 +64,27 @@ class NetworkBridgeTest {
         val wire = ExecutionWire.encode(id, ExecutionTask.Script(code), broker.limits)
         return ExecutionWire.decodeResult(WorkerMain.executeSerialized(wire.toString(Charsets.UTF_8), HostBridge { name, args ->
             val reply = runBlocking { broker.call(name, args) }.toString().toByteArray(Charsets.UTF_8)
-            Json.parseToJsonElement(BridgeWire.validate(reply))
+            Json.parseToJsonElement(BridgeWire.readReply(reply.inputStream()))
         }).toByteArray())
+    }
+
+    @Test fun largeBatchInputKeepsItsSmallRuleOutputAllowance(): Unit = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            val base = server.url("/").toString()
+            SourceBroker(folder.root.toPath()).use { sessions ->
+                val session = sessions.open(SourceScope("fixture", "a", "legado"), listOf(NetworkGrant(base, true)))
+                val limits = ExecutionLimits(timeoutMillis = 15000, maxOutputBytes = 1024, maxDataBytes = 4 * 1024 * 1024)
+                SourceExecutionBroker(id, authority, session, limits, base).use { broker ->
+                    server.dispatcher = object : Dispatcher() {
+                        override fun dispatch(request: RecordedRequest) = MockResponse().setBody("x".repeat(700000) + request.path!!.last())
+                    }
+                    assertEquals(ExecutionResult.Success("[\"0\",\"1\",\"2\"]"), script(broker,
+                        "java.ajaxAll(['/0','/1','/2']).map(r=>r.body().slice(-1))"))
+                    assertEquals(ExecutionResult.Failure(FailureCode.OutputLimit), script(broker, "java.ajax(baseUrl)"))
+                }
+            }
+        }
     }
 
     @Test fun responsePayloadIsNotDuplicatedAndOrdinaryPagesFitThroughTheWire() = runBlocking {

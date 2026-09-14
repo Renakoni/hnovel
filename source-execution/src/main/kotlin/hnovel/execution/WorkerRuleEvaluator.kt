@@ -25,7 +25,8 @@ internal object WorkerRuleEvaluator {
             budget.check()
             val frame = ScriptFrame(identity.sourceId, identity.profile, task.bookId, task.chapterId,
                 mapOf("result" to input(request.input)), task.key, task.page, task.baseUrl, current, task.input, budget, task.book, task.chapter, task.chineseConverter,
-                sourceHeaderRule = task.sourceHeaderRule, discovery = discovery, sourceLoginUrl = task.sourceLoginUrl)
+                sourceHeaderRule = task.sourceHeaderRule, discovery = discovery, sourceLoginUrl = task.sourceLoginUrl,
+                sourceComment = task.sourceComment)
             when (val result = RhinoScriptEngine(bridge, ScriptLimits(maxResultChars = limits.maxOutputBytes,
                 maxBridgeChars = limits.scriptDataLimit), archives)
                 .evaluate(request.script, frame, library)) {
@@ -71,7 +72,9 @@ internal object WorkerRuleEvaluator {
     private fun value(json: JsonElement): RuleValue = when (json) {
         JsonNull -> RuleValue.Empty
         is JsonPrimitive -> RuleValue.Text(json.content)
-        is JsonArray -> RuleValue.Items(json.map(::value))
+        is JsonArray -> RuleValue.Items(json.map {
+            if (it is JsonPrimitive && !it.isString) RuleValue.Node(it.toString(), InputKind.Json) else value(it)
+        })
         is JsonObject -> RuleValue.Node(json.toString(), InputKind.Json)
     }
 }

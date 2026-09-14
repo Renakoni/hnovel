@@ -19,6 +19,7 @@ internal class RuleSourceDefinition(val stored: SourceDefinition) {
     val header = root.string("header")
     val loginCheck = root.string("loginCheckJs")
     val loginUrl = root.string("loginUrl")
+    val comment = root["bookSourceComment"]?.takeUnless { it == JsonNull }?.jsonPrimitive?.content
     val loginUi = root.string("loginUi")
     val cookiesEnabled = root["enabledCookieJar"]?.jsonPrimitive?.booleanOrNull ?: true
     val coverDecode = root.string("coverDecodeJs")
@@ -51,9 +52,11 @@ internal fun digest(value: String) = MessageDigest.getInstance("SHA-256").digest
 internal fun sourceLink(base: String, value: String): String {
     val option = Regex(",\\s*(?=\\{)").find(value)?.range?.first ?: value.length
     val address = value.substring(0, option).trim()
+    if (address.startsWith("data:")) return address + value.substring(option)
     val baseEnd = Regex(",\\s*(?=\\{)").find(base)?.range?.first ?: base.length
     // Keep the logical URL (including unencoded chapter titles) until request charset expansion.
-    val resolved = try { URL(URL(base.substring(0, baseEnd).trim()), address) }
+    val resolved = try { if (address.startsWith("http://", true) || address.startsWith("https://", true)) URL(address)
+        else URL(URL(base.substring(0, baseEnd).trim()), address) }
         catch (_: Exception) { throw SourceContentException(ContentError.InvalidRule, "url") }
     val scheme = resolved.protocol?.lowercase()
     if (scheme !in setOf("http", "https") || resolved.host.isNullOrBlank() || resolved.userInfo != null)

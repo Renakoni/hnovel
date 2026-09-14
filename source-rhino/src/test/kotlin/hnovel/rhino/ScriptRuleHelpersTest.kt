@@ -6,6 +6,34 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ScriptRuleHelpersTest {
+    @Test fun explicitAndScriptArrayInputsStayStructuredForJsonPath() {
+        assertEquals(JsonPrimitive(true), run("Array.isArray(java.getElement('@js:[{id:1}]'))"))
+        assertEquals(JsonPrimitive("second"), run("java.getString('$[1].title',[{title:'first'},{title:'second'}])"))
+        assertEquals(Json.parseToJsonElement("""[7,true,null,"text",[2,3],{"id":4}]"""), run("""
+            java.getElements('<js>[7,true,null,"text",[2,3],{id:4}]</js>$.[*]')
+        """))
+        assertEquals(Json.parseToJsonElement("""[{"id":1},{"id":2}]"""), run("""
+            java.setContent({items:[{id:1},{id:2}]});
+            java.getElements('$.items[*]<js>result</js>$.[*]')
+        """))
+    }
+    @Test fun emptyHtmlSelectionsKeepDomMethodsWhileJsonAndScriptArraysStayData() {
+        assertEquals(Json.parseToJsonElement("""["",0,"","","undefined","undefined"]"""),run("""
+            var empty=java.getElement('@@#missing'), combined=java.getElements('@@#missing||#alsoMissing');
+            var script=java.getElement('@js:[]');
+            java.setContent('{"items":[]}'); var data=java.getElements('$.items[*]');
+            [empty.text(),empty.size(),empty.attr('href'),combined.text(),typeof data.text,typeof script.text]
+        """))
+    }
+    @Test fun loggingReturnsTheOriginalValueWithoutBreakingRuleFallbacks() {
+        assertEquals(JsonArray(listOf(JsonPrimitive("chapter"), JsonPrimitive(true), JsonNull)), run("""
+            var object={name:'chapter'};[java.log(object.name),java.log(object)===object,java.log(null)]
+        """))
+        assertEquals(JsonPrimitive(true), run("""
+            var error = new Error('source error'), cycle = {}; cycle.self = cycle;
+            java.log(error) === error && java.log(cycle) === cycle && java.log(undefined) === undefined
+        """))
+    }
     private val engine = RhinoScriptEngine(HostBridge { _, _ -> error("Selectors must stay in worker") })
     private val frame = ScriptFrame("a", "legado", variables = mapOf("result" to JsonPrimitive("<a href='/one'>One</a><a href='/two'>Two</a>")), baseUrl="https://example.org/base")
     private fun run(code: String, frame: ScriptFrame = this.frame): JsonElement {

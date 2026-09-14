@@ -81,6 +81,7 @@ internal object ScriptResponses {
         val responseHeaders = okhttp3.Headers.Builder().apply {
             headers.forEach { (name, values) -> values.jsonArray.forEach { add(name, it.jsonPrimitive.content) } }
         }.build()
+        val inline = data["protocol"]?.jsonPrimitive?.content == "data"
         val rawBody = object : okhttp3.ResponseBody() {
             private val content = object : java.io.FilterInputStream(ByteArray(0).inputStream()) {
                 private var closed = false
@@ -100,8 +101,8 @@ internal object ScriptResponses {
         val request = okhttp3.Request.Builder().url(url).method(verb,
             if (verb in listOf("POST", "PUT", "PATCH", "PROPPATCH", "REPORT")) ByteArray(0).toRequestBody() else null).build()
         val raw = okhttp3.Response.Builder().request(request)
-            .protocol(okhttp3.Protocol.get(data["protocol"]?.jsonPrimitive?.content ?: "http/1.1"))
-            .code(status).message(message).headers(responseHeaders).body(rawBody)
+            .protocol(if (inline) okhttp3.Protocol.HTTP_1_1 else okhttp3.Protocol.get(data["protocol"]?.jsonPrimitive?.content ?: "http/1.1"))
+            .code(status).message(message).headers(responseHeaders).apply { if (!inline) body(rawBody) }
             .sentRequestAtMillis(data["sentAt"]?.jsonPrimitive?.long ?: 0)
             .receivedResponseAtMillis(data["receivedAt"]?.jsonPrimitive?.long ?: 0).build()
         val view = ScriptDom.wrap(context, scope, raw)

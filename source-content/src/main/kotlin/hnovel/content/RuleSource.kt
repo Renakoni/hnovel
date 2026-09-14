@@ -251,7 +251,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             val document = fetch(context, url, "ruleContent.content", browser)
             // Redirects cannot turn a continuation (or the first page) into the next logical chapter.
             if (document.url == next) continue
-            if (document.url != url && !visited.add(document.url)) throw SourceContentException(ContentError.RepeatedPage, "ruleContent.nextContentUrl")
+            if (!document.inline && document.url != url && !visited.add(document.url)) throw SourceContentException(ContentError.RepeatedPage, "ruleContent.nextContentUrl")
             if (pages.isEmpty()) context.text(spec.content.string("title"), document.input(), "ruleContent.title")
                 .takeIf { it.isNotBlank() }?.let { title = it; context.chapterField("title", JsonPrimitive(it)) }
             val html = context.text(rule, document.input(), "ruleContent.content", unescape = false)
@@ -313,7 +313,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val initial = old?.book?.let { if (old.revision == identity.revision) it else it.copy(state = ScriptState()) } ?: RuleBook(id)
         val context = evaluation(initial)
         val document = supplied ?: fetch(context, id, "ruleBookInfo")
-        context.baseUrl = document.url
+        context.baseUrl = document.ruleUrl
         val init = spec.information.string("init")
         val input = if (init.isBlank()) document.input() else context.value(init, document.input(), "ruleBookInfo.init", OutputKind.Element)
         var book = bookFields(context, input, spec.information, "ruleBookInfo", initial)
@@ -378,8 +378,8 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             val url = queue.removeFirst(); visit(visited, url, "ruleToc.nextTocUrl")
             val document = initial.document?.takeIf { visited.size == 1 && it.url == url }
                 ?: fetch(context, url, "ruleToc.chapterList")
-            context.baseUrl = document.url
-            if (document.url != url && !visited.add(document.url)) throw SourceContentException(ContentError.RepeatedPage, "ruleToc.nextTocUrl")
+            context.baseUrl = document.ruleUrl
+            if (!document.inline && document.url != url && !visited.add(document.url)) throw SourceContentException(ContentError.RepeatedPage, "ruleToc.nextTocUrl")
             val items = context.value(rule.removePrefix("-").removePrefix("+"), document.input(), "ruleToc.chapterList", OutputKind.Elements).items()
             if (items.size + chapters.size > 5000) throw SourceContentException(ContentError.Limit, "ruleToc.chapterList")
             val pageStart = chapters.size
@@ -445,7 +445,8 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
     internal fun evaluation(book: RuleBook? = null, chapter: RuleChapter? = null, keyword: String = "", page: Int = 1, interactive: Boolean = false): RuleEvaluation {
         val result = RuleEvaluation(identity, authority, session, runner, spec.library, book?.id, chapter?.id,
             book?.state ?: ScriptState(), chapter?.state ?: ScriptState(), book?.id ?: spec.baseUrl, keyword, page,
-            headerRule = spec.header, interactive = interactive, trace = trace, sourceLoginUrl = spec.loginUrl)
+            headerRule = spec.header, interactive = interactive, trace = trace, sourceLoginUrl = spec.loginUrl,
+            sourceComment = spec.comment)
         book?.let {
             result.bookField("bookUrl", it.id)
             if ("name" !in result.book.metadata) result.bookField("name", it.title)
@@ -476,7 +477,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             else session.execute(if (request.kind == ResourceKind.Image) request.copy(cache = CacheMode.Disabled) else request, guard)
         trace.record(ContentTraceEvent("network", field, (System.nanoTime() - started) / 1_000_000,
             request.body?.length ?: 0, (result as? BrokerResult.Success)?.response?.body?.size ?: 0,
-            when (result) { is BrokerResult.Success -> "HTTP_${result.response.status}"; is BrokerResult.Failure -> result.code.name }))
+            when (result) { is BrokerResult.Success -> if (result.response.protocol == "data") "Inline" else "HTTP_${result.response.status}"; is BrokerResult.Failure -> result.code.name }))
         if (!authority.accepts(identity)) throw SourceContentException(ContentError.Unavailable, field)
         val response = when (result) {
             is BrokerResult.Success -> result.response
@@ -492,10 +493,11 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         // before serving the document. The source cookie jar already captures Set-Cookie;
         // retry that exact GET once so these sites work without requiring a manual browser step.
         if (isCookieRefreshChallenge(response)) response = request(context, url, field, browser = browser)
-        context.baseUrl = response.finalUrl
+        val inline = response.protocol == "data"
+        context.baseUrl = if (inline) url else response.finalUrl
         if (spec.loginCheck.isBlank()) {
             checkStatus(response.status, field)
-            return PageDocument(response.text(), response.finalUrl)
+            return PageDocument(response.text(), response.finalUrl, inline, context.baseUrl)
         }
         // The pinned hook receives and returns StrResponse, including retry responses from java.connect.
         val snapshot = response.scriptSnapshot(binary = false)
@@ -507,8 +509,8 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val value = Json.parseToJsonElement(checked).jsonObject
         checkStatus(value.getValue("status").jsonPrimitive.int, "loginCheckJs")
         val finalUrl = sourceLink(response.finalUrl, value.getValue("url").jsonPrimitive.content)
-        context.baseUrl = finalUrl
-        return PageDocument(value.getValue("body").jsonPrimitive.content, finalUrl)
+        context.baseUrl = if (inline) url else finalUrl
+        return PageDocument(value.getValue("body").jsonPrimitive.content, finalUrl, inline, context.baseUrl)
     }
 
     private fun isCookieRefreshChallenge(response: BrokerResponse): Boolean {
