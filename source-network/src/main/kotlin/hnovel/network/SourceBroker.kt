@@ -89,6 +89,11 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         return value
     }
 
+    suspend fun showMessage(message: String, long: Boolean, guard: RequestCommitGuard) {
+        guard.commit { checkOpen() }
+        browser?.showMessage(message, long, RequestCommitGuard { action -> guard.commit { checkOpen(); action() } })
+    }
+
     /** Host-only revision/re-enable handoff. A closed session may retain memory-only cookies;
      * exact scope equality still forbids transfer across sources, profiles or account generations. */
     fun inheritCookies(previous: SourceSession) {

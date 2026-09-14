@@ -6,6 +6,9 @@ import kotlinx.serialization.Serializable
 fun interface BrowserExecutor {
     suspend fun defaultUserAgent(): String? = null
 
+    /** Optional UI feedback; headless hosts may omit display without changing script results. */
+    suspend fun showMessage(message: String, long: Boolean, guard: RequestCommitGuard) { guard.commit {} }
+
     suspend fun execute(session: SourceSession, request: BrokerRequest, options: BrowserOptions,
         guard: RequestCommitGuard): BrokerResult
 }

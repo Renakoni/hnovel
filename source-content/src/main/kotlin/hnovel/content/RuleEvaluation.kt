@@ -16,12 +16,13 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
     private val headerRule: String = "", private val interactive: Boolean = false, private val trace: ContentTrace = ContentTrace.None,
     private val sourceLoginUrl: String = "", private val sourceComment: String? = null) {
     var discovery: JsonObject? = null
+    var nextChapterUrl: String? = null
     private val limits = ExecutionLimits(timeoutMillis = if (interactive) 60000 else 30000, maxOutputBytes = 196608,
         maxRequests = 64, maxDataBytes = BridgeWire.MAX_REPLY_BYTES)
 
     fun fork(bookId: String? = this.bookId, chapterId: String? = this.chapterId) =
         RuleEvaluation(identity, authority, session, runner, library, bookId, chapterId, book.copy(), chapter.copy(), baseUrl, keyword, page, calls, headerRule, interactive, trace, sourceLoginUrl, sourceComment)
-            .also { it.discovery = discovery }
+            .also { it.discovery = discovery; it.nextChapterUrl = nextChapterUrl }
 
     suspend fun headers(): Map<String, String> {
         if (headerRule.isBlank()) return emptyMap()
@@ -33,12 +34,13 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
     }
 
     suspend fun value(rule: String, input: RuleValue, field: String, output: OutputKind = OutputKind.Text,
-        unescape: Boolean = true): RuleValue {
+        unescape: Boolean = true, scriptTemplates: Boolean = true): RuleValue {
         val task = ExecutionTask.Rule(rule, input, output, RuleLocation(field), bookId, chapterId,
             keyword, page, baseUrl, library, book.inherited + chapter.inherited, book.variables,
             chapter.variables, book.metadata, chapter.metadata, book.bigVariables, chapter.bigVariables,
             unescapeHtml = unescape, sourceHeaderRule = if (field == "header") "" else headerRule, discovery = discovery,
-            sourceLoginUrl = sourceLoginUrl, sourceComment = sourceComment)
+            sourceLoginUrl = sourceLoginUrl, sourceComment = sourceComment, nextChapterUrl = nextChapterUrl,
+            scriptTemplates = scriptTemplates)
         val executed = execute(task, field, input.toString().length)
         if (discovery != null) discovery = executed.discovery ?: throw SourceContentException(ContentError.InvalidRule, field)
         book = book.copy(metadata = executed.book ?: book.metadata,
@@ -107,7 +109,8 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
         if (rule.isBlank()) "" else value(rule, input, field, unescape = unescape).text()
 
     suspend fun script(code: String, input: RuleValue, field: String): RuleValue =
-        value(if (code.startsWith("@js:", true) || code.startsWith("<js>", true)) code else "@js:$code", input, field, OutputKind.Element)
+        value(if (code.startsWith("@js:", true) || code.startsWith("<js>", true)) code else "@js:$code", input, field, OutputKind.Element,
+            scriptTemplates = false)
 
     fun bookField(name: String, value: String) { book = book.copy(metadata = JsonObject(book.metadata + (name to JsonPrimitive(value)))) }
     fun chapterField(name: String, value: JsonElement) { chapter = chapter.copy(metadata = JsonObject(chapter.metadata + (name to value))) }

@@ -103,7 +103,9 @@ class LegadoSourceAdapter : SourceFormatAdapter {
         val rules = setOf("ruleExplore", "ruleSearch", "ruleBookInfo", "ruleToc", "ruleContent", "ruleReview")
         rules.forEach { field ->
             val rule = value[field]
-            if (rule != null && rule != JsonNull && rule !is JsonObject) throw ImportFailure(ImportCode.InvalidField, field)
+            // Legacy exports use [] for an absent optional rule; the reference reads it as null.
+            if (rule != null && rule != JsonNull && rule !is JsonObject && !(rule is JsonArray && rule.isEmpty()))
+                throw ImportFailure(ImportCode.InvalidField, field)
         }
         val known = strings + numbers + rules + setOf("bookSourceUrl", "bookSourceName", "bookSourceType", "enabled", "enabledExplore", "enabledCookieJar", "customButton", "eventListener", "concurrentRate")
         val notices = value.keys.filter { it !in known }.map { ImportNotice("UnclassifiedField", it) }.toMutableList()

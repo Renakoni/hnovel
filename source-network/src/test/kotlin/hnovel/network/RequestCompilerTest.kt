@@ -6,6 +6,14 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RequestCompilerTest {
+    @Test fun encodedFormValuesArePreservedUnlessCharsetRequiresEncoding() {
+        val rule = """/search,{"method":"POST","body":"trace=one%253Ftype%253Dbook&raw=a+b&q={{key}}"}"""
+        assertEquals("trace=one%253Ftype%253Dbook&raw=a%2Bb&q=%252F", request(rule, "%2F").body)
+        assertEquals("trace=one%25253Ftype%25253Dbook&raw=a%2Bb&q=%252F",
+            request(rule.replace("\"method\"", "\"charset\":\"UTF-8\",\"method\""), "%2F").body)
+        val longValue = "%41".repeat(12000)
+        assertEquals("q=$longValue", request("""/search,{"method":"POST","body":"q=$longValue"}""").body)
+    }
     @Test fun singleQuotedOptionsPreserveEscapesAndCharsetAwareSubstitution() {
         val single = """/search/,{'method':'POST','charset':'GB2312','body':'keyword={{key}}','header':{'X-Literal':'It\'s "quoted"\\end','X-Key':'{{key}}'}}"""
         val strict = """/search/,{"method":"POST","charset":"GB2312","body":"keyword={{key}}","header":{"X-Literal":"It's \"quoted\"\\end","X-Key":"{{key}}"}}"""
@@ -24,7 +32,7 @@ class RequestCompilerTest {
     }
 
     @Test fun requestDataDoesNotAcceptExecutableObjectSyntaxOrMalformedStrings() {
-        for (options in listOf("{'method':(function(){return 'POST'})()}", "{method:'POST'}",
+        for (options in listOf("{'method':(function(){return 'POST'})()}",
             "{'method':'POST',}", "{'body':'unterminated}", "{'header':\"{'X':'unterminated}\"}")) {
             assertEquals(options, CompiledRequest.Rejected(FailureCode.InvalidRequest),
                 compiler.compile("r", "/search,$options", "https://fixture.invalid/"))

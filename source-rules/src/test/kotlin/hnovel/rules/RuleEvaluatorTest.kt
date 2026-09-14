@@ -6,6 +6,21 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 class RuleEvaluatorTest {
+    @Test fun selectorTemplateReplacementsKeepRegexCharacterClassesLiteral() {
+        val input = RuleValue.Text("""<a onclick="showMore('Book intro')">Open</a>""")
+        val selector = """@@a@onclick##showMore[(]['](.*)['][)]##Intro: ${'$'}1"""
+        assertEquals("Intro: Book intro", value(selector, input, OutputKind.Text).text())
+        assertEquals("Intro: Book intro", value("{{$selector}}", input, OutputKind.Text).text())
+    }
+    @Test fun regexExtractionTreatsQuotesAndCharacterClassesAsPatternSyntax() {
+        val input = RuleValue.Text("""<a href="/xs1">One</a><a href="/xs2">Two</a>""")
+        val rows = value(""":href="([^"]+xs[^"]+)">([^<]+)""", input, OutputKind.Elements).items()
+        assertEquals(listOf("/xs1", "/xs2"), rows.map { (it as RuleValue.Captures).groups[1] })
+        assertEquals(listOf("One", "Two"), rows.map { (it as RuleValue.Captures).groups[2] })
+        val filtered = value(""":[a-z&&[^aeiou]]+&&([b-d]+)""", RuleValue.Text("abc def"), OutputKind.Elements).items()
+        assertEquals(listOf("bcd"), filtered.map { (it as RuleValue.Captures).groups[1] })
+        assertEquals("(\"", (value(""":([("]+)""", RuleValue.Text("(\""), OutputKind.Element) as RuleValue.Captures).groups[1])
+    }
     private val html = RuleValue.Text("<h1>Library</h1><div><a class='book' href='/1'>Alpha<b>One</b></a><a class='book' href='/2'>Beta</a></div>")
     private fun value(rule: String, input: RuleValue = html, output: OutputKind = OutputKind.TextList,
         context: RuleContext = RuleContext("a", baseUrl = "https://fixture.invalid/path/")): RuleValue {

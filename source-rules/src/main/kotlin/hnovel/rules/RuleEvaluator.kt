@@ -9,7 +9,8 @@ import org.apache.commons.text.StringEscapeUtils
 import java.net.URI
 
 /** Stateless evaluator; callers supply a distinct context and budget per request. No IO is performed here. */
-class RuleEvaluator(private val unescapeHtml: Boolean = true, private val scripts: RuleScriptPort? = null) {
+class RuleEvaluator(private val unescapeHtml: Boolean = true, private val scriptTemplates: Boolean = true,
+    private val scripts: RuleScriptPort? = null) {
     private val parser = RuleParser()
 
     fun evaluate(rule: String, input: RuleValue, context: RuleContext, output: OutputKind = OutputKind.TextList,
@@ -46,8 +47,8 @@ class RuleEvaluator(private val unescapeHtml: Boolean = true, private val script
         for (step in plan.steps) {
             val at = location.copy(offset = location.offset + step.offset)
             val content = context.content ?: root
-            value = if (step.script) script(interpolate(step.text, value, content, context, at, budget, depth + 1,
-                captures = false, selectorsOnly = true),
+            value = if (step.script) script(if (scriptTemplates) interpolate(step.text, value, content, context, at, budget, depth + 1,
+                captures = false) else step.text,
                 value, context, at, budget)
                 else select(step.text, value, content, context, output, at, budget, depth + 1)
             budget.checkValue(value, budget.limits.maxOutputChars)
@@ -66,11 +67,17 @@ class RuleEvaluator(private val unescapeHtml: Boolean = true, private val script
     private fun select(raw: String, input: RuleValue, root: RuleValue, context: RuleContext, output: OutputKind,
         location: RuleLocation, budget: RuleBudget, depth: Int): RuleValue {
         var rule = raw.trim()
+        val regex = rule.startsWith(':') && output in listOf(OutputKind.Element, OutputKind.Elements)
+        val templated = templateLiteral(rule)
         // Put expressions evaluate against the request's original content, before the field itself.
         var index = 0
         val withoutPuts = StringBuilder()
         while (index < rule.length) {
             budget.check()
+            if (rule.startsWith("##", index)) {
+                withoutPuts.append(rule.substring(index))
+                break
+            }
             if (rule.startsWith("##", index)) {
                 withoutPuts.append(rule.substring(index))
                 break
@@ -86,14 +93,14 @@ class RuleEvaluator(private val unescapeHtml: Boolean = true, private val script
                         location.copy(offset = location.offset + start), budget, depth).text())
                 }
                 index = end
-            } else if (rule[index] in "[({") {
-                val end = parser.balancedEnd(rule, index, location, budget)
+            } else if (rule.startsWith("{{", index) || !templated && rule[index] in "[({") {
+                val end = parser.balancedEnd(rule, index, location, budget, regex = regex)
                 withoutPuts.append(rule.substring(index, end))
                 index = end
             } else { withoutPuts.append(rule[index]); index++ }
         }
         rule = withoutPuts.toString()
-        val (_, replacement) = parser.split(rule, listOf("##"), location, budget)
+        val (_, replacement) = parser.split(rule, listOf("##"), location, budget, regex = regex, literal = templated)
         var selector = replacement.first().text.trim()
         val literal = selector.contains("@get:", true) || selector.contains("{{") ||
             (input is RuleValue.Captures && Regex("\\$[0-9]{1,2}").containsMatchIn(selector))
@@ -125,7 +132,7 @@ class RuleEvaluator(private val unescapeHtml: Boolean = true, private val script
         if (depth > budget.limits.maxDepth) throw RuleBudgetExceeded()
         val elements = output == OutputKind.Element || output == OutputKind.Elements
         if (elements && rule.startsWith(':')) return atStage(RuleStage.Select, location) {
-            RegexRules.extract(input.text(), parser.split(rule.substring(1), listOf("&&"), location, budget).second.map { it.text },
+            RegexRules.extract(input.text(), parser.split(rule.substring(1), listOf("&&"), location, budget, regex = true).second.map { it.text },
                 output == OutputKind.Element, budget)
         }
         val mode = when {
@@ -213,15 +220,16 @@ class RuleEvaluator(private val unescapeHtml: Boolean = true, private val script
     }
 
     private fun interpolate(text: String, input: RuleValue, root: RuleValue, context: RuleContext,
-        location: RuleLocation, budget: RuleBudget, depth: Int, captures: Boolean = true, selectorsOnly: Boolean = false): String {
-        val out = StringBuilder()
+        location: RuleLocation, budget: RuleBudget, depth: Int, captures: Boolean = true): String {
+        val substitutions = mutableListOf<Triple<Int, Int, () -> String>>()
         var index = 0
         while (index < text.length) {
             budget.check()
             when {
                 text.regionMatches(index, "@get:{", 0, 6, true) -> {
                     val end = parser.balancedEnd(text, index + 5, location, budget)
-                    out.append(context.get(text.substring(index + 6, end - 1)))
+                    val key = text.substring(index + 6, end - 1)
+                    substitutions.add(Triple(index, end) { context.get(key) })
                     index = end
                 }
                 text.startsWith("{{", index) -> {
@@ -229,20 +237,29 @@ class RuleEvaluator(private val unescapeHtml: Boolean = true, private val script
                     val expression = text.substring(index + 2, end - 2)
                     val at = location.copy(offset = location.offset + index + 2)
                     val selector = expression.startsWith('@') || expression.startsWith("$.") || expression.startsWith("$[") || expression.startsWith("//")
-                    out.append(if (selectorsOnly && !selector) text.substring(index, end) else if (selector) {
-                        run(expression, root, root, context, OutputKind.Text, at, budget, depth + 1).text()
-                    } else script(expression, input, context, at, budget).text())
+                    substitutions.add(Triple(index, end) {
+                        if (selector) run(expression, root, root, context, OutputKind.Text, at, budget, depth + 1).text()
+                        else script(expression, input, context, at, budget).text()
+                    })
                     index = end
                 }
                 captures && input is RuleValue.Captures && text[index] == '$' && text.getOrNull(index + 1)?.isDigit() == true -> {
                     val end = (index + 3).coerceAtMost(text.length).let { if (text.getOrNull(index + 2)?.isDigit() == true) it else index + 2 }
-                    out.append(input.groups.getOrElse(text.substring(index + 1, end).toInt()) { "" })
+                    val group = text.substring(index + 1, end).toInt()
+                    substitutions.add(Triple(index, end) { input.groups.getOrElse(group) { "" } })
                     index = end
                 }
-                else -> out.append(text[index++])
+                else -> index++
             }
+        }
+        val out = StringBuilder(text)
+        // SourceRule.makeUpRule evaluates parameters from the end. Side effects are observable.
+        for ((start, end, evaluate) in substitutions.asReversed()) {
+            budget.check()
+            out.replace(start, end, evaluate())
             budget.checkSize(out.length, budget.limits.maxOutputChars)
         }
+        budget.checkSize(out.length, budget.limits.maxOutputChars)
         return out.toString()
     }
 
