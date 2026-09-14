@@ -44,6 +44,7 @@ class SourceVerificationInstrumentedTest {
                 delay(100)
             }
         }
+        instrumentation.sendStatus(0, android.os.Bundle().apply { putString("verificationStep", "found: $text") })
     }
 
     @Test fun verificationOpensAutomaticallyAfterHostRecreationAndResumesTheOriginalSearch(): Unit = runBlocking {
@@ -60,9 +61,9 @@ class SourceVerificationInstrumentedTest {
                     return when {
                         // The owned fixture waits until the test observes a visible browser.
                         // No external CAPTCHA is automated.
-                        path == "/antibot" -> MockResponse().setHeader("Content-Type", "text/html").setBody(
-                            "<html><title>Site verification</title>" +
-                                if (challenged.get() >= 2) "<script>setInterval(function(){fetch('/fixture-status').then(r=>r.text()).then(v=>{if(v==='ok')location.replace('/accepted')})},200)</script></html>" else "</html>")
+                        path == "/antibot" -> MockResponse().setHeader("Content-Type", "text/html").setHeader("Cache-Control", "no-store").setBody(
+                            "<html><title>Site verification</title><p>Verification fixture</p>" +
+                                "<script>setInterval(function(){fetch('/fixture-status').then(r=>r.text()).then(v=>{if(v==='ok')location.replace('/accepted')})},200)</script></html>")
                         path == "/fixture-status" -> MockResponse().setBody(if (allowVerification.get()) "ok" else "wait")
                         path == "/accepted" -> MockResponse().setHeader("Content-Type", "text/html")
                             .addHeader("Set-Cookie", "verified=fixture; HttpOnly; Path=/")
@@ -72,7 +73,7 @@ class SourceVerificationInstrumentedTest {
                             challenged.incrementAndGet()
                             started.complete(Unit)
                             check(releaseChallenge.await(20, java.util.concurrent.TimeUnit.SECONDS))
-                            MockResponse().setResponseCode(302).setHeader("Location", "/antibot")
+                            MockResponse().setResponseCode(302).setHeader("Cache-Control", "no-store").setHeader("Location", "/antibot")
                         }
                         else -> ordinary.dispatch(request)
                     }
