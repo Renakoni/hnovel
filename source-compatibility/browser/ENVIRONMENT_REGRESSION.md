@@ -53,3 +53,33 @@ python source-compatibility/browser/compare-environments.py mumu.json api35.json
 回环 HTTP 是浏览器认可的可信来源。Secure Cookie 的回环例外不能证明普通公网 HTTP 接受 Secure Cookie；本次不覆盖真实 HTTPS 证书链、跨 scheme、CHIPS/Partitioned、时钟回退、真实 Android 设备或 Cloudflare 频率。第三方 Cookie 开关沿用来源生产配置，未声称覆盖其所有组合。
 
 官方依据：[Android CookieManager](https://developer.android.com/reference/android/webkit/CookieManager)、[W3C NavigatorAutomationInformation](https://w3c.github.io/webdriver/#interface)、[Turnstile 移动集成](https://developers.cloudflare.com/turnstile/get-started/mobile-implementation/)。Chromix 借鉴点是实际后端、跨 realm 与可重复取证；不是桌面 persona 或伪造属性迁移。
+
+## 跨环境复核与本轮收尾判断
+
+2026-09-14：本轮 Cookie/指纹工作以 #203 / #206 的原生语义、账号生命周期和可重复取证为完成边界。完成默认 CI 与报告归档后可以收尾；现有证据没有提出新的宿主修复要求。早期研究文档中的完整指纹矩阵是候选测量方向，不应自动扩大为阅读器必须完成的工程范围。
+
+| 对照 | MuMu 实例 1 | API35 CI |
+|---|---|---|
+| 系统 / provider | Android 12 / com.android.webview 110.0.5481.154.1 | Android 15 / com.google.android.webview 124.0.6367.219 |
+| 平台报告 / WebGL 后端 | SM-S9260、Samsung / Adreno 640 | sdk_gphone64_x86_64、ranchu / Google SwiftShader |
+| 探针 | 前后台各两次，共四份观测 | 同一探针、相同四份观测 |
+
+两端探针 SHA-256 都是 `ee1c525b4582bcc4ae4e12c18bf716742eacb5a469c4c64588e7c0067f391820`。对照工具比较 78 项摘要，12 项差异均为三个 realm、两种模式的 UA 和 WebGL 标识；Cookie 发送名单、网络/页面 UA 一致性、原生接口与所测 Canvas 混色结果一致。这是多个环境变量同时改变的对照，不能只归因为 provider 升级，也不能把平台报告当成物理硬件证明。
+
+API35 证据来自 [run 34861025081](https://github.com/Renakoni/hnovel/actions/runs/34861025081) 的 `execution-platform-api-35` artifact：JUnit XML 记录 57 项、0 失败、1 项显式环境采样跳过；新的 `crossSiteCookiesAndRealms` 正常执行并通过（24.557 秒），验证交接、取消、切源和账号隔离用例也通过。完整 JSON 可由其中 `testlog/test-results.log` 的五条 `INSTRUMENTATION_STATUS: nativeEnvironment=` 记录依序恢复：第一条是 metadata，后四条为样本。原始日志 SHA-256 为 `4ffbd0f8d2ed19539e91261d692467233e5ed64a5152082688025fcddc7291f8`。本地原始数据和对照摘要归档在 `ref/hlib-adaptation-20260913/`。
+
+该次工作流整体失败，原因是 Gradle 在测试结束后卸载 App，连同外部文件目录一起清理，随后 `adb pull` 找不到 JSON；不是 Cookie 或环境断言失败。模拟器诊断日志记录了 15:28:46 的卸载，报告读取失败发生在 15:28:49。CI 脚本使用当前 AGP 支持的 `android.injected.androidTest.leaveApksInstalledAfterRun=true` 保留 App，待报告收集后由临时模拟器的销毁完成清理。测试失败与报告缺失仍使检查失败；修复是否交付以 PR 最新检查和实际 JSON artifact 为准。
+
+两个环境都复现前台默认 OffscreenCanvas 蓝通道 101、HTML Canvas 和后台 OffscreenCanvas 为 100；受控页面启用 `willReadFrequently` 后为 100，每种配置的重复读取稳定。这排除了“只在 MuMu 上观察到”的描述，尚未证明具体 Skia/GPU 舍入根因或与 CF 的因果关系。保留原生像素、记录差异，符合 Chromix `docs/canvas-chain.md` 对真实后端和不同上下文的区分；没有依据向用户网页强加读回选项或要求所有表面哈希相等。
+
+后续只有出现明确需求或可复现缺陷时再推进：
+
+| 事项 | 继续工作的触发条件 |
+|---|---|
+| Cookie / 身份 / 生命周期 | 同账号状态意外丢失、串账号、失效任务回写，或网络/页面/Worker 身份出现宿主造成的不一致；先建立复现，再修复对应职责 |
+| HTTPS、跨 scheme、CHIPS、第三方 Cookie 关闭 | 新来源实际依赖这些语义，或相关 provider 更新需要兼容验收；当前未把浏览器 Cookie 展平回交 HTTP |
+| Canvas 完整导出、codec、字体、WebRTC、OOPIF、QUIC/TLS 恢复 | 出现具体产品能力要求或后端契约失败；已有稳定的一阶色差本身不证明宿主缺陷 |
+| 真机 / 当前新版 WebView | 按实际支持设备做发布兼容验收；这两套模拟环境不替代真机，也不称为最新版验收 |
+| CF 频率 | 正常用户读取出现不可恢复或异常高频挑战时，按同账号、网络、provider 记录请求与各类验证次数；目前不宣称频率降低或零挑战 |
+
+页面 readiness/加载性能是另一项产品目标；#173 的 Aitu 实站与严格逐请求权限目标也仍独立存在，不由本次对照关闭。判断依据包括 [原生方案及站方历史说明](README.md)、[稳定性实测](STABILITY.md)、[Chromix 映射与职责](IMPLEMENTATION_PLAN.md)，以及本地统一入口下的深度分析、四 PR 审查和环境实施记录。Cloudflare 官方要求稳定 UA 与正常 Web API，同时对旧版、嵌入式和模拟环境保留兼容限制；这些资料支持保留原生行为，不支持把更多指纹改写作为默认下一步。

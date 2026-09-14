@@ -14,4 +14,5 @@ capture() {
 }
 trap capture EXIT
 timeout 15s adb shell pm path android > "$diagnostics/package-manager-before.txt" 2>&1
-./gradlew :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=indi.dmzz_yyhyy.lightnovelreader.sourceexecution.IsolatedExecutionInstrumentedTest,indi.dmzz_yyhyy.lightnovelreader.sourceexecution.SourceAccountInstrumentedTest,indi.dmzz_yyhyy.lightnovelreader.sourceexecution.SourceBrowserInstrumentedTest${1:-}" --console=plain --stacktrace --max-workers=2
+# Keep app storage until the workflow pulls fixture reports; the emulator is disposable.
+./gradlew :app:connectedDebugAndroidTest -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true "-Pandroid.testInstrumentationRunnerArguments.class=indi.dmzz_yyhyy.lightnovelreader.sourceexecution.IsolatedExecutionInstrumentedTest,indi.dmzz_yyhyy.lightnovelreader.sourceexecution.SourceAccountInstrumentedTest,indi.dmzz_yyhyy.lightnovelreader.sourceexecution.SourceBrowserInstrumentedTest${1:-}" --console=plain --stacktrace --max-workers=2
