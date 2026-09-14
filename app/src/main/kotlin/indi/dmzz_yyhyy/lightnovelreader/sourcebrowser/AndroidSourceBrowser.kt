@@ -2,6 +2,7 @@ package indi.dmzz_yyhyy.lightnovelreader.sourcebrowser
 
 import android.content.*
 import android.os.*
+import android.widget.Toast
 import dagger.hilt.android.qualifiers.ApplicationContext
 import hnovel.network.*
 import kotlinx.coroutines.*
@@ -22,9 +23,17 @@ class AndroidSourceBrowser @Inject constructor(@ApplicationContext private val c
     private val serial = Mutex()
     private val native = NativeSourceBrowser(context)
     override fun clearAccount(scope: SourceScope) = native.clearAccount(scope)
+    private var scriptToast: Toast? = null
 
     override suspend fun defaultUserAgent(): String = withContext(Dispatchers.Main) {
         android.webkit.WebSettings.getDefaultUserAgent(context)
+    }
+
+    override suspend fun showMessage(message: String, long: Boolean, guard: RequestCommitGuard): Unit = withContext(Dispatchers.Main) {
+        guard.commit {
+            scriptToast?.cancel()
+            scriptToast = Toast.makeText(context, message, if (long) Toast.LENGTH_LONG else Toast.LENGTH_SHORT).also { it.show() }
+        }
     }
 
     override suspend fun execute(session: SourceSession, request: BrokerRequest, options: BrowserOptions,

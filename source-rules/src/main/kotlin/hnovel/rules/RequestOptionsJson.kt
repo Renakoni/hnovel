@@ -1,72 +1,92 @@
 package hnovel.rules
 
 import kotlinx.serialization.json.*
+import com.google.gson.Strictness
+import com.google.gson.stream.JsonReader
+import com.google.gson.stream.JsonToken
+import java.io.StringReader
 
-/** Request data grammar: JSON plus single-quoted strings, never JavaScript object evaluation. */
+/** Legado's Gson request data grammar, with bounds; never JavaScript object evaluation. */
 object RequestOptionsJson {
     private const val MAX_CHARS = 65536
     private const val MAX_DEPTH = 64
-    private val number = Regex("-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?")
-
-    fun parse(text: String): JsonElement = try {
+    fun parse(text: String, parameters: Map<String, JsonElement> = emptyMap()): JsonElement = try {
         require(text.length <= MAX_CHARS)
-        val json = StringBuilder(text.length)
-        val literal = StringBuilder()
-        fun finishLiteral() {
-            if (literal.isEmpty()) return
-            val value = literal.toString()
-            require(value in setOf("null", "true", "false") || number.matches(value))
-            literal.setLength(0)
+        val prepared = templateValues(text, parameters)
+        require(prepared.length <= MAX_CHARS)
+        JsonReader(StringReader(prepared)).use { reader ->
+            reader.strictness = Strictness.LENIENT
+            fun read(depth: Int): JsonElement = when (reader.peek()) {
+                JsonToken.BEGIN_OBJECT -> {
+                    require(depth < MAX_DEPTH)
+                    reader.beginObject()
+                    val values = linkedMapOf<String, JsonElement>()
+                    while (reader.hasNext()) values[reader.nextName()] = read(depth + 1)
+                    reader.endObject(); JsonObject(values)
+                }
+                JsonToken.BEGIN_ARRAY -> {
+                    require(depth < MAX_DEPTH)
+                    reader.beginArray()
+                    val values = mutableListOf<JsonElement>()
+                    while (reader.hasNext()) values.add(read(depth + 1))
+                    reader.endArray(); JsonArray(values)
+                }
+                JsonToken.STRING -> JsonPrimitive(reader.nextString())
+                JsonToken.NUMBER -> Json.parseToJsonElement(reader.nextString())
+                JsonToken.BOOLEAN -> JsonPrimitive(reader.nextBoolean())
+                JsonToken.NULL -> { reader.nextNull(); JsonNull }
+                else -> throw RequestOptionsException()
+            }
+            read(0).also {
+                require(reader.peek() == JsonToken.END_DOCUMENT && it.toString().length <= MAX_CHARS)
+            }
         }
+    } catch (_: Exception) { throw RequestOptionsException() }
+
+    /** Bare template values must become JSON values before Gson sees their braces. */
+    private fun templateValues(text: String, parameters: Map<String, JsonElement>): String {
+        if (parameters.isEmpty() || "{{" !in text) return text
+        val result = StringBuilder()
         var quote: Char? = null
         var escaped = false
-        var depth = 0
-        for (char in text) {
-            // The JSON tree parser accepts bare scalar tokens and discards overwritten keys.
-            // Check every literal before parsing, including values behind duplicate keys.
-            if (quote == null) {
-                if (char in "{}[]:, \t\r\n\"'") finishLiteral() else literal.append(char)
-            }
+        var index = 0
+        while (index < text.length) {
+            val char = text[index]
             if (quote != null) {
-                require(char >= ' ')
                 when {
-                    escaped -> {
-                        if (char == '\'' && quote == '\'') json.append(char)
-                        else json.append('\\').append(char)
-                        escaped = false
-                    }
+                    escaped -> escaped = false
                     char == '\\' -> escaped = true
-                    char == quote -> { quote = null; json.append('"') }
-                    char == '"' -> json.append("\\\"")
-                    else -> json.append(char)
+                    char == quote -> quote = null
                 }
-            } else when (char) {
-                '"', '\'' -> { quote = char; json.append('"') }
-                '{', '[' -> { require(++depth <= MAX_DEPTH); json.append(char) }
-                '}', ']' -> { require(--depth >= 0); json.append(char) }
-                else -> { require(char >= ' ' || char in "\t\r\n"); json.append(char) }
+            } else if (char == '"' || char == '\'') quote = char
+            else if (text.startsWith("{{", index)) {
+                val end = text.indexOf("}}", index + 2)
+                require(end >= 0)
+                val value = parameters[text.substring(index + 2, end).trim()] ?: throw RequestOptionsException()
+                result.append(value); index = end + 2
+                require(result.length <= MAX_CHARS)
+                continue
             }
-            require(json.length <= MAX_CHARS)
+            result.append(char); index++
+            require(result.length <= MAX_CHARS)
         }
-        require(quote == null && !escaped && depth == 0)
-        finishLiteral()
-        Json.parseToJsonElement(json.toString())
-    } catch (_: IllegalArgumentException) { throw RequestOptionsException() }
+        return result.toString()
+    }
 
     /** Embedded header/body JSON uses the same bounds before either worker or host dispatch. */
-    fun options(text: String): JsonObject = try {
-        val options = parse(text).jsonObject.toMutableMap()
+    fun options(text: String, parameters: Map<String, JsonElement> = emptyMap()): JsonObject = try {
+        val options = parse(text, parameters).jsonObject.toMutableMap()
         val headerKey = if ("headers" in options) "headers" else "header"
-        options[headerKey]?.let { options[headerKey] = headers(it) }
+        options[headerKey]?.let { options[headerKey] = headers(it, parameters) }
         val body = options["body"]
         if (body is JsonPrimitive && body.isString && body.content.trimStart().firstOrNull() in setOf('{', '['))
-            options["body"] = parse(body.content)
+            options["body"] = parse(body.content, parameters)
         require(options["js"] == null || options["js"] is JsonPrimitive)
         JsonObject(options)
     } catch (_: IllegalArgumentException) { throw RequestOptionsException() }
 
-    fun headers(value: JsonElement): JsonObject = try {
-        (if (value is JsonPrimitive) parse(value.content) else value).jsonObject.also {
+    fun headers(value: JsonElement, parameters: Map<String, JsonElement> = emptyMap()): JsonObject = try {
+        (if (value is JsonPrimitive) parse(value.content, parameters) else value).jsonObject.also {
             require(it.values.all { header -> header is JsonPrimitive })
         }
     } catch (_: IllegalArgumentException) { throw RequestOptionsException() }

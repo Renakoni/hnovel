@@ -36,8 +36,8 @@ internal class RuleSourceDefinition(val stored: SourceDefinition) {
     private fun rules(name: String): JsonObject = when (val value = root[name]) {
         null, JsonNull -> JsonObject(emptyMap())
         is JsonObject -> value
+        is JsonArray -> if (value.isEmpty()) JsonObject(emptyMap()) else throw SourceContentException(ContentError.InvalidRule, name)
         is JsonPrimitive -> Json.parseToJsonElement(value.content).jsonObject
-        else -> throw SourceContentException(ContentError.InvalidRule, name)
     }
 }
 

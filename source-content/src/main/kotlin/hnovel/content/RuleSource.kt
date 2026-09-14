@@ -242,6 +242,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val previous = record.chapters.take(index).lastOrNull { !it.isVolume }?.id
         val next = record.chapters.drop(index + 1).firstOrNull { !it.isVolume }?.id
         val context = evaluation(record.book, chapter)
+        context.nextChapterUrl = next
         val rule = spec.content.string("content")
         if (rule.isBlank()) throw SourceContentException(ContentError.MissingCapability, "ruleContent.content")
         val queue = ArrayDeque<String>().apply { add(chapter.id) }
@@ -254,7 +255,10 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             visit(visited, url, "ruleContent.nextContentUrl")
             val browser = if (spec.content.string("webJs").isNotBlank() || spec.content.string("sourceRegex").isNotBlank())
                 BrowserOptions(script = spec.content.string("webJs"), sourceRegex = spec.content.string("sourceRegex")) else null
-            val document = fetch(context, url, "ruleContent.content", browser)
+            // Script-led content rules can use a placeholder chapter URL and perform their
+            // own requests. Like WebBook, pass the HTTP response body into those scripts.
+            val scriptContent = rule.trimStart().let { it.startsWith("@js:", true) || it.startsWith("<js>", true) }
+            val document = fetch(context, url, "ruleContent.content", browser, acceptErrorResponse = scriptContent)
             // Redirects cannot turn a continuation (or the first page) into the next logical chapter.
             if (document.url == next) continue
             if (!document.inline && document.url != url && !visited.add(document.url)) throw SourceContentException(ContentError.RepeatedPage, "ruleContent.nextContentUrl")
@@ -337,7 +341,17 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val priorTitle = context.book.metadata["name"]?.jsonPrimitive?.content ?: seed.title
         val priorAuthor = context.book.metadata["author"]?.jsonPrimitive?.content ?: seed.author
         suspend fun field(name: String, prior: String, metadata: String = name): String {
-            val value = context.text(rules.string(name), input, "$prefix.$name").ifBlank {
+            val extracted = try {
+                if (name == "kind") context.value(rules.string(name), input, "$prefix.$name", OutputKind.TextList)
+                    .items().joinToString(",") { it.text() }
+                else context.text(rules.string(name), input, "$prefix.$name")
+            } catch (failure: SourceContentException) {
+                // BookList/BookInfo tolerate optional metadata errors. Keep the trace, and
+                // still surface cancellation, limits, missing dependencies and login/permissions.
+                if (name !in setOf("kind", "wordCount", "lastChapter", "intro", "coverUrl") || failure.code != ContentError.InvalidRule) throw failure
+                ""
+            }
+            val value = extracted.ifBlank {
                 context.book.metadata[metadata]?.jsonPrimitive?.content ?: prior
             }
             context.bookField(metadata, value)
@@ -350,8 +364,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val finalTitle = if (preserveNames && priorTitle.isNotBlank()) priorTitle else title
         val finalAuthor = if (preserveNames && priorAuthor.isNotBlank()) priorAuthor else author
         context.bookField("name", finalTitle); context.bookField("author", finalAuthor)
-        val kind = context.text(rules.string("kind"), input, "$prefix.kind")
-        context.bookField("kind", kind)
+        val kind = field("kind", seed.tags.joinToString(","))
         val wordCount = field("wordCount", seed.wordCount)
         val latest = field("lastChapter", seed.latestChapter, "latestChapterTitle")
         val intro = field("intro", seed.description)
@@ -419,7 +432,9 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         }
         if (chapters.isEmpty()) throw SourceContentException(ContentError.EmptyContent, "ruleToc.chapterList")
         // The pinned default keeps the last occurrence, then restores the requested source order.
-        val ordered = (if (rule.startsWith('-')) chapters else chapters.reversed()).distinctBy { it.id }.reversed()
+        val reverse = (context.book.metadata["readConfig"] as? JsonObject)?.get("reverseToc")?.jsonPrimitive?.booleanOrNull == true
+        val ordered = (if (rule.startsWith('-')) chapters else chapters.reversed()).distinctBy { it.id }
+            .let { if (reverse) it else it.reversed() }
         context.book = context.book.copy(metadata = JsonObject(context.book.metadata + ("totalChapterNum" to JsonPrimitive(ordered.size))))
         val formatted = mutableListOf<RuleChapter>()
         var gInt: JsonElement = JsonPrimitive(0)
@@ -497,7 +512,8 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             throw SourceContentException(ContentError.Network, field)
         return response
     }
-    private suspend fun fetch(context: RuleEvaluation, url: String, field: String, browser: BrowserOptions? = null): PageDocument {
+    private suspend fun fetch(context: RuleEvaluation, url: String, field: String, browser: BrowserOptions? = null,
+        acceptErrorResponse: Boolean = false): PageDocument {
         var response = request(context, url, field, browser = browser)
         // A few public sites issue a short-lived cookie and a meta-refresh challenge
         // before serving the document. The source cookie jar already captures Set-Cookie;
@@ -506,7 +522,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val inline = response.protocol == "data"
         context.baseUrl = if (inline) url else response.finalUrl
         if (spec.loginCheck.isBlank()) {
-            checkStatus(response.status, field, response.kind == ResponseKind.BrowserDocument)
+            if (!acceptErrorResponse) checkStatus(response.status, field, response.kind == ResponseKind.BrowserDocument)
             return PageDocument(response.text(), response.finalUrl, inline, context.baseUrl)
         }
         // The pinned hook receives and returns StrResponse, including retry responses from java.connect.
@@ -518,7 +534,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
                 browserDocument:typeof result.isBrowserDocument==='function' && result.isBrowserDocument()});
         """.trimIndent(), RuleValue.Text(snapshot.toString()), "loginCheckJs").text()
         val value = Json.parseToJsonElement(checked).jsonObject
-        checkStatus(value.getValue("status").jsonPrimitive.int, "loginCheckJs", value["browserDocument"]?.jsonPrimitive?.boolean == true)
+        if (!acceptErrorResponse) checkStatus(value.getValue("status").jsonPrimitive.int, "loginCheckJs", value["browserDocument"]?.jsonPrimitive?.boolean == true)
         val finalUrl = sourceLink(response.finalUrl, value.getValue("url").jsonPrimitive.content)
         context.baseUrl = if (inline) url else finalUrl
         return PageDocument(value.getValue("body").jsonPrimitive.content, finalUrl, inline, context.baseUrl)

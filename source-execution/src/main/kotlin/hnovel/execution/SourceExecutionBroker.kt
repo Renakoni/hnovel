@@ -59,6 +59,12 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
         val requestNumber = reserveRequest()
         return ownedWork {
             when (name) {
+                "java.toast", "java.longToast" -> {
+                    require(args.size == 1 && args.single() is JsonPrimitive && args.single().jsonPrimitive.isString)
+                    session.showMessage(args.single().jsonPrimitive.content, name == "java.longToast",
+                        RequestCommitGuard { action -> authorized(action) })
+                    JsonNull
+                }
                 "java.getWebViewUA" -> {
                     require(args.isEmpty())
                     JsonPrimitive(session.webViewUserAgent())

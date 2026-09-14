@@ -7,7 +7,8 @@ Original paths: `app/src/main/java/io/legado/app/model/analyzeRule/`.
 
 Changes: package relocation, removal of Android shrinker annotations,
 TextUtils.join replaced with Kotlin joinToString, malformed rule Error converted
-to IllegalArgumentException, and JSONPath failures propagated except missing paths.
+to IllegalArgumentException, and JSONPath failures propagated except missing paths
+and non-list values requested through getList (which preserve the reference fallback).
 The selectors' default-chain/index, attribute deduplication, HTML and interleave
 semantics are retained. The raw checksummed test oracle remains unchanged.
 

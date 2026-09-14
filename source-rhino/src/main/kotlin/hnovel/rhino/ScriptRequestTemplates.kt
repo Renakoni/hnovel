@@ -132,8 +132,10 @@ internal class ScriptRequestTemplates(private val scope: Scriptable, private val
             }
             value = expanded.toString()
             val optionStart = Regex(",\\s*(?=\\{)").find(value) ?: return value
-            val options = RequestOptionsJson.options(value.substring(optionStart.range.last + 1))
-            val script = options["js"]?.jsonPrimitive?.content ?: return value
+            val options = RequestOptionsJson.options(value.substring(optionStart.range.last + 1), mapOf(
+                "key" to JsonPrimitive("{{key}}"), "page" to JsonPrimitive(frame.page), "baseUrl" to JsonPrimitive("{{baseUrl}}")))
+            val script = options["js"]?.jsonPrimitive?.content
+                ?: return bounded(value.substring(0, optionStart.range.first) + "," + options)
             // URL-option JS receives the resolved URL, and baseUrl follows its authority.
             val raw = value.substring(0, optionStart.range.first).trim()
                 .replace(Regex("\\{\\{\\s*key\\s*\\}\\}")) { frame.key }
