@@ -56,5 +56,44 @@ globalThis.collectBrowserRealm = async function () {
     } else result.webgpu={available:false};
     try { result.storage=n.storage?.estimate ? await n.storage.estimate() : null; }
     catch(e){result.storage={error:e.name};}
+    // Compare executable backends and repeated reads. No persona overrides or microphone access.
+    try {
+        const Audio = globalThis.OfflineAudioContext || globalThis.webkitOfflineAudioContext;
+        if (!Audio) result.audio={available:false};
+        else {
+            const renders=[];
+            for(let run=0;run<3;run++) {
+                const audio=new Audio(1,4096,44100), oscillator=audio.createOscillator();
+                oscillator.type='triangle';oscillator.frequency.value=1000;
+                oscillator.connect(audio.destination);oscillator.start();
+                const buffer=await audio.startRendering(), samples=buffer.getChannelData(0);
+                const copy=new Float32Array(samples.length);buffer.copyFromChannel(copy,0);
+                renders.push({sampleRate:buffer.sampleRate,length:samples.length,
+                    hash:hash(new Uint8Array(samples.buffer,samples.byteOffset,samples.byteLength)),
+                    copyEqual:samples.every((value,index)=>value===copy[index]),
+                    finite:samples.every(Number.isFinite),peak:Math.max(...samples.map(Math.abs))});
+            }
+            result.audio={available:true,renders,repeatEqual:renders.every(r=>r.hash===renders[0].hash)};
+        }
+    } catch(e) { result.audio={error:e.name}; }
+    try {
+        const ctx=canvas().getContext('2d'), text='Browser fixture Aa09 \u4e2d\u6587';
+        const metrics={};
+        for(const family of ['sans-serif','serif','monospace','Roboto','Noto Sans CJK SC']) {
+            ctx.font='16px "'+family+'"';
+            const reads=Array.from({length:3},()=>{const m=ctx.measureText(text);return {
+                width:m.width,left:m.actualBoundingBoxLeft,right:m.actualBoundingBoxRight,
+                ascent:m.actualBoundingBoxAscent,descent:m.actualBoundingBoxDescent};});
+            metrics[family]={value:reads[0],repeatEqual:reads.every(r=>JSON.stringify(r)===JSON.stringify(reads[0]))};
+        }
+        result.fonts={metrics,meaning:'CSS family requests may fall back; these are metrics, not installed-font identities'};
+    } catch(e) { result.fonts={error:e.name}; }
+    result.media={rtc:typeof RTCPeerConnection!=='undefined',mediaDevices:!!n.mediaDevices};
+    if(typeof document!=='undefined') {
+        const video=document.createElement('video'), audio=document.createElement('audio');
+        result.media.canPlay={h264:video.canPlayType('video/mp4; codecs="avc1.42E01E"'),
+            vp9:video.canPlayType('video/webm; codecs="vp9"'),aac:audio.canPlayType('audio/mp4; codecs="mp4a.40.2"'),
+            opus:audio.canPlayType('audio/webm; codecs="opus"')};
+    }
     return result;
 };
