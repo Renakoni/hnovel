@@ -5,6 +5,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import okhttp3.*
@@ -56,7 +57,8 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
     private val rate = Mutex()
     private var lastStart = 0L
     private var cache = ResponseCache(limits)
-    private var valuesCache = ValueCache(limits)
+    private val valuesCache = ValueCache(limits, SourceStorage(root, scope.components(false) + "cache",
+        limits.copy(maxStorageBytes = limits.maxCacheBytes.toLong()), cipher))
     private val config = SourceStorage(root, scope.components(false) + "config", limits, cipher)
     private val account = SourceStorage(root, scope.components(true) + "account", limits, cipher)
     private val cookieStorage = SourceStorage(root, scope.components(true) + "cookies", limits, cipher)
@@ -107,7 +109,6 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         require(scope.components(false) == previous.scope.components(false))
         checkOpen()
         cache = previous.cache
-        valuesCache = previous.valuesCache
     }
 
     @Synchronized fun cookie(url: String): String { checkOpen(); val parsed = url.toHttpUrlOrNull() ?: error("Invalid cookie URL")
@@ -404,22 +405,37 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
     }
 }
 
-/** Source cache, retained across account rotation and runtime replacement. */
-private class ValueCache(private val limits: BrokerLimits) {
-    private data class Entry(val value: String, val started: Long, val ttl: Long)
-    private val entries = linkedMapOf<String, Entry>()
-    private fun expire() { entries.entries.removeAll { (System.nanoTime() - it.value.started) / 1_000_000 >= it.value.ttl } }
-    @Synchronized fun read(key: String): StorageResult { expire(); return StorageResult.Value(entries[key]?.value) }
-    @Synchronized fun write(request: StorageRequest): StorageResult {
-        expire()
-        if (request.value == null) { entries.remove(request.key); return StorageResult.Value(null) }
-        val ttl = request.ttlMillis ?: limits.cacheTtlMillis
-        if (ttl <= 0) return StorageResult.Failure(FailureCode.InvalidRequest)
-        val size = entries.entries.filter { it.key != request.key }.sumOf { (it.key.length.toLong() + it.value.value.length) * 2 } +
-            (request.key.length.toLong() + request.value.length) * 2
-        if (size > limits.maxCacheBytes || request.key !in entries && entries.size >= limits.maxStorageEntries) return StorageResult.Failure(FailureCode.StorageQuota)
-        entries[request.key] = Entry(request.value, System.nanoTime(), ttl)
-        return StorageResult.Value(request.value)
+/** Source-owned script values survive process restarts; zero TTL has no deadline. */
+private class ValueCache(private val limits: BrokerLimits, private val storage: SourceStorage) {
+    @Serializable private data class Entry(val value: String, val deadline: Long)
+
+    @Synchronized fun read(key: String): StorageResult = access { entries -> StorageResult.Value(entries[key]?.value) }
+
+    @Synchronized fun write(request: StorageRequest): StorageResult = access { entries ->
+        if (request.value == null) entries.remove(request.key)
+        else {
+            val ttl = request.ttlMillis ?: limits.cacheTtlMillis
+            val size = entries.entries.filter { it.key != request.key }.sumOf { (it.key.length.toLong() + it.value.value.length) * 2 } +
+                (request.key.length.toLong() + request.value.length) * 2
+            if (size > limits.maxCacheBytes || request.key !in entries && entries.size >= limits.maxStorageEntries)
+                return@access StorageResult.Failure(FailureCode.StorageQuota)
+            entries[request.key] = Entry(request.value, if (ttl == 0L) 0 else Math.addExact(System.currentTimeMillis(), ttl))
+        }
+        when (val saved = storage.write("entries", Json.encodeToString(entries))) {
+            is StorageResult.Failure -> saved
+            is StorageResult.Value -> StorageResult.Value(request.value)
+        }
+    }
+
+    private inline fun access(block: (MutableMap<String, Entry>) -> StorageResult): StorageResult {
+        val stored = storage.read("entries")
+        if (stored !is StorageResult.Value) return stored
+        return try {
+            val entries = stored.value?.let { Json.decodeFromString<Map<String, Entry>>(it).toMutableMap() } ?: linkedMapOf()
+            val now = System.currentTimeMillis()
+            entries.entries.removeAll { it.value.deadline != 0L && it.value.deadline <= now }
+            block(entries)
+        } catch (_: Exception) { StorageResult.Failure(FailureCode.StorageUnavailable) }
     }
 }
 
