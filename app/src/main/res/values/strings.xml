@@ -712,10 +712,7 @@
     <string name="sources_profile_help">Follow the source author’s instructions. Extended mode supports scripted login forms and additional controls.</string>
     <string name="sources_apply_field">Apply field action</string>
     <string name="source_diagnostics_login_form">Check login form</string>
-    <string name="source_verification_title">Website verification required</string>
     <string name="source_verification_download_paused">Stopped: website verification required</string>
-    <string name="source_verification_resume">%1$s needs you to complete website verification. This request will continue after you return.</string>
-    <string name="source_verification_open">Verify and continue</string>
     <string name="source_verification_background_open">Open verification</string>
     <string name="source_verification_background">%1$s needs verification. Background reading stopped; retry the download after verifying.</string>
     <string name="source_verification_failed">Verification did not complete, or this source account has changed. Retry from the source.</string>

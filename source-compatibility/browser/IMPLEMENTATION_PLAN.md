@@ -21,7 +21,7 @@ flowchart TD
     Policy -->|browserRead 文档| Native[原生 WebView / Chromium 网络]
     Native --> Profile[来源 + profile + 账号代次的站点状态]
     Native -->|挑战类型和原请求| Recovery[验证协调器]
-    Recovery -->|前台确认| Window[同账号网站窗口]
+    Recovery -->|前台自动打开| Window[同账号网站窗口]
     Window -->|完成并校验身份| Retry[重试原操作一次]
     Retry --> Rules
     Recovery -->|后台| Notice[停止读取并提示 / 用户验证后重新下载]
@@ -35,15 +35,15 @@ flowchart TD
 | NativeBrowserFiles | 进程停止后的目录归属和切换 | 不复制运行中的 SQLite；进程级状态不等于独立 persona |
 | NativeSourceBrowserService | 页面原生网络、脚本、iframe/Worker、DOM 提取 | 不注入特权页面桥；不改写 fetch/Cookie；拒绝错误证书 |
 | RuleSource / RuleEvaluation | 解析、预算、把失败转换为与当前来源绑定的验证操作 | 验证等待在解析预算之外；不让脚本构造恢复权限 |
-| SourceVerificationCoordinator | 前台确认、队列、账号/版本校验、一次重试、后台提示 | 不实现浏览器网络、账号切换或来源限速 |
+| SourceVerificationCoordinator | 前台自动打开、队列、账号/版本校验、一次重试、后台提示 | 不实现浏览器网络、账号切换或来源限速 |
 | UI entry / ForegroundSourceRequest | 授予本次用户操作交互能力；离开页面时取消 | High 请求优先级、App 恰好在前台，都不自动赋予后台任务交互权 |
 
 ## 验证恢复契约
 
 1. 原生后台导航识别 Cloudflare、站内验证或登录页，返回稳定类型与宿主保留的原始请求。
 2. RuleSource 为该失败生成不公开 URL/头的恢复操作，闭包绑定当前来源的 authority、session 和请求。规则内 java.connect 的失败也保持该信息。
-3. 前台调用者等待“验证并继续”；实际窗口仍使用原始请求的账号。等待不占用一次规则解析的 30/60 秒预算。
-4. 用户完成后，窗口返回 DOM；宿主再次检查版本/账号有效性，然后重试原业务操作一次。仍被挑战则返回错误，不自动循环。
+3. 前台请求遇到可恢复挑战时直接打开同账号窗口，不增加宿主确认框。等待不占用一次规则解析的 30/60 秒预算。
+4. 验证消失且原请求的 webJs 就绪条件满足后，窗口自动返回；未声明条件时提取完整 DOM。宿主再次检查版本/账号有效性，然后重试原业务操作一次。仍被挑战则返回错误，不自动循环。手动账号登录窗口保留显式结束行为。
 5. 用户取消、离开导航入口、移除/禁用来源、换定义或换账号，原任务失效。验证 Activity 覆盖原入口时保留其任务；返回原入口后继续。
 6. 后台任务返回需要验证的错误并停止，不开 Activity、不 Result.retry 循环。App 提示验证入口；下载页显示需要验证，完成后用户重新发起下载。后台任务的原 WorkManager 实例不自动复活。
 
@@ -100,7 +100,13 @@ Chromix 本身也记录了未完成的匹配原生构建、物理设备与部分
 
 本分支最终 JVM 回归 831 项通过：app 418，七个 source 模块共 413，无失败或跳过。MuMu 原生/环境/HTTP 传输组 11 项通过、1 个未显式启用的环境探针跳过；生产验证窗口重建及原搜索恢复另 1 项通过。首次全量运行发现详情重试先返回旧状态的竞态，现已把 loading 清空放在发起任务时，修正后全 app 回归通过。新增窗口测试已纳入 API 35 CI；远端新结果以接续 PR 为准。
 
-实站通过生产注册表、真实导入源与协调器到达“验证并继续”，点击后打开该账号的 hlib CF 页面；目前等待用户完成本次验证，未把这一步写成搜索恢复通过。此前 #187 的完整实站读取仍只是基线。
+实站已在正常 MainActivity 中打开验证页，通过后返回并恢复搜索，再次搜索也成功且无需重输密码。用户指出多余的宿主确认框后，本轮删除该确认，并让恢复窗口满足原始页面就绪条件后自动结束。实站历史成功不替代改版后的设备回归。
+
+### 与参考 MD3 的恢复流程核对
+
+参考版本 fb01a76：WebBook.searchBookAwait 将响应交给 loginCheckJs；JsExtensions.startBrowserAwait 调用 SourceVerificationHelp.getVerificationResult，后者直接 startBrowser 并等待结果，不先显示阅读器确认框。WebViewRouteScreen 在观察过 CF 后发现 window._cf_chl_opt 消失时调用 finishWithVerification；WebViewModel.saveVerificationResult 根据 refetchAfterSuccess 返回 DOM 或重新请求。
+
+本宿主在原生浏览器先识别挑战，因此由协调器在解析预算之外恢复；同样直接显示网站窗口。恢复描述必须保留原始 BrowserOptions（包括动态页面 webJs 和延迟），不能只保存剥离了浏览器选项的 URL。普通页面的导航登录链接不构成账号失败。后台任务仍只提示，不自动占用前台。
 
 | 检查 | 实测 | 实施含义 |
 |---|---|---|

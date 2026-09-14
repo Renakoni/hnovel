@@ -113,7 +113,7 @@ internal class NativeSourceBrowser(private val context: Context) {
             }
             completed = true
             if (response is BrokerResult.Failure && response.challenge != null && !options.interactive)
-                response.copy(verificationRequest = request)
+                response.copy(verificationRequest = request.copy(browser = options))
             else response
         } finally {
             work.cancel()

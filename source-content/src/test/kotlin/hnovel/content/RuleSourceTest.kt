@@ -15,6 +15,7 @@ class RuleSourceTest {
             if (!options.interactive) BrokerResult.Failure(RequestStage.Response, hnovel.network.FailureCode.BrowserRequired,
                 challenge = BrowserChallengeKind.Cloudflare, verificationRequest = request)
             else {
+                assertEquals("document.documentElement.outerHTML", options.script)
                 opened += request.url
                 BrokerResult.Success(BrokerResponse(0, request.url, emptyMap(), "verified".toByteArray(), "UTF-8", 0,
                     kind = ResponseKind.BrowserDocument))
@@ -31,6 +32,28 @@ class RuleSourceTest {
                 (runCatching { second.verification!!.complete() }.exceptionOrNull() as SourceContentException).code)
             assertEquals(1, opened.size)
         }
+    }
+
+    @Test fun verificationRetainsTheOriginalDynamicReadinessScript() = runBlocking {
+        val script = "document.querySelector('#ready') ? document.documentElement.outerHTML : null"
+        val browser = BrowserExecutor { _, request, options, _ ->
+            if (!options.interactive) BrokerResult.Failure(RequestStage.Response, hnovel.network.FailureCode.BrowserRequired,
+                challenge = BrowserChallengeKind.Cloudflare, verificationRequest = request.copy(browser = options))
+            else {
+                assertEquals(script, options.script)
+                assertEquals(1200L, options.delayMillis)
+                BrokerResult.Success(BrokerResponse(0, request.url, emptyMap(), "ready".toByteArray(), "UTF-8", 0,
+                    kind = ResponseKind.BrowserDocument))
+            }
+        }
+        RuleSourceFixture(browser).use { fixture -> fixture.source(customize = { raw -> JsonObject(raw + mapOf(
+            "browserRead" to JsonPrimitive(true), "searchUrl" to JsonPrimitive("/search," + buildJsonObject {
+                put("webView", true); put("webJs", script); put("webViewDelayTime", 1200)
+            })
+        )) }).use { source ->
+            val failure = runCatching { source.search("fixture") }.exceptionOrNull() as SourceContentException
+            failure.verification!!.complete()
+        } }
     }
 
     @Test fun scriptNetworkChallengeRetainsItsHostOwnedVerificationAction() = runBlocking {

@@ -537,8 +537,12 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         if (!spec.browserRead || failure.code != hnovel.network.FailureCode.BrowserRequired) return null
         return SourceVerification(kind) {
             operation("browser.verification", timeoutMillis = 300000) {
-                val result = session.execute(request.copy(browser = BrowserOptions(interactive = true,
-                    title = definition.displayName)), RequestCommitGuard { authority.authorized(identity, it) })
+                // Recovery opens immediately and finishes when the original extraction is ready.
+                // Ordinary account/login windows keep their explicit completion behavior.
+                val options = request.browser ?: BrowserOptions()
+                val result = session.execute(request.copy(browser = options.copy(interactive = true,
+                    title = definition.displayName, script = options.script.ifBlank { "document.documentElement.outerHTML" })),
+                    RequestCommitGuard { authority.authorized(identity, it) })
                 if (result is BrokerResult.Failure)
                     throw SourceContentException(result.code.contentError(), "browser.verification", result.denial)
                 // A newer failed request must retain its own fallback target.

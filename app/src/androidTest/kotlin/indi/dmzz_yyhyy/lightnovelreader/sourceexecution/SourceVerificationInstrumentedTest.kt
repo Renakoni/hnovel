@@ -8,7 +8,6 @@ import androidx.test.platform.app.InstrumentationRegistry
 import hnovel.content.RuleSourceFixture
 import hnovel.imports.*
 import hnovel.network.*
-import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.data.web.*
 import indi.dmzz_yyhyy.lightnovelreader.data.web.rules.*
 import indi.dmzz_yyhyy.lightnovelreader.sourcebrowser.*
@@ -38,42 +37,41 @@ class SourceVerificationInstrumentedTest {
         return null
     }
 
-    private suspend fun click(text: String) {
-        android.util.Log.i("VerificationFixture", "Waiting for button: $text")
-        instrumentation.sendStatus(0, android.os.Bundle().apply { putString("verificationStep", "click: $text") })
+    private suspend fun awaitVisible(text: String) {
+        instrumentation.sendStatus(0, android.os.Bundle().apply { putString("verificationStep", "visible: $text") })
         withTimeout(20000) {
-        while (true) {
-            var node = find(instrumentation.uiAutomation.rootInActiveWindow, text)
-            while (node != null && !node.isClickable) node = node.parent
-            if (node?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true) {
-                android.util.Log.i("VerificationFixture", "Clicked button: $text")
-                return@withTimeout
+            while (find(instrumentation.uiAutomation.rootInActiveWindow, text) == null) {
+                delay(100)
             }
-            delay(100)
-        }
         }
     }
 
-    @Test fun promptSurvivesRecreationAndVerificationResumesTheOriginalSearch(): Unit = runBlocking {
+    @Test fun verificationOpensAutomaticallyAfterHostRecreationAndResumesTheOriginalSearch(): Unit = runBlocking {
         RuleSourceFixture().use { fixture ->
             val ordinary = fixture.server.dispatcher
             val challenged = java.util.concurrent.atomic.AtomicInteger()
             val accepted = CompletableDeferred<Unit>()
+            val allowVerification = java.util.concurrent.atomic.AtomicBoolean()
+            val started = CompletableDeferred<Unit>()
+            val releaseChallenge = java.util.concurrent.CountDownLatch(1)
             fixture.server.dispatcher = object : Dispatcher() {
                 override fun dispatch(request: RecordedRequest): MockResponse {
                     val path = request.path.orEmpty().substringBefore('?')
                     return when {
-                        // The owned server approves the second visit, after the user
-                        // opens verification. No external CAPTCHA is automated.
+                        // The owned fixture waits until the test observes a visible browser.
+                        // No external CAPTCHA is automated.
                         path == "/antibot" -> MockResponse().setHeader("Content-Type", "text/html").setBody(
                             "<html><title>Site verification</title>" +
-                                if (challenged.get() >= 2) "<script>location.replace('/accepted')</script></html>" else "</html>")
+                                if (challenged.get() >= 2) "<script>setInterval(function(){fetch('/fixture-status').then(r=>r.text()).then(v=>{if(v==='ok')location.replace('/accepted')})},200)</script></html>" else "</html>")
+                        path == "/fixture-status" -> MockResponse().setBody(if (allowVerification.get()) "ok" else "wait")
                         path == "/accepted" -> MockResponse().setHeader("Content-Type", "text/html")
                             .addHeader("Set-Cookie", "verified=fixture; HttpOnly; Path=/")
                             .setBody("<html><title>Verified fixture</title><p>Return to reader</p></html>")
                             .also { android.util.Log.i("VerificationFixture", "Owned website accepted verification"); accepted.complete(Unit) }
                         path == "/search" && !request.getHeader("Cookie").orEmpty().contains("verified=fixture") -> {
                             challenged.incrementAndGet()
+                            started.complete(Unit)
+                            check(releaseChallenge.await(20, java.util.concurrent.TimeUnit.SECONDS))
                             MockResponse().setResponseCode(302).setHeader("Location", "/antibot")
                         }
                         else -> ordinary.dispatch(request)
@@ -99,19 +97,21 @@ class SourceVerificationInstrumentedTest {
                     val request = async(Dispatchers.Default + ForegroundSourceRequest()) {
                         runtime.search.search(runtime.search.searchTypes.first(), "fixture").first()
                     }
-                    val prompt = withTimeout(45000) { coordinator.prompts.first { it.isNotEmpty() }.single() }
-                    assertTrue(prompt.foreground)
+                    withTimeout(45000) { started.await() }
                     assertFalse(request.isCompleted)
                     activity.recreate()
-                    assertEquals(prompt.id, coordinator.prompts.value.single().id)
-                    click(context.getString(R.string.source_verification_open))
+                    releaseChallenge.countDown()
+                    awaitVisible("android.webkit.WebView")
+                    assertTrue(coordinator.prompts.value.single().opening)
+                    allowVerification.set(true)
                     withTimeout(20000) { accepted.await() }
-                    click(context.getString(R.string.source_browser_done))
+                    assertNull(find(instrumentation.uiAutomation.rootInActiveWindow, "Verify and continue"))
                     assertTrue(withTimeout(45000) { request.await() } is SearchResult.MultipleBook)
                     assertTrue(challenged.get() >= 2)
                     assertTrue(coordinator.prompts.value.isEmpty())
                 }
             } finally {
+                releaseChallenge.countDown()
                 runCatching { sources.loginTarget(sources.installedSources().single().let { ImportedRuleSources.id(it.definition) }).session.clearAccount() }
                 sources.stop(); executor.close(); VerificationTestHostActivity.coordinator = null
                 root.deleteRecursively()

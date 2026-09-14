@@ -15,23 +15,12 @@ import indi.dmzz_yyhyy.lightnovelreader.data.web.rules.SourceVerificationCoordin
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
-/** Only a visible host and an explicit click can start verification. */
+/** Foreground verification is owned by its request. Only background notices need an action. */
 @Composable
 fun SourceVerificationHost(coordinator: SourceVerificationCoordinator) {
     LaunchedEffect(coordinator) { coordinator.observeRetirement() }
     val prompts by coordinator.prompts.collectAsStateWithLifecycle()
     val foreground = prompts.firstOrNull { it.foreground }
-    if (foreground != null && !foreground.opening) {
-        AlertDialog(onDismissRequest = { coordinator.dismiss(foreground.id) },
-            title = { Text(stringResource(R.string.source_verification_title)) },
-            text = { Text(stringResource(R.string.source_verification_resume, foreground.name)) },
-            confirmButton = { TextButton(onClick = { coordinator.approve(foreground.id) }) {
-                Text(stringResource(R.string.source_verification_open))
-            } },
-            dismissButton = { TextButton(onClick = { coordinator.dismiss(foreground.id) }) {
-                Text(stringResource(android.R.string.cancel))
-            } })
-    }
     val background = prompts.firstOrNull { !it.foreground }
     val scope = rememberCoroutineScope()
     var failed by remember { mutableStateOf(false) }
