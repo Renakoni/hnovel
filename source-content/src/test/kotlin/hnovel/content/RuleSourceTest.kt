@@ -9,6 +9,26 @@ import org.junit.Test
 
 class RuleSourceTest {
 
+    @Test fun namelessRowsAndInvalidOptionalCoversDoNotDiscardSearchResults() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            fixture.server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
+                override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest) = okhttp3.mockwebserver.MockResponse()
+                    .setBody("<li><a>Advertisement</a></li><li><a href='/book/one'><h2>Novel</h2></a><img src='javascript:void(0)'></li>")
+            }
+            fixture.source(customize = { raw -> JsonObject(raw + ("ruleSearch" to buildJsonObject {
+                put("bookList", "li"); put("name", "h2@text"); put("bookUrl", "a@href")
+                put("author", "@js:if(!book.name)throw 'nameless row';'Author'")
+                put("coverUrl", "img@src")
+            })) }).use { source ->
+                val book = source.search("novel").single()
+                assertEquals("Novel", book.title)
+                assertEquals("Author", book.author)
+                assertEquals("", book.coverUrl)
+                assertEquals(fixture.server.url("/book/one").toString(), book.id)
+            }
+        }
+    }
+
     @Test fun cookieRefreshChallengeRetriesWithTheCapturedCookie() = runBlocking {
         RuleSourceFixture().use { fixture ->
             val normal = fixture.server.dispatcher
@@ -311,7 +331,7 @@ class RuleSourceTest {
         } }
     }
 
-    @Test fun cyclesAndAuthenticationFailuresNeverBecomeEmptySuccess() = runBlocking {
+    @Test fun cyclesAndHttpFailuresNeverBecomeEmptySuccess() = runBlocking {
         RuleSourceFixture().use { fixture -> fixture.source().use { source ->
             val id = fixture.server.url("/book/one").toString()
             fixture.cycle = true
@@ -319,8 +339,28 @@ class RuleSourceTest {
             fixture.cycle = false
             assertEquals(3, source.directory(id).size)
             fixture.status = 401
-            assertEquals(ContentError.LoginRequired, failure { source.information(id) }.code)
+            assertEquals(ContentError.Network, failure { source.information(id) }.code)
         } }
+    }
+
+    @Test fun publicHttpDenialsDoNotChangeTheAccountOrRequireLogin() = runBlocking {
+        for (withLogin in listOf(false, true)) RuleSourceFixture().use { fixture ->
+            fixture.source(customize = { raw -> if (withLogin) JsonObject(raw +
+                ("loginUrl" to JsonPrimitive(fixture.server.url("/login").toString()))) else raw
+            }).use { source ->
+                val definition = source.definition
+                val session = fixture.broker.open(SourceScope("rules", definition.sourceId, definition.profile),
+                    listOf(NetworkGrant(fixture.server.url("/").toString(), true)))
+                session.write(StorageRequest(StorageArea.Account, "login/status", "session"))
+                for (status in listOf(401, 403)) {
+                    fixture.status = status
+                    assertEquals(ContentError.Network, failure { source.search("title") }.code)
+                    assertEquals("session", (session.read(StorageRequest(StorageArea.Account, "login/status")) as StorageResult.Value).value)
+                }
+                fixture.status = 200
+                assertEquals("Same title", source.search("title").single().title)
+            }
+        }
     }
 
     @Test fun responseHooksAndSharedCatalogFormattingUsePinnedContracts() = runBlocking {

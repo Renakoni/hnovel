@@ -336,7 +336,9 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             context.bookField(metadata, value)
             return value
         }
-        val title = field("name", seed.title); val author = field("author", seed.author)
+        val title = field("name", seed.title)
+        if (prefix != "ruleBookInfo" && title.isBlank()) return seed.copy(title = title, state = context.book)
+        val author = field("author", seed.author)
         val preserveNames = prefix == "ruleBookInfo" && rules.string("canReName").isBlank()
         val finalTitle = if (preserveNames && priorTitle.isNotBlank()) priorTitle else title
         val finalAuthor = if (preserveNames && priorAuthor.isNotBlank()) priorAuthor else author
@@ -346,7 +348,13 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val wordCount = field("wordCount", seed.wordCount)
         val latest = field("lastChapter", seed.latestChapter, "latestChapterTitle")
         val intro = field("intro", seed.description)
-        val cover = field("coverUrl", seed.coverUrl).let { if (it.isBlank()) "" else sourceLink(context.baseUrl, it) }
+        val cover = try {
+            field("coverUrl", seed.coverUrl).let { if (it.isBlank()) "" else sourceLink(context.baseUrl, it) }
+        } catch (failure: SourceContentException) {
+            // Legado treats cover extraction as optional; a bad cover must not discard a novel.
+            if (failure.code != ContentError.InvalidRule) throw failure
+            ""
+        }
         context.bookField("coverUrl", cover)
         val time = field("updateTime", seed.updateTime)
         return seed.copy(title = finalTitle, author = finalAuthor, description = intro, coverUrl = cover,
@@ -502,7 +510,9 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             .containsMatchIn(response.text())
     }
     private fun checkStatus(status: Int, field: String) {
-        if (status == 401 || status == 403) {
+        // A public page can return 401/403 for a WAF or other access policy. Only an
+        // explicit login request establishes an authentication failure for this account.
+        if (status == 401 && (field == "loginUrl" || field.startsWith("loginUi."))) {
             authority.authorized(identity) { session.write(StorageRequest(StorageArea.Account, "login/status", "required")) }
             throw SourceContentException(ContentError.LoginRequired, field)
         }

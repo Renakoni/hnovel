@@ -54,7 +54,8 @@ class RuleLoginFormTest {
                     FailureCode.AddressDenied to ContentError.AddressDenied,
                     FailureCode.Dns to ContentError.Dns,
                     FailureCode.Network to ContentError.Network,
-                    FailureCode.Timeout to ContentError.Limit,
+                    FailureCode.Timeout to ContentError.Network,
+                    FailureCode.ResponseTooLarge to ContentError.Limit,
                     FailureCode.BrowserRequired to ContentError.BrowserRequired,
                 )) {
                     code = failureCode

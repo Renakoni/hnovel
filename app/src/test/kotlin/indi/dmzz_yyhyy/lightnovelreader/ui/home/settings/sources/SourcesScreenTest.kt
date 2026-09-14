@@ -214,7 +214,7 @@ class SourcesScreenTest {
         compose.onNodeWithText("Search this source").assertDoesNotExist()
     }
 
-    @Test fun lazySourcesHideSearchAndLoginUntilInitializationIsReady() {
+    @Test fun registeredSourcesOfferActionsButInitializingAndFailedSourcesDoNot() {
         val definition = SourceDefinition("initializing", "legado", "fixture", "https://fixture.invalid/", "Loading source", true,
             false, ImportOrigin(ImportOrigin.Kind.Paste), "digest", 1, "{}")
         val id = ImportedRuleSources.id(definition)
@@ -226,6 +226,9 @@ class SourcesScreenTest {
         compose.onNodeWithText("Not initialized").assertDoesNotExist()
         compose.runOnIdle { state = state.copy(selected = id) }
         compose.onNodeWithText("Initialize source").assertDoesNotExist()
+        compose.onNodeWithText("Search this source").assertIsEnabled()
+        compose.onNodeWithText("Sign in").assertIsEnabled()
+        compose.runOnIdle { state = state.copy(registry = listOf(entry.copy(status = SourceStatus.Initializing))) }
         compose.onNodeWithText("Search this source").assertDoesNotExist()
         compose.onNodeWithText("Sign in").assertDoesNotExist()
         compose.runOnIdle { state = state.copy(registry = listOf(entry.copy(status = SourceStatus.Failed))) }
@@ -243,8 +246,6 @@ class SourcesScreenTest {
         var searched: Identifier? = null
         activity.get().setContent { MaterialTheme { SourcesScreen(state, model, onDiagnostics = {}, onSearch = { searched = it }) {} } }
         compose.onNodeWithText("Initialize source").assertDoesNotExist()
-        compose.onNodeWithContentDescription("Search this source").assertDoesNotExist()
-        compose.runOnIdle { state = state.copy(registry = listOf(entry.copy(status = SourceStatus.Ready))) }
         compose.onNodeWithContentDescription("Search this source").performClick()
         org.junit.Assert.assertEquals(id, searched)
         compose.runOnIdle { state = state.copy(registry = listOf(entry.copy(status = SourceStatus.Failed))) }
