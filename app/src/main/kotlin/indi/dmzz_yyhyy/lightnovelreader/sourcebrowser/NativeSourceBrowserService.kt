@@ -176,7 +176,10 @@ class NativeSourceBrowserService : Service() {
         private fun completeText(text: String, url: String) {
             if (sourceOrigin(url) == null) { fail(FailureCode.InvalidRequest); return }
             val bytes = text.toByteArray()
-            if (bytes.size > (job.request.maxResponseBytes ?: 512 * 1024)) { fail(FailureCode.ResponseTooLarge); return }
+            // ByteArray expands to signed decimal values in BrowserWire's bounded JSON.
+            if (bytes.size > minOf(job.request.maxResponseBytes ?: 512 * 1024, 1024 * 1024)) {
+                fail(FailureCode.ResponseTooLarge); return
+            }
             finish(BrokerResult.Success(BrokerResponse(0, url, emptyMap(), bytes, "UTF-8", 0,
                 protocol = "", kind = ResponseKind.BrowserDocument)))
         }

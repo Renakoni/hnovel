@@ -201,6 +201,18 @@ class NativeBrowserInstrumentedTest {
         assertEquals(1, server.requestCount)
     } }
 
+    @Test fun unsupportedRequestShapesFailBeforeSendingAnyNetworkRequest(): Unit = runBlocking { fixture { broker, server ->
+        val account = session(broker, server)
+        val request = BrokerRequest("unsupported", server.url("/").toString())
+        for (input in listOf(request.copy(method = "POST", body = "field=value"),
+            request.copy(followRedirects = false), request.copy(responseAsHex = true),
+            request.copy(cache = CacheMode.Only), request.copy(headers = mapOf("Cookie" to "injected=fixture")),
+            request.copy(browser = BrowserOptions(html = "<html>synthetic</html>")))) {
+            assertEquals(BrokerResult.Failure(RequestStage.Parse, FailureCode.InvalidRequest), account.execute(input))
+        }
+        assertEquals(0, server.requestCount)
+    } }
+
     /** Explicit local URL allows the same fixture to be run in Chrome and reference MD3. */
     @Test fun recordLocalEnvironment(): Unit = runBlocking {
         val args = InstrumentationRegistry.getArguments()

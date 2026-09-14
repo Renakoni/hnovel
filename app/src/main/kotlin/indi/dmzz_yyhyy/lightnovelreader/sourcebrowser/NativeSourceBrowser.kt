@@ -73,7 +73,8 @@ internal class NativeSourceBrowser(private val context: Context) {
         val files = NativeBrowserFiles(context)
         if (!files.supported)
             return@withLock BrokerResult.Failure(RequestStage.Parse, FailureCode.BrowserRequired)
-        if (options.html != null || request.method != "GET" || !request.followRedirects ||
+        if (options.html != null || request.method != "GET" || !request.followRedirects || request.responseAsHex ||
+            request.cache == CacheMode.Only ||
             request.headers.keys.any { it.equals("Cookie", true) })
             return@withLock BrokerResult.Failure(RequestStage.Parse, FailureCode.InvalidRequest)
         fun current() { check(!session.closed); guard.commit {} }

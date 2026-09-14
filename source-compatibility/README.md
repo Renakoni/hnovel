@@ -1,5 +1,8 @@
 # Source compatibility reference tests
 
+For native WebView reading, persistent source accounts, verification recovery and
+browser environment comparisons, see [the browser implementation and validation notes](browser/README.md) (#184).
+
 This is a **test-only JVM module**, delivering [VNR-10 / #82](https://github.com/Renakoni/hnovel/issues/82). It has no production sources and the Android app does not depend on it. Its tests now depend on the production `source-rules` module to verify #84. It neither imports user sources into the app nor loads APK plugins.
 
 ```powershell

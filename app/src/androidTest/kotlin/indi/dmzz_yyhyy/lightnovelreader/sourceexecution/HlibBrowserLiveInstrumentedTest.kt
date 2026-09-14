@@ -5,7 +5,7 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import hnovel.imports.*
-import hnovel.network.*
+import hnovel.network.NetworkGrant
 import indi.dmzz_yyhyy.lightnovelreader.LightNovelReaderApplication
 import indi.dmzz_yyhyy.lightnovelreader.sourcebrowser.BrowserTestHostActivity
 import kotlinx.coroutines.runBlocking
@@ -54,13 +54,6 @@ class HlibBrowserLiveInstrumentedTest {
             return@runBlocking
         }
         if (args.getString("hlibAction") == "install") return@runBlocking
-        if (args.getString("hlibAction") == "forum") {
-            val result = target.session.execute(BrokerRequest("forum", "https://hlib.cc/forum/t/qOwnYI_f",
-                timeoutMillis = 60000, browser = BrowserOptions(script = "document.body.innerText")))
-            assertTrue(result.toString(), result is BrokerResult.Success)
-            report("forum " + (result as BrokerResult.Success).response.text().take(22000))
-            return@runBlocking
-        }
         val found = target.rules.search("女性干员X男性博士", 1)
         assertTrue(found.isNotEmpty())
         report("search count=${found.size}")

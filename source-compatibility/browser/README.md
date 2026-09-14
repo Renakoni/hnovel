@@ -1,18 +1,20 @@
 # 原生书源浏览器：设计、验证与后续工作
 
-更新：2026-09-14。主要目标：[Issue #184](https://github.com/Renakoni/hnovel/issues/184)。普通 HTTP 与原生 WebView 按来源分工；本目录记录实际支持范围，不把一次通过验证当作长期免验证保证。
+更新：2026-09-14。主要目标：[Issue #184](https://github.com/Renakoni/hnovel/issues/184)。复用已合并的解释器 [PR #183](https://github.com/Renakoni/hnovel/pull/183) 的真实 WebView UA 与数据预算接口，基于 main 提交。普通 HTTP 与原生 WebView 按来源分工；本目录记录实际支持范围，不把一次通过验证当作长期免验证保证。
 
 ## 当前状态
 
 - 已实现原生联网、iframe、fetch、Worker、POST 表单和持续来源账号 profile，不向网页暴露 `SourceBrowser` 特权桥。
 - 新 MuMu Android 12 / WebView 110 完成外层 Cloudflare 验证、hlib 登录、站内 `/antibot` 验证并返回原搜索页面。真实用户菜单与搜索结果已确认。
 - 当前会话观察到持久 `cf_clearance`、`connect.sid`、`__nuvt`、`__suvt`；只记录名称和属性，不导出值，不借用桌面 Chrome 或 MD3 的 Cookie。
-- 搜索 → 详情 → 目录 → 正文的生产解析验收仍在推进；当前停在 `loginCheckJs` 的解释器数据预算。关联但独立的 #183 正在修改预算语义。
-- 原生设备套件 7 项通过，另 1 项环境采样未提供参数而跳过。仓库全部 JVM CI 任务通过。桌面/MD3/两条 App 浏览器路径的中性环境采样已完成。
+- 搜索 → 详情 → 目录 → 正文已通过真实生产执行：搜索 30 项、目录 63 章、首章 608 段／34,346 字符，耗时 45.273 秒。安装更新和进程重启后复用本 App 的持久登录，未重输密码。此前 `loginCheckJs` 数据预算限制由前置 #183 解决，未在本 PR 重复实现预算框架。
+- 最后设备回归后重启再读，搜索入口再次收到外层 Cloudflare，返回 `BrowserRequired: searchUrl`；此时仍有上述持久 Cookie。正常点击验证后返回 `/search`，存在退出登录链接、无登录链接、结果 30 项；随后完整生产读取再次通过，仍为 63 章、608 段／34,346 字符，耗时 101.507 秒，未重输密码。**验证确实复发，恢复也已验证；不能描述成重启后稳定免验证。** Cookie 存在只证明存储仍在，不能证明挑战前服务端已接受该 clearance；未确认复发的唯一原因。
+- 参考 MD3 本次回归也通过搜索 30 项、目录 63 章／3 页、首章 4 页，耗时 18.226 秒。此处比较结构与流程，未声称正文逐字相同或这是公平的性能基准。
+- 最终设备回归 18 项通过（原生 8、旧浏览器 9、账号存储 1），另 1 项环境采样未提供参数而跳过；已知超时的旧图片验证码 UI 用例未重跑，未计入通过数。叠加 #183 后仓库 JVM CI 共 820 项通过，无失败或跳过；最后的账号/管理界面相关单测也通过。桌面/MD3/两条 App 浏览器路径的中性环境采样已完成。
 
 ## 声明与责任边界
 
-来源 JSON 使用布尔扩展 `"browserRead": true`。默认值为 false。它使 Document 请求（包括规则内 `java.connect`）使用同一原生浏览器账号；图片、二进制和导入请求仍有明确的 HTTP 路径。原生路径只接受 GET 导航；页面自己发出的 POST/fetch 由 Chromium 执行。传入 HTML、显式 Cookie 请求头、`followRedirects=false` 或顶层非 GET 请求会被拒绝，不静默改变含义。
+来源 JSON 使用布尔扩展 `"browserRead": true`。默认值为 false。它使 Document 请求（包括规则内 `java.connect`）使用同一原生浏览器账号；图片、二进制和导入请求仍有明确的 HTTP 路径。原生路径只接受 GET 导航；页面自己发出的 POST/fetch 由 Chromium 执行。传入 HTML、显式 Cookie 请求头、`followRedirects=false`、只读缓存、十六进制响应或顶层非 GET 请求会被拒绝，不静默改变含义。DOM 默认上限 512 KiB；显式较大预算也不超过 1 MiB，以保证序列化后仍在 Binder 管道上限内。
 
 `NativeSourceBrowser` 负责宿主准入、请求串行、进程所有权、取消及结果提交；`NativeBrowserFiles` 负责停止进程后的 profile 文件切换；`NativeSourceBrowserService` 只运行网站和提取结果；`NativeSourceBrowserActivity` 提供前台窗口。使用一个专用进程，所以当前不同原生来源不能并行浏览。
 
@@ -43,7 +45,11 @@ DOM 结果使用 `ResponseKind.BrowserDocument`，保存同一次快照中的实
 3. false 参数令完成按钮直接提取当前 DOM；true 则可再次请求原 URL。等待中的规则拿到结果继续解析。
 4. 它不是所有 HTTP 403 都自动弹窗。来源是否识别挑战、调用了哪种接口，决定了实际行为。
 
-参考实现按 source key 关联等待者、展平 Cookie、部分 DOM 回传不含实际最终 URL，这些弱点没有照搬。本实现有请求/账号边界和实际最终 URL；后台遇到挑战会保存原始目标、返回 BrowserRequired，前台登录窗口优先打开该目标。完成后当前 UI 仍需重试读取。**自动恢复任意前台读取、后台暂停与统一提示仍是后续 UI 工作**，不能将当前原型描述成已经完全复现参考体验。
+本轮源码核对：`WebBook.kt:73` 在请求结果返回后执行 `loginCheckJs`；`JsExtensions.kt:358` 调用 `getVerificationResult`；`SourceVerificationHelp.kt:33` 打开窗口、等待结果，`checkResult` 唤醒等待线程；`WebViewModel.kt:97` 处理确认按钮的 DOM/重新请求分支。确认按钮不等于网站已经认证，hlib 辅助函数还会重新检查登录/挑战标记。参考 App 本轮第一次调试也曾等待验证失败，经正常登录窗口确认后重试才完成全流程，不能据此声称它从不重复验证。
+
+我们的非交互原生请求在 service 识别挑战后直接返回 `BrowserRequired`，`RuleSource.executeRequest` 会在执行 `loginCheckJs` **之前**结束。因此即便源 JSON 含相同的 `startBrowserAwait`，该次挑战也不会走到它。#185 需要承接宿主的待验证状态，区分前台操作与后台任务，再恢复具体请求；不能仅复制参考源 JS 就认为自动弹窗已接通。
+
+参考实现按 source key 关联等待者、展平 Cookie、部分 DOM 回传不含实际最终 URL，这些弱点没有照搬。本实现有请求/账号边界和实际最终 URL；后台遇到挑战会保存原始目标、返回 BrowserRequired，前台登录窗口优先打开该目标。读取/管理界面将该错误归为需要登录或验证，避免误报规则故障。完成后当前 UI 仍需重试读取。**自动恢复任意前台读取、后台暂停与统一提示由 [#185](https://github.com/Renakoni/hnovel/issues/185) 继续实现**，不能将当前原型描述成已经完全复现参考体验。
 
 ## 官方论坛对结论的修正
 
@@ -54,7 +60,7 @@ DOM 结果使用 `ResponseKind.BrowserDocument`，保存同一次快照中的实
 - 2024-02 回复提到短时间高频请求、未跟随验证重定向以及延迟/丢包后反复刷新；2024-03 更新表示暂停封禁机制。不能引用早期段落宣称当前仍会按同一机制封禁。
 - 这支持优先保持同一原生会话、正常页面脚本/网络、遵从跳转和合理请求节奏。当前没有证据证明本次循环主要由硬件指纹造成。
 
-现有导入器只保留 `concurrentRate`，并未安装 Legado 的对应调度器；JSON 的 `1/2000` 不能被描述成我们 App 已执行每两秒一次。原生导航现在串行，网页自己的子资源并行遵从浏览器；来源调度与延迟后成批请求仍需独立补齐。
+现有导入器只保留 `concurrentRate`，并未安装 Legado 的对应调度器；JSON 的 `1/2000` 不能被描述成我们 App 已执行每两秒一次。原生导航现在串行，网页自己的子资源并行遵从浏览器；来源调度与延迟后成批请求由 [#186](https://github.com/Renakoni/hnovel/issues/186) 独立补齐。
 
 ## 环境对照与 Chromix 取舍
 
@@ -73,15 +79,17 @@ MD3 没有显式源 UA 时在该探针中使用 Windows Chrome 128 UA，同时 p
 
 Chromix `1222eec`（Chromium pin 152.0.7977.82）可借鉴稳定进程身份、跨 realm 一致性和网络/渲染探针。其 Blink/V8/GPU/UA-CH 补丁不能通过几个 WebView Java API 等价移植。Android WebView provider 的签名、系统许可、更新与分发也使自编译内核成为独立项目。本轮不随机改 webdriver、UA、Canvas 或硬件值；先消除宿主添加的异常，之后以真实设备、新 provider 和相同网络条件对照。没有完成 TLS ClientHello/HTTP2 指纹采样，不能宣称传输指纹已一致。
 
+还需单独观察页面生命周期：我们的 service 与参考 `BackstageWebView` 都为后台任务创建未挂到可见界面的 WebView，并在提取后销毁该页面；保留 profile/进程不等于保留同一页面。后续对照应增加前后台 viewport、visibility、页面回报是否完成和导航间隔。当前没有这些因素与 CF 复发的受控因果证据，不以任意延时或伪造尺寸作为已证实的修复。
+
 ## 验证和下一步
 
 - [x] JVM CI 全部任务；原生设备测试：网络/iframe/srcdoc、POST、HTTP 回归、Cookie/账号/缓存隔离、取消、挑战目标恢复。
 - [x] Chrome、参考 MD3、原生和旧浏览器中性环境对照。
 - [x] 我们 App 实际外层 CF、登录和 `/antibot` → 原搜索页面；Cookie 无跨 App 复制。
-- [ ] hlib 生产解释器完整搜索、63 章目录、首章多页内容与重启后读取验收。
+- [x] hlib 生产解释器完整搜索、63 章目录、首章多页内容；记录重启后的验证复发并完成同账号验证、重试读取。
 - [ ] 验证 UI：前台恢复、后台提示、取消、多个来源排队、来源移除/换版本。
 - [ ] 来源请求调度：落实 concurrentRate，抑制重复刷新/重试造成的突发导航。
-- [ ] 新 provider/API 24 与 35 平台验收；真实 Android 设备对照；资源和长期验证频率量化。
+- [ ] 新 provider/API 24 与 35 平台验收；真实 Android 设备对照；资源和长期验证频率量化。API 35 CI 已接入原生测试与 provider 探测；本地 MuMu 结果不能冒充这两个 API 的通过报告。
 
 本目录 [hlib-native.json](hlib-native.json) 为显式启用原生路径的候选源，含原来的榜单/文章入口与分类规则。首页/标签 UI 映射不在 #184 中，不能从字段存在推断 UI 已完成。真实源测试必须显式传 `liveHlib=true`；普通 CI 不访问该网站。
 
