@@ -8,7 +8,6 @@ import androidx.test.platform.app.InstrumentationRegistry
 import hnovel.content.RuleSourceFixture
 import hnovel.imports.*
 import hnovel.network.*
-import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.data.web.*
 import indi.dmzz_yyhyy.lightnovelreader.data.web.rules.*
 import indi.dmzz_yyhyy.lightnovelreader.sourcebrowser.*
@@ -39,11 +38,30 @@ class SourceVerificationInstrumentedTest {
     }
 
     private suspend fun awaitVisible(text: String) {
+        val automation = instrumentation.uiAutomation
+        automation.serviceInfo = automation.serviceInfo.apply {
+            flags = flags or android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+        }
         instrumentation.sendStatus(0, android.os.Bundle().apply { putString("verificationStep", "visible: $text") })
-        withTimeout(20000) {
-            while (find(instrumentation.uiAutomation.rootInActiveWindow, text) == null) {
-                delay(100)
+        try {
+            withTimeout(20000) {
+                // Emulator overlays can own rootInActiveWindow while the browser remains visible.
+                while (automation.windows.none { window ->
+                    window.root?.let { root -> root.packageName == context.packageName && find(root, text) != null } == true
+                }) delay(100)
             }
+        } catch (failure: TimeoutCancellationException) {
+            val nodes = mutableMapOf<String, Int>()
+            fun record(node: AccessibilityNodeInfo?) {
+                node ?: return
+                val key = "${node.packageName}/${node.className}/visible=${node.isVisibleToUser}"
+                nodes[key] = (nodes[key] ?: 0) + 1
+                for (index in 0 until node.childCount) record(node.getChild(index))
+            }
+            automation.windows.forEach { record(it.root) }
+            record(automation.rootInActiveWindow)
+            instrumentation.sendStatus(0, android.os.Bundle().apply { putString("verificationNodes", nodes.toString()) })
+            throw failure
         }
         instrumentation.sendStatus(0, android.os.Bundle().apply { putString("verificationStep", "found: $text") })
     }
@@ -103,7 +121,9 @@ class SourceVerificationInstrumentedTest {
                     assertFalse(request.isCompleted)
                     activity.recreate()
                     releaseChallenge.countDown()
-                    awaitVisible(context.getString(R.string.source_browser_done))
+                    // The native process may use a different locale from the host's wrapped
+                    // resources. Its platform toolbar buttons are stable accessibility nodes.
+                    awaitVisible("android.widget.Button")
                     assertTrue(coordinator.prompts.value.single().opening)
                     allowVerification.set(true)
                     withTimeout(20000) { accepted.await() }
