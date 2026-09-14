@@ -316,7 +316,10 @@ class IsolatedExecutionInstrumentedTest {
                             baseUrl=base,page=2),limits,broker)
                         assertTrue(result.toString(),result is ExecutionResult.Success)
                         val rule=Json.decodeFromString(ExecutedRule.serializer(),(result as ExecutionResult.Success).output)
-                        assertEquals(RuleValue.Items(listOf("One","chapter","true","rsa","network","40+2","4").map(RuleValue::Text)),rule.value)
+                        // JS arrays retain boolean/number types through the rule wire.
+                        assertEquals(RuleValue.Items(listOf(RuleValue.Text("One"), RuleValue.Text("chapter"),
+                            RuleValue.Node("true", hnovel.rules.InputKind.Json), RuleValue.Text("rsa"), RuleValue.Text("network"),
+                            RuleValue.Text("40+2"), RuleValue.Node("4", hnovel.rules.InputKind.Json))), rule.value)
                         assertEquals(mapOf("value" to "chapter"),rule.writes)
                     }
                     assertEquals("/find/3?ok=1",server.takeRequest(3,TimeUnit.SECONDS)?.path)
@@ -350,7 +353,8 @@ class IsolatedExecutionInstrumentedTest {
                     SourceExecutionBroker(id, authority, session, limits, base).use { broker ->
                         val result = executor.execute(id, ExecutionTask.Rule("@js:$code", RuleValue.Text(""),
                             sourceVariables = mapOf("variable" to "local"), baseUrl = base), limits, broker) as ExecutionResult.Success
-                        assertEquals(RuleValue.Items(listOf("local", "connected", "value", "302", "https://denied.invalid/").map(RuleValue::Text)),
+                        assertEquals(RuleValue.Items(listOf(RuleValue.Text("local"), RuleValue.Text("connected"), RuleValue.Text("value"),
+                            RuleValue.Node("302", hnovel.rules.InputKind.Json), RuleValue.Text("https://denied.invalid/"))),
                             Json.decodeFromString(ExecutedRule.serializer(), result.output).value)
                     }
                     assertEquals(2, server.requestCount)
