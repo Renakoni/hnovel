@@ -73,6 +73,22 @@ class ExploreHomeScreenTest {
         assertEquals(b, categories)
     }
 
+    @Test fun partialFeedRemainsVisibleAndNavigableWhileLaterPreviewsLoad() {
+        val id = Identifier("fixture", "Progressive source")
+        val page = content(id).copy(loaded = false, loading = true)
+        var more: SourceDiscoverySection? = null
+        activity.get().setContent { MaterialTheme {
+            ExploreHomeScreen(DiscoveryPageState(listOf(listing(id)), id, mapOf(id to page)),
+                {}, { _, _ -> }, {}, { more = it }, {}, {}, {}, {}, { _, _ -> }, { _, _ -> }, {})
+        } }
+        // The indeterminate refresh indicator intentionally remains active.
+        compose.mainClock.autoAdvance = false
+        compose.mainClock.advanceTimeByFrame()
+        compose.onNode(hasClickAction() and hasText("Same book")).assertExists()
+        compose.onNodeWithContentDescription("Show more").performClick()
+        assertEquals(page.sections.single(), more)
+    }
+
     @Test fun oneRealSourceAndItsUnsupportedSearchDoNotCreatePlaceholders() {
         val id = Identifier("fixture", "Only source")
         activity.get().setContent { MaterialTheme {
@@ -110,6 +126,22 @@ class ExploreHomeScreenTest {
         compose.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.Selected)).assertCountEquals(0)
         compose.onNodeWithText("Book sources").performClick()
         assertEquals(1, opened)
+    }
+
+    @Test fun previewFailureStaysWithItsEntryAndRetryOpensThatSourceList() {
+        val id = Identifier("fixture", "Partial source")
+        val broken = SourceDiscoverySection("broken", "Broken preview", emptyList(), SourceDiscoveryTarget(id, "/broken"),
+            previewFailure = DiscoveryPreviewFailure(DiscoveryError.InvalidRules, "ruleExplore.bookList"))
+        val opened = mutableListOf<SourceDiscoverySection>()
+        val page = content(id).copy(sections = listOf(broken) + content(id).sections)
+        activity.get().setContent { MaterialTheme {
+            ExploreHomeScreen(DiscoveryPageState(listOf(listing(id)), id, mapOf(id to page)),
+                {}, { _, _ -> }, {}, { opened += it }, {}, {}, {}, {}, { _, _ -> }, { _, _ -> }, {})
+        } }
+        compose.onNodeWithText("Broken preview").assertExists()
+        compose.onNodeWithText("Retry").performClick()
+        assertEquals(listOf(broken), opened)
+        compose.onNode(hasClickAction() and hasText("Same book")).performScrollTo().assertExists()
     }
 
     @Test fun ruleInputsAndActionsShareTheFeedAndFailuresKeepVisibleContent() {

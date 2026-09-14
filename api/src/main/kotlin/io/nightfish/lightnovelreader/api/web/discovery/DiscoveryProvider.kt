@@ -3,11 +3,15 @@ package io.nightfish.lightnovelreader.api.web.discovery
 import com.github.michaelbull.result.Err
 import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.map
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 
 /** Source-local data only. The host binds book IDs and targets to the owning runtime. */
 data class DiscoveryBook(val remoteId: String, val title: String, val author: String = "", val coverUrl: String = "")
 data class DiscoverySection(val id: String, val title: String, val books: List<DiscoveryBook>,
-    val more: String? = null, val categoryId: String? = null)
+    val more: String? = null, val categoryId: String? = null, val previewFailure: DiscoveryPreviewFailure? = null)
+/** A preview can fail while its catalogue entry and other sections remain usable. */
+data class DiscoveryPreviewFailure(val error: DiscoveryError, val field: String? = null, val permission: DiscoveryPermission? = null)
 data class DiscoveryCategory(val id: String, val title: String, val target: String)
 
 /** Null cursor starts a list; null nextCursor ends it, even if the last page is empty. */
@@ -54,6 +58,9 @@ interface DiscoveryProvider {
     /** A feed page also displays this provider's catalogue inputs and actions. */
     val hasInteractions: Boolean get() = false
     suspend fun feed(): Result<List<DiscoverySection>, DiscoveryError> = Err(DiscoveryError.Unsupported)
+    /** Ordered replacement snapshots; completion ends loading, an error is terminal.
+     * Existing providers retain their one-shot feed. Collectors own cancellation. */
+    fun feedUpdates(): Flow<Result<List<DiscoverySection>, DiscoveryError>> = flow { emit(feed()) }
     suspend fun categories(): Result<List<DiscoveryCategory>, DiscoveryError> = Err(DiscoveryError.Unsupported)
     fun filters(target: String): List<DiscoveryFilter> = emptyList()
     suspend fun page(request: DiscoveryRequest): Result<DiscoveryPage, DiscoveryError> = Err(DiscoveryError.Unsupported)

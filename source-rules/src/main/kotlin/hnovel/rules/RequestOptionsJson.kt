@@ -10,10 +10,10 @@ import java.io.StringReader
 object RequestOptionsJson {
     private const val MAX_CHARS = 65536
     private const val MAX_DEPTH = 64
-    fun parse(text: String, parameters: Map<String, JsonElement> = emptyMap()): JsonElement = try {
-        require(text.length <= MAX_CHARS)
-        val prepared = templateValues(text, parameters)
-        require(prepared.length <= MAX_CHARS)
+    fun parse(text: String, parameters: Map<String, JsonElement> = emptyMap(), maxChars: Int = MAX_CHARS): JsonElement = try {
+        require(maxChars > 0 && text.length <= maxChars)
+        val prepared = templateValues(text, parameters, maxChars)
+        require(prepared.length <= maxChars)
         JsonReader(StringReader(prepared)).use { reader ->
             reader.strictness = Strictness.LENIENT
             fun read(depth: Int): JsonElement = when (reader.peek()) {
@@ -38,13 +38,13 @@ object RequestOptionsJson {
                 else -> throw RequestOptionsException()
             }
             read(0).also {
-                require(reader.peek() == JsonToken.END_DOCUMENT && it.toString().length <= MAX_CHARS)
+                require(reader.peek() == JsonToken.END_DOCUMENT && it.toString().length <= maxChars)
             }
         }
     } catch (_: Exception) { throw RequestOptionsException() }
 
     /** Bare template values must become JSON values before Gson sees their braces. */
-    private fun templateValues(text: String, parameters: Map<String, JsonElement>): String {
+    private fun templateValues(text: String, parameters: Map<String, JsonElement>, maxChars: Int): String {
         if (parameters.isEmpty() || "{{" !in text) return text
         val result = StringBuilder()
         var quote: Char? = null
@@ -64,11 +64,11 @@ object RequestOptionsJson {
                 require(end >= 0)
                 val value = parameters[text.substring(index + 2, end).trim()] ?: throw RequestOptionsException()
                 result.append(value); index = end + 2
-                require(result.length <= MAX_CHARS)
+                require(result.length <= maxChars)
                 continue
             }
             result.append(char); index++
-            require(result.length <= MAX_CHARS)
+            require(result.length <= maxChars)
         }
         return result.toString()
     }

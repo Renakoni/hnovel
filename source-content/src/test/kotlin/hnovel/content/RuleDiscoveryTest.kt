@@ -8,6 +8,27 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RuleDiscoveryTest {
+    @Test fun bookListsHaveRoomForApiMetadataBeforePerBookFieldExtraction() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            val response = buildJsonObject { putJsonObject("data") { putJsonArray("data") {
+                repeat(25) { i -> add(buildJsonObject {
+                    put("id", "/book/$i"); put("name", "Book $i"); put("metadata", "x".repeat(12000))
+                }) }
+            } } }.toString()
+            fixture.server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
+                override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest) =
+                    okhttp3.mockwebserver.MockResponse().setHeader("Content-Type", "application/json").setBody(response)
+            }
+            fixture.source { raw -> JsonObject(raw + mapOf(
+                "exploreUrl" to JsonPrimitive("Latest::/list"),
+                "ruleExplore" to buildJsonObject { put("bookList", "$.data.data.*"); put("name", "name"); put("bookUrl", "id") }
+            )) }.use { source ->
+                val rows = source.openDiscovery("metadata").page("/list", 1, emptyMap())
+                assertEquals(25, rows.size)
+                assertEquals("Book 24", rows.last().title)
+            }
+        }
+    }
     private fun definition(raw: JsonObject, url: String, extra: JsonObject = JsonObject(emptyMap())) =
         JsonObject(raw + mapOf("exploreUrl" to JsonPrimitive(url), "ruleExplore" to raw.getValue("ruleSearch")) + extra)
 

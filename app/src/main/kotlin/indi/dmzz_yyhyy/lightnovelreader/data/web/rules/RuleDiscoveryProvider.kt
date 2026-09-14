@@ -5,6 +5,8 @@ import hnovel.content.*
 import indi.dmzz_yyhyy.lightnovelreader.data.web.DISCOVERY_SEARCH_PREFIX
 import io.nightfish.lightnovelreader.api.web.discovery.*
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.last
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 
@@ -31,19 +33,29 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
         map(session.catalog(refresh, homepage = true).also { current = it })
     }
     override suspend fun categories() = catalog().map { it.categories }
-    override suspend fun feed() = request {
-        val definition = session.catalog(homepage = true)
+    override suspend fun feed() = feedUpdates().last()
+    override fun feedUpdates() = flow<Result<List<DiscoverySection>, DiscoveryError>> {
+        val definition = request { session.catalog(homepage = true) }
+            .getOrElse { emit(Err(it)); return@flow }
         current = definition
         val catalog = map(definition)
         val entries = definition.homepage?.map { DiscoveryCategory(it.id, it.title, it.url) } ?: catalog.categories
         val first = entries.firstOrNull { it.target.isNotBlank() }
-        entries.map { category ->
+        val sections = mutableListOf<DiscoverySection>()
+        for (category in entries) {
             // Explicit homepage modules each declare a preview. Legacy catalogues can contain
             // hundreds of URLs; retain their single preview to avoid fetching the whole catalogue.
             val preview = if (category.target.isNotBlank() && (definition.homepage != null || category == first))
-                session.page(category.target, 1, catalog.values).take(6).map(::book) else emptyList()
-            DiscoverySection(category.id, category.title, preview, category.target.takeIf(String::isNotBlank),
-            category.id.takeIf { definition.homepage == null }) }
+                request { session.page(category.target, 1, catalog.values).take(6).map(::book) } else Ok(emptyList())
+            val failure = preview.getError()?.let { DiscoveryPreviewFailure(it, failureField, permissionFailure) }
+            sections += DiscoverySection(category.id, category.title, preview.get().orEmpty(), category.target.takeIf(String::isNotBlank),
+                category.id.takeIf { definition.homepage == null }, failure)
+            // A failed preview belongs to its entry, not to the successful catalogue snapshot.
+            failureField = null; permissionFailure = null
+            // Recovery belongs to the current module, so a later challenge does not replay earlier previews.
+            if (definition.homepage != null) emit(Ok(sections.toList()))
+        }
+        if (definition.homepage == null || entries.isEmpty()) emit(Ok(sections.toList()))
     }
     override fun filters(target: String) = if (target.startsWith(DISCOVERY_SEARCH_PREFIX)) emptyList() else
         current?.rows.orEmpty().filter { row -> row.targetPrefixes.isEmpty() || row.targetPrefixes.any(target::startsWith) }.mapNotNull(::filter)

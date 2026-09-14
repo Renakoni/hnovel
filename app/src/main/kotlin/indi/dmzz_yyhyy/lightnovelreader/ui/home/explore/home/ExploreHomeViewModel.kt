@@ -11,6 +11,7 @@ import io.nightfish.lightnovelreader.api.Route
 import io.nightfish.lightnovelreader.api.explore.ExploreDisplayBook
 import kotlinx.serialization.json.Json
 import java.util.UUID
+import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 
 @HiltViewModel
@@ -20,13 +21,13 @@ class ExploreHomeViewModel @Inject constructor(
     saved: SavedStateHandle,
     private val text: TextProcessingRepository,
 ) : DiscoveryPageViewModel(registry, accounts, saved, SourceCapability.Explore) {
-    override suspend fun loadFeed(discovery: SourceDiscovery) = discovery.feed().map { sections ->
+    override fun feedUpdates(discovery: SourceDiscovery) = discovery.feedUpdates().map { result -> result.map { sections ->
         sections.map { section -> section.copy(books = section.books.map { book ->
             val display = text.processExploreBooksRow(ExploreDisplayBook(
                 id = book.id.storageKey, title = book.title, author = book.author, coverUri = Uri.parse(book.coverUrl)))
             book.copy(title = display.title, author = display.author, coverUrl = display.coverUri.toString())
         }) }
-    }
+    } }
 
     fun more(section: SourceDiscoverySection): Route.Main.DiscoveryResults? {
         val id = state.value.selected ?: return null

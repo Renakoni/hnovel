@@ -219,7 +219,7 @@ abstract class DiscoveryPageViewModel(
         categories = catalog.categories, filters = catalog.filters, values = catalog.values, buttons = catalog.buttons,
         loaded = true, loading = false, acting = false, error = null, errorField = null, errorPermission = null)
 
-    protected open suspend fun loadFeed(discovery: SourceDiscovery) = discovery.feed()
+    protected open fun feedUpdates(discovery: SourceDiscovery) = discovery.feedUpdates()
 
     private fun newContent() = DiscoveryPageContent(resetId = ++contentId)
 
@@ -241,12 +241,22 @@ abstract class DiscoveryPageViewModel(
                     content = applyCatalog(content, catalog)
                 }
                 if (capability == SourceCapability.Explore) {
-                    val sections = loadFeed(discovery).getOrElse { return@discoveryRequest Err(it) }
-                    content = content.copy(sections = sections)
+                    var failure: DiscoveryError? = null
+                    feedUpdates(discovery).collect { update ->
+                        val sections = update.getOrElse { failure = it; return@collect }
+                        content = content.copy(sections = sections)
+                        if (serial == token && state.value.selected == id) {
+                            put(id, content.copy(loaded = false, loading = true,
+                                scroll = state.value.content[id]?.scroll ?: content.scroll))
+                        }
+                    }
+                    failure?.let { return@discoveryRequest Err(it) }
                 }
                 Ok(content.copy(loaded = true, loading = false, acting = false, error = null, errorField = null, errorPermission = null))
             }
-            if (serial != token || !active || state.value.selected != id) return@launch
+            // A retained verification window may fail before this page resumes. Its result
+            // still belongs here; navigation/cancellation already invalidate serial.
+            if (serial != token || state.value.selected != id) return@launch
             val current = state.value.content[id] ?: previous
             result.onOk { refreshCatalog -= id; put(id, it.copy(scroll = current.scroll)) }
                 .onErr { put(id, current.copy(error = it, loading = false, errorField = sessions[id]?.failureField, errorPermission = sessions[id]?.permissionFailure)) }
