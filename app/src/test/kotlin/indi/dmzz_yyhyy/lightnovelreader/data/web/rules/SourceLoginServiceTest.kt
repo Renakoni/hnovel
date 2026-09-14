@@ -52,11 +52,11 @@ class SourceLoginServiceTest {
                 assertEquals(LoginStatus.Required, login.status(id))
                 fixture.status = 200
                 login.submit(attempt, emptyMap())
-                assertEquals(LoginStatus.Authenticated, login.status(id))
+                assertEquals(LoginStatus.SessionSaved, login.status(id))
                 fixture.status = 503
                 assertEquals(ContentError.Network,
                     (runCatching { login.submit(attempt, emptyMap()) }.exceptionOrNull() as SourceContentException).code)
-                assertEquals(LoginStatus.Authenticated, login.status(id))
+                assertEquals(LoginStatus.SessionSaved, login.status(id))
             } finally { sources.stop(); root.deleteRecursively() }
         }
     }

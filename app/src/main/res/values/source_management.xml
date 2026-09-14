@@ -1,4 +1,5 @@
 <resources>
+    <string name="sources_advanced">Advanced options</string>
     <string name="sources_origin_candidates_help">Referenced or blocked sites are suggestions only. Review each site, add it to the draft, then save to authorize it. Paths and credentials are never shown.</string>
     <string name="sources_denied_origins">Blocked requests for this source</string>
     <string name="sources_denied_count">%1$d site requests need review</string>

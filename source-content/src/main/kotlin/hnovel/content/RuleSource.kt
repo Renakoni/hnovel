@@ -123,7 +123,8 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
                 is BrokerResult.Failure -> throw SourceContentException(response.code.contentError(), "loginUrl", response.denial)
                 is BrokerResult.Success -> checkStatus(response.response.status, "loginUrl")
             }
-            authority.authorized(identity) { check(session.write(StorageRequest(StorageArea.Account, "login/status", "authenticated")) is StorageResult.Value) }
+            // Closing a website preserves its session; HTTP 200 alone does not verify a login.
+            authority.authorized(identity) { check(session.write(StorageRequest(StorageArea.Account, "login/status", "session")) is StorageResult.Value) }
             return@operation
         }
         val code = if (action == null) "if(typeof login!=='function')throw new Error('login missing');login();true;"

@@ -97,7 +97,7 @@ class SourceBrowserInstrumentedTest {
                                 while (input(automation.rootInActiveWindow)?.performAction(
                                         android.view.accessibility.AccessibilityNodeInfo.ACTION_SET_TEXT, arguments) != true) delay(100)
                             }
-                            val label = context.getString(indi.dmzz_yyhyy.lightnovelreader.R.string.source_browser_done)
+                            val label = context.getString(android.R.string.ok)
                             withTimeout(10000) {
                                 while (automation.rootInActiveWindow?.findAccessibilityNodeInfosByText(label)?.firstOrNull()
                                         ?.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK) != true) delay(100)
@@ -258,7 +258,7 @@ class SourceBrowserInstrumentedTest {
 
     @Test fun foregroundLoginPreservesPostResponseAndCommitsOnlyItsOwnCookies(): Unit = runBlocking {
         // Await RESUMED using the Activity lifecycle; accessibility is only needed for the
-        // browser's cross-process Done action below. Close the host after each attempt.
+        // browser's cross-process window below. Close the host after each attempt.
         ActivityScenario.launch(BrowserTestHostActivity::class.java).use { MockWebServer().use { server ->
             val posted = CompletableDeferred<Unit>()
             server.dispatcher = object : Dispatcher() {
@@ -284,19 +284,9 @@ class SourceBrowserInstrumentedTest {
                     browser = BrowserOptions(script = "document.title === 'POST accepted' ? document.title : null", interactive = true))) }
                 val formPosted = withTimeoutOrNull(20000) { posted.await(); true } == true
                 assertTrue("Form POST did not reach broker; requests=${server.requestCount}, browserCompleted=${login.isCompleted}", formPosted)
-                val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
-                val label = context.getString(indi.dmzz_yyhyy.lightnovelreader.R.string.source_browser_done)
-                val clicked = withTimeoutOrNull(20000) {
-                    while (true) {
-                        val rootNode = automation.rootInActiveWindow
-                        val button = rootNode?.findAccessibilityNodeInfosByText(label)?.firstOrNull()
-                        if (button?.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK) == true) break
-                        delay(100)
-                    }
-                    true
-                }
-                assertTrue("Login window did not expose rendered POST response and finish action", clicked == true)
-                val result = login.await()
+                // The source's completion expression returns only after the form succeeds.
+                // A user does not have to declare that the login is complete.
+                val result = withTimeout(20000) { login.await() }
                 assertTrue(result.toString(), result is BrokerResult.Success)
                 assertEquals("POST accepted", (result as BrokerResult.Success).response.text())
                 assertEquals("auth=accepted", session.cookie(server.url("/").toString()))

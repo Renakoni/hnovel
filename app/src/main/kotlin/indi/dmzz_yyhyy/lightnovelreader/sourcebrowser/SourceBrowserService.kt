@@ -24,11 +24,14 @@ class SourceBrowserService : Service() {
     private lateinit var bootstrap: String
     internal var webView: WebView? = null
     internal var activity: SourceBrowserActivity? = null
-    internal val pageTitle get() = if (job.options.verificationCode) getString(R.string.source_verification_code) else job.options.title
+    internal val verificationCode get() = job.options.verificationCode
+    internal val pageTitle get() = if (verificationCode) getString(R.string.source_verification_code)
+        else job.options.title.ifBlank { android.net.Uri.parse(job.request.url).host.orEmpty() }
     @Volatile private var mainResponse: BrokerResponse? = null
     @Volatile private var mainUrl = ""
     private var firstRequest = true
     private var attempts = 0
+    private var evaluating = false
 
     companion object {
         internal var active: SourceBrowserService? = null
@@ -101,7 +104,8 @@ class SourceBrowserService : Service() {
                 return !allowed
             }
             override fun onPageFinished(view: WebView, url: String) {
-                if (!job.options.interactive && url == mainUrl && redirected == null) handler.postDelayed({ evaluate() }, job.options.delayMillis)
+                if ((!job.options.interactive || job.options.script.isNotBlank() && !verificationCode) &&
+                    url == mainUrl && redirected == null) handler.postDelayed({ evaluate() }, job.options.delayMillis)
             }
             override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
                 if (request.isForMainFrame && redirected == null) fail()
@@ -190,15 +194,18 @@ class SourceBrowserService : Service() {
     private fun matches(url: String): Boolean = job.options.sourceRegex.isNotBlank() && Regex(job.options.sourceRegex).containsMatchIn(url)
 
     internal fun evaluate() {
-        if (finished.get()) return
+        if (finished.get() || evaluating) return
+        evaluating = true
         val script = if (job.options.verificationCode) "document.getElementById('verification-image').naturalWidth > 0 ? document.getElementById('verification-code').value : null"
             else job.options.script.ifBlank { "document.documentElement.outerHTML" }
         webView?.evaluateJavascript("(function(){try {var value=eval(${JsonPrimitive(script)});var state={};for(var i=0;i<localStorage.length;i++){var key=localStorage.key(i);state[key]=localStorage.getItem(key);}SourceBrowser.call('storage',JSON.stringify({url:location.href,value:state}));return JSON.stringify({value:value});}catch(e){return '{}';}})()") { result ->
+            evaluating = false
             try {
                 val encoded = Json.parseToJsonElement(result).jsonPrimitive.content
                 val value = Json.parseToJsonElement(encoded).jsonObject["value"]
                 if (value == null || value == JsonNull || job.options.sourceRegex.isNotBlank()) {
-                    if (++attempts >= 30) fail() else handler.postDelayed({ evaluate() }, 100)
+                    if (!job.options.interactive && ++attempts >= 30) fail()
+                    else handler.postDelayed({ evaluate() }, if (job.options.interactive) 500 else 100)
                 } else completeText(if (value is JsonPrimitive) value.content else value.toString())
             } catch (_: Exception) { fail() }
         }
