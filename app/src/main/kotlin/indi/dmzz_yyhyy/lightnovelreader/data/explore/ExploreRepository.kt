@@ -4,6 +4,7 @@ import com.github.michaelbull.result.*
 import hnovel.content.ContentError
 import hnovel.content.SourceContentException
 import indi.dmzz_yyhyy.lightnovelreader.data.book.SourceBookId
+import indi.dmzz_yyhyy.lightnovelreader.data.book.bind
 import indi.dmzz_yyhyy.lightnovelreader.data.web.*
 import io.nightfish.lightnovelreader.api.identifier.Identifier
 import io.nightfish.lightnovelreader.api.web.discovery.DiscoveryError
@@ -46,7 +47,9 @@ class SourceSearch internal constructor(private val runtime: SourceRuntime, val 
     fun search(type: SearchType, keyword: String) = runtime.search.search(type, keyword).map { result ->
         when (result) {
             is SearchResult.SingleBook -> SearchResult.SingleBook(SourceBookId(runtime.id, result.bookId).storageKey)
-            is SearchResult.MultipleBook -> SearchResult.MultipleBook(SourceBookId(runtime.id, result.bookId).storageKey)
+            is SearchResult.MultipleBook -> SourceBookId(runtime.id, result.bookId).let { book ->
+                SearchResult.MultipleBook(book.storageKey, result.information?.takeIf { it.id == result.bookId }?.let(book::bind))
+            }
             else -> result
         }
     }

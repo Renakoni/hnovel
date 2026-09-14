@@ -44,7 +44,6 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         operation("discovery.browser", timeoutMillis = 300000) {
             val context = evaluation(interactive = true)
             request(context, url, "discovery.browser", browser = BrowserOptions(interactive = true, html = html, script = script, title = title))
-            Unit
         }
     init {
         require(identity.sourceId == definition.sourceId && identity.profile == definition.profile && identity.revision == definition.contentDigest)
@@ -282,23 +281,31 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         RuleContent(chapter.id, title, parts, previous, next)
     }
 
-    suspend fun image(bookId: String, url: String, cover: Boolean): ByteArray = operation("image") {
-        val id = sourceLink(spec.baseUrl, bookId)
-        val book = store.read(id)?.book ?: RuleBook(id)
-        val context = evaluation(book)
-        val response = request(context, sourceLink(id, url), "image", ResourceKind.Image)
+    suspend fun image(bookId: String, url: String, cover: Boolean): ByteArray {
+        // Rule preparation still owns the worker; waiting for image bytes does not hold the book queue.
+        val (context, request, knownCover) = operation("image") {
+            val id = sourceLink(spec.baseUrl, bookId)
+            val book = store.read(id)?.book ?: RuleBook(id)
+            val context = evaluation(book)
+            Triple(context, prepareRequest(context, sourceLink(id, url), "image", ResourceKind.Image),
+                cover && book.coverUrl.isNotBlank() && book.coverUrl == url)
+        }
+        val response = executeRequest(request, "image", publicImage = knownCover && request.method == "GET" &&
+            request.body == null && request.browser == null)
         val decode = if (cover) spec.coverDecode else spec.content.string("imageDecode")
-        if (decode.isBlank()) return@operation response.body
-        // A single numeric array avoids one serialized RuleValue object per image byte.
-        val input = JsonArray(response.body.map { JsonPrimitive(it.toInt()) }).toString()
-        if (input.length > 196608) throw SourceContentException(ContentError.Limit, "imageDecode")
-        val bytes = context.script("var src=${JsonPrimitive(response.finalUrl)};result=JSON.parse(result);" +
-            "JSON.stringify(eval(${JsonPrimitive(scriptBody(decode))}))",
-            RuleValue.Text(input), if (cover) "coverDecodeJs" else "ruleContent.imageDecode")
-        val values = Json.parseToJsonElement(bytes.text()).jsonArray.map { it.jsonPrimitive.intOrNull
-            ?: throw SourceContentException(ContentError.InvalidRule, "imageDecode") }
-        if (values.any { it !in -128..255 }) throw SourceContentException(ContentError.InvalidRule, "imageDecode")
-        values.map { it.toByte() }.toByteArray()
+        if (decode.isBlank()) return response.body
+        return operation("imageDecode") {
+            // A single numeric array avoids one serialized RuleValue object per image byte.
+            val input = JsonArray(response.body.map { JsonPrimitive(it.toInt()) }).toString()
+            if (input.length > 196608) throw SourceContentException(ContentError.Limit, "imageDecode")
+            val bytes = context.script("var src=${JsonPrimitive(response.finalUrl)};result=JSON.parse(result);" +
+                "JSON.stringify(eval(${JsonPrimitive(scriptBody(decode))}))",
+                RuleValue.Text(input), if (cover) "coverDecodeJs" else "ruleContent.imageDecode")
+            val values = Json.parseToJsonElement(bytes.text()).jsonArray.map { it.jsonPrimitive.intOrNull
+                ?: throw SourceContentException(ContentError.InvalidRule, "imageDecode") }
+            if (values.any { it !in -128..255 }) throw SourceContentException(ContentError.InvalidRule, "imageDecode")
+            values.map { it.toByte() }.toByteArray()
+        }
     }
 
     private suspend fun information(id: String, old: BookRecord?, supplied: PageDocument? = null): BookRecord {
@@ -432,7 +439,10 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         return result
     }
     private suspend fun request(context: RuleEvaluation, url: String, field: String, kind: ResourceKind = ResourceKind.Document,
-        browser: BrowserOptions? = null): BrokerResponse {
+        browser: BrowserOptions? = null): BrokerResponse = executeRequest(prepareRequest(context, url, field, kind, browser), field)
+
+    private suspend fun prepareRequest(context: RuleEvaluation, url: String, field: String, kind: ResourceKind,
+        browser: BrowserOptions? = null): BrokerRequest {
         val prepared = context.script("host.call('request.prepare',result)[0]", RuleValue.Text(url), field).text()
         val compiled = RequestCompiler().compile("content", prepared, context.baseUrl, context.keyword, context.page, context.headers(), kind)
         val request = when (compiled) {
@@ -440,8 +450,14 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             is CompiledRequest.Rejected -> throw SourceContentException(if (compiled.code == hnovel.network.FailureCode.BrowserRequired)
                 ContentError.BrowserRequired else ContentError.InvalidRule, field)
         }
+        return request.copy(browser = browser ?: request.browser)
+    }
+
+    private suspend fun executeRequest(request: BrokerRequest, field: String, publicImage: Boolean = false): BrokerResponse {
         val started = System.nanoTime()
-        val result = session.execute(request.copy(browser = browser ?: request.browser), RequestCommitGuard { authority.authorized(identity, it) })
+        val guard = RequestCommitGuard { authority.authorized(identity, it) }
+        val result = if (publicImage) session.loadImage(request, guard)
+            else session.execute(if (request.kind == ResourceKind.Image) request.copy(cache = CacheMode.Disabled) else request, guard)
         trace.record(ContentTraceEvent("network", field, (System.nanoTime() - started) / 1_000_000,
             request.body?.length ?: 0, (result as? BrokerResult.Success)?.response?.body?.size ?: 0,
             when (result) { is BrokerResult.Success -> "HTTP_${result.response.status}"; is BrokerResult.Failure -> result.code.name }))
@@ -450,7 +466,8 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             is BrokerResult.Success -> result.response
             is BrokerResult.Failure -> throw SourceContentException(result.code.contentError(), field, result.denial)
         }
-        if (kind == ResourceKind.Image) checkStatus(response.status, field)
+        if (request.kind == ResourceKind.Image && response.status !in 200..299)
+            throw SourceContentException(ContentError.Network, field)
         return response
     }
     private suspend fun fetch(context: RuleEvaluation, url: String, field: String, browser: BrowserOptions? = null): PageDocument {
