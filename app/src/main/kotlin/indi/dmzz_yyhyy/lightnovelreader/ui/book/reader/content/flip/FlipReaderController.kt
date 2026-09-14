@@ -32,7 +32,8 @@ class FlipReaderController(
         loadPrevChapter = ::loadPrevChapter,
         loadNextChapter = ::loadNextChapter,
         changeChapter = ::changeChapter,
-        updatePageState = ::updatePagerState
+        updatePageState = ::updatePagerState,
+        updateAnchoredPageState = { progress.updatePagerState(it, anchored = true) },
     )
 
     private val progress = FlipReadingProgress(

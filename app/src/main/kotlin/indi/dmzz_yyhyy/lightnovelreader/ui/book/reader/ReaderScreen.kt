@@ -322,6 +322,7 @@ fun Content(
     onChangeIsImmersive: () -> Unit,
     volumeKeysEnabled: Boolean = true,
 ) {
+    val textLayout = rememberReaderTextLayout(settingState)
     Box(modifier = Modifier.fillMaxSize().readerProbeLayout("content-root")) {
         val isEnableIndicator =
             settingState.enableTimeIndicator ||
@@ -334,24 +335,14 @@ fun Content(
                 label = "ContentAnimate"
             ) { contentUiState ->
                 // Controls cover the reading viewport; outgoing animated modes must release input.
-                CompositionLocalProvider(LocalReaderVolumeKeysEnabled provides (
+                CompositionLocalProvider(LocalReaderTextLayout provides textLayout, LocalReaderVolumeKeysEnabled provides (
                     volumeKeysEnabled && isImmersive && contentUiState === readingScreenUiState.contentUiState
                 )) {
                     ContentComponent(
                         uiState = contentUiState,
                         settingState = settingState,
                         fontFamilySettings = fontFamilySettings,
-                        paddingValues =
-                            if (settingState.autoPadding)
-                                readerAutoPadding(if (isEnableIndicator) 40.dp else 0.dp)
-                            else PaddingValues(
-                                top = settingState.topPadding.dp,
-                                bottom = if (isEnableIndicator)
-                                    (settingState.bottomPadding + 40).dp
-                                else settingState.bottomPadding.dp,
-                                start = settingState.leftPadding.dp,
-                                end = settingState.rightPadding.dp
-                            ),
+                        paddingValues = readerPadding(textLayout.settings, if (isEnableIndicator) 40.dp else 0.dp),
                         changeIsImmersive = onChangeIsImmersive,
                         onClickPrevChapter = onClickPrevChapter,
                         onClickNextChapter = onClickNextChapter

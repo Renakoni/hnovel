@@ -93,6 +93,32 @@ class ReaderSettingsBoundaryTest {
     }
 
     @Test
+    fun lineAndParagraphSpacingPersistIndependentlyAndInvalidLayoutValuesAreSafe() = runBlocking {
+        val dao = InMemoryUserDataDao()
+        val first = SettingState(UserDataRepository(dao), scope)
+        assertEquals(0f, first.paragraphSpacing)
+        first.fontLineHeightUserData.set(12.5f)
+        first.paragraphSpacingUserData.set(3.5f)
+        first.topPaddingUserData.set(24f)
+        val restored = SettingState(UserDataRepository(dao), scope)
+        withTimeout(5_000) {
+            while (restored.fontLineHeight != 12.5f || restored.paragraphSpacing != 3.5f || restored.topPadding != 24f) delay(1)
+        }
+        assertEquals("3.5", dao.get("reader.paragraphSpacing"))
+        first.paragraphSpacingUserData.set(0f)
+        withTimeout(5_000) { while (restored.paragraphSpacing != 0f) delay(1) }
+        assertEquals(12.5f, restored.fontLineHeight)
+        first.fontLineHeightUserData.set(Float.NaN)
+        first.fontWeighUserData.set(2000f)
+        first.fontSizeUserData.set(Float.POSITIVE_INFINITY)
+        first.leftPaddingUserData.set(-20f)
+        withTimeout(5_000) {
+            while (restored.fontLineHeight != 7f || restored.fontWeigh != 900f || restored.leftPadding != 0f) delay(1)
+        }
+        assertEquals(15f, restored.fontSize)
+    }
+
+    @Test
     fun adapterCanBeNarrowedToReaderAndThemeCapabilities() {
         val state = SettingState(UserDataRepository(InMemoryUserDataDao()), scope)
         val readerSettings: ReaderSettings = state

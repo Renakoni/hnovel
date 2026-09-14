@@ -12,6 +12,7 @@ import io.nightfish.lightnovelreader.api.error.WebRequestError
 
 interface FlipPageContentUiState: ContentUiState {
     val updatePageState: (PagerState) -> Unit
+    val updateAnchoredPageState: (PagerState) -> Unit get() = updatePageState
     val pagerState: PagerState
 }
 
@@ -20,6 +21,7 @@ class MutableFlipPageContentUiState(
     override val loadPrevChapter: () -> Unit,
     override val changeChapter: (String) -> Unit,
     override val updatePageState: (PagerState) -> Unit,
+    override val updateAnchoredPageState: (PagerState) -> Unit = updatePageState,
 ): FlipPageContentUiState {
     override var pagerState by mutableStateOf(PagerState { 0 })
     override var bookId by mutableStateOf("")

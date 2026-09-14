@@ -42,6 +42,7 @@ sealed class UserDataPath(
         data object FontSize : UserDataPath("fontSize",Reader)
         /** 阅读字体行高 @since Api 2 */
         data object FontLineHeight : UserDataPath("fontLineHeight", Reader)
+        data object ParagraphSpacing : UserDataPath("paragraphSpacing", Reader)
         /** 阅读字体粗细 @since Api 2 */
         data object FontWeigh : UserDataPath("fontWeigh", Reader)
         /** 保持屏幕常亮 @since Api 2 */

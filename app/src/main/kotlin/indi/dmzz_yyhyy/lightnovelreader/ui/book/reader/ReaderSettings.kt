@@ -26,6 +26,7 @@ internal class UserDataReaderFontFamilySettings(
 interface ReaderSettings {
     val fontSize: Float
     val fontLineHeight: Float
+    val paragraphSpacing: Float get() = 0f
     val fontWeigh: Float
     val keepScreenOn: Boolean
     val enableHideStatusBar: Boolean
@@ -61,6 +62,7 @@ interface ReaderSettings {
 interface ReaderSettingsEditor : ReaderSettings {
     val fontSizeUserData: FloatUserData
     val fontLineHeightUserData: FloatUserData
+    val paragraphSpacingUserData: FloatUserData
     val fontWeighUserData: FloatUserData
     val keepScreenOnUserData: BooleanUserData
     val enableHideStatusBarUserData: BooleanUserData
