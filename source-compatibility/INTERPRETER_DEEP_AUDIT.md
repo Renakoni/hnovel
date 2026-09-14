@@ -160,3 +160,17 @@ API 35 在 `c44d3c6e` 加本轮修复上完成 55 项设备检查：54 通过、
 共同输入、基线与修复后的结果见 `deep-audit/baseline-comparisons.json` 和
 `deep-audit/after-comparisons.json`；版本文件还记录了复验所用生产文件的 Git blob，
 避免把之后的工作区重新构建误认为本轮同一版本。
+
+PR #198 的首轮 [CI run 34844650692](https://github.com/Renakoni/hnovel/actions/runs/34844650692)
+在 `e39e4b8e` 上 API 24、API 35 均通过，JVM 的统计测试报 `UncaughtExceptionsBeforeTest`。
+下载 JUnit XML 后确认实际异常来自前一个 `SourceIdentityRoomTest`：设置状态的
+`AbstractSettingState.asState` 订阅仍在执行 `UserDataDao.getFlow` 查询，测试已关闭 SQLite
+连接池。`ViewModelStore.clear()` 只发出取消，不保证 IO 子任务已经退出；晚到的未处理异常
+被下一个 `runTest` 收集，因而不能从报红测试名推断是统计逻辑失败。
+
+后续修复只调整测试资源清理：提前保存 ViewModel 的 Job，在 clear 后有界等待它完成，
+再允许数据库关闭。同类 `BookshelfLayoutPreferenceTest` 同时等待新旧两个 ViewModel，
+并推进其测试 Main 调度器后才关闭数据库、重置 Main。保留所有业务断言和未处理异常检测，
+不以重试、忽略异常或扩大请求超时处理本次故障。三组定向回归共 18 项通过。
+随后对八个 JVM 模块的 test 任务逐一使用 `--rerun` 强制重跑，889 项全部通过、无跳过；
+检查完整 JUnit XML，未再出现连接池已关闭或 `UncaughtExceptionsBeforeTest` 异常。
