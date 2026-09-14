@@ -26,58 +26,65 @@ class SourceVerificationCoordinatorTest {
     }
     private val failure = SourceContentException(ContentError.BrowserRequired, "searchUrl", verification = verification)
 
-    @Test fun foregroundWaitsForExplicitActionAndRetriesOnce() = runTest {
+    @Test fun foregroundAutomaticallyOpensAndRetriesOnce() = runTest {
         var calls = 0
+        val completed = CompletableDeferred<Unit>()
+        coEvery { verification.complete() } coAnswers { completed.await() }
         val request = async(ForegroundSourceRequest()) { coordinator.execute(owner, "Fixture") {
             if (++calls == 1) throw failure
             "accepted"
         } }
         runCurrent()
         assertEquals(1, calls)
-        coVerify(exactly = 0) { verification.complete() }
-        val prompt = coordinator.prompts.value.single()
-        coordinator.approve(prompt.id)
+        coVerify(exactly = 1) { verification.complete() }
+        assertTrue(coordinator.prompts.value.single().opening)
+        completed.complete(Unit)
         assertEquals("accepted", request.await())
         assertEquals(2, calls)
         coVerify(exactly = 1) { verification.complete() }
         assertTrue(coordinator.prompts.value.isEmpty())
     }
 
-    @Test fun cancellationRemovesItsPromptAndCannotResumeAnotherRequest() = runTest {
+    @Test fun cancelledQueuedRequestNeverOpensAndDoesNotCancelTheActiveBrowser() = runTest {
+        val completed = CompletableDeferred<Unit>()
+        coEvery { verification.complete() } coAnswers { completed.await() }
         val first = async(ForegroundSourceRequest()) { runCatching { coordinator.execute(owner, "First") { throw failure } } }
         val second = async(ForegroundSourceRequest()) { runCatching { coordinator.execute(owner, "Second") { throw failure } } }
         runCurrent()
-        val stale = coordinator.prompts.value.first().id
-        first.cancelAndJoin()
-        coordinator.approve(stale)
+        assertEquals(2, coordinator.prompts.value.size)
+        second.cancelAndJoin()
         runCurrent()
-        assertFalse(second.isCompleted)
-        coVerify(exactly = 0) { verification.complete() }
-        coordinator.dismiss(coordinator.prompts.value.single().id)
-        assertSame(failure, second.await().exceptionOrNull())
+        assertFalse(first.isCompleted)
+        assertEquals("First", coordinator.prompts.value.single().name)
+        coVerify(exactly = 1) { verification.complete() }
+        completed.complete(Unit)
+        assertSame(failure, first.await().exceptionOrNull())
+        assertTrue(coordinator.prompts.value.isEmpty())
     }
 
     @Test fun backgroundReturnsImmediatelyAndOnlyUserActionOpensTheBrowser() = runTest {
         assertSame(failure, runCatching { coordinator.execute(owner, "Fixture") { throw failure } }.exceptionOrNull())
         val prompt = coordinator.prompts.value.single()
         assertFalse(prompt.foreground)
-        coordinator.approve(prompt.id)
         coVerify(exactly = 0) { verification.complete() }
         coordinator.verifyBackground(prompt.id)
         coVerify(exactly = 1) { verification.complete() }
         assertTrue(coordinator.prompts.value.isEmpty())
     }
 
-    @Test fun accountRetirementCancelsThePendingDecision() = runTest {
+    @Test fun accountRetirementPreventsRetryAfterTheBrowserReturns() = runTest {
         val monitor = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { coordinator.observeRetirement() }
-        val request = async(ForegroundSourceRequest()) { runCatching { coordinator.execute(owner, "Fixture") { throw failure } } }
+        val completed = CompletableDeferred<Unit>()
+        coEvery { verification.complete() } coAnswers { completed.await() }
+        var calls = 0
+        val request = async(ForegroundSourceRequest()) { runCatching { coordinator.execute(owner, "Fixture") { calls++; throw failure } } }
         runCurrent()
-        val prompt = coordinator.prompts.value.single()
         listings.value = listings.value.map { it.copy(metadata = it.metadata.copy(accountGeneration = 1)) }
         runCurrent()
-        coordinator.approve(prompt.id)
-        assertSame(failure, request.await().exceptionOrNull())
-        coVerify(exactly = 0) { verification.complete() }
+        completed.complete(Unit)
+        assertEquals(ContentError.Unavailable, (request.await().exceptionOrNull() as SourceContentException).code)
+        assertEquals(1, calls)
+        coVerify(exactly = 1) { verification.complete() }
         assertTrue(coordinator.prompts.value.isEmpty())
         monitor.cancel()
     }
@@ -86,7 +93,6 @@ class SourceVerificationCoordinatorTest {
         var calls = 0
         val request = async(ForegroundSourceRequest()) { runCatching { coordinator.execute(owner, "Fixture") { calls++; throw failure } } }
         runCurrent()
-        coordinator.approve(coordinator.prompts.value.single().id)
         assertSame(failure, request.await().exceptionOrNull())
         assertEquals(2, calls)
         coVerify(exactly = 1) { verification.complete() }
@@ -95,23 +101,20 @@ class SourceVerificationCoordinatorTest {
 
     @Test fun leavingTheUiCancelsOnlyItsWaitingVerification() = runTest {
         val ui = ForegroundSourceRequest()
+        coEvery { verification.complete() } coAnswers { awaitCancellation() }
         val request = async(ui) { coordinator.execute(owner, "Fixture") { throw failure } }
         runCurrent()
-        val prompt = coordinator.prompts.value.single()
         ui.setActive(false)
         request.join()
-        coordinator.approve(prompt.id)
         assertTrue(request.isCancelled)
         assertTrue(coordinator.prompts.value.isEmpty())
-        coVerify(exactly = 0) { verification.complete() }
+        coVerify(exactly = 1) { verification.complete() }
     }
 
     @Test fun browserCoverRetainsTheRequestButNavigationAwayCancelsIt() = runTest {
         val ui = ForegroundSourceRequest()
         coEvery { verification.complete() } coAnswers { awaitCancellation() }
         val request = async(ui) { coordinator.execute(owner, "Fixture") { throw failure } }
-        runCurrent()
-        coordinator.approve(coordinator.prompts.value.single().id)
         runCurrent()
         assertTrue(ui.verifying)
         ui.setActive(false, retainBrowser = true)
@@ -129,6 +132,23 @@ class SourceVerificationCoordinatorTest {
             assertSame(failure, runCatching { coordinator.execute(owner, "Fixture") { throw failure } }.exceptionOrNull())
         }
         assertFalse(coordinator.prompts.value.single().foreground)
+        coVerify(exactly = 0) { verification.complete() }
+    }
+
+    @Test fun inactiveUiCannotOpenVerification() = runTest {
+        val ui = ForegroundSourceRequest().apply { setActive(false) }
+        val request = async(ui) { coordinator.execute(owner, "Fixture") { throw failure } }
+        request.join()
+        assertTrue(request.isCancelled)
+        assertTrue(coordinator.prompts.value.isEmpty())
+        coVerify(exactly = 0) { verification.complete() }
+    }
+
+    @Test fun successfulPublicRequestNeverOpensVerification() = runTest {
+        assertEquals("public catalog", withContext(ForegroundSourceRequest()) {
+            coordinator.execute(owner, "Fixture") { "public catalog" }
+        })
+        assertTrue(coordinator.prompts.value.isEmpty())
         coVerify(exactly = 0) { verification.complete() }
     }
 }
