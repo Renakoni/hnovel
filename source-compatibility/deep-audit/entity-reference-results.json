@@ -1,0 +1,21 @@
+[
+  {
+    "name": "literal_entities",
+    "result": "success",
+    "capture": {
+      "text": "<b>literal</b> &amp;\nTail",
+      "title": "One"
+    },
+    "requests": [
+      "/deep/literal_entities/search",
+      "/deep/literal_entities/book",
+      "/deep/literal_entities/toc",
+      "/deep/literal_entities/chapter",
+      "/capture"
+    ],
+    "paragraphs": [
+      "<b>literal</b> &amp;",
+      "Tail"
+    ]
+  }
+]
