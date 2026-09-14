@@ -106,7 +106,7 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
     }
 
     /** One definition read and one durable write for a selected collection. */
-    suspend fun activateBatch(references: Map<DefinitionReference, List<NetworkGrant>>): List<Identifier> = withContext(Dispatchers.IO) {
+    suspend fun activateBatch(references: Map<DefinitionReference, List<NetworkGrant>>, enableNew: Boolean = false): List<Identifier> = withContext(Dispatchers.IO) {
         restore()
         lock.withLock {
             check(!restorationFailed)
@@ -114,7 +114,8 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
             val additions = references.map { (reference, origins) ->
                 val definition = checkNotNull(current[reference]) { "Definition preview is no longer current" }
                 require(origins.size <= 32 && id(definition) !in active)
-                InstalledSource(definition, origins.map { it.copy(headers = it.headers.toMap()) })
+                InstalledSource(definition, origins.map { it.copy(headers = it.headers.toMap()) },
+                    preferences = if (enableNew) SourcePreferences(true, definition.enabledExplore, enabledSetByUser = true) else null)
             }
             // Save once for a collection; opening one definition must not rewrite thousands of others.
             save(active.values.map { it.installed } + additions)

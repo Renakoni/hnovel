@@ -21,8 +21,9 @@ import kotlinx.serialization.json.jsonObject
 @Composable
 internal fun SourceImportPreview(state: SourceManagementState, model: SourcesViewModel, modifier: Modifier = Modifier) {
     val preview = checkNotNull(state.preview)
+    var advanced by rememberSaveable(preview) { mutableStateOf(false) }
     var selected by rememberSaveable(preview) { mutableStateOf(if (state.updateTarget == null)
-        preview.candidates.deduplicated().map { it.index } else emptyList<Int>()) }
+        preview.candidates.deduplicated().filter { it.enabled }.map { it.index } else emptyList<Int>()) }
     var filter by rememberSaveable(preview) { mutableIntStateOf(0) }
     var approveIdentity by rememberSaveable(preview) { mutableStateOf(false) }
     var permissions by rememberSaveable(preview, stateSaver = mapSaver<Map<Int, String>>(
@@ -30,7 +31,8 @@ internal fun SourceImportPreview(state: SourceManagementState, model: SourcesVie
         restore = { values -> values.map { it.key.toInt() to it.value as String }.toMap() })) {
         mutableStateOf(emptyMap())
     }
-    val visible = preview.candidates.filter { when (filter) { 1 -> it.existing == null; 2 -> it.existing != null; else -> true } }
+    val candidates = if (advanced) preview.candidates else preview.candidates.deduplicated()
+    val visible = candidates.filter { when (filter) { 1 -> it.existing == null; 2 -> it.existing != null; else -> true } }
     fun select(candidate: SourceCandidate, checked: Boolean) {
         selected = if (!checked) selected - candidate.index
         else if (state.updateTarget != null) listOf(candidate.index)
@@ -41,7 +43,7 @@ internal fun SourceImportPreview(state: SourceManagementState, model: SourcesVie
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(stringResource(R.string.sources_preview), style = MaterialTheme.typography.titleLarge)
-                    Text(stringResource(R.string.sources_permissions_help), style = MaterialTheme.typography.bodySmall)
+                    TextButton(onClick = { advanced = !advanced }) { Text(stringResource(R.string.sources_advanced)) }
                     val ignored = preview.issues.count { it.code == ImportCode.UnsupportedType }
                     if (ignored > 0) Text(stringResource(R.string.sources_non_text_skipped, ignored), style = MaterialTheme.typography.bodySmall)
                     if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -88,10 +90,10 @@ internal fun SourceImportPreview(state: SourceManagementState, model: SourcesVie
                                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
-                        if (!candidate.enabled) Text(stringResource(R.string.sources_disabled_definition), style = MaterialTheme.typography.bodySmall)
-                        if (candidate.duplicateIndexes.isNotEmpty()) Text(stringResource(R.string.sources_duplicate_choice),
+                        if (advanced && !candidate.enabled) Text(stringResource(R.string.sources_disabled_definition), style = MaterialTheme.typography.bodySmall)
+                        if (advanced && candidate.duplicateIndexes.isNotEmpty()) Text(stringResource(R.string.sources_duplicate_choice),
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-                        if (candidate.notices.isNotEmpty()) {
+                        if (advanced && candidate.notices.isNotEmpty()) {
                             TextButton(onClick = { showNotes = !showNotes }) { Text(stringResource(R.string.sources_import_notes, candidate.notices.size)) }
                             if (showNotes) candidate.notices.forEach { notice ->
                                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -101,11 +103,11 @@ internal fun SourceImportPreview(state: SourceManagementState, model: SourcesVie
                                 }
                             }
                         }
-                        if (checked) {
+                        if (checked && advanced) {
                             val draft = permissions[candidate.index] ?: state.previewOrigins[candidate.index].orEmpty()
                             val origins = remember(candidate) { SourceOriginCandidates.discover(Json.parseToJsonElement(candidate.rawJson).jsonObject) }
                             Text(stringResource(R.string.sources_origin_candidates_help), style = MaterialTheme.typography.bodySmall)
-                            origins.forEach { origin ->
+                            origins.distinctBy { it.origin }.forEach { origin ->
                                 SourcePermissionCandidate(origin.origin, origin.kind.name, draft, state.busy) {
                                     permissions = permissions + (candidate.index to it)
                                 }
@@ -127,7 +129,7 @@ internal fun SourceImportPreview(state: SourceManagementState, model: SourcesVie
         Surface(tonalElevation = 3.dp) {
             Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                    Text(stringResource(R.string.sources_selected_count, selected.size, preview.candidates.size), Modifier.weight(1f),
+                    Text(stringResource(R.string.sources_selected_count, selected.size, candidates.size), Modifier.weight(1f),
                         style = MaterialTheme.typography.labelLarge)
                     TextButton(onClick = { if (state.busy) model.cancel() else model.dismissPreview() }) { Text(stringResource(android.R.string.cancel)) }
                 }

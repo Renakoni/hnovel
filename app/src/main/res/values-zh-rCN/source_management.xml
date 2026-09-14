@@ -1,4 +1,5 @@
 <resources>
+    <string name="sources_advanced">高级选项</string>
     <string name="sources_origin_candidates_help">引用或被拦截的站点仅作为候选。请逐一核对，加入草稿后保存才会授权；不会显示路径或凭据。</string>
     <string name="sources_denied_origins">此来源被拦截的请求</string>
     <string name="sources_denied_count">%1$d 项站点请求待核对</string>

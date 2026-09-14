@@ -1,4 +1,4 @@
 <resources>
-    <string name="source_browser_done">Finish login</string>
+    <string name="source_browser_done">Back to reader</string>
     <string name="source_verification_code">Verification code</string>
 </resources>

@@ -90,9 +90,6 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
     }
     fun refresh() = launch { reload() }
     fun select(id: Identifier?) = launch { selectSource(id) }
-    fun initializeSource(id: Identifier) = launch {
-        if (mutable.value.selected == id) selectSource(id) else registry.resolve(id)
-    }
     private suspend fun selectSource(id: Identifier?) {
         reload() // Includes the current session's redacted refusals, including background image loads.
         if (id == ZLibrarySources.ID) zLibrary.refresh()
@@ -121,10 +118,17 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
     }
 
     fun previewText(text: String, profile: String = AUTO_PROFILE) = launch { showPreview(sources.importer.preview(text, profile)) }
-    fun previewFanqie() = launch {
+    fun addFanqie() = launch {
         val text = checkNotNull(SourceDefinitionImporter::class.java.getResourceAsStream("/known-sources/fanqie-taijiwang.json"))
             .bufferedReader(Charsets.UTF_8).use { it.readText() }
-        showPreview(sources.importer.preview(text, AUTO_PROFILE))
+        val preview = sources.importer.preview(text, AUTO_PROFILE)
+        val index = preview.candidates.single().index
+        commitSelection(preview, setOf(index), candidateOrigins(preview), false)
+        state.value.installed.find { it.definition.importKey == "https://fq.taijiwang.top" }?.let {
+            val id = ImportedRuleSources.id(it.definition)
+            sources.setPreferences(id, enabled = true)
+            selectSource(id)
+        }
     }
     fun openImportLink(url: String) {
         if (openedImportLink == url) return
@@ -148,20 +152,25 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
         } } finally { root.deleteRecursively() }
     }
     private fun showPreview(preview: ImportPreview, target: Identifier? = null) {
-        val origins = preview.candidates.associate { it.index to SourceOriginCandidates.discover(Json.parseToJsonElement(it.rawJson).jsonObject)
-            .map { candidate -> candidate.origin }.distinct().joinToString("\n") }
         mutable.update { it.copy(preview = preview, updateTarget = target,
-            previewOrigins = origins, message = if (preview.issues.any { issue -> issue.code != ImportCode.UnsupportedType }) R.string.sources_import_invalid else null) }
+            previewOrigins = candidateOrigins(preview), message = if (preview.issues.any { issue -> issue.code != ImportCode.UnsupportedType }) R.string.sources_import_invalid else null) }
+    }
+    private fun candidateOrigins(preview: ImportPreview) = preview.candidates.associate {
+        it.index to SourceOriginCandidates.discover(Json.parseToJsonElement(it.rawJson).jsonObject)
+            .map { candidate -> candidate.origin }.distinct().joinToString("\n")
     }
     fun dismissPreview() { if (!state.value.busy) mutable.update { it.copy(preview = null, previewOrigins = emptyMap(), updateTarget = null) } }
 
     fun commit(selected: Set<Int>, permissions: Map<Int, String>, allowIdentityChange: Boolean) = launch {
+        commitSelection(checkNotNull(state.value.preview), selected, permissions, allowIdentityChange, state.value.updateTarget)
+    }
+    private suspend fun commitSelection(preview: ImportPreview, selected: Set<Int>, permissions: Map<Int, String>,
+        allowIdentityChange: Boolean, updateTarget: Identifier? = null) {
         val snapshot = mutable.value
-        val preview = checkNotNull(snapshot.preview)
         require(selected.isNotEmpty())
         val candidates = preview.candidates.filter { it.index in selected }
         require(candidates.size == selected.size)
-        val target = snapshot.updateTarget?.let { id -> snapshot.installed.single { ImportedRuleSources.id(it.definition) == id } }
+        val target = updateTarget?.let { id -> snapshot.installed.single { ImportedRuleSources.id(it.definition) == id } }
         if (target != null) require(candidates.size == 1)
         val grants = candidates.associate { it.index to grants(permissions.getValue(it.index)) }
         val selections = candidates.map { candidate ->
@@ -190,7 +199,7 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
                 } catch (cancelled: CancellationException) { throw cancelled }
                 catch (_: Exception) { failed = true }
             }
-            if (additions.isNotEmpty() && sources.activateBatch(additions).size != additions.size) failed = true
+            if (additions.isNotEmpty() && sources.activateBatch(additions, enableNew = true).size != additions.size) failed = true
         } finally {
             // Import definitions are already committed. Retrying requires a fresh preview of that state.
             withContext(NonCancellable) {
@@ -210,7 +219,8 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
         mutable.update { it.copy(message = R.string.sources_saved) }
     }
     fun setEnabled(id: Identifier, enabled: Boolean) = launch {
-        sources.setPreferences(id, enabled = enabled); selectSource(id)
+        sources.setPreferences(id, enabled = enabled)
+        if (state.value.selected == id) selectSource(id) else reload()
     }
     fun setDiscoveryVisible(id: Identifier, visible: Boolean) = launch {
         sources.setPreferences(id, discoveryVisible = visible); selectSource(id)
@@ -248,7 +258,12 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
         try {
             val form = login.form(active)
             currentCoroutineContext().ensureActive()
-            mutable.update { it.copy(loginForm = form, loginStatus = LoginStatus.LoggedOut) }
+            if (form.browserUrl != null && form.fields.isEmpty()) {
+                login.submit(active, emptyMap())
+                attempt = null
+                val status = login.status(id)
+                mutable.update { it.copy(loginForm = null, loginStatus = status) }
+            } else mutable.update { it.copy(loginForm = form, loginStatus = LoginStatus.LoggedOut) }
         } catch (failure: Exception) {
             withContext(NonCancellable) { login.cancel(active) }
             if (attempt === active) attempt = null
