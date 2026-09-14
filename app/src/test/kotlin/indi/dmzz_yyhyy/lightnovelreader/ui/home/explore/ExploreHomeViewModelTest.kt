@@ -186,6 +186,34 @@ class ExploreHomeViewModelTest {
         assertFalse(current.loaded)
     }
 
+    @Test fun verificationFailureBeforePageResumesStopsLoadingAndKeepsPartialResults() = runTest(dispatcher) {
+        val closeBrowser = CompletableDeferred<Unit>()
+        var requests = 0
+        val id = add("verified", object : Feed() {
+            override fun feedUpdates() = flow<Result<List<DiscoverySection>, DiscoveryError>> {
+                requests++
+                emit(Ok(listOf(DiscoverySection("first", "First", emptyList()))))
+                val foreground = currentCoroutineContext()[ForegroundSourceRequest]!!
+                foreground.beginVerification()
+                try { closeBrowser.await() } finally { foreground.endVerification() }
+                // Closing/failing the owned browser may return before the reader's onStart.
+                emit(Err(DiscoveryError.VerificationRequired))
+            }
+        })
+        val model = model()
+        runCurrent()
+        model.setActive(false, retainBrowser = true)
+        closeBrowser.complete(Unit)
+        runCurrent()
+        model.setActive(true)
+        runCurrent()
+        val current = model.state.value.content.getValue(id)
+        assertFalse(current.loading)
+        assertEquals(DiscoveryError.VerificationRequired, current.error)
+        assertEquals("First", current.sections.single().title)
+        assertEquals(1, requests)
+    }
+
     @Test fun realTabsFilterCapabilitiesLoadOnlySelectedAndKeepVisitedFeedAndScroll() = runTest(dispatcher) {
         val aFeed = Feed()
         val zFeed = Feed()
