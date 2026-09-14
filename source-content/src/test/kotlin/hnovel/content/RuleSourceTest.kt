@@ -8,6 +8,28 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RuleSourceTest {
+    @Test fun importedNumericAndTextRatesReachTheBrowserSession() = runBlocking {
+        for (rate in listOf(JsonPrimitive(350), JsonPrimitive("1/350"))) {
+            val starts = mutableListOf<Long>()
+            val browser = BrowserExecutor { session, request, _, _ ->
+                session.awaitBrowserAdmission()
+                starts += System.nanoTime() / 1_000_000
+                BrokerResult.Success(BrokerResponse(0, request.url, emptyMap(),
+                    "<li><a href='/book/one'><h2>Fixture</h2></a></li>".toByteArray(), "UTF-8", 0,
+                    kind = ResponseKind.BrowserDocument))
+            }
+            RuleSourceFixture(browser).use { fixture -> fixture.source(customize = { raw -> JsonObject(raw + mapOf(
+                "browserRead" to JsonPrimitive(true), "concurrentRate" to rate,
+                "ruleSearch" to buildJsonObject { put("bookList", "li"); put("name", "h2@text"); put("bookUrl", "a@href") }
+            )) }).use { source ->
+                source.search("first")
+                source.search("second")
+                assertEquals(2, starts.size)
+                assertTrue(starts[1] - starts[0] >= 300)
+            } }
+        }
+    }
+
     @Test fun verificationKeepsTheExactFailedRequestAndCannotOutliveItsSource() = runBlocking {
         val opened = mutableListOf<String>()
         val browser = BrowserExecutor { _, request, options, guard ->

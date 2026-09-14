@@ -119,6 +119,8 @@ class AndroidSourceBrowser @Inject constructor(@ApplicationContext private val c
             bound = context.bindService(Intent(context, SourceBrowserService::class.java), connection, flags)
             check(bound)
             remote = withTimeout(15000) { connected.await() }
+            if (options.html == null) session.awaitBrowserAdmission()
+            current()
             remote.start(Json.encodeToString(BrowserJob(request, options)), host)
             result.await().also { current() }
         } finally {

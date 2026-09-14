@@ -6,6 +6,7 @@ import kotlinx.serialization.Serializable
 fun interface BrowserExecutor {
     suspend fun defaultUserAgent(): String? = null
 
+    /** Admit via session.awaitBrowserAdmission after acquiring the execution slot, before dispatch. */
     suspend fun execute(session: SourceSession, request: BrokerRequest, options: BrowserOptions,
         guard: RequestCommitGuard): BrokerResult
     fun clearAccount(scope: SourceScope) {}
