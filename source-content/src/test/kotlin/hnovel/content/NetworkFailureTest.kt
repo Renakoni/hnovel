@@ -13,6 +13,29 @@ import java.net.UnknownHostException
 import java.nio.file.Files
 
 class NetworkFailureTest {
+    @Test fun searchCanEnrichATwentySixResultBatch() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            fixture.source(customize = { raw -> JsonObject(raw + ("ruleSearch" to JsonObject(
+                raw.getValue("ruleSearch").jsonObject + ("bookList" to JsonPrimitive(
+                    "<js>java.ajaxAll(Array(26).fill(baseUrl));result</js>li"))))) }).use { source ->
+                assertEquals(1, source.search("title").size)
+                assertEquals(27, fixture.server.requestCount)
+            }
+        }
+    }
+
+    @Test fun exhaustedHostCallsAreReportedAsLimitsWithoutRequestingLogin() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            fixture.source(customize = { JsonObject(it + ("searchUrl" to JsonPrimitive(
+                "@js:for(var i=0;i<65;i++)source.get('fixture');'/search'"))) }).use { source ->
+                val failure = runCatching { source.search("title") }.exceptionOrNull() as SourceContentException
+                assertEquals(ContentError.Limit, failure.code)
+                assertEquals("searchUrl", failure.field)
+                assertEquals(0, fixture.server.requestCount)
+            }
+        }
+    }
+
     private suspend fun checkFailure(dns: Dns, expected: String, script: Boolean, target: String = "/search") {
         RuleSourceFixture().use { fixture ->
             val store = SourceDefinitionStore(Files.createTempDirectory("network-definitions"))

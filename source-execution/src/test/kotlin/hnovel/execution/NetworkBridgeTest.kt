@@ -15,6 +15,38 @@ class NetworkBridgeTest {
     @get:Rule val folder = TemporaryFolder()
     private val authority = ExecutionAuthority()
     private val id = authority.issue("a", "legado", "1", "fixture")
+
+    @Test fun webViewUserAgentIsAvailableToHeaderScriptsWithoutOpeningABrowser(): Unit = runBlocking {
+        val browser = object : BrowserExecutor {
+            override suspend fun defaultUserAgent() = "DeviceWebView/1.0/"
+            override suspend fun execute(session: SourceSession, request: BrokerRequest, options: BrowserOptions,
+                guard: RequestCommitGuard): BrokerResult = error("UA lookup must not navigate")
+        }
+        MockWebServer().use { server ->
+            server.start()
+            val base = server.url("/").toString()
+            SourceBroker(folder.root.toPath(), browser = browser).use { sessions ->
+                val session = sessions.open(SourceScope("fixture", "a", "legado"), listOf(NetworkGrant(base, true)))
+                SourceExecutionBroker(id, authority, session, ExecutionLimits(), base).use { broker ->
+                    server.enqueue(MockResponse().setBody("chapter"))
+                    val task = ExecutionTask.Rule("@js:java.ajax(baseUrl)", hnovel.rules.RuleValue.Empty,
+                        baseUrl = base, sourceHeaderRule = """@js:JSON.stringify({
+                            'User-Agent':String(java.getWebViewUA()).replace(/\/$/,'')+'/JINJIANG-Android',versiontype:'reading'})""")
+                    val wire = ExecutionWire.encode(id, task, broker.limits)
+                    val result = ExecutionWire.decodeResult(WorkerMain.executeSerialized(wire.toString(Charsets.UTF_8),
+                        HostBridge { name, args -> runBlocking { broker.call(name, args) } }).toByteArray())
+                    assertTrue(result.toString(), result is ExecutionResult.Success)
+                    val request = server.takeRequest(3, TimeUnit.SECONDS)!!
+                    assertEquals("DeviceWebView/1.0/JINJIANG-Android", request.getHeader("User-Agent"))
+                    assertEquals("reading", request.getHeader("versiontype"))
+                    assertFalse(broker.interactionRequired)
+                    assertThrows(IllegalArgumentException::class.java) {
+                        runBlocking { broker.call("java.getWebViewUA", listOf(JsonPrimitive("unexpected"))) }
+                    }
+                }
+            }
+        }
+    }
     private fun script(broker: SourceExecutionBroker, code: String): ExecutionResult {
         val wire = ExecutionWire.encode(id, ExecutionTask.Script(code), broker.limits)
         return ExecutionWire.decodeResult(WorkerMain.executeSerialized(wire.toString(Charsets.UTF_8), HostBridge { name, args ->

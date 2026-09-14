@@ -81,6 +81,14 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         }.build()
     val closed get() = !lifetime.isActive
 
+    suspend fun webViewUserAgent(): String {
+        checkOpen()
+        val value = browser?.defaultUserAgent()
+        checkOpen()
+        check(!value.isNullOrBlank()) { "WebView user agent unavailable" }
+        return value
+    }
+
     /** Host-only revision/re-enable handoff. A closed session may retain memory-only cookies;
      * exact scope equality still forbids transfer across sources, profiles or account generations. */
     fun inheritCookies(previous: SourceSession) {

@@ -86,6 +86,58 @@ class WorkerRuleTest {
             "@js:'&amp;'", input, OutputKind.Text, unescapeHtml = false))).value)
     }
 
+    @Test fun html4DecodingDoesNotCorruptSignedRequestParameters() {
+        val request = "https://fixture.invalid/info,{\"method\":\"POST\",\"body\":\"id=1&timestamp=2&notin=3\"}"
+        val task = ExecutionTask.Rule("@js:" + JsonPrimitive(request), RuleValue.Text("input"), OutputKind.Text)
+        assertEquals(RuleValue.Text(request), value(run(task)).value)
+        assertEquals(RuleValue.Text("& &apos; × &times &#65 A"), value(run(task.copy(
+            rule = "@js:'&amp; &apos; &times; &times &#65 &#65;'"))).value)
+    }
+
+    @Test fun scriptStagesShareAnalyzeRuleContentButKeepResultIndependent() {
+        val task = ExecutionTask.Rule("""<js>java.setContent('<p>new</p>');'stage'</js>
+            <js>result+'|'+java.getString('p@text')+'|'+src</js>""".trimIndent(),
+            RuleValue.Text("<p>old</p>"), OutputKind.Text)
+        assertEquals(RuleValue.Text("stage|new|<p>new</p>"), value(run(task)).value)
+        assertEquals(RuleValue.Text("<p>old</p>"), value(run(task.copy(rule = "@js:src"))).value)
+    }
+
+    @Test fun nestedScriptsBindCurrentContentAndBaseWithoutChangingTheCallingScript() {
+        val task = ExecutionTask.Rule("""@js:
+            java.setContent('<p>new</p>','https://changed.invalid/dir/');
+            baseUrl+'|'+src+'|'+java.getString('@js:baseUrl+"|"+src')
+            """.trimIndent(), RuleValue.Text("<p>old</p>"), OutputKind.Text, baseUrl = "https://fixture.invalid/")
+        assertEquals(RuleValue.Text("https://fixture.invalid/|<p>old</p>|https://changed.invalid/dir/|<p>new</p>"),
+            value(run(task)).value)
+    }
+
+    @Test fun scriptGetPlaceholdersExpandFromRuleVariables() {
+        val task = ExecutionTask.Rule("<js>'@get:{name}|@get:{missing}'</js>", RuleValue.Empty,
+            OutputKind.Text, sourceVariables = mapOf("name" to "chapter"))
+        assertEquals(RuleValue.Text("chapter|"), value(run(task)).value)
+        assertEquals(RuleValue.Text("updated|"), value(run(task.copy(
+            rule = "<js>java.put('name','updated');result</js><js>'@get:{name}|@get:{missing}'</js>"))).value)
+    }
+
+    @Test fun selectorTemplatesAndPutsUseCurrentContentDuringExplicitReads() {
+        val task = ExecutionTask.Rule("""@js:
+            java.getString('@put:{"root":"h1@text"}span@text','<span>explicit</span>');java.get('root')
+            """.trimIndent(), RuleValue.Text("<h1>ROOT</h1>"), OutputKind.Text)
+        assertEquals(RuleValue.Text("ROOT"), value(run(task)).value)
+        assertEquals(RuleValue.Text("NEW"), value(run(task.copy(
+            rule = "<js>java.setContent('<h1>NEW</h1>');'value'</js>{{@@h1@text}}"))).value)
+    }
+
+    @Test fun selectorListsCanBeCopiedToArraysBeforeScriptConcatenation() {
+        val task = ExecutionTask.Rule("""$.items[*]<js>
+            var copy=result.toArray();copy.push({id:3});
+            [{length:result.length,ids:copy.map(x=>x.id),keys:Object.keys(result)}]
+            </js>""".trimIndent(), RuleValue.Text("""{"items":[{"id":1},{"id":2}]}"""), OutputKind.Elements)
+        val row = (value(run(task)).value as RuleValue.Items).values.single() as RuleValue.Node
+        assertEquals(Json.parseToJsonElement("""{"length":2,"ids":[1,2,3],"keys":["0","1"]}"""),
+            Json.parseToJsonElement(row.content))
+    }
+
     @Test fun scriptStringListsSplitBeforeUrlResolution() {
         val task = ExecutionTask.Rule("@js:'one\\ntwo'", RuleValue.Text("input"), OutputKind.TextList,
             baseUrl = "https://fixture.invalid/toc/")
@@ -111,6 +163,37 @@ class WorkerRuleTest {
         assertEquals(1600, rows.size)
         assertEquals(1599, Json.parseToJsonElement((rows.last() as RuleValue.Node).content).jsonObject.getValue("id").jsonPrimitive.int)
         assertThrows(IllegalArgumentException::class.java) { ExecutionPayload.unpack(request, raw.size - 1) }
+    }
+
+    @Test fun scriptCatalogueTransformsHundredsOfChaptersWithinTheWorkerDeadline() {
+        val chapters = JsonArray((1..600).map { index -> buildJsonObject {
+            put("sort", index); put("chapter_name", "Chapter $index"); put("wordCount", 3000)
+        } })
+        val input = buildJsonObject { put("volumes", JsonArray(listOf(buildJsonObject {
+            put("name", "Volume"); put("chapters", chapters)
+        }))) }
+        val task = ExecutionTask.Rule("""<js>
+            let obj={showjname:false}, data=JSON.parse(String(result)), array=[];
+            data.volumes.forEach(booklet=>{
+                java.put('jname',booklet.name);
+                array.push({name:booklet.name,voltype:true});
+                booklet.chapters.forEach(chapter=>{
+                    let href='https://fixture.invalid/chapter?gid='+java.get('gid')+'&sort='+chapter.sort;
+                    array.push({name:!java.get('jname')?chapter.chapter_name:
+                        ((obj.showjname?'['+java.get('jname')+'] ':'').padStart(3,''))+chapter.chapter_name,
+                        url:href,time:'Words:'+String(chapter.wordCount),voltype:false});
+                });
+            });
+            array
+            </js>""".trimIndent(), RuleValue.Text(input.toString()), OutputKind.Elements,
+            sourceVariables = mapOf("gid" to "1"))
+        val wire = ExecutionWire.encode(id, task, ExecutionLimits(maxOutputBytes = 2 * 1024 * 1024))
+        val result = value(ExecutionWire.decodeResult(WorkerMain.executeSerialized(wire.toString(Charsets.UTF_8)).toByteArray()))
+        val rows = (result.value as RuleValue.Items).values
+        assertEquals(601, rows.size)
+        val last = Json.parseToJsonElement((rows.last() as RuleValue.Node).content).jsonObject
+        assertEquals("Chapter 600", last.getValue("name").jsonPrimitive.content)
+        assertEquals("https://fixture.invalid/chapter?gid=1&sort=600", last.getValue("url").jsonPrimitive.content)
     }
 
     @Test fun scriptErrorsKeepStageFieldAndOffsetWithoutExposingCode() {

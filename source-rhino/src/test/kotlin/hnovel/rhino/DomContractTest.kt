@@ -15,7 +15,7 @@ class DomContractTest {
         assertEquals(expected.toString(), (result as ScriptResult.Success).json)
     }
     @Test fun treeMutationsAttributesAndCollectionOverloadsMatchPinnedJsoup() {
-        val reference = Jsoup.parse(html, frame.baseUrl)
+        val reference = Jsoup.parse(html)
         val a = reference.selectFirst("a")!!
         a.attr("title", "chapter").addClass("read").prependText("Start ").append("<i>End</i>")
         a.dataset()["x"] = "2"

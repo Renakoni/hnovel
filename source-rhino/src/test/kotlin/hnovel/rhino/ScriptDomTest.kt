@@ -9,7 +9,7 @@ class ScriptDomTest {
     private val frame = ScriptFrame("a", "legado", baseUrl = "https://fixture.invalid/book", variables = mapOf("result" to JsonPrimitive(html)))
     @Test fun elementMethodsChainAndRemainMarkupAtRuleBoundaries() {
         val engine = RhinoScriptEngine(HostBridge { _, _ -> error("No host") })
-        assertEquals(ScriptResult.Success("[2,\"One!\",\"One\",\"/chapter\",\"https://fixture.invalid/chapter\",\"!\",\"One!\",\"undefined\"]"), engine.evaluate("""
+        assertEquals(ScriptResult.Success("[2,\"One!\",\"One\",\"/chapter\",\"\",\"!\",\"One!\",\"undefined\"]"), engine.evaluate("""
             var es=java.getElements('a');var a=es.get(0);
             [es.size(),a.text(),a.ownText(),a.attr('href'),a.absUrl('href'),a.select('b').first().text(),
              java.getString('a@text',a),typeof a.getClass]

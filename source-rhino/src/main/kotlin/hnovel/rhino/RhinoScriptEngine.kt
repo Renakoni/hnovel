@@ -93,7 +93,7 @@ private class ScriptBridge(private val bridge: HostBridge, private val rules: Sc
         val javaBridge = objectFor("java", listOf("ajax", "ajaxAll", "connect", "get", "head", "post", "getCookie", "androidId",
             "put", "getString", "getStringList", "getElement", "getElements", "importScript", "cacheFile", "downloadFile",
             "readFile", "readTxtFile", "deleteFile", "toURL", "webView", "webViewGetSource", "webViewGetOverrideUrl",
-            "startBrowser", "startBrowserAwait", "getVerificationCode") + ScriptTools.methods + ScriptCryptoObjects.factories + fonts.methods + resources.methods)
+            "startBrowser", "startBrowserAwait", "getVerificationCode", "getWebViewUA") + ScriptTools.methods + ScriptCryptoObjects.factories + fonts.methods + resources.methods)
         method(javaBridge, "setContent") { cx, activeScope, args ->
             call(cx, activeScope, "java.setContent", args)
             javaBridge
@@ -123,7 +123,7 @@ data class ScriptFrame(val sourceId: String, val profile: String, val bookId: St
     val chapter: JsonObject = JsonObject(emptyMap()), val chineseConverter: Int = 0, val sourceHeaderRule: String = "",
     val discovery: ScriptDiscovery? = null, val sourceLoginUrl: String = "")
 
-data class ScriptLimits(val instructionLimit: Int = 100_000, val maxResultChars: Int = 256 * 1024,
+data class ScriptLimits(val instructionLimit: Int = 1_000_000, val maxResultChars: Int = 256 * 1024,
     val maxScriptChars: Int = 256 * 1024, val maxBridgeChars: Int = DEFAULT_BRIDGE_CHARS,
     val maxInterpreterStackDepth: Int = 1000) {
     init { require(instructionLimit > 0 && maxResultChars > 0 && maxScriptChars > 0 && maxBridgeChars > 0 && maxInterpreterStackDepth in 1..1000) }
@@ -219,9 +219,11 @@ class RhinoScriptEngine(private val bridge: HostBridge, private val limits: Scri
                 scope.put("result", scope, JsonScriptData(context, scope, inputLimit).convert(frame.variables["result"] ?: JsonNull))
                 scope.put("key", scope, frame.key)
                 scope.put("page", scope, frame.page)
-                scope.put("baseUrl", scope, frame.baseUrl)
+                scope.put("baseUrl", scope, ruleContext.contentBaseUrl)
                 context.putThreadLocal(bridgeLimitKey, limits.maxBridgeChars)
-                ScriptBridge(bridge, ScriptRuleHelpers(scope, frame.copy(ruleContext = ruleContext), limits), ScriptRequestTemplates(scope, frame), archives).install(context, scope, frame)
+                val rules = ScriptRuleHelpers(scope, frame.copy(ruleContext = ruleContext), limits)
+                scope.put("src", scope, rules.sourceValue(context))
+                ScriptBridge(bridge, rules, ScriptRequestTemplates(scope, frame), archives).install(context, scope, frame)
                 val value = try { evaluateGlobal(context, scope, source, "source-script") }
                     finally { ruleContext.initializeMetadataVariables = null }
                 frame.discovery?.capture()

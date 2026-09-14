@@ -33,6 +33,9 @@ class RuleContext(
     bookBigVariables: Map<String, String> = emptyMap(),
     chapterBigVariables: Map<String, String> = emptyMap(),
 ) {
+    /** AnalyzeRule content survives script stages; each stage's result remains independent. */
+    var content: RuleValue? = null
+    var contentBaseUrl: String = baseUrl
     val bookValues = bookVariables.filterValues { it.length < 10000 }.toMutableMap()
     val chapterValues = chapterVariables.filterValues { it.length < 10000 }.toMutableMap()
     val bookBigValues = (bookVariables.filterValues { it.length >= 10000 } + bookBigVariables).toMutableMap()

@@ -46,6 +46,12 @@ class ScriptRuleHelpersTest {
         """))
     }
 
+    @Test fun nestedStringRulesKeepUnterminatedEntitiesInRequestParameters() {
+        assertEquals(JsonPrimitive("id=1&timestamp=2&notin=3|& &apos;"), run("""
+            java.getString('@js:"id=1&timestamp=2&notin=3"')+'|'+java.getString('@js:"&amp; &apos;"')
+        """))
+    }
+
     @Test fun nestedRuleRecursionCannotResetInstructionOrDepthBudget() {
         val frame = frame.copy(ruleBudget=RuleBudget(RuleLimits(maxDepth=8)))
         val result = engine.evaluate("function again(){return java.getString('@js:again()')}try{again()}catch(e){'hidden'}", frame)
@@ -69,16 +75,16 @@ class ScriptRuleHelpersTest {
         assertEquals(JsonPrimitive("One\nTwo"), run("java.getString('a@text')"))
     }
 
-    @Test fun setContentUrlBaseIsLocalToSelectorsAndDomViews() {
+    @Test fun setContentKeepsRedirectResolutionSeparateFromContentBase() {
         val context = RuleContext("a", baseUrl = frame.baseUrl)
-        assertEquals(JsonArray(listOf(JsonPrimitive("https://text.invalid/folder/next"),
-            JsonPrimitive("https://text.invalid/folder/next"), JsonPrimitive("https://text.invalid/folder/later"),
-            JsonPrimitive(frame.baseUrl))), run("""
+        assertEquals(JsonArray(listOf(JsonPrimitive("https://example.org/next"),
+            JsonPrimitive(""), JsonPrimitive("https://example.org/later"),
+            JsonPrimitive(frame.baseUrl), JsonPrimitive("https://text.invalid/folder/book"))), run("""
             java.setContent('<a href="next">Chapter</a>','https://text.invalid/folder/book');
             var url=java.getString('a@href',null,true);
             var dom=java.getElement('a').first().absUrl('href');
             java.setContent('<a href="later">Later</a>',null);
-            [url,dom,java.getStringList('a@href',null,true)[0],baseUrl]
+            [url,dom,java.getStringList('a@href',null,true)[0],baseUrl,java.getString("@js:''",null,true)]
         """, frame.copy(ruleContext = context)))
         assertEquals(frame.baseUrl, context.baseUrl)
     }

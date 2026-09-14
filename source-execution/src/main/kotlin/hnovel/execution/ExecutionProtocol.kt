@@ -156,7 +156,7 @@ class IsolatedExecutor(private val javaCommand: String = javaHome(), private val
    RhinoScriptEngine::class.java, org.mozilla.javascript.Context::class.java, RuleEvaluator::class.java) +
    listOf("org.jsoup.Jsoup", "com.jayway.jsonpath.JsonPath", "net.minidev.json.JSONValue", "net.minidev.asm.BeansAccess",
     "org.objectweb.asm.ClassReader", "org.slf4j.LoggerFactory", "org.seimicrawler.xpath.JXDocument",
-    "org.apache.commons.lang3.StringUtils", "org.antlr.v4.runtime.Parser", "com.google.gson.Gson",
+    "org.apache.commons.lang3.StringUtils", "org.apache.commons.text.StringEscapeUtils", "org.antlr.v4.runtime.Parser", "com.google.gson.Gson",
     "cn.hutool.crypto.KeyUtil", "cn.hutool.core.util.HexUtil", "com.github.liuyueyi.quick.transfer.ChineseUtils",
     "hnovel.rhino.charset.CharsetDetector", "hnovel.rhino.font.QueryTTF", "okhttp3.Response", "okio.Buffer").map { Class.forName(it) })
    .map { type ->

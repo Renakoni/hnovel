@@ -4,7 +4,7 @@ import com.google.gson.JsonParser
 import hnovel.rules.selector.AnalyzeByJSonPath
 import hnovel.rules.selector.AnalyzeByJSoup
 import hnovel.rules.selector.AnalyzeByXPath
-import org.jsoup.parser.Parser
+import org.apache.commons.text.StringEscapeUtils
 import java.net.URI
 
 /** Stateless evaluator; callers supply a distinct context and budget per request. No IO is performed here. */
@@ -12,12 +12,15 @@ class RuleEvaluator(private val unescapeHtml: Boolean = true, private val script
     private val parser = RuleParser()
 
     fun evaluate(rule: String, input: RuleValue, context: RuleContext, output: OutputKind = OutputKind.TextList,
-        location: RuleLocation = RuleLocation("rule"), budget: RuleBudget = RuleBudget(), urlBase: String = context.baseUrl): RuleResult = try {
+        location: RuleLocation = RuleLocation("rule"), budget: RuleBudget = RuleBudget(), urlBase: String = context.baseUrl,
+        emptyUrlBase: String = urlBase): RuleResult = try {
         budget.checkValue(input, budget.limits.maxInputChars)
         val value = run(rule, input, input, context, output, location, budget, 0)
         budget.checkValue(value, budget.limits.maxOutputChars)
         RuleResult.Success(when (output) {
-            OutputKind.Url -> RuleValue.Text(absolute(urlBase, value.items().firstOrNull()?.text().orEmpty(), true))
+            OutputKind.Url -> RuleValue.Text(value.items().firstOrNull()?.text().orEmpty().let {
+                if (it.isBlank()) emptyUrlBase else absolute(urlBase, it, true)
+            })
             OutputKind.UrlList -> RuleValue.Items(value.items().map { absolute(urlBase, it.text(), false) }
                 .filter { it.isNotEmpty() }.distinct().map(RuleValue::Text))
             else -> value
@@ -41,16 +44,17 @@ class RuleEvaluator(private val unescapeHtml: Boolean = true, private val script
         if (plan.steps.isEmpty()) return RuleValue.Empty
         for (step in plan.steps) {
             val at = location.copy(offset = location.offset + step.offset)
-            value = if (step.script) script(interpolate(step.text, value, root, context, at, budget, depth + 1,
+            val content = context.content ?: root
+            value = if (step.script) script(interpolate(step.text, value, content, context, at, budget, depth + 1,
                 captures = false, selectorsOnly = true),
                 value, context, at, budget)
-                else select(step.text, value, root, context, output, at, budget, depth + 1)
+                else select(step.text, value, content, context, output, at, budget, depth + 1)
             budget.checkValue(value, budget.limits.maxOutputChars)
         }
         return when {
             value != RuleValue.Empty && output in listOf(OutputKind.Text, OutputKind.Url) -> {
                 val text = value.text()
-                RuleValue.Text(if (unescapeHtml) Parser.unescapeEntities(text, false) else text)
+                RuleValue.Text(if (unescapeHtml) StringEscapeUtils.unescapeHtml4(text) else text)
             }
             value is RuleValue.Text && output in listOf(OutputKind.TextList, OutputKind.UrlList) ->
                 RuleValue.Items(value.value.split('\n').map(RuleValue::Text))
@@ -206,7 +210,7 @@ class RuleEvaluator(private val unescapeHtml: Boolean = true, private val script
         while (index < text.length) {
             budget.check()
             when {
-                !selectorsOnly && text.regionMatches(index, "@get:{", 0, 6, true) -> {
+                text.regionMatches(index, "@get:{", 0, 6, true) -> {
                     val end = parser.balancedEnd(text, index + 5, location, budget)
                     out.append(context.get(text.substring(index + 6, end - 1)))
                     index = end

@@ -20,6 +20,8 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
      * Consumers use it only for BridgeDenied, never to override handled errors or successful rules. */
     @Volatile var requestFailure: BrokerResult.Failure? = null
         private set
+    @Volatile var requestLimitExceeded = false
+        private set
 
     init {
         require(identity.namespace == session.scope.namespace && identity.sourceId == session.scope.sourceId &&
@@ -44,6 +46,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
 
     suspend fun call(name: String, args: List<JsonElement>): JsonElement {
         requestFailure = null
+        requestLimitExceeded = false
         if (name != "request.withHeaders") return callWithHeaders(name, args, emptyMap())
         require(args.size == 3)
         val operation = args[0].jsonPrimitive.content
@@ -56,6 +59,10 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
         val requestNumber = reserveRequest()
         return ownedWork {
             when (name) {
+                "java.getWebViewUA" -> {
+                    require(args.isEmpty())
+                    JsonPrimitive(session.webViewUserAgent())
+                }
                 "java.getVerificationCode" -> {
                     if (!allowInteraction) {
                         interactionRequired = true
@@ -407,7 +414,10 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
     }
 
     private fun reserveRequest(): Int = authorized {
-        check(++requests <= limits.maxRequests) { "Request budget exceeded" }
+        if (++requests > limits.maxRequests) {
+            requestLimitExceeded = true
+            error("Request budget exceeded")
+        }
         requests
     }
 
