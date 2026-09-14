@@ -9,9 +9,11 @@ import io.nightfish.lightnovelreader.api.userdata.UserData
 import io.nightfish.lightnovelreader.api.userdata.UserDataPath
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.job
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -72,6 +74,11 @@ class DownloadProgressRepository @Inject constructor(
             val completedBookList = completedBookListUserData.getOrDefault(emptyList())
             _downloadItemList.addAll(completedBookList.map { it })
         }
+    }
+
+    /** Finish background database work before the owning host closes its database. */
+    suspend fun close() {
+        coroutineScope.coroutineContext.job.cancelAndJoin()
     }
 
     fun addExportItem(downloadItem: DownloadItem) {

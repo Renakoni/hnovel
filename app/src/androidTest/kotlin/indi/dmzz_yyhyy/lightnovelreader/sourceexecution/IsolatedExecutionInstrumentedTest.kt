@@ -58,7 +58,8 @@ class IsolatedExecutionInstrumentedTest {
                 [title,java.getString('a@text'),java.getString('a@href',null,true),
                  baseUrl,typeof org.jsoup.Jsoup.connect,typeof Packages]
             """, libraryCode = library, baseUrl = "https://source.invalid/")
-            assertEquals(ExecutionResult.Success("""["小说","正文","https://text.invalid/next","https://source.invalid/","undefined","undefined"]"""),
+            // setContent changes selector input; URL results still resolve against the request URL.
+            assertEquals(ExecutionResult.Success("""["小说","正文","https://source.invalid/next","https://source.invalid/","undefined","undefined"]"""),
                 executor.execute(id, task))
             assertEquals(ExecutionResult.Success("\"\""), executor.execute(id,
                 task.copy(code = "java.getString('a@text')")))

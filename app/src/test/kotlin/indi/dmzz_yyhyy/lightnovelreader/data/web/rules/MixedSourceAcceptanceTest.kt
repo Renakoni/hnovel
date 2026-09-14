@@ -258,7 +258,7 @@ class MixedSourceAcceptanceTest {
                 assertEquals(coil3.decode.DataSource.DISK, (image as coil3.request.SuccessResult).dataSource)
 
                 val generation = accounts.current(a).generation
-                sources.stop(); registry.unregister(native.id); native.close(); db.close(); loader.shutdown()
+                sources.stop(); registry.unregister(native.id); native.close(); progress.close(); db.close(); loader.shutdown()
                 registry = WebSourceRegistry(fixture.authority)
                 accounts = SourceSessionManager(fixture.authority, epochs)
                 sources = ImportedRuleSources(context, registry, fixture.authority, accounts, fixture.runner)
@@ -303,7 +303,7 @@ class MixedSourceAcceptanceTest {
                 assertEquals(requests, fixture.documents.get()); assertEquals(nativeRequests, nativeReads.get())
             } finally {
                 fixture.afterRun = {}; sources.stop(); registry.unregister(native.id); native.close()
-                work.cancelAllWork().await(); WorkManagerTestInitHelper.closeWorkDatabase(); db.close()
+                work.cancelAllWork().await(); WorkManagerTestInitHelper.closeWorkDatabase(); progress.close(); db.close()
                 loader.shutdown(); cache.shutdown(); coil3.SingletonImageLoader.reset(); unmockkConstructor(Wenku8Api::class)
             }
         }

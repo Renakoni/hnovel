@@ -5,6 +5,17 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ScriptDependencyTest {
+    @Test fun missingDependencyClassificationDoesNotDependOnDeviceLanguage() {
+        val previous = java.util.Locale.getDefault()
+        try {
+            for (locale in listOf(java.util.Locale.ENGLISH, java.util.Locale.SIMPLIFIED_CHINESE)) {
+                java.util.Locale.setDefault(locale)
+                val failure = engine.evaluate("Packages.java.lang.System", frame) as ScriptResult.Failure
+                assertEquals(FailureCode.UnsupportedDependency,failure.code)
+                assertEquals(ScriptDependency.Packages,failure.dependency)
+            }
+        } finally { java.util.Locale.setDefault(previous) }
+    }
     private val frame = ScriptFrame("fixture", "legado")
     private val engine = RhinoScriptEngine(HostBridge { _, _ -> error("No host call expected") })
 

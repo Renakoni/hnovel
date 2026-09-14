@@ -250,7 +250,7 @@ class RhinoScriptEngine(private val bridge: HostBridge, private val limits: Scri
               // Classify only engine-generated missing bindings. Source-created Errors, ordinary
               // missing variables, typeof probes and caught fallbacks retain normal JS semantics.
               val dependency = if (error.name == "ReferenceError") ScriptDependency.entries.firstOrNull {
-                  error.errorMessage.contains("\"${it.binding}\"") || error.errorMessage.contains("'${it.binding}'")
+                  error.errorMessage == ScriptRuntime.getMessageById("msg.is.not.defined", it.binding)
               } else null
               if (dependency == null) ScriptResult.Failure(FailureCode.Runtime, "script failed")
               else ScriptResult.Failure(FailureCode.UnsupportedDependency, "runtime dependency unavailable", dependency,
