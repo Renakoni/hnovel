@@ -75,6 +75,7 @@ class SourceBrowserService : Service() {
         webView = view
         view.settings.apply {
             javaScriptEnabled = true; domStorageEnabled = true
+            job.request.headers.entries.firstOrNull { it.key.equals("User-Agent", true) }?.let { userAgentString = it.value }
             blockNetworkLoads = true
             allowFileAccess = false; allowContentAccess = false
             @Suppress("DEPRECATION")
@@ -105,7 +106,7 @@ class SourceBrowserService : Service() {
             }
             override fun onPageFinished(view: WebView, url: String) {
                 if ((!job.options.interactive || job.options.script.isNotBlank() && !verificationCode) &&
-                    url == mainUrl && redirected == null) handler.postDelayed({ evaluate() }, job.options.delayMillis)
+                    url == mainUrl && redirected == null) handler.postDelayed({ evaluate() }, 1000 + job.options.delayMillis)
             }
             override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
                 if (request.isForMainFrame && redirected == null) fail()

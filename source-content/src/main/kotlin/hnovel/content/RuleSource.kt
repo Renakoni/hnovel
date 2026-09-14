@@ -257,7 +257,8 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             val html = context.text(rule, document.input(), "ruleContent.content", unescape = false)
             // Resolve image links against each response, before joining pages and applying whole-chapter replacements.
             val normalized = context.script("""
-                (function(){var body=java.getElements('@css:body').first();body.select('img[src]').forEach(function(img){
+                (function(){var doc=org.jsoup.Jsoup.parse(result,baseUrl);doc.outputSettings().prettyPrint(false);
+                    var body=doc.body();body.select('img[src]').forEach(function(img){
                     img.attr('src',img.absUrl('src'))});return body.html()})()
             """.trimIndent(), RuleValue.Text(html), "ruleContent.images").text()
             pages += normalized
@@ -372,6 +373,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val visited = linkedSetOf<String>()
         val chapters = mutableListOf<RuleChapter>()
         val pageChapters = mutableSetOf<List<String>>()
+        var completePageList = false
         while (queue.isNotEmpty()) {
             val url = queue.removeFirst(); visit(visited, url, "ruleToc.nextTocUrl")
             val document = initial.document?.takeIf { visited.size == 1 && it.url == url }
@@ -400,7 +402,13 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             }
             val ids = chapters.drop(pageStart).filterNot { it.isVolume }.map { it.id }
             if (ids.isNotEmpty() && !pageChapters.add(ids)) throw SourceContentException(ContentError.RepeatedPage, "ruleToc.nextTocUrl")
-            links(context, spec.toc.string("nextTocUrl"), document, "ruleToc.nextTocUrl").forEach(queue::addLast)
+            if (!completePageList) {
+                val next = links(context, spec.toc.string("nextTocUrl"), document, "ruleToc.nextTocUrl")
+                    .filter { it != document.url }
+                // Legado expands an initial page list once; a single link follows the next-page chain.
+                completePageList = context.page == 1 && next.size > 1
+                (if (completePageList) next else next.take(1)).forEach(queue::addLast)
+            }
             context.page++
         }
         if (chapters.isEmpty()) throw SourceContentException(ContentError.EmptyContent, "ruleToc.chapterList")

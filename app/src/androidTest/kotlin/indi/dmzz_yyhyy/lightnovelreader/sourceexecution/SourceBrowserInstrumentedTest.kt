@@ -22,6 +22,60 @@ import java.util.concurrent.ConcurrentLinkedQueue
 class SourceBrowserInstrumentedTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
 
+    @Test fun sourceUserAgentMatchesNavigatorScriptsAndFetch(): Unit = runBlocking {
+        MockWebServer().use { server ->
+            val agents = ConcurrentLinkedQueue<String>()
+            server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse {
+                    agents.add(request.getHeader("User-Agent").orEmpty())
+                    return when (request.path) {
+                        "/script.js" -> MockResponse().setHeader("Content-Type", "application/javascript")
+                            .setBody("fetch('/chapter').then(function(r){return r.text()}).then(function(){window.finished=true;});")
+                        "/chapter" -> MockResponse().setBody("chapter")
+                        else -> MockResponse().setHeader("Content-Type", "text/html")
+                            .setBody("<html><body><script src='/script.js'></script></body></html>")
+                    }
+                }
+            }
+            server.start()
+            val root = File(context.cacheDir, "browser-agent-${System.nanoTime()}")
+            try {
+                SourceBroker(root.toPath(), browser = AndroidSourceBrowser(context)).use { broker ->
+                    val session = broker.open(SourceScope("agent", "A", "legado"), listOf(NetworkGrant(server.url("/").toString(), true)))
+                    val result = session.execute(BrokerRequest("render", server.url("/").toString(),
+                        headers = mapOf("user-agent" to "NovelFixture/1.0"), timeoutMillis = 60000,
+                        browser = BrowserOptions(script = "window.finished ? navigator.userAgent : null")))
+                    assertTrue(result.toString(), result is BrokerResult.Success)
+                    assertEquals("NovelFixture/1.0", (result as BrokerResult.Success).response.text())
+                    assertTrue(agents.size >= 3)
+                    assertTrue(agents.toString(), agents.all { it == "NovelFixture/1.0" })
+                }
+            } finally { root.deleteRecursively() }
+        }
+    }
+
+    @Test fun defaultRenderingWaitsForDynamicChapterText(): Unit = runBlocking {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().setHeader("Content-Type", "text/html").setBody("""
+                <html><body><main id="chapter"></main><script>
+                setTimeout(function(){document.getElementById('chapter').textContent='dynamic chapter';},500);
+                </script></body></html>
+            """.trimIndent()))
+            server.start()
+            val root = File(context.cacheDir, "browser-delay-${System.nanoTime()}")
+            try {
+                SourceBroker(root.toPath(), browser = AndroidSourceBrowser(context)).use { broker ->
+                    val session = broker.open(SourceScope("delay", "A", "legado"), listOf(NetworkGrant(server.url("/").toString(), true)))
+                    val result = session.execute(BrokerRequest("render", server.url("/").toString(), timeoutMillis = 60000,
+                        browser = BrowserOptions()))
+                    assertTrue(result.toString(), result is BrokerResult.Success)
+                    val html = (result as BrokerResult.Success).response.text()
+                    assertEquals("dynamic chapter", org.jsoup.Jsoup.parse(html).selectFirst("#chapter")?.text())
+                }
+            } finally { root.deleteRecursively() }
+        }
+    }
+
     @Test fun redirectRefusalPreservesRedactedOriginAcrossBrowserBinder(): Unit = runBlocking {
         MockWebServer().use { source -> MockWebServer().use { cdn ->
             source.start(); cdn.start()

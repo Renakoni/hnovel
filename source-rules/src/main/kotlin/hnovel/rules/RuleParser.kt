@@ -17,7 +17,7 @@ class RuleParser {
                 rule.regionMatches(index, "@js:", 0, 4, true) -> {
                     if (index > start) steps.add(RuleStep(rule.substring(start, index), start))
                     steps.add(RuleStep(rule.substring(index + 4), index + 4, true))
-                    return RulePlan(steps)
+                    return RulePlan(steps.filter { it.script || it.text.isNotBlank() })
                 }
                 rule.regionMatches(index, "<js>", 0, 4, true) -> {
                     if (index > start) steps.add(RuleStep(rule.substring(start, index), start))
@@ -33,7 +33,7 @@ class RuleParser {
             }
         }
         if (start < rule.length) steps.add(RuleStep(rule.substring(start), start))
-        return RulePlan(steps)
+        return RulePlan(steps.filter { it.script || it.text.isNotBlank() })
     }
 
     fun split(text: String, delimiters: List<String>, location: RuleLocation, budget: RuleBudget): Pair<String?, List<RuleStep>> {
