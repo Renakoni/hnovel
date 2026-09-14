@@ -236,7 +236,8 @@ abstract class DiscoveryPageViewModel(
                 var content = previous
                 // Native feeds need no catalogue request. Rules declare their interactive catalogue.
                 if (capability == SourceCapability.Categories || discovery.hasInteractions) {
-                    val catalog = discovery.catalog(id in refreshCatalog).getOrElse { return@discoveryRequest Err(it) }
+                    val catalog = (if (capability == SourceCapability.Explore) discovery.homepageCatalog(id in refreshCatalog)
+                        else discovery.catalog(id in refreshCatalog)).getOrElse { return@discoveryRequest Err(it) }
                     content = applyCatalog(content, catalog)
                 }
                 if (capability == SourceCapability.Explore) {

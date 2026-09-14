@@ -27,13 +27,19 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
     override suspend fun catalog(refresh: Boolean) = request {
         map(session.catalog(refresh)).also { current = it }
     }
+    override suspend fun homepageCatalog(refresh: Boolean) = request {
+        map(session.catalog(refresh, homepage = true)).also { current = it }
+    }
     override suspend fun categories() = catalog().map { it.categories }
     override suspend fun feed() = request {
-        val catalog = map(session.catalog()).also { current = it }
-        val first = catalog.categories.firstOrNull { it.target.isNotBlank() }
+        val definition = session.catalog(homepage = true)
+        val catalog = map(definition).also { current = it }
+        val entries = definition.homepage?.map { DiscoveryCategory(it.id, it.title, it.url) } ?: catalog.categories
+        val first = entries.firstOrNull { it.target.isNotBlank() }
         val preview = first?.let { session.page(it.target, 1, catalog.values).take(6).map(::book) }.orEmpty()
-        catalog.categories.map { category -> DiscoverySection(category.id, category.title,
-            if (category == first) preview else emptyList(), category.target.takeIf(String::isNotBlank), category.id) }
+        entries.map { category -> DiscoverySection(category.id, category.title,
+            if (category == first) preview else emptyList(), category.target.takeIf(String::isNotBlank),
+            category.id.takeIf { definition.homepage == null }) }
     }
     override fun filters(target: String) = if (target.startsWith(DISCOVERY_SEARCH_PREFIX)) emptyList() else current?.filters.orEmpty()
 
@@ -65,7 +71,8 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
     }
 
     private fun map(catalog: RuleDiscoveryCatalog) = DiscoveryCatalog(
-        catalog.rows.filter { it.type == "url" }.map { DiscoveryCategory(it.id, it.title, it.url) },
+        catalog.rows.filter { it.type == "url" && catalog.homepage.orEmpty().none { home -> home.url == it.url } }
+            .map { DiscoveryCategory(it.id, it.title, it.url) },
         catalog.rows.mapNotNull { row -> when (row.type) {
             "text" -> DiscoveryFilter.Text(row.id, row.title, row.default)
             "toggle", "select" -> DiscoveryFilter.Choice(row.id, row.title, row.choices.associateWith { it }, row.default)
@@ -83,7 +90,9 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
         permissionFailure = failure.denial?.let { DiscoveryPermission(it.origin, it.kind.name) }
         Err(when (failure.code) {
         ContentError.MissingCapability -> DiscoveryError.Unsupported
-        ContentError.LoginRequired, ContentError.BrowserRequired -> DiscoveryError.AuthenticationRequired
+        ContentError.LoginRequired -> DiscoveryError.AuthenticationRequired
+        ContentError.BrowserRequired -> if (failure.verification?.kind == hnovel.network.BrowserChallengeKind.Login)
+            DiscoveryError.AuthenticationRequired else DiscoveryError.VerificationRequired
         ContentError.PermissionDenied -> DiscoveryError.PermissionDenied
         ContentError.AddressDenied -> DiscoveryError.AddressDenied
         ContentError.Dns -> DiscoveryError.Dns

@@ -719,4 +719,5 @@
     <string name="source_verification_background_open">Open verification</string>
     <string name="source_verification_background">%1$s needs verification. Background reading stopped; retry the download after verifying.</string>
     <string name="source_verification_failed">Verification did not complete, or this source account has changed. Retry from the source.</string>
+    <string name="discovery_verification_required">Website verification is not complete. Retry to open the verification page.</string>
 </resources>

@@ -8,7 +8,8 @@ data class RuleDiscoveryEnvironment(val themeMode: String = "0", val theme: Json
 data class RuleDiscoveryRow(val id: String, val title: String, val type: String, val url: String = "",
     val action: String = "", val choices: List<String> = emptyList(), val default: String = "", val field: String = "exploreUrl",
     val viewName: String = "")
-data class RuleDiscoveryCatalog(val rows: List<RuleDiscoveryRow>, val values: Map<String, String>)
+data class RuleDiscoveryCatalog(val rows: List<RuleDiscoveryRow>, val values: Map<String, String>,
+    val homepage: List<RuleDiscoveryRow>? = null)
 data class RuleDiscoveryAction(val kind: String, val value: String = "", val title: String = "",
     val html: String? = null, val script: String = "")
 data class RuleDiscoveryUpdate(val catalog: RuleDiscoveryCatalog, val actions: List<RuleDiscoveryAction>, val refresh: Boolean)
@@ -20,13 +21,17 @@ class RuleDiscoverySession internal constructor(private val source: RuleSource, 
     private var initialized = false
     private var saveSeconds: Long? = null
     private var current: RuleDiscoveryCatalog? = null
+    private var homepageOnly = false
     init { require(id.isNotBlank() && id.length <= 128); validateValues(values) }
 
-    suspend fun catalog(refresh: Boolean = false): RuleDiscoveryCatalog = source.operation("exploreUrl") {
+    suspend fun catalog(refresh: Boolean = false, homepage: Boolean = false): RuleDiscoveryCatalog = source.operation("exploreUrl") {
         if (!source.canDiscover) throw SourceContentException(ContentError.MissingCapability, "exploreUrl")
-        if (!refresh) current?.let { return@operation it }
+        if (!refresh && homepageOnly == homepage) current?.let { return@operation it }
+        val modules = homepageModules()
         val context = context()
-        val rows = rows(context, source.spec.exploreUrl, "exploreUrl") +
+        // Direct homepage URLs need no category lookup. kindTitle still resolves against exploreUrl.
+        val needsCategories = !homepage || modules == null || modules.any { it.jsonObject.string("url").isBlank() }
+        val rows = (if (needsCategories) rows(context, source.spec.exploreUrl, "exploreUrl") else emptyList()) +
             source.spec.exploreScreen.takeIf(String::isNotBlank)?.let { rows(context, it, "exploreScreen") }.orEmpty()
         if (source.spec.customButton) {
             if (!source.spec.eventListener || source.spec.content.string("callBackJs").isBlank())
@@ -55,13 +60,47 @@ class RuleDiscoverySession internal constructor(private val source: RuleSource, 
         }
         capture(context)
         initialInputKeys = inputs
-        RuleDiscoveryCatalog(rendered, values.toMap()).also { current = it }
+        RuleDiscoveryCatalog(rendered, values.toMap(), homepage(modules, rendered)).also { current = it; homepageOnly = homepage }
     }
 
     private var initialInputKeys = emptySet<String>()
 
+    /** MD3's explicit homepage entries leave the other discovery URLs available as categories. */
+    private fun homepageModules(): JsonArray? {
+        val raw = source.spec.homepageModules.takeIf(String::isNotBlank) ?: return null
+        val modules = Json.parseToJsonElement(raw) as? JsonArray
+            ?: throw SourceContentException(ContentError.InvalidRule, "homepageModules")
+        if (modules.size > 64) throw SourceContentException(ContentError.Limit, "homepageModules")
+        if (modules.any { it !is JsonObject }) throw SourceContentException(ContentError.InvalidRule, "homepageModules")
+        return modules
+    }
+
+    private fun homepage(modules: JsonArray?, rows: List<RuleDiscoveryRow>): List<RuleDiscoveryRow>? {
+        modules ?: return null
+        val keys = mutableSetOf<String>()
+        return modules.mapIndexed { index, value ->
+            val field = "homepageModules[$index]"
+            val module = value as? JsonObject ?: throw SourceContentException(ContentError.InvalidRule, field)
+            val key = module.string("key")
+            val title = module.string("title")
+            if (key.isBlank() || key.length > 256 || !keys.add(key))
+                throw SourceContentException(ContentError.InvalidRule, "$field.key")
+            if (title.isBlank() || title.length > 256)
+                throw SourceContentException(ContentError.InvalidRule, "$field.title")
+            // These modules carry book lists; rendering remains owned by the host.
+            if (module.string("type") !in setOf("ranking", "card", "grid", "banner", "gridRanking", "infiniteGrid", "waterfall"))
+                throw SourceContentException(ContentError.MissingCapability, "$field.type")
+            val url = module.string("url").ifBlank {
+                rows.singleOrNull { it.type == "url" && it.title == module.string("kindTitle") }?.url
+                    ?: throw SourceContentException(ContentError.InvalidRule, "$field.kindTitle")
+            }
+            if (url.isBlank()) throw SourceContentException(ContentError.InvalidRule, "$field.url")
+            RuleDiscoveryRow("homepage:$key", title, "url", url, field = field)
+        }
+    }
+
     suspend fun interact(rowId: String, value: String? = null, longClick: Boolean = false): RuleDiscoveryUpdate {
-        val catalog = catalog()
+        val catalog = catalog(homepage = homepageOnly)
         return source.operation("discovery.action") {
             val row = catalog.rows.singleOrNull { it.id == rowId }
                 ?: throw SourceContentException(ContentError.InvalidRule, "discovery.action.id")

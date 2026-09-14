@@ -10,6 +10,7 @@ class SourceRequestException(val error: DiscoveryError, val denial: OriginDenial
 fun sourceFailureMessage(error: DiscoveryError): Int = when (error) {
     DiscoveryError.Unsupported -> R.string.discovery_unsupported
     DiscoveryError.AuthenticationRequired -> R.string.discovery_login_required
+    DiscoveryError.VerificationRequired -> R.string.discovery_verification_required
     DiscoveryError.PermissionDenied -> R.string.discovery_permission
     DiscoveryError.AddressDenied -> R.string.sources_address_denied
     DiscoveryError.Dns -> R.string.sources_dns_failed

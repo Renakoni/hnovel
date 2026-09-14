@@ -41,6 +41,11 @@ class SourceDiscovery internal constructor(private val runtime: SourceRuntime, p
         provider.catalog(refresh).map(::bind)
     }
 
+    suspend fun homepageCatalog(refresh: Boolean = false): Result<SourceDiscoveryCatalog, DiscoveryError> = runtime.execute {
+        if (!hasFeed) return@execute Err(DiscoveryError.Unsupported)
+        provider.homepageCatalog(refresh).map(::bind)
+    }
+
     suspend fun interact(id: String, value: String?, longClick: Boolean) = runtime.execute {
         provider.interact(id, value, longClick).map { SourceDiscoveryUpdate(bind(it.catalog), it.actions.toList(), it.refresh) }
     }
