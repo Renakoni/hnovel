@@ -21,12 +21,12 @@ internal object WorkerRuleEvaluator {
         context.chapterMetadata = task.chapter.toString()
         val discovery = task.discovery?.let(::ScriptDiscovery)
         var scriptFailure: ScriptResult.Failure? = null
-        val evaluator = RuleEvaluator(unescapeHtml = task.unescapeHtml) { request, current, budget ->
+        val evaluator = RuleEvaluator(unescapeHtml = task.unescapeHtml, scriptTemplates = task.scriptTemplates) { request, current, budget ->
             budget.check()
             val frame = ScriptFrame(identity.sourceId, identity.profile, task.bookId, task.chapterId,
                 mapOf("result" to input(request.input)), task.key, task.page, task.baseUrl, current, task.input, budget, task.book, task.chapter, task.chineseConverter,
                 sourceHeaderRule = task.sourceHeaderRule, discovery = discovery, sourceLoginUrl = task.sourceLoginUrl,
-                sourceComment = task.sourceComment)
+                sourceComment = task.sourceComment, nextChapterUrl = task.nextChapterUrl)
             when (val result = RhinoScriptEngine(bridge, ScriptLimits(maxResultChars = limits.maxOutputBytes,
                 maxBridgeChars = limits.scriptDataLimit), archives)
                 .evaluate(request.script, frame, library)) {

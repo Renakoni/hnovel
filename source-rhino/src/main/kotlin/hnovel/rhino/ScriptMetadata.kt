@@ -124,6 +124,19 @@ internal object ScriptMetadata {
             bigVariables.clear(); bigVariables.putAll(next); bigWrites[key] = value; JsonNull
         }
         if (!chapter) {
+            method("getReverseToc") { a ->
+                require(a.isEmpty())
+                val config = ScriptableObject.getProperty(result, "readConfig") as? Scriptable
+                JsonPrimitive(config?.let { ScriptableObject.getProperty(it, "reverseToc") } == true)
+            }
+            method("setReverseToc") { a ->
+                require(a.size == 1)
+                val reverse = a.single().jsonPrimitive.boolean
+                val config = (ScriptableObject.getProperty(result, "readConfig") as? Scriptable)
+                    ?: realm.objectIn(scope).also { result.put("readConfig", result, it) }
+                config.put("reverseToc", config, reverse)
+                JsonNull
+            }
             var folder: String? = null
             method("getFolderName") { a -> require(a.isEmpty()); JsonPrimitive(folder ?: (text("name").replace(Regex("[\\\\/:*?\"<>|.]"), "").take(9) + java.security.MessageDigest.getInstance("MD5").digest(text("bookUrl").toByteArray()).joinToString("") { "%02x".format(it) }.substring(8, 24)).also { folder = it }) }
             method("getRealAuthor") { a -> require(a.isEmpty()); JsonPrimitive(text("author").replace(Regex("^\\s*作\\s*者[:：\\s]+|\\s+著"), "")) }

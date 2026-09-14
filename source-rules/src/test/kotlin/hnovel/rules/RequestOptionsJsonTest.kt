@@ -5,6 +5,13 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RequestOptionsJsonTest {
+    @Test fun legadoLenientRequestDataDoesNotRequireJavaScriptEvaluation() {
+        val value = RequestOptionsJson.parse("{method:'POST';header:{os:'pc'},body:'first\nsecond',value:unquoted}").jsonObject
+        assertEquals(JsonPrimitive("POST"), value["method"])
+        assertEquals(JsonPrimitive("pc"), value.getValue("header").jsonObject["os"])
+        assertEquals(JsonPrimitive("first\nsecond"), value["body"])
+        assertEquals(JsonPrimitive("unquoted"), value["value"])
+    }
     @Test fun jsonNumbersBooleansAndNullRemainTypedData() {
         val values = RequestOptionsJson.parse("[0,-0,12,-12,1.5,1e3,1E-2,true,false,null]").jsonArray
         assertEquals(listOf("0", "-0", "12", "-12", "1.5", "1e3", "1E-2", "true", "false", "null"),
@@ -39,9 +46,7 @@ class RequestOptionsJsonTest {
 
     @Test fun malformedDataHasOnlyARedactedDiagnostic() {
         for (text in listOf("{'secret':'unterminated}", "{'secret':'\\x41'}", "{'secret':1,}", "{'secret':function(){}}",
-            "{secret:'value'}", "{'secret':unquoted}", "{'secret':NaN}", "{'secret':01}",
-            "{'secret':unquoted,'secret':0}", "{'secret':1}\u0001",
-            "{'secret':1} trailing", "{'secret':'line\nbreak'}")) {
+            "{'secret':1}\u0001", "{'secret':1} trailing")) {
             val error = assertThrows(text, RequestOptionsException::class.java) { RequestOptionsJson.parse(text) }
             assertEquals("Invalid request options", error.message)
             assertNull(error.cause)

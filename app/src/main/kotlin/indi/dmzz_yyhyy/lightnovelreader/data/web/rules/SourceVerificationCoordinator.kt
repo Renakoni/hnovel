@@ -18,11 +18,10 @@ data class VerificationOwner(val source: Identifier, val revision: String, val g
 data class VerificationPrompt(val id: String, val owner: VerificationOwner, val name: String,
     val kind: hnovel.network.BrowserChallengeKind, val foreground: Boolean, val opening: Boolean = false)
 
-/** Await outside rule budgets; one explicit UI action opens one account-bound browser. */
+/** Foreground operations open verification directly; background work only leaves a notice. */
 @Singleton
 class SourceVerificationCoordinator @Inject constructor(private val registry: WebSourceRegistry) {
-    private data class Pending(val prompt: VerificationPrompt, val verification: SourceVerification,
-        val decision: CompletableDeferred<Boolean> = CompletableDeferred())
+    private data class Pending(val prompt: VerificationPrompt, val verification: SourceVerification)
     private val lock = Any()
     private val pending = linkedMapOf<String, Pending>()
     private val mutable = MutableStateFlow<List<VerificationPrompt>>(emptyList())
@@ -34,18 +33,15 @@ class SourceVerificationCoordinator @Inject constructor(private val registry: We
             it.metadata.accountGeneration == owner.generation && it.status == SourceStatus.Ready
     }
     private fun publish() { mutable.value = pending.values.map { it.prompt } }
-    private fun remove(id: String) = synchronized(lock) { pending.remove(id)?.decision?.complete(false); publish() }
+    private fun remove(id: String) = synchronized(lock) { pending.remove(id); publish() }
 
     fun dismiss(id: String) = remove(id)
-    fun approve(id: String) = synchronized(lock) {
-        pending[id]?.takeIf { it.prompt.foreground && current(it.prompt.owner) }?.decision?.complete(true)
-    }
 
     /** The visible host collects this; retirement also removes stale background notices. */
     suspend fun observeRetirement(): Unit = registry.sources.collect {
         synchronized(lock) {
             val retired = pending.values.filter { !current(it.prompt.owner) }
-            retired.forEach { entry -> pending.remove(entry.prompt.id); entry.decision.complete(false) }
+            retired.forEach { entry -> pending.remove(entry.prompt.id) }
             publish()
         }
     }
@@ -86,8 +82,6 @@ class SourceVerificationCoordinator @Inject constructor(private val registry: We
         var verifying = false
         try {
             return foreground.ownVerification {
-                val accepted = withTimeoutOrNull(300000) { entry.decision.await() } ?: false
-                if (!accepted) throw failure
                 foreground.beginVerification(); verifying = true
                 val completed = withTimeoutOrNull(300000) {
                     foreground.awaitActive()
