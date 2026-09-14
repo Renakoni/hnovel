@@ -51,9 +51,9 @@
 | 网络 API | `AnalyzeRule.ajax` 复用 `AnalyzeUrl`；参考某些失败返回异常文本 | `ScriptRequestTemplates`、`SourceExecutionBroker`、`SourceSession` | 保留受控请求和明确错误；不把异常文本当成功正文 |
 | HTTP 错误响应 | `WebBook.getContentAwait` 将响应 body 交给 `BookContent.analyzeContent`，即使后续脚本完全不使用该响应 | `RuleSource.fetch` / `checkStatus` | 已允许以 JS 开始的正文规则处理 HTTP 错误响应，使占位章节地址不再阻止脚本请求真正正文；普通选择规则保留 HTTP 错误，传输错误和权限拒绝仍传播 |
 | JS 绑定 | `AnalyzeRule.evalJS` 绑定 java/cookie/cache/source/book/chapter/result/baseUrl/title/src/nextChapterUrl；MD3 另有 fromBookInfo | `RhinoScriptEngine`、`ScriptFrame` | 已补 title/nextChapterUrl 的序列化、两条 worker 路径和正文调度；续页保持下一章，末章为空。Android 隔离进程测试通过 |
-| 状态 API | `AnalyzeRule.put/get`：章节→书籍→来源；bookName/title 是特殊读取键 | `RuleContext`、`ScriptMetadata`、执行状态 | 特殊键和普通变量优先级仍有差异，需补对应状态语义 |
+| 状态 API | `AnalyzeRule.put/get`：章节→书籍→来源；bookName/title 是特殊读取键 | `RuleContext`、`ScriptMetadata`、执行状态 | #189 后已补特殊键、实体共享变量与来源回退；同输入参考 App 和 worker 验证见 `INTERPRETER_FOLLOWUP.md` |
 | 提示 API | `JsExtensions.toast/longToast` 对参数原生 `toString` 后显示短/长提示，返回 void | Rhino bridge → 执行 broker → Android Toast | 已补真实提示；不会因循环对象 JSON 化或缺少函数中断验证码交接 |
-| 文件/内存缓存 | `CacheManager`：普通缓存存数据库，默认/显式 0 秒不过期；文件缓存走 ACache，内存缓存保留对象；delete 清理三类 | `cache` facade、`SourceBroker.ValueCache` | 尚有真实差异：产品普通缓存为会话内存且默认 60 秒，0 秒被拒绝；文件/内存 API 缺失。不能用统一字符串别名代替三类存储 |
+| 文件/内存缓存 | `CacheManager`：普通缓存存数据库，默认/显式 0 秒不过期；文件缓存走 ACache，内存缓存保留对象；delete 清理三类 | `cache` facade、`SourceBroker.ValueCache` | #189 后已补普通缓存持久化及有效期，未复制 MD3 内存层忽略有效期的问题；文件/内存/数值 API 仍需补齐，不能用统一字符串别名代替三类存储 |
 | 目录倒序 | `Book.setReverseToc` 写 `readConfig`；`BookChapterList` 在反向去重后依据配置决定最终顺序 | `ScriptMetadata`、`RuleSource.directory` | 已接通读写配置及目录排序，保留其他 readConfig 字段；覆盖正序、负号倒序、去重、最终索引和持久化 |
 | 可选书籍字段 | `BookList.getSearchItem`、`BookInfo` 单独捕获分类、字数、最新章、简介、封面规则失败 | `RuleSource.bookFields` | 已容忍这些字段的 InvalidRule，保留跟踪记录和已有值；分类按字符串列表用逗号合并。必需字段及权限/登录/限额错误继续上报 |
 | preUpdateJs | `WebBook` / `AnalyzeRule` 限定刷新目录/书籍 API 的调用时机 | `RuleSource.directory`、宿主动作 | 当前能运行脚本，不等于 refreshTocUrl 等动作已实现；十个定义涉及 |
@@ -134,7 +134,8 @@ PR #189 首轮 CI 的 JVM 检查通过；API 24 和 API 35 各有 39/40 项通�
   构建通过。本地 API 35 完整运行与 CI 相同的三个 instrumentation 测试类，40 项全部通过，
   覆盖隔离进程、账户、提示/章节上下文、规则模板传递、WebView UA 和动态正文。
   API 24 的修正结果由新一轮远端 CI 验证。Wenku8 原生实现未改动。
-- 尚未闭环的通用差异主要是特殊变量读取、缓存的持久化/有效期与文件/内存 API、
+- 特殊变量读取、实体变量互通与来源存储回退已继续补齐，见 [后续源码适配](INTERPRETER_FOLLOWUP.md)。
+  普通缓存持久化/有效期及详情后重复抓目录也已继续修复；剩余通用差异主要是文件/内存/数值缓存 API、
   目录刷新回调，以及原生 WebView 网络、iframe、Cookie/验证交接。没有用空函数掩盖这些缺口。
 
 完整逐行映射见本地证据目录的 `all-original-rows.jsonl`，汇总见 `REPORT.md`。

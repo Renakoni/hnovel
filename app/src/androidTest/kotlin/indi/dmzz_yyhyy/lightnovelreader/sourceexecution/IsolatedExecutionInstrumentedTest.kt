@@ -320,7 +320,13 @@ class IsolatedExecutionInstrumentedTest {
                         assertEquals(RuleValue.Items(listOf(RuleValue.Text("One"), RuleValue.Text("chapter"),
                             RuleValue.Node("true", hnovel.rules.InputKind.Json), RuleValue.Text("rsa"), RuleValue.Text("network"),
                             RuleValue.Text("40+2"), RuleValue.Node("4", hnovel.rules.InputKind.Json))), rule.value)
-                        assertEquals(mapOf("value" to "chapter"),rule.writes)
+                        assertTrue(rule.writes.isEmpty())
+                    }
+                    // Without a book/chapter, java.put persists to the bound source, including
+                    // across broker lifetimes and a later isolated worker invocation.
+                    SourceExecutionBroker(id,authority,session,limits,base).use { broker ->
+                        val saved=executor.execute(id,ExecutionTask.Script("source.get('value')+'|'+java.get('value')",baseUrl=base),limits,broker)
+                        assertEquals(ExecutionResult.Success("\"chapter|chapter\""),saved)
                     }
                     assertEquals("/find/3?ok=1",server.takeRequest(3,TimeUnit.SECONDS)?.path)
                     assertEquals("/script.js",server.takeRequest(3,TimeUnit.SECONDS)?.path)

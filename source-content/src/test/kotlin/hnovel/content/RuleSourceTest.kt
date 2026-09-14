@@ -11,6 +11,20 @@ import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.RecordedRequest
 
 class RuleSourceTest {
+    @Test fun sourceFallbackAndRowVariablesPersistThroughTheProductionPipeline(): Unit = runBlocking {
+        RuleSourceFixture().use { fixture -> fixture.source(customize = { raw -> JsonObject(raw + mapOf(
+            "ruleSearch" to JsonObject(raw.getValue("ruleSearch").jsonObject + mapOf(
+                "bookList" to JsonPrimitive("<js>java.put('fromList','list');source.put('fallback','stored');result</js>li"),
+                "name" to JsonPrimitive("<js>java.put('row','row value');result</js>h2@text")
+            )),
+            "ruleBookInfo" to JsonObject(raw.getValue("ruleBookInfo").jsonObject +
+                ("intro" to JsonPrimitive("""@js:[book.getVariable('row'),java.get('fallback'),source.get('fromList'),java.get('bookName')].join('|')""")))
+        )) }).use { source ->
+            val book = source.search("title").single()
+            assertEquals("row value|stored|list|Same title", source.information(book.id).description)
+        } }
+    }
+
     @Test fun importedNumericAndTextRatesReachTheBrowserSession() = runBlocking {
         for (rate in listOf(JsonPrimitive(350), JsonPrimitive("1/350"))) {
             val starts = mutableListOf<Long>()
@@ -680,6 +694,19 @@ class RuleSourceTest {
             val updated = source.information(id)
             assertTrue(updated.observedUpdate > first.observedUpdate)
             assertEquals(updated.observedUpdate, source.information(id).observedUpdate)
+        } }
+    }
+
+    @Test fun informationSuppliesItsCompletedDirectoryOnceWithoutDisablingExplicitRefresh() = runBlocking {
+        RuleSourceFixture().use { fixture -> fixture.source().use { source ->
+            val id = fixture.server.url("/book/one").toString()
+            source.information(id)
+            val fetched = fixture.server.requestCount
+            val original = source.directory(id)
+            assertEquals(fetched, fixture.server.requestCount)
+            fixture.extraChapter = true
+            assertEquals(original.size + 1, source.directory(id).size)
+            assertTrue(fixture.server.requestCount > fetched)
         } }
     }
 
