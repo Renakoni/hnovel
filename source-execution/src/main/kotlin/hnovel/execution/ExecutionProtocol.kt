@@ -217,7 +217,7 @@ class WorkerRuntime(private val archives: hnovel.rhino.ArchiveDecoder = hnovel.r
   libraries.clear()
  }
 
- @Synchronized fun executeSerialized(input: String, bridge: HostBridge = HostBridge { _, _ -> error("No host broker") }): String {
+ @Synchronized fun executeSerialized(input: String, bridge: HostBridge = HostBridge.None): String {
   if (input.length > ExecutionWire.MAX_INPUT_BYTES || input.toByteArray(Charsets.UTF_8).size > ExecutionWire.MAX_INPUT_BYTES)
    return kotlinx.serialization.json.Json.encodeToString(ExecutionResult.serializer(), ExecutionResult.Failure(FailureCode.InputLimit))
   val wire = try { kotlinx.serialization.json.Json.decodeFromString(Wire.serializer(),
@@ -232,8 +232,11 @@ class WorkerRuntime(private val archives: hnovel.rhino.ArchiveDecoder = hnovel.r
    is ExecutionTask.Echo -> if (task.value.toByteArray().size > wire.limits.maxOutputBytes) ExecutionResult.Failure(FailureCode.OutputLimit) else ExecutionResult.Success(task.value)
    is ExecutionTask.Sleep -> { Thread.sleep(task.millis); ExecutionResult.Success("slept") }
    is ExecutionTask.Script -> {
+    val ruleContext = hnovel.rules.RuleContext(wire.identity.sourceId, task.bookId, task.chapterId, task.baseUrl)
+    WorkerRuleEvaluator.bindSourceVariables(ruleContext, bridge)
     val frame = ScriptFrame(wire.identity.sourceId, wire.identity.profile, task.bookId, task.chapterId,
      mapOf("result" to task.result), task.key, task.page, task.baseUrl, book = task.book, chapter = task.chapter,
+     ruleContext = ruleContext,
      chineseConverter = task.chineseConverter, sourceLoginUrl = task.sourceLoginUrl, sourceComment = task.sourceComment,
      nextChapterUrl = task.nextChapterUrl)
     when (val evaluated = RhinoScriptEngine(bridge, ScriptLimits(maxResultChars = wire.limits.maxOutputBytes,
@@ -260,7 +263,7 @@ class WorkerRuntime(private val archives: hnovel.rhino.ArchiveDecoder = hnovel.r
 }
 
 object WorkerMain {
- fun executeSerialized(input: String, bridge: HostBridge = HostBridge { _, _ -> error("No host broker") }): String =
+ fun executeSerialized(input: String, bridge: HostBridge = HostBridge.None): String =
   WorkerRuntime().use { it.executeSerialized(input, bridge) }
 
  @JvmStatic fun main(args: Array<String>) {

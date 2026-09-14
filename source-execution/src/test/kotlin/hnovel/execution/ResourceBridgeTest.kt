@@ -11,6 +11,34 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 class ResourceBridgeTest {
+    @Test fun scriptCacheMatchesReferenceDeadlinesAndSurvivesBrokerRestart() = runBlocking {
+        val scope = SourceScope("fixture", "cache", "legado")
+        val limits = BrokerLimits(cacheTtlMillis = 1)
+        fun open(sessions: SourceBroker, source: SourceScope = scope) = SourceExecutionBroker(
+            authority.issue(source.sourceId, source.profile, "1", source.namespace), authority,
+            sessions.open(source, emptyList()), ExecutionLimits(maxRequests = 30))
+        SourceBroker(folder.root.toPath(), limits = limits).use { sessions ->
+            open(sessions).use { broker ->
+                assertEquals(ExecutionResult.Success("[null,\"default\",\"zero\",\"short\",null]"), script(broker, """
+                    cache.put('default','default');cache.put('zero','zero',0);
+                    cache.put('short','short',1);cache.put('expired','gone',-1);
+                    [cache.get('missing'),cache.get('default'),cache.get('zero'),cache.get('short'),cache.get('expired')]
+                """, ""))
+            }
+        }
+        delay(1100)
+        SourceBroker(folder.root.toPath(), limits = limits).use { sessions ->
+            open(sessions).use { broker ->
+                assertEquals(ExecutionResult.Success("[\"default\",\"zero\",null]"),
+                    script(broker, "[cache.get('default'),cache.get('zero'),cache.get('short')]", ""))
+                assertEquals(ExecutionResult.Success("null"), script(broker, "cache.delete('zero');cache.get('zero')", ""))
+            }
+            for (other in listOf(scope.copy(sourceId = "other"), scope.copy(profile = "other"))) open(sessions, other).use { broker ->
+                assertEquals(ExecutionResult.Success("null"), script(broker, "cache.get('default')", ""))
+            }
+        }
+    }
+
     @Test fun consumingAnExtractionCannotDeleteAnotherPublishedBetweenReadAndDelete() = runBlocking {
         MockWebServer().use { server ->
             server.start()

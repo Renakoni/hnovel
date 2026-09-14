@@ -22,7 +22,7 @@ sealed interface RuleResult {
     data class Failure(val error: RuleError) : RuleResult
 }
 
-/** Owned by one request/book evaluation. Inherited values are snapshots; puts are request-local. */
+/** Owned by one evaluation. Entity writes are snapshots; the host commits them after the rule succeeds. */
 class RuleContext(
     val sourceId: String,
     val bookId: String? = null,
@@ -49,14 +49,30 @@ class RuleContext(
     var chapterMetadata: String? = null
     val metadataVariablesInitialized = mutableSetOf<String>()
     var initializeMetadataVariables: (() -> Unit)? = null
+    var readSpecialVariable: ((String) -> String?)? = null
+    var putMetadataVariable: ((String, String) -> Unit)? = null
+    var readSourceVariable: ((String) -> String?)? = null
+    var putSourceVariable: ((String, String) -> Unit)? = null
+    val hasBook get() = bookId != null || bookMetadata?.let { it != "{}" } == true
+    val hasChapter get() = chapterId != null || chapterMetadata?.let { it != "{}" } == true
     private val sourceValues = sourceVariables.toMap()
     private val values = linkedMapOf<String, String>()
     fun get(key: String): String {
-        val initializer = initializeMetadataVariables
-        if (initializer != null) initializer() else loadMetadataVariables()
+        readSpecialVariable?.invoke(key)?.let { return it }
+        val metadata = when {
+            key == "bookName" && hasBook -> bookMetadata to "name"
+            key == "title" && hasChapter -> chapterMetadata to "title"
+            else -> null
+        }
+        if (metadata != null) return metadata.first?.let { Json.parseToJsonElement(it).jsonObject[metadata.second]?.jsonPrimitive?.contentOrNull }.orEmpty()
+        initializeVariables()
         return values[key]?.takeIf { it.isNotEmpty() }
         ?: listOf(chapterValues[key] ?: chapterBigValues[key], bookValues[key] ?: bookBigValues[key], sourceValues[key])
-            .firstOrNull { !it.isNullOrEmpty() }.orEmpty()
+            .firstOrNull { !it.isNullOrEmpty() } ?: readSourceVariable?.invoke(key).orEmpty()
+    }
+    private fun initializeVariables() {
+        val initializer = initializeMetadataVariables
+        if (initializer != null) initializer() else loadMetadataVariables()
     }
     private fun loadMetadataVariables() {
         for ((name, json, values) in listOf(Triple("book", bookMetadata, bookValues), Triple("chapter", chapterMetadata, chapterValues))) {
@@ -66,7 +82,32 @@ class RuleContext(
             }
         }
     }
-    fun put(key: String, value: String): String { values[key] = value; return value }
+    fun put(key: String, value: String): String {
+        if (!hasChapter && !hasBook) {
+            val writer = putSourceVariable
+            if (writer == null) values[key] = value else writer(key, value)
+            return value
+        }
+        initializeVariables()
+        putMetadataVariable?.let { it(key, value); return value }
+        // Selectors and scripts write the same entity, including the reference's big-value split.
+        val chapter = hasChapter
+        val smallValues = if (chapter) chapterValues else bookValues
+        val bigValues = if (chapter) chapterBigValues else bookBigValues
+        val smallWrites = if (chapter) chapterWrites else bookWrites
+        val bigWrites = if (chapter) chapterBigWrites else bookBigWrites
+        val existed = smallValues.containsKey(key)
+        val small = value.length < 10000
+        if (small) { smallValues[key] = value; bigValues.remove(key) }
+        else { smallValues.remove(key); bigValues[key] = value }
+        smallWrites[key] = smallValues[key]; bigWrites[key] = bigValues[key]
+        if (small || existed) {
+            val before = (if (chapter) chapterMetadata else bookMetadata)?.let { Json.parseToJsonElement(it).jsonObject }.orEmpty()
+            val updated = JsonObject(before + ("variable" to JsonPrimitive(JsonObject(smallValues.mapValues { JsonPrimitive(it.value) }).toString()))).toString()
+            if (chapter) chapterMetadata = updated else bookMetadata = updated
+        }
+        return value
+    }
     fun writes(): Map<String, String> = values.toMap()
 }
 

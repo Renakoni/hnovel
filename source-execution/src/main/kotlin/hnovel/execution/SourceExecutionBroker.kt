@@ -214,7 +214,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
                     val value = if (deletion) null else args[if (variable) 0 else 1].let {
                         if (it == JsonNull) null else it.jsonPrimitive.content
                     }
-                    val ttl = if (name == "cache.put" && args.size == 3) Math.multiplyExact(args[2].jsonPrimitive.long, 1000) else null
+                    val ttl = if (name == "cache.put") Math.multiplyExact(args.getOrNull(2)?.jsonPrimitive?.int?.toLong() ?: 0, 1000) else null
                     val area = if (name.startsWith("cache.")) StorageArea.Cache else StorageArea.Config
                     check(session.write(StorageRequest(area, key, value, ttl)) is StorageResult.Value) { "Storage write failed" }
                     if (name == "source.put") JsonPrimitive(value.orEmpty()) else JsonNull

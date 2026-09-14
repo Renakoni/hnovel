@@ -64,7 +64,7 @@ class InlineSourceTest {
                 val text = source.content(book.id, chapter).parts.mapNotNull { it.text }.joinToString("\n")
                 assertEquals("second chapter", text)
                 val paths = (0 until fixture.server.requestCount).map { fixture.server.takeRequest().path?.substringBefore('?') }
-                assertEquals(listOf("/search", "/book/one", "/toc/1", "/toc/1", "/c/2"), paths)
+                assertEquals(listOf("/search", "/book/one", "/toc/1", "/c/2"), paths)
             }
         }
     }

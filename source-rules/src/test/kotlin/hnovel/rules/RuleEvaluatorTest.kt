@@ -68,7 +68,8 @@ class RuleEvaluatorTest {
     @Test fun putsAndTemplatesUseRequestContextAndPreserveCaptureReplacement() {
         val context = RuleContext("a", "book", chapterVariables = mapOf("title" to "Chapter"))
         assertEquals("Library Chapter", value("""@put:{"name":"tag.h1@text"}@get:{name} @get:{title}""", context = context).text())
-        assertEquals(mapOf("name" to "Library"), context.writes())
+        assertEquals(mapOf("name" to "Library"), context.bookWrites)
+        assertTrue(context.writes().isEmpty())
         assertEquals("[Library]", value("[{{@CSS:h1@text}}]").text())
         assertEquals("1-Alpha", value("\$1-\$2", RuleValue.Captures(listOf("1:Alpha", "1", "Alpha")), OutputKind.Text).text())
         assertEquals("Lbrary", value("tag.h1@text##i##", output = OutputKind.Text).text())
@@ -126,8 +127,26 @@ class RuleEvaluatorTest {
         assertEquals("request", context.get("name"))
         val snapshot = context.writes()
         context.put("name", "")
-        assertEquals("book", context.get("name"))
-        assertEquals("request", snapshot["name"])
+        assertEquals("source", context.get("name"))
+        assertTrue(snapshot.isEmpty())
+        assertEquals("", context.bookWrites["name"])
+    }
+
+    @Test fun selectorVariablesUseMetadataNamesAndWriteToTheCurrentEntity() {
+        val context = RuleContext("a", "book", "chapter", sourceVariables = mapOf("token" to "source"))
+        context.bookMetadata = """{"name":"Book"}"""
+        context.chapterMetadata = """{"title":"","variable":"{\"token\":\"old\"}"}"""
+        context.put("title", "shadow")
+        assertEquals("Book", value("@get:{bookName}", output = OutputKind.Text, context = context).text())
+        assertEquals("", context.get("title"))
+        assertEquals("old", context.get("token"))
+        context.put("token", "")
+        assertEquals("source", context.get("token"))
+        context.put("large", "x".repeat(10000))
+        assertEquals(10000, context.get("large").length)
+        assertNull(context.chapterWrites["large"])
+        assertEquals(10000, context.chapterBigWrites["large"]!!.length)
+        assertTrue(context.writes().isEmpty())
     }
 
     @Test fun regexChainStopsOnEmptyAndFirstReplacementOnlyReplacesFirstMatch() {
