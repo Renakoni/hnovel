@@ -44,7 +44,6 @@
     "nextContentUrl": "a.btn-primary.py-2[href^='?p=']@href"
   },
   "homepageModules": "[{\"key\":\"day\",\"type\":\"ranking\",\"title\":\"日榜\",\"url\":\"/rank?type=day&p={{page}}\"},{\"key\":\"week\",\"type\":\"ranking\",\"title\":\"周榜\",\"url\":\"/rank?type=week&p={{page}}\"},{\"key\":\"month\",\"type\":\"ranking\",\"title\":\"月榜\",\"url\":\"/rank?type=month&p={{page}}\"},{\"key\":\"articles\",\"type\":\"card\",\"title\":\"文章\",\"url\":\"/n?sort={{({'最新':'date','阅读量':'view','收藏数':'like','字数':'char'})[infoMap['文章排序']]||'date'}}&p={{page}}\"}]",
-  "concurrentRate": "1/2000",
   "browserRead": true,
   "exploreScreen": "[{\"title\":\"文章排序\",\"type\":\"select\",\"chars\":[\"最新\",\"阅读量\",\"收藏数\",\"字数\"],\"default\":\"最新\",\"action\":\"java.refreshExplore()\",\"targetPrefixes\":[\"/n?\",\"/tag/\"]}]"
 }
