@@ -40,6 +40,14 @@ adb -s 127.0.0.1:16416 shell am instrument -w -e class indi.dmzz_yyhyy.lightnove
 adb -s 127.0.0.1:16416 pull /sdcard/Android/data/indi.dmzz_yyhyy.lightnovelreader.debug/files/native-environment.json
 ```
 
+下载两次运行的 JSON 后，可生成对照摘要：
+
+```text
+python source-compatibility/browser/compare-environments.py mumu.json api35.json --output comparison.md
+```
+
+脚本检查 schema 与四份观测是否完整，展示 provider/OS/探针版本和 Cookie、接口、Canvas 实测差异。脚本不同会明确提示不能直接归因为环境；不同硬件的正常差异不作为失败。它也不以摘要代替完整 JSON 中的音频/字体/能力观测。
+
 测试使用临时来源账号，结束时清理自己的账号。真实账号目录不被删除，但切换到测试账号会结束当前原生浏览器进程；应在用户没有进行登录/阅读操作时运行。不要并行运行 UIAutomator 或另一套 instrumentation。
 
 回环 HTTP 是浏览器认可的可信来源。Secure Cookie 的回环例外不能证明普通公网 HTTP 接受 Secure Cookie；本次不覆盖真实 HTTPS 证书链、跨 scheme、CHIPS/Partitioned、时钟回退、真实 Android 设备或 Cloudflare 频率。第三方 Cookie 开关沿用来源生产配置，未声称覆盖其所有组合。
