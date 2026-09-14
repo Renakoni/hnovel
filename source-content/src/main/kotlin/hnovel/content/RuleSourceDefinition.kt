@@ -2,7 +2,7 @@ package hnovel.content
 
 import hnovel.imports.SourceDefinition
 import kotlinx.serialization.json.*
-import java.net.URI
+import java.net.URL
 import java.security.MessageDigest
 
 /** Parsed definition data. Nothing here grants network access or executes source expressions. */
@@ -52,9 +52,10 @@ internal fun sourceLink(base: String, value: String): String {
     val option = Regex(",\\s*(?=\\{)").find(value)?.range?.first ?: value.length
     val address = value.substring(0, option).trim()
     val baseEnd = Regex(",\\s*(?=\\{)").find(base)?.range?.first ?: base.length
-    val resolved = try { URI(base.substring(0, baseEnd).trim()).resolve(address) }
+    // Keep the logical URL (including unencoded chapter titles) until request charset expansion.
+    val resolved = try { URL(URL(base.substring(0, baseEnd).trim()), address) }
         catch (_: Exception) { throw SourceContentException(ContentError.InvalidRule, "url") }
-    val scheme = resolved.scheme?.lowercase()
+    val scheme = resolved.protocol?.lowercase()
     if (scheme !in setOf("http", "https") || resolved.host.isNullOrBlank() || resolved.userInfo != null)
         throw SourceContentException(ContentError.InvalidRule, "url")
     return resolved.toString().replaceFirst(Regex("^[A-Za-z][A-Za-z0-9+.-]*:"), "$scheme:") + value.substring(option)

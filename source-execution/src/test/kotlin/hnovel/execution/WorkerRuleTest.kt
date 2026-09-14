@@ -40,6 +40,25 @@ class WorkerRuleTest {
             "<js>({title:'ONE'})</js>$.title", input, OutputKind.Text))).value)
     }
 
+    @Test fun whitespaceAroundScriptsPreservesChapterUrlsAndPaginationArrays() {
+        val base = "https://fixture.invalid/ta/listAjax.m?nid=1&order=0&page=1&size=100"
+        val row = RuleValue.Node("""{"sort":2,"chapterName":"Two"}""", InputKind.Json)
+        val rule = """<js>
+            url=baseUrl.replace(/listAjax/g,"show").replace(/&order=\d*&page=\d*&size=\d*/g,"&st={{$.sort}}&gst=0&cu=&cName={{$.chapterName}}");
+            u=String(url)+",{'webView': true}"
+            </js>
+        """.trimIndent() + "\r\n"
+        assertEquals(RuleValue.Text("https://fixture.invalid/ta/show.m?nid=1&st=2&gst=0&cu=&cName=Two,{'webView': true}"),
+            value(run(ExecutionTask.Rule(rule, row, OutputKind.Text, baseUrl = base))).value)
+        assertEquals(RuleValue.Items(listOf(RuleValue.Text(base), RuleValue.Text(base.replace("page=1", "page=2")))),
+            value(run(ExecutionTask.Rule(" \n<js>[baseUrl,baseUrl.replace(/page=\\d+/,'page=2')]</js>\r\n",
+                row, OutputKind.TextList, baseUrl = base))).value)
+        for (ruleWithSpace in listOf(" \n<js>result+'!'</js> \n<js>result+'?'</js>\r\n", "\t@js:result+'!?'")) {
+            assertEquals(RuleValue.Text("chapter!?"), value(run(ExecutionTask.Rule(ruleWithSpace,
+                RuleValue.Text("chapter"), OutputKind.Text))).value)
+        }
+    }
+
     @Test fun javaVariablesShareRuleContextButDoNotLeakIntoAnotherBook() {
         val task = ExecutionTask.Rule("<js>java.put('title',java.get('title')+'!');result</js>@get:{title}", RuleValue.Text("input"),
             OutputKind.Text, sourceVariables = mapOf("title" to "source"), bookVariables = mapOf("title" to "book"),
@@ -55,6 +74,24 @@ class WorkerRuleTest {
         assertEquals(RuleValue.Text("normal:CHAPTER"), value(run(ExecutionTask.Rule(rule, html, OutputKind.Text))).value)
         assertEquals(RuleValue.Text("normal"), value(run(ExecutionTask.Rule(
             """@js:"{{@@body@data-order}}"""", html, OutputKind.Text))).value)
+    }
+
+    @Test fun scalarEntitiesAreDecodedAfterTheLastScript() {
+        // Observed with the same input/rules in the reference app's AnalyzeRule.getString.
+        val input = RuleValue.Text("<h1>&amp;amp;</h1>")
+        assertEquals(RuleValue.Text("&"), value(run(ExecutionTask.Rule("@js:'&amp;'", input, OutputKind.Text))).value)
+        assertEquals(RuleValue.Text("raw"), value(run(ExecutionTask.Rule(
+            "h1@text<js>result === '&amp;' ? 'raw' : 'decoded'</js>", input, OutputKind.Text))).value)
+        assertEquals(RuleValue.Text("&amp;"), value(run(ExecutionTask.Rule(
+            "@js:'&amp;'", input, OutputKind.Text, unescapeHtml = false))).value)
+    }
+
+    @Test fun scriptStringListsSplitBeforeUrlResolution() {
+        val task = ExecutionTask.Rule("@js:'one\\ntwo'", RuleValue.Text("input"), OutputKind.TextList,
+            baseUrl = "https://fixture.invalid/toc/")
+        assertEquals(RuleValue.Items(listOf(RuleValue.Text("one"), RuleValue.Text("two"))), value(run(task)).value)
+        assertEquals(RuleValue.Items(listOf(RuleValue.Text("https://fixture.invalid/toc/one"),
+            RuleValue.Text("https://fixture.invalid/toc/two"))), value(run(task.copy(output = OutputKind.UrlList))).value)
     }
 
     @Test fun completeCataloguePayloadFitsBinderAndExpansionRemainsBounded() {

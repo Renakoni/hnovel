@@ -27,6 +27,7 @@
         options = options || {};
         var headers = {}, input = new Headers(options.headers || {});
         input.forEach(function (v, k) { headers[k] = v; });
+        if (!input.has('user-agent')) headers['User-Agent'] = navigator.userAgent;
         if (options.signal && options.signal.aborted) throw new Error('Aborted');
         var body = options.body;
         if (body instanceof URLSearchParams) {

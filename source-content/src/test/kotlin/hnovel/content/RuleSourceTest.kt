@@ -9,6 +9,54 @@ import org.junit.Test
 
 class RuleSourceTest {
 
+    @Test fun cataloguePageArraysAreExpandedOnceAndKeepScriptChapterUrls() = runBlocking {
+        val rendered = mutableListOf<String>()
+        val browser = BrowserExecutor { session, request, _, guard ->
+            rendered += java.net.URI(request.url).path
+            session.execute(request.copy(browser = null), guard)
+        }
+        RuleSourceFixture(browser).use { fixture ->
+            val normal = fixture.server.dispatcher
+            val pages = mutableListOf<String>()
+            var expansions = 0
+            fixture.afterRun = { task ->
+                if (task is ExecutionTask.Rule && task.location.field == "ruleToc.nextTocUrl") expansions++
+            }
+            fixture.server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
+                override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest): okhttp3.mockwebserver.MockResponse {
+                    val path = request.path.orEmpty()
+                    if (!path.startsWith("/toc/")) return normal.dispatch(request)
+                    pages += path
+                    val entries = when (path) {
+                        "/toc/1" -> """{"sort":1,"chapterName":"One"}"""
+                        "/toc/2" -> """{"sort":2,"chapterName":"Two words"}"""
+                        "/toc/3" -> """{"sort":3,"chapterName":"Three"}"""
+                        else -> ""
+                    }
+                    return okhttp3.mockwebserver.MockResponse().setBody("""{"chapters":[$entries]}""")
+                }
+            }
+            fixture.source(customize = { raw -> JsonObject(raw + mapOf(
+                "ruleToc" to buildJsonObject {
+                    put("chapterList", "$.chapters"); put("chapterName", "$.chapterName")
+                    put("chapterUrl", "<js>baseUrl.replace(/toc\\/\\d+/, 'c/{{$.sort}}')+'?cName={{$.chapterName}}'+\",{'webView':true}\"</js>\n")
+                    put("nextTocUrl", "<js>[baseUrl,'/toc/2','/toc/3','/toc/4']</js>\n")
+                },
+                "ruleContent" to buildJsonObject { put("content", "article@html") }
+            )) }).use { source ->
+                val id = fixture.server.url("/book/one").toString()
+                val chapters = source.directory(id)
+                assertEquals(listOf("One", "Two words", "Three"), chapters.map { it.title })
+                assertEquals(chapters.mapIndexed { index, chapter -> fixture.server.url("/c/${index + 1}").toString() +
+                    "?cName=${chapter.title},{'webView':true}" }, chapters.map { it.id })
+                assertEquals(listOf("/toc/1", "/toc/2", "/toc/3", "/toc/4"), pages)
+                assertEquals(1, expansions)
+                source.content(id, chapters.first().id)
+                assertEquals(listOf("/c/1"), rendered)
+            }
+        }
+    }
+
     @Test fun namelessRowsAndInvalidOptionalCoversDoNotDiscardSearchResults() = runBlocking {
         RuleSourceFixture().use { fixture ->
             fixture.server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {

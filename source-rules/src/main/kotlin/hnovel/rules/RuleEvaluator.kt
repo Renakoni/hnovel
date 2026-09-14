@@ -47,7 +47,15 @@ class RuleEvaluator(private val unescapeHtml: Boolean = true, private val script
                 else select(step.text, value, root, context, output, at, budget, depth + 1)
             budget.checkValue(value, budget.limits.maxOutputChars)
         }
-        return value
+        return when {
+            value != RuleValue.Empty && output in listOf(OutputKind.Text, OutputKind.Url) -> {
+                val text = value.text()
+                RuleValue.Text(if (unescapeHtml) Parser.unescapeEntities(text, false) else text)
+            }
+            value is RuleValue.Text && output in listOf(OutputKind.TextList, OutputKind.UrlList) ->
+                RuleValue.Items(value.value.split('\n').map(RuleValue::Text))
+            else -> value
+        }
     }
 
     private fun select(raw: String, input: RuleValue, root: RuleValue, context: RuleContext, output: OutputKind,
@@ -99,7 +107,7 @@ class RuleEvaluator(private val unescapeHtml: Boolean = true, private val script
         return if (output == OutputKind.Text || output == OutputKind.Url) {
             if (value == RuleValue.Empty) value else {
                 val text = if (output == OutputKind.Url) value.items().firstOrNull()?.text().orEmpty() else value.text()
-                RuleValue.Text(if (unescapeHtml) Parser.unescapeEntities(text, false) else text)
+                RuleValue.Text(text)
             }
         } else if (output == OutputKind.TextList || output == OutputKind.UrlList) {
             if (value is RuleValue.Text) RuleValue.Items(value.value.split('\n').map(RuleValue::Text)) else value
