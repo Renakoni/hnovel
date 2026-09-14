@@ -1,6 +1,8 @@
 package hnovel.rhino
 
 import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import org.junit.Assert.*
 import org.junit.Test
 import org.mozilla.javascript.Context
@@ -64,6 +66,32 @@ class ScriptLibraryTest {
         ScriptLibrary(frame.sourceId, frame.profile, code).use { library ->
             val scripts = listOf("[next(), typeof nonexistent]", "var state={n:100}; [next(),state.n]", "[next(),state.n]")
             assertEquals(expected, scripts.map { output(it, library) })
+        }
+    }
+
+    @Test fun chapterBindingsShadowLibraryNamesAndResetBetweenInvocations() {
+        val libraryCode = "var title='library title',nextChapterUrl='library next'; function libraryTitle(){return title;}"
+        val script = "[title,nextChapterUrl,libraryTitle()]"
+        val frames = listOf(frame, frame.copy(chapter = buildJsonObject { put("title", "Chapter one") },
+            nextChapterUrl = "https://source.invalid/next"), frame)
+        val cx = Context.enter()
+        val expected = try {
+            // AnalyzeRule.evalJS installs both bindings even when null, above the shared library.
+            val shared = NativeObject().apply { prototype = cx.initStandardObjects() }
+            cx.evaluateString(shared, libraryCode, "reference-library", 1, null)
+            shared.sealObject()
+            listOf(null, "Chapter one", null).map { title ->
+                val bindings = NativeObject().apply {
+                    prototype = shared
+                    put("title", this, title)
+                    put("nextChapterUrl", this, title?.let { "https://source.invalid/next" })
+                }
+                val result = cx.evaluateString(bindings, script, "reference", 1, null)
+                NativeJSON.stringify(cx, bindings, result, null, null).toString()
+            }
+        } finally { Context.exit() }
+        ScriptLibrary(frame.sourceId, frame.profile, libraryCode).use { library ->
+            assertEquals(expected, frames.map { output(script, library, it) })
         }
     }
 

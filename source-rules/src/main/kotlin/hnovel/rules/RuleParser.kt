@@ -3,6 +3,10 @@ package hnovel.rules
 data class RuleStep(val text: String, val offset: Int, val script: Boolean = false)
 data class RulePlan(val steps: List<RuleStep>)
 
+internal fun templateLiteral(rule: String): Boolean = rule.substringBefore("##").let {
+    it.contains("{{") || it.contains("@get:{", true)
+}
+
 /** Balanced scanning preserves script/template payloads and escaped delimiters. */
 class RuleParser {
     fun parse(rule: String, location: RuleLocation, budget: RuleBudget): RulePlan {
@@ -11,6 +15,8 @@ class RuleParser {
         var start = 0
         var index = 0
         var replacement = false
+        var regex = rule.trimStart().startsWith(':')
+        var literal = templateLiteral(rule)
         while (index < rule.length) {
             budget.check()
             when {
@@ -26,17 +32,21 @@ class RuleParser {
                     index = end + 5
                     start = index
                     replacement = false
+                    regex = rule.substring(index).trimStart().startsWith(':')
+                    literal = templateLiteral(rule.substring(index))
                 }
                 rule.startsWith("##", index) -> { replacement = true; index += 2 }
                 replacement -> index += if (rule[index] == '\\') 2 else 1
-                else -> index = skipUnit(rule, index, location, budget)
+                literal && !rule.startsWith("{{", index) -> index++
+                else -> index = skipUnit(rule, index, location, budget, regex = regex)
             }
         }
         if (start < rule.length) steps.add(RuleStep(rule.substring(start), start))
         return RulePlan(steps.filter { it.script || it.text.isNotBlank() })
     }
 
-    fun split(text: String, delimiters: List<String>, location: RuleLocation, budget: RuleBudget): Pair<String?, List<RuleStep>> {
+    fun split(text: String, delimiters: List<String>, location: RuleLocation, budget: RuleBudget,
+        regex: Boolean = false, literal: Boolean = false): Pair<String?, List<RuleStep>> {
         require(delimiters.isNotEmpty() && delimiters.none { it.isEmpty() })
         budget.checkSize(text.length, budget.limits.maxRuleChars)
         var index = 0
@@ -52,21 +62,65 @@ class RuleParser {
                 index += delimiter.length
                 start = index
             } else if (chosen == "##") index += if (text[index] == '\\') 2 else 1
-            else index = skipUnit(text, index, location, budget)
+            else if (literal && !text.startsWith("{{", index)) index++
+            else index = skipUnit(text, index, location, budget, regex = regex)
         }
         result.add(RuleStep(text.substring(start), start))
         return chosen to result
     }
 
-    fun balancedEnd(text: String, start: Int, location: RuleLocation, budget: RuleBudget): Int =
-        skipUnit(text, start, location, budget)
+    fun balancedEnd(text: String, start: Int, location: RuleLocation, budget: RuleBudget, regex: Boolean = false): Int =
+        skipUnit(text, start, location, budget, regex = regex)
 
-    private fun skipUnit(text: String, start: Int, location: RuleLocation, budget: RuleBudget, depth: Int = 0): Int {
+    private fun skipUnit(text: String, start: Int, location: RuleLocation, budget: RuleBudget, depth: Int = 0,
+        regex: Boolean = false, script: Boolean = false): Int {
         budget.check()
         if (depth > budget.limits.maxDepth) throw RuleBudgetExceeded()
         val char = text[start]
+        if (text.startsWith("{{", start) && listOf("@", "$.", "$[", "//").any { text.startsWith(it, start + 2) }) {
+            var index = start + 2
+            while (index < text.length) {
+                budget.check()
+                if (text.startsWith("}}", index)) return index + 2
+                // A selector template's replacement is regex/text, not selector brackets.
+                if (text.startsWith("##", index)) return text.indexOf("}}", index + 2).takeIf { it >= 0 }?.plus(2)
+                    ?: fail(location, start, "UnclosedDelimiter")
+                index = skipUnit(text, index, location, budget, depth + 1)
+            }
+            fail(location, start, "UnclosedDelimiter")
+        }
+        if (regex && text.startsWith("\\Q", start)) return text.indexOf("\\E", start + 2).takeIf { it >= 0 }?.plus(2) ?: text.length
         if (char == '\\') return (start + 2).coerceAtMost(text.length)
-        if (char in "\"'`") {
+        if (script && char == '/') {
+            if (text.startsWith("//", start)) return text.indexOf('\n', start).takeIf { it >= 0 } ?: text.length
+            if (text.startsWith("/*", start)) return text.indexOf("*/", start + 2).takeIf { it >= 0 }?.plus(2)
+                ?: fail(location, start, "UnclosedComment")
+            if (regexCanStart(text, start)) {
+                var index = start + 1
+                var inClass = false
+                while (index < text.length) {
+                    budget.check()
+                    val current = text[index++]
+                    if (current == '\\') { index++; continue }
+                    if (current == '[') inClass = true
+                    if (current == ']') inClass = false
+                    if (current == '/' && !inClass) return index
+                }
+                fail(location, start, "UnclosedRegex")
+            }
+        }
+        if (regex && char == '[') {
+            var index = start + 1
+            if (text.getOrNull(index) == '^') index++
+            if (text.getOrNull(index) == ']') index++
+            while (index < text.length) {
+                budget.check()
+                if (text[index] == ']') return index + 1
+                index = if (text[index] == '[' || text[index] == '\\') skipUnit(text, index, location, budget, depth + 1, true) else index + 1
+            }
+            fail(location, start, "UnclosedDelimiter")
+        }
+        if (!regex && char in "\"'`") {
             var index = start + 1
             while (index < text.length) {
                 budget.check()
@@ -76,11 +130,13 @@ class RuleParser {
             fail(location, start, "UnclosedQuote")
         }
         val close = when (char) { '(' -> ')'; '[' -> ']'; '{' -> '}'; else -> return start + 1 }
+        val templateScript = text.startsWith("{{", start) &&
+            listOf("@", "$.", "$[", "//").none { text.startsWith(it, start + 2) }
         var index = start + 1
         while (index < text.length) {
             if (text[index] == close) return index + 1
             if (text[index] in ")]}") fail(location, index, "MismatchedDelimiter")
-            index = skipUnit(text, index, location, budget, depth + 1)
+            index = skipUnit(text, index, location, budget, depth + 1, regex, script || templateScript)
         }
         fail(location, start, "UnclosedDelimiter")
     }
@@ -115,11 +171,10 @@ class RuleParser {
         fail(location, start, "UnclosedScript")
     }
 
-    private fun regexCanStart(text: String, index: Int, previous: Char): Boolean {
-        if (previous in "=([{,:;!?&|") return true
-        if (previous == ')' || previous == '>') return true
+    private fun regexCanStart(text: String, index: Int): Boolean {
         var end = index - 1
         while (end >= 0 && text[end].isWhitespace()) end--
+        if (end < 0 || text[end] in "=([{,:;!?&|") return true
         val wordEnd = end + 1
         while (end >= 0 && text[end].isLetter()) end--
         return text.substring(end + 1, wordEnd) in setOf("return", "throw", "case", "delete", "void", "typeof", "instanceof", "in", "of")

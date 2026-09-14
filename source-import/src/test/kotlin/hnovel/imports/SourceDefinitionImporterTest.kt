@@ -11,6 +11,15 @@ import java.util.concurrent.Callable
 import java.util.concurrent.Executors
 
 class SourceDefinitionImporterTest {
+    @Test fun emptyLegacyRuleArraysAreAbsentRulesButNonemptyArraysRemainInvalid() {
+        val importer = SourceDefinitionImporter(SourceDefinitionStore(temp.newFolder().toPath()))
+        val original = """{"bookSourceUrl":"https://fixture.invalid","ruleExplore":[],"ruleReview":[]}"""
+        val preview = importer.preview(original)
+        assertTrue(preview.issues.toString(), preview.issues.isEmpty())
+        assertEquals(Json.parseToJsonElement(original), Json.parseToJsonElement(preview.candidates.single().rawJson))
+        val invalid = importer.preview(original.replace("\"ruleExplore\":[]", "\"ruleExplore\":[{}]"))
+        assertEquals(listOf(ImportIssue(0, ImportCode.InvalidField, "ruleExplore")), invalid.issues)
+    }
     @get:Rule val temp = TemporaryFolder()
     private fun json(key: String = "https://fixture.invalid/#a", name: String = "Same title", extra: String = "") =
         """{"bookSourceUrl":"$key","bookSourceName":"$name"$extra}"""
@@ -117,7 +126,7 @@ class SourceDefinitionImporterTest {
     @Test fun invalidShapesTypesProfilesAndDuplicateJsonMembersProduceExplicitErrors() {
         val importer = SourceDefinitionImporter(SourceDefinitionStore(temp.newFolder().toPath()))
         val cases = mapOf("bad" to ImportCode.InvalidJson, "true" to ImportCode.InvalidShape,
-            "{}" to ImportCode.UnsupportedFormat, json(extra = ",\"ruleSearch\":[]") to ImportCode.InvalidField,
+            "{}" to ImportCode.UnsupportedFormat, json(extra = ",\"ruleSearch\":[{}]") to ImportCode.InvalidField,
             json(extra = ",\"bookSourceType\":1") to ImportCode.UnsupportedType,
             json(extra = ",\"bookSourceUrl\":\"second\"") to ImportCode.DuplicateField,
             "[${json()},]" to ImportCode.InvalidJson, json() + " true" to ImportCode.InvalidJson)

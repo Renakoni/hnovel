@@ -136,7 +136,8 @@ class AnalyzeByJSonPath(json: Any) {
                 try {
                     return it.read<ArrayList<Any>>(rules[0])
                 } catch (e: Exception) {
-                    if (e !is PathNotFoundException) throw e
+                    // A non-list branch is empty for getList, so || can try the next path.
+                    if (e !is PathNotFoundException && e !is ClassCastException) throw e
                 }
             }
         } else {

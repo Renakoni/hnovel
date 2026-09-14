@@ -98,6 +98,14 @@ private class ScriptBridge(private val bridge: HostBridge, private val rules: Sc
             call(cx, activeScope, "java.setContent", args)
             javaBridge
         }
+        listOf("toast", "longToast").forEach { name ->
+            method(javaBridge, name) { cx, activeScope, args ->
+                require(args.size == 1)
+                // Convert before the data bridge: native Legado accepts objects, including cycles.
+                call(cx, activeScope, "java.$name", arrayOf(Context.toString(args[0])))
+                Undefined.instance
+            }
+        }
         // Legado log is also an identity expression. Keep source text out of host diagnostics.
         method(javaBridge, "log") { _, _, args ->
             require(args.size == 1)
@@ -128,7 +136,8 @@ data class ScriptFrame(val sourceId: String, val profile: String, val bookId: St
     val baseUrl: String = "", val ruleContext: RuleContext? = null, val ruleInput: RuleValue? = null,
     val ruleBudget: RuleBudget? = null, val book: JsonObject = JsonObject(emptyMap()),
     val chapter: JsonObject = JsonObject(emptyMap()), val chineseConverter: Int = 0, val sourceHeaderRule: String = "",
-    val discovery: ScriptDiscovery? = null, val sourceLoginUrl: String = "", val sourceComment: String? = null)
+    val discovery: ScriptDiscovery? = null, val sourceLoginUrl: String = "", val sourceComment: String? = null,
+    val nextChapterUrl: String? = null)
 
 data class ScriptLimits(val instructionLimit: Int = 1_000_000, val maxResultChars: Int = 256 * 1024,
     val maxScriptChars: Int = 256 * 1024, val maxBridgeChars: Int = DEFAULT_BRIDGE_CHARS,
@@ -221,6 +230,8 @@ class RhinoScriptEngine(private val bridge: HostBridge, private val limits: Scri
                 }
                 scope.put("book", scope, book)
                 scope.put("chapter", scope, chapter)
+                scope.put("title", scope, chapterData["title"]?.jsonPrimitive?.contentOrNull)
+                scope.put("nextChapterUrl", scope, frame.nextChapterUrl)
                 // The rule input is already inside the worker; reverse host-call limits do not apply.
                 val inputLimit = frame.ruleBudget?.limits?.maxInputChars ?: limits.maxBridgeChars
                 scope.put("result", scope, JsonScriptData(context, scope, inputLimit).convert(frame.variables["result"] ?: JsonNull))
