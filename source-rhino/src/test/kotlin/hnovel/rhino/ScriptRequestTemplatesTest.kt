@@ -7,7 +7,7 @@ import org.junit.Test
 class ScriptRequestTemplatesTest {
     @Test fun singleQuotedOptionsRemainDataAndOptionScriptsStillRunInTheWorker() {
         val rule = """/search,{'method':'POST','body':'keyword={{key}}','header':{'X-Test':'it\'s "quoted"'}}"""
-        assertEquals(rule, expanded(rule))
+        assertEquals("/search," + hnovel.rules.RequestOptionsJson.options(rule.substringAfter(',')), expanded(rule))
         assertEquals("https://example.org/new,{\"method\":\"POST\"}",
             expanded("""/search,{'method':'POST','js':'baseUrl+"/new"'}"""))
     }

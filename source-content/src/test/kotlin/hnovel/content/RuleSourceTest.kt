@@ -6,6 +6,9 @@ import kotlinx.coroutines.*
 import kotlinx.serialization.json.*
 import org.junit.Assert.*
 import org.junit.Test
+import okhttp3.mockwebserver.Dispatcher
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.RecordedRequest
 
 class RuleSourceTest {
     @Test fun importedNumericAndTextRatesReachTheBrowserSession() = runBlocking {
@@ -119,6 +122,94 @@ class RuleSourceTest {
                 assertEquals("Browser novel", source.search("fixture").single().title)
                 assertEquals(1, requests.size)
                 assertEquals(0, fixture.server.requestCount)
+            }
+        }
+    }
+
+    @Test fun contentScriptsCanResolveAnHttpErrorPlaceholderWhileSelectorsKeepHttpFailures(): Unit = runBlocking {
+        for (mode in listOf("@js:", "<js>", "selector")) RuleSourceFixture().use { fixture ->
+            val original = fixture.server.dispatcher
+            fixture.server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse = when (request.path) {
+                    "/c/1" -> MockResponse().setResponseCode(404).setBody("Placeholder response")
+                    "/real-chapter" -> MockResponse().setBody("<p>Resolved through source script.</p>")
+                    else -> original.dispatch(request)
+                }
+            }
+            val script = "java.ajax(${JsonPrimitive(fixture.server.url("/real-chapter").toString())})"
+            val rule = when (mode) { "@js:" -> mode + script; "<js>" -> "$mode$script</js>"; else -> "article@html" }
+            fixture.source(customize = { raw -> JsonObject(raw + ("ruleContent" to buildJsonObject { put("content", rule) })) }).use { source ->
+                val book = source.search("title").single()
+                val chapter = source.directory(book.id).first { !it.isVolume }
+                if (mode == "selector") assertEquals(ContentError.Network, failure { source.content(book.id, chapter.id) }.code)
+                else assertEquals(listOf("Resolved through source script."), source.content(book.id, chapter.id).parts.mapNotNull { it.text })
+            }
+        }
+    }
+    @Test fun invalidOptionalMetadataDoesNotDiscardBooksButRequiredFieldsStillFail(): Unit = runBlocking {
+        for (field in listOf("kind", "wordCount", "lastChapter", "intro", "name", "author")) RuleSourceFixture().use { fixture ->
+            fixture.source(customize = { raw -> JsonObject(raw + listOf("ruleSearch", "ruleBookInfo").associateWith { group ->
+                JsonObject(raw.getValue(group).jsonObject + (field to JsonPrimitive("@js:''.match(/novel/).join('')")))
+            }) }).use { source ->
+                if (field in listOf("name", "author")) {
+                    val failure = runCatching { source.search("title") }.exceptionOrNull() as SourceContentException
+                    assertEquals(ContentError.InvalidRule, failure.code)
+                    assertEquals("ruleSearch.$field", failure.field)
+                } else {
+                    val book = source.search("title").single()
+                    assertEquals("Same title", source.information(book.id).title)
+                    assertTrue(source.directory(book.id).isNotEmpty())
+                }
+            }
+        }
+    }
+
+    @Test fun reverseTocConfigChangesFinalOrderBeforeChapterIndexesAreAssigned(): Unit = runBlocking {
+        for (prefix in listOf("", "-")) RuleSourceFixture().use { fixture ->
+            fixture.source(customize = { raw -> JsonObject(raw + mapOf(
+                "ruleBookInfo" to JsonObject(raw.getValue("ruleBookInfo").jsonObject + ("name" to JsonPrimitive(
+                    "h1@text@js:book.readConfig={pageAnim:2};book.setReverseToc(true);result"))),
+                "ruleToc" to JsonObject(raw.getValue("ruleToc").jsonObject + ("chapterList" to JsonPrimitive(prefix + "li")))
+            )) }).use { source ->
+                val book = source.search("title").single()
+                val chapters = source.directory(book.id)
+                assertEquals(if (prefix.isEmpty()) listOf("Two", "One", "Volume one") else listOf("Volume one", "One", "Two"), chapters.map { it.title })
+                assertEquals(listOf(0, 1, 2), chapters.map { it.state.metadata.getValue("index").jsonPrimitive.int })
+                val config = source.information(book.id).state.metadata.getValue("readConfig").jsonObject
+                assertEquals(JsonPrimitive(true), config["reverseToc"])
+                assertEquals(JsonPrimitive(2), config["pageAnim"])
+            }
+        }
+    }
+
+    @Test fun contentScriptsReceiveTitleAndNextLogicalChapterAcrossContinuationPages(): Unit = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            fixture.source(customize = { raw -> JsonObject(raw + ("ruleContent" to buildJsonObject {
+                put("content", """article@html<js>
+                    if(title!==chapter.title)throw 'missing title';
+                    if(title==='One' && nextChapterUrl!==${JsonPrimitive(fixture.server.url("/c/2").toString())})throw 'wrong next chapter';
+                    if(title==='Two' && nextChapterUrl!==null)throw 'last chapter must have no successor';
+                    result</js>""")
+                put("nextContentUrl", "a.next@href")
+            })) }).use { source ->
+                val book = source.search("title").single()
+                val chapters = source.directory(book.id).filterNot { it.isVolume }
+                assertTrue(source.content(book.id, chapters[0].id).parts.any { it.text == "last page" })
+                assertTrue(source.content(book.id, chapters[1].id).parts.any { it.text == "second chapter" })
+            }
+        }
+    }
+
+    @Test fun emptyLegacyExploreRulesFallBackToSearchAndKeepReadingAvailable(): Unit = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            fixture.source(customize = { raw -> JsonObject(raw + mapOf(
+                "ruleExplore" to JsonArray(emptyList()), "ruleReview" to JsonArray(emptyList())
+            )) }).use { source ->
+                val book = source.search("title").single()
+                assertEquals(book.id, source.discovery(fixture.server.url("/search").toString()).single().id)
+                val chapters = source.directory(book.id).filterNot { it.isVolume }
+                assertTrue(chapters.isNotEmpty())
+                assertTrue(source.content(book.id, chapters.first().id).parts.any { !it.text.isNullOrBlank() })
             }
         }
     }

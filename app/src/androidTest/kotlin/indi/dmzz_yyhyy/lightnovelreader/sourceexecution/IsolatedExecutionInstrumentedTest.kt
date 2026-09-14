@@ -76,11 +76,11 @@ class IsolatedExecutionInstrumentedTest {
         val authority = ExecutionAuthority()
         val executor = AndroidIsolatedExecutor(context, authority)
         val id = authority.issue("text-parsers", "legado", "1")
-        val library = "var title=org.jsoup.Jsoup.parse('<p>小说</p>').text();"
+        val library = "var parsedTitle=org.jsoup.Jsoup.parse('<p>小说</p>').text();"
         try {
             val task = ExecutionTask.Script("""
                 java.setContent('<a href="next">正文</a>','https://text.invalid/');
-                [title,java.getString('a@text'),java.getString('a@href',null,true),
+                [parsedTitle,java.getString('a@text'),java.getString('a@href',null,true),
                  baseUrl,typeof org.jsoup.Jsoup.connect,typeof Packages]
             """, libraryCode = library, baseUrl = "https://source.invalid/")
             // setContent changes selector input; URL results still resolve against the request URL.
