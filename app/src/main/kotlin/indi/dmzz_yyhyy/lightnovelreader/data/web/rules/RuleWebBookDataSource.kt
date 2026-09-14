@@ -43,7 +43,7 @@ internal class RuleWebBookDataSource(override val id: Identifier, private val so
                 var added = false
                 result.onOk { books -> books.filter { seen.add(it.id) }.forEach {
                     added = true
-                    emit(SearchResult.MultipleBook(it.id))
+                    emit(SearchResult.MultipleBook(it.id, it.information()))
                 } }
                 if (!added) {
                     if (seen.isEmpty()) emit(SearchResult.Empty())
@@ -55,10 +55,7 @@ internal class RuleWebBookDataSource(override val id: Identifier, private val so
         }
     }
     override suspend fun getBookInformation(id: String) = request {
-        source.information(id).let { book -> BookInformation(book.id, book.title, author = book.author,
-            description = book.description, coverUri = if (book.coverUrl.isBlank()) Uri.EMPTY else Uri.parse(book.coverUrl),
-            tags = book.tags, publishingHouse = "", wordCount = WordCount(book.wordCount.toIntOrNull() ?: 0),
-            lastUpdated = LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(book.observedUpdate), java.time.ZoneOffset.UTC), isComplete = false) }
+        source.information(id).information()
     }
     override suspend fun getBookVolumes(id: String) = request {
         val volumes = mutableListOf<Volume>()
@@ -81,6 +78,10 @@ internal class RuleWebBookDataSource(override val id: Identifier, private val so
         ChapterContent(chapter.id, chapter.title, builder.build(), chapter.previous, chapter.next)
     }
     override suspend fun getImage(bookId: String, url: String, cover: Boolean) = request { source.image(bookId, url, cover) }
+    private fun RuleBook.information() = BookInformation(id, title, author = author,
+        description = description, coverUri = if (coverUrl.isBlank()) Uri.EMPTY else Uri.parse(coverUrl),
+        tags = tags, publishingHouse = "", wordCount = WordCount(wordCount.toIntOrNull() ?: 0),
+        lastUpdated = LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(observedUpdate), java.time.ZoneOffset.UTC), isComplete = false)
     override fun close() = source.close()
     private suspend fun <T> request(block: suspend () -> T): Result<T, WebRequestError> = try { Ok(block()) }
     catch (cancelled: CancellationException) { throw cancelled }

@@ -94,7 +94,7 @@ class SourceImageTest {
         assertEquals(a, SourceBookId.fromStorageKey(a.storageKey))
     }
 
-    @Test fun decodedRuleImagesReadDiskAfterSourceRemovalAndFailOnMiss() = runBlocking {
+    @Test fun failedImagesRetryAndDecodedImagesReadDiskAfterSourceRemoval() = runBlocking {
         val context = RuntimeEnvironment.getApplication()
         val registry = WebSourceRegistry()
         val accounts = SourceSessionManager()
@@ -106,7 +106,7 @@ class SourceImageTest {
             override val id = a.sourceId
             override suspend fun getImage(bookId: String, url: String, cover: Boolean): com.github.michaelbull.result.Result<ByteArray, io.nightfish.lightnovelreader.api.error.WebRequestError> {
                 calls += bookId to cover
-                return com.github.michaelbull.result.Ok(png)
+                return com.github.michaelbull.result.Ok(if (calls.size == 1) ByteArray(0) else png)
             }
         }
         registry.register(source, SourceMetadata(WebDataSourceItem(a.sourceId, "Rule", "fixture"), emptySet()))
@@ -120,8 +120,10 @@ class SourceImageTest {
             .data(SourceImage(a, url, cover)).size(2, 2).build())
         try {
             assertTrue(load(true) is SuccessResult)
+            loader.memoryCache?.clear()
+            assertTrue(load(true) is SuccessResult)
             assertTrue(load(false) is SuccessResult)
-            assertEquals(listOf("same" to true, "same" to false), calls)
+            assertEquals(listOf("same" to true, "same" to true, "same" to false), calls)
             registry.unregister(a.sourceId)
             loader.memoryCache?.clear()
             assertEquals(DataSource.DISK, (load(true) as SuccessResult).dataSource)
@@ -130,7 +132,7 @@ class SourceImageTest {
             assertTrue(load(false) is SuccessResult)
             loader.memoryCache?.clear(); cache.clear()
             assertFalse(load(true) is SuccessResult)
-            assertEquals(2, calls.size)
+            assertEquals(3, calls.size)
         } finally { registry.unregister(a.sourceId); loader.shutdown(); cache.shutdown() }
     }
 }

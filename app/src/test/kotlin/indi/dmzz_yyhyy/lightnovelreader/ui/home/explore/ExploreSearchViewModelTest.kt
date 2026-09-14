@@ -3,7 +3,7 @@ package indi.dmzz_yyhyy.lightnovelreader.ui.home.explore
 import android.app.Application
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModelStore
-import com.github.michaelbull.result.Ok
+import com.github.michaelbull.result.*
 import hnovel.content.ContentError
 import hnovel.content.SourceContentException
 import hnovel.execution.ExecutionAuthority
@@ -32,6 +32,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import java.time.LocalDateTime
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -292,5 +293,23 @@ class ExploreSearchViewModelTest {
         assertEquals(DiscoveryError.Unavailable, missing.uiState.failure!!.error)
         assertFalse(missing.uiState.isLoading)
         assertTrue(provider.requests.isEmpty())
+    }
+
+    @Test fun searchResultInformationAvoidsSecondBookRequest() = runTest(dispatcher) {
+        val information = io.nightfish.lightnovelreader.api.book.BookInformation(
+            id = "same", title = "Title", author = "Author", description = "Description",
+            publishingHouse = "", wordCount = io.nightfish.lightnovelreader.api.book.WordCount(12),
+            lastUpdated = LocalDateTime.MIN, isComplete = false)
+        val provider = Search().apply {
+            results = { flowOf(SearchResult.MultipleBook("same", information), SearchResult.End()) }
+        }
+        val id = add("a", provider)
+        val model = model(id)
+        advanceUntilIdle()
+        model.search("title")
+        advanceUntilIdle()
+        val result = model.uiState.searchResult.single().second.first()
+        assertTrue(result.isOk)
+        verify(exactly = 0) { books.getBookInformationFlow(any<String>(), any()) }
     }
 }
