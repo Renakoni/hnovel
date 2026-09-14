@@ -92,6 +92,10 @@ jobs:
         run: |
           echo "Running Android isolatedProcess instrumentation on API ${{ matrix.api }}"
           echo "Tests exercise remote Binder, isolated UID, lifecycle termination and wire limits"
+      - name: Build test APKs before starting the emulator
+        run: |
+          ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --console=plain --stacktrace --max-workers=2
+          ./gradlew --stop
       - uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ matrix.api }}
@@ -100,7 +104,7 @@ jobs:
           disable-animations: true
           script: >-
             status=0;
-            ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=indi.dmzz_yyhyy.lightnovelreader.sourceexecution.IsolatedExecutionInstrumentedTest,indi.dmzz_yyhyy.lightnovelreader.sourceexecution.SourceAccountInstrumentedTest,indi.dmzz_yyhyy.lightnovelreader.sourceexecution.SourceBrowserInstrumentedTest${{ matrix.native_tests }} --console=plain --stacktrace --max-workers=2 || status=$?;
+            bash .github/scripts/connected-tests.sh '${{ matrix.native_tests }}' || status=$?;
             if [ '${{ matrix.api }}' = '35' ]; then
             mkdir -p app/build/outputs/androidTest-results/connected;
             adb pull /sdcard/Android/data/indi.dmzz_yyhyy.lightnovelreader.debug/files/native-environment.json app/build/outputs/androidTest-results/connected/native-environment.json || status=1;
@@ -113,4 +117,5 @@ jobs:
           path: |
             app/build/reports/androidTests/connected
             app/build/outputs/androidTest-results/connected
+            app/build/reports/emulator-diagnostics
           if-no-files-found: ignore

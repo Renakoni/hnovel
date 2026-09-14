@@ -108,6 +108,44 @@ class ExploreHomeViewModelTest {
         assertEquals(DiscoveryScroll(1, 17), complete.scroll)
     }
 
+    @Test fun previewDiagnosticSurvivesSnapshotsAndItsEntryCanOpenBeforeCompletion() = runTest(dispatcher) {
+        val finish = CompletableDeferred<Unit>()
+        val failure = DiscoveryPreviewFailure(DiscoveryError.PermissionDenied, "ruleExplore.bookList",
+            DiscoveryPermission("https://ungranted.test:443", "Document"))
+        val broken = DiscoverySection("broken", "Broken", emptyList(), "/broken", "broken-category", failure)
+        val working = DiscoverySection("working", "Working", listOf(DiscoveryBook("book", "Book")), "/working")
+        val id = add("progressive", object : Feed() {
+            override fun feedUpdates() = flow<Result<List<DiscoverySection>, DiscoveryError>> {
+                emit(Ok(listOf(broken)))
+                finish.await()
+                emit(Ok(listOf(broken, working)))
+            }
+        })
+        val model = model()
+        runCurrent()
+        val partial = model.state.value.content.getValue(id)
+        assertEquals(failure, partial.sections.single().previewFailure)
+        assertTrue(partial.loading)
+        assertNull(partial.error)
+        val route = model.more(partial.sections.single())!!
+        assertEquals(id.namespace, route.namespace)
+        assertEquals(id.id, route.sourceId)
+        assertEquals("/broken", route.target)
+        assertEquals("broken-category", route.categoryId)
+        finish.complete(Unit)
+        advanceUntilIdle()
+        val complete = model.state.value.content.getValue(id)
+        assertEquals(listOf("Broken", "Working"), complete.sections.map { it.title })
+        assertEquals(failure, complete.sections.first().previewFailure)
+        assertNull(complete.sections.last().previewFailure)
+        assertEquals(id, complete.sections.last().books.single().id.sourceId)
+        assertTrue(complete.loaded)
+        assertFalse(complete.loading)
+        assertNull(complete.error)
+        assertNull(complete.errorField)
+        assertNull(complete.errorPermission)
+    }
+
     @Test fun laterModuleFailureKeepsPartialResultsAndRetryReplacesWithoutDuplicates() = runTest(dispatcher) {
         var fail = true
         val first = DiscoverySection("first", "First", emptyList(), "/first")

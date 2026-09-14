@@ -9,7 +9,9 @@ import kotlinx.coroutines.flow.flow
 /** Source-local data only. The host binds book IDs and targets to the owning runtime. */
 data class DiscoveryBook(val remoteId: String, val title: String, val author: String = "", val coverUrl: String = "")
 data class DiscoverySection(val id: String, val title: String, val books: List<DiscoveryBook>,
-    val more: String? = null, val categoryId: String? = null)
+    val more: String? = null, val categoryId: String? = null, val previewFailure: DiscoveryPreviewFailure? = null)
+/** A preview can fail while its catalogue entry and other sections remain usable. */
+data class DiscoveryPreviewFailure(val error: DiscoveryError, val field: String? = null, val permission: DiscoveryPermission? = null)
 data class DiscoveryCategory(val id: String, val title: String, val target: String)
 
 /** Null cursor starts a list; null nextCursor ends it, even if the last page is empty. */
