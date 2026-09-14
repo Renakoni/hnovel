@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-当前实施设计见 [职责、Chromix 映射与验收计划](IMPLEMENTATION_PLAN.md)。原生基础 PR #187 的 JVM、API 24、API 35 CI 均已通过；本分支接续 #185，加入前台确认后一次重试、后台停止提示、入口/版本/账号取消和真实布局。下面的实站计数来自 #187 基线；#185 的新增测试与环境数据单独记录在实施计划中。
+当前实施设计见 [职责、Chromix 映射与验收计划](IMPLEMENTATION_PLAN.md)，新增 [稳定性实测](STABILITY.md)。原生基础 PR #187 的 JVM、API 24、API 35 CI 均已通过；本分支接续 #185，加入前台自动打开验证及完成后一次重试、后台停止提示、入口/版本/账号取消和真实布局。MuMu 已通过新版自动恢复 fixture。下面的实站计数来自 #187 基线；#185 的新增测试与环境数据单独记录在实施计划中。
 
 - 已实现原生联网、iframe、fetch、Worker、POST 表单和持续来源账号 profile，不向网页暴露 `SourceBrowser` 特权桥。
 - 新 MuMu Android 12 / WebView 110 完成外层 Cloudflare 验证、hlib 登录、站内 `/antibot` 验证并返回原搜索页面。真实用户菜单与搜索结果已确认。
@@ -49,7 +49,7 @@ DOM 结果使用 `ResponseKind.BrowserDocument`，保存同一次快照中的实
 
 本轮源码核对：`WebBook.kt:73` 在请求结果返回后执行 `loginCheckJs`；`JsExtensions.kt:358` 调用 `getVerificationResult`；`SourceVerificationHelp.kt:33` 打开窗口、等待结果，`checkResult` 唤醒等待线程；`WebViewModel.kt:97` 处理确认按钮的 DOM/重新请求分支。确认按钮不等于网站已经认证，hlib 辅助函数还会重新检查登录/挑战标记。参考 App 本轮第一次调试也曾等待验证失败，经正常登录窗口确认后重试才完成全流程，不能据此声称它从不重复验证。
 
-我们的非交互原生请求在 service 识别挑战后返回 `BrowserRequired`，`RuleSource.executeRequest` 会在执行 `loginCheckJs` **之前**结束。本分支用宿主拥有的 `SourceVerification` 保留确切请求与来源权限，`SourceVerificationCoordinator` 在规则预算之外等待前台确认，同账号窗口完成后重试读取一次。再次被挑战则返回错误。脚本显式 WebView 请求的失败也保留这一恢复操作。
+我们的非交互原生请求在 service 识别挑战后返回 `BrowserRequired`，`RuleSource.executeRequest` 会在执行 `loginCheckJs` **之前**结束。本分支用宿主拥有的 `SourceVerification` 保留确切请求与来源权限，`SourceVerificationCoordinator` 在规则预算之外自动打开前台验证，同账号窗口满足原始就绪条件后自动返回并重试读取一次。再次被挑战则返回错误。脚本显式 WebView 请求的失败也保留这一恢复操作。
 
 恢复绑定来源、版本、账号代次和具体请求，不使用可能被另一个请求覆盖的全局 URL。搜索、发现列表、详情和当前阅读请求由 UI 授予交互权限；后台下载、预取、相邻章节不继承该权限。后台返回认证错误并停止，前台提示验证入口，完成后用户重新发起下载；不自动复活 WorkManager。通知队列仅在进程内保存，失败原因由既有 WorkManager output 保留。发现按钮脚本可能有副作用，不自动重放这类动作。
 

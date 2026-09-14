@@ -1,0 +1,1013 @@
+{
+  "schema": 1,
+  "startedUtc": "2026-09-14T11:41:13.261Z",
+  "device": "127.0.0.1:16416",
+  "apkSha256": "610176bd3335ba7e16d8bdba6d1b9c3e20f608f1560fb35f25cc4e6c968c09a9",
+  "probeSha256": "7f17b473e93b25beb2ff64b838e3a2243dbbf0607d97ad9e3cc4d43d5cb29bd2",
+  "provider": "(com.android.webview, 110.0.5481.154.1)",
+  "method": "Three fresh instrumentation/browser launches per mode; three audio/font reads per realm. No external website or CAPTCHA.",
+  "failures": [],
+  "finishedUtc": "2026-09-14T11:41:57.854Z",
+  "limits": [
+    "Fresh fixture profiles do not prove existing account cookie persistence.",
+    "Media canPlayType is capability reporting, not decode/playback proof; font requests may use fallback.",
+    "No physical Android, newer provider, external routing, STUN/TURN, QUIC or CF frequency measurement."
+  ],
+  "rawSha256": "8478678ea7fddc046150a61ab7dd48d351c9e95198901465194ad98a72fd4cdb",
+  "baselineSample": "background-1",
+  "baseline": {
+    "schema": 1,
+    "main": {
+      "userAgent": "Mozilla/5.0 (Linux; Android 12; SM-S9260 Build/V417IR; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/110.0.5481.154 Safari/537.36",
+      "platform": "Linux armv81",
+      "languages": [
+        "zh-CN"
+      ],
+      "hardwareConcurrency": 4,
+      "deviceMemory": 4,
+      "maxTouchPoints": 5,
+      "webdriver": false,
+      "userAgentData": null,
+      "locale": {
+        "locale": "zh-CN",
+        "calendar": "gregory",
+        "numberingSystem": "latn",
+        "timeZone": "Asia/Shanghai",
+        "year": "numeric",
+        "month": "numeric",
+        "day": "numeric"
+      },
+      "fetchNative": true,
+      "secureContext": true,
+      "geometry": {
+        "innerWidth": 1098,
+        "innerHeight": 618,
+        "outerWidth": 1098,
+        "outerHeight": 618,
+        "devicePixelRatio": 1.75,
+        "screen": {
+          "width": 1098,
+          "height": 618,
+          "availWidth": 1098,
+          "availHeight": 618,
+          "colorDepth": 24
+        },
+        "viewport": {
+          "width": 1098.2857666015625,
+          "height": 618.2857055664062,
+          "scale": 1
+        },
+        "visibility": "visible",
+        "hidden": false,
+        "focus": false
+      },
+      "webdriverDescriptor": {
+        "configurable": true,
+        "enumerable": true,
+        "nativeGetter": true
+      },
+      "cookieOwnProperty": false,
+      "privilegedBridge": false,
+      "canvas": {
+        "hash": "a0b1f035",
+        "repeatEqual": true,
+        "corner": [
+          36,
+          104,
+          172,
+          255
+        ],
+        "blend": [
+          138,
+          112,
+          100,
+          255
+        ],
+        "outside": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "webgl": {
+        "available": true,
+        "vendor": "Qualcomm",
+        "renderer": "Adreno (TM) 640",
+        "version": "WebGL 1.0 (OpenGL ES 2.0 Chromium)",
+        "maxTextureSize": 4096,
+        "attributes": {
+          "alpha": true,
+          "antialias": true,
+          "depth": true,
+          "desynchronized": false,
+          "failIfMajorPerformanceCaveat": false,
+          "powerPreference": "default",
+          "premultipliedAlpha": true,
+          "preserveDrawingBuffer": true,
+          "stencil": false
+        },
+        "pixel": [
+          64,
+          127,
+          191,
+          255
+        ],
+        "error": 0
+      },
+      "webgpu": {
+        "available": false
+      },
+      "storage": {
+        "quota": 80524976946,
+        "usage": 0,
+        "usageDetails": {}
+      },
+      "audio": {
+        "available": true,
+        "renders": [
+          {
+            "sampleRate": 44100,
+            "length": 4096,
+            "hash": "ecd44425",
+            "copyEqual": true,
+            "finite": true,
+            "peak": 0.9768096208572388
+          },
+          {
+            "sampleRate": 44100,
+            "length": 4096,
+            "hash": "ecd44425",
+            "copyEqual": true,
+            "finite": true,
+            "peak": 0.9768096208572388
+          },
+          {
+            "sampleRate": 44100,
+            "length": 4096,
+            "hash": "ecd44425",
+            "copyEqual": true,
+            "finite": true,
+            "peak": 0.9768096208572388
+          }
+        ],
+        "repeatEqual": true
+      },
+      "fonts": {
+        "metrics": {
+          "sans-serif": {
+            "value": {
+              "width": 184.07818603515625,
+              "left": -1,
+              "right": 184.07815551757812,
+              "ascent": 14,
+              "descent": 2
+            },
+            "repeatEqual": true
+          },
+          "serif": {
+            "value": {
+              "width": 198.74224853515625,
+              "left": 0,
+              "right": 198.74221801757812,
+              "ascent": 14,
+              "descent": 2
+            },
+            "repeatEqual": true
+          },
+          "monospace": {
+            "value": {
+              "width": 233.63287353515625,
+              "left": -1,
+              "right": 233.63284301757812,
+              "ascent": 14,
+              "descent": 2
+            },
+            "repeatEqual": true
+          },
+          "Roboto": {
+            "value": {
+              "width": 184.07818603515625,
+              "left": -1,
+              "right": 184.07815551757812,
+              "ascent": 14,
+              "descent": 2
+            },
+            "repeatEqual": true
+          },
+          "Noto Sans CJK SC": {
+            "value": {
+              "width": 184.07818603515625,
+              "left": -1,
+              "right": 184.07815551757812,
+              "ascent": 14,
+              "descent": 2
+            },
+            "repeatEqual": true
+          }
+        },
+        "meaning": "CSS family requests may fall back; these are metrics, not installed-font identities"
+      },
+      "media": {
+        "rtc": true,
+        "mediaDevices": true,
+        "canPlay": {
+          "h264": "probably",
+          "vp9": "probably",
+          "aac": "probably",
+          "opus": "probably"
+        }
+      }
+    },
+    "frames": {
+      "sameOrigin": {
+        "userAgent": "Mozilla/5.0 (Linux; Android 12; SM-S9260 Build/V417IR; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/110.0.5481.154 Safari/537.36",
+        "platform": "Linux armv81",
+        "languages": [
+          "zh-CN"
+        ],
+        "hardwareConcurrency": 4,
+        "deviceMemory": 4,
+        "maxTouchPoints": 5,
+        "webdriver": false,
+        "userAgentData": null,
+        "locale": {
+          "locale": "zh-CN",
+          "calendar": "gregory",
+          "numberingSystem": "latn",
+          "timeZone": "Asia/Shanghai",
+          "year": "numeric",
+          "month": "numeric",
+          "day": "numeric"
+        },
+        "fetchNative": true,
+        "secureContext": true,
+        "geometry": {
+          "innerWidth": 240,
+          "innerHeight": 160,
+          "outerWidth": 1098,
+          "outerHeight": 618,
+          "devicePixelRatio": 1.75,
+          "screen": {
+            "width": 1098,
+            "height": 618,
+            "availWidth": 1098,
+            "availHeight": 618,
+            "colorDepth": 24
+          },
+          "viewport": {
+            "width": 240,
+            "height": 160,
+            "scale": 1
+          },
+          "visibility": "visible",
+          "hidden": false,
+          "focus": false
+        },
+        "webdriverDescriptor": {
+          "configurable": true,
+          "enumerable": true,
+          "nativeGetter": true
+        },
+        "cookieOwnProperty": false,
+        "privilegedBridge": false,
+        "canvas": {
+          "hash": "a0b1f035",
+          "repeatEqual": true,
+          "corner": [
+            36,
+            104,
+            172,
+            255
+          ],
+          "blend": [
+            138,
+            112,
+            100,
+            255
+          ],
+          "outside": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        "webgl": {
+          "available": true,
+          "vendor": "Qualcomm",
+          "renderer": "Adreno (TM) 640",
+          "version": "WebGL 1.0 (OpenGL ES 2.0 Chromium)",
+          "maxTextureSize": 4096,
+          "attributes": {
+            "alpha": true,
+            "antialias": true,
+            "depth": true,
+            "desynchronized": false,
+            "failIfMajorPerformanceCaveat": false,
+            "powerPreference": "default",
+            "premultipliedAlpha": true,
+            "preserveDrawingBuffer": true,
+            "stencil": false
+          },
+          "pixel": [
+            64,
+            127,
+            191,
+            255
+          ],
+          "error": 0
+        },
+        "webgpu": {
+          "available": false
+        },
+        "storage": {
+          "quota": 80524976946,
+          "usage": 0,
+          "usageDetails": {}
+        },
+        "audio": {
+          "available": true,
+          "renders": [
+            {
+              "sampleRate": 44100,
+              "length": 4096,
+              "hash": "ecd44425",
+              "copyEqual": true,
+              "finite": true,
+              "peak": 0.9768096208572388
+            },
+            {
+              "sampleRate": 44100,
+              "length": 4096,
+              "hash": "ecd44425",
+              "copyEqual": true,
+              "finite": true,
+              "peak": 0.9768096208572388
+            },
+            {
+              "sampleRate": 44100,
+              "length": 4096,
+              "hash": "ecd44425",
+              "copyEqual": true,
+              "finite": true,
+              "peak": 0.9768096208572388
+            }
+          ],
+          "repeatEqual": true
+        },
+        "fonts": {
+          "metrics": {
+            "sans-serif": {
+              "value": {
+                "width": 184.07818603515625,
+                "left": -1,
+                "right": 184.07815551757812,
+                "ascent": 14,
+                "descent": 2
+              },
+              "repeatEqual": true
+            },
+            "serif": {
+              "value": {
+                "width": 198.74224853515625,
+                "left": 0,
+                "right": 198.74221801757812,
+                "ascent": 14,
+                "descent": 2
+              },
+              "repeatEqual": true
+            },
+            "monospace": {
+              "value": {
+                "width": 233.63287353515625,
+                "left": -1,
+                "right": 233.63284301757812,
+                "ascent": 14,
+                "descent": 2
+              },
+              "repeatEqual": true
+            },
+            "Roboto": {
+              "value": {
+                "width": 184.07818603515625,
+                "left": -1,
+                "right": 184.07815551757812,
+                "ascent": 14,
+                "descent": 2
+              },
+              "repeatEqual": true
+            },
+            "Noto Sans CJK SC": {
+              "value": {
+                "width": 184.07818603515625,
+                "left": -1,
+                "right": 184.07815551757812,
+                "ascent": 14,
+                "descent": 2
+              },
+              "repeatEqual": true
+            }
+          },
+          "meaning": "CSS family requests may fall back; these are metrics, not installed-font identities"
+        },
+        "media": {
+          "rtc": true,
+          "mediaDevices": true,
+          "canPlay": {
+            "h264": "probably",
+            "vp9": "probably",
+            "aac": "probably",
+            "opus": "probably"
+          }
+        }
+      },
+      "crossOrigin": {
+        "userAgent": "Mozilla/5.0 (Linux; Android 12; SM-S9260 Build/V417IR; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/110.0.5481.154 Safari/537.36",
+        "platform": "Linux armv81",
+        "languages": [
+          "zh-CN"
+        ],
+        "hardwareConcurrency": 4,
+        "deviceMemory": 4,
+        "maxTouchPoints": 5,
+        "webdriver": false,
+        "userAgentData": null,
+        "locale": {
+          "locale": "zh-CN",
+          "calendar": "gregory",
+          "numberingSystem": "latn",
+          "timeZone": "Asia/Shanghai",
+          "year": "numeric",
+          "month": "numeric",
+          "day": "numeric"
+        },
+        "fetchNative": true,
+        "secureContext": true,
+        "geometry": {
+          "innerWidth": 240,
+          "innerHeight": 160,
+          "outerWidth": 1098,
+          "outerHeight": 618,
+          "devicePixelRatio": 1.75,
+          "screen": {
+            "width": 1098,
+            "height": 618,
+            "availWidth": 1098,
+            "availHeight": 618,
+            "colorDepth": 24
+          },
+          "viewport": {
+            "width": 240,
+            "height": 160,
+            "scale": 1
+          },
+          "visibility": "visible",
+          "hidden": false,
+          "focus": false
+        },
+        "webdriverDescriptor": {
+          "configurable": true,
+          "enumerable": true,
+          "nativeGetter": true
+        },
+        "cookieOwnProperty": false,
+        "privilegedBridge": false,
+        "canvas": {
+          "hash": "a0b1f035",
+          "repeatEqual": true,
+          "corner": [
+            36,
+            104,
+            172,
+            255
+          ],
+          "blend": [
+            138,
+            112,
+            100,
+            255
+          ],
+          "outside": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        "webgl": {
+          "available": true,
+          "vendor": "Qualcomm",
+          "renderer": "Adreno (TM) 640",
+          "version": "WebGL 1.0 (OpenGL ES 2.0 Chromium)",
+          "maxTextureSize": 4096,
+          "attributes": {
+            "alpha": true,
+            "antialias": true,
+            "depth": true,
+            "desynchronized": false,
+            "failIfMajorPerformanceCaveat": false,
+            "powerPreference": "low-power",
+            "premultipliedAlpha": true,
+            "preserveDrawingBuffer": true,
+            "stencil": false
+          },
+          "pixel": [
+            64,
+            127,
+            191,
+            255
+          ],
+          "error": 0
+        },
+        "webgpu": {
+          "available": false
+        },
+        "storage": {
+          "quota": 80524976946,
+          "usage": 0,
+          "usageDetails": {}
+        },
+        "audio": {
+          "available": true,
+          "renders": [
+            {
+              "sampleRate": 44100,
+              "length": 4096,
+              "hash": "ecd44425",
+              "copyEqual": true,
+              "finite": true,
+              "peak": 0.9768096208572388
+            },
+            {
+              "sampleRate": 44100,
+              "length": 4096,
+              "hash": "ecd44425",
+              "copyEqual": true,
+              "finite": true,
+              "peak": 0.9768096208572388
+            },
+            {
+              "sampleRate": 44100,
+              "length": 4096,
+              "hash": "ecd44425",
+              "copyEqual": true,
+              "finite": true,
+              "peak": 0.9768096208572388
+            }
+          ],
+          "repeatEqual": true
+        },
+        "fonts": {
+          "metrics": {
+            "sans-serif": {
+              "value": {
+                "width": 184.07818603515625,
+                "left": -1,
+                "right": 184.07815551757812,
+                "ascent": 14,
+                "descent": 2
+              },
+              "repeatEqual": true
+            },
+            "serif": {
+              "value": {
+                "width": 198.74224853515625,
+                "left": 0,
+                "right": 198.74221801757812,
+                "ascent": 14,
+                "descent": 2
+              },
+              "repeatEqual": true
+            },
+            "monospace": {
+              "value": {
+                "width": 233.63287353515625,
+                "left": -1,
+                "right": 233.63284301757812,
+                "ascent": 14,
+                "descent": 2
+              },
+              "repeatEqual": true
+            },
+            "Roboto": {
+              "value": {
+                "width": 184.07818603515625,
+                "left": -1,
+                "right": 184.07815551757812,
+                "ascent": 14,
+                "descent": 2
+              },
+              "repeatEqual": true
+            },
+            "Noto Sans CJK SC": {
+              "value": {
+                "width": 184.07818603515625,
+                "left": -1,
+                "right": 184.07815551757812,
+                "ascent": 14,
+                "descent": 2
+              },
+              "repeatEqual": true
+            }
+          },
+          "meaning": "CSS family requests may fall back; these are metrics, not installed-font identities"
+        },
+        "media": {
+          "rtc": true,
+          "mediaDevices": true,
+          "canPlay": {
+            "h264": "probably",
+            "vp9": "probably",
+            "aac": "probably",
+            "opus": "probably"
+          }
+        }
+      }
+    },
+    "workers": {
+      "dedicated": {
+        "userAgent": "Mozilla/5.0 (Linux; Android 12; SM-S9260 Build/V417IR; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/110.0.5481.154 Safari/537.36",
+        "platform": "Linux armv81",
+        "languages": [
+          "zh-CN"
+        ],
+        "hardwareConcurrency": 4,
+        "deviceMemory": 4,
+        "maxTouchPoints": null,
+        "webdriver": null,
+        "userAgentData": null,
+        "locale": {
+          "locale": "zh-CN",
+          "calendar": "gregory",
+          "numberingSystem": "latn",
+          "timeZone": "Asia/Shanghai",
+          "year": "numeric",
+          "month": "numeric",
+          "day": "numeric"
+        },
+        "fetchNative": true,
+        "secureContext": true,
+        "canvas": {
+          "hash": "a0b1f035",
+          "repeatEqual": true,
+          "corner": [
+            36,
+            104,
+            172,
+            255
+          ],
+          "blend": [
+            138,
+            112,
+            100,
+            255
+          ],
+          "outside": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        "webgl": {
+          "available": true,
+          "vendor": "Qualcomm",
+          "renderer": "Adreno (TM) 640",
+          "version": "WebGL 1.0 (OpenGL ES 2.0 Chromium)",
+          "maxTextureSize": 4096,
+          "attributes": {
+            "alpha": true,
+            "antialias": true,
+            "depth": true,
+            "desynchronized": false,
+            "failIfMajorPerformanceCaveat": false,
+            "powerPreference": "default",
+            "premultipliedAlpha": true,
+            "preserveDrawingBuffer": true,
+            "stencil": false
+          },
+          "pixel": [
+            64,
+            127,
+            191,
+            255
+          ],
+          "error": 0
+        },
+        "webgpu": {
+          "available": false
+        },
+        "storage": {
+          "quota": 80524976946,
+          "usage": 0,
+          "usageDetails": {}
+        },
+        "audio": {
+          "available": false
+        },
+        "fonts": {
+          "metrics": {
+            "sans-serif": {
+              "value": {
+                "width": 184.07818603515625,
+                "left": -1,
+                "right": 184.07815551757812,
+                "ascent": 14,
+                "descent": 2
+              },
+              "repeatEqual": true
+            },
+            "serif": {
+              "value": {
+                "width": 198.74224853515625,
+                "left": 0,
+                "right": 198.74221801757812,
+                "ascent": 14,
+                "descent": 2
+              },
+              "repeatEqual": true
+            },
+            "monospace": {
+              "value": {
+                "width": 233.63287353515625,
+                "left": -1,
+                "right": 233.63284301757812,
+                "ascent": 14,
+                "descent": 2
+              },
+              "repeatEqual": true
+            },
+            "Roboto": {
+              "value": {
+                "width": 184.07818603515625,
+                "left": -1,
+                "right": 184.07815551757812,
+                "ascent": 14,
+                "descent": 2
+              },
+              "repeatEqual": true
+            },
+            "Noto Sans CJK SC": {
+              "value": {
+                "width": 184.07818603515625,
+                "left": -1,
+                "right": 184.07815551757812,
+                "ascent": 14,
+                "descent": 2
+              },
+              "repeatEqual": true
+            }
+          },
+          "meaning": "CSS family requests may fall back; these are metrics, not installed-font identities"
+        },
+        "media": {
+          "rtc": false,
+          "mediaDevices": false
+        }
+      },
+      "shared": {
+        "unsupported": true
+      }
+    },
+    "network": {
+      "method": "GET",
+      "body": "",
+      "userAgent": "Mozilla/5.0 (Linux; Android 12; SM-S9260 Build/V417IR; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/110.0.5481.154 Safari/537.36",
+      "cookies": [],
+      "secChUa": null,
+      "requestedWith": "indi.dmzz_yyhyy.lightnovelreader.debug",
+      "acceptLanguage": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7"
+    },
+    "observation": "Background and foreground run separately; provider/version is recorded by the Android host."
+  },
+  "samples": {
+    "background-1": [],
+    "background-2": [],
+    "background-3": [],
+    "foreground-1": [
+      {
+        "op": "replace",
+        "path": "/main/geometry/innerHeight",
+        "value": 546
+      },
+      {
+        "op": "replace",
+        "path": "/main/geometry/outerHeight",
+        "value": 546
+      },
+      {
+        "op": "replace",
+        "path": "/main/geometry/viewport/height",
+        "value": 546.2857055664062
+      },
+      {
+        "op": "replace",
+        "path": "/frames/sameOrigin/geometry/outerHeight",
+        "value": 546
+      },
+      {
+        "op": "replace",
+        "path": "/frames/crossOrigin/geometry/outerHeight",
+        "value": 546
+      },
+      {
+        "op": "replace",
+        "path": "/workers/dedicated/canvas/hash",
+        "value": "fcd58335"
+      },
+      {
+        "op": "replace",
+        "path": "/workers/dedicated/canvas/blend",
+        "value": [
+          138,
+          112,
+          101,
+          255
+        ]
+      }
+    ],
+    "foreground-2": [
+      {
+        "op": "replace",
+        "path": "/main/geometry/innerHeight",
+        "value": 546
+      },
+      {
+        "op": "replace",
+        "path": "/main/geometry/outerHeight",
+        "value": 546
+      },
+      {
+        "op": "replace",
+        "path": "/main/geometry/viewport/height",
+        "value": 546.2857055664062
+      },
+      {
+        "op": "replace",
+        "path": "/frames/sameOrigin/geometry/outerHeight",
+        "value": 546
+      },
+      {
+        "op": "replace",
+        "path": "/frames/crossOrigin/geometry/outerHeight",
+        "value": 546
+      },
+      {
+        "op": "replace",
+        "path": "/workers/dedicated/canvas/hash",
+        "value": "fcd58335"
+      },
+      {
+        "op": "replace",
+        "path": "/workers/dedicated/canvas/blend",
+        "value": [
+          138,
+          112,
+          101,
+          255
+        ]
+      }
+    ],
+    "foreground-3": [
+      {
+        "op": "replace",
+        "path": "/main/geometry/innerHeight",
+        "value": 546
+      },
+      {
+        "op": "replace",
+        "path": "/main/geometry/outerHeight",
+        "value": 546
+      },
+      {
+        "op": "replace",
+        "path": "/main/geometry/viewport/height",
+        "value": 546.2857055664062
+      },
+      {
+        "op": "replace",
+        "path": "/frames/sameOrigin/geometry/outerHeight",
+        "value": 546
+      },
+      {
+        "op": "replace",
+        "path": "/frames/crossOrigin/geometry/outerHeight",
+        "value": 546
+      },
+      {
+        "op": "replace",
+        "path": "/workers/dedicated/canvas/hash",
+        "value": "fcd58335"
+      },
+      {
+        "op": "replace",
+        "path": "/workers/dedicated/canvas/blend",
+        "value": [
+          138,
+          112,
+          101,
+          255
+        ]
+      }
+    ]
+  },
+  "representation": "Samples are lossless JSON Patch replacements/additions/removals relative to baseline; arrays replace as a unit.",
+  "reference": {
+    "commit": "fb01a76",
+    "mode": "background",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/main/geometry/innerWidth",
+        "value": 0
+      },
+      {
+        "op": "replace",
+        "path": "/main/geometry/innerHeight",
+        "value": 0
+      },
+      {
+        "op": "replace",
+        "path": "/main/geometry/outerWidth",
+        "value": 0
+      },
+      {
+        "op": "replace",
+        "path": "/main/geometry/outerHeight",
+        "value": 0
+      },
+      {
+        "op": "replace",
+        "path": "/main/geometry/viewport/width",
+        "value": 0
+      },
+      {
+        "op": "replace",
+        "path": "/main/geometry/viewport/height",
+        "value": 0
+      },
+      {
+        "op": "replace",
+        "path": "/main/geometry/viewport/scale",
+        "value": 0.25
+      },
+      {
+        "op": "replace",
+        "path": "/frames/sameOrigin/geometry/outerWidth",
+        "value": 0
+      },
+      {
+        "op": "replace",
+        "path": "/frames/sameOrigin/geometry/outerHeight",
+        "value": 0
+      },
+      {
+        "op": "replace",
+        "path": "/frames/crossOrigin/geometry/outerWidth",
+        "value": 0
+      },
+      {
+        "op": "replace",
+        "path": "/frames/crossOrigin/geometry/outerHeight",
+        "value": 0
+      },
+      {
+        "op": "replace",
+        "path": "/network/requestedWith",
+        "value": "io.legato.kazusa.debug"
+      }
+    ]
+  },
+  "checks": {
+    "sixNativeSamples": true,
+    "mainStableAcrossLaunchesAndModes": {
+      "userAgent": true,
+      "platform": true,
+      "languages": true,
+      "locale": true,
+      "webdriver": true,
+      "fetchNative": true,
+      "canvas": true,
+      "webgl": true,
+      "audio": true,
+      "fonts": true,
+      "media": true
+    },
+    "referenceMainMatches": {
+      "userAgent": true,
+      "platform": true,
+      "languages": true,
+      "locale": true,
+      "webdriver": true,
+      "fetchNative": true,
+      "canvas": true,
+      "webgl": true,
+      "audio": true,
+      "fonts": true,
+      "media": true
+    },
+    "sameRealmAudioRepeated": true,
+    "foregroundWorkerCanvasDifferenceReproduced": true
+  }
+}
