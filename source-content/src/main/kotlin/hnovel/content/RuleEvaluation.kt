@@ -58,7 +58,7 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
     // This trusted task cannot run source code or mutate snapshots. It still uses the same identity,
     // cancellation, invocation count and trace boundary as rule evaluation.
     suspend fun markup(html: String): RuleValue =
-        execute(ExecutionTask.ContentMarkup(html), "ruleContent.parts", html.length).value
+        execute(ExecutionTask.ContentMarkup(html, formatted = true), "ruleContent.parts", html.length).value
 
     private suspend fun execute(task: ExecutionTask, field: String, inputChars: Int): ExecutedRule {
         currentCoroutineContext().ensureActive()

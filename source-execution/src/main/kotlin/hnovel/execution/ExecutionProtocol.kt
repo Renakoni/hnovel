@@ -37,7 +37,7 @@ internal val ExecutionLimits.scriptDataLimit: Int get() = maxDataBytes ?: maxOut
  @Serializable data class Echo(val value: String): ExecutionTask
  @Serializable data class Sleep(val millis: Long): ExecutionTask
  @Serializable data class ContentMarkup(val html: String,
-  val location: RuleLocation = RuleLocation("ruleContent.parts")) : ExecutionTask
+  val location: RuleLocation = RuleLocation("ruleContent.parts"), val formatted: Boolean = false) : ExecutionTask
  @Serializable data class Script(val code: String, val result: JsonElement = JsonNull, val bookId: String? = null,
   val chapterId: String? = null, val key: String = "", val page: Int = 1, val baseUrl: String = "",
   val libraryCode: String? = null, val book: JsonObject = JsonObject(emptyMap()),
