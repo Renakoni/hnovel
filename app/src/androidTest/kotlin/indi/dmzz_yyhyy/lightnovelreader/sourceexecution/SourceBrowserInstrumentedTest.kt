@@ -22,6 +22,27 @@ import java.util.concurrent.ConcurrentLinkedQueue
 class SourceBrowserInstrumentedTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
 
+    @Test fun headerScriptsCanReadTheDeviceWebViewUserAgent(): Unit = runBlocking {
+        val expected = withContext(Dispatchers.Main) { android.webkit.WebSettings.getDefaultUserAgent(context) }
+        val root = File(context.cacheDir, "webview-ua-${System.nanoTime()}")
+        val authority = ExecutionAuthority()
+        val executor = AndroidIsolatedExecutor(context, authority)
+        try {
+            SourceBroker(root.toPath(), browser = AndroidSourceBrowser(context)).use { sessions ->
+                val session = sessions.open(SourceScope("webview-ua", "A", "legado"), emptyList())
+                val identity = authority.issue("A", "legado", "1", "webview-ua")
+                val limits = ExecutionLimits(timeoutMillis = 15000)
+                SourceExecutionBroker(identity, authority, session, limits).use { bridge ->
+                    val result = executor.execute(identity, ExecutionTask.Script("String(java.getWebViewUA())"), limits, bridge)
+                    assertTrue(result.toString(), result is ExecutionResult.Success)
+                    assertEquals(kotlinx.serialization.json.JsonPrimitive(expected).toString(), (result as ExecutionResult.Success).output)
+                    assertTrue(expected.contains("Mozilla/5.0"))
+                    assertFalse(bridge.interactionRequired)
+                }
+            }
+        } finally { executor.close(); root.deleteRecursively() }
+    }
+
     @Test fun sourceUserAgentMatchesNavigatorScriptsAndFetch(): Unit = runBlocking {
         MockWebServer().use { server ->
             val agents = ConcurrentLinkedQueue<String>()

@@ -14,12 +14,13 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
     var chapter: ScriptState = ScriptState(), var baseUrl: String, val keyword: String = "", var page: Int = 1,
     private val calls: java.util.concurrent.atomic.AtomicInteger = java.util.concurrent.atomic.AtomicInteger(),
     private val headerRule: String = "", private val interactive: Boolean = false, private val trace: ContentTrace = ContentTrace.None,
-    private val sourceLoginUrl: String = "") {
+    private val sourceLoginUrl: String = "", private val sourceComment: String? = null) {
     var discovery: JsonObject? = null
-    private val limits = ExecutionLimits(timeoutMillis = if (interactive) 60000 else 5000, maxOutputBytes = 196608)
+    private val limits = ExecutionLimits(timeoutMillis = if (interactive) 60000 else 30000, maxOutputBytes = 196608,
+        maxRequests = 64, maxDataBytes = BridgeWire.MAX_REPLY_BYTES)
 
     fun fork(bookId: String? = this.bookId, chapterId: String? = this.chapterId) =
-        RuleEvaluation(identity, authority, session, runner, library, bookId, chapterId, book.copy(), chapter.copy(), baseUrl, keyword, page, calls, headerRule, interactive, trace, sourceLoginUrl)
+        RuleEvaluation(identity, authority, session, runner, library, bookId, chapterId, book.copy(), chapter.copy(), baseUrl, keyword, page, calls, headerRule, interactive, trace, sourceLoginUrl, sourceComment)
             .also { it.discovery = discovery }
 
     suspend fun headers(): Map<String, String> {
@@ -37,7 +38,7 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
             keyword, page, baseUrl, library, book.inherited + chapter.inherited, book.variables,
             chapter.variables, book.metadata, chapter.metadata, book.bigVariables, chapter.bigVariables,
             unescapeHtml = unescape, sourceHeaderRule = if (field == "header") "" else headerRule, discovery = discovery,
-            sourceLoginUrl = sourceLoginUrl)
+            sourceLoginUrl = sourceLoginUrl, sourceComment = sourceComment)
         val executed = execute(task, field, input.toString().length)
         if (discovery != null) discovery = executed.discovery ?: throw SourceContentException(ContentError.InvalidRule, field)
         book = book.copy(metadata = executed.book ?: book.metadata,
@@ -63,17 +64,19 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
         val limits = if (field == "ruleToc.chapterList") this.limits.copy(maxOutputBytes = 2 * 1024 * 1024) else this.limits
         val started = System.nanoTime()
         var networkFailure: hnovel.network.BrokerResult.Failure? = null
+        var requestLimitExceeded = false
         val result = SourceExecutionBroker(identity, authority, session, limits, baseUrl, keyword, page,
             allowInteraction = interactive).use {
             val executed = try { runner.execute(identity, task, limits, it) }
             catch (cancelled: java.util.concurrent.CancellationException) { throw cancelled }
             catch (failure: Exception) {
                 // Host-side library loading can fail before the worker receives the task.
-                if (it.requestFailure != null) ExecutionResult.Failure(FailureCode.BridgeDenied) else throw failure
+                if (it.requestFailure != null || it.requestLimitExceeded) ExecutionResult.Failure(FailureCode.BridgeDenied) else throw failure
             }
             executed.also { _ ->
                 if (it.interactionRequired) throw SourceContentException(ContentError.LoginRequired, field)
                 networkFailure = it.requestFailure
+                requestLimitExceeded = it.requestLimitExceeded
             }
         }
         val failure = result as? ExecutionResult.Failure
@@ -82,7 +85,7 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
         trace.record(ContentTraceEvent("rule", failureField, (System.nanoTime() - started) / 1_000_000,
             inputChars, (result as? ExecutionResult.Success)?.output?.length ?: 0,
             if (result is ExecutionResult.Failure && result.code == FailureCode.BridgeDenied)
-                networkFailure?.code?.name ?: result.code.name
+                if (requestLimitExceeded) "RequestLimit" else networkFailure?.code?.name ?: result.code.name
             else (result as? ExecutionResult.Failure)?.code?.name ?: "Success",
             (result as? ExecutionResult.Failure)?.ruleError?.code,
             (result as? ExecutionResult.Failure)?.ruleError?.location?.offset))
@@ -92,7 +95,7 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
             is ExecutionResult.Failure -> throw SourceContentException(when (result.code) {
                 FailureCode.Revoked, FailureCode.InvalidIdentity -> ContentError.Unavailable
                 FailureCode.Timeout, FailureCode.InputLimit, FailureCode.OutputLimit -> ContentError.Limit
-                FailureCode.BridgeDenied -> networkFailure?.code?.contentError() ?: ContentError.PermissionDenied
+                FailureCode.BridgeDenied -> if (requestLimitExceeded) ContentError.Limit else networkFailure?.code?.contentError() ?: ContentError.PermissionDenied
                 FailureCode.UnsupportedDependency -> ContentError.UnsupportedDependency
                 else -> ContentError.InvalidRule
             }, failureField, networkFailure?.denial.takeIf { result.code == FailureCode.BridgeDenied }, dependency)

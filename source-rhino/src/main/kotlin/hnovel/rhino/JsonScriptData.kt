@@ -35,7 +35,18 @@ internal class JsonScriptData(private val context: Context, private val scope: S
             }
             is JsonArray -> {
                 if (value.size > remaining) throw ResultTooLarge()
-                ScriptRealm.current(context).arrayIn(scope, value.map { read(it, depth + 1) }.toTypedArray())
+                ScriptRealm.current(context).arrayIn(scope, value.map { read(it, depth + 1) }.toTypedArray()).apply {
+                    // Selector and bridge lists expose Java's copy operation to source scripts.
+                    val list = this
+                    defineProperty("toArray", ScriptCalls.method(scope, "invalid list argument") { cx, active, args ->
+                        require(args.isEmpty())
+                        if (list.length > cx.getThreadLocal(bridgeLimitKey) as Int) throw ResultTooLarge()
+                        ScriptRealm.current(cx).arrayIn(active, Array(list.length.toInt()) { index ->
+                            if (Thread.currentThread().isInterrupted) throw SerializationCancelled()
+                            list.get(index, list)
+                        })
+                    }, ScriptableObject.DONTENUM)
+                }
             }
             is JsonObject -> ScriptRealm.current(context).objectIn(scope).apply {
                 for ((key, item) in value) {

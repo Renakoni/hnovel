@@ -4,6 +4,8 @@ import kotlinx.serialization.Serializable
 
 /** The host installs this capability. URL rules cannot select a session or request foreground UI. */
 fun interface BrowserExecutor {
+    suspend fun defaultUserAgent(): String? = null
+
     suspend fun execute(session: SourceSession, request: BrokerRequest, options: BrowserOptions,
         guard: RequestCommitGuard): BrokerResult
 }

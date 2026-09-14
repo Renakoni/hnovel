@@ -21,6 +21,10 @@ import javax.inject.Singleton
 class AndroidSourceBrowser @Inject constructor(@ApplicationContext private val context: Context) : BrowserExecutor {
     private val serial = Mutex()
 
+    override suspend fun defaultUserAgent(): String = withContext(Dispatchers.Main) {
+        android.webkit.WebSettings.getDefaultUserAgent(context)
+    }
+
     override suspend fun execute(session: SourceSession, request: BrokerRequest, options: BrowserOptions,
         guard: RequestCommitGuard): BrokerResult = serial.withLock { withContext(Dispatchers.IO) {
         require(options.title.length <= 1024 && options.script.length <= 65536 && options.sourceRegex.length <= 2048 &&

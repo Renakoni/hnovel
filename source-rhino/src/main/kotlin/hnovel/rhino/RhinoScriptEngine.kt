@@ -93,10 +93,15 @@ private class ScriptBridge(private val bridge: HostBridge, private val rules: Sc
         val javaBridge = objectFor("java", listOf("ajax", "ajaxAll", "connect", "get", "head", "post", "getCookie", "androidId",
             "put", "getString", "getStringList", "getElement", "getElements", "importScript", "cacheFile", "downloadFile",
             "readFile", "readTxtFile", "deleteFile", "toURL", "webView", "webViewGetSource", "webViewGetOverrideUrl",
-            "startBrowser", "startBrowserAwait", "getVerificationCode") + ScriptTools.methods + ScriptCryptoObjects.factories + fonts.methods + resources.methods)
+            "startBrowser", "startBrowserAwait", "getVerificationCode", "getWebViewUA") + ScriptTools.methods + ScriptCryptoObjects.factories + fonts.methods + resources.methods)
         method(javaBridge, "setContent") { cx, activeScope, args ->
             call(cx, activeScope, "java.setContent", args)
             javaBridge
+        }
+        // Legado log is also an identity expression. Keep source text out of host diagnostics.
+        method(javaBridge, "log") { _, _, args ->
+            require(args.size == 1)
+            args[0]
         }
         objectFor("cache", listOf("get", "put", "delete"))
         objectFor("cookie", listOf("getCookie", "getKey", "setCookie", "replaceCookie", "removeCookie"))
@@ -108,6 +113,8 @@ private class ScriptBridge(private val bridge: HostBridge, private val rules: Sc
         // initiate login, and the worker never receives a mutable Android Source object.
         source.defineProperty("loginUrl", frame.sourceLoginUrl, ScriptableObject.READONLY or ScriptableObject.PERMANENT)
         method(source, "getLoginUrl") { _, _, args -> require(args.isEmpty()); frame.sourceLoginUrl }
+        source.defineProperty("bookSourceComment", frame.sourceComment, ScriptableObject.READONLY or ScriptableObject.PERMANENT)
+        method(source, "getBookSourceComment") { _, _, args -> require(args.isEmpty()); frame.sourceComment }
         method(javaBridge, "getSource") { _, _, args -> require(args.isEmpty()); source }
         frame.discovery?.install(context, scope, javaBridge, source)
         if (frame.discovery != null) method(javaBridge, "removeCookie") { cx, active, args ->
@@ -121,9 +128,9 @@ data class ScriptFrame(val sourceId: String, val profile: String, val bookId: St
     val baseUrl: String = "", val ruleContext: RuleContext? = null, val ruleInput: RuleValue? = null,
     val ruleBudget: RuleBudget? = null, val book: JsonObject = JsonObject(emptyMap()),
     val chapter: JsonObject = JsonObject(emptyMap()), val chineseConverter: Int = 0, val sourceHeaderRule: String = "",
-    val discovery: ScriptDiscovery? = null, val sourceLoginUrl: String = "")
+    val discovery: ScriptDiscovery? = null, val sourceLoginUrl: String = "", val sourceComment: String? = null)
 
-data class ScriptLimits(val instructionLimit: Int = 100_000, val maxResultChars: Int = 256 * 1024,
+data class ScriptLimits(val instructionLimit: Int = 1_000_000, val maxResultChars: Int = 256 * 1024,
     val maxScriptChars: Int = 256 * 1024, val maxBridgeChars: Int = DEFAULT_BRIDGE_CHARS,
     val maxInterpreterStackDepth: Int = 1000) {
     init { require(instructionLimit > 0 && maxResultChars > 0 && maxScriptChars > 0 && maxBridgeChars > 0 && maxInterpreterStackDepth in 1..1000) }
@@ -219,9 +226,11 @@ class RhinoScriptEngine(private val bridge: HostBridge, private val limits: Scri
                 scope.put("result", scope, JsonScriptData(context, scope, inputLimit).convert(frame.variables["result"] ?: JsonNull))
                 scope.put("key", scope, frame.key)
                 scope.put("page", scope, frame.page)
-                scope.put("baseUrl", scope, frame.baseUrl)
+                scope.put("baseUrl", scope, ruleContext.contentBaseUrl)
                 context.putThreadLocal(bridgeLimitKey, limits.maxBridgeChars)
-                ScriptBridge(bridge, ScriptRuleHelpers(scope, frame.copy(ruleContext = ruleContext), limits), ScriptRequestTemplates(scope, frame), archives).install(context, scope, frame)
+                val rules = ScriptRuleHelpers(scope, frame.copy(ruleContext = ruleContext), limits)
+                scope.put("src", scope, rules.sourceValue(context))
+                ScriptBridge(bridge, rules, ScriptRequestTemplates(scope, frame), archives).install(context, scope, frame)
                 val value = try { evaluateGlobal(context, scope, source, "source-script") }
                     finally { ruleContext.initializeMetadataVariables = null }
                 frame.discovery?.capture()
@@ -248,7 +257,7 @@ class RhinoScriptEngine(private val bridge: HostBridge, private val limits: Scri
               // Classify only engine-generated missing bindings. Source-created Errors, ordinary
               // missing variables, typeof probes and caught fallbacks retain normal JS semantics.
               val dependency = if (error.name == "ReferenceError") ScriptDependency.entries.firstOrNull {
-                  error.errorMessage.contains("\"${it.binding}\"") || error.errorMessage.contains("'${it.binding}'")
+                  error.errorMessage == ScriptRuntime.getMessageById("msg.is.not.defined", it.binding)
               } else null
               if (dependency == null) ScriptResult.Failure(FailureCode.Runtime, "script failed")
               else ScriptResult.Failure(FailureCode.UnsupportedDependency, "runtime dependency unavailable", dependency,

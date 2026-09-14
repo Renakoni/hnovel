@@ -15,7 +15,7 @@ class DomContractTest {
         assertEquals(expected.toString(), (result as ScriptResult.Success).json)
     }
     @Test fun treeMutationsAttributesAndCollectionOverloadsMatchPinnedJsoup() {
-        val reference = Jsoup.parse(html, frame.baseUrl)
+        val reference = Jsoup.parse(html)
         val a = reference.selectFirst("a")!!
         a.attr("title", "chapter").addClass("read").prependText("Start ").append("<i>End</i>")
         a.dataset()["x"] = "2"
@@ -51,6 +51,28 @@ class DomContractTest {
             assertTrue(engine.evaluate("saved.node=java.getElements('a').first();1", frame, library) is ScriptResult.Success)
             val small = RhinoScriptEngine(HostBridge { _, _ -> error("No host") }, ScriptLimits(maxBridgeChars=32))
             assertEquals(FailureCode.ResultTooLarge, (small.evaluate("saved.node.append('x')",frame.copy(variables=emptyMap()),library) as ScriptResult.Failure).code)
+        }
+    }
+
+    @Test fun cachedQueriesStillCheckSmallerBudgetsAndMutationsThroughAliases() {
+        val input = frame.copy(variables = emptyMap())
+        ScriptLibrary("a", "legado", "var saved={};").use { library ->
+            assertEquals(ScriptResult.Success("\"A\""), engine.evaluate("""
+                saved.doc=org.jsoup.Jsoup.parse('<p>A</p><aside>'+new Array(301).join('x')+'</aside>');
+                saved.node=saved.doc.select('p').first();saved.node.text()
+            """, input, library))
+            val small = RhinoScriptEngine(HostBridge { _, _ -> error("No host") }, ScriptLimits(maxBridgeChars=128))
+            assertEquals(FailureCode.ResultTooLarge, (small.evaluate("saved.node.text()",input,library) as ScriptResult.Failure).code)
+        }
+        val bounded = RhinoScriptEngine(HostBridge { _, _ -> error("No host") }, ScriptLimits(maxBridgeChars=512))
+        ScriptLibrary("a", "legado", "var saved={};").use { library ->
+            assertEquals(ScriptResult.Success("\"A\""), bounded.evaluate("""
+                saved.doc=org.jsoup.Jsoup.parse('<p>A</p><aside>'+new Array(201).join('x')+'</aside>');
+                saved.node=saved.doc.select('p').first();saved.map=saved.node.dataset();saved.node.text()
+            """,input,library))
+            assertEquals(FailureCode.ResultTooLarge, (bounded.evaluate(
+                "saved.map.put('extra',new Array(281).join('x'));1",input,library) as ScriptResult.Failure).code)
+            assertEquals(ScriptResult.Success("\"undefined\""),bounded.evaluate("typeof saved.node",input,library))
         }
     }
 

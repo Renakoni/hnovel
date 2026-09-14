@@ -6,6 +6,20 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class MetadataContractTest {
+    @Test fun chapterBooleanMethodsAndBeanPropertiesPersistAsData() {
+        val context = RuleContext("a")
+        val frame = ScriptFrame("a", "legado", ruleContext = context,
+            chapter = buildJsonObject { put("isVip", true) })
+        assertEquals("[true,true,false,true,true,true]",run("""
+            var initial=chapter.isVip(),property=chapter.vip;
+            chapter.setVip(false);chapter.pay=true;chapter.setVolume(true);
+            [initial,property,chapter.isVip(),chapter.isPay(),chapter.isVolume(),chapter.getIsPay()]
+        """,frame))
+        val captured = Json.parseToJsonElement(context.chapterMetadata!!).jsonObject
+        assertEquals(JsonPrimitive(false),captured["isVip"])
+        assertEquals(JsonPrimitive(true),captured["isPay"])
+        assertEquals(JsonPrimitive(true),captured["isVolume"])
+    }
     private val engine = RhinoScriptEngine(HostBridge { _, _ -> error("No host") })
     private fun run(script: String, frame: ScriptFrame): String {
         val result = engine.evaluate(script, frame)

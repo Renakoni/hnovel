@@ -4,26 +4,33 @@ import hnovel.rules.*
 import kotlinx.serialization.json.*
 import org.mozilla.javascript.Context
 import org.mozilla.javascript.Scriptable
-import org.jsoup.parser.Parser
+import org.apache.commons.text.StringEscapeUtils
 
 /** Nested AnalyzeRule helpers share the current Rhino context, variables and rule budget. */
 internal class ScriptRuleHelpers(private val scope: Scriptable, frame: ScriptFrame, private val limits: ScriptLimits) {
     private val context = frame.ruleContext ?: RuleContext(frame.sourceId, frame.bookId, frame.chapterId, frame.baseUrl)
-    private var root = frame.ruleInput ?: value(frame.variables["result"] ?: JsonNull)
-    private var baseUrl = context.baseUrl
+    init { if (context.content == null) context.content = frame.ruleInput ?: value(frame.variables["result"] ?: JsonNull) }
+    private var root: RuleValue
+        get() = context.content!!
+        set(value) { context.content = value }
+    private var baseUrl: String
+        get() = context.contentBaseUrl
+        set(value) { context.contentBaseUrl = value }
     private val budget = frame.ruleBudget ?: RuleBudget(RuleLimits(maxInputChars = limits.maxBridgeChars,
         maxOutputChars = limits.maxBridgeChars))
     private var depth = 0
     private var elements: RuleValue? = null
 
+    fun sourceValue(cx: Context): Any? = JsonScriptData(cx, scope, budget.limits.maxInputChars).convert(json(root))
+
     fun elementView(cx: Context, active: Scriptable, data: JsonElement): Any? {
         fun convert(value: RuleValue): Any? = when (value) {
-            is RuleValue.Node -> if (value.kind == InputKind.Html) ScriptDom.wrap(cx, active, value.htmlElement(baseUrl))
-                else if (value.kind == InputKind.Xml) ScriptDom.fragment(cx, active, value.content, baseUrl, true)
+            is RuleValue.Node -> if (value.kind == InputKind.Html) ScriptDom.wrap(cx, active, value.htmlElement(""))
+                else if (value.kind == InputKind.Xml) ScriptDom.fragment(cx, active, value.content, "", true)
                 else JsonScriptData(cx, active, limits.maxBridgeChars).convert(json(value))
             is RuleValue.Items -> {
                 val nodes = value.values.map(::convert)
-                if (nodes.isNotEmpty() && nodes.all { it is ScriptDomElement }) ScriptDom.elements(cx, active, nodes.map { (it as ScriptDomElement).element })
+                if ((nodes.isNotEmpty() || value.elementKind == InputKind.Html) && nodes.all { it is ScriptDomElement }) ScriptDom.elements(cx, active, nodes.map { (it as ScriptDomElement).element })
                 else ScriptRealm.current(cx).arrayIn(active, nodes.toTypedArray())
             }
             else -> JsonScriptData(cx, active, limits.maxBridgeChars).convert(json(value))
@@ -75,27 +82,32 @@ internal class ScriptRuleHelpers(private val scope: Scriptable, frame: ScriptFra
             val evaluator = RuleEvaluator(unescapeHtml = false) { request, _, _ ->
                 budget.checkSize(request.script.length, limits.maxScriptChars)
                 val old = scope.get("result", scope)
+                val oldBase = scope.get("baseUrl", scope)
+                val oldSource = scope.get("src", scope)
                 try {
                     scope.put("result", scope, JsonScriptData(cx, scope, budget.limits.maxInputChars).convert(json(request.input)))
+                    scope.put("baseUrl", scope, baseUrl)
+                    scope.put("src", scope, sourceValue(cx))
                     value(Json.parseToJsonElement(BoundedJsonResult(limits.maxBridgeChars)
                         .encode(evaluateGlobal(cx, scope, request.script, "nested-rule"))))
-                } finally { scope.put("result", scope, old) }
+                } finally {
+                    scope.put("result", scope, old)
+                    scope.put("baseUrl", scope, oldBase)
+                    scope.put("src", scope, oldSource)
+                }
             }
-            val result = evaluator.evaluate(rule, input, context, output, RuleLocation(name), budget, baseUrl)
+            val result = evaluator.evaluate(rule, input, context, output, RuleLocation(name), budget, context.baseUrl, baseUrl)
             if (result is RuleResult.Failure) {
                 if (result.error.stage == RuleStage.Budget) throw ScriptBudgetExceeded()
                 error("Nested rule failed")
             }
             val selected = (result as RuleResult.Success).value
             if (name == "java.getElement" || name == "java.getElements") {
-                elements = if (name == "java.getElement" && selected is RuleValue.Items && selected.values.singleOrNull().let { it is RuleValue.Node && it.kind == InputKind.Json }) selected.values.single() else selected
+                elements = selected
             }
             return when (name) {
-                "java.getString" -> JsonPrimitive(text(selected).let { if (unescape) Parser.unescapeEntities(it, false) else it })
+                "java.getString" -> JsonPrimitive(text(selected).let { if (unescape) StringEscapeUtils.unescapeHtml4(it) else it })
                 "java.getStringList" -> JsonArray((if (selected is RuleValue.Text) selected.value.split('\n') else items(selected).map(::text)).map(::JsonPrimitive))
-                // JSON getObject returns one structured value; HTML/XPath getElement returns a node list.
-                "java.getElement" -> if (selected is RuleValue.Items && selected.values.singleOrNull().let { it is RuleValue.Node && it.kind == InputKind.Json })
-                    json(selected.values.single()) else json(selected)
                 else -> json(selected)
             }
         } catch (_: RuleBudgetExceeded) { throw ScriptBudgetExceeded() }
@@ -124,7 +136,9 @@ internal class ScriptRuleHelpers(private val scope: Scriptable, frame: ScriptFra
     private fun value(json: JsonElement): RuleValue = when (json) {
         JsonNull -> RuleValue.Empty
         is JsonPrimitive -> RuleValue.Text(json.content)
-        is JsonArray -> RuleValue.Items(json.map(::value))
+        is JsonArray -> RuleValue.Items(json.map {
+            if (it is JsonPrimitive && !it.isString) RuleValue.Node(it.toString(), InputKind.Json) else value(it)
+        })
         is JsonObject -> RuleValue.Node(json.toString(), InputKind.Json)
     }
 }

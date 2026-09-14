@@ -6,12 +6,13 @@ import org.mozilla.javascript.*
 /** Invocation snapshots. Metadata never supplies source identity or host execution authority. */
 internal object ScriptMetadata {
     private val captureKey = Any()
-    private data class Capture(val initial: JsonObject, val defaults: JsonObject)
+    private data class Capture(val initial: JsonObject, val defaults: JsonObject, val flags: MutableMap<String, Boolean>)
     fun capture(value: ScriptableObject, maxChars: Int): JsonObject {
         val original = value.getAssociatedValue(captureKey) as Capture
         val changed = mutableMapOf<String, JsonElement>()
         for ((key, before) in original.defaults + original.initial) {
-            val after = Json.parseToJsonElement(BoundedJsonResult(maxChars).encode(ScriptableObject.getProperty(value, key)))
+            val after = original.flags[key]?.let(::JsonPrimitive)
+                ?: Json.parseToJsonElement(BoundedJsonResult(maxChars).encode(ScriptableObject.getProperty(value, key)))
             if (after != before) changed[key] = after
         }
         return JsonObject(original.initial + changed).also {
@@ -34,9 +35,14 @@ internal object ScriptMetadata {
             numbers.split(' ').forEach { put(it, 0) }
             if (chapter) listOf("isVolume", "isVip", "isPay").forEach { put(it, false) } else put("canUpdate", true)
         }
-        val result = JsonScriptData(cx, scope, limit).convert(data) as ScriptableObject
-        result.associateValue(captureKey, Capture(data, defaults))
-        defaults.forEach { (name, value) -> if (!result.has(name, result)) {
+        // Kotlin boolean getters are callable isX() methods, with x/setX bean accessors.
+        // Keep their data separately so persistence never serializes a function as a flag.
+        val flags = if (chapter) listOf("isVolume", "isVip", "isPay").associateWith {
+            (data[it] ?: defaults.getValue(it)).jsonPrimitive.boolean
+        }.toMutableMap() else mutableMapOf()
+        val result = JsonScriptData(cx, scope, limit).convert(JsonObject(data - flags.keys)) as ScriptableObject
+        result.associateValue(captureKey, Capture(data, defaults, flags))
+        defaults.forEach { (name, value) -> if (name !in flags && !result.has(name, result)) {
             val primitive = value.jsonPrimitive
             result.defineProperty(name, when { value == JsonNull -> null; primitive.isString -> primitive.content; primitive.booleanOrNull != null -> primitive.boolean; else -> primitive.int }, ScriptableObject.EMPTY)
         } }
@@ -54,7 +60,7 @@ internal object ScriptMetadata {
             }, ScriptableObject.DONTENUM)
         }
         for ((name, default) in defaults + data) {
-            if (name == "id") continue
+            if (name == "id" || name in flags) continue
             val suffix = name.replaceFirstChar { it.uppercaseChar() }
             method("get$suffix") { a -> require(a.isEmpty()); Json.parseToJsonElement(BoundedJsonResult(Context.getCurrentContext().getThreadLocal(bridgeLimitKey) as Int).encode(ScriptableObject.getProperty(result, name))) }
             method("set$suffix") { a ->
@@ -65,6 +71,18 @@ internal object ScriptMetadata {
                 }
                 result.put(name, result, JsonScriptData(Context.getCurrentContext(), scope, Context.getCurrentContext().getThreadLocal(bridgeLimitKey) as Int).convert(a[0])); JsonNull
             }
+        }
+        for (name in flags.keys) {
+            val suffix = name.removePrefix("is")
+            val read: (List<JsonElement>) -> JsonElement = { a -> require(a.isEmpty()); JsonPrimitive(flags.getValue(name)) }
+            val write: (List<JsonElement>) -> JsonElement = { a -> require(a.size == 1); flags[name] = a.single().jsonPrimitive.boolean; JsonNull }
+            method(name, read)
+            method("set$suffix", write)
+            method("get" + name.replaceFirstChar { it.uppercaseChar() }, read)
+            method("set" + name.replaceFirstChar { it.uppercaseChar() }, write)
+            result.defineProperty(suffix.replaceFirstChar { it.lowercaseChar() },
+                java.util.function.Supplier<Any> { flags.getValue(name) },
+                java.util.function.Consumer<Any> { value -> require(value is Boolean); flags[name] = value }, ScriptableObject.DONTENUM)
         }
         var lastSmall = variables.toMap()
         val map by lazy {
@@ -162,7 +180,7 @@ internal object ScriptMetadata {
             method("getAbsoluteURL") { a ->
                 require(a.isEmpty())
                 val url = text("url"); val base = text("baseUrl")
-                if (Context.toBoolean(ScriptableObject.getProperty(result, "isVolume")) && url.startsWith(text("title"))) JsonPrimitive(base)
+                if (flags.getValue("isVolume") && url.startsWith(text("title"))) JsonPrimitive(base)
                 else {
                     val split = Regex(",\\s*(?=\\{)").find(url)
                     val before = split?.let { url.substring(0, it.range.first) } ?: url

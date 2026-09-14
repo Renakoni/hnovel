@@ -13,6 +13,7 @@ dependencies {
     implementation("com.jayway.jsonpath:json-path:2.10.0")
     implementation("cn.wanghaomiao:JsoupXpath:2.5.3")
     implementation("com.google.code.gson:gson:2.13.2")
+    implementation("org.apache.commons:commons-text:1.15.0")
     testImplementation(libs.junit)
 }
 

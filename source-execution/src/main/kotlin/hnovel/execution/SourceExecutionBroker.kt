@@ -20,6 +20,8 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
      * Consumers use it only for BridgeDenied, never to override handled errors or successful rules. */
     @Volatile var requestFailure: BrokerResult.Failure? = null
         private set
+    @Volatile var requestLimitExceeded = false
+        private set
 
     init {
         require(identity.namespace == session.scope.namespace && identity.sourceId == session.scope.sourceId &&
@@ -44,6 +46,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
 
     suspend fun call(name: String, args: List<JsonElement>): JsonElement {
         requestFailure = null
+        requestLimitExceeded = false
         if (name != "request.withHeaders") return callWithHeaders(name, args, emptyMap())
         require(args.size == 3)
         val operation = args[0].jsonPrimitive.content
@@ -56,6 +59,10 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
         val requestNumber = reserveRequest()
         return ownedWork {
             when (name) {
+                "java.getWebViewUA" -> {
+                    require(args.isEmpty())
+                    JsonPrimitive(session.webViewUserAgent())
+                }
                 "java.getVerificationCode" -> {
                     if (!allowInteraction) {
                         interactionRequired = true
@@ -169,7 +176,8 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
                         val pending = requests.map { request -> async {
                             decoding.withPermit {
                                 fetch(request, limits.scriptDataLimit).scriptSnapshot(false).also {
-                                    check(responseBytes.addAndGet(it.toString().toByteArray().size.toLong() + 1) <= BridgeWire.MAX_BYTES) { "Batch response too large" }
+                                    check(responseBytes.addAndGet(it.toString().toByteArray().size.toLong() + 1) <=
+                                        (limits.maxDataBytes ?: BridgeWire.MAX_BYTES)) { "Batch response too large" }
                                 }
                             }
                         } }
@@ -221,8 +229,8 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
         item.content
     }
 
-    private suspend fun fetch(request: BrokerRequest, maxResponseBytes: Int = BridgeWire.MAX_BYTES): BrokerResponse {
-        val result = session.execute(request.copy(timeoutMillis = limits.timeoutMillis, maxResponseBytes = maxResponseBytes), RequestCommitGuard { action -> authorized(action) })
+    private suspend fun fetch(request: BrokerRequest, maxResponseBytes: Int = limits.maxDataBytes ?: BridgeWire.MAX_BYTES): BrokerResponse {
+        val result = session.execute(request.copy(timeoutMillis = limits.timeoutMillis, maxResponseBytes = minOf(maxResponseBytes, 4 * 1024 * 1024)), RequestCommitGuard { action -> authorized(action) })
         if (result is BrokerResult.Failure) requestFailure = result
         check(result is BrokerResult.Success) { "Broker request failed" }
         return result.response
@@ -407,7 +415,10 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
     }
 
     private fun reserveRequest(): Int = authorized {
-        check(++requests <= limits.maxRequests) { "Request budget exceeded" }
+        if (++requests > limits.maxRequests) {
+            requestLimitExceeded = true
+            error("Request budget exceeded")
+        }
         requests
     }
 

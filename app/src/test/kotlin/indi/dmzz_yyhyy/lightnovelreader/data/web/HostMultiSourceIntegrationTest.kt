@@ -118,6 +118,7 @@ class HostMultiSourceIntegrationTest {
         manager.registry.sources.value.forEach { manager.unregisterWebDataSource(it.metadata.id) }
         workManager.cancelAllWork().await()
         WorkManagerTestInitHelper.closeWorkDatabase()
+        progress.close()
         db.close()
     }
 
@@ -195,6 +196,7 @@ class HostMultiSourceIntegrationTest {
         userData.stringListUserData(UserDataPath.ReadingBooks.path).set(listOf(a.storageKey, b.storageKey))
         val exported = Cbor.decodeFromByteArray<AppLocalData>(Cbor.encodeToByteArray(backup.exportAppLocalData().get()!!))
         manager.registry.sources.value.forEach { manager.unregisterWebDataSource(it.metadata.id) }
+        progress.close()
         db.close()
         openHost() // Disk Room survives a new registry/repository graph; no global source is restored.
         assertLocalLibrary()

@@ -6,6 +6,34 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ScriptRuleHelpersTest {
+    @Test fun explicitAndScriptArrayInputsStayStructuredForJsonPath() {
+        assertEquals(JsonPrimitive(true), run("Array.isArray(java.getElement('@js:[{id:1}]'))"))
+        assertEquals(JsonPrimitive("second"), run("java.getString('$[1].title',[{title:'first'},{title:'second'}])"))
+        assertEquals(Json.parseToJsonElement("""[7,true,null,"text",[2,3],{"id":4}]"""), run("""
+            java.getElements('<js>[7,true,null,"text",[2,3],{id:4}]</js>$.[*]')
+        """))
+        assertEquals(Json.parseToJsonElement("""[{"id":1},{"id":2}]"""), run("""
+            java.setContent({items:[{id:1},{id:2}]});
+            java.getElements('$.items[*]<js>result</js>$.[*]')
+        """))
+    }
+    @Test fun emptyHtmlSelectionsKeepDomMethodsWhileJsonAndScriptArraysStayData() {
+        assertEquals(Json.parseToJsonElement("""["",0,"","","undefined","undefined"]"""),run("""
+            var empty=java.getElement('@@#missing'), combined=java.getElements('@@#missing||#alsoMissing');
+            var script=java.getElement('@js:[]');
+            java.setContent('{"items":[]}'); var data=java.getElements('$.items[*]');
+            [empty.text(),empty.size(),empty.attr('href'),combined.text(),typeof data.text,typeof script.text]
+        """))
+    }
+    @Test fun loggingReturnsTheOriginalValueWithoutBreakingRuleFallbacks() {
+        assertEquals(JsonArray(listOf(JsonPrimitive("chapter"), JsonPrimitive(true), JsonNull)), run("""
+            var object={name:'chapter'};[java.log(object.name),java.log(object)===object,java.log(null)]
+        """))
+        assertEquals(JsonPrimitive(true), run("""
+            var error = new Error('source error'), cycle = {}; cycle.self = cycle;
+            java.log(error) === error && java.log(cycle) === cycle && java.log(undefined) === undefined
+        """))
+    }
     private val engine = RhinoScriptEngine(HostBridge { _, _ -> error("Selectors must stay in worker") })
     private val frame = ScriptFrame("a", "legado", variables = mapOf("result" to JsonPrimitive("<a href='/one'>One</a><a href='/two'>Two</a>")), baseUrl="https://example.org/base")
     private fun run(code: String, frame: ScriptFrame = this.frame): JsonElement {
@@ -46,6 +74,12 @@ class ScriptRuleHelpersTest {
         """))
     }
 
+    @Test fun nestedStringRulesKeepUnterminatedEntitiesInRequestParameters() {
+        assertEquals(JsonPrimitive("id=1&timestamp=2&notin=3|& &apos;"), run("""
+            java.getString('@js:"id=1&timestamp=2&notin=3"')+'|'+java.getString('@js:"&amp; &apos;"')
+        """))
+    }
+
     @Test fun nestedRuleRecursionCannotResetInstructionOrDepthBudget() {
         val frame = frame.copy(ruleBudget=RuleBudget(RuleLimits(maxDepth=8)))
         val result = engine.evaluate("function again(){return java.getString('@js:again()')}try{again()}catch(e){'hidden'}", frame)
@@ -69,16 +103,16 @@ class ScriptRuleHelpersTest {
         assertEquals(JsonPrimitive("One\nTwo"), run("java.getString('a@text')"))
     }
 
-    @Test fun setContentUrlBaseIsLocalToSelectorsAndDomViews() {
+    @Test fun setContentKeepsRedirectResolutionSeparateFromContentBase() {
         val context = RuleContext("a", baseUrl = frame.baseUrl)
-        assertEquals(JsonArray(listOf(JsonPrimitive("https://text.invalid/folder/next"),
-            JsonPrimitive("https://text.invalid/folder/next"), JsonPrimitive("https://text.invalid/folder/later"),
-            JsonPrimitive(frame.baseUrl))), run("""
+        assertEquals(JsonArray(listOf(JsonPrimitive("https://example.org/next"),
+            JsonPrimitive(""), JsonPrimitive("https://example.org/later"),
+            JsonPrimitive(frame.baseUrl), JsonPrimitive("https://text.invalid/folder/book"))), run("""
             java.setContent('<a href="next">Chapter</a>','https://text.invalid/folder/book');
             var url=java.getString('a@href',null,true);
             var dom=java.getElement('a').first().absUrl('href');
             java.setContent('<a href="later">Later</a>',null);
-            [url,dom,java.getStringList('a@href',null,true)[0],baseUrl]
+            [url,dom,java.getStringList('a@href',null,true)[0],baseUrl,java.getString("@js:''",null,true)]
         """, frame.copy(ruleContext = context)))
         assertEquals(frame.baseUrl, context.baseUrl)
     }

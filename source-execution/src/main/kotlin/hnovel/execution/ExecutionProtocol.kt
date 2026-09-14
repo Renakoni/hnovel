@@ -24,13 +24,15 @@ private class WorkerOutputLimit : RuntimeException()
  val namespace: String = "default", val accountGeneration: Long = 0) {
  init { require(sourceId.isNotBlank() && profile.isNotBlank() && revision.isNotBlank() && nonce.isNotBlank() && namespace.isNotBlank() && accountGeneration >= 0) }
 }
-@Serializable data class ExecutionLimits(val timeoutMillis: Long = 5000, val maxOutputBytes: Int = 65536, val maxRequests: Int = 16) {
- init { require(timeoutMillis in 1..60000 && maxOutputBytes in 1..4 * 1024 * 1024 && maxRequests in 0..1024) }
+@Serializable data class ExecutionLimits(val timeoutMillis: Long = 5000, val maxOutputBytes: Int = 65536, val maxRequests: Int = 16,
+ val maxDataBytes: Int? = null) {
+ init { require(timeoutMillis in 1..60000 && maxOutputBytes in 1..4 * 1024 * 1024 && maxRequests in 0..1024 &&
+  (maxDataBytes == null || maxDataBytes in 1..BridgeWire.MAX_REPLY_BYTES)) }
 }
 
-// RuleSource already grants a 192 KiB result budget. Keep its native data methods and
-// response reads consistent with that host-owned budget; larger callers cannot expand the IPC cap.
-internal val ExecutionLimits.scriptDataLimit: Int get() = maxOutputBytes.coerceIn(ScriptLimits.DEFAULT_BRIDGE_CHARS, 192 * 1024)
+// Callers can grant a larger input-data budget independently of the small final rule output.
+// Without an explicit grant, retain the existing native-method and response-read limits.
+internal val ExecutionLimits.scriptDataLimit: Int get() = maxDataBytes ?: maxOutputBytes.coerceIn(ScriptLimits.DEFAULT_BRIDGE_CHARS, 192 * 1024)
 @Serializable sealed interface ExecutionTask {
  @Serializable data class Echo(val value: String): ExecutionTask
  @Serializable data class Sleep(val millis: Long): ExecutionTask
@@ -39,7 +41,8 @@ internal val ExecutionLimits.scriptDataLimit: Int get() = maxOutputBytes.coerceI
  @Serializable data class Script(val code: String, val result: JsonElement = JsonNull, val bookId: String? = null,
   val chapterId: String? = null, val key: String = "", val page: Int = 1, val baseUrl: String = "",
   val libraryCode: String? = null, val book: JsonObject = JsonObject(emptyMap()),
-  val chapter: JsonObject = JsonObject(emptyMap()), val chineseConverter: Int = 0, val sourceLoginUrl: String = "") : ExecutionTask
+  val chapter: JsonObject = JsonObject(emptyMap()), val chineseConverter: Int = 0, val sourceLoginUrl: String = "",
+  val sourceComment: String? = null) : ExecutionTask
  @Serializable data class Rule(val rule: String, val input: RuleValue, val output: OutputKind = OutputKind.TextList,
   val location: RuleLocation = RuleLocation("rule"), val bookId: String? = null, val chapterId: String? = null,
   val key: String = "", val page: Int = 1, val baseUrl: String = "", val libraryCode: String? = null,
@@ -48,7 +51,7 @@ internal val ExecutionLimits.scriptDataLimit: Int get() = maxOutputBytes.coerceI
   val chapter: JsonObject = JsonObject(emptyMap()), val bookBigVariables: Map<String, String> = emptyMap(),
   val chapterBigVariables: Map<String, String> = emptyMap(), val chineseConverter: Int = 0,
   val unescapeHtml: Boolean = true, val sourceHeaderRule: String = "", val discovery: JsonObject? = null,
-  val sourceLoginUrl: String = "") : ExecutionTask
+  val sourceLoginUrl: String = "", val sourceComment: String? = null) : ExecutionTask
 }
 
 fun ExecutionTask.libraryCode(): String? = when (this) {
@@ -156,7 +159,7 @@ class IsolatedExecutor(private val javaCommand: String = javaHome(), private val
    RhinoScriptEngine::class.java, org.mozilla.javascript.Context::class.java, RuleEvaluator::class.java) +
    listOf("org.jsoup.Jsoup", "com.jayway.jsonpath.JsonPath", "net.minidev.json.JSONValue", "net.minidev.asm.BeansAccess",
     "org.objectweb.asm.ClassReader", "org.slf4j.LoggerFactory", "org.seimicrawler.xpath.JXDocument",
-    "org.apache.commons.lang3.StringUtils", "org.antlr.v4.runtime.Parser", "com.google.gson.Gson",
+    "org.apache.commons.lang3.StringUtils", "org.apache.commons.text.StringEscapeUtils", "org.antlr.v4.runtime.Parser", "com.google.gson.Gson",
     "cn.hutool.crypto.KeyUtil", "cn.hutool.core.util.HexUtil", "com.github.liuyueyi.quick.transfer.ChineseUtils",
     "hnovel.rhino.charset.CharsetDetector", "hnovel.rhino.font.QueryTTF", "okhttp3.Response", "okio.Buffer").map { Class.forName(it) })
    .map { type ->
@@ -230,7 +233,7 @@ class WorkerRuntime(private val archives: hnovel.rhino.ArchiveDecoder = hnovel.r
    is ExecutionTask.Script -> {
     val frame = ScriptFrame(wire.identity.sourceId, wire.identity.profile, task.bookId, task.chapterId,
      mapOf("result" to task.result), task.key, task.page, task.baseUrl, book = task.book, chapter = task.chapter,
-     chineseConverter = task.chineseConverter, sourceLoginUrl = task.sourceLoginUrl)
+     chineseConverter = task.chineseConverter, sourceLoginUrl = task.sourceLoginUrl, sourceComment = task.sourceComment)
     when (val evaluated = RhinoScriptEngine(bridge, ScriptLimits(maxResultChars = wire.limits.maxOutputBytes,
      maxBridgeChars = wire.limits.scriptDataLimit), archives)
      .evaluate(task.code, frame, library(wire.identity, task.libraryCode, wire.libraryScripts))) {

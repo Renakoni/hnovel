@@ -20,7 +20,8 @@ class RequestCompiler {
             val options = optionStart?.let { RequestOptionsJson.options(rule.substring(it.range.last + 1)) } ?: buildJsonObject {}
             if (options.keys.any { it in setOf("js") }) return CompiledRequest.Rejected(FailureCode.ScriptRequired)
             if ("serverID" in options) return CompiledRequest.Rejected(FailureCode.BrowserRequired)
-            if (options.keys.any { it !in setOf("method", "body", "headers", "header", "charset", "retry", "webView", "webJs", "webViewDelayTime") }) return CompiledRequest.Rejected(FailureCode.UnknownOption)
+            if (options.keys.any { it !in setOf("method", "body", "headers", "header", "charset", "retry", "webView", "webJs", "webViewDelayTime", "type") }) return CompiledRequest.Rejected(FailureCode.UnknownOption)
+            val responseAsHex = options["type"]?.takeUnless { it == JsonNull }?.jsonPrimitive?.content?.isNotBlank() == true
             val webView = options["webView"]?.jsonPrimitive?.boolean ?: false
             val webJs = options["webJs"]?.jsonPrimitive?.content.orEmpty()
             val browserDelay = options["webViewDelayTime"]?.jsonPrimitive?.long ?: 0
@@ -44,9 +45,9 @@ class RequestCompiler {
             }
             val rawUrl = rule.substring(0, optionStart?.range?.first ?: rule.length).trim()
             val expandedUrl = expand(rawUrl, true, pageAlternatives = true)
-            val url = baseUrl.toHttpUrlOrNull()?.resolve(encodeNonAscii(expandedUrl, charset))
+            val url = if (expandedUrl.startsWith("data:")) expandedUrl else (baseUrl.toHttpUrlOrNull()?.resolve(encodeNonAscii(expandedUrl, charset))
                 ?: encodeNonAscii(expandedUrl, charset).toHttpUrlOrNull()
-                ?: return CompiledRequest.Rejected(FailureCode.InvalidRequest)
+                ?: return CompiledRequest.Rejected(FailureCode.InvalidRequest)).toString()
             val method = options["method"]?.jsonPrimitive?.content?.uppercase() ?: "GET"
             if (method !in setOf("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD")) return CompiledRequest.Rejected(FailureCode.InvalidRequest)
             val mergedHeaders = headers.toMutableMap()
@@ -82,8 +83,9 @@ class RequestCompiler {
             } + "; charset=${if (charset == "escape") "UTF-8" else charset}"
             val retry = options["retry"]?.jsonPrimitive?.int ?: 0
             if (retry !in 0..3) return CompiledRequest.Rejected(FailureCode.InvalidRequest)
-            CompiledRequest.Ready(BrokerRequest(id, url.toString(), method, mergedHeaders.toMap(), body,
-                if (charset == "escape") "UTF-8" else charset, retry = retry, kind = kind, browser = browser))
+            CompiledRequest.Ready(BrokerRequest(id, url, method, mergedHeaders.toMap(), body,
+                if (charset == "escape") "UTF-8" else charset, retry = retry, kind = kind,
+                browser = browser.takeUnless { responseAsHex }, responseAsHex = responseAsHex))
         } catch (failure: BrokerFailure) { CompiledRequest.Rejected(failure.code) }
           catch (_: Exception) { CompiledRequest.Rejected(FailureCode.InvalidRequest) }
     }

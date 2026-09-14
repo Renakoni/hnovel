@@ -47,6 +47,31 @@ import org.junit.runner.RunWith
 class IsolatedExecutionInstrumentedTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
 
+    @Test fun largeResponseBatchesCrossThePipeAndKeepOutputBounded(): Unit = runBlocking {
+        val authority = ExecutionAuthority()
+        val executor = AndroidIsolatedExecutor(context, authority)
+        val root = java.io.File(context.cacheDir, "large-bridge-${System.nanoTime()}")
+        try {
+            MockWebServer().use { server ->
+                server.start()
+                val base = server.url("/").toString()
+                SourceBroker(root.toPath()).use { sessions ->
+                    val session = sessions.open(SourceScope("large-bridge", "A", "legado"), listOf(NetworkGrant(base, true)))
+                    val identity = authority.issue("A", "legado", "1", "large-bridge")
+                    val limits = ExecutionLimits(timeoutMillis = 30000, maxOutputBytes = 1024, maxDataBytes = 4 * 1024 * 1024)
+                    SourceExecutionBroker(identity, authority, session, limits, base).use { bridge ->
+                        server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
+                            override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest) = MockResponse()
+                                .setBody("x".repeat(700000) + request.path!!.last())
+                        }
+                        val task = ExecutionTask.Script("java.ajaxAll(['/0','/1','/2']).map(r=>r.body().slice(-1))", baseUrl = base)
+                        assertEquals(ExecutionResult.Success("[\"0\",\"1\",\"2\"]"), executor.execute(identity, task, limits, bridge))
+                    }
+                }
+            }
+        } finally { executor.close(); root.deleteRecursively() }
+    }
+
     @Test fun textParserAndSelectorInputStayLocalAcrossBinderCalls() = runBlocking {
         val authority = ExecutionAuthority()
         val executor = AndroidIsolatedExecutor(context, authority)
@@ -58,7 +83,8 @@ class IsolatedExecutionInstrumentedTest {
                 [title,java.getString('a@text'),java.getString('a@href',null,true),
                  baseUrl,typeof org.jsoup.Jsoup.connect,typeof Packages]
             """, libraryCode = library, baseUrl = "https://source.invalid/")
-            assertEquals(ExecutionResult.Success("""["小说","正文","https://text.invalid/next","https://source.invalid/","undefined","undefined"]"""),
+            // setContent changes selector input; URL results still resolve against the request URL.
+            assertEquals(ExecutionResult.Success("""["小说","正文","https://source.invalid/next","https://source.invalid/","undefined","undefined"]"""),
                 executor.execute(id, task))
             assertEquals(ExecutionResult.Success("\"\""), executor.execute(id,
                 task.copy(code = "java.getString('a@text')")))
@@ -290,7 +316,10 @@ class IsolatedExecutionInstrumentedTest {
                             baseUrl=base,page=2),limits,broker)
                         assertTrue(result.toString(),result is ExecutionResult.Success)
                         val rule=Json.decodeFromString(ExecutedRule.serializer(),(result as ExecutionResult.Success).output)
-                        assertEquals(RuleValue.Items(listOf("One","chapter","true","rsa","network","40+2","4").map(RuleValue::Text)),rule.value)
+                        // JS arrays retain boolean/number types through the rule wire.
+                        assertEquals(RuleValue.Items(listOf(RuleValue.Text("One"), RuleValue.Text("chapter"),
+                            RuleValue.Node("true", hnovel.rules.InputKind.Json), RuleValue.Text("rsa"), RuleValue.Text("network"),
+                            RuleValue.Text("40+2"), RuleValue.Node("4", hnovel.rules.InputKind.Json))), rule.value)
                         assertEquals(mapOf("value" to "chapter"),rule.writes)
                     }
                     assertEquals("/find/3?ok=1",server.takeRequest(3,TimeUnit.SECONDS)?.path)
@@ -324,7 +353,8 @@ class IsolatedExecutionInstrumentedTest {
                     SourceExecutionBroker(id, authority, session, limits, base).use { broker ->
                         val result = executor.execute(id, ExecutionTask.Rule("@js:$code", RuleValue.Text(""),
                             sourceVariables = mapOf("variable" to "local"), baseUrl = base), limits, broker) as ExecutionResult.Success
-                        assertEquals(RuleValue.Items(listOf("local", "connected", "value", "302", "https://denied.invalid/").map(RuleValue::Text)),
+                        assertEquals(RuleValue.Items(listOf(RuleValue.Text("local"), RuleValue.Text("connected"), RuleValue.Text("value"),
+                            RuleValue.Node("302", hnovel.rules.InputKind.Json), RuleValue.Text("https://denied.invalid/"))),
                             Json.decodeFromString(ExecutedRule.serializer(), result.output).value)
                     }
                     assertEquals(2, server.requestCount)

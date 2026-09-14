@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Binder
 import android.os.IBinder
 import android.os.Process
+import android.os.ParcelFileDescriptor
 import android.os.RemoteException
 import hnovel.execution.ExecutionAuthority
 import hnovel.execution.ExecutionIdentity
@@ -128,7 +129,7 @@ class AndroidIsolatedExecutor @Inject constructor(@ApplicationContext context: C
                 if (workerUid == Process.myUid()) return@withTimeoutOrNull failure(FailureCode.InvalidIdentity)
                 if (!authority.accepts(identity)) return@withTimeoutOrNull failure(FailureCode.Revoked)
                 val brokerBinder = object : IExecutionBroker.Stub() {
-                    override fun call(operation: String, arguments: ByteArray): ByteArray {
+                    override fun call(operation: String, arguments: ByteArray): ParcelFileDescriptor {
                         if (Binder.getCallingUid() != workerUid || finished.get() || !authority.accepts(identity))
                             throw SecurityException("Invalid worker invocation")
                         check(operation.length <= 256 && arguments.size <= IsolatedExecutionService.MAX_IPC_BYTES)
@@ -138,8 +139,12 @@ class AndroidIsolatedExecutor @Inject constructor(@ApplicationContext context: C
                             val args = BridgeWire.arguments(arguments)
                             val value = runBlocking { withContext(Dispatchers.IO + brokerCalls) { host.call(operation, args) } }
                             val reply = value.toString().toByteArray(Charsets.UTF_8)
-                            check(reply.size <= IsolatedExecutionService.MAX_IPC_BYTES && !finished.get() && authority.accepts(identity))
-                            return reply
+                            check(reply.size <= BridgeWire.MAX_REPLY_BYTES && !finished.get() && authority.accepts(identity))
+                            val ends = ParcelFileDescriptor.createPipe()
+                            launch(Dispatchers.IO + brokerCalls) {
+                                runCatching { ParcelFileDescriptor.AutoCloseOutputStream(ends[1]).use { it.write(reply) } }
+                            }.invokeOnCompletion { runCatching { ends[1].close() } }
+                            return ends[0]
                         } finally { callingBroker.set(false) }
                     }
                 }

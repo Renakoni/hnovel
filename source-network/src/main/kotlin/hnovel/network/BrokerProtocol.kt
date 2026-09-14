@@ -41,6 +41,7 @@ data class SourceScope(val namespace: String, val sourceId: String, val profile:
     val followRedirects: Boolean = true,
     val maxResponseBytes: Int? = null,
     val browser: BrowserOptions? = null,
+    val responseAsHex: Boolean = false,
 ) {
     override fun toString() = "BrokerRequest(method=$method, kind=$kind)"
 }
@@ -48,8 +49,10 @@ data class SourceScope(val namespace: String, val sourceId: String, val profile:
 @Serializable data class BrokerResponse(val status: Int, val finalUrl: String, val headers: Map<String, List<String>>,
     val body: ByteArray, val charset: String, val redirects: Int, val fromCache: Boolean = false,
     val message: String = "", val protocol: String = "http/1.1", val sentAt: Long = 0, val receivedAt: Long = 0,
-    val declaredCharset: String? = null, val method: String = "GET") {
-    fun text(): String = body.toString(java.nio.charset.Charset.forName(charset))
+    val declaredCharset: String? = null, val method: String = "GET", val textAsHex: Boolean = false) {
+    fun text(): String = if (textAsHex) buildString(body.size * 2) {
+        body.forEach { byte -> val value = byte.toInt() and 255; append("0123456789abcdef"[value ushr 4]); append("0123456789abcdef"[value and 15]) }
+    } else body.toString(java.nio.charset.Charset.forName(charset))
     override fun toString() = "BrokerResponse(status=$status, bytes=${body.size}, redirects=$redirects, fromCache=$fromCache)"
 }
 

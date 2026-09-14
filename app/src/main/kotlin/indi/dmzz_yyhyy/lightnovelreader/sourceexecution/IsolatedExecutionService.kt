@@ -70,8 +70,9 @@ class IsolatedExecutionService : Service() {
                             val bytes = JsonArray(args).toString().toByteArray(Charsets.UTF_8)
                             check(bytes.size <= MAX_IPC_BYTES) { "Bridge request too large" }
                             val reply = checkNotNull(broker) { "Host broker required" }.call(name, bytes)
-                            check(reply.size <= MAX_IPC_BYTES) { "Bridge response too large" }
-                            Json.parseToJsonElement(reply.toString(Charsets.UTF_8))
+                            android.os.ParcelFileDescriptor.AutoCloseInputStream(reply).use {
+                                Json.parseToJsonElement(hnovel.execution.BridgeWire.readReply(it))
+                            }
                         }).toByteArray(Charsets.UTF_8)
                     } catch (_: OutOfMemoryError) {
                         // Never try to serialize a result or reuse library state after allocation failure.

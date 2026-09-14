@@ -5,7 +5,8 @@ import kotlinx.serialization.json.*
 /** Safe intermediate values; no host/client, DOM object, or scripting engine instance crosses the port. */
 @Serializable sealed interface RuleValue {
     @Serializable data class Text(val value: String) : RuleValue
-    @Serializable data class Items(val values: List<RuleValue>) : RuleValue
+    // Empty selections have no child node from which the script facade can recover their kind.
+    @Serializable data class Items(val values: List<RuleValue>, val elementKind: InputKind? = null) : RuleValue
     @Serializable data class Node(val content: String, val kind: InputKind, val parentTag: String? = null) : RuleValue
     @Serializable data class Captures(val groups: List<String>) : RuleValue
     @Serializable data object Empty : RuleValue
@@ -33,6 +34,9 @@ class RuleContext(
     bookBigVariables: Map<String, String> = emptyMap(),
     chapterBigVariables: Map<String, String> = emptyMap(),
 ) {
+    /** AnalyzeRule content survives script stages; each stage's result remains independent. */
+    var content: RuleValue? = null
+    var contentBaseUrl: String = baseUrl
     val bookValues = bookVariables.filterValues { it.length < 10000 }.toMutableMap()
     val chapterValues = chapterVariables.filterValues { it.length < 10000 }.toMutableMap()
     val bookBigValues = (bookVariables.filterValues { it.length >= 10000 } + bookBigVariables).toMutableMap()

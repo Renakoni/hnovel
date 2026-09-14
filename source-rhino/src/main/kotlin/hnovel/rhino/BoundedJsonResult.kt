@@ -27,11 +27,25 @@ internal class BoundedJsonResult(private val maxChars: Int) {
     private fun quoted(value: CharSequence) {
         if (value.length > maxChars - output.length) throw ResultTooLarge()
         append("\"")
-        value.forEach { char -> append(when (char) {
-            '"' -> "\\\""
-            '\\' -> "\\\\"
-            else -> if (char < ' ' || char.isSurrogate()) "\\u%04x".format(char.code) else char.toString()
-        }) }
+        var start = 0
+        for (index in value.indices) {
+            if (index % 1024 == 0 && Thread.currentThread().isInterrupted) throw SerializationCancelled()
+            val char = value[index]
+            val escape = when {
+                char == '"' -> "\\\""
+                char == '\\' -> "\\\\"
+                char < ' ' || char.isSurrogate() -> {
+                    val hex = "0123456789abcdef"
+                    "\\u" + hex[char.code ushr 12] + hex[char.code ushr 8 and 15] +
+                        hex[char.code ushr 4 and 15] + hex[char.code and 15]
+                }
+                else -> continue
+            }
+            append(value.subSequence(start, index))
+            append(escape)
+            start = index + 1
+        }
+        append(value.subSequence(start, value.length))
         append("\"")
     }
 
