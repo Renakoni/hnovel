@@ -17,3 +17,4 @@ dependencies {
     testFixturesApi(libs.kotlinx.serialization.json)
 }
 tasks.test { useJUnit() }
+sourceSets.test { resources.srcDir("../source-compatibility/browser") }

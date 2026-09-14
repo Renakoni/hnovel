@@ -4,11 +4,14 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -58,15 +61,24 @@ fun CategoriesScreen(
                         snapshotFlow { DiscoveryScroll(list.firstVisibleItemIndex, list.firstVisibleItemScrollOffset) }
                             .collect { onScroll(id, it) }
                     }
+                    if (content.buttons.isNotEmpty()) {
+                        LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(content.buttons, key = { it.id }) { button ->
+                                Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.secondaryContainer,
+                                    modifier = Modifier.padding(vertical = 4.dp).clip(MaterialTheme.shapes.medium).combinedClickable(
+                                        enabled = !content.acting && !content.loading, role = Role.Button,
+                                        onClick = { onAction(button.id, false) }, onLongClick = { onAction(button.id, true) })) {
+                                    Text(if (button.id == "custom-button") stringResource(R.string.discovery_source_action) else button.title,
+                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp), style = MaterialTheme.typography.labelLarge)
+                                }
+                            }
+                        }
+                    }
                     LazyColumn(state = list, modifier = Modifier.fillMaxSize()) {
                         items(content.filters, key = { "input:${it.id}" }) { filter ->
                             Column(Modifier.padding(horizontal = 16.dp)) {
                                 DiscoveryFilterControl(filter, content.values[filter.id].orEmpty()) { if (!content.acting) onInput(filter.id, it) }
                             }
-                        }
-                        items(content.buttons, key = { "action:${it.id}" }) { button ->
-                            ListItem(headlineContent = { Text(if (button.id == "custom-button") stringResource(R.string.discovery_source_action) else button.title) }, modifier = Modifier.combinedClickable(
-                                enabled = !content.acting, onClick = { onAction(button.id, false) }, onLongClick = { onAction(button.id, true) }))
                         }
                         if (content.loaded && content.categories.isEmpty() && content.buttons.isEmpty() && content.filters.isEmpty()) item {
                             DiscoveryEmpty(stringResource(R.string.categories_empty), onManageSources)

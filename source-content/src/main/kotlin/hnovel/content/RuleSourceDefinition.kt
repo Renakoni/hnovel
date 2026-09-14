@@ -13,6 +13,7 @@ internal class RuleSourceDefinition(val stored: SourceDefinition) {
     val searchUrl = root.string("searchUrl")
     val exploreUrl = root.string("exploreUrl")
     val exploreScreen = root.string("exploreScreen")
+    val homepageModules = root.string("homepageModules")
     val customButton = root["customButton"]?.jsonPrimitive?.booleanOrNull ?: false
     val eventListener = root["eventListener"]?.jsonPrimitive?.booleanOrNull ?: false
     val bookUrlPattern = root.string("bookUrlPattern")

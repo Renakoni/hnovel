@@ -67,7 +67,9 @@ internal fun searchFailure(failure: Throwable): SourceSearchFailure = when (fail
         permission = failure.denial?.let { DiscoveryPermission(it.origin, it.kind.name) })
     is SourceContentException -> SourceSearchFailure(when (failure.code) {
         ContentError.MissingCapability -> DiscoveryError.Unsupported
-        ContentError.LoginRequired, ContentError.BrowserRequired -> DiscoveryError.AuthenticationRequired
+        ContentError.LoginRequired -> DiscoveryError.AuthenticationRequired
+        ContentError.BrowserRequired -> if (failure.verification?.kind == hnovel.network.BrowserChallengeKind.Login)
+            DiscoveryError.AuthenticationRequired else DiscoveryError.VerificationRequired
         ContentError.PermissionDenied -> DiscoveryError.PermissionDenied
         ContentError.AddressDenied -> DiscoveryError.AddressDenied
         ContentError.Dns -> DiscoveryError.Dns

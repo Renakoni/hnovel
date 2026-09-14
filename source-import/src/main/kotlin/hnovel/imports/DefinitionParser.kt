@@ -91,7 +91,7 @@ class LegadoSourceAdapter : SourceFormatAdapter {
         }
         val strings = setOf("bookSourceGroup", "bookUrlPattern", "jsLib", "header",
             "loginUrl", "loginUi", "loginCheckJs", "coverDecodeJs", "bookSourceComment", "variableComment",
-            "exploreUrl", "exploreScreen", "searchUrl")
+            "exploreUrl", "exploreScreen", "homepageModules", "searchUrl")
         strings.forEach(::string)
         val numbers = setOf("customOrder", "lastUpdateTime", "respondTime", "weight")
         numbers.forEach(::number)

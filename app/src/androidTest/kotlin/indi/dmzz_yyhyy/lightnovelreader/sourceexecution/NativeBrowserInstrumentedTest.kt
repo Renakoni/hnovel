@@ -192,6 +192,24 @@ class NativeBrowserInstrumentedTest {
         assertTrue(render(a, url, "window.answer || null").text() in listOf("1", "3"))
     } }
 
+    @Test fun publicLoginLinkIsReadableAndActualLoginAndVerificationPagesHaveDistinctKinds(): Unit = runBlocking { fixture { broker, server ->
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest) = MockResponse().setHeader("Content-Type", "text/html").setBody(
+                when (request.path) {
+                    "/login" -> "<html><form><input type='password'></form></html>"
+                    "/antibot" -> "<html><title>Site verification</title></html>"
+                    else -> "<html><title>Public catalog</title><nav><a href='/login'>Login</a></nav><ul><li>Fixture</li></ul></html>"
+                })
+        }
+        val account = session(broker, server)
+        assertEquals("Public catalog", render(account, server.url("/public").toString(), "document.title").text())
+        for ((path, kind) in listOf("/login" to BrowserChallengeKind.Login, "/antibot" to BrowserChallengeKind.SiteVerification)) {
+            val result = account.execute(BrokerRequest("classification", server.url(path).toString())) as BrokerResult.Failure
+            assertEquals(FailureCode.BrowserRequired, result.code)
+            assertEquals(kind, result.challenge)
+        }
+    } }
+
     @Test fun ordinaryHttpStillReturnsRawStatusAndDoesNotExecuteScripts(): Unit = runBlocking { fixture { broker, server ->
         server.enqueue(MockResponse().setResponseCode(202).setHeader("X-Fixture", "raw").setBody("<script>fetch('/unexpected')</script>"))
         val session = broker.open(SourceScope("native-tests", UUID.randomUUID().toString(), "legado"), listOf(NetworkGrant(server.url("/").toString(), true)))

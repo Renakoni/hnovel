@@ -39,7 +39,7 @@ sealed interface DiscoveryFilter {
 
 enum class DiscoveryError {
     Unsupported, AuthenticationRequired, PermissionDenied, InvalidRules, Network,
-    InvalidRequest, InvalidResponse, Unavailable, Limit, AddressDenied, Dns, RateLimited,
+    InvalidRequest, InvalidResponse, Unavailable, Limit, AddressDenied, Dns, RateLimited, VerificationRequired,
 }
 
 /** Source-bound, redacted exact origin; resourceKind is a host resource label, never a URL or header. */
@@ -60,6 +60,8 @@ interface DiscoveryProvider {
     /** Native providers are stateless; rule providers create a draft for this host-owned page. */
     fun openSession(id: String, values: Map<String, String> = emptyMap(), environment: DiscoveryEnvironment = DiscoveryEnvironment()): DiscoveryProvider = this
     suspend fun catalog(refresh: Boolean = false): Result<DiscoveryCatalog, DiscoveryError> = categories().map { DiscoveryCatalog(it) }
+    /** Homepage controls may be independent of a remote category catalogue. */
+    suspend fun homepageCatalog(refresh: Boolean = false): Result<DiscoveryCatalog, DiscoveryError> = catalog(refresh)
     suspend fun interact(id: String, value: String? = null, longClick: Boolean = false): Result<DiscoveryUpdate, DiscoveryError> = Err(DiscoveryError.Unsupported)
     suspend fun openBrowser(action: DiscoveryAction.Browser): Result<Unit, DiscoveryError> = Err(DiscoveryError.Unsupported)
 }

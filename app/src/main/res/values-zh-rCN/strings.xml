@@ -686,4 +686,5 @@
     <string name="source_verification_background_open">打开验证</string>
     <string name="source_verification_background">%1$s 需要验证，后台读取已停止。验证后请重新开始下载。</string>
     <string name="source_verification_failed">验证未完成，或来源账号已经改变。请从该来源重试。</string>
+    <string name="discovery_verification_required">网站验证尚未完成，请重试以打开验证页面。</string>
 </resources>
