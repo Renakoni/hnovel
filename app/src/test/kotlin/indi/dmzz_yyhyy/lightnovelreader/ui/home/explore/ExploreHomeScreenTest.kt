@@ -112,6 +112,22 @@ class ExploreHomeScreenTest {
         assertEquals(1, opened)
     }
 
+    @Test fun previewFailureStaysWithItsEntryAndRetryOpensThatSourceList() {
+        val id = Identifier("fixture", "Partial source")
+        val broken = SourceDiscoverySection("broken", "Broken preview", emptyList(), SourceDiscoveryTarget(id, "/broken"),
+            previewFailure = DiscoveryPreviewFailure(DiscoveryError.InvalidRules, "ruleExplore.bookList"))
+        val opened = mutableListOf<SourceDiscoverySection>()
+        val page = content(id).copy(sections = listOf(broken) + content(id).sections)
+        activity.get().setContent { MaterialTheme {
+            ExploreHomeScreen(DiscoveryPageState(listOf(listing(id)), id, mapOf(id to page)),
+                {}, { _, _ -> }, {}, { opened += it }, {}, {}, {}, {}, { _, _ -> }, { _, _ -> }, {})
+        } }
+        compose.onNodeWithText("Broken preview").assertExists()
+        compose.onNodeWithText("Retry").performClick()
+        assertEquals(listOf(broken), opened)
+        compose.onNode(hasClickAction() and hasText("Same book")).performScrollTo().assertExists()
+    }
+
     @Test fun ruleInputsAndActionsShareTheFeedAndFailuresKeepVisibleContent() {
         val id = Identifier("fixture", "Rule source")
         val input = mutableListOf<Pair<String, String>>()

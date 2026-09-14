@@ -1,6 +1,7 @@
 package hnovel.content
 
 import hnovel.rules.RuleValue
+import hnovel.rules.RequestOptionsJson
 import kotlinx.serialization.json.*
 
 data class RuleDiscoveryEnvironment(val themeMode: String = "0", val theme: JsonObject = JsonObject(emptyMap()),
@@ -165,7 +166,13 @@ class RuleDiscoverySession internal constructor(private val source: RuleSource, 
             else JsonPrimitive(rule)
         val raw = if (value is JsonPrimitive && value.isString) {
             val text = value.content.trim()
-            if (text.startsWith('[')) Json.parseToJsonElement(text) else buildJsonArray {
+            // Legado reads ExploreKind arrays with lenient Gson, including single quotes and
+            // bare keys. Catalogues have a separate budget from network request options.
+            if (text.startsWith('[')) {
+                if (text.length > 512000) throw SourceContentException(ContentError.Limit, field)
+                try { RequestOptionsJson.parse(text, maxChars = 512000) }
+                catch (_: hnovel.rules.RequestOptionsException) { throw SourceContentException(ContentError.InvalidRule, field) }
+            } else buildJsonArray {
                 text.split(Regex("(?:&&|\\r?\\n)+")).filter(String::isNotBlank).forEach { item ->
                     val parts = item.split("::", limit = 2)
                     add(buildJsonObject { put("title", parts[0]); put("url", parts.getOrElse(1) { "" }) })
@@ -182,9 +189,8 @@ class RuleDiscoverySession internal constructor(private val source: RuleSource, 
             // host owns layout. Tightening either row schema must preserve this shared decision.
             val unknown = row.keys - setOf("id", "title", "url", "type", "action", "chars", "default", "viewName", "style", "targetPrefixes")
             if (unknown.isNotEmpty()) throw SourceContentException(ContentError.InvalidRule, "$location.${unknown.first()}")
-            // Legado's blank title/url/style rows only fill its grid. The host owns layout;
-            // skip this exact inert shape before assigning IDs, preserving original error indices.
-            // An unnamed target, control, action or viewName must still report its schema error.
+            // Blank URL rows only fill Legado's grid. Skip inert spacers before assigning IDs,
+            // but keep unnamed targets: ExploreKind permits a clickable URL without a title.
             if (field == "exploreUrl" && layoutSeparator(row)) return@mapIndexedNotNull null
             val name = row.string("title")
             val type = row.string("type").ifBlank { "url" }
@@ -197,7 +203,8 @@ class RuleDiscoverySession internal constructor(private val source: RuleSource, 
                 val identity = "$type:$url:${row.string("action")}"; val occurrence = occurrences.merge(identity, 1, Int::plus)!!
                 digest("$field:$identity:$occurrence")
             }
-            if (name.isBlank() || name.length > 256 || key.isBlank() || key.length > 256)
+            val unnamedTarget = type == "url" && url.isNotBlank() && row.keys.all { it in separatorKeys }
+            if (name.isBlank() && !unnamedTarget || name.length > 256 || key.isBlank() || key.length > 256)
                 throw SourceContentException(ContentError.InvalidRule, "$location.title")
             val choices = (row["chars"] as? JsonArray)?.map { it.jsonPrimitive.content }.orEmpty()
             if (type == "toggle" && choices.size != 2 || type == "select" && choices.isEmpty() || choices.size > 64 || choices.distinct().size != choices.size)
@@ -221,9 +228,11 @@ class RuleDiscoverySession internal constructor(private val source: RuleSource, 
         }
     }
 
-    private fun layoutSeparator(row: JsonObject) = row.keys == separatorKeys && row["style"] is JsonObject &&
+    private fun layoutSeparator(row: JsonObject) = row.keys.all { it in separatorKeys } &&
+        (row["style"] == null || row["style"] is JsonObject) &&
         listOf("title", "url").all { key ->
-            (row[key] as? JsonPrimitive)?.let { it.isString && it.content.isBlank() } == true
+            row[key] == null || row[key] == JsonNull ||
+                (row[key] as? JsonPrimitive)?.let { it.isString && it.content.isBlank() } == true
         }
 
     private fun actions(context: RuleEvaluation): List<RuleDiscoveryAction> =

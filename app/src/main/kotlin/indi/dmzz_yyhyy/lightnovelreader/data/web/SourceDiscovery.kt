@@ -16,7 +16,7 @@ internal const val DISCOVERY_SEARCH_PREFIX = "hnovel-search:"
 data class SourceDiscoveryTarget(val sourceId: Identifier, val target: String)
 data class SourceDiscoveryBook(val id: SourceBookId, val title: String, val author: String, val coverUrl: String)
 data class SourceDiscoverySection(val id: String, val title: String, val books: List<SourceDiscoveryBook>,
-    val more: SourceDiscoveryTarget?, val categoryId: String? = null)
+    val more: SourceDiscoveryTarget?, val categoryId: String? = null, val previewFailure: DiscoveryPreviewFailure? = null)
 data class SourceDiscoveryCategory(val id: String, val title: String, val target: SourceDiscoveryTarget)
 data class SourceDiscoveryPage(val books: List<SourceDiscoveryBook>, val nextCursor: String?)
 data class SourceDiscoveryCatalog(val categories: List<SourceDiscoveryCategory>, val filters: List<DiscoveryFilter>,
@@ -55,7 +55,7 @@ class SourceDiscovery internal constructor(private val runtime: SourceRuntime, p
     suspend fun feed(): Result<List<SourceDiscoverySection>, DiscoveryError> = runtime.execute {
         if (!hasFeed) return@execute Err(DiscoveryError.Unsupported)
         provider.feed().map { sections -> sections.map {
-            SourceDiscoverySection(it.id, it.title, it.books.map(::bind), it.more?.let(::target), it.categoryId)
+            SourceDiscoverySection(it.id, it.title, it.books.map(::bind), it.more?.let(::target), it.categoryId, it.previewFailure)
         } }
     }
 

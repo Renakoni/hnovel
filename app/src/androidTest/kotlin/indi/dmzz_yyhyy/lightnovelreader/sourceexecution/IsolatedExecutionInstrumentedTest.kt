@@ -47,6 +47,24 @@ import org.junit.runner.RunWith
 class IsolatedExecutionInstrumentedTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
 
+    @Test fun exclusionSelectorsRunAgainstThePackagedJsoupWithoutMutatingTheDocument() = runBlocking {
+        val authority = ExecutionAuthority()
+        val executor = AndroidIsolatedExecutor(context, authority)
+        val id = authority.issue("exclusion", "legado", "1")
+        val html = RuleValue.Text("<table id='diss' class='book-list-table'><tr><td>Header</td></tr>" +
+            "<tr><td>One</td></tr><tr><td>Two</td></tr></table>")
+        try {
+            for (rule in listOf("#diss@tr!0@td", "class.rank-book-list@tag.li||class.book-list-table@tag.tr!0")) {
+                val task = ExecutionTask.Rule(rule, html, OutputKind.Elements, RuleLocation("ruleExplore.bookList"))
+                val result = executor.execute(id, task)
+                assertTrue(result.toString(), result is ExecutionResult.Success)
+                val rows = Json.decodeFromString<ExecutedRule>((result as ExecutionResult.Success).output).value as RuleValue.Items
+                assertEquals(2, rows.values.size)
+                assertTrue((rows.values.first() as RuleValue.Node).content.contains("One"))
+            }
+        } finally { executor.close() }
+    }
+
     @Test fun largeResponseBatchesCrossThePipeAndKeepOutputBounded(): Unit = runBlocking {
         val authority = ExecutionAuthority()
         val executor = AndroidIsolatedExecutor(context, authority)

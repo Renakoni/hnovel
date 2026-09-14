@@ -6,6 +6,46 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RuleDiscoveryCatalogTest {
+    @Test fun gsonCatalogGrammarAcceptsSingleQuotesAndUnquotedKeysWithoutExecutingCode() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            for (rule in listOf("[{title:'Recent',url:'/search'}]", "@js:\"[{title:'Recent',url:'/search'}]\"")) {
+                fixture.source { raw -> JsonObject(raw + mapOf("exploreUrl" to JsonPrimitive(rule),
+                    "ruleExplore" to raw.getValue("ruleSearch"))) }.use { source ->
+                    val catalog = source.openDiscovery("lenient").catalog()
+                    assertEquals("Recent", catalog.rows.single().title)
+                    assertEquals("/search", catalog.rows.single().url)
+                }
+            }
+            assertEquals(0, fixture.documents.get())
+        }
+    }
+
+    @Test fun largeCatalogDoesNotInheritTheRequestOptions64KiBBudget() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            val rows = JsonArray(List(400) { i -> buildJsonObject {
+                put("title", "Category $i"); put("url", "/search?query=" + "x".repeat(200) + "&row=$i")
+            } })
+            assertTrue(rows.toString().length > 65536)
+            fixture.source { definition(it, rows) }.use { source ->
+                assertEquals(400, source.openDiscovery("large").catalog().rows.size)
+            }
+        }
+    }
+
+    @Test fun unnamedUrlEntriesRemainNavigableAndInertBlankRowsNeedNoStyle() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            fixture.source { definition(it, Json.parseToJsonElement("""[
+                {"title":"","url":""},{"title":"","url":null,"style":{}},{"title":"","url":"/search"},
+                {"title":"Recent","url":"/search?sort=new"}
+            ]""").jsonArray) }.use { source ->
+                val rows = source.openDiscovery("unnamed").catalog().rows
+                assertEquals(listOf("", "Recent"), rows.map { it.title })
+                assertEquals(listOf("/search", "/search?sort=new"), rows.map { it.url })
+                assertEquals("exploreUrl[2]", rows.first().field)
+            }
+        }
+    }
+
     private fun definition(raw: JsonObject, rows: JsonArray) = JsonObject(raw + mapOf(
         "exploreUrl" to JsonPrimitive(rows.toString()), "ruleExplore" to raw.getValue("ruleSearch")))
 
@@ -43,12 +83,14 @@ class RuleDiscoveryCatalogTest {
     @Test fun aituStyleSpacersDoNotRejectTheCatalog() = separators(17, 72)
     @Test fun jiuaiStyleSpacersDoNotRejectTheCatalog() = separators(19, 22)
 
-    @Test fun unnamedTargetsAndUnknownSchemaKeepTheirOriginalArrayLocations() = runBlocking {
+    @Test fun unnamedTargetsArePreservedAndUnknownSchemaKeepsItsOriginalArrayLocation() = runBlocking {
         RuleSourceFixture().use { fixture ->
             fixture.source("yueyou") { definition(it, DiscoveryCatalogFixtures.rows(18)) }.use { source ->
-                val error = failure { source.openDiscovery("yueyou").catalog() }
-                assertEquals(ContentError.InvalidRule, error.code)
-                assertEquals("exploreUrl[19].title", error.field)
+                val input = DiscoveryCatalogFixtures.rows(18)
+                val rows = source.openDiscovery("yueyou").catalog().rows
+                assertEquals(input.map { it.jsonObject.getValue("url").jsonPrimitive.content }.filter(String::isNotBlank),
+                    rows.map { it.url }.filter(String::isNotBlank))
+                assertTrue(rows.any { it.title.isBlank() && it.url.isNotBlank() })
             }
             val spacer = DiscoveryCatalogFixtures.rows(9).last().jsonObject
             for ((row, field) in listOf(
@@ -57,7 +99,6 @@ class RuleDiscoveryCatalogTest {
                 JsonObject(spacer + ("type" to JsonPrimitive("text"))) to "title",
                 JsonObject(spacer + ("action" to JsonPrimitive("java.open('login')"))) to "title",
                 JsonObject(spacer + ("viewName" to JsonPrimitive("'Missing name'"))) to "title",
-                JsonObject(spacer - "style") to "title",
                 JsonObject(spacer + ("style" to JsonPrimitive("not an object"))) to "title",
             )) fixture.source("invalid-$field") { definition(it, JsonArray(listOf(spacer, row))) }.use { source ->
                 val error = failure { source.openDiscovery("invalid").catalog() }

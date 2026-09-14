@@ -41,9 +41,11 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
             // Explicit homepage modules each declare a preview. Legacy catalogues can contain
             // hundreds of URLs; retain their single preview to avoid fetching the whole catalogue.
             val preview = if (category.target.isNotBlank() && (definition.homepage != null || category == first))
-                session.page(category.target, 1, catalog.values).take(6).map(::book) else emptyList()
-            DiscoverySection(category.id, category.title, preview, category.target.takeIf(String::isNotBlank),
-            category.id.takeIf { definition.homepage == null }) }
+                request { session.page(category.target, 1, catalog.values).take(6).map(::book) } else Ok(emptyList())
+            val failure = preview.getError()?.let { DiscoveryPreviewFailure(it, failureField, permissionFailure) }
+            DiscoverySection(category.id, category.title, preview.get().orEmpty(), category.target.takeIf(String::isNotBlank),
+                category.id.takeIf { definition.homepage == null }, failure)
+        }.also { failureField = null; permissionFailure = null }
     }
     override fun filters(target: String) = if (target.startsWith(DISCOVERY_SEARCH_PREFIX)) emptyList() else
         current?.rows.orEmpty().filter { row -> row.targetPrefixes.isEmpty() || row.targetPrefixes.any(target::startsWith) }.mapNotNull(::filter)
