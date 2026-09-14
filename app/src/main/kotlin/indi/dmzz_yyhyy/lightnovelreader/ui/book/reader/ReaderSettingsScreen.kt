@@ -103,7 +103,7 @@ fun ContentSettings(
     val tabs = listOf(
         TabItem(stringResource(R.string.appearance_settings), R.drawable.filled_menu_book_24px),
         TabItem(stringResource(R.string.control_settings), R.drawable.settings_applications_24px),
-        TabItem(stringResource(R.string.margin_settings), R.drawable.aspect_ratio_24px),
+        TabItem(stringResource(R.string.reader_layout_settings), R.drawable.aspect_ratio_24px),
     )
 
     val pagerState = rememberPagerState(initialPage = selectedTabIndex, pageCount = { tabs.size })
@@ -130,14 +130,15 @@ fun ContentSettings(
                 .padding(horizontal = 8.dp, vertical = 12.dp),
             userScrollEnabled = false
         ) { pageIndex ->
-            LazyColumn(
+            if (pageIndex == 2) {
+                ReaderLayoutSettingsPage(settingState)
+            } else LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 when (pageIndex) {
                     0 -> AppearancePage(settingState, onClickThemeSettings)
                     1 -> ActionPage(settingState)
-                    2 -> PaddingPage(settingState)
                 }
             }
         }
@@ -390,65 +391,5 @@ private fun VolumeScrollFractionEntry(settingState: ReaderSettingsEditor) {
             valueRange = 0.1f..1f,
             steps = 17,
         )
-    }
-}
-
-fun LazyListScope.PaddingPage(settingState: ReaderSettingsEditor) {
-    item {
-        SettingsSwitchEntry(
-            modifier = Modifier.background(colorScheme.surfaceContainerHigh).animateItem(),
-            title = stringResource(R.string.settings_reader_auto_margin),
-            description = stringResource(R.string.settings_reader_auto_margin_desc),
-            checked = settingState.autoPadding,
-            booleanUserData = settingState.autoPaddingUserData,
-        )
-    }
-    if (!settingState.autoPadding) {
-        item {
-            SettingsSliderEntry(
-                modifier = Modifier.background(colorScheme.surfaceContainerHigh).animateItem(),
-                title = stringResource(R.string.settings_reader_top_margin),
-                unit = "dp",
-                valueRange = 0f..128f,
-                value = settingState.topPadding,
-                floatUserData = settingState.topPaddingUserData
-            )
-        }
-    }
-    if (!settingState.autoPadding) {
-        item {
-            SettingsSliderEntry(
-                modifier = Modifier.background(colorScheme.surfaceContainerHigh).animateItem(),
-                title = stringResource(R.string.settings_reader_bottom_margin),
-                unit = "dp",
-                valueRange = 0f..128f,
-                value = settingState.bottomPadding,
-                floatUserData = settingState.bottomPaddingUserData
-            )
-        }
-    }
-    if (!settingState.autoPadding) {
-        item {
-            SettingsSliderEntry(
-                modifier = Modifier.background(colorScheme.surfaceContainerHigh).animateItem(),
-                title = stringResource(R.string.settings_reader_left_margin),
-                unit = "dp",
-                valueRange = 0f..128f,
-                value = settingState.leftPadding,
-                floatUserData = settingState.leftPaddingUserData
-            )
-        }
-    }
-    if (!settingState.autoPadding) {
-        item {
-            SettingsSliderEntry(
-                modifier = Modifier.background(colorScheme.surfaceContainerHigh).animateItem(),
-                title = stringResource(R.string.settings_reader_right_margin),
-                unit = "dp",
-                valueRange = 0f..128f,
-                value = settingState.rightPadding,
-                floatUserData = settingState.rightPaddingUserData
-            )
-        }
     }
 }

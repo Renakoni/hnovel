@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="reader_layout_settings">版面</string>
+    <string name="reader_layout_preview">頁面預覽</string>
+    <string name="reader_layout_typography">文字與間距</string>
+    <string name="reader_font_system">跟隨系統</string>
+    <string name="reader_font_system_description">使用手機系統字型；主題字型是否生效取決於手機系統對應用程式的支援。</string>
+    <string name="reader_font_serif">思源宋體</string>
+    <string name="reader_font_serif_description">清晰端正的宋體，接近紙本書的閱讀感受。</string>
+    <string name="reader_font_wenkai">霞鶩文楷</string>
+    <string name="reader_font_wenkai_description">舒展柔和的楷體，帶有自然的手寫風格。</string>
+    <string name="reader_font_sample">永 Aa</string>
+    <string name="reader_font_import">匯入字型</string>
+    <string name="reader_font_replace">更換匯入的字型</string>
+    <string name="reader_font_imported_description">正在使用匯入的字型，支援 TTF、OTF 字型檔案。</string>
+    <string name="reader_font_licenses">字型授權</string>
+    <string name="reader_layout_sample">午後的陽光落在書頁上。微風穿過敞開的窗口，將窗簾吹起一角。她翻過一頁，又回頭讀了一遍那句話，像是在確認一個很久以前就知道的約定。\n「要出發了嗎？」\n樹林那邊，一列火車正在進站。遠處傳來悠長的汽笛聲，驚起了停在屋簷上的鳥。她把書籤夾進書裡，望向鋪滿陽光的小路。\n門口的少年點了點頭。\n他們沿著河岸慢慢走向車站。昨夜的雨還留在草葉上，偶爾有一滴落下來，在石板縫裡亮了一下。路邊的麵包店剛剛開門，溫暖的香氣飄過整條街。\n「下一站是什麼地方？」\n「到了就知道了。」\n她笑了起來，把那本書放進背包。車站的鐘指向兩點，風從月台另一端吹來，帶著陌生城市的氣息。還有許多沒有讀完的故事，也還有許多尚未抵達的遠方。\n\n列車緩緩開動。窗外的樹影向後退去，新的一頁，就從這裡開始。</string>
+</resources>

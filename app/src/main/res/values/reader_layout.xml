@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="reader_layout_settings">Layout</string>
+    <string name="reader_layout_preview">Page preview</string>
+    <string name="reader_layout_typography">Text &amp; spacing</string>
+    <string name="reader_font_system">System</string>
+    <string name="reader_font_system_description">Follows the system font when your device makes it available to apps.</string>
+    <string name="reader_font_serif">Source Han Serif</string>
+    <string name="reader_font_serif_description">A crisp Chinese serif, with the feel of a printed book.</string>
+    <string name="reader_font_wenkai">LXGW WenKai</string>
+    <string name="reader_font_wenkai_description">Soft, handwritten forms for a relaxed reading rhythm.</string>
+    <string name="reader_font_sample">永 Aa</string>
+    <string name="reader_font_import">Import font</string>
+    <string name="reader_font_replace">Replace imported font</string>
+    <string name="reader_font_imported_description">Using your imported font. Supports TTF and OTF files.</string>
+    <string name="reader_font_licenses">Font licenses</string>
+    <string name="reader_layout_sample">The afternoon sun fell across the pages. A breeze lifted the curtain by the open window. She turned a page, then read the last sentence once more, as though it held a promise she had known for years.\n“Is it time to go?”\nBeyond the trees, a train was arriving. Its distant whistle sent the birds rising from the roof. She slipped a bookmark into the book and looked toward the path outside.\nThe boy at the door nodded.\nThey walked slowly along the river toward the station. Last night’s rain still rested on the grass. The bakery had just opened, and the warm scent of bread drifted across the street.\n“What is the next stop?”\n“We will find out when we get there.”\nShe smiled and placed the book in her bag. The station clock pointed to two. A wind from the far end of the platform carried the scent of an unfamiliar city. There were still so many stories to finish, and so many places to discover.\n\nThe train began to move. The trees slipped past the window. A new page was waiting.</string>
+</resources>
