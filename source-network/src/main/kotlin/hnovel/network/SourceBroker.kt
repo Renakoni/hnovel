@@ -22,7 +22,7 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 /** Host-owned authority. A script receives a bound session protocol, never open() or a raw client. */
-class SourceBroker(private val storageRoot: Path, private val dns: Dns = Dns.SYSTEM,
+class SourceBroker(private val storageRoot: Path, private val dns: Dns = VpnDns.Default,
     private val limits: BrokerLimits = BrokerLimits(), private val cipher: StorageCipher = StorageCipher.Plain,
     private val browser: BrowserExecutor? = null) : AutoCloseable {
     private val sessions = mutableMapOf<List<String>, SourceSession>()
