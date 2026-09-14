@@ -29,8 +29,9 @@ sealed class SearchResult {
      *
      * @since Api 4
      */
-    class MultipleBook(
-        val bookId: String
+    class MultipleBook @JvmOverloads constructor(
+        val bookId: String,
+        val information: io.nightfish.lightnovelreader.api.book.BookInformation? = null
     ): SearchResult()
 
 

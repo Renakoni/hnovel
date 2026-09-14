@@ -215,7 +215,8 @@ class ExploreSearchViewModel internal constructor(
                     mutableState.isLoading = false
                     when (event) {
                         is SearchResult.MultipleBook -> if (seen.add(event.bookId)) {
-                            mutableState.searchResult.add(event.bookId to bookRepository.getBookInformationFlow(event.bookId))
+                            mutableState.searchResult.add(event.bookId to (event.information?.let { flowOf(Ok(it)) }
+                                ?: bookRepository.getBookInformationFlow(event.bookId)))
                         }
                         is SearchResult.SingleBook -> {
                             mutableState.setSearchBarExpandedState(true)

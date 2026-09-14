@@ -47,6 +47,7 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
     private val browser: BrowserExecutor? = null) : AutoCloseable {
     internal val grants = grants.map { it.copy(headers = it.headers.toMap()) }
     private val policy = NetworkPolicy(this.grants, dns)
+    private val imagePolicy = NetworkPolicy(this.grants, dns, publicImages = true)
     private val denied = linkedSetOf<OriginDenial>()
     /** Ephemeral, bounded and source/account owned; revision replacement does not inherit these requests. */
     val deniedOrigins: List<OriginDenial> get() = synchronized(this) { denied.toList() }
@@ -75,7 +76,7 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         .addNetworkInterceptor { chain ->
             val peer = chain.connection()?.socket()?.remoteSocketAddress as? InetSocketAddress
                 ?: throw BrokerFailure(RequestStage.Permission, FailureCode.AddressDenied)
-            policy.checkPeer(chain.request().url, peer.address)
+            (chain.request().tag(NetworkPolicy::class.java) ?: policy).checkPeer(chain.request().url, peer.address)
             chain.proceed(chain.request())
         }.build()
     val closed get() = !lifetime.isActive
@@ -167,7 +168,17 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         return BrokerResult.Failure(failure.stage, failure.code, denial = detail)
     }
 
-    suspend fun execute(request: BrokerRequest, guard: RequestCommitGuard = RequestCommitGuard { it() }): BrokerResult {
+    suspend fun execute(request: BrokerRequest, guard: RequestCommitGuard = RequestCommitGuard { it() }): BrokerResult =
+        execute(request, guard, policy)
+
+    /** Host-only image loading for an URL already extracted from a book. No script bridge exposes this. */
+    suspend fun loadImage(request: BrokerRequest, guard: RequestCommitGuard = RequestCommitGuard { it() }): BrokerResult {
+        require(request.kind == ResourceKind.Image && request.method == "GET" && request.body == null && request.browser == null)
+        // Coil owns image caching; keep downloaded images out of the script response cache.
+        return execute(request.copy(cache = CacheMode.Disabled), guard, imagePolicy)
+    }
+
+    private suspend fun execute(request: BrokerRequest, guard: RequestCommitGuard, policy: NetworkPolicy): BrokerResult {
         checkOpen()
         val snapshot = request.copy(headers = request.headers.toMap())
         val work = lifetime.async {
@@ -179,7 +190,7 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
                         policy.check(snapshot.url.toHttpUrlOrNull() ?: throw BrokerFailure(RequestStage.Parse, FailureCode.InvalidRequest))
                         browser?.execute(this@SourceSession, snapshot.copy(browser = null), snapshot.browser, guard)
                             ?: BrokerResult.Failure(RequestStage.Parse, FailureCode.BrowserRequired)
-                    } else permits.withPermit { stage = RequestStage.Connect; perform(snapshot, guard) }
+                    } else permits.withPermit { stage = RequestStage.Connect; perform(snapshot, guard, policy) }
                 }
             } catch (_: TimeoutCancellationException) {
                 BrokerResult.Failure(stage, FailureCode.Timeout)
@@ -212,10 +223,10 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         }
     }
 
-    private suspend fun perform(request: BrokerRequest, guard: RequestCommitGuard): BrokerResult {
+    private suspend fun perform(request: BrokerRequest, guard: RequestCommitGuard, policy: NetworkPolicy): BrokerResult {
         val initialUrl = request.url.toHttpUrlOrNull() ?: throw BrokerFailure(RequestStage.Parse, FailureCode.InvalidRequest)
         policy.check(initialUrl)
-        val initialHeaders = headers(initialUrl, request.headers)
+        val initialHeaders = headers(initialUrl, request.headers, policy)
         val cacheKey = hash(Json.encodeToString(listOf(initialUrl.toString(), request.responseCharset.orEmpty(), request.followRedirects.toString(),
             Json.encodeToString<Map<String, List<String>>>(initialHeaders.toMultimap().mapKeys { it.key.lowercase() }.toSortedMap()))))
         if (request.cache != CacheMode.Disabled) {
@@ -228,7 +239,7 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         }
         for (attempt in 0..request.retry) {
             try {
-                val response = redirects(request, initialUrl, guard)
+                val response = redirects(request, initialUrl, guard, policy)
                 if (response.status in setOf(429, 502, 503, 504) && attempt < request.retry) continue
                 if (request.cache == CacheMode.ReadThrough && response.status in 200..299) guard.commit {
                     cache.put(cacheKey, response)
@@ -247,7 +258,7 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         error("Unreachable retry state")
     }
 
-    private suspend fun redirects(request: BrokerRequest, first: HttpUrl, guard: RequestCommitGuard): BrokerResponse {
+    private suspend fun redirects(request: BrokerRequest, first: HttpUrl, guard: RequestCommitGuard, policy: NetworkPolicy): BrokerResponse {
         var url = first
         var method = request.method
         var body = request.body
@@ -259,14 +270,14 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
                 if (lastStart != 0L && elapsed < limits.minIntervalMillis) delay(limits.minIntervalMillis - elapsed)
                 lastStart = System.nanoTime()
             }
-            val headers = headers(url, callerHeaders)
+            val headers = headers(url, callerHeaders, policy)
             val bytes = body?.toByteArray(Charset.forName(request.charset))
             if (bytes != null && bytes.size > limits.maxRequestBytes) throw BrokerFailure(RequestStage.Parse, FailureCode.InvalidRequest)
             val requestBody = if (method in setOf("POST", "PUT", "PATCH") || bytes != null)
                 (bytes ?: ByteArray(0)).toRequestBody(headers["Content-Type"]?.toMediaTypeOrNull()) else null
             val call = client.newBuilder().dns(policy.dns(url)).callTimeout(request.timeoutMillis, TimeUnit.MILLISECONDS)
                 .readTimeout(request.timeoutMillis, TimeUnit.MILLISECONDS).build()
-                .newCall(Request.Builder().url(url).headers(headers).method(method, requestBody).build())
+                .newCall(Request.Builder().url(url).tag(NetworkPolicy::class.java, policy).headers(headers).method(method, requestBody).build())
             val response = awaitResponse(call, request.responseCharset, hop, guard, minOf(request.maxResponseBytes ?: limits.maxResponseBytes, limits.maxResponseBytes))
             val location = response.headers.entries.firstOrNull { it.key.equals("Location", true) }?.value?.firstOrNull()
             if (!request.followRedirects || response.status !in setOf(301, 302, 303, 307, 308) || location == null) return response
@@ -287,7 +298,7 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         error("Unreachable redirect state")
     }
 
-    private fun headers(url: HttpUrl, explicit: Map<String, String>): Headers {
+    private fun headers(url: HttpUrl, explicit: Map<String, String>, policy: NetworkPolicy): Headers {
         val headers = Headers.Builder()
         policy.check(url).headers.forEach { (key, value) -> headers.set(key, value) }
         val sameOrigin = sourceUrl.toHttpUrlOrNull()?.let { NetworkPolicy.origin(it) == NetworkPolicy.origin(url) } == true
@@ -297,11 +308,16 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
                 headers.set(key, (value as kotlinx.serialization.json.JsonPrimitive).content)
             }
         } }
-        explicit.forEach { (key, value) -> headers.set(key, value) }
+        // A CDN learned from page data must not receive a source's arbitrary credential headers.
+        val knownOrigin = grants.any { sourceOrigin(it.origin) == NetworkPolicy.origin(url) }
+        explicit.forEach { (key, value) ->
+            if (policy !== imagePolicy || knownOrigin || key.lowercase() in setOf("user-agent", "referer", "accept", "accept-language")) headers.set(key, value)
+        }
         if (headers.build().names().any { it.lowercase() in setOf("host", "content-length", "transfer-encoding", "proxy-authorization", "proxy-connection") }) {
             throw BrokerFailure(RequestStage.Permission, FailureCode.InvalidRequest)
         }
-        val cookie = if (enabledCookieJar) cookies.header(url, headers["Cookie"]) else headers["Cookie"].orEmpty()
+        val cookie = if (enabledCookieJar && (policy !== imagePolicy || knownOrigin)) cookies.header(url, headers["Cookie"])
+            else headers["Cookie"].orEmpty()
         headers.removeAll("Cookie")
         if (cookie.isNotEmpty()) headers.set("Cookie", cookie)
         return headers.build()
