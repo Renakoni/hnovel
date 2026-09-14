@@ -11,6 +11,20 @@ import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.RecordedRequest
 
 class RuleSourceTest {
+    @Test fun sourceFallbackAndRowVariablesPersistThroughTheProductionPipeline(): Unit = runBlocking {
+        RuleSourceFixture().use { fixture -> fixture.source(customize = { raw -> JsonObject(raw + mapOf(
+            "ruleSearch" to JsonObject(raw.getValue("ruleSearch").jsonObject + mapOf(
+                "bookList" to JsonPrimitive("<js>java.put('fromList','list');source.put('fallback','stored');result</js>li"),
+                "name" to JsonPrimitive("<js>java.put('row','row value');result</js>h2@text")
+            )),
+            "ruleBookInfo" to JsonObject(raw.getValue("ruleBookInfo").jsonObject +
+                ("intro" to JsonPrimitive("""@js:[book.getVariable('row'),java.get('fallback'),source.get('fromList'),java.get('bookName')].join('|')""")))
+        )) }).use { source ->
+            val book = source.search("title").single()
+            assertEquals("row value|stored|list|Same title", source.information(book.id).description)
+        } }
+    }
+
     @Test fun contentScriptsCanResolveAnHttpErrorPlaceholderWhileSelectorsKeepHttpFailures(): Unit = runBlocking {
         for (mode in listOf("@js:", "<js>", "selector")) RuleSourceFixture().use { fixture ->
             val original = fixture.server.dispatcher

@@ -334,6 +334,8 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
     private suspend fun bookFields(context: RuleEvaluation, input: RuleValue, rules: JsonObject, prefix: String, seed: RuleBook): RuleBook {
         val priorTitle = context.book.metadata["name"]?.jsonPrimitive?.content ?: seed.title
         val priorAuthor = context.book.metadata["author"]?.jsonPrimitive?.content ?: seed.author
+        // BookList creates an empty SearchBook before evaluating its first field.
+        context.bookField("name", priorTitle)
         suspend fun field(name: String, prior: String, metadata: String = name): String {
             val extracted = try {
                 if (name == "kind") context.value(rules.string(name), input, "$prefix.$name", OutputKind.TextList)

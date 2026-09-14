@@ -5,7 +5,10 @@ import kotlinx.serialization.json.*
 import hnovel.rules.*
 
 /** Synchronous data-only port. The host binds authority; scripts cannot supply a source ticket. */
-fun interface HostBridge { fun call(name: String, args: List<JsonElement>): JsonElement }
+fun interface HostBridge {
+    fun call(name: String, args: List<JsonElement>): JsonElement
+    companion object { val None = HostBridge { _, _ -> error("No host broker") } }
+}
 
 private class BridgeRejected(value: Any) : JavaScriptException(value, "host-bridge", 1)
 private class RequestRejected(value: Any) : JavaScriptException(value, "request-options", 1)
@@ -228,6 +231,18 @@ class RhinoScriptEngine(private val bridge: HostBridge, private val limits: Scri
                     ScriptableObject.getProperty(book, "variableMap")
                     ScriptableObject.getProperty(chapter, "variableMap")
                 }
+                ruleContext.bookMetadata = bookData.toString()
+                ruleContext.chapterMetadata = chapterData.toString()
+                ruleContext.readSpecialVariable = { key ->
+                    when {
+                        key == "bookName" && ruleContext.hasBook -> Context.toString(ScriptableObject.getProperty(book, "name"))
+                        key == "title" && ruleContext.hasChapter -> Context.toString(ScriptableObject.getProperty(chapter, "title"))
+                        else -> null
+                    }
+                }
+                ruleContext.putMetadataVariable = { key, value ->
+                    ScriptableObject.callMethod(context, if (ruleContext.hasChapter) chapter else book, "putVariable", arrayOf(key, value))
+                }
                 scope.put("book", scope, book)
                 scope.put("chapter", scope, chapter)
                 scope.put("title", scope, chapterData["title"]?.jsonPrimitive?.contentOrNull)
@@ -243,7 +258,11 @@ class RhinoScriptEngine(private val bridge: HostBridge, private val limits: Scri
                 scope.put("src", scope, rules.sourceValue(context))
                 ScriptBridge(bridge, rules, ScriptRequestTemplates(scope, frame), archives).install(context, scope, frame)
                 val value = try { evaluateGlobal(context, scope, source, "source-script") }
-                    finally { ruleContext.initializeMetadataVariables = null }
+                    finally {
+                        ruleContext.initializeMetadataVariables = null
+                        ruleContext.readSpecialVariable = null
+                        ruleContext.putMetadataVariable = null
+                    }
                 frame.discovery?.capture()
                 ruleContext.bookMetadata = ScriptMetadata.capture(book, limits.maxBridgeChars).toString()
                 ruleContext.chapterMetadata = ScriptMetadata.capture(chapter, limits.maxBridgeChars).toString()

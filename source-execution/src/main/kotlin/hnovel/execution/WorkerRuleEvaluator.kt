@@ -13,12 +13,18 @@ import kotlinx.serialization.json.*
 
 /** Selectors, regex and scripts all run inside the worker's hard process deadline. */
 internal object WorkerRuleEvaluator {
+    fun bindSourceVariables(context: RuleContext, bridge: HostBridge) {
+        if (bridge === HostBridge.None) return
+        context.readSourceVariable = { key -> bridge.call("source.get", listOf(JsonPrimitive(key))).jsonPrimitive.contentOrNull }
+        context.putSourceVariable = { key, value -> bridge.call("source.put", listOf(JsonPrimitive(key), JsonPrimitive(value))) }
+    }
     fun evaluate(task: ExecutionTask.Rule, identity: ExecutionIdentity, limits: ExecutionLimits,
         bridge: HostBridge, library: ScriptLibrary?, archives: ArchiveDecoder = ArchiveDecoder.Zip): ExecutionResult {
         val context = RuleContext(identity.sourceId, task.bookId, task.chapterId, task.baseUrl,
             task.sourceVariables, task.bookVariables, task.chapterVariables, task.bookBigVariables, task.chapterBigVariables)
         context.bookMetadata = task.book.toString()
         context.chapterMetadata = task.chapter.toString()
+        bindSourceVariables(context, bridge)
         val discovery = task.discovery?.let(::ScriptDiscovery)
         var scriptFailure: ScriptResult.Failure? = null
         val evaluator = RuleEvaluator(unescapeHtml = task.unescapeHtml, scriptTemplates = task.scriptTemplates) { request, current, budget ->
