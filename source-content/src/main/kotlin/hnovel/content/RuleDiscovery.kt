@@ -7,7 +7,7 @@ data class RuleDiscoveryEnvironment(val themeMode: String = "0", val theme: Json
     val reading: JsonObject = JsonObject(emptyMap()))
 data class RuleDiscoveryRow(val id: String, val title: String, val type: String, val url: String = "",
     val action: String = "", val choices: List<String> = emptyList(), val default: String = "", val field: String = "exploreUrl",
-    val viewName: String = "")
+    val viewName: String = "", val targetPrefixes: List<String> = emptyList())
 data class RuleDiscoveryCatalog(val rows: List<RuleDiscoveryRow>, val values: Map<String, String>,
     val homepage: List<RuleDiscoveryRow>? = null)
 data class RuleDiscoveryAction(val kind: String, val value: String = "", val title: String = "",
@@ -180,7 +180,7 @@ class RuleDiscoverySession internal constructor(private val source: RuleSource, 
             val row = item as? JsonObject ?: throw SourceContentException(ContentError.InvalidRule, location)
             // Keep style acceptance aligned with LoginForm.parse: sources may declare it, but the
             // host owns layout. Tightening either row schema must preserve this shared decision.
-            val unknown = row.keys - setOf("id", "title", "url", "type", "action", "chars", "default", "viewName", "style")
+            val unknown = row.keys - setOf("id", "title", "url", "type", "action", "chars", "default", "viewName", "style", "targetPrefixes")
             if (unknown.isNotEmpty()) throw SourceContentException(ContentError.InvalidRule, "$location.${unknown.first()}")
             // Legado's blank title/url/style rows only fill its grid. The host owns layout;
             // skip this exact inert shape before assigning IDs, preserving original error indices.
@@ -204,7 +204,20 @@ class RuleDiscoverySession internal constructor(private val source: RuleSource, 
                 throw SourceContentException(ContentError.InvalidRule, "$location.chars")
             val default = row.string("default").ifEmpty { choices.firstOrNull().orEmpty() }
             if (choices.isNotEmpty() && default !in choices) throw SourceContentException(ContentError.InvalidRule, "$location.default")
-            RuleDiscoveryRow(key, name, type, url, row.string("action"), choices, default, location, row.string("viewName"))
+            // Host extension: scoped inputs appear only in matching result lists. Compare the
+            // declared target before template expansion; no source code or regex runs in the UI.
+            val prefixes = row["targetPrefixes"]?.let { value ->
+                val array = value as? JsonArray ?: throw SourceContentException(ContentError.InvalidRule, "$location.targetPrefixes")
+                if (field != "exploreScreen" || type !in inputTypes || array.isEmpty() || array.size > 16)
+                    throw SourceContentException(ContentError.InvalidRule, "$location.targetPrefixes")
+                array.map { prefix ->
+                    val text = (prefix as? JsonPrimitive)?.takeIf { it.isString }?.content
+                    if (text.isNullOrBlank() || text.length > 2048)
+                        throw SourceContentException(ContentError.InvalidRule, "$location.targetPrefixes")
+                    text
+                }
+            }.orEmpty()
+            RuleDiscoveryRow(key, name, type, url, row.string("action"), choices, default, location, row.string("viewName"), prefixes)
         }
     }
 

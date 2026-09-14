@@ -36,15 +36,20 @@ class HlibNativeSourceTest {
         }).use { fixture -> fixture.source { raw(fixture.server.url("/").toString().trimEnd('/')) }.use { source ->
             val discovery = source.openDiscovery("fixture")
             val home = discovery.catalog(homepage = true)
-            assertEquals(listOf("榜单", "文章"), home.homepage!!.map { it.title })
+            assertEquals(listOf("日榜", "周榜", "月榜", "文章"), home.homepage!!.map { it.title })
             assertTrue(requests.isEmpty())
             assertTrue(source.search("fixture").isNotEmpty())
-            assertTrue(discovery.page(home.homepage.first().url, 1, mapOf("榜单周期" to "周榜")).isNotEmpty())
-            assertEquals("type=week&p=1", URI(requests.last().url).query)
+            for ((module, period) in home.homepage.take(3).zip(listOf("day", "week", "month"))) {
+                assertTrue(discovery.page(module.url, 1, emptyMap()).isNotEmpty())
+                assertEquals("type=$period&p=1", URI(requests.last().url).query)
+                assertTrue(discovery.page(module.url, 2, emptyMap()).isEmpty())
+            }
             assertTrue(discovery.page(home.homepage.last().url, 1, mapOf("文章排序" to "收藏数")).isNotEmpty())
             assertEquals("sort=like&p=1", URI(requests.last().url).query)
             val tags = discovery.catalog()
             assertEquals(listOf("Fiction"), tags.rows.filter { it.type == "url" }.map { it.title })
+            assertFalse(tags.rows.any { it.title == "榜单周期" || it.type == "text" })
+            assertEquals(listOf("/n?", "/tag/"), tags.rows.single { it.title == "文章排序" }.targetPrefixes)
             assertEquals("/tag", URI(requests.last().url).path)
             assertTrue(discovery.page(tags.rows.single { it.type == "url" }.url, 1, emptyMap()).isNotEmpty())
             val next = discovery.interact(tags.rows.single { it.title == "下一页标签" }.id)
@@ -70,7 +75,7 @@ class HlibNativeSourceTest {
             assertEquals(ContentError.BrowserRequired, failure.code)
             assertEquals(BrowserChallengeKind.SiteVerification, failure.verification!!.kind)
             val home = discovery.catalog(homepage = true)
-            assertEquals(2, home.homepage!!.size)
+            assertEquals(4, home.homepage!!.size)
             discovery.page(home.homepage.first().url, 1, emptyMap())
             assertEquals(0, fixture.server.requestCount)
         } }

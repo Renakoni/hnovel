@@ -19,29 +19,34 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
         private set
     override var permissionFailure: DiscoveryPermission? = null
         private set
-    private var current: DiscoveryCatalog? = null
+    private var current: RuleDiscoveryCatalog? = null
     override fun openSession(id: String, values: Map<String, String>, environment: DiscoveryEnvironment) =
         RuleDiscoveryProvider(source, source.openDiscovery(id, values, RuleDiscoveryEnvironment(environment.themeMode,
             Json.parseToJsonElement(environment.themeJson).jsonObject, Json.parseToJsonElement(environment.readingJson).jsonObject)), recovery)
 
     override suspend fun catalog(refresh: Boolean) = request {
-        map(session.catalog(refresh)).also { current = it }
+        map(session.catalog(refresh).also { current = it })
     }
     override suspend fun homepageCatalog(refresh: Boolean) = request {
-        map(session.catalog(refresh, homepage = true)).also { current = it }
+        map(session.catalog(refresh, homepage = true).also { current = it })
     }
     override suspend fun categories() = catalog().map { it.categories }
     override suspend fun feed() = request {
         val definition = session.catalog(homepage = true)
-        val catalog = map(definition).also { current = it }
+        current = definition
+        val catalog = map(definition)
         val entries = definition.homepage?.map { DiscoveryCategory(it.id, it.title, it.url) } ?: catalog.categories
         val first = entries.firstOrNull { it.target.isNotBlank() }
-        val preview = first?.let { session.page(it.target, 1, catalog.values).take(6).map(::book) }.orEmpty()
-        entries.map { category -> DiscoverySection(category.id, category.title,
-            if (category == first) preview else emptyList(), category.target.takeIf(String::isNotBlank),
+        entries.map { category ->
+            // Explicit homepage modules each declare a preview. Legacy catalogues can contain
+            // hundreds of URLs; retain their single preview to avoid fetching the whole catalogue.
+            val preview = if (category.target.isNotBlank() && (definition.homepage != null || category == first))
+                session.page(category.target, 1, catalog.values).take(6).map(::book) else emptyList()
+            DiscoverySection(category.id, category.title, preview, category.target.takeIf(String::isNotBlank),
             category.id.takeIf { definition.homepage == null }) }
     }
-    override fun filters(target: String) = if (target.startsWith(DISCOVERY_SEARCH_PREFIX)) emptyList() else current?.filters.orEmpty()
+    override fun filters(target: String) = if (target.startsWith(DISCOVERY_SEARCH_PREFIX)) emptyList() else
+        current?.rows.orEmpty().filter { row -> row.targetPrefixes.isEmpty() || row.targetPrefixes.any(target::startsWith) }.mapNotNull(::filter)
 
     override suspend fun page(request: DiscoveryRequest) = request {
         val page = request.cursor?.toIntOrNull() ?: if (request.cursor == null) 1
@@ -54,7 +59,7 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
 
     override suspend fun interact(id: String, value: String?, longClick: Boolean) = request(retry = false) {
         val updated = session.interact(id, value, longClick)
-        val catalog = map(updated.catalog).also { current = it }
+        val catalog = map(updated.catalog.also { current = it })
         DiscoveryUpdate(catalog, updated.actions.mapNotNull { action -> when (action.kind) {
             "login" -> DiscoveryAction.Login
             "settings" -> DiscoveryAction.Settings
@@ -73,11 +78,14 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
     private fun map(catalog: RuleDiscoveryCatalog) = DiscoveryCatalog(
         catalog.rows.filter { it.type == "url" && catalog.homepage.orEmpty().none { home -> home.url == it.url } }
             .map { DiscoveryCategory(it.id, it.title, it.url) },
-        catalog.rows.mapNotNull { row -> when (row.type) {
+        catalog.rows.filter { it.targetPrefixes.isEmpty() }.mapNotNull(::filter),
+        catalog.values, catalog.rows.filter { it.type == "button" }.map { DiscoveryButton(it.id, it.title) })
+
+    private fun filter(row: RuleDiscoveryRow) = when (row.type) {
             "text" -> DiscoveryFilter.Text(row.id, row.title, row.default)
             "toggle", "select" -> DiscoveryFilter.Choice(row.id, row.title, row.choices.associateWith { it }, row.default)
             else -> null
-        } }, catalog.values, catalog.rows.filter { it.type == "button" }.map { DiscoveryButton(it.id, it.title) })
+        }
 
     private fun book(book: RuleBook) = DiscoveryBook(book.id, book.title, book.author, book.coverUrl)
     private suspend fun <T> request(retry: Boolean = true, block: suspend () -> T): Result<T, DiscoveryError> = try {

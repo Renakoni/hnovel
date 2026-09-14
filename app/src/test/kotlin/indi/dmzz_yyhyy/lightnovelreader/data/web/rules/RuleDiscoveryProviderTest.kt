@@ -29,6 +29,24 @@ import org.robolectric.annotation.Config
 class RuleDiscoveryProviderTest {
     @get:Rule val directory = TemporaryFolder()
 
+    @Test fun scopedResultFiltersStayOutOfHomepageCategoriesAndOtherLists() = runBlocking {
+        RuleSourceFixture().use { fixture -> fixture.source { raw -> JsonObject(definition(raw) + mapOf(
+            "exploreUrl" to JsonPrimitive("""[{"title":"Tag","url":"/tags/fixture?sort={{infoMap.Sort}}"}]"""),
+            "exploreScreen" to JsonPrimitive("""[{"title":"Sort","type":"select","chars":["new","popular"],"targetPrefixes":["/search?","/tags/"]}]"""),
+            "homepageModules" to JsonPrimitive("""[{"key":"articles","type":"card","title":"Articles","url":"/search?sort={{infoMap.Sort}}"}]""")
+        )) }.use { source ->
+            val provider = RuleDiscoveryProvider(source)
+            assertTrue(provider.homepageCatalog().get()!!.filters.isEmpty())
+            assertEquals("new", provider.catalog().get()!!.values["Sort"])
+            assertTrue(provider.catalog().get()!!.filters.isEmpty())
+            assertTrue(provider.filters("/rank?type=day").isEmpty())
+            assertEquals("Sort", provider.filters("/search?sort={{infoMap.Sort}}").single().id)
+            assertEquals("Sort", provider.filters("/tags/fixture?sort={{infoMap.Sort}}").single().id)
+            assertTrue(provider.page(DiscoveryRequest("/search?sort={{infoMap.Sort}}", filters = mapOf("Sort" to "popular"))).get()!!.books.isNotEmpty())
+            assertEquals("/search?sort=popular", fixture.server.takeRequest().path)
+        } }
+    }
+
     @Test fun directHomepageControlsAndResultsDoNotEvaluateFailingCategories() = runBlocking {
         RuleSourceFixture().use { fixture -> fixture.source { raw -> JsonObject(definition(raw) + mapOf(
             "exploreUrl" to JsonPrimitive("@js:throw 'category unavailable'"),
@@ -87,11 +105,11 @@ class RuleDiscoveryProviderTest {
             assertEquals(0, fixture.documents.get())
             val feed = provider.feed().get()!!
             assertEquals(listOf("Ranking", "Articles"), feed.map { it.title })
-            assertTrue(feed.first().books.isNotEmpty())
+            assertTrue(feed.all { it.books.isNotEmpty() })
             assertEquals("/search?kind=articles&page={{page}}", feed.last().more)
-            assertEquals(1, fixture.documents.get())
-            assertTrue(provider.page(DiscoveryRequest(categories.first().target)).get()!!.books.isNotEmpty())
             assertEquals(2, fixture.documents.get())
+            assertTrue(provider.page(DiscoveryRequest(categories.first().target)).get()!!.books.isNotEmpty())
+            assertEquals(3, fixture.documents.get())
         }
     }
 
