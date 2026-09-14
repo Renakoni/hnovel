@@ -14,14 +14,15 @@ object ContentMarkup {
     private const val MAX_NODES = 16_384
     private val blocks = setOf("body", "div", "p", "li", "section", "article", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "tr", "pre")
     private val ignored = setOf("script", "style", "noscript")
+    private val images = Regex("<img[^>]*src=['\"]([^'\"]*(?:['\"][^>]+\\})?)['\"][^>]*>")
 
     fun evaluate(html: String, location: RuleLocation = RuleLocation("ruleContent.parts"),
-        budget: RuleBudget = RuleBudget()): RuleResult = try {
+        budget: RuleBudget = RuleBudget(), formatted: Boolean = false): RuleResult = try {
         fun limit(code: String): Nothing = throw RuleFailure(RuleError(RuleStage.Budget, location, code))
         budget.check()
         if (html.length > budget.limits.maxInputChars) limit("MarkupInputLimit")
         // Parsing also stays behind the worker's hard deadline; the input bound precedes allocation.
-        val root = Jsoup.parse(html).body()
+        val root = if (formatted) null else Jsoup.parse(html).body()
         budget.check()
         val parts = mutableListOf<RuleValue>()
         val text = StringBuilder()
@@ -50,8 +51,21 @@ object ContentMarkup {
             text.setLength(0)
         }
 
-        // Jsoup walks iteratively; deeply nested input never consumes a recursive Kotlin/JS stack.
-        NodeTraversor.filter(object : NodeFilter {
+        if (formatted) {
+            // BookContent has already decoded the text. Like TextChapterLayout, recognize only
+            // image markers here: parsing a second time would eat literal tags and entities.
+            var start = 0
+            for (match in images.findAll(html)) {
+                budget.check()
+                if (++nodes > MAX_NODES) limit("MarkupNodeLimit")
+                append(html.substring(start, match.range.first))
+                flush()
+                val src = match.groupValues[1]
+                if (src.isNotEmpty()) part("image", src)
+                start = match.range.last + 1
+            }
+            append(html.substring(start))
+        } else NodeTraversor.filter(object : NodeFilter {
             override fun head(node: Node, depth: Int): FilterResult {
                 budget.check()
                 if (++nodes > MAX_NODES) limit("MarkupNodeLimit")
@@ -76,7 +90,7 @@ object ContentMarkup {
                 if (node.nodeName() in blocks) append("\n")
                 return FilterResult.CONTINUE
             }
-        }, root)
+        }, root!!)
         flush()
         RuleResult.Success(RuleValue.Items(parts))
     } catch (failure: RuleFailure) {

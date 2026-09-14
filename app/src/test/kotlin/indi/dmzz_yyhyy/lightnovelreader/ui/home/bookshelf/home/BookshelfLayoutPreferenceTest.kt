@@ -2,6 +2,7 @@ package indi.dmzz_yyhyy.lightnovelreader.ui.home.bookshelf.home
 
 import android.app.Application
 import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.viewModelScope
 import androidx.room.Room
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.LightNovelReaderDatabase
 import indi.dmzz_yyhyy.lightnovelreader.data.userdata.UserDataRepository
@@ -11,7 +12,9 @@ import io.nightfish.lightnovelreader.api.bookshelf.BookshelfSortType
 import io.nightfish.lightnovelreader.api.userdata.UserDataPath
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.job
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -38,7 +41,11 @@ class BookshelfLayoutPreferenceTest {
         val users = UserDataRepository(db.userDataDao())
         val preference = users.stringUserData(UserDataPath.Settings.Display.BookshelfLayout.path)
         val store = ViewModelStore()
-        fun model(key: String) = BookshelfHomeViewModel(context, mockk(), mockk(), users, mockk()).also { store.put(key, it) }
+        val modelJobs = mutableListOf<Job>()
+        fun model(key: String) = BookshelfHomeViewModel(context, mockk(), mockk(), users, mockk()).also {
+            store.put(key, it)
+            modelJobs += it.viewModelScope.coroutineContext.job
+        }
         suspend fun awaitCondition(condition: () -> Boolean) = withTimeout(5000) {
             while (!condition()) { main.scheduler.runCurrent(); delay(1) }
         }
@@ -66,9 +73,14 @@ class BookshelfLayoutPreferenceTest {
             preference.set("unknown-future-layout")
             awaitCondition { restored.uiState.layout == BookshelfLayout.List }
         } finally {
-            store.clear()
-            db.close()
-            Dispatchers.resetMain()
+            try {
+                store.clear()
+                // Drain Main as well as Room before closing the database or resetting Main.
+                awaitCondition { modelJobs.all { it.isCompleted } }
+            } finally {
+                db.close()
+                Dispatchers.resetMain()
+            }
         }
     }
 }

@@ -14,6 +14,17 @@ class WorkerContentMarkupTest {
             HostBridge { _, _ -> throw AssertionError("Markup must not call the host") }
         ).toByteArray(Charsets.UTF_8))
 
+    @Test fun formattedChapterKeepsLiteralTextAndImageMarkersAcrossTheWire() {
+        val result = run(ExecutionTask.ContentMarkup("<b>literal</b> &amp;\n<img src='image?a=1&amp;b=2'>\nTail", formatted = true))
+        assertTrue(result.toString(), result is ExecutionResult.Success)
+        val value = Json.decodeFromString(ExecutedRule.serializer(), (result as ExecutionResult.Success).output).value as RuleValue.Items
+        assertEquals(listOf("<b>literal</b> &amp;", "image?a=1&amp;b=2", "Tail"), value.values.map {
+            Json.parseToJsonElement((it as RuleValue.Node).content).jsonObject.values.single().jsonPrimitive.content
+        })
+        val tooLarge = run(ExecutionTask.ContentMarkup("a".repeat(600), formatted = true), ExecutionLimits(maxOutputBytes = 512))
+        assertEquals(FailureCode.OutputLimit, (tooLarge as ExecutionResult.Failure).code)
+    }
+
     @Test fun realChildConvertsANormalChapterWithDefaultLimitsAndNoWrites() {
         val result = IsolatedExecutor().execute(identity,
             ExecutionTask.ContentMarkup("<p>${"a".repeat(80)}</p>".repeat(80)))
