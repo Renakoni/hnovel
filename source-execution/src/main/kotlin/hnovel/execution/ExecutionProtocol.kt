@@ -28,7 +28,7 @@ private class WorkerOutputLimit : RuntimeException()
  init { require(timeoutMillis in 1..60000 && maxOutputBytes in 1..4 * 1024 * 1024 && maxRequests in 0..1024) }
 }
 
-// RuleSource already grants a 192 KiB result budget. Keep its script input, native data methods and
+// RuleSource already grants a 192 KiB result budget. Keep its native data methods and
 // response reads consistent with that host-owned budget; larger callers cannot expand the IPC cap.
 internal val ExecutionLimits.scriptDataLimit: Int get() = maxOutputBytes.coerceIn(ScriptLimits.DEFAULT_BRIDGE_CHARS, 192 * 1024)
 @Serializable sealed interface ExecutionTask {

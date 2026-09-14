@@ -76,7 +76,7 @@ internal class ScriptRuleHelpers(private val scope: Scriptable, frame: ScriptFra
                 budget.checkSize(request.script.length, limits.maxScriptChars)
                 val old = scope.get("result", scope)
                 try {
-                    scope.put("result", scope, JsonScriptData(cx, scope, limits.maxBridgeChars).convert(json(request.input)))
+                    scope.put("result", scope, JsonScriptData(cx, scope, budget.limits.maxInputChars).convert(json(request.input)))
                     value(Json.parseToJsonElement(BoundedJsonResult(limits.maxBridgeChars)
                         .encode(evaluateGlobal(cx, scope, request.script, "nested-rule"))))
                 } finally { scope.put("result", scope, old) }

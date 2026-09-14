@@ -264,7 +264,8 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
             if (bytes != null && bytes.size > limits.maxRequestBytes) throw BrokerFailure(RequestStage.Parse, FailureCode.InvalidRequest)
             val requestBody = if (method in setOf("POST", "PUT", "PATCH") || bytes != null)
                 (bytes ?: ByteArray(0)).toRequestBody(headers["Content-Type"]?.toMediaTypeOrNull()) else null
-            val call = client.newBuilder().dns(policy.dns(url)).callTimeout(request.timeoutMillis, TimeUnit.MILLISECONDS).build()
+            val call = client.newBuilder().dns(policy.dns(url)).callTimeout(request.timeoutMillis, TimeUnit.MILLISECONDS)
+                .readTimeout(request.timeoutMillis, TimeUnit.MILLISECONDS).build()
                 .newCall(Request.Builder().url(url).headers(headers).method(method, requestBody).build())
             val response = awaitResponse(call, request.responseCharset, hop, guard, minOf(request.maxResponseBytes ?: limits.maxResponseBytes, limits.maxResponseBytes))
             val location = response.headers.entries.firstOrNull { it.key.equals("Location", true) }?.value?.firstOrNull()

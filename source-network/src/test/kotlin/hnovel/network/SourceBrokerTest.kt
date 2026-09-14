@@ -331,6 +331,17 @@ class SourceBrokerTest {
         }
     }
 
+    @Test(timeout = 30000) fun requestReadWaitUsesTheDeclaredBudget() = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            server.enqueue(MockResponse().setHeadersDelay(11, TimeUnit.SECONDS).setBody("chapter"))
+            SourceBroker(directory.root.toPath()).use { broker ->
+                val session = broker.open(scope(), listOf(grant(server.url("/"))))
+                assertEquals("chapter", success(session.execute(request(server.url("/slow")).copy(timeoutMillis = 20000))).text())
+            }
+        }
+    }
+
     @Test(timeout = 10000) fun cancellationAndTimeoutReleasePermitsAndRetriesAreBounded() = runBlocking {
         MockWebServer().use { server ->
             server.start()
