@@ -18,7 +18,8 @@ internal fun hnovel.network.FailureCode.contentError(): ContentError = when (thi
     hnovel.network.FailureCode.OriginDenied -> ContentError.PermissionDenied
     hnovel.network.FailureCode.AddressDenied -> ContentError.AddressDenied
     hnovel.network.FailureCode.Dns -> ContentError.Dns
-    hnovel.network.FailureCode.ResponseTooLarge, hnovel.network.FailureCode.Timeout -> ContentError.Limit
+    hnovel.network.FailureCode.ResponseTooLarge -> ContentError.Limit
+    hnovel.network.FailureCode.Timeout -> ContentError.Network
     hnovel.network.FailureCode.BrowserRequired -> ContentError.BrowserRequired
     else -> ContentError.Network
 }

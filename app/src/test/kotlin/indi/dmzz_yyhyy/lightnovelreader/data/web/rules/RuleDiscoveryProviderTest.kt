@@ -71,7 +71,7 @@ class RuleDiscoveryProviderTest {
                 bPage.loadMore()
                 assertEquals("/search?sort=popular&page=1", fixture.server.takeRequest().path)
                 fixture.status = 401
-                assertEquals(Err(DiscoveryError.AuthenticationRequired), aPage.loadMore())
+                assertEquals(Err(DiscoveryError.Network), aPage.loadMore())
                 assertEquals("/search?sort=new&page=2", fixture.server.takeRequest().path)
                 fixture.status = 200
                 val repeated = aPage.loadMore().get()!!

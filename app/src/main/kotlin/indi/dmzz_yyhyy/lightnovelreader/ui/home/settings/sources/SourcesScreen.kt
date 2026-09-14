@@ -261,4 +261,4 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
 
 // Search and login resolve the lazy registration themselves. A failed registration cannot start work.
 internal fun SourceListing?.actionCapabilities(): Set<SourceCapability> =
-    if (this?.status == SourceStatus.Ready) metadata.capabilities else emptySet()
+    if (this != null && status in setOf(SourceStatus.Registered, SourceStatus.Ready)) metadata.capabilities else emptySet()
