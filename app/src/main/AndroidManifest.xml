@@ -109,9 +109,9 @@
     <service android:name=".sourcebrowser.NativeSourceBrowserService" android:exported="false"
         android:process=":source_browser_native" />
     <activity android:name=".sourcebrowser.NativeSourceBrowserActivity" android:exported="false"
-        android:process=":source_browser_native" android:theme="@style/Theme.App" />
+        android:process=":source_browser_native" android:theme="@style/Theme.SourceBrowser" />
     <activity android:name=".sourcebrowser.SourceBrowserActivity" android:exported="false"
-        android:process=":source_browser" android:theme="@style/Theme.App" />
+        android:process=":source_browser" android:theme="@style/Theme.SourceBrowser" />
   </application>
 
 </manifest>
