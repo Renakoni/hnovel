@@ -73,7 +73,7 @@ class SourceDiagnostics @Inject constructor(@ApplicationContext private val cont
                         }
                         currentCoroutineContext().ensureActive()
                         check(authority.accepts(ticket))
-                    } } finally { monitor.cancelAndJoin() }
+                    } } finally { monitor.cancelAndJoin(); session.clearAccount() }
                 }
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (failure: SourceContentException) { result = failure.code.name; field = failure.field; dependency = failure.dependency }

@@ -8,6 +8,7 @@ fun interface BrowserExecutor {
 
     suspend fun execute(session: SourceSession, request: BrokerRequest, options: BrowserOptions,
         guard: RequestCommitGuard): BrokerResult
+    fun clearAccount(scope: SourceScope) {}
 }
 
 @Serializable data class BrowserOptions(val script: String = "", val delayMillis: Long = 0,

@@ -8,6 +8,26 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RuleSourceTest {
+    @Test fun declaredBrowserReadsAndLoginHooksAcceptDocumentsWithoutClaimingHttpSuccess() = runBlocking {
+        val requests = mutableListOf<String>()
+        val browser = BrowserExecutor { _, request, _, _ ->
+            requests += request.url
+            BrokerResult.Success(BrokerResponse(0, request.url, emptyMap(),
+                "<li><a href='/book/one'><h2>Browser novel</h2></a></li>".toByteArray(), "UTF-8", 0,
+                protocol = "", kind = ResponseKind.BrowserDocument))
+        }
+        RuleSourceFixture(browser).use { fixture ->
+            fixture.source(customize = { raw -> JsonObject(raw + mapOf(
+                "browserRead" to JsonPrimitive(true),
+                "loginCheckJs" to JsonPrimitive("if(!result.isBrowserDocument() || result.code()!==0 || result.getUrl()!==java.getUrl())throw 'wrong document';result;"),
+                "ruleSearch" to buildJsonObject { put("bookList", "li"); put("name", "h2@text"); put("bookUrl", "a@href") }
+            )) }).use { source ->
+                assertEquals("Browser novel", source.search("fixture").single().title)
+                assertEquals(1, requests.size)
+                assertEquals(0, fixture.server.requestCount)
+            }
+        }
+    }
 
     @Test fun cataloguePageArraysAreExpandedOnceAndKeepScriptChapterUrls() = runBlocking {
         val rendered = mutableListOf<String>()

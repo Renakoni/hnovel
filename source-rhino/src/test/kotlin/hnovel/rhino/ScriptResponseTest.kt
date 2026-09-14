@@ -5,6 +5,17 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ScriptResponseTest {
+    @Test fun browserDocumentsKeepTheirUrlAndDoNotInventRawHttpMetadata() {
+        val document = JsonObject(data + mapOf("kind" to JsonPrimitive("BrowserDocument"), "status" to JsonPrimitive(0)))
+        val engine = RhinoScriptEngine(HostBridge { _, _ -> document })
+        for (call in listOf("java.connect('url')", "java.startBrowserAwait('url','verify',false)")) {
+            assertEquals(ScriptResult.Success("[\"chapter\",\"https://fixture.invalid/final\",0,true,null,false]"),
+                engine.evaluate("var r=$call;[r.body(),r.getUrl(),r.code(),r.isBrowserDocument(),r.raw(),r.isSuccessful()]", frame))
+        }
+        assertEquals(ScriptResult.Success("\"https://fixture.invalid/request\""), engine.evaluate("java.getUrl()",
+            frame.copy(baseUrl = "https://fixture.invalid/request")))
+    }
+
     @Test fun retainedResponseAndDerivedViewsChargeTheWholeOwnerAndDiscardOnOverflow() {
         val response = JsonObject(data + ("body" to JsonPrimitive("b".repeat(400))))
         val bounded = RhinoScriptEngine(HostBridge { _, _ -> response }, ScriptLimits(maxBridgeChars = 1024))

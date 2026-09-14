@@ -20,6 +20,8 @@ import javax.inject.Singleton
 @Singleton
 class AndroidSourceBrowser @Inject constructor(@ApplicationContext private val context: Context) : BrowserExecutor {
     private val serial = Mutex()
+    private val native = NativeSourceBrowser(context)
+    override fun clearAccount(scope: SourceScope) = native.clearAccount(scope)
 
     override suspend fun defaultUserAgent(): String = withContext(Dispatchers.Main) {
         android.webkit.WebSettings.getDefaultUserAgent(context)
@@ -30,6 +32,7 @@ class AndroidSourceBrowser @Inject constructor(@ApplicationContext private val c
         require(options.title.length <= 1024 && options.script.length <= 65536 && options.sourceRegex.length <= 2048 &&
             options.delayMillis in 0..30000 && (options.html?.length ?: 0) <= 196608)
         require(!options.verificationCode || options.interactive)
+        if (session.browserRead && !options.verificationCode) return@withContext native.execute(session, request, options, guard)
         val connected = CompletableDeferred<IBrowserService>()
         val died = CompletableDeferred<Unit>()
         val result = CompletableDeferred<BrokerResult>()
@@ -52,14 +55,14 @@ class AndroidSourceBrowser @Inject constructor(@ApplicationContext private val c
                             "initialRequest" -> {
                                 check(url == request.url.toHttpUrl())
                                 // Use the host-owned request, including its explicit source Cookie.
-                                val response = session.execute(request.copy(browser = null,
+                                val response = session.executeHttp(request.copy(browser = null,
                                     maxResponseBytes = minOf(request.maxResponseBytes ?: 1024 * 1024, 1024 * 1024)), guard)
                                 current(); Json.encodeToString(response)
                             }
                             "request" -> {
                                 val headers = args["headers"]?.jsonObject?.mapValues { it.value.jsonPrimitive.content }.orEmpty()
                                     .filterKeys { it.lowercase() !in setOf("cookie", "host", "content-length", "connection", "accept-encoding") }
-                                val response = session.execute(BrokerRequest("browser", url.toString(),
+                                val response = session.executeHttp(BrokerRequest("browser", url.toString(),
                                     method = args["method"]?.jsonPrimitive?.content ?: "GET", headers = headers,
                                     body = args["body"]?.takeUnless { it == JsonNull }?.jsonPrimitive?.content,
                                     kind = args["kind"]?.jsonPrimitive?.content?.let(ResourceKind::valueOf) ?: ResourceKind.Document,
