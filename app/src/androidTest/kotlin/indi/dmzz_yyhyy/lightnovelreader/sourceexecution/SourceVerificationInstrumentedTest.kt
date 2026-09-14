@@ -31,18 +31,24 @@ class SourceVerificationInstrumentedTest {
 
     private fun find(node: AccessibilityNodeInfo?, text: String): AccessibilityNodeInfo? {
         node ?: return null
-        if (node.isVisibleToUser && (node.text?.contains(text) == true || node.contentDescription?.contains(text) == true || node.className == text)) return node
+        // Platform Buttons expose transformed (all-caps in English) text to accessibility.
+        if (node.isVisibleToUser && (node.text?.contains(text, ignoreCase = true) == true ||
+                node.contentDescription?.contains(text, ignoreCase = true) == true || node.className == text)) return node
         for (index in 0 until node.childCount) find(node.getChild(index), text)?.let { return it }
         return null
     }
 
     private suspend fun click(text: String) {
+        android.util.Log.i("VerificationFixture", "Waiting for button: $text")
         instrumentation.sendStatus(0, android.os.Bundle().apply { putString("verificationStep", "click: $text") })
         withTimeout(20000) {
         while (true) {
             var node = find(instrumentation.uiAutomation.rootInActiveWindow, text)
             while (node != null && !node.isClickable) node = node.parent
-            if (node?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true) return@withTimeout
+            if (node?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true) {
+                android.util.Log.i("VerificationFixture", "Clicked button: $text")
+                return@withTimeout
+            }
             delay(100)
         }
         }
@@ -65,7 +71,7 @@ class SourceVerificationInstrumentedTest {
                         path == "/accepted" -> MockResponse().setHeader("Content-Type", "text/html")
                             .addHeader("Set-Cookie", "verified=fixture; HttpOnly; Path=/")
                             .setBody("<html><title>Verified fixture</title><p>Return to reader</p></html>")
-                            .also { accepted.complete(Unit) }
+                            .also { android.util.Log.i("VerificationFixture", "Owned website accepted verification"); accepted.complete(Unit) }
                         path == "/search" && !request.getHeader("Cookie").orEmpty().contains("verified=fixture") -> {
                             challenged.incrementAndGet()
                             MockResponse().setResponseCode(302).setHeader("Location", "/antibot")
