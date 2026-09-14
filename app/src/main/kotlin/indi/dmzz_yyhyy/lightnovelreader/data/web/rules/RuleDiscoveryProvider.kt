@@ -10,7 +10,8 @@ import kotlinx.serialization.json.jsonObject
 
 /** One adapter per page. The source runtime still owns revision/account/network authority. */
 internal class RuleDiscoveryProvider(private val source: RuleSource,
-    private val session: RuleDiscoverySession = source.openDiscovery(java.util.UUID.randomUUID().toString())) : DiscoveryProvider {
+    private val session: RuleDiscoverySession = source.openDiscovery(java.util.UUID.randomUUID().toString()),
+    private val recovery: RuleRequestRecovery? = null) : DiscoveryProvider {
     override val hasFeed get() = source.canDiscover
     override val hasCategories get() = source.canDiscover
     override val hasInteractions = true
@@ -21,7 +22,7 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
     private var current: DiscoveryCatalog? = null
     override fun openSession(id: String, values: Map<String, String>, environment: DiscoveryEnvironment) =
         RuleDiscoveryProvider(source, source.openDiscovery(id, values, RuleDiscoveryEnvironment(environment.themeMode,
-            Json.parseToJsonElement(environment.themeJson).jsonObject, Json.parseToJsonElement(environment.readingJson).jsonObject)))
+            Json.parseToJsonElement(environment.themeJson).jsonObject, Json.parseToJsonElement(environment.readingJson).jsonObject)), recovery)
 
     override suspend fun catalog(refresh: Boolean) = request {
         map(session.catalog(refresh)).also { current = it }
@@ -45,7 +46,7 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
         DiscoveryPage(books.map(::book), if (books.isEmpty()) null else (page + 1).toString())
     }
 
-    override suspend fun interact(id: String, value: String?, longClick: Boolean) = request {
+    override suspend fun interact(id: String, value: String?, longClick: Boolean) = request(retry = false) {
         val updated = session.interact(id, value, longClick)
         val catalog = map(updated.catalog).also { current = it }
         DiscoveryUpdate(catalog, updated.actions.mapNotNull { action -> when (action.kind) {
@@ -59,7 +60,7 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
         } }, updated.refresh)
     }
 
-    override suspend fun openBrowser(action: DiscoveryAction.Browser) = request {
+    override suspend fun openBrowser(action: DiscoveryAction.Browser) = request(retry = false) {
         source.openDiscoveryBrowser(action.url, action.html, action.script, action.title)
     }
 
@@ -72,8 +73,9 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
         } }, catalog.values, catalog.rows.filter { it.type == "button" }.map { DiscoveryButton(it.id, it.title) })
 
     private fun book(book: RuleBook) = DiscoveryBook(book.id, book.title, book.author, book.coverUrl)
-    private suspend fun <T> request(block: suspend () -> T): Result<T, DiscoveryError> = try {
-        failureField = null; permissionFailure = null; Ok(block())
+    private suspend fun <T> request(retry: Boolean = true, block: suspend () -> T): Result<T, DiscoveryError> = try {
+        failureField = null; permissionFailure = null
+        Ok(if (recovery == null || !retry) block() else recovery.execute(block))
     }
     catch (cancelled: CancellationException) { throw cancelled }
     catch (failure: SourceContentException) {

@@ -14,14 +14,15 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
     var chapter: ScriptState = ScriptState(), var baseUrl: String, val keyword: String = "", var page: Int = 1,
     private val calls: java.util.concurrent.atomic.AtomicInteger = java.util.concurrent.atomic.AtomicInteger(),
     private val headerRule: String = "", private val interactive: Boolean = false, private val trace: ContentTrace = ContentTrace.None,
-    private val sourceLoginUrl: String = "", private val sourceComment: String? = null) {
+    private val sourceLoginUrl: String = "", private val sourceComment: String? = null,
+    private val verification: (hnovel.network.BrokerResult.Failure) -> SourceVerification? = { null }) {
     var discovery: JsonObject? = null
     var nextChapterUrl: String? = null
     private val limits = ExecutionLimits(timeoutMillis = if (interactive) 60000 else 30000, maxOutputBytes = 196608,
         maxRequests = 64, maxDataBytes = BridgeWire.MAX_REPLY_BYTES)
 
     fun fork(bookId: String? = this.bookId, chapterId: String? = this.chapterId) =
-        RuleEvaluation(identity, authority, session, runner, library, bookId, chapterId, book.copy(), chapter.copy(), baseUrl, keyword, page, calls, headerRule, interactive, trace, sourceLoginUrl, sourceComment)
+        RuleEvaluation(identity, authority, session, runner, library, bookId, chapterId, book.copy(), chapter.copy(), baseUrl, keyword, page, calls, headerRule, interactive, trace, sourceLoginUrl, sourceComment, verification)
             .also { it.discovery = discovery; it.nextChapterUrl = nextChapterUrl }
 
     suspend fun headers(): Map<String, String> {
@@ -100,7 +101,8 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
                 FailureCode.BridgeDenied -> if (requestLimitExceeded) ContentError.Limit else networkFailure?.code?.contentError() ?: ContentError.PermissionDenied
                 FailureCode.UnsupportedDependency -> ContentError.UnsupportedDependency
                 else -> ContentError.InvalidRule
-            }, failureField, networkFailure?.denial.takeIf { result.code == FailureCode.BridgeDenied }, dependency)
+            }, failureField, networkFailure?.denial.takeIf { result.code == FailureCode.BridgeDenied }, dependency,
+                networkFailure?.takeIf { result.code == FailureCode.BridgeDenied && !requestLimitExceeded }?.let(verification))
             is ExecutionResult.Success -> Json.decodeFromString(ExecutedRule.serializer(), result.output)
         }
     }

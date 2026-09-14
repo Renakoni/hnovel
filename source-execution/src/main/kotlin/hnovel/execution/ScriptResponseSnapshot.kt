@@ -12,6 +12,7 @@ fun BrokerResponse.scriptSnapshot(binary: Boolean) = buildJsonObject {
     }
     put("url", this@scriptSnapshot.finalUrl)
     put("status", this@scriptSnapshot.status)
+    put("kind", this@scriptSnapshot.kind.name)
     put("message", this@scriptSnapshot.message)
     put("headers", JsonObject(this@scriptSnapshot.headers.mapValues { (_, values) -> JsonArray(values.map(::JsonPrimitive)) }))
     put("charset", this@scriptSnapshot.declaredCharset?.let(::JsonPrimitive) ?: JsonNull)

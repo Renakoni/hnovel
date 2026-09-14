@@ -31,6 +31,30 @@ import org.robolectric.annotation.Config
 @OptIn(ExperimentalCoroutinesApi::class)
 class ProxyCoalescingWebBookDataSourceTest {
     @Test
+    fun foregroundOwnershipDoesNotLeakIntoAnIdenticalBackgroundRequest() = runTest {
+        val remote = mockk<ProxyWebBookDataSource>()
+        val release = CompletableDeferred<Unit>()
+        val seen = mutableListOf<Boolean>()
+        coEvery { remote.getBookVolumes("same", any()) } coAnswers {
+            seen += kotlinx.coroutines.currentCoroutineContext()[indi.dmzz_yyhyy.lightnovelreader.data.web.ForegroundSourceRequest] != null
+            release.await(); Ok(BookVolumes("same", emptyList()))
+        }
+        val proxy = ProxyCoalescingWebBookDataSource(remote, StandardTestDispatcher(testScheduler))
+        try {
+            val background = async { proxy.getBookVolumes("same", WebDataSourcePriority.Default) }
+            val foreground = async(indi.dmzz_yyhyy.lightnovelreader.data.web.ForegroundSourceRequest()) {
+                proxy.getBookVolumes("same", WebDataSourcePriority.Default)
+            }
+            runCurrent()
+            assertEquals(listOf(false, true).sorted(), seen.sorted())
+            foreground.cancelAndJoin()
+            assertFalse(background.isCompleted)
+            release.complete(Unit)
+            background.await()
+        } finally { release.complete(Unit); proxy.closeAndJoin() }
+    }
+
+    @Test
     fun cancellingOneWaiterDoesNotCancelTheSharedRequestOrRetainItsCompletedResult() = runTest {
         val remote = mockk<ProxyWebBookDataSource>()
         val release = CompletableDeferred<Unit>()

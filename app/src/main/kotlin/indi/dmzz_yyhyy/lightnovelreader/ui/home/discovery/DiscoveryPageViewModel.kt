@@ -95,9 +95,12 @@ abstract class DiscoveryPageViewModel(
         }
     }
 
+    private val foreground = indi.dmzz_yyhyy.lightnovelreader.data.web.ForegroundSourceRequest()
+
     fun setActive(value: Boolean, retainBrowser: Boolean = false) {
         active = value
-        if (value) load() else cancelLoad(retainBrowser)
+        foreground.setActive(value, retainBrowser)
+        if (value) load() else if (!retainBrowser || !foreground.verifying) cancelLoad(retainBrowser)
     }
 
     fun select(id: Identifier) {
@@ -135,7 +138,7 @@ abstract class DiscoveryPageViewModel(
         val token = ++serial
         val epoch = actionEpoch
         put(source, previous.copy(acting = true, error = null))
-        pending = viewModelScope.launch {
+        pending = viewModelScope.launch(foreground) {
             val result = discoveryRequest { discovery.interact(id, value, longClick) }
             if (serial != token || !active || state.value.selected != source) return@launch
             result.onErr { put(source, state.value.content.getValue(source).copy(acting = false, error = it, errorField = discovery.failureField, errorPermission = discovery.permissionFailure)) }
@@ -226,7 +229,7 @@ abstract class DiscoveryPageViewModel(
         if (previous.loaded || previous.loading || previous.acting || previous.error != null) return
         val token = ++serial
         put(id, previous.copy(loading = true))
-        pending = viewModelScope.launch {
+        pending = viewModelScope.launch(foreground) {
             val result = discoveryRequest {
                 val discovery = sessions[id] ?: registry.discovery(id).getOrElse { return@discoveryRequest com.github.michaelbull.result.Err(it) }
                     .forSession(pageId, previous.values, environment).also { sessions[id] = it }

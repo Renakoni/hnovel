@@ -11,7 +11,8 @@ import kotlinx.serialization.json.*
 import javax.inject.Inject
 import javax.inject.Singleton
 
-data class LoginAttempt internal constructor(val source: Identifier, val generation: Long, val revision: String)
+data class LoginAttempt internal constructor(val source: Identifier, val generation: Long, val revision: String,
+    val retireOnCancel: Boolean = true)
 enum class LoginStatus { LoggedOut, Authenticated, SessionSaved, Required }
 
 /** No Activity is launched from a rule/worker. Foreground UI explicitly owns a cancellable login attempt. */
@@ -27,8 +28,12 @@ class SourceLoginService @Inject constructor(private val sources: ImportedRuleSo
             "required" -> LoginStatus.Required; else -> LoginStatus.LoggedOut }
     }
     suspend fun begin(source: Identifier): LoginAttempt {
-        val target = sources.rotateAccount(source)
-        return LoginAttempt(source, target.generation, target.revision)
+        val current = sources.loginTarget(source)
+        // Reopening a website to complete verification must keep the account it challenged.
+        // Explicit logout still rotates and removes that account's entire browser profile.
+        val keepSession = current.session.browserRead
+        val target = if (keepSession) current else sources.rotateAccount(source)
+        return LoginAttempt(source, target.generation, target.revision, retireOnCancel = !keepSession)
     }
     suspend fun submit(attempt: LoginAttempt, values: Map<String, String>, action: String? = null) {
         val target = target(attempt)
@@ -48,7 +53,7 @@ class SourceLoginService @Inject constructor(private val sources: ImportedRuleSo
         }
     }
     suspend fun cancel(attempt: LoginAttempt) {
-        if (accounts.current(attempt.source).generation == attempt.generation)
+        if (attempt.retireOnCancel && accounts.current(attempt.source).generation == attempt.generation)
             runCatching { sources.rotateAccount(attempt.source, attempt.generation) }
     }
     suspend fun logout(source: Identifier) { sources.rotateAccount(source) }

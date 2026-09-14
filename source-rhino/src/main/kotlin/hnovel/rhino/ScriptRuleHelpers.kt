@@ -39,13 +39,14 @@ internal class ScriptRuleHelpers(private val scope: Scriptable, frame: ScriptFra
     }
 
     fun supports(name: String, args: List<JsonElement>) = name in setOf("java.getString", "java.getStringList",
-        "java.getElement", "java.getElements", "java.setContent", "java.put") || name == "java.get" && args.size == 1
+        "java.getElement", "java.getElements", "java.setContent", "java.put", "java.getUrl") || name == "java.get" && args.size == 1
 
     fun call(cx: Context, name: String, args: List<JsonElement>): JsonElement {
         elements = null
         if (++depth > budget.limits.maxDepth) { depth--; throw ScriptBudgetExceeded() }
         try {
             budget.check()
+            if (name == "java.getUrl") { require(args.isEmpty()); return JsonPrimitive(context.baseUrl) }
             if (name == "java.setContent") {
                 require(args.size in 1..2 && args[0] != JsonNull)
                 val nextBase = args.getOrNull(1)?.takeUnless { it == JsonNull }?.let {

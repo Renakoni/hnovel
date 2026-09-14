@@ -56,6 +56,7 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
     private val permits = Semaphore(limits.concurrency)
     private val rate = Mutex()
     private var lastStart = 0L
+    @Volatile private var sourcePacing = SourceRequestPacer(null)
     private var cache = ResponseCache(limits)
     private val valuesCache = ValueCache(limits, SourceStorage(root, scope.components(false) + "cache",
         limits.copy(maxStorageBytes = limits.maxCacheBytes.toLong()), cipher))
@@ -66,10 +67,25 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
     @Volatile var enabledCookieJar = true
     var sourceUrl: String = ""
         private set
-    fun configureSource(url: String, cookiesEnabled: Boolean) {
+    var browserRead: Boolean = false
+        private set
+    @Synchronized fun configureSource(url: String, cookiesEnabled: Boolean, browserRead: Boolean = false,
+        concurrentRate: String? = null) {
         require(sourceUrl.isEmpty() || sourceUrl == url)
         sourceUrl = url
         enabledCookieJar = cookiesEnabled
+        this.browserRead = browserRead
+        val parsedRate = SourceRequestRate.parse(concurrentRate)
+        if (sourcePacing.rate != parsedRate) sourcePacing = SourceRequestPacer(parsedRate)
+    }
+
+    /** Host-only: call inside browser serialization, immediately before starting a navigation.
+     * The enclosing execute owns cancellation and timeout; browser subresources never call this. */
+    suspend fun awaitBrowserAdmission() {
+        checkOpen()
+        sourcePacing.awaitAdmission()
+        currentCoroutineContext().ensureActive()
+        checkOpen()
     }
     // VPN/TUN still routes these sockets. An HTTP proxy would move DNS/peer validation to
     // an unchecked destination; keep direct sockets until that transport has its own policy.
@@ -128,10 +144,15 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
     }
 
     /** Called by the host after revocation; deletes only the retired account's sensitive state. */
-    @Synchronized fun clearAccount() {
-        close()
-        check(account.clear() is StorageResult.Value && cookieStorage.clear() is StorageResult.Value) { "Account cleanup failed" }
-        cookies.restoreMemory(emptyList())
+    fun clearAccount() {
+        synchronized(this) {
+            close()
+            check(account.clear() is StorageResult.Value && cookieStorage.clear() is StorageResult.Value) { "Account cleanup failed" }
+            cookies.restoreMemory(emptyList())
+        }
+        // Browser cancellation may finish on another thread that checks this session.
+        // Do not hold the session monitor while waiting for its process to stop.
+        browser?.clearAccount(scope)
     }
 
     @Synchronized fun read(request: StorageRequest): StorageResult {
@@ -185,16 +206,26 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
     suspend fun execute(request: BrokerRequest, guard: RequestCommitGuard = RequestCommitGuard { it() }): BrokerResult =
         execute(request, guard, policy)
 
+    /** Host-only HTTP transport for synthetic/image verification documents; avoids browser re-entry. */
+    suspend fun executeHttp(request: BrokerRequest, guard: RequestCommitGuard): BrokerResult {
+        require(request.browser == null)
+        return execute(request, guard, policy, browserDefault = false, paceSource = false)
+    }
+
     /** Host-only image loading for an URL already extracted from a book. No script bridge exposes this. */
     suspend fun loadImage(request: BrokerRequest, guard: RequestCommitGuard = RequestCommitGuard { it() }): BrokerResult {
         require(request.kind == ResourceKind.Image && request.method == "GET" && request.body == null && request.browser == null)
         // Coil owns image caching; keep downloaded images out of the script response cache.
-        return execute(request.copy(cache = CacheMode.Disabled), guard, imagePolicy)
+        return execute(request.copy(cache = CacheMode.Disabled), guard, imagePolicy, paceSource = false)
     }
 
-    private suspend fun execute(request: BrokerRequest, guard: RequestCommitGuard, policy: NetworkPolicy): BrokerResult {
+    private suspend fun execute(request: BrokerRequest, guard: RequestCommitGuard, policy: NetworkPolicy,
+        browserDefault: Boolean = true, paceSource: Boolean = true): BrokerResult {
         checkOpen()
-        val snapshot = request.copy(headers = request.headers.toMap())
+        // A browser source keeps document reads in the same native session. Binary/image
+        // requests stay explicit HTTP operations; URL options can still supply a render script.
+        val snapshot = request.copy(headers = request.headers.toMap(), browser = request.browser ?:
+            if (browserDefault && browserRead && request.kind == ResourceKind.Document) BrowserOptions() else null)
         val work = lifetime.async {
             var stage = RequestStage.Queue
             try {
@@ -214,7 +245,7 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
                         policy.check(snapshot.url.toHttpUrlOrNull() ?: throw BrokerFailure(RequestStage.Parse, FailureCode.InvalidRequest))
                         browser?.execute(this@SourceSession, snapshot.copy(browser = null), snapshot.browser, guard)
                             ?: BrokerResult.Failure(RequestStage.Parse, FailureCode.BrowserRequired)
-                    } else permits.withPermit { stage = RequestStage.Connect; perform(snapshot, guard, policy) }
+                    } else permits.withPermit { stage = RequestStage.Connect; perform(snapshot, guard, policy, paceSource) }
                 }
             } catch (_: TimeoutCancellationException) {
                 BrokerResult.Failure(stage, FailureCode.Timeout)
@@ -249,7 +280,7 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         }
     }
 
-    private suspend fun perform(request: BrokerRequest, guard: RequestCommitGuard, policy: NetworkPolicy): BrokerResult {
+    private suspend fun perform(request: BrokerRequest, guard: RequestCommitGuard, policy: NetworkPolicy, paceSource: Boolean): BrokerResult {
         val initialUrl = request.url.toHttpUrlOrNull() ?: throw BrokerFailure(RequestStage.Parse, FailureCode.InvalidRequest)
         policy.check(initialUrl)
         val initialHeaders = headers(initialUrl, request.headers, policy)
@@ -265,7 +296,7 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         }
         for (attempt in 0..request.retry) {
             try {
-                val response = redirects(request, initialUrl, guard, policy)
+                val response = redirects(request, initialUrl, guard, policy, paceSource)
                 if (response.status in setOf(429, 502, 503, 504) && attempt < request.retry) continue
                 if (request.cache == CacheMode.ReadThrough && response.status in 200..299) guard.commit {
                     cache.put(cacheKey, response)
@@ -284,7 +315,8 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         error("Unreachable retry state")
     }
 
-    private suspend fun redirects(request: BrokerRequest, first: HttpUrl, guard: RequestCommitGuard, policy: NetworkPolicy): BrokerResponse {
+    private suspend fun redirects(request: BrokerRequest, first: HttpUrl, guard: RequestCommitGuard, policy: NetworkPolicy,
+        paceSource: Boolean): BrokerResponse {
         var url = first
         var method = request.method
         var body = request.body
@@ -294,6 +326,11 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
             rate.withLock {
                 val elapsed = (System.nanoTime() - lastStart) / 1_000_000
                 if (lastStart != 0L && elapsed < limits.minIntervalMillis) delay(limits.minIntervalMillis - elapsed)
+                // Each attempt is a logical source request. Redirect hops retain the broker's
+                // hard interval but do not consume another source admission.
+                if (paceSource && hop == 0) sourcePacing.awaitAdmission()
+                currentCoroutineContext().ensureActive()
+                checkOpen()
                 lastStart = System.nanoTime()
             }
             val headers = headers(url, callerHeaders, policy)

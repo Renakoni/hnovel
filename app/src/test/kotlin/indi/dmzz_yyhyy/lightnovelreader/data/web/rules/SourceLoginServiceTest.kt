@@ -23,6 +23,43 @@ import java.nio.file.Files
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [27], application = Application::class)
 class SourceLoginServiceTest {
+    @Test fun nativeVerificationReopensThePendingPageWithoutRotatingOrClearingItsAccount() = runBlocking {
+        val root = Files.createTempDirectory("native-login").toFile()
+        val context = object : ContextWrapper(RuntimeEnvironment.getApplication()) { override fun getFilesDir() = root }
+        val visited = mutableListOf<String>()
+        val browser = BrowserExecutor { _, request, options, _ ->
+            assertTrue(options.interactive); visited += request.url
+            BrokerResult.Success(BrokerResponse(0, request.url, emptyMap(), "<p>verified</p>".toByteArray(), "UTF-8", 0,
+                protocol = "", kind = ResponseKind.BrowserDocument))
+        }
+        RuleSourceFixture().use { fixture ->
+            val registry = WebSourceRegistry(fixture.authority)
+            val accounts = SourceSessionManager(fixture.authority)
+            val sources = ImportedRuleSources(context, registry, fixture.authority, accounts, fixture.runner, browser = browser)
+            val login = SourceLoginService(sources, accounts)
+            try {
+                val raw = JsonObject(fixture.raw() + mapOf("browserRead" to JsonPrimitive(true),
+                    "loginUrl" to JsonPrimitive(fixture.server.url("/login").toString())))
+                val saved = sources.importer.commit(sources.importer.preview(raw.toString()), listOf(ImportSelection(0, ImportDecision.Add)))
+                val id = sources.activate(saved.items.single().reference!!, listOf(NetworkGrant(fixture.server.url("/").toString(), true)))
+                val original = sources.loginTarget(id)
+                val url = fixture.server.url("/protected?p=3").toString()
+                original.session.write(StorageRequest(StorageArea.Account, StorageRequestKey.BROWSER_PENDING_URL, url))
+                val first = login.begin(id)
+                assertEquals(original.generation, first.generation)
+                login.cancel(first)
+                assertFalse(original.session.closed)
+                val second = login.begin(id)
+                login.submit(second, emptyMap())
+                assertEquals(listOf(url), visited)
+                assertEquals(StorageResult.Value(null), original.session.read(StorageRequest(StorageArea.Account, StorageRequestKey.BROWSER_PENDING_URL)))
+                login.logout(id)
+                assertTrue(original.session.closed)
+                assertNotEquals(original.generation, sources.loginTarget(id).generation)
+            } finally { sources.stop(); root.deleteRecursively() }
+        }
+    }
+
     @Test fun browserLoginNetworkFailurePreservesStatusWhileHttpAuthenticationFailureRequiresLogin() = runBlocking {
         val root = Files.createTempDirectory("browser-login-status").toFile()
         val context = object : ContextWrapper(RuntimeEnvironment.getApplication()) { override fun getFilesDir() = root }

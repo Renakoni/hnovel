@@ -25,13 +25,14 @@ import kotlinx.coroutines.flow.flow
 import java.time.LocalDateTime
 
 /** Converts rule data once; repositories, readers and workers consume their existing source-bound contracts. */
-internal class RuleWebBookDataSource(override val id: Identifier, private val source: RuleSource) :
+internal class RuleWebBookDataSource(override val id: Identifier, private val source: RuleSource,
+    private val recovery: RuleRequestRecovery? = null) :
     WebBookDataSource by EmptyWebDataSource, SourceImageProvider, AutoCloseable {
     override val permits = 1
     override val offLine = false
     override val isOffLineFlow = MutableStateFlow(false)
     override suspend fun isOffLine() = false
-    override val discoveryProvider = RuleDiscoveryProvider(source)
+    override val discoveryProvider = RuleDiscoveryProvider(source, recovery = recovery)
     override val searchProvider = object : SearchProvider {
         override val searchTypes = if (source.canSearch) listOf(SearchType("keyword", LocalString(R.string.sources_search_type), LocalString(R.string.sources_search_hint))) else emptyList()
         override fun search(searchType: SearchType, keyword: String) = flow {
@@ -83,11 +84,13 @@ internal class RuleWebBookDataSource(override val id: Identifier, private val so
         tags = tags, publishingHouse = "", wordCount = WordCount(wordCount.toIntOrNull() ?: 0),
         lastUpdated = LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(observedUpdate), java.time.ZoneOffset.UTC), isComplete = false)
     override fun close() = source.close()
-    private suspend fun <T> request(block: suspend () -> T): Result<T, WebRequestError> = try { Ok(block()) }
+    private suspend fun <T> request(block: suspend () -> T): Result<T, WebRequestError> = try {
+        Ok(if (recovery == null) block() else recovery.execute(block))
+    }
     catch (cancelled: CancellationException) { throw cancelled }
     catch (error: SourceContentException) { Err(WebRequestError("Source request failed", error.message.orEmpty(), error,
         when (error.code) {
-            ContentError.LoginRequired -> WebRequestErrorKind.AuthenticationRequired
+            ContentError.LoginRequired, ContentError.BrowserRequired -> WebRequestErrorKind.AuthenticationRequired
             ContentError.Unavailable -> WebRequestErrorKind.SourceUnavailable
             else -> WebRequestErrorKind.Other
         })) }

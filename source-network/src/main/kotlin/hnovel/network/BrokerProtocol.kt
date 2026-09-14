@@ -21,6 +21,8 @@ data class SourceScope(val namespace: String, val sourceId: String, val profile:
 @Serializable enum class ResourceKind { Document, Image, Script, Api, Import }
 @Serializable enum class CacheMode { Disabled, ReadThrough, Only }
 @Serializable enum class RequestStage { Parse, Permission, Queue, Connect, Response, Storage }
+@Serializable enum class ResponseKind { Http, BrowserDocument }
+@Serializable enum class BrowserChallengeKind { Cloudflare, SiteVerification, Login }
 @Serializable enum class FailureCode {
     InvalidRequest, UnknownOption, ScriptRequired, BrowserRequired, OriginDenied, AddressDenied,
     RedirectLimit, RedirectBodyDenied, Timeout, Network, ResponseTooLarge, CacheMiss, StorageQuota, StorageUnavailable, Dns,
@@ -49,7 +51,8 @@ data class SourceScope(val namespace: String, val sourceId: String, val profile:
 @Serializable data class BrokerResponse(val status: Int, val finalUrl: String, val headers: Map<String, List<String>>,
     val body: ByteArray, val charset: String, val redirects: Int, val fromCache: Boolean = false,
     val message: String = "", val protocol: String = "http/1.1", val sentAt: Long = 0, val receivedAt: Long = 0,
-    val declaredCharset: String? = null, val method: String = "GET", val textAsHex: Boolean = false) {
+    val declaredCharset: String? = null, val method: String = "GET", val textAsHex: Boolean = false,
+    val kind: ResponseKind = ResponseKind.Http) {
     fun text(): String = if (textAsHex) buildString(body.size * 2) {
         body.forEach { byte -> val value = byte.toInt() and 255; append("0123456789abcdef"[value ushr 4]); append("0123456789abcdef"[value and 15]) }
     } else body.toString(java.nio.charset.Charset.forName(charset))
@@ -59,7 +62,8 @@ data class SourceScope(val namespace: String, val sourceId: String, val profile:
 @Serializable sealed interface BrokerResult {
     @Serializable data class Success(val response: BrokerResponse) : BrokerResult
     @Serializable data class Failure(val stage: RequestStage, val code: FailureCode, val attempt: Int = 0,
-        val denial: OriginDenial? = null) : BrokerResult
+        val denial: OriginDenial? = null, val challenge: BrowserChallengeKind? = null,
+        val verificationRequest: BrokerRequest? = null) : BrokerResult
 }
 
 @Serializable sealed interface CompiledRequest {

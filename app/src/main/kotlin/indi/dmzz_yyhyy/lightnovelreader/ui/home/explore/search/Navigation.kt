@@ -1,6 +1,7 @@
 package indi.dmzz_yyhyy.lightnovelreader.ui.home.explore.search
 
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleStartEffect
@@ -19,7 +20,10 @@ fun NavGraphBuilder.exploreSearchDestination() {
         val model = hiltViewModel<ExploreSearchViewModel>()
         LifecycleStartEffect(model) {
             model.setActive(true)
-            onStopOrDispose { model.setActive(false) }
+            onStopOrDispose { model.setActive(false, retainBrowser = nav.currentBackStackEntry?.id == entry.id) }
+        }
+        DisposableEffect(model, nav, entry) {
+            onDispose { if (nav.currentBackStackEntry?.id != entry.id) model.setActive(false) }
         }
         LaunchedEffect(model, entry) {
             entry.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {

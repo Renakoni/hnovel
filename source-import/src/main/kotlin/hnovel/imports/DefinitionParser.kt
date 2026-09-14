@@ -84,6 +84,7 @@ class LegadoSourceAdapter : SourceFormatAdapter {
         val enabled = boolean("enabled", true)
         val explore = boolean("enabledExplore", true)
         boolean("enabledCookieJar", true)
+        boolean("browserRead", false)
         for (flag in listOf("customButton", "eventListener")) {
             boolean(flag, false)
             if ((value[flag] as? JsonPrimitive)?.isString == true) throw ImportFailure(ImportCode.InvalidField, flag)
@@ -95,7 +96,7 @@ class LegadoSourceAdapter : SourceFormatAdapter {
         val numbers = setOf("customOrder", "lastUpdateTime", "respondTime", "weight")
         numbers.forEach(::number)
         // Legado keeps intervals and request/window rates as nullable text. Preserve the numeric
-        // form accepted by earlier imports too; this field does not configure the host broker.
+        // form accepted by earlier imports too; RuleSource configures runtime admission pacing.
         value["concurrentRate"]?.takeUnless { it == JsonNull }?.let { rate ->
             if (rate !is JsonPrimitive || !rate.isString && rate.longOrNull == null)
                 throw ImportFailure(ImportCode.InvalidField, "concurrentRate")
@@ -107,7 +108,7 @@ class LegadoSourceAdapter : SourceFormatAdapter {
             if (rule != null && rule != JsonNull && rule !is JsonObject && !(rule is JsonArray && rule.isEmpty()))
                 throw ImportFailure(ImportCode.InvalidField, field)
         }
-        val known = strings + numbers + rules + setOf("bookSourceUrl", "bookSourceName", "bookSourceType", "enabled", "enabledExplore", "enabledCookieJar", "customButton", "eventListener", "concurrentRate")
+        val known = strings + numbers + rules + setOf("bookSourceUrl", "bookSourceName", "bookSourceType", "enabled", "enabledExplore", "enabledCookieJar", "browserRead", "customButton", "eventListener", "concurrentRate")
         val notices = value.keys.filter { it !in known }.map { ImportNotice("UnclassifiedField", it) }.toMutableList()
         // Parsing a rule object is not a claim that its fields or scripts are executable.
         notices.add(ImportNotice("ExecutionCompatibilityPending"))

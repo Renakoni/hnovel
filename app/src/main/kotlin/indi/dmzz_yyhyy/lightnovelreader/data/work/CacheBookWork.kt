@@ -84,6 +84,8 @@ class CacheBookWork @AssistedInject constructor(
                     }
                 }
             if (result.isErr) {
+                downloadItem.requiresVerification = result.component2()?.kind ==
+                    io.nightfish.lightnovelreader.api.error.WebRequestErrorKind.AuthenticationRequired
                 downloadItem.progress = -1f
                 return bookWorkFailure(bookWorkFailureReason(result.component2()), book)
             }

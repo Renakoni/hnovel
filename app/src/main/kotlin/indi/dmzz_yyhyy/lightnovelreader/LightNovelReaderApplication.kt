@@ -58,7 +58,7 @@ class LightNovelReaderApplication : Application(), Configuration.Provider, coil3
         val process = java.io.File("/proc/self/cmdline").inputStream().use { input ->
             input.readBytes().toString(Charsets.UTF_8).substringBefore('\u0000')
         }
-        if (process.endsWith(":source_browser")) return
+        if (process.endsWith(":source_browser") || process.endsWith(":source_browser_native")) return
         super.onCreate()
         // The new Compose text context menu asks MIUI's action mode to treat the
         // Compose root as a TextView, which leaves a stale "Select all" toolbar.
