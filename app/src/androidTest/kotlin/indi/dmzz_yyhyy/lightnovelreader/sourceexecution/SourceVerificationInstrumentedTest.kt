@@ -121,9 +121,8 @@ class SourceVerificationInstrumentedTest {
                     assertFalse(request.isCompleted)
                     activity.recreate()
                     releaseChallenge.countDown()
-                    // The native process may use a different locale from the host's wrapped
-                    // resources. Its platform toolbar buttons are stable accessibility nodes.
-                    awaitVisible("android.widget.Button")
+                    // Observe the website window itself, independently of locale or toolbar style.
+                    awaitVisible("android.webkit.WebView")
                     assertTrue(coordinator.prompts.value.single().opening)
                     allowVerification.set(true)
                     withTimeout(20000) { accepted.await() }

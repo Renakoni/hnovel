@@ -28,6 +28,8 @@ Jsoup 是本次“源码已迁移但 APK 仍不兼容”的明确实例：`sourc
 
 产品的 `RuleDiscoveryProvider` 还负责生成首页预览。这一额外行为让一个失效入口曾经拖垮整个页面，不能归因于“阅读也没有发现功能”。当前仍按原顺序展示传统入口，默认只自动加载一个预览，避免 QQ 等数百入口的目录触发数百次联网。语义分流是下一阶段的工作。
 
+已整合 main 的 #202 渐进发布：显式首页模块逐项发布快照，失败项保留自己的字段/权限诊断和入口，后续模块继续加载。宿主的一次性结果与快照流共用绑定逻辑，保留错误信息及来源身份；自动验证仅重试当前模块，取消与账号失效仍沿用原 runtime 生命周期。
+
 ## 六份 JSON 的字段统计
 
 运行 `python source-compatibility/tools/discovery_inventory.py <六个文件路径> --output <输出文件>` 可复验。聚合结果与输入 SHA-256 在 [discovery-inventory.json](discovery-inventory.json)。脚本只读取文件，不联网，不执行 JS，不输出书源网址、书名或正文。

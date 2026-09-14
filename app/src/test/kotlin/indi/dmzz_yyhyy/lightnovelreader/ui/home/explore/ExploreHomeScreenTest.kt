@@ -73,6 +73,22 @@ class ExploreHomeScreenTest {
         assertEquals(b, categories)
     }
 
+    @Test fun partialFeedRemainsVisibleAndNavigableWhileLaterPreviewsLoad() {
+        val id = Identifier("fixture", "Progressive source")
+        val page = content(id).copy(loaded = false, loading = true)
+        var more: SourceDiscoverySection? = null
+        activity.get().setContent { MaterialTheme {
+            ExploreHomeScreen(DiscoveryPageState(listOf(listing(id)), id, mapOf(id to page)),
+                {}, { _, _ -> }, {}, { more = it }, {}, {}, {}, {}, { _, _ -> }, { _, _ -> }, {})
+        } }
+        // The indeterminate refresh indicator intentionally remains active.
+        compose.mainClock.autoAdvance = false
+        compose.mainClock.advanceTimeByFrame()
+        compose.onNode(hasClickAction() and hasText("Same book")).assertExists()
+        compose.onNodeWithContentDescription("Show more").performClick()
+        assertEquals(page.sections.single(), more)
+    }
+
     @Test fun oneRealSourceAndItsUnsupportedSearchDoNotCreatePlaceholders() {
         val id = Identifier("fixture", "Only source")
         activity.get().setContent { MaterialTheme {
