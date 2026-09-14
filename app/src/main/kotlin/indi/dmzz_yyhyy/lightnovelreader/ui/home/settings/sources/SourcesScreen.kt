@@ -130,22 +130,17 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                     var showDetails by rememberSaveable(definition.sourceId) { mutableStateOf(false) }
                     val entry = state.registry.find { it.metadata.id == state.selected }
                     val capabilities = entry.actionCapabilities()
-                    val active = capabilities.isNotEmpty()
+                    val active = entry?.status == SourceStatus.Ready && capabilities.isNotEmpty()
                     val hasConfiguration = active && (raw["variableComment"]?.jsonPrimitive?.content?.isNotBlank() == true || state.variable.isNotEmpty())
                     val variableLabel = raw["variableComment"]?.jsonPrimitive?.content.orEmpty().ifBlank { stringResource(R.string.sources_configuration) }
                     val check = state.checks[definition.sourceId]
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         if (entry?.status == SourceStatus.Failed) Text(stringResource(R.string.sources_action_failed), color = MaterialTheme.colorScheme.error)
                         val enabledLabel = stringResource(R.string.sources_enabled)
-                        val discoveryLabel = stringResource(R.string.sources_discovery_visible)
                         ListItem(headlineContent = { Text(enabledLabel) },
                             trailingContent = { Switch(installed.preferences.enabled,
                                 { model.setEnabled(state.selected!!, it) }, enabled = !state.busy,
                                 modifier = Modifier.semantics { contentDescription = enabledLabel }) })
-                        if (installed.hasDiscovery) ListItem(headlineContent = { Text(discoveryLabel) },
-                            trailingContent = { Switch(installed.hasDiscovery && installed.preferences.discoveryVisible,
-                                { model.setDiscoveryVisible(state.selected!!, it) }, enabled = !state.busy && installed.hasDiscovery,
-                                modifier = Modifier.semantics { contentDescription = discoveryLabel }) })
                         if (SourceCapability.Search in capabilities) {
                             Button(onClick = { onSearch(state.selected!!) }, enabled = !state.busy) { Text(stringResource(R.string.explore_search)) }
                         }
@@ -266,4 +261,4 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
 
 // Search and login resolve the lazy registration themselves. A failed registration cannot start work.
 internal fun SourceListing?.actionCapabilities(): Set<SourceCapability> =
-    if (this != null && status != SourceStatus.Failed) metadata.capabilities else emptySet()
+    if (this?.status == SourceStatus.Ready) metadata.capabilities else emptySet()

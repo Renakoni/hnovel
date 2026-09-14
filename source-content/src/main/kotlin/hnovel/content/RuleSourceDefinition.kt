@@ -23,7 +23,11 @@ internal class RuleSourceDefinition(val stored: SourceDefinition) {
     val cookiesEnabled = root["enabledCookieJar"]?.jsonPrimitive?.booleanOrNull ?: true
     val coverDecode = root.string("coverDecodeJs")
     val search = rules("ruleSearch")
-    val explore = rules("ruleExplore").takeIf { it.isNotEmpty() } ?: search
+    // Legado treats an explore rule without a list selector as a partial override
+    // and uses the search list rule. Keep that behavior for sources such as Kuwo.
+    val explore = rules("ruleExplore").takeIf { rule ->
+        rule["bookList"]?.jsonPrimitive?.content?.isNotBlank() == true
+    } ?: search
     val information = rules("ruleBookInfo")
     val toc = rules("ruleToc")
     val content = rules("ruleContent")

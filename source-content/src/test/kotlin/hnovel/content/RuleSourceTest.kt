@@ -9,6 +9,38 @@ import org.junit.Test
 
 class RuleSourceTest {
 
+    @Test fun cookieRefreshChallengeRetriesWithTheCapturedCookie() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            val normal = fixture.server.dispatcher
+            var challenge = true
+            fixture.server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
+                override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest): okhttp3.mockwebserver.MockResponse {
+                    if (request.path?.startsWith("/search") == true && challenge) {
+                        challenge = false
+                        return okhttp3.mockwebserver.MockResponse().setResponseCode(401)
+                            .setHeader("Set-Cookie", "_wa_=challenge; Path=/; Max-Age=30")
+                            .setBody("<meta http-equiv=refresh content=0>")
+                    }
+                    return normal.dispatch(request)
+                }
+            }
+            fixture.source().use { source ->
+                assertEquals("Same title", source.search("title").single().title)
+                assertEquals(2, fixture.server.requestCount)
+            }
+        }
+    }
+
+    @Test fun exploreRuleWithoutBookListReusesSearchListSelectors() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            fixture.source(customize = { raw -> JsonObject(raw +
+                ("ruleExplore" to buildJsonObject { put("author", "b@text") }))
+            }).use { source ->
+                assertEquals("Same title", source.discovery(fixture.server.url("/search").toString()).single().title)
+            }
+        }
+    }
+
     @Test fun ruleBrowserCallsInheritHeadersAndRefreshThemAfterVerification() = runBlocking {
         for (dynamic in listOf(false, true)) {
             val browserPaths = mutableListOf<String>()

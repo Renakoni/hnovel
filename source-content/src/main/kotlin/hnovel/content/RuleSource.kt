@@ -471,7 +471,11 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         return response
     }
     private suspend fun fetch(context: RuleEvaluation, url: String, field: String, browser: BrowserOptions? = null): PageDocument {
-        val response = request(context, url, field, browser = browser)
+        var response = request(context, url, field, browser = browser)
+        // A few public sites issue a short-lived cookie and a meta-refresh challenge
+        // before serving the document. The source cookie jar already captures Set-Cookie;
+        // retry that exact GET once so these sites work without requiring a manual browser step.
+        if (isCookieRefreshChallenge(response)) response = request(context, url, field, browser = browser)
         context.baseUrl = response.finalUrl
         if (spec.loginCheck.isBlank()) {
             checkStatus(response.status, field)
@@ -489,6 +493,13 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val finalUrl = sourceLink(response.finalUrl, value.getValue("url").jsonPrimitive.content)
         context.baseUrl = finalUrl
         return PageDocument(value.getValue("body").jsonPrimitive.content, finalUrl)
+    }
+
+    private fun isCookieRefreshChallenge(response: BrokerResponse): Boolean {
+        if (response.status != 401 || response.method != "GET") return false
+        if (response.headers.keys.none { it.equals("Set-Cookie", ignoreCase = true) }) return false
+        return Regex("<meta\\s+[^>]*http-equiv\\s*=\\s*['\\\"]?refresh", RegexOption.IGNORE_CASE)
+            .containsMatchIn(response.text())
     }
     private fun checkStatus(status: Int, field: String) {
         if (status == 401 || status == 403) {

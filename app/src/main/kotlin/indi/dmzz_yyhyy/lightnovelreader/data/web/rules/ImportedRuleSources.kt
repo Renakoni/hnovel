@@ -19,6 +19,8 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -114,8 +116,11 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
             val additions = references.map { (reference, origins) ->
                 val definition = checkNotNull(current[reference]) { "Definition preview is no longer current" }
                 require(origins.size <= 32 && id(definition) !in active)
+                val hasExploreUrl = Json.parseToJsonElement(definition.rawJson).jsonObject["exploreUrl"]
+                    ?.jsonPrimitive?.content?.isNotBlank() == true
                 InstalledSource(definition, origins.map { it.copy(headers = it.headers.toMap()) },
-                    preferences = if (enableNew) SourcePreferences(true, definition.enabledExplore, enabledSetByUser = true) else null)
+                    preferences = if (enableNew) SourcePreferences(true, definition.enabledExplore || hasExploreUrl,
+                        enabledSetByUser = true) else null)
             }
             // Save once for a collection; opening one definition must not rewrite thousands of others.
             save(active.values.map { it.installed } + additions)

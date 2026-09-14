@@ -12,7 +12,9 @@ import kotlinx.coroutines.ensureActive
 
 /** Reusable selection policy; each destination owns its own saved selection. */
 internal fun discoverySources(sources: List<SourceListing>, capability: SourceCapability) = sources
-    .filter { capability in it.metadata.capabilities }
+    // Discovery owns lazy initialization. Keep registered sources visible while they
+    // initialize, but never retain a source whose initialization has failed.
+    .filter { it.status != SourceStatus.Failed && capability in it.metadata.capabilities }
     .sortedWith(compareBy({ !it.metadata.builtIn }, { it.metadata.id.namespace }, { it.metadata.id.id }))
 
 internal fun selectedSource(sources: List<SourceListing>, requested: Identifier?): Identifier? =
