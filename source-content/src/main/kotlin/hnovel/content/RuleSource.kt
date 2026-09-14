@@ -255,10 +255,12 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val queue = ArrayDeque<String>().apply { add(chapter.id) }
         val visited = linkedSetOf<String>()
         val pages = mutableListOf<String>()
+        var completePageList = false
         var title = chapter.title
         while (queue.isNotEmpty()) {
             val url = queue.removeFirst()
-            if (url == next) continue // A next-chapter link never changes this logical chapter's content or identity.
+            // A repeated link terminates a page chain; never read the next logical chapter here.
+            if (url == next || url in visited) continue
             visit(visited, url, "ruleContent.nextContentUrl")
             val browser = if (spec.content.string("webJs").isNotBlank() || spec.content.string("sourceRegex").isNotBlank())
                 BrowserOptions(script = spec.content.string("webJs"), sourceRegex = spec.content.string("sourceRegex")) else null
@@ -269,25 +271,36 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             // Redirects cannot turn a continuation (or the first page) into the next logical chapter.
             if (document.url == next) continue
             if (!document.inline && document.url != url && !visited.add(document.url)) throw SourceContentException(ContentError.RepeatedPage, "ruleContent.nextContentUrl")
-            if (pages.isEmpty()) context.text(spec.content.string("title"), document.input(), "ruleContent.title")
-                .takeIf { it.isNotBlank() }?.let { title = it; context.chapterField("title", JsonPrimitive(it)) }
+            if (pages.isEmpty()) {
+                val extracted = try { context.text(spec.content.string("title"), document.input(), "ruleContent.title") }
+                catch (failure: SourceContentException) {
+                    if (failure.code != ContentError.InvalidRule) throw failure
+                    ""
+                }
+                extracted.takeIf { it.isNotBlank() }?.let { title = it; context.chapterField("title", JsonPrimitive(it)) }
+            }
             val html = context.text(rule, document.input(), "ruleContent.content", unescape = false)
-            // Resolve image links against each response, before joining pages and applying whole-chapter replacements.
-            val normalized = context.script("""
-                (function(){var doc=org.jsoup.Jsoup.parse(result,baseUrl);doc.outputSettings().prettyPrint(false);
-                    var body=doc.body();body.select('img[src]').forEach(function(img){
-                    img.attr('src',img.absUrl('src'))});return body.html()})()
-            """.trimIndent(), RuleValue.Text(html), "ruleContent.images").text()
+            // BookContent formats and decodes each page before whole-chapter replacement.
+            // Reuse the ported HtmlFormatter and resolve images before joining different page bases.
+            val normalized = context.text("""
+                @js:(function(){var doc=org.jsoup.Jsoup.parse(result,baseUrl);doc.outputSettings().prettyPrint(false);
+                    var body=doc.body();body.select('script,style,noscript').remove();body.select('img[src]').forEach(function(img){
+                    img.attr('src',img.absUrl('src'))});return java.htmlFormat(body.html())})()
+            """.trimIndent(), RuleValue.Text(html), "ruleContent.images")
             pages += normalized
             if (pages.sumOf { it.length.toLong() } > 512000) throw SourceContentException(ContentError.Limit, "ruleContent.content")
-            val following = links(context, spec.content.string("nextContentUrl"), document, "ruleContent.nextContentUrl")
-            following.filter { it != next }.forEach(queue::addLast)
+            if (!completePageList) {
+                val following = links(context, spec.content.string("nextContentUrl"), document, "ruleContent.nextContentUrl")
+                completePageList = context.page == 1 && following.size > 1
+                (if (completePageList) following else following.take(1)).forEach(queue::addLast)
+            }
             context.page++
         }
         if (pages.isEmpty()) throw SourceContentException(ContentError.EmptyContent, "ruleContent.content")
         var merged = pages.joinToString("\n")
         val replacement = spec.content.string("replaceRegex")
-        if (replacement.isNotBlank()) merged = context.text(replacement, RuleValue.Text(merged), "ruleContent.replaceRegex", unescape = false)
+        if (replacement.isNotBlank()) merged = context.text(replacement,
+            RuleValue.Text(merged.lines().joinToString("\n") { it.trim() }), "ruleContent.replaceRegex", unescape = false)
         val parts = context.markup(merged).items().map {
             Json.decodeFromString(ContentPart.serializer(), it.text())
         }.map { part -> if (part.image != null) part.copy(image = sourceLink(context.baseUrl, part.image)) else part }
@@ -413,18 +426,24 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             val pageStart = chapters.size
             for ((index, item) in items.withIndex()) {
                 val row = context.fork(chapterId = "pending:$index")
+                row.chapterField("baseUrl", JsonPrimitive(document.url))
+                row.chapterField("bookUrl", JsonPrimitive(initial.book.id))
                 val title = row.text(spec.toc.string("chapterName"), item, "ruleToc.chapterName")
                 if (title.isBlank()) continue
                 row.chapterField("title", JsonPrimitive(title))
                 val raw = row.text(spec.toc.string("chapterUrl"), item, "ruleToc.chapterUrl")
+                row.chapterField("url", JsonPrimitive(raw))
+                val time = row.text(spec.toc.string("updateTime"), item, "ruleToc.updateTime")
+                row.chapterField("updateTime", JsonPrimitive(time))
+                row.chapterField("tag", JsonPrimitive(time))
                 val volume = row.text(spec.toc.string("isVolume"), item, "ruleToc.isVolume").truth()
                 val id = if (volume && raw.isBlank()) "volume:" + digest("$url:$index:$title") else sourceLink(document.url, raw.ifBlank { url })
-                row.chapterId = id; row.chapterField("url", JsonPrimitive(id)); row.chapterField("isVolume", JsonPrimitive(volume))
-                val time = row.text(spec.toc.string("updateTime"), item, "ruleToc.updateTime")
+                row.chapterId = id
+                row.chapterField("url", JsonPrimitive(raw.ifBlank { if (volume) title + index else url }))
+                row.chapterField("isVolume", JsonPrimitive(volume))
                 val vip = row.text(spec.toc.string("isVip"), item, "ruleToc.isVip").truth()
                 val pay = row.text(spec.toc.string("isPay"), item, "ruleToc.isPay").truth()
                 row.chapterField("isVip", JsonPrimitive(vip)); row.chapterField("isPay", JsonPrimitive(pay))
-                row.chapterField("updateTime", JsonPrimitive(time))
                 chapters += RuleChapter(id, title, volume, vip, pay, time, row.chapter)
                 context.book = row.book
             }
@@ -451,7 +470,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             val row = context.fork(chapterId = chapter.id); row.chapter = chapter.state
             row.chapterField("index", JsonPrimitive(index))
             val format = spec.toc.string("formatJs")
-            val title = if (format.isBlank()) chapter.title else {
+            val title = if (format.isBlank()) chapter.title else try {
                 val value = row.script("""
                     (function(){var index=${index + 1},title=${JsonPrimitive(chapter.title)},gInt=$gInt;
                     var formatted=eval(${JsonPrimitive(scriptBody(format))});
@@ -460,6 +479,9 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
                 val state = Json.parseToJsonElement(value).jsonObject
                 gInt = state.getValue("gInt")
                 state.getValue("title").jsonPrimitive.content
+            } catch (failure: SourceContentException) {
+                if (failure.code != ContentError.InvalidRule) throw failure
+                chapter.title
             }
             row.chapterField("title", JsonPrimitive(title))
             formatted += chapter.copy(title = title, state = row.chapter)
@@ -482,7 +504,10 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             if ("name" !in result.book.metadata) result.bookField("name", it.title)
             if ("tocUrl" !in result.book.metadata) result.bookField("tocUrl", it.tocUrl)
         }
-        chapter?.let { result.chapterField("url", JsonPrimitive(it.id)); result.chapterField("title", JsonPrimitive(it.title)); result.chapterField("bookUrl", JsonPrimitive(book!!.id)) }
+        chapter?.let {
+            if ("url" !in result.chapter.metadata) result.chapterField("url", JsonPrimitive(it.id))
+            result.chapterField("title", JsonPrimitive(it.title)); result.chapterField("bookUrl", JsonPrimitive(book!!.id))
+        }
         return result
     }
     private suspend fun request(context: RuleEvaluation, url: String, field: String, kind: ResourceKind = ResourceKind.Document,
@@ -611,4 +636,4 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
 }
 
 private fun PageDocument.input() = RuleValue.Text(body)
-private fun String.truth() = isNotBlank() && this != "false" && this != "0"
+private fun String.truth() = isNotBlank() && this != "null" && trim().lowercase() !in setOf("false", "no", "not", "0")

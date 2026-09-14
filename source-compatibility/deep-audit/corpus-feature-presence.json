@@ -1,0 +1,215 @@
+{
+  "acceptedDefinitions": 4557,
+  "summary": {
+    "content_replace": {
+      "definitions": 979,
+      "originalRows": 1372,
+      "byFile": {
+        "71e56d4f.json": 7,
+        "b778fe6b.json": 781,
+        "4dc410d1.json": 8,
+        "e3e5d620.json": 26,
+        "2a1f129b.json": 352,
+        "e29e19ee.json": 198
+      },
+      "examples": [
+        "69书吧.com",
+        "69书吧",
+        "速读谷",
+        "天天看小说"
+      ]
+    },
+    "content_pages": {
+      "definitions": 1126,
+      "originalRows": 1562,
+      "byFile": {
+        "71e56d4f.json": 6,
+        "b778fe6b.json": 857,
+        "4dc410d1.json": 8,
+        "e3e5d620.json": 21,
+        "2a1f129b.json": 400,
+        "e29e19ee.json": 270
+      },
+      "examples": [
+        "速读谷",
+        "得奇小说网",
+        "独步小说网",
+        "来看文学"
+      ]
+    },
+    "content_title": {
+      "definitions": 16,
+      "originalRows": 20,
+      "byFile": {
+        "b778fe6b.json": 7,
+        "2a1f129b.json": 4,
+        "e29e19ee.json": 9
+      },
+      "examples": [
+        "木兰花漫",
+        "沧浪文学/恰猫小说",
+        "A 99阅读",
+        "同人小说"
+      ]
+    },
+    "toc_format": {
+      "definitions": 0,
+      "originalRows": 0,
+      "byFile": {},
+      "examples": []
+    },
+    "preupdate": {
+      "definitions": 11,
+      "originalRows": 15,
+      "byFile": {
+        "b778fe6b.json": 7,
+        "4dc410d1.json": 1,
+        "e3e5d620.json": 1,
+        "2a1f129b.json": 2,
+        "e29e19ee.json": 4
+      },
+      "examples": [
+        "看书神",
+        "🏷晋江文学",
+        "🌐 看书神网",
+        "一个阅读"
+      ]
+    },
+    "refresh_actions": {
+      "definitions": 9,
+      "originalRows": 12,
+      "byFile": {
+        "b778fe6b.json": 5,
+        "4dc410d1.json": 1,
+        "e3e5d620.json": 1,
+        "2a1f129b.json": 1,
+        "e29e19ee.json": 4
+      },
+      "examples": [
+        "看书神",
+        "🏷晋江文学",
+        "🌐 看书神网",
+        "✨ 番茄小说"
+      ]
+    },
+    "rate_limit": {
+      "definitions": 12,
+      "originalRows": 15,
+      "byFile": {
+        "71e56d4f.json": 3,
+        "b778fe6b.json": 3,
+        "e29e19ee.json": 9
+      },
+      "examples": [
+        "69书吧.com",
+        "69书吧",
+        "快书网",
+        "得奇小说（优+++）"
+      ]
+    },
+    "cache_missing_methods": {
+      "definitions": 7,
+      "originalRows": 9,
+      "byFile": {
+        "b778fe6b.json": 4,
+        "2a1f129b.json": 2,
+        "e29e19ee.json": 3
+      },
+      "examples": [
+        "🎉 酷我小说",
+        "酷我小说[api]",
+        "🎉 酷我小说",
+        "酷我小说[api]"
+      ]
+    },
+    "source_properties": {
+      "definitions": 50,
+      "originalRows": 70,
+      "byFile": {
+        "71e56d4f.json": 1,
+        "b778fe6b.json": 38,
+        "2a1f129b.json": 19,
+        "e29e19ee.json": 12
+      },
+      "examples": [
+        "番茄小说2",
+        "👔 疯情书库",
+        "奇热小说",
+        "读文学网"
+      ]
+    },
+    "source_getters": {
+      "definitions": 0,
+      "originalRows": 0,
+      "byFile": {},
+      "examples": []
+    },
+    "chapter_url": {
+      "definitions": 6,
+      "originalRows": 8,
+      "byFile": {
+        "b778fe6b.json": 5,
+        "2a1f129b.json": 2,
+        "e29e19ee.json": 1
+      },
+      "examples": [
+        "一个阅读",
+        "西瓜小说",
+        "一个阅读",
+        "西瓜小说"
+      ]
+    },
+    "chapter_tag": {
+      "definitions": 0,
+      "originalRows": 0,
+      "byFile": {},
+      "examples": []
+    },
+    "chapter_update_time": {
+      "definitions": 383,
+      "originalRows": 514,
+      "byFile": {
+        "71e56d4f.json": 3,
+        "b778fe6b.json": 285,
+        "4dc410d1.json": 13,
+        "e3e5d620.json": 14,
+        "2a1f129b.json": 101,
+        "e29e19ee.json": 98
+      },
+      "examples": [
+        "起点中文",
+        "番茄小说2",
+        "酷我小说",
+        "书香之家"
+      ]
+    },
+    "md3_from_book_info": {
+      "definitions": 0,
+      "originalRows": 0,
+      "byFile": {},
+      "examples": []
+    },
+    "sub_content": {
+      "definitions": 0,
+      "originalRows": 0,
+      "byFile": {},
+      "examples": []
+    },
+    "regex_lists": {
+      "definitions": 29,
+      "originalRows": 36,
+      "byFile": {
+        "71e56d4f.json": 1,
+        "b778fe6b.json": 28,
+        "2a1f129b.json": 6,
+        "e29e19ee.json": 1
+      },
+      "examples": [
+        "起点中文",
+        "🌟笔趣阁~pysmei",
+        "💡 起点总榜 ",
+        "食在广州书网"
+      ]
+    }
+  }
+}

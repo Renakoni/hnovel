@@ -7,7 +7,7 @@ import kotlinx.serialization.json.Json
 internal object WorkerContentMarkup {
     fun evaluate(task: ExecutionTask.ContentMarkup, limits: ExecutionLimits): ExecutionResult {
         val budget = RuleBudget(RuleLimits(timeoutMillis = limits.timeoutMillis, maxOutputChars = limits.maxOutputBytes))
-        return when (val result = ContentMarkup.evaluate(task.html, task.location, budget)) {
+        return when (val result = ContentMarkup.evaluate(task.html, task.location, budget, task.formatted)) {
             is RuleResult.Success -> {
                 val json = Json.encodeToString(ExecutedRule.serializer(), ExecutedRule(result.value, emptyMap()))
                 if (json.toByteArray(Charsets.UTF_8).size > limits.maxOutputBytes) ExecutionResult.Failure(FailureCode.OutputLimit,
