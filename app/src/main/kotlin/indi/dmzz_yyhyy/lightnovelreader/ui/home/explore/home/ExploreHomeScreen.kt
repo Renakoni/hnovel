@@ -108,7 +108,7 @@ fun ExploreHomeScreen(
                             if (content.loaded && content.sections.isEmpty() && content.buttons.isEmpty() && content.filters.isEmpty())
                                 item { DiscoveryEmpty(stringResource(R.string.explore_empty), onManageSources) }
                             items(content.sections, key = { "section:" + it.id }) { section ->
-                                ExploreRowSection(Modifier, section, titleHeight, onMore, onBook)
+                                ExploreRowSection(Modifier, section, titleHeight, onMore, onBook, onManageSources)
                             }
                             bottomBarSpacer()
                         }
@@ -126,7 +126,8 @@ private fun ExploreRowSection(
     row: SourceDiscoverySection,
     titleHeight: androidx.compose.ui.unit.Dp,
     onClickExpand: (SourceDiscoverySection) -> Unit,
-    onClickBook: (SourceBookId) -> Unit
+    onClickBook: (SourceBookId) -> Unit,
+    onManageSources: () -> Unit
 ) {
     Column(
         modifier = modifier
@@ -141,7 +142,7 @@ private fun ExploreRowSection(
         ) {
             Text(
                 modifier = Modifier.weight(2f),
-                text = row.title,
+                text = row.title.ifBlank { stringResource(R.string.discovery_unnamed_entry) },
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.W600,
                 color = MaterialTheme.colorScheme.onSurface
@@ -161,6 +162,10 @@ private fun ExploreRowSection(
             }
         }
 
+        row.previewFailure?.let { failure ->
+            DiscoveryFailure(failure.error, { onClickExpand(row) }, onManageSources, back = null,
+                field = failure.field, permission = failure.permission)
+        }
         val lazyRowState = rememberLazyListState()
         val validBooks = remember(row.books) {
             row.books.filter { it.id.remoteId.isNotBlank() }.distinctBy { it.id }

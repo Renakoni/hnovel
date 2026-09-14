@@ -13,6 +13,8 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.collect
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -22,6 +24,29 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [27], application = Application::class)
 class SourceDiscoveryTest {
+    @Test(timeout = 10000) fun snapshotStreamBindsBooksAndRemovalCancelsPendingProvider() = runBlocking {
+        val registry = WebSourceRegistry()
+        val cancelled = CompletableDeferred<Unit>()
+        val received = CompletableDeferred<SourceDiscoverySection>()
+        val runtime = registry.add("progressive", object : DiscoveryProvider {
+            override val hasFeed = true
+            override fun feedUpdates() = flow<com.github.michaelbull.result.Result<List<DiscoverySection>, DiscoveryError>> {
+                try {
+                    emit(Ok(listOf(DiscoverySection("first", "First", listOf(DiscoveryBook("book", "Book")), "/all"))))
+                    awaitCancellation()
+                } finally { cancelled.complete(Unit) }
+            }
+        })
+        try {
+            val pending = async { runtime.discovery!!.feedUpdates().collect { received.complete(it.get()!!.single()) } }
+            val section = withTimeout(3000) { received.await() }
+            assertEquals(runtime.id, section.books.single().id.sourceId)
+            assertEquals(runtime.id, section.more!!.sourceId)
+            registry.unregister(runtime.id)
+            withTimeout(3000) { cancelled.await(); pending.join() }
+            assertTrue(pending.isCancelled)
+        } finally { registry.unregister(runtime.id) }
+    }
     private suspend fun WebSourceRegistry.add(name: String, provider: DiscoveryProvider): SourceRuntime {
         val id = Identifier("fixture", name)
         register(object : WebBookDataSource by EmptyWebDataSource {

@@ -9,6 +9,8 @@ import io.nightfish.lightnovelreader.api.identifier.Identifier
 import io.nightfish.lightnovelreader.api.web.discovery.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.channelFlow
 
 /** Reserved host target for source-local search, which has no discovery catalogue or filters. */
 internal const val DISCOVERY_SEARCH_PREFIX = "hnovel-search:"
@@ -16,7 +18,7 @@ internal const val DISCOVERY_SEARCH_PREFIX = "hnovel-search:"
 data class SourceDiscoveryTarget(val sourceId: Identifier, val target: String)
 data class SourceDiscoveryBook(val id: SourceBookId, val title: String, val author: String, val coverUrl: String)
 data class SourceDiscoverySection(val id: String, val title: String, val books: List<SourceDiscoveryBook>,
-    val more: SourceDiscoveryTarget?, val categoryId: String? = null)
+    val more: SourceDiscoveryTarget?, val categoryId: String? = null, val previewFailure: DiscoveryPreviewFailure? = null)
 data class SourceDiscoveryCategory(val id: String, val title: String, val target: SourceDiscoveryTarget)
 data class SourceDiscoveryPage(val books: List<SourceDiscoveryBook>, val nextCursor: String?)
 data class SourceDiscoveryCatalog(val categories: List<SourceDiscoveryCategory>, val filters: List<DiscoveryFilter>,
@@ -54,9 +56,18 @@ class SourceDiscovery internal constructor(private val runtime: SourceRuntime, p
 
     suspend fun feed(): Result<List<SourceDiscoverySection>, DiscoveryError> = runtime.execute {
         if (!hasFeed) return@execute Err(DiscoveryError.Unsupported)
-        provider.feed().map { sections -> sections.map {
-            SourceDiscoverySection(it.id, it.title, it.books.map(::bind), it.more?.let(::target), it.categoryId)
-        } }
+        provider.feed().map { sections -> sections.map(::bind) }
+    }
+
+    fun feedUpdates(): Flow<Result<List<SourceDiscoverySection>, DiscoveryError>> = channelFlow {
+        // Keep provider work on its runtime dispatcher; send crosses back to the page's collector.
+        runtime.execute {
+            if (!hasFeed) send(Err(DiscoveryError.Unsupported))
+            else provider.feedUpdates().collect { result ->
+                runtime.checkAvailable()
+                send(result.map { sections -> sections.map(::bind) })
+            }
+        }
     }
 
     suspend fun categories(): Result<List<SourceDiscoveryCategory>, DiscoveryError> = runtime.execute {
@@ -87,6 +98,8 @@ class SourceDiscovery internal constructor(private val runtime: SourceRuntime, p
     }
 
     private fun target(id: String) = SourceDiscoveryTarget(runtime.id, id)
+    private fun bind(section: DiscoverySection) = SourceDiscoverySection(section.id, section.title,
+        section.books.map(::bind), section.more?.let(::target), section.categoryId, section.previewFailure)
     private fun bind(catalog: DiscoveryCatalog) = SourceDiscoveryCatalog(catalog.categories.map {
         SourceDiscoveryCategory(it.id, it.title, target(it.target))
     }, catalog.filters.map { if (it is DiscoveryFilter.Choice) it.copy(options = it.options.toMap()) else it },

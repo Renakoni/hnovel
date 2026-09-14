@@ -16,10 +16,6 @@ import org.seimicrawler.xpath.JXNode
  */
 class AnalyzeByJSoup(doc: Any) {
 
-    companion object {
-        private val nullSet = setOf(null)
-    }
-
     private var element: Element = parse(doc)
 
     private fun parse(doc: Any): Element {
@@ -385,9 +381,9 @@ class AnalyzeByJSoup(doc: Any) {
              * */
             if (split == '!') { //排除
 
-                for (pcInt in indexSet) elements[pcInt] = null
-
-                elements.removeAll(nullSet) //测试过，这样就行
+                // Newer Jsoup rejects null elements. Copy the retained selection so exclusion
+                // works with both versions and does not remove nodes from the backing DOM.
+                elements = Elements(elements.filterIndexed { index, _ -> index !in indexSet })
 
             } else if (split == '.') { //选择
 
