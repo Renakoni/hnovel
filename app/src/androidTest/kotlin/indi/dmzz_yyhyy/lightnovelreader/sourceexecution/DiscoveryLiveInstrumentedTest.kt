@@ -107,7 +107,10 @@ class DiscoveryLiveInstrumentedTest {
                 result.get()?.let { sections -> buildJsonObject {
                     put("sections", sections.size); put("previewBooks", sections.sumOf { it.books.size })
                     put("previewFailures", JsonArray(sections.mapNotNull { section -> section.previewFailure?.let { failure ->
-                        buildJsonObject { put("title", section.title); put("error", failure.error.name); put("field", failure.field) }
+                        buildJsonObject {
+                            put("title", section.title); put("error", failure.error.name); put("field", failure.field)
+                            put("deniedOrigin", failure.permission?.origin)
+                        }
                     } }))
                 } } ?: buildJsonObject { put("error", result.getError().toString()); put("field", discovery.failureField) }
             }
@@ -115,7 +118,10 @@ class DiscoveryLiveInstrumentedTest {
                 val page = discovery.open(category.target)
                 val result = page.loadMore()
                 result.get()?.let { buildJsonObject { put("books", it.books.size); put("hasMore", it.nextCursor != null) } }
-                    ?: buildJsonObject { put("error", result.getError().toString()); put("field", page.failureField) }
+                    ?: buildJsonObject {
+                        put("error", result.getError().toString()); put("field", page.failureField)
+                        put("deniedOrigin", page.permissionFailure?.origin)
+                    }
             }
         }
         // This diagnostic records individual failures; a successful runner is not a source pass rate.

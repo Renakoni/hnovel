@@ -29,6 +29,37 @@ import org.robolectric.annotation.Config
 class RuleDiscoveryProviderTest {
     @get:Rule val directory = TemporaryFolder()
 
+    @Test fun importedSearchOnlySourcesNeverAdvertiseDiscoveryEvenWhenItsDisplaySwitchIsOn() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            val authority = ExecutionAuthority()
+            val accounts = SourceSessionManager(authority)
+            val registry = WebSourceRegistry(authority)
+            val context = object : ContextWrapper(RuntimeEnvironment.getApplication()) {
+                override fun getFilesDir() = directory.root
+            }
+            val imported = ImportedRuleSources(context, registry, authority, accounts, fixture.runner)
+            try {
+                for ((index, explore) in listOf(null, "", " \n ").withIndex()) {
+                    val raw = JsonObject(fixture.raw("search-only-$index") + buildJsonObject {
+                        put("enabledExplore", true)
+                        explore?.let { put("exploreUrl", it) }
+                    })
+                    val preview = imported.importer.preview(raw.toString())
+                    val committed = imported.importer.commit(preview, listOf(ImportSelection(0, ImportDecision.Add)))
+                    val id = imported.activate(committed.items.single().reference!!,
+                        listOf(NetworkGrant(fixture.server.url("/").toString(), allowPrivateAddresses = true)))
+                    val listing = registry.sources.value.single { it.metadata.id == id }
+                    assertTrue(SourceCapability.Search in listing.metadata.capabilities)
+                    assertFalse(SourceCapability.Explore in listing.metadata.capabilities)
+                    assertFalse(SourceCapability.Categories in listing.metadata.capabilities)
+                    assertTrue(imported.loginTarget(id).rules.search("fixture", 1).isNotEmpty())
+                }
+                assertTrue(indi.dmzz_yyhyy.lightnovelreader.ui.home.discovery.discoverySources(
+                    registry.sources.value, SourceCapability.Explore).isEmpty())
+            } finally { imported.stop() }
+        }
+    }
+
     @Test fun migratedExclusionSelectorsWorkWithTheApplicationsJsoupVersion() {
         val html = hnovel.rules.RuleValue.Text("<table id='diss' class='book-list-table'><tr><td>Header</td></tr>" +
             "<tr><td>One</td></tr><tr><td>Two</td></tr></table>")
