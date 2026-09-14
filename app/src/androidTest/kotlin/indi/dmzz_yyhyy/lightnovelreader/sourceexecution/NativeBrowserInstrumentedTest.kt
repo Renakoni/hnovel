@@ -149,17 +149,21 @@ class NativeBrowserInstrumentedTest {
 
     @Test fun challengeKeepsPendingTargetAndForegroundSessionCanResume(): Unit = runBlocking {
         ActivityScenario.launch(BrowserTestHostActivity::class.java).use { fixture { broker, server ->
+            val accepted = java.util.concurrent.atomic.AtomicBoolean()
             server.dispatcher = object : Dispatcher() {
                 override fun dispatch(request: RecordedRequest): MockResponse = when (request.path) {
-                    "/protected" -> MockResponse().setResponseCode(302).setHeader("Location", "/antibot")
-                    "/antibot" -> MockResponse().setHeader("Content-Type", "text/html").setBody("""
-                        <html><title>Just a moment</title><script>
-                        setTimeout(function(){location.replace('/accepted')},2500)
-                        </script></html>
-                    """.trimIndent())
-                    else -> MockResponse().setHeader("Content-Type", "text/html")
+                    "/protected" -> when {
+                        request.getHeader("Cookie").orEmpty().contains("verified=fixture") ->
+                            MockResponse().setHeader("Content-Type", "text/html").setBody("<title>session-resumed</title>")
+                        accepted.get() -> MockResponse().setResponseCode(302).setHeader("Location", "/accepted")
+                        else -> MockResponse().setResponseCode(302).setHeader("Location", "/antibot")
+                    }
+                    "/antibot" -> MockResponse().setHeader("Content-Type", "text/html")
+                        .setBody("<html><title>Just a moment</title></html>")
+                    "/accepted" -> MockResponse().setHeader("Content-Type", "text/html")
                         .addHeader("Set-Cookie", "verified=fixture; HttpOnly; Path=/")
                         .setBody("<html><title>accepted</title></html>")
+                    else -> MockResponse().setResponseCode(404)
                 }
             }
             val account = session(broker, server)
@@ -168,11 +172,44 @@ class NativeBrowserInstrumentedTest {
             assertEquals(FailureCode.BrowserRequired, (blocked as BrokerResult.Failure).code)
             assertEquals(target, (account.read(StorageRequest(StorageArea.Account,
                 StorageRequestKey.BROWSER_PENDING_URL)) as StorageResult.Value).value)
-            val resumed = render(account, target, "document.title==='accepted' ? document.title : null", interactive = true)
+            accepted.set(true)
+            val resumed = withTimeout(30000) {
+                render(account, target, "document.title==='accepted' ? document.title : null", interactive = true)
+            }
             assertEquals("accepted", resumed.text())
             assertEquals(server.url("/accepted").toString(), resumed.finalUrl)
+            assertEquals("session-resumed", render(account, target).text())
         } }
     }
+
+    @Test fun cancellingARequestKeepsPersistentStateWithoutClearingTheAccount(): Unit = runBlocking { fixture { broker, server ->
+        val started = CompletableDeferred<Unit>()
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                val path = request.requestUrl!!.encodedPath
+                if (path == "/hold") started.complete(Unit)
+                return MockResponse().setHeader("Content-Type", "text/html").setHeader("Cache-Control", "no-store").apply {
+                    if (path == "/set") addHeader("Set-Cookie", "persistent=fixture; Max-Age=3600; HttpOnly; Path=/")
+                    val body = when (path) {
+                        "/set" -> "localStorage.setItem('owner','fixture');window.answer='ready'"
+                        "/hold" -> "window.answer=null"
+                        else -> "window.answer=JSON.stringify({owner:localStorage.getItem('owner'),cookie:${JsonPrimitive(request.getHeader("Cookie").orEmpty())}})"
+                    }
+                    setBody("<html><head><link rel='icon' href='data:,'></head><body><script>$body</script></body></html>")
+                }
+            }
+        }
+        val account = session(broker, server)
+        render(account, server.url("/set").toString(), "window.answer || null")
+        val pending = launch { render(account, server.url("/hold").toString(), "window.answer || null") }
+        withTimeout(20000) { started.await() }
+        withTimeout(20000) { pending.cancelAndJoin() }
+        val restored = Json.parseToJsonElement(render(account, server.url("/read").toString(), "window.answer || null").text()).jsonObject
+        assertEquals("fixture", restored.getValue("owner").jsonPrimitive.content)
+        assertEquals("persistent=fixture", restored.getValue("cookie").jsonPrimitive.content)
+        assertEquals(0L, account.scope.accountGeneration)
+        // Session cookies are deliberately not given an invented persistence guarantee.
+    } }
 
     @Test fun cacheIsReusableWithinAccountButNeverSharedAcrossAccounts(): Unit = runBlocking { fixture { broker, server ->
         val hits = java.util.concurrent.atomic.AtomicInteger()
