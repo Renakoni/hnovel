@@ -18,7 +18,7 @@ internal const val DISCOVERY_SEARCH_PREFIX = "hnovel-search:"
 data class SourceDiscoveryTarget(val sourceId: Identifier, val target: String)
 data class SourceDiscoveryBook(val id: SourceBookId, val title: String, val author: String, val coverUrl: String)
 data class SourceDiscoverySection(val id: String, val title: String, val books: List<SourceDiscoveryBook>,
-    val more: SourceDiscoveryTarget?, val categoryId: String? = null)
+    val more: SourceDiscoveryTarget?, val categoryId: String? = null, val previewFailure: DiscoveryPreviewFailure? = null)
 data class SourceDiscoveryCategory(val id: String, val title: String, val target: SourceDiscoveryTarget)
 data class SourceDiscoveryPage(val books: List<SourceDiscoveryBook>, val nextCursor: String?)
 data class SourceDiscoveryCatalog(val categories: List<SourceDiscoveryCategory>, val filters: List<DiscoveryFilter>,
@@ -99,7 +99,7 @@ class SourceDiscovery internal constructor(private val runtime: SourceRuntime, p
 
     private fun target(id: String) = SourceDiscoveryTarget(runtime.id, id)
     private fun bind(section: DiscoverySection) = SourceDiscoverySection(section.id, section.title,
-        section.books.map(::bind), section.more?.let(::target), section.categoryId)
+        section.books.map(::bind), section.more?.let(::target), section.categoryId, section.previewFailure)
     private fun bind(catalog: DiscoveryCatalog) = SourceDiscoveryCatalog(catalog.categories.map {
         SourceDiscoveryCategory(it.id, it.title, target(it.target))
     }, catalog.filters.map { if (it is DiscoveryFilter.Choice) it.copy(options = it.options.toMap()) else it },

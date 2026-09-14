@@ -46,10 +46,12 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
             // Explicit homepage modules each declare a preview. Legacy catalogues can contain
             // hundreds of URLs; retain their single preview to avoid fetching the whole catalogue.
             val preview = if (category.target.isNotBlank() && (definition.homepage != null || category == first))
-                request { session.page(category.target, 1, catalog.values).take(6).map(::book) }
-                    .getOrElse { emit(Err(it)); return@flow } else emptyList()
-            sections += DiscoverySection(category.id, category.title, preview, category.target.takeIf(String::isNotBlank),
-                category.id.takeIf { definition.homepage == null })
+                request { session.page(category.target, 1, catalog.values).take(6).map(::book) } else Ok(emptyList())
+            val failure = preview.getError()?.let { DiscoveryPreviewFailure(it, failureField, permissionFailure) }
+            sections += DiscoverySection(category.id, category.title, preview.get().orEmpty(), category.target.takeIf(String::isNotBlank),
+                category.id.takeIf { definition.homepage == null }, failure)
+            // A failed preview belongs to its entry, not to the successful catalogue snapshot.
+            failureField = null; permissionFailure = null
             // Recovery belongs to the current module, so a later challenge does not replay earlier previews.
             if (definition.homepage != null) emit(Ok(sections.toList()))
         }

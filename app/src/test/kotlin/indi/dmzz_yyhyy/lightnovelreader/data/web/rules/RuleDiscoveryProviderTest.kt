@@ -36,6 +36,92 @@ import org.robolectric.annotation.Config
 class RuleDiscoveryProviderTest {
     @get:Rule val directory = TemporaryFolder()
 
+    @Test fun importedSearchOnlySourcesNeverAdvertiseDiscoveryEvenWhenItsDisplaySwitchIsOn() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            val authority = ExecutionAuthority()
+            val accounts = SourceSessionManager(authority)
+            val registry = WebSourceRegistry(authority)
+            val context = object : ContextWrapper(RuntimeEnvironment.getApplication()) {
+                override fun getFilesDir() = directory.root
+            }
+            val imported = ImportedRuleSources(context, registry, authority, accounts, fixture.runner)
+            try {
+                for ((index, explore) in listOf(null, "", " \n ").withIndex()) {
+                    val raw = JsonObject(fixture.raw("search-only-$index") + buildJsonObject {
+                        put("enabledExplore", true)
+                        explore?.let { put("exploreUrl", it) }
+                    })
+                    val preview = imported.importer.preview(raw.toString())
+                    val committed = imported.importer.commit(preview, listOf(ImportSelection(0, ImportDecision.Add)))
+                    val id = imported.activate(committed.items.single().reference!!,
+                        listOf(NetworkGrant(fixture.server.url("/").toString(), allowPrivateAddresses = true)))
+                    val listing = registry.sources.value.single { it.metadata.id == id }
+                    assertTrue(SourceCapability.Search in listing.metadata.capabilities)
+                    assertFalse(SourceCapability.Explore in listing.metadata.capabilities)
+                    assertFalse(SourceCapability.Categories in listing.metadata.capabilities)
+                    assertTrue(imported.loginTarget(id).rules.search("fixture", 1).isNotEmpty())
+                }
+                assertTrue(indi.dmzz_yyhyy.lightnovelreader.ui.home.discovery.discoverySources(
+                    registry.sources.value, SourceCapability.Explore).isEmpty())
+            } finally { imported.stop() }
+        }
+    }
+
+    @Test fun migratedExclusionSelectorsWorkWithTheApplicationsJsoupVersion() {
+        val html = hnovel.rules.RuleValue.Text("<table id='diss' class='book-list-table'><tr><td>Header</td></tr>" +
+            "<tr><td>One</td></tr><tr><td>Two</td></tr></table>")
+        for (rule in listOf("#diss@tr!0@td", "class.rank-book-list@tag.li||class.book-list-table@tag.tr!0")) {
+            val result = hnovel.rules.RuleEvaluator().evaluate(rule, html, hnovel.rules.RuleContext("fixture"), hnovel.rules.OutputKind.Elements)
+            assertTrue(result.toString(), result is hnovel.rules.RuleResult.Success)
+            val rows = ((result as hnovel.rules.RuleResult.Success).value as hnovel.rules.RuleValue.Items).values
+            assertEquals(2, rows.size)
+        }
+    }
+
+    @Test fun failedPreviewKeepsTheCatalogueAndOtherModulesWithItsOwnDiagnostic() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            fixture.source { raw -> JsonObject(definition(raw) + ("homepageModules" to JsonPrimitive("""[
+                {"key":"broken","type":"card","title":"Broken","url":"https://ungranted.test/list?secret=hidden"},
+                {"key":"working","type":"card","title":"Working","url":"/search"}
+            ]"""))) }.use { source ->
+                val provider = RuleDiscoveryProvider(source)
+                val snapshots = mutableListOf<List<DiscoverySection>>()
+                provider.feedUpdates().collect {
+                    snapshots += it.get()!!
+                    assertNull(provider.failureField)
+                    assertNull(provider.permissionFailure)
+                }
+                assertEquals(listOf(1, 2), snapshots.map { it.size })
+                val feed = snapshots.last()
+                assertEquals(listOf("Broken", "Working"), feed.map { it.title })
+                assertEquals(DiscoveryError.PermissionDenied, feed.first().previewFailure?.error)
+                assertEquals(DiscoveryPermission("https://ungranted.test:443", "Document"), feed.first().previewFailure?.permission)
+                assertTrue(feed.first().books.isEmpty())
+                assertNotNull(feed.first().more)
+                assertTrue(feed.last().books.isNotEmpty())
+                assertNull(feed.last().previewFailure)
+                assertNull(provider.failureField)
+                assertNull(provider.permissionFailure)
+                assertEquals(1, fixture.documents.get())
+            }
+        }
+    }
+
+    @Test fun legacyBrokenFirstEntryDoesNotHideWorkingLaterEntry() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            fixture.source { raw -> JsonObject(definition(raw) + ("exploreUrl" to
+                JsonPrimitive("Broken::/missing\nWorking::/search"))) }.use { source ->
+                val provider = RuleDiscoveryProvider(source)
+                val feed = provider.feed().get()!!
+                assertEquals(2, feed.size)
+                assertNotNull(feed.first().previewFailure)
+                assertNotNull(feed.last().more)
+                assertTrue(provider.page(DiscoveryRequest(feed.last().more!!)).get()!!.books.isNotEmpty())
+                assertEquals(2, fixture.documents.get())
+            }
+        }
+    }
+
     @Test fun challengeInSecondModuleRetriesOnlyThatModule() = runBlocking {
         RuleSourceFixture().use { fixture -> fixture.source { raw -> JsonObject(definition(raw) +
             ("homepageModules" to JsonPrimitive("""[
@@ -90,22 +176,32 @@ class RuleDiscoveryProviderTest {
         RuleSourceFixture().use { fixture -> fixture.source { raw -> JsonObject(definition(raw) +
             ("homepageModules" to JsonPrimitive("""[
                 {"key":"first","type":"card","title":"First","url":"/search?module=1"},
-                {"key":"second","type":"card","title":"Second","url":"/search?module=2"}
+                {"key":"second","type":"card","title":"Second","url":"/search?module=2"},
+                {"key":"third","type":"card","title":"Third","url":"/search?module=3"}
             ]"""))) }.use { source ->
             val provider = RuleDiscoveryProvider(source)
             val updates = mutableListOf<Result<List<DiscoverySection>, DiscoveryError>>()
             provider.feedUpdates().collect {
                 updates += it
-                fixture.status = 503
+                fixture.status = if (updates.size == 1) 503 else 200
             }
-            assertEquals(2, updates.size)
+            assertEquals(listOf(1, 2, 3), updates.map { it.get()!!.size })
             assertEquals(listOf("First"), updates.first().get()!!.map { it.title })
-            assertEquals(Err(DiscoveryError.Network), updates.last())
-            fixture.status = 200
+            val failed = updates[1].get()!!.last()
+            assertEquals(DiscoveryError.Network, failed.previewFailure?.error)
+            assertEquals("/search?module=2", failed.more)
+            assertTrue(failed.books.isEmpty())
+            val final = updates.last().get()!!
+            assertEquals(listOf("First", "Second", "Third"), final.map { it.title })
+            assertEquals(failed, final[1])
+            assertTrue(final.first().books.isNotEmpty())
+            assertTrue(final.last().books.isNotEmpty())
+            assertNull(final.last().previewFailure)
+            assertEquals(3, fixture.documents.get())
             val complete = mutableListOf<List<DiscoverySection>>()
             provider.feedUpdates().collect { complete += it.get()!! }
-            assertEquals(listOf(1, 2), complete.map { it.size })
-            assertEquals(listOf("First", "Second"), complete.last().map { it.title })
+            assertEquals(listOf(1, 2, 3), complete.map { it.size })
+            assertTrue(complete.last().all { it.previewFailure == null && it.books.isNotEmpty() })
             assertEquals(1, updates.first().get()!!.size)
         } }
     }
@@ -321,12 +417,13 @@ class RuleDiscoveryProviderTest {
         }
     }
 
-    @Test fun catalogLimitAndUnnamedTargetsHaveDifferentHostErrorsAndLocations() = runBlocking {
+    @Test fun catalogLimitAndInvalidControlsHaveDifferentHostErrorsAndLocations() = runBlocking {
         RuleSourceFixture().use { fixture ->
             val large = buildJsonArray { repeat(1025) { i -> add(buildJsonObject { put("title", "Row $i"); put("url", "/$i") }) } }
             for ((rows, error, field) in listOf(
                 Triple(large, DiscoveryError.Limit, "exploreUrl"),
-                Triple(DiscoveryCatalogFixtures.rows(18), DiscoveryError.InvalidRules, "exploreUrl[19].title"),
+                Triple(Json.parseToJsonElement("""[{"title":"","type":"text"}]""").jsonArray,
+                    DiscoveryError.InvalidRules, "exploreUrl[0].title"),
             )) fixture.source { raw -> JsonObject(definition(raw) + ("exploreUrl" to JsonPrimitive(rows.toString()))) }.use { source ->
                 val provider = RuleDiscoveryProvider(source)
                 assertEquals(Err(error), provider.catalog())

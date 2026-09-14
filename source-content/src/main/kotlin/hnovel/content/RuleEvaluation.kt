@@ -64,7 +64,10 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
         currentCoroutineContext().ensureActive()
         if (!authority.accepts(identity)) throw SourceContentException(ContentError.Unavailable, field)
         if (calls.incrementAndGet() > 65536) throw SourceContentException(ContentError.Limit, field)
-        val limits = if (field == "ruleToc.chapterList") this.limits.copy(maxOutputBytes = 2 * 1024 * 1024) else this.limits
+        // Lists carry complete API objects before per-book/chapter fields are selected.
+        // A single text field's 192 KiB budget must not reject a normal multi-book response.
+        val limits = if (field in setOf("ruleToc.chapterList", "ruleSearch.bookList", "ruleExplore.bookList"))
+            this.limits.copy(maxOutputBytes = 2 * 1024 * 1024) else this.limits
         val started = System.nanoTime()
         var networkFailure: hnovel.network.BrokerResult.Failure? = null
         var requestLimitExceeded = false

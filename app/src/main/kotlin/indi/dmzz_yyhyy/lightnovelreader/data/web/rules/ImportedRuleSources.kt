@@ -217,7 +217,12 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
         val session = try { broker.open(SourceScope(id.namespace, id.id, definition.profile, generation), installed.origins) }
             catch (failure: Exception) { broker.close(); throw failure }
         val ticket = authority.issue(id.id, definition.profile, definition.contentDigest, id.namespace, generation)
-        val source = try { RuleSource(definition, ticket, authority, session, runner, discoveryEnabled = preferences.discoveryVisible) }
+        val trace = hnovel.content.ContentTrace { event ->
+            if (indi.dmzz_yyhyy.lightnovelreader.BuildConfig.DEBUG && event.result != "Success")
+                android.util.Log.d("RuleSourceTrace", "source=${id.id} field=${event.field} result=${event.result}" +
+                    " ruleCode=${event.ruleCode} input=${event.inputSize} output=${event.outputSize} elapsedMs=${event.elapsedMillis}")
+        }
+        val source = try { RuleSource(definition, ticket, authority, session, runner, trace, discoveryEnabled = preferences.discoveryVisible) }
             catch (failure: Exception) { authority.revoke(ticket); broker.close(); throw failure }
         val metadata = SourceMetadata(WebDataSourceItem(id, definition.displayName, "Imported source"), buildSet {
             addAll(listOf(SourceCapability.BookInformation, SourceCapability.Directory, SourceCapability.ChapterContent, SourceCapability.Images))

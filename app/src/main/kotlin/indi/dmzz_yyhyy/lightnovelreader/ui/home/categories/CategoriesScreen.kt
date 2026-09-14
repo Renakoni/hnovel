@@ -102,7 +102,8 @@ fun CategoriesScreen(
                                                 containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
                                                 labelColor = MaterialTheme.colorScheme.onSurfaceVariant),
                                             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
-                                            label = { Text(category.title, style = MaterialTheme.typography.bodyMedium) })
+                                            label = { Text(category.title.ifBlank { stringResource(R.string.discovery_unnamed_entry) },
+                                                style = MaterialTheme.typography.bodyMedium) })
                                     }
                                 } }
                             }
