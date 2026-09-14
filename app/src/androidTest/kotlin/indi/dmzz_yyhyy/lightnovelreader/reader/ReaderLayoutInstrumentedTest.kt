@@ -2,6 +2,7 @@ package indi.dmzz_yyhyy.lightnovelreader.reader
 
 import android.graphics.Bitmap
 import android.net.Uri
+import android.os.Build
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
@@ -210,6 +211,7 @@ class ReaderLayoutInstrumentedTest {
     }
 
     private fun saveScreenshot(name: String) {
+        compose.waitForIdle()
         fun clearFocus(node: AccessibilityNodeInfo?) {
             node ?: return
             if (node.isAccessibilityFocused) node.performAction(AccessibilityNodeInfo.ACTION_CLEAR_ACCESSIBILITY_FOCUS)
@@ -217,7 +219,13 @@ class ReaderLayoutInstrumentedTest {
         }
         // Preserve device accessibility settings; clear only the transient focus decoration.
         clearFocus(InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow)
-        compose.onRoot().captureToImage().asAndroidBitmap().let { bitmap ->
+        // Compose's window PixelCopy overload is only available from Android 8.
+        val bitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            compose.onRoot().captureToImage().asAndroidBitmap()
+        } else {
+            requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot())
+        }
+        bitmap.let {
             File(context.getExternalFilesDir(null), name).outputStream().use {
                 bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
             }
