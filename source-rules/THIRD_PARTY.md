@@ -16,3 +16,8 @@ The production parser, execution context, budgets, regex adapter and script port
 are separate from these selectors. Sharing selector ancestry is not an independent
 algorithmic oracle: tests compare both implementations with hand-derived fixtures,
 and separately test host routing and deliberate error-policy differences.
+
+`ContentMarkup` uses the image-marker pattern from `constant/AppPattern.kt` at
+the same pinned revision, under the same GPL-3.0 license. Its formatted-text path
+follows `ui/book/read/page/provider/TextChapterLayout.kt`: only image markers
+are extracted from already-decoded chapter text; literal tags are not parsed again.

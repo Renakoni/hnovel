@@ -1,0 +1,43 @@
+[
+  {
+    "name": "literal_entities",
+    "source": {
+      "bookSourceUrl": "ROOT/deep/literal_entities/source",
+      "bookSourceName": "Deep audit literal_entities",
+      "bookSourceType": 0,
+      "searchUrl": "/deep/literal_entities/search",
+      "ruleSearch": {
+        "bookList": "li",
+        "name": "a@text",
+        "bookUrl": "a@href"
+      },
+      "ruleBookInfo": {
+        "name": "h1@text",
+        "tocUrl": "a.toc@href",
+        "lastChapter": "@js:\"Updated\""
+      },
+      "ruleToc": {
+        "chapterList": "li",
+        "chapterName": "a@text",
+        "chapterUrl": "a@href"
+      },
+      "ruleContent": {
+        "content": "article@html"
+      }
+    },
+    "pages": {
+      "/deep/literal_entities/search": {
+        "body": "<li><a href=\"/deep/literal_entities/book\">Fixture</a></li>"
+      },
+      "/deep/literal_entities/book": {
+        "body": "<h1>Fixture</h1><a class=\"toc\" href=\"/deep/literal_entities/toc\">TOC</a>"
+      },
+      "/deep/literal_entities/toc": {
+        "body": "<li><a href=\"/deep/literal_entities/chapter\">One</a></li><li><a href=\"/deep/literal_entities/next-chapter\">Two</a></li>"
+      },
+      "/deep/literal_entities/chapter": {
+        "body": "<article><p>&lt;b&gt;literal&lt;/b&gt; &amp;amp;</p><p>Tail</p></article>"
+      }
+    }
+  }
+]

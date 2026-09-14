@@ -2,6 +2,7 @@ package indi.dmzz_yyhyy.lightnovelreader.data.local
 
 import android.app.Application
 import android.net.Uri
+import androidx.lifecycle.viewModelScope
 import androidx.room.Room
 import androidx.work.ListenableWorker
 import androidx.work.workDataOf
@@ -22,7 +23,9 @@ import io.nightfish.lightnovelreader.api.bookshelf.Bookshelf
 import io.nightfish.lightnovelreader.api.identifier.Identifier
 import io.nightfish.lightnovelreader.api.userdata.UserDataPath
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.job
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.cbor.Cbor
 import kotlinx.serialization.decodeFromByteArray
@@ -118,6 +121,7 @@ class SourceIdentityRoomTest {
         coil3.SingletonImageLoader.setUnsafe(loader)
         val models = androidx.lifecycle.ViewModelStore()
         val model = indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.SettingsViewModel(data, mockk(), mockk(), context, db)
+        val modelJob = model.viewModelScope.coroutineContext.job
         models.put("settings", model)
         try {
             assertNotNull(cache.openSnapshot("image")?.also { it.close() })
@@ -129,7 +133,13 @@ class SourceIdentityRoomTest {
             assertEquals("Same title", local.getBookInformation(a.storageKey)!!.title)
             assertEquals(1, local.getBookVolumes(a.storageKey)!!.volumes.size)
             assertEquals("retained-login", data.stringUserData("fixture/login").get())
-        } finally { models.clear(); loader.shutdown(); cache.shutdown(); coil3.SingletonImageLoader.reset() }
+        } finally {
+            try {
+                models.clear()
+                // Clearing cancels observers but does not wait for their in-flight Room queries.
+                withTimeout(5_000) { modelJob.join() }
+            } finally { loader.shutdown(); cache.shutdown(); coil3.SingletonImageLoader.reset() }
+        }
     }
 
     @Test fun sameIdsKeepBooksVolumesChaptersAndDeletionIndependent() = runBlocking {

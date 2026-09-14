@@ -1,0 +1,846 @@
+[
+  {
+    "name": "replace_lines",
+    "source": {
+      "bookSourceUrl": "ROOT/deep/replace_lines/source",
+      "bookSourceName": "Deep audit replace_lines",
+      "bookSourceType": 0,
+      "searchUrl": "/deep/replace_lines/search",
+      "ruleSearch": {
+        "bookList": "li",
+        "name": "a@text",
+        "bookUrl": "a@href"
+      },
+      "ruleBookInfo": {
+        "name": "h1@text",
+        "tocUrl": "a.toc@href",
+        "lastChapter": "@js:\"Updated\""
+      },
+      "ruleToc": {
+        "chapterList": "li",
+        "chapterName": "a@text",
+        "chapterUrl": "a@href"
+      },
+      "ruleContent": {
+        "content": "article@html",
+        "replaceRegex": "##(?m)^DROP[^\\n]*$##"
+      }
+    },
+    "pages": {
+      "/deep/replace_lines/search": {
+        "body": "<li><a href=\"/deep/replace_lines/book\">Fixture</a></li>"
+      },
+      "/deep/replace_lines/book": {
+        "body": "<h1>Fixture</h1><a class=\"toc\" href=\"/deep/replace_lines/toc\">TOC</a>"
+      },
+      "/deep/replace_lines/toc": {
+        "body": "<li><a href=\"/deep/replace_lines/chapter\">One</a></li><li><a href=\"/deep/replace_lines/next-chapter\">Two</a></li>"
+      },
+      "/deep/replace_lines/chapter": {
+        "body": "<article><p>KEEP first</p><p>DROP advertisement</p><p>KEEP last</p></article>"
+      }
+    }
+  },
+  {
+    "name": "content_page_list",
+    "source": {
+      "bookSourceUrl": "ROOT/deep/content_page_list/source",
+      "bookSourceName": "Deep audit content_page_list",
+      "bookSourceType": 0,
+      "searchUrl": "/deep/content_page_list/search",
+      "ruleSearch": {
+        "bookList": "li",
+        "name": "a@text",
+        "bookUrl": "a@href"
+      },
+      "ruleBookInfo": {
+        "name": "h1@text",
+        "tocUrl": "a.toc@href",
+        "lastChapter": "@js:\"Updated\""
+      },
+      "ruleToc": {
+        "chapterList": "li",
+        "chapterName": "a@text",
+        "chapterUrl": "a@href"
+      },
+      "ruleContent": {
+        "content": "article@html",
+        "nextContentUrl": "nav@a@href"
+      }
+    },
+    "pages": {
+      "/deep/content_page_list/search": {
+        "body": "<li><a href=\"/deep/content_page_list/book\">Fixture</a></li>"
+      },
+      "/deep/content_page_list/book": {
+        "body": "<h1>Fixture</h1><a class=\"toc\" href=\"/deep/content_page_list/toc\">TOC</a>"
+      },
+      "/deep/content_page_list/toc": {
+        "body": "<li><a href=\"/deep/content_page_list/chapter\">One</a></li><li><a href=\"/deep/content_page_list/next-chapter\">Two</a></li>"
+      },
+      "/deep/content_page_list/chapter": {
+        "body": "<article><p>Page one</p></article><nav><a href=\"/deep/content_page_list/page2\">2</a><a href=\"/deep/content_page_list/page3\">3</a></nav>"
+      },
+      "/deep/content_page_list/page2": {
+        "body": "<article><p>Page two</p></article><nav><a href=\"/deep/content_page_list/page2\">2</a><a href=\"/deep/content_page_list/page3\">3</a></nav>"
+      },
+      "/deep/content_page_list/page3": {
+        "body": "<article><p>Page three</p></article><nav><a href=\"/deep/content_page_list/page2\">2</a><a href=\"/deep/content_page_list/page3\">3</a></nav>"
+      }
+    }
+  },
+  {
+    "name": "content_self_link",
+    "source": {
+      "bookSourceUrl": "ROOT/deep/content_self_link/source",
+      "bookSourceName": "Deep audit content_self_link",
+      "bookSourceType": 0,
+      "searchUrl": "/deep/content_self_link/search",
+      "ruleSearch": {
+        "bookList": "li",
+        "name": "a@text",
+        "bookUrl": "a@href"
+      },
+      "ruleBookInfo": {
+        "name": "h1@text",
+        "tocUrl": "a.toc@href",
+        "lastChapter": "@js:\"Updated\""
+      },
+      "ruleToc": {
+        "chapterList": "li",
+        "chapterName": "a@text",
+        "chapterUrl": "a@href"
+      },
+      "ruleContent": {
+        "content": "article@html",
+        "nextContentUrl": "a.next@href"
+      }
+    },
+    "pages": {
+      "/deep/content_self_link/search": {
+        "body": "<li><a href=\"/deep/content_self_link/book\">Fixture</a></li>"
+      },
+      "/deep/content_self_link/book": {
+        "body": "<h1>Fixture</h1><a class=\"toc\" href=\"/deep/content_self_link/toc\">TOC</a>"
+      },
+      "/deep/content_self_link/toc": {
+        "body": "<li><a href=\"/deep/content_self_link/chapter\">One</a></li><li><a href=\"/deep/content_self_link/next-chapter\">Two</a></li>"
+      },
+      "/deep/content_self_link/chapter": {
+        "body": "<article><p>KEEP first</p><p>DROP advertisement</p><p>KEEP last</p></article><a class=\"next\" href=\"/deep/content_self_link/chapter\">Last page</a>"
+      }
+    }
+  },
+  {
+    "name": "title_failure",
+    "source": {
+      "bookSourceUrl": "ROOT/deep/title_failure/source",
+      "bookSourceName": "Deep audit title_failure",
+      "bookSourceType": 0,
+      "searchUrl": "/deep/title_failure/search",
+      "ruleSearch": {
+        "bookList": "li",
+        "name": "a@text",
+        "bookUrl": "a@href"
+      },
+      "ruleBookInfo": {
+        "name": "h1@text",
+        "tocUrl": "a.toc@href",
+        "lastChapter": "@js:\"Updated\""
+      },
+      "ruleToc": {
+        "chapterList": "li",
+        "chapterName": "a@text",
+        "chapterUrl": "a@href"
+      },
+      "ruleContent": {
+        "content": "article@html",
+        "title": "@js:throw new Error(\"Optional chapter title failed\")"
+      }
+    },
+    "pages": {
+      "/deep/title_failure/search": {
+        "body": "<li><a href=\"/deep/title_failure/book\">Fixture</a></li>"
+      },
+      "/deep/title_failure/book": {
+        "body": "<h1>Fixture</h1><a class=\"toc\" href=\"/deep/title_failure/toc\">TOC</a>"
+      },
+      "/deep/title_failure/toc": {
+        "body": "<li><a href=\"/deep/title_failure/chapter\">One</a></li><li><a href=\"/deep/title_failure/next-chapter\">Two</a></li>"
+      },
+      "/deep/title_failure/chapter": {
+        "body": "<article><p>KEEP first</p><p>DROP advertisement</p><p>KEEP last</p></article>"
+      }
+    }
+  },
+  {
+    "name": "format_failure",
+    "source": {
+      "bookSourceUrl": "ROOT/deep/format_failure/source",
+      "bookSourceName": "Deep audit format_failure",
+      "bookSourceType": 0,
+      "searchUrl": "/deep/format_failure/search",
+      "ruleSearch": {
+        "bookList": "li",
+        "name": "a@text",
+        "bookUrl": "a@href"
+      },
+      "ruleBookInfo": {
+        "name": "h1@text",
+        "tocUrl": "a.toc@href",
+        "lastChapter": "@js:\"Updated\""
+      },
+      "ruleToc": {
+        "chapterList": "li",
+        "chapterName": "a@text",
+        "chapterUrl": "a@href",
+        "formatJs": "throw new Error(\"Optional format failed\")"
+      },
+      "ruleContent": {
+        "content": "article@html"
+      }
+    },
+    "pages": {
+      "/deep/format_failure/search": {
+        "body": "<li><a href=\"/deep/format_failure/book\">Fixture</a></li>"
+      },
+      "/deep/format_failure/book": {
+        "body": "<h1>Fixture</h1><a class=\"toc\" href=\"/deep/format_failure/toc\">TOC</a>"
+      },
+      "/deep/format_failure/toc": {
+        "body": "<li><a href=\"/deep/format_failure/chapter\">One</a></li><li><a href=\"/deep/format_failure/next-chapter\">Two</a></li>"
+      },
+      "/deep/format_failure/chapter": {
+        "body": "<article><p>KEEP first</p><p>DROP advertisement</p><p>KEEP last</p></article>"
+      }
+    }
+  },
+  {
+    "name": "redirect_base",
+    "source": {
+      "bookSourceUrl": "ROOT/deep/redirect_base/source",
+      "bookSourceName": "Deep audit redirect_base",
+      "bookSourceType": 0,
+      "searchUrl": "/deep/redirect_base/search",
+      "ruleSearch": {
+        "bookList": "li",
+        "name": "a@text",
+        "bookUrl": "a@href"
+      },
+      "ruleBookInfo": {
+        "name": "h1@text",
+        "tocUrl": "a.toc@href",
+        "lastChapter": "@js:\"Updated\""
+      },
+      "ruleToc": {
+        "chapterList": "li",
+        "chapterName": "a@text",
+        "chapterUrl": "a@href"
+      },
+      "ruleContent": {
+        "content": "@js:baseUrl"
+      }
+    },
+    "pages": {
+      "/deep/redirect_base/search": {
+        "body": "<li><a href=\"/deep/redirect_base/book\">Fixture</a></li>"
+      },
+      "/deep/redirect_base/book": {
+        "body": "<h1>Fixture</h1><a class=\"toc\" href=\"/deep/redirect_base/toc\">TOC</a>"
+      },
+      "/deep/redirect_base/toc": {
+        "body": "<li><a href=\"/deep/redirect_base/chapter\">One</a></li><li><a href=\"/deep/redirect_base/next-chapter\">Two</a></li>"
+      },
+      "/deep/redirect_base/chapter": {
+        "status": 302,
+        "location": "/deep/redirect_base/redirected",
+        "body": ""
+      },
+      "/deep/redirect_base/redirected": {
+        "body": "<article>Redirected</article>"
+      }
+    }
+  },
+  {
+    "name": "preupdate_refresh",
+    "source": {
+      "bookSourceUrl": "ROOT/deep/preupdate_refresh/source",
+      "bookSourceName": "Deep audit preupdate_refresh",
+      "bookSourceType": 0,
+      "searchUrl": "/deep/preupdate_refresh/search",
+      "ruleSearch": {
+        "bookList": "li",
+        "name": "a@text",
+        "bookUrl": "a@href"
+      },
+      "ruleBookInfo": {
+        "name": "h1@text",
+        "tocUrl": "a.toc@href",
+        "lastChapter": "@js:\"Updated\""
+      },
+      "ruleToc": {
+        "chapterList": "li",
+        "chapterName": "a@text",
+        "chapterUrl": "a@href",
+        "preUpdateJs": "java.refreshTocUrl()"
+      },
+      "ruleContent": {
+        "content": "article@html"
+      }
+    },
+    "pages": {
+      "/deep/preupdate_refresh/search": {
+        "body": "<li><a href=\"/deep/preupdate_refresh/book\">Fixture</a></li>"
+      },
+      "/deep/preupdate_refresh/book": {
+        "body": "<h1>Fixture</h1><a class=\"toc\" href=\"/deep/preupdate_refresh/toc\">TOC</a>"
+      },
+      "/deep/preupdate_refresh/toc": {
+        "body": "<li><a href=\"/deep/preupdate_refresh/chapter\">One</a></li><li><a href=\"/deep/preupdate_refresh/next-chapter\">Two</a></li>"
+      },
+      "/deep/preupdate_refresh/chapter": {
+        "body": "<article><p>KEEP first</p><p>DROP advertisement</p><p>KEEP last</p></article>"
+      }
+    }
+  },
+  {
+    "name": "cache_object",
+    "source": {
+      "bookSourceUrl": "ROOT/deep/cache_object/source",
+      "bookSourceName": "Deep audit cache_object",
+      "bookSourceType": 0,
+      "searchUrl": "/deep/cache_object/search",
+      "ruleSearch": {
+        "bookList": "li",
+        "name": "a@text",
+        "bookUrl": "a@href"
+      },
+      "ruleBookInfo": {
+        "name": "h1@text",
+        "tocUrl": "a.toc@href",
+        "lastChapter": "@js:\"Updated\""
+      },
+      "ruleToc": {
+        "chapterList": "li",
+        "chapterName": "a@text",
+        "chapterUrl": "a@href"
+      },
+      "ruleContent": {
+        "content": "@js:var cached;try {cache.put('hnovel-deep-audit-object',{x:1});cached=String(cache.get('hnovel-deep-audit-object'));} finally {cache.delete('hnovel-deep-audit-object');} cached;"
+      }
+    },
+    "pages": {
+      "/deep/cache_object/search": {
+        "body": "<li><a href=\"/deep/cache_object/book\">Fixture</a></li>"
+      },
+      "/deep/cache_object/book": {
+        "body": "<h1>Fixture</h1><a class=\"toc\" href=\"/deep/cache_object/toc\">TOC</a>"
+      },
+      "/deep/cache_object/toc": {
+        "body": "<li><a href=\"/deep/cache_object/chapter\">One</a></li><li><a href=\"/deep/cache_object/next-chapter\">Two</a></li>"
+      },
+      "/deep/cache_object/chapter": {
+        "body": "<article><p>KEEP first</p><p>DROP advertisement</p><p>KEEP last</p></article>"
+      }
+    }
+  },
+  {
+    "name": "block_paragraphs",
+    "source": {
+      "bookSourceUrl": "ROOT/deep/block_paragraphs/source",
+      "bookSourceName": "Deep audit block_paragraphs",
+      "bookSourceType": 0,
+      "searchUrl": "/deep/block_paragraphs/search",
+      "ruleSearch": {
+        "bookList": "li",
+        "name": "a@text",
+        "bookUrl": "a@href"
+      },
+      "ruleBookInfo": {
+        "name": "h1@text",
+        "tocUrl": "a.toc@href",
+        "lastChapter": "@js:\"Updated\""
+      },
+      "ruleToc": {
+        "chapterList": "li",
+        "chapterName": "a@text",
+        "chapterUrl": "a@href"
+      },
+      "ruleContent": {
+        "content": "article@html"
+      }
+    },
+    "pages": {
+      "/deep/block_paragraphs/search": {
+        "body": "<li><a href=\"/deep/block_paragraphs/book\">Fixture</a></li>"
+      },
+      "/deep/block_paragraphs/book": {
+        "body": "<h1>Fixture</h1><a class=\"toc\" href=\"/deep/block_paragraphs/toc\">TOC</a>"
+      },
+      "/deep/block_paragraphs/toc": {
+        "body": "<li><a href=\"/deep/block_paragraphs/chapter\">One</a></li><li><a href=\"/deep/block_paragraphs/next-chapter\">Two</a></li>"
+      },
+      "/deep/block_paragraphs/chapter": {
+        "body": "<article><p>Before</p><hr><dl><dt>Term</dt><dd>Definition</dd></dl><p>After</p></article>"
+      }
+    }
+  },
+  {
+    "name": "header_api",
+    "source": {
+      "bookSourceUrl": "ROOT/deep/header_api/source",
+      "bookSourceName": "Deep audit header_api",
+      "bookSourceType": 0,
+      "searchUrl": "/deep/header_api/search",
+      "ruleSearch": {
+        "bookList": "li",
+        "name": "a@text",
+        "bookUrl": "a@href"
+      },
+      "ruleBookInfo": {
+        "name": "h1@text",
+        "tocUrl": "a.toc@href",
+        "lastChapter": "@js:\"Updated\""
+      },
+      "ruleToc": {
+        "chapterList": "li",
+        "chapterName": "a@text",
+        "chapterUrl": "a@href"
+      },
+      "ruleContent": {
+        "content": "@js:String(source.getHeader())"
+      },
+      "header": "{\"X-Fixture\":\"value\"}"
+    },
+    "pages": {
+      "/deep/header_api/search": {
+        "body": "<li><a href=\"/deep/header_api/book\">Fixture</a></li>"
+      },
+      "/deep/header_api/book": {
+        "body": "<h1>Fixture</h1><a class=\"toc\" href=\"/deep/header_api/toc\">TOC</a>"
+      },
+      "/deep/header_api/toc": {
+        "body": "<li><a href=\"/deep/header_api/chapter\">One</a></li><li><a href=\"/deep/header_api/next-chapter\">Two</a></li>"
+      },
+      "/deep/header_api/chapter": {
+        "body": "<article><p>KEEP first</p><p>DROP advertisement</p><p>KEEP last</p></article>"
+      }
+    }
+  },
+  {
+    "name": "source_property",
+    "source": {
+      "bookSourceUrl": "ROOT/deep/source_property/source",
+      "bookSourceName": "Deep audit source_property",
+      "bookSourceType": 0,
+      "searchUrl": "/deep/source_property/search",
+      "ruleSearch": {
+        "bookList": "li",
+        "name": "a@text",
+        "bookUrl": "a@href"
+      },
+      "ruleBookInfo": {
+        "name": "h1@text",
+        "tocUrl": "a.toc@href",
+        "lastChapter": "@js:\"Updated\""
+      },
+      "ruleToc": {
+        "chapterList": "li",
+        "chapterName": "a@text",
+        "chapterUrl": "a@href"
+      },
+      "ruleContent": {
+        "content": "@js:String(source.bookSourceName)+'|'+String(source.bookSourceUrl)"
+      }
+    },
+    "pages": {
+      "/deep/source_property/search": {
+        "body": "<li><a href=\"/deep/source_property/book\">Fixture</a></li>"
+      },
+      "/deep/source_property/book": {
+        "body": "<h1>Fixture</h1><a class=\"toc\" href=\"/deep/source_property/toc\">TOC</a>"
+      },
+      "/deep/source_property/toc": {
+        "body": "<li><a href=\"/deep/source_property/chapter\">One</a></li><li><a href=\"/deep/source_property/next-chapter\">Two</a></li>"
+      },
+      "/deep/source_property/chapter": {
+        "body": "<article><p>KEEP first</p><p>DROP advertisement</p><p>KEEP last</p></article>"
+      }
+    }
+  },
+  {
+    "name": "boolean_flags",
+    "source": {
+      "bookSourceUrl": "ROOT/deep/boolean_flags/source",
+      "bookSourceName": "Deep audit boolean_flags",
+      "bookSourceType": 0,
+      "searchUrl": "/deep/boolean_flags/search",
+      "ruleSearch": {
+        "bookList": "li",
+        "name": "a@text",
+        "bookUrl": "a@href"
+      },
+      "ruleBookInfo": {
+        "name": "h1@text",
+        "tocUrl": "a.toc@href",
+        "lastChapter": "@js:\"Updated\""
+      },
+      "ruleToc": {
+        "chapterList": "li",
+        "chapterName": "a@text",
+        "chapterUrl": "a@href",
+        "isVolume": "@js:'null'",
+        "isVip": "@js:' false '",
+        "isPay": "@js:'NO'"
+      },
+      "ruleContent": {
+        "content": "article@html"
+      }
+    },
+    "pages": {
+      "/deep/boolean_flags/search": {
+        "body": "<li><a href=\"/deep/boolean_flags/book\">Fixture</a></li>"
+      },
+      "/deep/boolean_flags/book": {
+        "body": "<h1>Fixture</h1><a class=\"toc\" href=\"/deep/boolean_flags/toc\">TOC</a>"
+      },
+      "/deep/boolean_flags/toc": {
+        "body": "<li><a href=\"/deep/boolean_flags/chapter\">One</a></li><li><a href=\"/deep/boolean_flags/next-chapter\">Two</a></li>"
+      },
+      "/deep/boolean_flags/chapter": {
+        "body": "<article><p>KEEP first</p><p>DROP advertisement</p><p>KEEP last</p></article>"
+      }
+    }
+  },
+  {
+    "name": "chapter_url",
+    "source": {
+      "bookSourceUrl": "ROOT/deep/chapter_url/source",
+      "bookSourceName": "Deep audit chapter_url",
+      "bookSourceType": 0,
+      "searchUrl": "/deep/chapter_url/search",
+      "ruleSearch": {
+        "bookList": "li",
+        "name": "a@text",
+        "bookUrl": "a@href"
+      },
+      "ruleBookInfo": {
+        "name": "h1@text",
+        "tocUrl": "a.toc@href",
+        "lastChapter": "@js:\"Updated\""
+      },
+      "ruleToc": {
+        "chapterList": "li",
+        "chapterName": "a@text",
+        "chapterUrl": "a@href"
+      },
+      "ruleContent": {
+        "content": "@js:chapter.url+'|'+chapter.getAbsoluteURL()+'|'+chapter.baseUrl"
+      }
+    },
+    "pages": {
+      "/deep/chapter_url/search": {
+        "body": "<li><a href=\"/deep/chapter_url/book\">Fixture</a></li>"
+      },
+      "/deep/chapter_url/book": {
+        "body": "<h1>Fixture</h1><a class=\"toc\" href=\"/deep/chapter_url/toc\">TOC</a>"
+      },
+      "/deep/chapter_url/toc": {
+        "body": "<li><a href=\"/deep/chapter_url/chapter\">One</a></li><li><a href=\"/deep/chapter_url/next-chapter\">Two</a></li>"
+      },
+      "/deep/chapter_url/chapter": {
+        "body": "<article><p>KEEP first</p><p>DROP advertisement</p><p>KEEP last</p></article>"
+      }
+    }
+  },
+  {
+    "name": "title_after_content",
+    "source": {
+      "bookSourceUrl": "ROOT/deep/title_after_content/source",
+      "bookSourceName": "Deep audit title_after_content",
+      "bookSourceType": 0,
+      "searchUrl": "/deep/title_after_content/search",
+      "ruleSearch": {
+        "bookList": "li",
+        "name": "a@text",
+        "bookUrl": "a@href"
+      },
+      "ruleBookInfo": {
+        "name": "h1@text",
+        "tocUrl": "a.toc@href",
+        "lastChapter": "@js:\"Updated\""
+      },
+      "ruleToc": {
+        "chapterList": "li",
+        "chapterName": "a@text",
+        "chapterUrl": "a@href"
+      },
+      "ruleContent": {
+        "content": "@js:java.put('caption','New title');'<p>Paragraph</p>'",
+        "title": "@js:java.get('caption')"
+      }
+    },
+    "pages": {
+      "/deep/title_after_content/search": {
+        "body": "<li><a href=\"/deep/title_after_content/book\">Fixture</a></li>"
+      },
+      "/deep/title_after_content/book": {
+        "body": "<h1>Fixture</h1><a class=\"toc\" href=\"/deep/title_after_content/toc\">TOC</a>"
+      },
+      "/deep/title_after_content/toc": {
+        "body": "<li><a href=\"/deep/title_after_content/chapter\">One</a></li><li><a href=\"/deep/title_after_content/next-chapter\">Two</a></li>"
+      },
+      "/deep/title_after_content/chapter": {
+        "body": "<article><p>KEEP first</p><p>DROP advertisement</p><p>KEEP last</p></article>"
+      }
+    }
+  },
+  {
+    "name": "control",
+    "source": {
+      "bookSourceUrl": "ROOT/deep/control/source",
+      "bookSourceName": "Deep audit control",
+      "bookSourceType": 0,
+      "searchUrl": "/deep/control/search",
+      "ruleSearch": {
+        "bookList": "li",
+        "name": "a@text",
+        "bookUrl": "a@href"
+      },
+      "ruleBookInfo": {
+        "name": "h1@text",
+        "tocUrl": "a.toc@href",
+        "lastChapter": "@js:\"Updated\""
+      },
+      "ruleToc": {
+        "chapterList": "li",
+        "chapterName": "a@text",
+        "chapterUrl": "a@href"
+      },
+      "ruleContent": {
+        "content": "article@html"
+      }
+    },
+    "pages": {
+      "/deep/control/search": {
+        "body": "<li><a href=\"/deep/control/book\">Fixture</a></li>"
+      },
+      "/deep/control/book": {
+        "body": "<h1>Fixture</h1><a class=\"toc\" href=\"/deep/control/toc\">TOC</a>"
+      },
+      "/deep/control/toc": {
+        "body": "<li><a href=\"/deep/control/chapter\">One</a></li><li><a href=\"/deep/control/next-chapter\">Two</a></li>"
+      },
+      "/deep/control/chapter": {
+        "body": "<article><p>KEEP first</p><p>DROP advertisement</p><p>KEEP last</p></article>"
+      }
+    }
+  },
+  {
+    "name": "list_api",
+    "source": {
+      "bookSourceUrl": "ROOT/deep/list_api/source",
+      "bookSourceName": "Deep audit list_api",
+      "bookSourceType": 0,
+      "searchUrl": "/deep/list_api/search",
+      "ruleSearch": {
+        "bookList": "li",
+        "name": "a@text",
+        "bookUrl": "a@href"
+      },
+      "ruleBookInfo": {
+        "name": "h1@text",
+        "tocUrl": "a.toc@href",
+        "lastChapter": "@js:\"Updated\""
+      },
+      "ruleToc": {
+        "chapterList": "li",
+        "chapterName": "a@text",
+        "chapterUrl": "a@href"
+      },
+      "ruleContent": {
+        "content": "@js:var values=java.getStringList('p@text','<p>First</p><p>Second</p>');JSON.stringify([values.size(),String(values.get(0))]);"
+      }
+    },
+    "pages": {
+      "/deep/list_api/search": {
+        "body": "<li><a href=\"/deep/list_api/book\">Fixture</a></li>"
+      },
+      "/deep/list_api/book": {
+        "body": "<h1>Fixture</h1><a class=\"toc\" href=\"/deep/list_api/toc\">TOC</a>"
+      },
+      "/deep/list_api/toc": {
+        "body": "<li><a href=\"/deep/list_api/chapter\">One</a></li><li><a href=\"/deep/list_api/next-chapter\">Two</a></li>"
+      },
+      "/deep/list_api/chapter": {
+        "body": "<article><p>KEEP first</p><p>DROP advertisement</p><p>KEEP last</p></article>"
+      }
+    }
+  },
+  {
+    "name": "native_object",
+    "source": {
+      "bookSourceUrl": "ROOT/deep/native_object/source",
+      "bookSourceName": "Deep audit native_object",
+      "bookSourceType": 0,
+      "searchUrl": "/deep/native_object/search",
+      "ruleSearch": {
+        "bookList": "li",
+        "name": "a@text",
+        "bookUrl": "a@href"
+      },
+      "ruleBookInfo": {
+        "name": "h1@text",
+        "tocUrl": "a.toc@href",
+        "lastChapter": "@js:\"Updated\""
+      },
+      "ruleToc": {
+        "chapterList": "li",
+        "chapterName": "a@text",
+        "chapterUrl": "a@href"
+      },
+      "ruleContent": {
+        "content": "@js:java.getString('x.y',{'x':{'y':'Nested'},'x.y':'Literal'})"
+      }
+    },
+    "pages": {
+      "/deep/native_object/search": {
+        "body": "<li><a href=\"/deep/native_object/book\">Fixture</a></li>"
+      },
+      "/deep/native_object/book": {
+        "body": "<h1>Fixture</h1><a class=\"toc\" href=\"/deep/native_object/toc\">TOC</a>"
+      },
+      "/deep/native_object/toc": {
+        "body": "<li><a href=\"/deep/native_object/chapter\">One</a></li><li><a href=\"/deep/native_object/next-chapter\">Two</a></li>"
+      },
+      "/deep/native_object/chapter": {
+        "body": "<article><p>KEEP first</p><p>DROP advertisement</p><p>KEEP last</p></article>"
+      }
+    }
+  },
+  {
+    "name": "optional_state",
+    "source": {
+      "bookSourceUrl": "ROOT/deep/optional_state/source",
+      "bookSourceName": "Deep audit optional_state",
+      "bookSourceType": 0,
+      "searchUrl": "/deep/optional_state/search",
+      "ruleSearch": {
+        "bookList": "li",
+        "name": "a@text",
+        "bookUrl": "a@href"
+      },
+      "ruleBookInfo": {
+        "name": "h1@text",
+        "tocUrl": "a.toc@href",
+        "lastChapter": "@js:\"Updated\"",
+        "kind": "@js:book.putVariable('survivor','saved');throw new Error('optional field')"
+      },
+      "ruleToc": {
+        "chapterList": "li",
+        "chapterName": "a@text",
+        "chapterUrl": "a@href"
+      },
+      "ruleContent": {
+        "content": "@js:'saved='+book.getVariable('survivor')"
+      }
+    },
+    "pages": {
+      "/deep/optional_state/search": {
+        "body": "<li><a href=\"/deep/optional_state/book\">Fixture</a></li>"
+      },
+      "/deep/optional_state/book": {
+        "body": "<h1>Fixture</h1><a class=\"toc\" href=\"/deep/optional_state/toc\">TOC</a>"
+      },
+      "/deep/optional_state/toc": {
+        "body": "<li><a href=\"/deep/optional_state/chapter\">One</a></li><li><a href=\"/deep/optional_state/next-chapter\">Two</a></li>"
+      },
+      "/deep/optional_state/chapter": {
+        "body": "<article><p>KEEP first</p><p>DROP advertisement</p><p>KEEP last</p></article>"
+      }
+    }
+  },
+  {
+    "name": "chapter_tag",
+    "source": {
+      "bookSourceUrl": "ROOT/deep/chapter_tag/source",
+      "bookSourceName": "Deep audit chapter_tag",
+      "bookSourceType": 0,
+      "searchUrl": "/deep/chapter_tag/search",
+      "ruleSearch": {
+        "bookList": "li",
+        "name": "a@text",
+        "bookUrl": "a@href"
+      },
+      "ruleBookInfo": {
+        "name": "h1@text",
+        "tocUrl": "a.toc@href",
+        "lastChapter": "@js:\"Updated\""
+      },
+      "ruleToc": {
+        "chapterList": "li",
+        "chapterName": "a@text",
+        "chapterUrl": "a@href",
+        "updateTime": "@js:'chapter-token'"
+      },
+      "ruleContent": {
+        "content": "@js:'tag='+chapter.tag"
+      }
+    },
+    "pages": {
+      "/deep/chapter_tag/search": {
+        "body": "<li><a href=\"/deep/chapter_tag/book\">Fixture</a></li>"
+      },
+      "/deep/chapter_tag/book": {
+        "body": "<h1>Fixture</h1><a class=\"toc\" href=\"/deep/chapter_tag/toc\">TOC</a>"
+      },
+      "/deep/chapter_tag/toc": {
+        "body": "<li><a href=\"/deep/chapter_tag/chapter\">One</a></li><li><a href=\"/deep/chapter_tag/next-chapter\">Two</a></li>"
+      },
+      "/deep/chapter_tag/chapter": {
+        "body": "<article><p>KEEP first</p><p>DROP advertisement</p><p>KEEP last</p></article>"
+      }
+    }
+  },
+  {
+    "name": "regex_mode",
+    "source": {
+      "bookSourceUrl": "ROOT/deep/regex_mode/source",
+      "bookSourceName": "Deep audit regex_mode",
+      "bookSourceType": 0,
+      "searchUrl": "/deep/regex_mode/search",
+      "ruleSearch": {
+        "bookList": ":<li><a href=\"([^\"]+)\">([^<]+)</a></li>",
+        "name": "Fixed title",
+        "bookUrl": "$1"
+      },
+      "ruleBookInfo": {
+        "name": "h1@text",
+        "tocUrl": "a.toc@href",
+        "lastChapter": "@js:\"Updated\""
+      },
+      "ruleToc": {
+        "chapterList": "li",
+        "chapterName": "a@text",
+        "chapterUrl": "a@href"
+      },
+      "ruleContent": {
+        "content": "article@html"
+      }
+    },
+    "pages": {
+      "/deep/regex_mode/search": {
+        "body": "<li><a href=\"/deep/regex_mode/book\">Fixture</a></li>"
+      },
+      "/deep/regex_mode/book": {
+        "body": "<h1>Fixture</h1><a class=\"toc\" href=\"/deep/regex_mode/toc\">TOC</a>"
+      },
+      "/deep/regex_mode/toc": {
+        "body": "<li><a href=\"/deep/regex_mode/chapter\">One</a></li><li><a href=\"/deep/regex_mode/next-chapter\">Two</a></li>"
+      },
+      "/deep/regex_mode/chapter": {
+        "body": "<article><p>KEEP first</p><p>DROP advertisement</p><p>KEEP last</p></article>"
+      }
+    }
+  }
+]
