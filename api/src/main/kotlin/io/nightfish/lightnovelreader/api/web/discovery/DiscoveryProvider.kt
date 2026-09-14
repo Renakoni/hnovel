@@ -3,6 +3,8 @@ package io.nightfish.lightnovelreader.api.web.discovery
 import com.github.michaelbull.result.Err
 import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.map
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 
 /** Source-local data only. The host binds book IDs and targets to the owning runtime. */
 data class DiscoveryBook(val remoteId: String, val title: String, val author: String = "", val coverUrl: String = "")
@@ -54,6 +56,9 @@ interface DiscoveryProvider {
     /** A feed page also displays this provider's catalogue inputs and actions. */
     val hasInteractions: Boolean get() = false
     suspend fun feed(): Result<List<DiscoverySection>, DiscoveryError> = Err(DiscoveryError.Unsupported)
+    /** Ordered replacement snapshots; completion ends loading, an error is terminal.
+     * Existing providers retain their one-shot feed. Collectors own cancellation. */
+    fun feedUpdates(): Flow<Result<List<DiscoverySection>, DiscoveryError>> = flow { emit(feed()) }
     suspend fun categories(): Result<List<DiscoveryCategory>, DiscoveryError> = Err(DiscoveryError.Unsupported)
     fun filters(target: String): List<DiscoveryFilter> = emptyList()
     suspend fun page(request: DiscoveryRequest): Result<DiscoveryPage, DiscoveryError> = Err(DiscoveryError.Unsupported)
