@@ -214,7 +214,7 @@ class SourcesScreenTest {
         compose.onNodeWithText("Search this source").assertDoesNotExist()
     }
 
-    @Test fun lazySourcesOfferSearchAndLoginWithoutAnInitializationStep() {
+    @Test fun lazySourcesHideSearchAndLoginUntilInitializationIsReady() {
         val definition = SourceDefinition("initializing", "legado", "fixture", "https://fixture.invalid/", "Loading source", true,
             false, ImportOrigin(ImportOrigin.Kind.Paste), "digest", 1, "{}")
         val id = ImportedRuleSources.id(definition)
@@ -226,9 +226,8 @@ class SourcesScreenTest {
         compose.onNodeWithText("Not initialized").assertDoesNotExist()
         compose.runOnIdle { state = state.copy(selected = id) }
         compose.onNodeWithText("Initialize source").assertDoesNotExist()
-        compose.onNodeWithText("Search this source").assertIsEnabled()
-        compose.onNodeWithText("Sign in").performClick()
-        verify(exactly = 1) { model.beginLogin(id) }
+        compose.onNodeWithText("Search this source").assertDoesNotExist()
+        compose.onNodeWithText("Sign in").assertDoesNotExist()
         compose.runOnIdle { state = state.copy(registry = listOf(entry.copy(status = SourceStatus.Failed))) }
         compose.onNodeWithText("Search this source").assertDoesNotExist()
         compose.onNodeWithText("Sign in").assertDoesNotExist()
@@ -244,6 +243,8 @@ class SourcesScreenTest {
         var searched: Identifier? = null
         activity.get().setContent { MaterialTheme { SourcesScreen(state, model, onDiagnostics = {}, onSearch = { searched = it }) {} } }
         compose.onNodeWithText("Initialize source").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Search this source").assertDoesNotExist()
+        compose.runOnIdle { state = state.copy(registry = listOf(entry.copy(status = SourceStatus.Ready))) }
         compose.onNodeWithContentDescription("Search this source").performClick()
         org.junit.Assert.assertEquals(id, searched)
         compose.runOnIdle { state = state.copy(registry = listOf(entry.copy(status = SourceStatus.Failed))) }
@@ -264,7 +265,7 @@ class SourcesScreenTest {
         } finally { directory.deleteRecursively() }
     }
 
-    @Test fun preferenceSwitchesAreIndependentAndDoNotDiscardPermissionDrafts() {
+    @Test fun enablingSourceIsTheSingleActionAndDoesNotDiscardPermissionDrafts() {
         val definition = SourceDefinition("disabled", "legado", "fixture", "https://fixture.invalid/", "Disabled", false,
             false, ImportOrigin(ImportOrigin.Kind.Paste), "digest", 1, """{"exploreUrl":"All::/books"}""")
         val id = ImportedRuleSources.id(definition)
@@ -274,10 +275,6 @@ class SourcesScreenTest {
         compose.onNodeWithContentDescription("Enable source").assertIsOff()
         compose.onNodeWithText("Advanced options").performClick()
         compose.onNodeWithText("Allowed site origins, one per line").performScrollTo().performTextReplacement("https://draft.invalid/")
-        compose.onNodeWithContentDescription("Show in Explore and Categories").performScrollTo().assertIsOff().performClick()
-        verify(exactly = 1) { model.setDiscoveryVisible(id, true) }
-        verify(exactly = 0) { model.setEnabled(any(), any()) }
-        compose.runOnIdle { state = state.copy(installed = listOf(installed.copy(preferences = installed.preferences.copy(discoveryVisible = true)))) }
         compose.onNodeWithText("https://draft.invalid/").performScrollTo().assertExists()
         compose.onNodeWithText("Save permissions").performScrollTo().performClick()
         verify(exactly = 1) { model.saveConfiguration(id, null, "https://draft.invalid/") }

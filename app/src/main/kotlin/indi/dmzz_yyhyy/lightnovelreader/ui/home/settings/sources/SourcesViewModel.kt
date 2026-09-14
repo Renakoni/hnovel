@@ -219,7 +219,10 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
         mutable.update { it.copy(message = R.string.sources_saved) }
     }
     fun setEnabled(id: Identifier, enabled: Boolean) = launch {
-        sources.setPreferences(id, enabled = enabled)
+        val hasDiscovery = state.value.installed.firstOrNull { ImportedRuleSources.id(it.definition) == id }?.hasDiscovery == true
+        // Enabling a source is the single user action that makes its catalogue visible.
+        // Sources without exploreUrl remain search-only.
+        sources.setPreferences(id, enabled = enabled, discoveryVisible = enabled && hasDiscovery)
         if (state.value.selected == id) selectSource(id) else reload()
     }
     fun setDiscoveryVisible(id: Identifier, visible: Boolean) = launch {

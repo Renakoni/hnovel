@@ -114,8 +114,11 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
             val additions = references.map { (reference, origins) ->
                 val definition = checkNotNull(current[reference]) { "Definition preview is no longer current" }
                 require(origins.size <= 32 && id(definition) !in active)
+                val hasExploreUrl = Json.parseToJsonElement(definition.rawJson).jsonObject["exploreUrl"]
+                    ?.jsonPrimitive?.content?.isNotBlank() == true
                 InstalledSource(definition, origins.map { it.copy(headers = it.headers.toMap()) },
-                    preferences = if (enableNew) SourcePreferences(true, definition.enabledExplore, enabledSetByUser = true) else null)
+                    preferences = if (enableNew) SourcePreferences(true, definition.enabledExplore || hasExploreUrl,
+                        enabledSetByUser = true) else null)
             }
             // Save once for a collection; opening one definition must not rewrite thousands of others.
             save(active.values.map { it.installed } + additions)
