@@ -47,7 +47,8 @@ class SourceRuntime internal constructor(
 
     internal suspend fun <T> execute(block: suspend () -> T): T {
         checkAvailable()
-        val request = lifetime.async { block() }
+        val interaction = currentCoroutineContext()[ForegroundSourceRequest] ?: kotlin.coroutines.EmptyCoroutineContext
+        val request = lifetime.async(interaction) { block() }
         return try {
             request.await().also { checkAvailable() }
         } finally {

@@ -19,6 +19,7 @@ class BrowserEnvironmentInstrumentedTest {
             "multiProfile" to WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE).toString(),
             "cookieInfo" to WebViewFeature.isFeatureSupported(WebViewFeature.GET_COOKIE_INFO).toString(),
             "userAgentMetadata" to WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA).toString(),
+            "requestedWithAllowList" to WebViewFeature.isFeatureSupported(WebViewFeature.REQUESTED_WITH_HEADER_ALLOW_LIST).toString(),
             "directoryBasePaths" to WebViewFeature.isStartupFeatureSupported(context,
                 WebViewFeature.STARTUP_FEATURE_SET_DIRECTORY_BASE_PATHS).toString(),
         )

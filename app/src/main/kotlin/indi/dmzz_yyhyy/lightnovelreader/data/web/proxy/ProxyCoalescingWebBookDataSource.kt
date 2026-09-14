@@ -41,8 +41,12 @@ class ProxyCoalescingWebBookDataSource(
         lifetime.join()
     }
 
-    private suspend fun <T> coalesce(key: RequestKey, block: suspend () -> T): T =
-        withContext(RequestContext(key)) { coalescing.execute(block) }
+    private suspend fun <T> coalesce(key: RequestKey, block: suspend () -> T): T {
+        // Interactive continuations belong to their UI caller. Sharing detached work
+        // with background downloads would lose cancellation and interaction ownership.
+        if (currentCoroutineContext()[indi.dmzz_yyhyy.lightnovelreader.data.web.ForegroundSourceRequest]?.allowsInteraction == true) return block()
+        return withContext(RequestContext(key)) { coalescing.execute(block) }
+    }
 
     override suspend fun getBookInformation(id: String, priority: WebDataSourcePriority) = coalesce(RequestKey(RequestType.Information, id, priority.priority)) {
         proxiedWebBookDataSource.getBookInformation(id, priority)

@@ -3,6 +3,7 @@ package indi.dmzz_yyhyy.lightnovelreader.data.download
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.github.michaelbull.result.Result
 import io.nightfish.lightnovelreader.api.book.BookInformation
@@ -15,6 +16,7 @@ interface DownloadItem {
     val bookId: String
     val startTime: LocalDateTime
     val progress: Float
+    val requiresVerification: Boolean get() = false
     val bookInformationFlow: Flow<Result<BookInformation, WebRequestError>>
 }
 
@@ -26,6 +28,7 @@ class MutableDownloadItem(
     override val startTime: LocalDateTime = LocalDateTime.now()
 ): DownloadItem {
     override var progress by mutableFloatStateOf(0f)
+    override var requiresVerification by mutableStateOf(false)
 
     override fun equals(other: Any?): Boolean {
         return if (other is DownloadItem) other.type == this.type && other.bookId == this.bookId else super.equals(other)

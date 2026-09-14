@@ -112,7 +112,9 @@ internal class NativeSourceBrowser(private val context: Context) {
                 check(session.write(StorageRequest(StorageArea.Account, StorageRequestKey.BROWSER_PENDING_URL, request.url)) is StorageResult.Value)
             }
             completed = true
-            response
+            if (response is BrokerResult.Failure && response.challenge != null && !options.interactive)
+                response.copy(verificationRequest = request.copy(browser = options))
+            else response
         } finally {
             work.cancel()
             // Normal task completion retains Chromium's in-memory session cookies. Cancellation

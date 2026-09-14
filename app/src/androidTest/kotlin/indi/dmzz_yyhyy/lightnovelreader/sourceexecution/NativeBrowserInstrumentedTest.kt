@@ -213,22 +213,39 @@ class NativeBrowserInstrumentedTest {
         assertEquals(0, server.requestCount)
     } }
 
+    @Test fun backgroundDocumentHasAnActualViewport(): Unit = runBlocking { fixture { broker, server ->
+        server.enqueue(MockResponse().setHeader("Content-Type", "text/html").setBody(
+            "<meta name='viewport' content='width=device-width,initial-scale=1'><div style='width:50vw' id='half'></div>"))
+        val result = Json.parseToJsonElement(render(session(broker, server), server.url("/").toString(),
+            "JSON.stringify({width:innerWidth,height:innerHeight,half:document.getElementById('half').getBoundingClientRect().width})").text()).jsonObject
+        val width = result.getValue("width").jsonPrimitive.double
+        assertTrue(width > 0)
+        assertTrue(result.getValue("height").jsonPrimitive.double > 0)
+        assertEquals(width / 2, result.getValue("half").jsonPrimitive.double, 1.0)
+    } }
+
     /** Explicit local URL allows the same fixture to be run in Chrome and reference MD3. */
     @Test fun recordLocalEnvironment(): Unit = runBlocking {
         val args = InstrumentationRegistry.getArguments()
         val url = args.getString("browserProbeUrl")
         assumeTrue(url != null)
-        require(url!!.startsWith("http://127.0.0.1:18766/probe"))
+        require(url!!.startsWith("http://127.0.0.1:18766/probe") || url.startsWith("http://127.0.0.1:18767/consistency"))
         val root = File(context.cacheDir, "native-probe-${UUID.randomUUID()}")
+        val activity = if (args.getString("foregroundProbe") == "true") ActivityScenario.launch(BrowserTestHostActivity::class.java) else null
+        try {
         SourceBroker(root.toPath(), browser = AndroidSourceBrowser(context)).use { broker ->
             val session = broker.open(SourceScope("browser-probe", UUID.randomUUID().toString(), "legado"),
-                listOf(NetworkGrant("http://127.0.0.1:18766", true)))
-            session.configureSource("http://127.0.0.1:18766", true, args.getString("nativeProbe") == "true")
+                listOf(NetworkGrant(sourceOrigin(url)!!, true)))
+            session.configureSource(sourceOrigin(url)!!, true, args.getString("nativeProbe") == "true")
             try {
-                val result = render(session, url, "window.probeDone ? JSON.stringify(window.probeResult) : null")
+                val result = render(session, url,
+                    if (url.contains("/consistency")) "window.consistencyDone ? JSON.stringify(window.consistencyResult) : null"
+                    else "window.probeDone ? JSON.stringify(window.probeResult) : null",
+                    interactive = args.getString("foregroundProbe") == "true")
                 InstrumentationRegistry.getInstrumentation().sendStatus(0, Bundle().apply { putString("browserProbe", result.text()) })
             } finally { session.clearAccount() }
         }
+        } finally { activity?.close() }
         root.deleteRecursively()
     }
 }

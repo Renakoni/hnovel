@@ -68,7 +68,7 @@ jobs:
         api: [24, 35]
         include:
           - api: 35
-            native_tests: ",indi.dmzz_yyhyy.lightnovelreader.sourceexecution.NativeBrowserInstrumentedTest,indi.dmzz_yyhyy.lightnovelreader.sourceexecution.BrowserEnvironmentInstrumentedTest"
+            native_tests: ",indi.dmzz_yyhyy.lightnovelreader.sourceexecution.NativeBrowserInstrumentedTest,indi.dmzz_yyhyy.lightnovelreader.sourceexecution.BrowserEnvironmentInstrumentedTest,indi.dmzz_yyhyy.lightnovelreader.sourceexecution.SourceVerificationInstrumentedTest"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4

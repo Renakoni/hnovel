@@ -11,6 +11,78 @@ import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.RecordedRequest
 
 class RuleSourceTest {
+    @Test fun verificationKeepsTheExactFailedRequestAndCannotOutliveItsSource() = runBlocking {
+        val opened = mutableListOf<String>()
+        val browser = BrowserExecutor { _, request, options, guard ->
+            guard.commit {}
+            if (!options.interactive) BrokerResult.Failure(RequestStage.Response, hnovel.network.FailureCode.BrowserRequired,
+                challenge = BrowserChallengeKind.Cloudflare, verificationRequest = request)
+            else {
+                assertEquals("document.documentElement.outerHTML", options.script)
+                opened += request.url
+                BrokerResult.Success(BrokerResponse(0, request.url, emptyMap(), "verified".toByteArray(), "UTF-8", 0,
+                    kind = ResponseKind.BrowserDocument))
+            }
+        }
+        RuleSourceFixture(browser).use { fixture ->
+            val source = fixture.source(customize = { JsonObject(it + ("browserRead" to JsonPrimitive(true))) })
+            val first = runCatching { source.search("first") }.exceptionOrNull() as SourceContentException
+            val second = runCatching { source.search("second") }.exceptionOrNull() as SourceContentException
+            first.verification!!.complete()
+            assertTrue(opened.single(), opened.single().contains("q=first"))
+            source.close()
+            assertEquals(ContentError.Unavailable,
+                (runCatching { second.verification!!.complete() }.exceptionOrNull() as SourceContentException).code)
+            assertEquals(1, opened.size)
+        }
+    }
+
+    @Test fun verificationRetainsTheOriginalDynamicReadinessScript() = runBlocking {
+        val script = "document.querySelector('#ready') ? document.documentElement.outerHTML : null"
+        val browser = BrowserExecutor { _, request, options, _ ->
+            if (!options.interactive) BrokerResult.Failure(RequestStage.Response, hnovel.network.FailureCode.BrowserRequired,
+                challenge = BrowserChallengeKind.Cloudflare, verificationRequest = request.copy(browser = options))
+            else {
+                assertEquals(script, options.script)
+                assertEquals(1200L, options.delayMillis)
+                BrokerResult.Success(BrokerResponse(0, request.url, emptyMap(), "ready".toByteArray(), "UTF-8", 0,
+                    kind = ResponseKind.BrowserDocument))
+            }
+        }
+        RuleSourceFixture(browser).use { fixture -> fixture.source(customize = { raw -> JsonObject(raw + mapOf(
+            "browserRead" to JsonPrimitive(true), "searchUrl" to JsonPrimitive("/search," + buildJsonObject {
+                put("webView", true); put("webJs", script); put("webViewDelayTime", 1200)
+            })
+        )) }).use { source ->
+            val failure = runCatching { source.search("fixture") }.exceptionOrNull() as SourceContentException
+            failure.verification!!.complete()
+        } }
+    }
+
+    @Test fun scriptNetworkChallengeRetainsItsHostOwnedVerificationAction() = runBlocking {
+        val opened = mutableListOf<String>()
+        val browser = BrowserExecutor { _, request, options, _ ->
+            if (request.url.endsWith("/protected") && !options.interactive)
+                BrokerResult.Failure(RequestStage.Response, hnovel.network.FailureCode.BrowserRequired,
+                    challenge = BrowserChallengeKind.SiteVerification, verificationRequest = request)
+            else {
+                if (options.interactive) opened += request.url
+                BrokerResult.Success(BrokerResponse(0, request.url, emptyMap(), "<p>fixture</p>".toByteArray(), "UTF-8", 0,
+                    kind = ResponseKind.BrowserDocument))
+            }
+        }
+        RuleSourceFixture(browser).use { fixture ->
+            fixture.source(customize = { JsonObject(it + mapOf("browserRead" to JsonPrimitive(true),
+                "loginCheckJs" to JsonPrimitive("""java.connect('/protected,{"webView":true}');result;"""))) }).use { source ->
+                val error = runCatching { source.search("fixture") }.exceptionOrNull() as SourceContentException
+                assertEquals(ContentError.BrowserRequired, error.code)
+                assertEquals(BrowserChallengeKind.SiteVerification, error.verification!!.kind)
+                error.verification.complete()
+                assertEquals(listOf(fixture.server.url("/protected").toString()), opened)
+            }
+        }
+    }
+
     @Test fun declaredBrowserReadsAndLoginHooksAcceptDocumentsWithoutClaimingHttpSuccess() = runBlocking {
         val requests = mutableListOf<String>()
         val browser = BrowserExecutor { _, request, _, _ ->

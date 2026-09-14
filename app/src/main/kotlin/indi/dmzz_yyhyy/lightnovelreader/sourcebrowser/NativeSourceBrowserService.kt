@@ -130,6 +130,12 @@ class NativeSourceBrowserService : Service() {
                     fail(FailureCode.Network); return true
                 }
             }
+            // A detached WebView has no layout pass. Give it a real rendering area
+            // before navigation; the foreground Activity later lays it out normally.
+            val display = resources.displayMetrics
+            view.measure(android.view.View.MeasureSpec.makeMeasureSpec(display.widthPixels, android.view.View.MeasureSpec.EXACTLY),
+                android.view.View.MeasureSpec.makeMeasureSpec(display.heightPixels, android.view.View.MeasureSpec.EXACTLY))
+            view.layout(0, 0, view.measuredWidth, view.measuredHeight)
             view.loadUrl(job.request.url, job.request.headers)
             if (job.options.interactive) startActivity(Intent(this@NativeSourceBrowserService,
                 NativeSourceBrowserActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -144,9 +150,10 @@ class NativeSourceBrowserService : Service() {
             val script = job.options.script.ifBlank { "document.documentElement.outerHTML" }
             view.evaluateJavascript("""
                 (function(){try {
-                    var challenge=!!window._cf_chl_opt || /^\/(antibot)(\/|${'$'})/.test(location.pathname) ||
-                        /^\s*(Just a moment|人机校验)/i.test(document.title);
-                    return JSON.stringify({url:location.href,challenge:challenge,value:eval(${JsonPrimitive(script)})});
+                    var challenge=window._cf_chl_opt || /^\s*Just a moment/i.test(document.title) ? 'Cloudflare' :
+                        /^\/antibot(\/|${'$'})/.test(location.pathname) || /^\s*人机校验/.test(document.title) ? 'SiteVerification' :
+                        /^\/login(\/|${'$'})/.test(location.pathname) && document.querySelector('input[type=password]') ? 'Login' : null;
+                    return JSON.stringify({url:location.href,challenge:challenge,value:challenge ? null : eval(${JsonPrimitive(script)})});
                 }catch(e){return null;}})()
             """.trimIndent()) { encoded ->
                 evaluating = false
@@ -155,9 +162,11 @@ class NativeSourceBrowserService : Service() {
                 try {
                     val outer = Json.parseToJsonElement(encoded)
                     val result = if (outer == JsonNull) null else Json.parseToJsonElement(outer.jsonPrimitive.content).jsonObject
-                    if (result?.get("challenge")?.jsonPrimitive?.boolean == true) {
+                    val challenge = result?.get("challenge")?.takeUnless { it == JsonNull }?.jsonPrimitive?.content
+                    if (challenge != null) {
                         if (job.options.interactive) handler.postDelayed({ evaluate() }, 1000)
-                        else fail(FailureCode.BrowserRequired)
+                        else finish(BrokerResult.Failure(RequestStage.Response, FailureCode.BrowserRequired,
+                            challenge = BrowserChallengeKind.valueOf(challenge)))
                         return@evaluateJavascript
                     }
                     if (httpError) { fail(FailureCode.Network); return@evaluateJavascript }

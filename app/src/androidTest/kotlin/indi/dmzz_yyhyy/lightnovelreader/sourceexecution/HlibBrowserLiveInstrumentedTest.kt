@@ -9,6 +9,7 @@ import hnovel.network.NetworkGrant
 import indi.dmzz_yyhyy.lightnovelreader.LightNovelReaderApplication
 import indi.dmzz_yyhyy.lightnovelreader.sourcebrowser.BrowserTestHostActivity
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.*
 import org.junit.Assert.*
 import org.junit.Assume.assumeTrue
@@ -54,6 +55,23 @@ class HlibBrowserLiveInstrumentedTest {
             return@runBlocking
         }
         if (args.getString("hlibAction") == "install") return@runBlocking
+        if (args.getString("hlibAction") == "recover") {
+            val entry = dagger.hilt.android.EntryPointAccessors.fromApplication(application,
+                indi.dmzz_yyhyy.lightnovelreader.sourcebrowser.SourceVerificationDebugEntryPoint::class.java)
+            val runtime = (entry.registry().resolve(id) as indi.dmzz_yyhyy.lightnovelreader.data.web.SourceResolution.Ready).runtime
+            indi.dmzz_yyhyy.lightnovelreader.sourcebrowser.VerificationTestHostActivity.coordinator = entry.coordinator()
+            try {
+                ActivityScenario.launch(indi.dmzz_yyhyy.lightnovelreader.sourcebrowser.VerificationTestHostActivity::class.java).use {
+                    kotlinx.coroutines.withContext(indi.dmzz_yyhyy.lightnovelreader.data.web.ForegroundSourceRequest()) {
+                        val search = kotlinx.coroutines.withTimeout(600000) {
+                            runtime.search.search(runtime.search.searchTypes.first(), "女性干员X男性博士").first()
+                        }
+                        assertTrue(search is io.nightfish.lightnovelreader.api.web.search.SearchResult.MultipleBook)
+                        report("production runtime search resumed; pending=${entry.coordinator().prompts.value.size}")
+                    }
+                }
+            } finally { indi.dmzz_yyhyy.lightnovelreader.sourcebrowser.VerificationTestHostActivity.coordinator = null }
+        }
         val found = target.rules.search("女性干员X男性博士", 1)
         assertTrue(found.isNotEmpty())
         report("search count=${found.size}")
