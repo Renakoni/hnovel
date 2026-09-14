@@ -1,5 +1,14 @@
 # Plugin API changes
 
+## Unreleased — independent homepage catalogue and verification errors
+
+- Add `DiscoveryProvider.homepageCatalog`, defaulting to `catalog`. Providers can
+  supply homepage controls without fetching an unrelated category list. Direct
+  homepage sections have no category ID; their target retains filter expressions.
+- Append `DiscoveryError.VerificationRequired`. A website challenge is separate
+  from account authentication. Exhaustive consumers must handle the new case;
+  consumers of the changed interface should recompile. No API artifact is published.
+
 ## Unreleased — source rate limiting (#140)
 
 - Append `DiscoveryError.RateLimited` so a site's request limit is distinct from

@@ -29,6 +29,101 @@ import org.robolectric.annotation.Config
 class RuleDiscoveryProviderTest {
     @get:Rule val directory = TemporaryFolder()
 
+    @Test fun scopedResultFiltersStayOutOfHomepageCategoriesAndOtherLists() = runBlocking {
+        RuleSourceFixture().use { fixture -> fixture.source { raw -> JsonObject(definition(raw) + mapOf(
+            "exploreUrl" to JsonPrimitive("""[{"title":"Tag","url":"/tags/fixture?sort={{infoMap.Sort}}"}]"""),
+            "exploreScreen" to JsonPrimitive("""[{"title":"Sort","type":"select","chars":["new","popular"],"targetPrefixes":["/search?","/tags/"]}]"""),
+            "homepageModules" to JsonPrimitive("""[{"key":"articles","type":"card","title":"Articles","url":"/search?sort={{infoMap.Sort}}"}]""")
+        )) }.use { source ->
+            val provider = RuleDiscoveryProvider(source)
+            assertTrue(provider.homepageCatalog().get()!!.filters.isEmpty())
+            assertEquals("new", provider.catalog().get()!!.values["Sort"])
+            assertTrue(provider.catalog().get()!!.filters.isEmpty())
+            assertTrue(provider.filters("/rank?type=day").isEmpty())
+            assertEquals("Sort", provider.filters("/search?sort={{infoMap.Sort}}").single().id)
+            assertEquals("Sort", provider.filters("/tags/fixture?sort={{infoMap.Sort}}").single().id)
+            assertTrue(provider.page(DiscoveryRequest("/search?sort={{infoMap.Sort}}", filters = mapOf("Sort" to "popular"))).get()!!.books.isNotEmpty())
+            assertEquals("/search?sort=popular", fixture.server.takeRequest().path)
+        } }
+    }
+
+    @Test fun directHomepageControlsAndResultsDoNotEvaluateFailingCategories() = runBlocking {
+        RuleSourceFixture().use { fixture -> fixture.source { raw -> JsonObject(definition(raw) + mapOf(
+            "exploreUrl" to JsonPrimitive("@js:throw 'category unavailable'"),
+            "exploreScreen" to JsonPrimitive("""[{"title":"Sort","type":"select","chars":["new","popular"],"default":"new","action":"java.refreshExplore()"}]"""),
+            "homepageModules" to JsonPrimitive("""[{"key":"articles","type":"card","title":"Articles","url":"/search?sort={{infoMap.Sort}}&page={{page}}"}]""")
+        )) }.use { source ->
+            val provider = RuleDiscoveryProvider(source)
+            assertEquals("new", provider.homepageCatalog().get()!!.values["Sort"])
+            assertTrue(provider.interact("Sort", "popular").get()!!.refresh)
+            assertEquals("popular", provider.homepageCatalog(true).get()!!.values["Sort"])
+            val feed = provider.feed().get()!!.single()
+            assertEquals("Articles", feed.title)
+            assertNull(feed.categoryId)
+            assertEquals("/search?sort=popular&page=1", fixture.server.takeRequest().path)
+            val result = provider.openSession("result", mapOf("Sort" to "new"), DiscoveryEnvironment())
+            result.homepageCatalog()
+            assertTrue(result.page(DiscoveryRequest(feed.more!!, filters = mapOf("Sort" to "new"))).get()!!.books.isNotEmpty())
+            assertEquals("/search?sort=new&page=1", fixture.server.takeRequest().path)
+            assertEquals(Err(DiscoveryError.InvalidRules), provider.catalog())
+        } }
+    }
+
+    @Test fun nativeSiteChallengeIsNotReportedAsMissingAccountLogin() = runBlocking {
+        for (kind in hnovel.network.BrowserChallengeKind.entries) {
+            val browser = hnovel.network.BrowserExecutor { _, request, _, _ ->
+                hnovel.network.BrokerResult.Failure(hnovel.network.RequestStage.Response, hnovel.network.FailureCode.BrowserRequired,
+                    challenge = kind, verificationRequest = request)
+            }
+            RuleSourceFixture(browser).use { fixture -> fixture.source { raw -> JsonObject(definition(raw) +
+                ("browserRead" to JsonPrimitive(true))) }.use { source ->
+                val provider = RuleDiscoveryProvider(source)
+                val expected = if (kind == hnovel.network.BrowserChallengeKind.Login) DiscoveryError.AuthenticationRequired
+                    else DiscoveryError.VerificationRequired
+                assertEquals(Err(expected), provider.page(DiscoveryRequest("/search")))
+            } }
+        }
+    }
+
+    @Test fun declaredHomepageKeepsNavigationSeparateFromTagCategories() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            val source = fixture.source { raw -> JsonObject(raw + mapOf(
+                "exploreUrl" to JsonPrimitive("""[
+                    {"title":"Ranking","url":"/search?kind=rank&page={{page}}"},
+                    {"title":"Articles","url":"/search?kind=articles&page={{page}}"},
+                    {"title":"Fantasy","url":"/search?tag=fantasy&page={{page}}"},
+                    {"title":"Science fiction","url":"/search?tag=scifi&page={{page}}"}
+                ]"""),
+                "homepageModules" to JsonPrimitive("""[
+                    {"key":"rank","type":"ranking","title":"Ranking","kindTitle":"Ranking"},
+                    {"key":"articles","type":"card","title":"Articles","kindTitle":"Articles"}
+                ]"""),
+                "ruleExplore" to raw.getValue("ruleSearch"))) }
+            val provider = RuleDiscoveryProvider(source)
+            val categories = provider.catalog().get()!!.categories
+            assertEquals(listOf("Fantasy", "Science fiction"), categories.map { it.title })
+            assertEquals(0, fixture.documents.get())
+            val feed = provider.feed().get()!!
+            assertEquals(listOf("Ranking", "Articles"), feed.map { it.title })
+            assertTrue(feed.all { it.books.isNotEmpty() })
+            assertEquals("/search?kind=articles&page={{page}}", feed.last().more)
+            assertEquals(2, fixture.documents.get())
+            assertTrue(provider.page(DiscoveryRequest(categories.first().target)).get()!!.books.isNotEmpty())
+            assertEquals(3, fixture.documents.get())
+        }
+    }
+
+    @Test fun missingHomepageTargetReportsItsSourceField() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            val source = fixture.source { raw -> JsonObject(definition(raw) + ("homepageModules" to
+                JsonPrimitive("""[{"key":"rank","type":"ranking","title":"Ranking","kindTitle":"Missing"}]"""))) }
+            val provider = RuleDiscoveryProvider(source)
+            assertEquals(Err(DiscoveryError.InvalidRules), provider.catalog())
+            assertEquals("homepageModules[0].kindTitle", provider.failureField)
+            assertEquals(0, fixture.documents.get())
+        }
+    }
+
     @Test fun deniedCategoryPageReportsOnlyItsOriginAndResourcePurpose() = runBlocking {
         RuleSourceFixture().use { fixture ->
             fixture.source(customize = { raw -> JsonObject(raw + mapOf(

@@ -35,7 +35,22 @@ class HlibBrowserLiveInstrumentedTest {
             val definition = sources.definitions.list().single { it.reference() == existing }
             // A test must not replace an unrelated/user-edited definition behind the UI.
             assertEquals(true, Json.parseToJsonElement(definition.rawJson).jsonObject["browserRead"]?.jsonPrimitive?.boolean)
-            existing
+            if (args.getString("hlibAction") == "describe") {
+                instrumentation.sendStatus(0, Bundle().apply { putString("hlibDigest", definition.contentDigest) })
+                return@runBlocking
+            }
+            if (args.getString("hlibAction") == "update") {
+                // An explicit expected revision prevents overwriting a user's later source edits.
+                assertEquals(args.getString("hlibExpectedDigest"), definition.contentDigest)
+                val saved = sources.importer.commit(preview, listOf(ImportSelection(candidate.index, ImportDecision.Replace(existing))))
+                assertNull(saved.error)
+                val replacement = saved.items.single().reference!!
+                val updates = dagger.hilt.android.EntryPointAccessors.fromApplication(application,
+                    indi.dmzz_yyhyy.lightnovelreader.sourcebrowser.SourceVerificationDebugEntryPoint::class.java).revisions()
+                updates.apply(indi.dmzz_yyhyy.lightnovelreader.data.web.rules.ImportedRuleSources.id(definition),
+                    replacement, listOf(NetworkGrant("https://hlib.cc")))
+                replacement
+            } else existing
         } else {
             val saved = sources.importer.commit(preview, listOf(ImportSelection(candidate.index, ImportDecision.Add)))
             assertNull(saved.error)
@@ -54,7 +69,30 @@ class HlibBrowserLiveInstrumentedTest {
             report("website window completed; authentication still requires a successful protected read")
             return@runBlocking
         }
-        if (args.getString("hlibAction") == "install") return@runBlocking
+        if (args.getString("hlibAction") in listOf("install", "update")) return@runBlocking
+        if (args.getString("hlibAction") == "discovery") {
+            val discovery = target.rules.openDiscovery("live-discovery")
+            val home = discovery.catalog(homepage = true)
+            val modules = requireNotNull(home.homepage)
+            assertEquals(listOf("日榜", "周榜", "月榜", "文章"), modules.map { it.title })
+            for ((index, module) in modules.withIndex()) {
+                val books = discovery.page(module.url, 1, emptyMap())
+                assertTrue(books.isNotEmpty())
+                report("homepage module=$index books=${books.size}")
+            }
+            val tags = discovery.catalog()
+            val urls = tags.rows.filter { it.type == "url" }
+            assertTrue(urls.isNotEmpty())
+            report("tags=${urls.size} buttons=${tags.rows.count { it.type == "button" }} page=${tags.values["标签页"] ?: "1"}")
+            val next = tags.rows.single { it.title == "下一页标签" }
+            assertTrue(discovery.interact(next.id).refresh)
+            val second = discovery.catalog(refresh = true)
+            assertTrue(second.rows.any { it.title == "上一页标签" })
+            assertNotEquals(urls.map { it.url }, second.rows.filter { it.type == "url" }.map { it.url })
+            assertTrue(discovery.page(second.rows.first { it.type == "url" }.url, 1, emptyMap()).isNotEmpty())
+            report("tag page=2 and result list passed")
+            return@runBlocking
+        }
         if (args.getString("hlibAction") == "recover") {
             val entry = dagger.hilt.android.EntryPointAccessors.fromApplication(application,
                 indi.dmzz_yyhyy.lightnovelreader.sourcebrowser.SourceVerificationDebugEntryPoint::class.java)

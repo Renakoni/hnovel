@@ -12,6 +12,7 @@ import indi.dmzz_yyhyy.lightnovelreader.ui.SourceVerificationHost
 interface SourceVerificationDebugEntryPoint {
     fun registry(): indi.dmzz_yyhyy.lightnovelreader.data.web.WebSourceRegistry
     fun coordinator(): SourceVerificationCoordinator
+    fun revisions(): indi.dmzz_yyhyy.lightnovelreader.data.web.rules.SourceRevisionUpdates
 }
 
 /** Debug-only host for the production verification UI, without unrelated onboarding. */

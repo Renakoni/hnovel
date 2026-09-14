@@ -41,6 +41,17 @@ There is one tab per registered source. URL entries become ordered categories an
 sections, never nested Home/All/category tabs. A blank URL is a heading. Loading a
 catalogue does not fetch every result list: a feed fetches at most the first actionable
 section's first-page preview (six books); later sections retain their own More target.
+An explicit `homepageModules` declaration instead selects up to 64 homepage modules,
+each with a six-book preview. Direct module URLs do not require remote categories;
+legacy `kindTitle` references still resolve against the category catalogue. Homepage
+and category routes retain separate ownership and values.
+
+`exploreScreen` inputs may declare the host extension `targetPrefixes`, a nonempty
+array of at most 16 nonblank strings (each at most 2048 characters). Such controls
+appear only in result lists whose original target starts with one of those literal
+prefixes, before URL template expansion. Homepage/category controls exclude them,
+but their defaults still seed the page draft. Unscoped inputs preserve the existing
+global behavior. This extension does not imply upstream MD3 schema compatibility.
 
 URL/button entries may supply an explicit `id`. Otherwise their IDs are derived from
 the field, type, URL, action, and duplicate occurrence, excluding display titles. For

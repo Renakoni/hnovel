@@ -9,6 +9,19 @@ class RuleDiscoveryCatalogTest {
     private fun definition(raw: JsonObject, rows: JsonArray) = JsonObject(raw + mapOf(
         "exploreUrl" to JsonPrimitive(rows.toString()), "ruleExplore" to raw.getValue("ruleSearch")))
 
+    @Test fun malformedResultFilterScopeReportsItsField() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            for (scope in listOf("[]", "[1]", "[null]", "[\"\"]", "\"/search\"")) {
+                fixture.source { raw -> JsonObject(definition(raw, JsonArray(emptyList())) +
+                    ("exploreScreen" to JsonPrimitive("""[{"title":"Sort","type":"text","targetPrefixes":$scope}]"""))) }.use { source ->
+                    val error = failure { source.openDiscovery("invalid-scope").catalog() }
+                    assertEquals(ContentError.InvalidRule, error.code)
+                    assertEquals("exploreScreen[0].targetPrefixes", error.field)
+                }
+            }
+        }
+    }
+
     @Test fun qidianCatalogRetainsAll326RowsAndEveryTarget() = runBlocking {
         RuleSourceFixture().use { fixture ->
             val input = DiscoveryCatalogFixtures.rows(0)
