@@ -7,6 +7,7 @@
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="file" path="rule-sources/runtime/" />
+        <exclude domain="root" path="app_webview_source_native/" />
         <!-- Use <include> and <exclude> to control what is backed up.
         <include .../>
         <exclude .../>
@@ -14,6 +15,7 @@
     </cloud-backup>
     <device-transfer>
         <exclude domain="file" path="rule-sources/runtime/" />
+        <exclude domain="root" path="app_webview_source_native/" />
     </device-transfer>
     <!--
     <device-transfer>

@@ -22,6 +22,7 @@ internal class RuleSourceDefinition(val stored: SourceDefinition) {
     val comment = root["bookSourceComment"]?.takeUnless { it == JsonNull }?.jsonPrimitive?.content
     val loginUi = root.string("loginUi")
     val cookiesEnabled = root["enabledCookieJar"]?.jsonPrimitive?.booleanOrNull ?: true
+    val browserRead = root["browserRead"]?.jsonPrimitive?.booleanOrNull ?: false
     val coverDecode = root.string("coverDecodeJs")
     val search = rules("ruleSearch")
     // Legado treats an explore rule without a list selector as a partial override

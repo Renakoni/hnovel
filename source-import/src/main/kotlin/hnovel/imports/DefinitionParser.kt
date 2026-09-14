@@ -84,6 +84,7 @@ class LegadoSourceAdapter : SourceFormatAdapter {
         val enabled = boolean("enabled", true)
         val explore = boolean("enabledExplore", true)
         boolean("enabledCookieJar", true)
+        boolean("browserRead", false)
         for (flag in listOf("customButton", "eventListener")) {
             boolean(flag, false)
             if ((value[flag] as? JsonPrimitive)?.isString == true) throw ImportFailure(ImportCode.InvalidField, flag)
@@ -107,7 +108,7 @@ class LegadoSourceAdapter : SourceFormatAdapter {
             if (rule != null && rule != JsonNull && rule !is JsonObject && !(rule is JsonArray && rule.isEmpty()))
                 throw ImportFailure(ImportCode.InvalidField, field)
         }
-        val known = strings + numbers + rules + setOf("bookSourceUrl", "bookSourceName", "bookSourceType", "enabled", "enabledExplore", "enabledCookieJar", "customButton", "eventListener", "concurrentRate")
+        val known = strings + numbers + rules + setOf("bookSourceUrl", "bookSourceName", "bookSourceType", "enabled", "enabledExplore", "enabledCookieJar", "browserRead", "customButton", "eventListener", "concurrentRate")
         val notices = value.keys.filter { it !in known }.map { ImportNotice("UnclassifiedField", it) }.toMutableList()
         // Parsing a rule object is not a claim that its fields or scripts are executable.
         notices.add(ImportNotice("ExecutionCompatibilityPending"))

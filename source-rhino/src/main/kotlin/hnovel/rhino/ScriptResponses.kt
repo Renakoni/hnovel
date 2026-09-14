@@ -42,6 +42,30 @@ internal object ScriptResponses {
         // retained/lazy accessors. Invalid host data must not throw a JVM exception later.
         for (field in listOf("url", "message")) require(data.getValue(field).jsonPrimitive.isString)
         headers.values.forEach { list -> list.jsonArray.forEach { require(it.jsonPrimitive.isString) } }
+        fun method(target: ScriptableObject, name: String, action: (Array<out Any>) -> Any?) {
+            target.defineProperty(name, realm.method(scope) { cx, active, args ->
+                try {
+                    val limit = cx.getThreadLocal(bridgeLimitKey) as Int
+                    BoundedJsonResult(limit).encode(ScriptRealm.current(cx).arrayIn(active, args))
+                    action(args).also { BoundedJsonResult(limit).encode(it) }
+                } catch (large: ResultTooLarge) { throw large }
+                catch (cancelled: java.util.concurrent.CancellationException) { throw cancelled }
+                catch (_: Exception) { throw JavaScriptException(ScriptRealm.current(cx).errorIn(active, "host bridge denied"), "host-bridge", 1) }
+            }, ScriptableObject.DONTENUM)
+        }
+        fun constant(name: String, value: Any?) = method(response, name) { require(it.isEmpty()); value }
+        if (data["kind"]?.jsonPrimitive?.content == "BrowserDocument") {
+            // DOM extraction has no observable raw HTTP response. Keep that distinction
+            // across the Legado bridge instead of inventing a successful status/protocol.
+            val text = body ?: String(java.util.Base64.getDecoder().decode(data.getValue("bytes").jsonPrimitive.content), Charsets.UTF_8)
+            constant("body", text); constant("getBody", text)
+            constant("url", url); constant("getUrl", url)
+            constant("code", 0); constant("statusCode", 0)
+            constant("isBrowserDocument", true)
+            constant("raw", null); constant("getRaw", null)
+            constant("message", ""); constant("isSuccessful", false)
+            return response
+        }
         if (jsoup) {
             val bytes = data["bytes"]?.let { java.util.Base64.getDecoder().decode(it.jsonPrimitive.content) }
                 ?: requireNotNull(body).toByteArray(Charsets.UTF_8)
@@ -57,18 +81,6 @@ internal object ScriptResponses {
         } ?: body.toByteArray(Charsets.UTF_8).size
         require(bodySize >= 0)
         fun values(name: String) = headers.entries.firstOrNull { it.key.equals(name, true) }?.value?.jsonArray
-        fun method(target: ScriptableObject, name: String, action: (Array<out Any>) -> Any?) {
-            target.defineProperty(name, realm.method(scope) { cx, active, args ->
-                try {
-                    val limit = cx.getThreadLocal(bridgeLimitKey) as Int
-                    BoundedJsonResult(limit).encode(ScriptRealm.current(cx).arrayIn(active, args))
-                    action(args).also { BoundedJsonResult(limit).encode(it) }
-                } catch (large: ResultTooLarge) { throw large }
-                catch (cancelled: java.util.concurrent.CancellationException) { throw cancelled }
-                catch (_: Exception) { throw JavaScriptException(ScriptRealm.current(cx).errorIn(active, "host bridge denied"), "host-bridge", 1) }
-            }, ScriptableObject.DONTENUM)
-        }
-        fun constant(name: String, value: Any?) = method(response, name) { require(it.isEmpty()); value }
         constant("body", body)
         constant("url", url)
         constant("code", status)

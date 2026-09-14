@@ -17,6 +17,7 @@ plugins {
 
 android {
     sourceSets.getByName("androidTest").assets.srcDir("../source-rhino/src/test/resources")
+    sourceSets.getByName("androidTest").assets.srcDir("../source-compatibility/browser")
     namespace = "indi.dmzz_yyhyy.lightnovelreader"
     compileSdk = 37
 
@@ -166,6 +167,7 @@ dependencies {
     coreLibraryDesugaring(libs.desugar.jdk.libs)
     // Android lib
     implementation(libs.androidx.core.ktx)
+    implementation("androidx.webkit:webkit:1.12.1")
     implementation(libs.androidx.foundation)
     implementation(libs.core.splashscreen)
     implementation(libs.lifecycle.runtime.ktx)

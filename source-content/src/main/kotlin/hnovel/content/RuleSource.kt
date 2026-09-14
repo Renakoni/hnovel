@@ -49,7 +49,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         require(identity.sourceId == definition.sourceId && identity.profile == definition.profile && identity.revision == definition.contentDigest)
         require(session.scope.sourceId == identity.sourceId && session.scope.namespace == identity.namespace &&
             session.scope.profile == identity.profile && session.scope.accountGeneration == identity.accountGeneration)
-        session.configureSource(spec.baseUrl, spec.cookiesEnabled)
+        session.configureSource(spec.baseUrl, spec.cookiesEnabled, spec.browserRead)
     }
 
     private var cachedLoginForm: LoginForm? = null
@@ -115,21 +115,27 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         authority.authorized(identity) { check(session.write(StorageRequest(StorageArea.Account, StorageRequestKey.LOGIN_INFO, info)) is StorageResult.Value) }
         val context = loginContext(submitted, interactive = true)
         if (form.browserUrl != null && action == null) {
-            val response = session.execute(BrokerRequest("login", form.browserUrl, headers = context.headers(),
+            val pending = if (spec.browserRead) (session.read(StorageRequest(StorageArea.Account,
+                StorageRequestKey.BROWSER_PENDING_URL)) as? StorageResult.Value)?.value else null
+            val response = session.execute(BrokerRequest("login", pending ?: form.browserUrl, headers = context.headers(),
                 timeoutMillis = 60000, browser = BrowserOptions(interactive = true)),
                 RequestCommitGuard { authority.authorized(identity, it) })
             when (response) {
                 is BrokerResult.Failure -> throw SourceContentException(response.code.contentError(), "loginUrl", response.denial)
-                is BrokerResult.Success -> checkStatus(response.response.status, "loginUrl")
+                is BrokerResult.Success -> checkStatus(response.response.status, "loginUrl", response.response.kind == ResponseKind.BrowserDocument)
             }
             // Closing a website preserves its session; HTTP 200 alone does not verify a login.
-            authority.authorized(identity) { check(session.write(StorageRequest(StorageArea.Account, "login/status", "session")) is StorageResult.Value) }
+            authority.authorized(identity) {
+                check(session.write(StorageRequest(StorageArea.Account, "login/status", "session")) is StorageResult.Value)
+                if (pending != null) check(session.write(StorageRequest(StorageArea.Account, StorageRequestKey.BROWSER_PENDING_URL)) is StorageResult.Value)
+            }
             return@operation
         }
         val code = if (action == null) "if(typeof login!=='function')throw new Error('login missing');login();true;"
             else form.fields.single { it.name == action }.action ?: throw SourceContentException(ContentError.InvalidRule, "loginUi.action")
         if (code.startsWith("http://", true) || code.startsWith("https://", true)) {
-            checkStatus(request(context, code, "loginUi.action", browser = BrowserOptions(interactive = true)).status, "loginUi.action")
+            val response = request(context, code, "loginUi.action", browser = BrowserOptions(interactive = true))
+            checkStatus(response.status, "loginUi.action", response.kind == ResponseKind.BrowserDocument)
         } else context.script("result=JSON.parse(result);\n${loginPrelude()}\n${scriptBody(code)}", RuleValue.Text(info),
             if (action == null) "loginUrl" else "loginUi.action")
         val state = context.discovery!!
@@ -147,7 +153,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
                     if (config?.keys?.any { it != "title" } == true) throw SourceContentException(ContentError.InvalidRule, "loginUi.action.browser")
                     val response = request(context, arg(0)!!, "loginUi.action.browser", browser = BrowserOptions(interactive = true,
                         html = arg(1), script = arg(2).orEmpty(), title = config?.string("title").orEmpty()))
-                    checkStatus(response.status, "loginUi.action.browser")
+                    checkStatus(response.status, "loginUi.action.browser", response.kind == ResponseKind.BrowserDocument)
                 }
                 else -> throw SourceContentException(ContentError.InvalidRule, "loginUi.action")
             }
@@ -492,7 +498,11 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             else session.execute(if (request.kind == ResourceKind.Image) request.copy(cache = CacheMode.Disabled) else request, guard)
         trace.record(ContentTraceEvent("network", field, (System.nanoTime() - started) / 1_000_000,
             request.body?.length ?: 0, (result as? BrokerResult.Success)?.response?.body?.size ?: 0,
-            when (result) { is BrokerResult.Success -> if (result.response.protocol == "data") "Inline" else "HTTP_${result.response.status}"; is BrokerResult.Failure -> result.code.name }))
+            when (result) { is BrokerResult.Success -> when {
+                result.response.kind == ResponseKind.BrowserDocument -> "BrowserDocument"
+                result.response.protocol == "data" -> "Inline"
+                else -> "HTTP_${result.response.status}"
+            }; is BrokerResult.Failure -> result.code.name }))
         if (!authority.accepts(identity)) throw SourceContentException(ContentError.Unavailable, field)
         val response = when (result) {
             is BrokerResult.Success -> result.response
@@ -512,7 +522,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val inline = response.protocol == "data"
         context.baseUrl = if (inline) url else response.finalUrl
         if (spec.loginCheck.isBlank()) {
-            if (!acceptErrorResponse) checkStatus(response.status, field)
+            if (!acceptErrorResponse) checkStatus(response.status, field, response.kind == ResponseKind.BrowserDocument)
             return PageDocument(response.text(), response.finalUrl, inline, context.baseUrl)
         }
         // The pinned hook receives and returns StrResponse, including retry responses from java.connect.
@@ -520,10 +530,11 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val checked = context.script("""
             result=host.call('response.view',JSON.parse(result));
             result=eval(${JsonPrimitive(scriptBody(spec.loginCheck))});
-            JSON.stringify({body:result.getBody(),url:result.getUrl(),status:result.code()});
+            JSON.stringify({body:result.getBody(),url:result.getUrl(),status:result.code(),
+                browserDocument:typeof result.isBrowserDocument==='function' && result.isBrowserDocument()});
         """.trimIndent(), RuleValue.Text(snapshot.toString()), "loginCheckJs").text()
         val value = Json.parseToJsonElement(checked).jsonObject
-        if (!acceptErrorResponse) checkStatus(value.getValue("status").jsonPrimitive.int, "loginCheckJs")
+        if (!acceptErrorResponse) checkStatus(value.getValue("status").jsonPrimitive.int, "loginCheckJs", value["browserDocument"]?.jsonPrimitive?.boolean == true)
         val finalUrl = sourceLink(response.finalUrl, value.getValue("url").jsonPrimitive.content)
         context.baseUrl = if (inline) url else finalUrl
         return PageDocument(value.getValue("body").jsonPrimitive.content, finalUrl, inline, context.baseUrl)
@@ -535,7 +546,8 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         return Regex("<meta\\s+[^>]*http-equiv\\s*=\\s*['\\\"]?refresh", RegexOption.IGNORE_CASE)
             .containsMatchIn(response.text())
     }
-    private fun checkStatus(status: Int, field: String) {
+    private fun checkStatus(status: Int, field: String, browserDocument: Boolean = false) {
+        if (browserDocument && status == 0) return
         // A public page can return 401/403 for a WAF or other access policy. Only an
         // explicit login request establishes an authentication failure for this account.
         if (status == 401 && (field == "loginUrl" || field.startsWith("loginUi."))) {

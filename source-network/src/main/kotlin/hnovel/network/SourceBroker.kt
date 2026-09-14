@@ -64,10 +64,13 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
     @Volatile var enabledCookieJar = true
     var sourceUrl: String = ""
         private set
-    fun configureSource(url: String, cookiesEnabled: Boolean) {
+    var browserRead: Boolean = false
+        private set
+    fun configureSource(url: String, cookiesEnabled: Boolean, browserRead: Boolean = false) {
         require(sourceUrl.isEmpty() || sourceUrl == url)
         sourceUrl = url
         enabledCookieJar = cookiesEnabled
+        this.browserRead = browserRead
     }
     // VPN/TUN still routes these sockets. An HTTP proxy would move DNS/peer validation to
     // an unchecked destination; keep direct sockets until that transport has its own policy.
@@ -127,10 +130,15 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
     }
 
     /** Called by the host after revocation; deletes only the retired account's sensitive state. */
-    @Synchronized fun clearAccount() {
-        close()
-        check(account.clear() is StorageResult.Value && cookieStorage.clear() is StorageResult.Value) { "Account cleanup failed" }
-        cookies.restoreMemory(emptyList())
+    fun clearAccount() {
+        synchronized(this) {
+            close()
+            check(account.clear() is StorageResult.Value && cookieStorage.clear() is StorageResult.Value) { "Account cleanup failed" }
+            cookies.restoreMemory(emptyList())
+        }
+        // Browser cancellation may finish on another thread that checks this session.
+        // Do not hold the session monitor while waiting for its process to stop.
+        browser?.clearAccount(scope)
     }
 
     @Synchronized fun read(request: StorageRequest): StorageResult {
@@ -184,6 +192,12 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
     suspend fun execute(request: BrokerRequest, guard: RequestCommitGuard = RequestCommitGuard { it() }): BrokerResult =
         execute(request, guard, policy)
 
+    /** Host-only HTTP transport for synthetic/image verification documents; avoids browser re-entry. */
+    suspend fun executeHttp(request: BrokerRequest, guard: RequestCommitGuard): BrokerResult {
+        require(request.browser == null)
+        return execute(request, guard, policy, browserDefault = false)
+    }
+
     /** Host-only image loading for an URL already extracted from a book. No script bridge exposes this. */
     suspend fun loadImage(request: BrokerRequest, guard: RequestCommitGuard = RequestCommitGuard { it() }): BrokerResult {
         require(request.kind == ResourceKind.Image && request.method == "GET" && request.body == null && request.browser == null)
@@ -191,9 +205,12 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         return execute(request.copy(cache = CacheMode.Disabled), guard, imagePolicy)
     }
 
-    private suspend fun execute(request: BrokerRequest, guard: RequestCommitGuard, policy: NetworkPolicy): BrokerResult {
+    private suspend fun execute(request: BrokerRequest, guard: RequestCommitGuard, policy: NetworkPolicy, browserDefault: Boolean = true): BrokerResult {
         checkOpen()
-        val snapshot = request.copy(headers = request.headers.toMap())
+        // A browser source keeps document reads in the same native session. Binary/image
+        // requests stay explicit HTTP operations; URL options can still supply a render script.
+        val snapshot = request.copy(headers = request.headers.toMap(), browser = request.browser ?:
+            if (browserDefault && browserRead && request.kind == ResourceKind.Document) BrowserOptions() else null)
         val work = lifetime.async {
             var stage = RequestStage.Queue
             try {

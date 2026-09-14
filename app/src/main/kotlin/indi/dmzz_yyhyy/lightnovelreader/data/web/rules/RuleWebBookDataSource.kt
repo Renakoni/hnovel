@@ -87,7 +87,7 @@ internal class RuleWebBookDataSource(override val id: Identifier, private val so
     catch (cancelled: CancellationException) { throw cancelled }
     catch (error: SourceContentException) { Err(WebRequestError("Source request failed", error.message.orEmpty(), error,
         when (error.code) {
-            ContentError.LoginRequired -> WebRequestErrorKind.AuthenticationRequired
+            ContentError.LoginRequired, ContentError.BrowserRequired -> WebRequestErrorKind.AuthenticationRequired
             ContentError.Unavailable -> WebRequestErrorKind.SourceUnavailable
             else -> WebRequestErrorKind.Other
         })) }
