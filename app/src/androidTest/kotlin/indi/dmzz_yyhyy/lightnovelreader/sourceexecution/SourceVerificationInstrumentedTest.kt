@@ -8,6 +8,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import hnovel.content.RuleSourceFixture
 import hnovel.imports.*
 import hnovel.network.*
+import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.data.web.*
 import indi.dmzz_yyhyy.lightnovelreader.data.web.rules.*
 import indi.dmzz_yyhyy.lightnovelreader.sourcebrowser.*
@@ -102,7 +103,7 @@ class SourceVerificationInstrumentedTest {
                     assertFalse(request.isCompleted)
                     activity.recreate()
                     releaseChallenge.countDown()
-                    awaitVisible("android.webkit.WebView")
+                    awaitVisible(context.getString(R.string.source_browser_done))
                     assertTrue(coordinator.prompts.value.single().opening)
                     allowVerification.set(true)
                     withTimeout(20000) { accepted.await() }
