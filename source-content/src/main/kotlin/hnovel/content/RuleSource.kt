@@ -18,6 +18,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
     internal val spec = RuleSourceDefinition(definition)
     private val store = RuleBookStore(session, authority, identity)
     private val serial = Mutex()
+    private var prefetchedDirectoryId: String? = null
     val canSearch get() = spec.searchUrl.isNotBlank()
     val canLogin get() = spec.loginUrl.isNotBlank() || spec.loginUi.isNotBlank()
     val canDiscover get() = discoveryEnabled && spec.exploreUrl.isNotBlank()
@@ -208,22 +209,28 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
     }
 
     suspend fun information(bookId: String): RuleBook = operation("ruleBookInfo") {
+        prefetchedDirectoryId = null
         val id = sourceLink(spec.baseUrl, bookId)
         val old = store.read(id)
         var refreshed = information(id, old)
         // Sources without an update marker still participate in host background update checks.
-        if (refreshed.book.latestChapter.isBlank() && refreshed.book.updateTime.isBlank()) {
+        val inferUpdate = refreshed.book.latestChapter.isBlank() && refreshed.book.updateTime.isBlank()
+        if (inferUpdate) {
             refreshed = directory(refreshed)
             if (old?.chapters?.map { it.id } != refreshed.chapters.map { it.id })
                 refreshed = refreshed.copy(book = refreshed.book.copy(observedUpdate = System.currentTimeMillis()))
         }
         store.write(refreshed)
+        prefetchedDirectoryId = if (inferUpdate) id else null
         refreshed.book
     }
 
     suspend fun directory(bookId: String): List<RuleChapter> = operation("ruleToc", timeoutMillis = 120000) {
         val id = sourceLink(spec.baseUrl, bookId)
-        directory(record(id)).also(store::write).chapters
+        val prefetched = prefetchedDirectoryId == id
+        prefetchedDirectoryId = null
+        val book = record(id)
+        if (prefetched) book.chapters else directory(book).also(store::write).chapters
     }
 
     suspend fun content(bookId: String, chapterId: String): RuleContent = operation("ruleContent") {

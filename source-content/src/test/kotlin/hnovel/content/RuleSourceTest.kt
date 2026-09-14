@@ -582,6 +582,19 @@ class RuleSourceTest {
         } }
     }
 
+    @Test fun informationSuppliesItsCompletedDirectoryOnceWithoutDisablingExplicitRefresh() = runBlocking {
+        RuleSourceFixture().use { fixture -> fixture.source().use { source ->
+            val id = fixture.server.url("/book/one").toString()
+            source.information(id)
+            val fetched = fixture.server.requestCount
+            val original = source.directory(id)
+            assertEquals(fetched, fixture.server.requestCount)
+            fixture.extraChapter = true
+            assertEquals(original.size + 1, source.directory(id).size)
+            assertTrue(fixture.server.requestCount > fetched)
+        } }
+    }
+
     @Test fun changingCursorCannotHideRepeatedCatalogPages() = runBlocking {
         RuleSourceFixture().use { fixture -> fixture.source().use { source ->
             fixture.duplicateToc = true
