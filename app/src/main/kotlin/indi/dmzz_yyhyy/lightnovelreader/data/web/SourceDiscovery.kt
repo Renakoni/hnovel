@@ -42,7 +42,7 @@ class SourceDiscovery internal constructor(private val runtime: SourceRuntime, p
     }
 
     suspend fun homepageCatalog(refresh: Boolean = false): Result<SourceDiscoveryCatalog, DiscoveryError> = runtime.execute {
-        if (!hasFeed) return@execute Err(DiscoveryError.Unsupported)
+        if (!hasFeed && !hasCategories) return@execute Err(DiscoveryError.Unsupported)
         provider.homepageCatalog(refresh).map(::bind)
     }
 
