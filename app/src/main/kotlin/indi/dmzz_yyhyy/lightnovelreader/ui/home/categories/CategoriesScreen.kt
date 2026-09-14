@@ -1,8 +1,9 @@
 package indi.dmzz_yyhyy.lightnovelreader.ui.home.categories
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -11,7 +12,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -62,14 +66,15 @@ fun CategoriesScreen(
                             .collect { onScroll(id, it) }
                     }
                     if (content.buttons.isNotEmpty()) {
-                        LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        LazyRow(contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             items(content.buttons, key = { it.id }) { button ->
-                                Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.secondaryContainer,
-                                    modifier = Modifier.padding(vertical = 4.dp).clip(MaterialTheme.shapes.medium).combinedClickable(
+                                Surface(shape = MaterialTheme.shapes.medium, color = Color.Transparent,
+                                    contentColor = MaterialTheme.colorScheme.primary.copy(alpha = if (content.acting || content.loading) 0.38f else 1f),
+                                    modifier = Modifier.heightIn(min = 48.dp).clip(MaterialTheme.shapes.medium).combinedClickable(
                                         enabled = !content.acting && !content.loading, role = Role.Button,
                                         onClick = { onAction(button.id, false) }, onLongClick = { onAction(button.id, true) })) {
                                     Text(if (button.id == "custom-button") stringResource(R.string.discovery_source_action) else button.title,
-                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp), style = MaterialTheme.typography.labelLarge)
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 14.dp), style = MaterialTheme.typography.labelLarge)
                                 }
                             }
                         }
@@ -83,10 +88,24 @@ fun CategoriesScreen(
                         if (content.loaded && content.categories.isEmpty() && content.buttons.isEmpty() && content.filters.isEmpty()) item {
                             DiscoveryEmpty(stringResource(R.string.categories_empty), onManageSources)
                         }
-                        items(content.categories, key = { it.id }) { category ->
-                            ListItem(headlineContent = { Text(category.title) },
-                                modifier = Modifier.clickable(enabled = category.target.target.isNotBlank()) { onCategory(category) })
-                            HorizontalDivider(Modifier.padding(horizontal = 16.dp))
+                        if (content.categories.isNotEmpty()) item(key = "category-tags") {
+                            FlowRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(0.dp)) {
+                                content.categories.forEach { category -> key(category.id) {
+                                    if (category.target.target.isBlank()) {
+                                        Text(category.title, style = MaterialTheme.typography.titleMedium,
+                                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).semantics { heading() })
+                                    } else {
+                                        SuggestionChip(onClick = { onCategory(category) }, shape = RoundedCornerShape(50),
+                                            colors = SuggestionChipDefaults.suggestionChipColors(
+                                                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                                                labelColor = MaterialTheme.colorScheme.onSurfaceVariant),
+                                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
+                                            label = { Text(category.title, style = MaterialTheme.typography.bodyMedium) })
+                                    }
+                                } }
+                            }
                         }
                         bottomBarSpacer()
                     }

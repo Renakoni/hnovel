@@ -97,8 +97,7 @@ class CategoriesScreenTest {
             CategoriesScreen(DiscoveryPageState(listOf(listing(id, "Qidian")), id,
                 mapOf(id to DiscoveryPageContent(categories, loaded = true))), {}, { clicked += it }, { _, _ -> }, {}, {}, {}, {})
         } }
-        compose.onNode(hasScrollToIndexAction()).performScrollToIndex(categories.lastIndex)
-        compose.onNodeWithText(categories.last().title).performClick()
+        compose.onAllNodesWithText(categories.last().title).onLast().performScrollTo().assertIsDisplayed().performClick()
         assertEquals(listOf(categories.last()), clicked)
         assertTrue(clicked.single().target.target.isNotBlank())
     }
