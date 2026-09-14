@@ -22,6 +22,41 @@ import java.util.concurrent.ConcurrentLinkedQueue
 class SourceBrowserInstrumentedTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
 
+    @Test fun scriptMessagesAndChapterContextCrossTheIsolatedBridge(): Unit = runBlocking {
+        val root = File(context.cacheDir, "source-feedback-${System.nanoTime()}")
+        val authority = ExecutionAuthority()
+        val executor = AndroidIsolatedExecutor(context, authority)
+        try {
+            SourceBroker(root.toPath(), browser = AndroidSourceBrowser(context)).use { sessions ->
+                val session = sessions.open(SourceScope("feedback", "A", "legado"), emptyList())
+                val identity = authority.issue("A", "legado", "1", "feedback")
+                val limits = ExecutionLimits(timeoutMillis = 15000)
+                SourceExecutionBroker(identity, authority, session, limits).use { bridge ->
+                    val task = ExecutionTask.Script("""
+                        var toastResult=typeof java.toast('Source feedback fixture');
+                        book.setReverseToc(true);
+                        [toastResult,title,nextChapterUrl,book.getReverseToc()]
+                    """.trimIndent(), chapter = kotlinx.serialization.json.buildJsonObject {
+                        put("title", kotlinx.serialization.json.JsonPrimitive("Chapter one"))
+                    }, nextChapterUrl = "https://fixture.invalid/chapter-two")
+                    assertEquals(ExecutionResult.Success("[\"undefined\",\"Chapter one\",\"https://fixture.invalid/chapter-two\",true]"),
+                        executor.execute(identity, task, limits, bridge))
+                    assertFalse(bridge.interactionRequired)
+                    for (expand in listOf(false, true)) {
+                        val rule = ExecutionTask.Rule("@js:'{{page}}'", RuleValue.Empty, OutputKind.Text,
+                            page = 3, scriptTemplates = expand)
+                        val result = SourceExecutionBroker(identity, authority, session, limits, page = 3).use {
+                            executor.execute(identity, rule, limits, it)
+                        }
+                        assertTrue(result.toString(), result is ExecutionResult.Success)
+                        val evaluated = kotlinx.serialization.json.Json.decodeFromString(ExecutedRule.serializer(), (result as ExecutionResult.Success).output)
+                        assertEquals(RuleValue.Text(if (expand) "3" else "{{page}}"), evaluated.value)
+                    }
+                }
+            }
+        } finally { executor.close(); root.deleteRecursively() }
+    }
+
     @Test fun headerScriptsCanReadTheDeviceWebViewUserAgent(): Unit = runBlocking {
         val expected = withContext(Dispatchers.Main) { android.webkit.WebSettings.getDefaultUserAgent(context) }
         val root = File(context.cacheDir, "webview-ua-${System.nanoTime()}")

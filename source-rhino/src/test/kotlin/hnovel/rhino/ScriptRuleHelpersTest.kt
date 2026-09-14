@@ -6,6 +6,40 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ScriptRuleHelpersTest {
+    @Test fun ruleScriptsExpandJavaTemplatesBeforeCompilingTheirQuotedBodies() {
+        val rule = """@js:var options={"chapter":"{{java.get("chapterId")}}"};options.chapter"""
+        assertEquals(JsonPrimitive("42"), run("java.put('chapterId','42');java.getString(${JsonPrimitive(rule)})"))
+    }
+    @Test fun literalTemplatesCanGenerateRequestSyntaxAndEvaluateFromRightToLeft() {
+        assertEquals(JsonPrimitive("right|right"), run("""
+            java.getString('{{java.get("order")}}|{{java.put("order","right")}}')
+        """))
+        val rule = """{{'Writer'}}::{"body":"offset={{'\\{\\{page\\}\\}&limit=18"}'}}"""
+            .replace("\\\\", "\\")
+        assertEquals(JsonPrimitive("Writer::{\"body\":\"offset={{page}}&limit=18\"}"),
+            run("java.getString(${JsonPrimitive(rule)})"))
+    }
+    @Test fun templateScriptsKeepRegexLiteralsSeparateFromStringsAndDivision() {
+        assertEquals(JsonPrimitive("rating"), run("""
+            java.setContent('<meta ratingValue": "8"/>');
+            java.getString('{{html="";if(result.match(/ratingValue": "(\\d+)"/)){html="rating"}html}}')
+        """))
+        assertEquals(JsonPrimitive("4"), run("""java.getString('{{(12)/3}}')"""))
+        assertEquals(JsonPrimitive("yes"), run("""
+            java.getString('{{function f(){return /[}]/.test("}")} f()?"yes":"no"}}')
+        """))
+    }
+    @Test fun toastMessagesUseNativeStringConversionAndReturnVoid() {
+        val calls = mutableListOf<Pair<String, List<JsonElement>>>()
+        val engine = RhinoScriptEngine(HostBridge { name, args -> calls += name to args; JsonNull })
+        val result = engine.evaluate("""
+            var cycle={};cycle.self=cycle;
+            [typeof java.toast(cycle),typeof java.longToast(null)]
+        """, frame)
+        assertEquals(ScriptResult.Success("[\"undefined\",\"undefined\"]"), result)
+        assertEquals(listOf("java.toast" to listOf(JsonPrimitive("[object Object]")),
+            "java.longToast" to listOf(JsonPrimitive("null"))), calls)
+    }
     @Test fun explicitAndScriptArrayInputsStayStructuredForJsonPath() {
         assertEquals(JsonPrimitive(true), run("Array.isArray(java.getElement('@js:[{id:1}]'))"))
         assertEquals(JsonPrimitive("second"), run("java.getString('$[1].title',[{title:'first'},{title:'second'}])"))

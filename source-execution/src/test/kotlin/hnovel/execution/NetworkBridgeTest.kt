@@ -16,6 +16,33 @@ class NetworkBridgeTest {
     private val authority = ExecutionAuthority()
     private val id = authority.issue("a", "legado", "1", "fixture")
 
+    @Test fun toastFeedbackPreservesBrowserHandoffAndRejectsRetiredDisplay(): Unit = runBlocking {
+        val messages = mutableListOf<Pair<String, Boolean>>()
+        var delayed: RequestCommitGuard? = null
+        val browser = object : BrowserExecutor {
+            override suspend fun showMessage(message: String, long: Boolean, guard: RequestCommitGuard) {
+                delayed = guard
+                guard.commit { messages += message to long }
+            }
+            override suspend fun execute(session: SourceSession, request: BrokerRequest, options: BrowserOptions,
+                guard: RequestCommitGuard): BrokerResult = error("Feedback must not navigate")
+        }
+        SourceBroker(folder.root.toPath(), okhttp3.Dns { error("Feedback must not resolve DNS") }, browser = browser).use { sessions ->
+            val session = sessions.open(SourceScope("fixture", "a", "legado"), emptyList())
+            SourceExecutionBroker(id, authority, session, ExecutionLimits()).use { broker ->
+                assertEquals(ExecutionResult.Success("[\"undefined\",\"undefined\"]"), script(broker,
+                    "[typeof java.toast('short'),typeof java.longToast('long')]"))
+                assertEquals(listOf("short" to false, "long" to true), messages)
+                assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied), script(broker,
+                    "java.toast('verify');java.startBrowserAwait('https://fixture.invalid/','verification')"))
+                assertTrue(broker.interactionRequired)
+                authority.revoke(id)
+                assertThrows(IllegalStateException::class.java) { delayed!!.commit { messages += "retired" to false } }
+                assertEquals(listOf("short" to false, "long" to true, "verify" to false), messages)
+            }
+        }
+    }
+
     @Test fun inlineTextAndConnectResponsesDoNotNeedANetworkGrant(): Unit = runBlocking {
         SourceBroker(folder.root.toPath(), okhttp3.Dns { error("Inline data must not resolve DNS") }).use { sessions ->
             val session = sessions.open(SourceScope("fixture", "a", "legado"), emptyList())

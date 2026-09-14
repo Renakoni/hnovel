@@ -17,12 +17,13 @@ class RequestCompiler {
                 return CompiledRequest.Rejected(FailureCode.ScriptRequired)
             }
             val optionStart = Regex(",\\s*(?=\\{)").find(rule)
-            val options = optionStart?.let { RequestOptionsJson.options(rule.substring(it.range.last + 1)) } ?: buildJsonObject {}
+            val options = optionStart?.let { RequestOptionsJson.options(rule.substring(it.range.last + 1), mapOf(
+                "key" to JsonPrimitive("{{key}}"), "page" to JsonPrimitive(page), "baseUrl" to JsonPrimitive("{{baseUrl}}"))) } ?: buildJsonObject {}
             if (options.keys.any { it in setOf("js") }) return CompiledRequest.Rejected(FailureCode.ScriptRequired)
             if ("serverID" in options) return CompiledRequest.Rejected(FailureCode.BrowserRequired)
             if (options.keys.any { it !in setOf("method", "body", "headers", "header", "charset", "retry", "webView", "webJs", "webViewDelayTime", "type") }) return CompiledRequest.Rejected(FailureCode.UnknownOption)
             val responseAsHex = options["type"]?.takeUnless { it == JsonNull }?.jsonPrimitive?.content?.isNotBlank() == true
-            val webView = options["webView"]?.jsonPrimitive?.boolean ?: false
+            val webView = options["webView"]?.let { it != JsonNull && it != JsonPrimitive(false) && it != JsonPrimitive("") && it != JsonPrimitive("false") } ?: false
             val webJs = options["webJs"]?.jsonPrimitive?.content.orEmpty()
             val browserDelay = options["webViewDelayTime"]?.jsonPrimitive?.long ?: 0
             if (browserDelay !in 0..30000 || webJs.length > 65536) return CompiledRequest.Rejected(FailureCode.InvalidRequest)
@@ -30,13 +31,16 @@ class RequestCompiler {
             val charset = options["charset"]?.jsonPrimitive?.content ?: "UTF-8"
             if (charset != "escape") Charset.forName(charset)
             fun expand(value: String, encodeKey: Boolean, pageAlternatives: Boolean = false): String {
-                var text = Regex("\\{\\{\\s*(.*?)\\s*\\}\\}").replace(value) { match -> when (match.groupValues[1].trim()) {
+                val template = Regex("\\{\\{\\s*(.*?)\\s*\\}\\}")
+                // Validate the rule before substitution. Inserted keyword text is data, even
+                // when it contains braces that look like another request template.
+                if ("{{" in template.replace(value, "")) throw BrokerFailure(RequestStage.Parse, FailureCode.ScriptRequired)
+                var text = template.replace(value) { match -> when (match.groupValues[1].trim()) {
                     "key" -> if (encodeKey) encode(keyword, charset) else keyword
                     "page" -> page.toString()
                     "baseUrl" -> baseUrl
                     else -> throw BrokerFailure(RequestStage.Parse, FailureCode.ScriptRequired)
                 } }
-                if ("{{" in text) throw BrokerFailure(RequestStage.Parse, FailureCode.ScriptRequired)
                 if (pageAlternatives) text = Regex("<([^<>]+)>").replace(text) { match ->
                     val pages = match.groupValues[1].split(',')
                     pages[(page - 1).coerceAtMost(pages.lastIndex)].trim()
@@ -70,7 +74,11 @@ class RequestCompiler {
             }
             val body = rawBody?.let { raw -> when {
                 isForm -> raw.split('&').joinToString("&") { field -> field.split('=', limit = 2)
-                    .joinToString("=") { encode(expand(it, false), charset) } }
+                    .joinToString("=") {
+                        val expanded = expand(it, true)
+                        if (options["charset"] == null && encodedForm.matches(expanded)) expanded
+                        else encode(expand(it, false), charset)
+                    } }
                 raw.trimStart().startsWith('{') || raw.trimStart().startsWith('[') ->
                     expandJson(RequestOptionsJson.parse(raw)).toString()
                 else -> expand(raw, false)
@@ -89,6 +97,10 @@ class RequestCompiler {
         } catch (failure: BrokerFailure) { CompiledRequest.Rejected(failure.code) }
           catch (_: Exception) { CompiledRequest.Rejected(FailureCode.InvalidRequest) }
     }
+
+    // AnalyzeUrl.appendEncoded preserves complete percent-encoded form values when no
+    // charset is specified. Template keywords are encoded as data before this check.
+    private val encodedForm = Regex("(?:[a-zA-Z0-9*._-]|%[0-9a-fA-F]{2})*+")
 
     private fun encode(value: String, charset: String): String = if (charset == "escape") buildString {
         value.forEach { char -> when {
