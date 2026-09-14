@@ -54,6 +54,13 @@ fun NavGraphBuilder.bookReaderDestination(onReaderActiveChanged: (Boolean) -> Un
         // Keep the existing Book-graph lifetime for queued recording writes, while each
         // restored reader entry owns a separate session during navigation transitions.
         val viewModel = hiltViewModel<ReaderViewModel>(parentEntry, key = navBackStackEntry.id)
+        androidx.lifecycle.compose.LifecycleStartEffect(viewModel) {
+            viewModel.setActive(true)
+            onStopOrDispose { viewModel.setActive(false, navController.currentBackStackEntry?.id == navBackStackEntry.id) }
+        }
+        DisposableEffect(viewModel, navBackStackEntry) {
+            onDispose { if (navController.currentBackStackEntry?.id != navBackStackEntry.id) viewModel.setActive(false) }
+        }
         val route = navBackStackEntry.toRoute<Route.Book.Reader>()
         LaunchedEffect(navBackStackEntry) {
             viewModel.openBook(route.bookId, route.chapterId)

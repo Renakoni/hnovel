@@ -43,6 +43,13 @@ fun NavGraphBuilder.bookDetailDestination() {
         val navController = LocalNavController.current
         val bookId = BookIdentity.bookKey(entry.toRoute<Route.Book.Detail>().bookId)
         val viewModel = hiltViewModel<DetailViewModel>(entry)
+        androidx.lifecycle.compose.LifecycleStartEffect(viewModel) {
+            viewModel.setActive(true)
+            onStopOrDispose { viewModel.setActive(false, navController.currentBackStackEntry?.id == entry.id) }
+        }
+        androidx.compose.runtime.DisposableEffect(viewModel, entry) {
+            onDispose { if (navController.currentBackStackEntry?.id != entry.id) viewModel.setActive(false) }
+        }
         val context = LocalContext.current
         val coroutineScope = rememberCoroutineScope()
         val exportBookToEPUBLauncher = uriLauncher { uri ->

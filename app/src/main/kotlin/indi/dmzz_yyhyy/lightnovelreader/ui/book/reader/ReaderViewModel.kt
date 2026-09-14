@@ -30,11 +30,14 @@ class ReaderViewModel @Inject constructor(
     userDataRepository: UserDataRepository,
     private val modeFactory: ReaderModeFactory
 ) : ViewModel() {
+    private val foreground = indi.dmzz_yyhyy.lightnovelreader.data.web.ForegroundSourceRequest()
+    private val readerScope = CoroutineScope(viewModelScope.coroutineContext + foreground)
+    fun setActive(value: Boolean, retainBrowser: Boolean = false) = foreground.setActive(value, retainBrowser)
     private val settingState = SettingState(userDataRepository, viewModelScope)
     val readerSettings: ReaderSettingsEditor = settingState
     val fontFamilySettings: ReaderFontFamilySettings = settingState.fontFamilySettings
     private val modeHost: ReaderModeHost = ReaderModeHost { mode ->
-        modeFactory.create(mode, viewModelScope, settingState.continuousScrollSettings, ::saveReadingProgress)
+        modeFactory.create(mode, readerScope, settingState.continuousScrollSettings, ::saveReadingProgress)
     }
     private val _uiState = MutableReaderScreenUiState(modeHost.uiState)
     val uiState: ReaderScreenUiState = _uiState
@@ -63,7 +66,7 @@ class ReaderViewModel @Inject constructor(
             bookVolumesJob?.cancel()
             val request = ++bookVolumesRequest
             _uiState.bookVolumes = null
-            bookVolumesJob = viewModelScope.launch(Dispatchers.IO) {
+            bookVolumesJob = viewModelScope.launch(Dispatchers.IO + foreground) {
                 chapterSource.getBookVolumesFlow(value).collect {
                     withContext(Dispatchers.Main.immediate) {
                         if (request == bookVolumesRequest) {

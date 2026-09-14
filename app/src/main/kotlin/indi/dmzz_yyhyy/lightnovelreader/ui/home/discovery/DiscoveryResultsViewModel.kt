@@ -81,9 +81,12 @@ class DiscoveryResultsViewModel internal constructor(
         }
     }
 
-    fun setActive(value: Boolean) {
+    private val foreground = indi.dmzz_yyhyy.lightnovelreader.data.web.ForegroundSourceRequest()
+
+    fun setActive(value: Boolean, retainBrowser: Boolean = false) {
         active = value
-        if (!value) cancelLoad()
+        foreground.setActive(value, retainBrowser)
+        if (!value && (!retainBrowser || !foreground.verifying)) cancelLoad()
         else if (!state.value.loaded && state.value.error == null && version != null) loadMore()
     }
 
@@ -126,7 +129,7 @@ class DiscoveryResultsViewModel internal constructor(
         if (!active || state.value.loading || (state.value.loaded && !state.value.hasMore)) return
         val token = ++serial
         mutableState.value = state.value.copy(loading = true, error = null)
-        pending = viewModelScope.launch {
+        pending = viewModelScope.launch(foreground) {
             var failureField: String? = null
             var permissionFailure: DiscoveryPermission? = null
             val result = discoveryRequest {

@@ -3,6 +3,7 @@ package indi.dmzz_yyhyy.lightnovelreader.ui.home.categories
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.navigation.NavBackStackEntry
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.LifecycleStartEffect
@@ -36,7 +37,7 @@ fun NavGraphBuilder.categoriesDestination() {
             onSettings = nav::navigateToSettingsDestination, onBack = { nav.popBackStackIfResumed() },
             onInput = { id, value -> model.interact(id, value) }, onAction = { id, longClick -> model.interact(id, longClick = longClick) })
     }
-    composable<Route.Main.DiscoveryResults> {
+    composable<Route.Main.DiscoveryResults> { entry ->
         val nav = LocalNavController.current
         val model = hiltViewModel<DiscoveryResultsViewModel>()
         val state by model.state.collectAsStateWithLifecycle()
@@ -44,7 +45,10 @@ fun NavGraphBuilder.categoriesDestination() {
         LifecycleStartEffect(model, environment) {
             model.environment(environment)
             model.setActive(true)
-            onStopOrDispose { model.setActive(false) }
+            onStopOrDispose { model.setActive(false, retainBrowser = nav.currentBackStackEntry?.id == entry.id) }
+        }
+        DisposableEffect(model, nav, entry) {
+            onDispose { if (nav.currentBackStackEntry?.id != entry.id) model.setActive(false) }
         }
         DiscoveryResultsScreen(state, model::filter, model::loadMore, model::refresh, model::scroll,
             onBook = { nav.navigateToBookDetailDestination(it.storageKey) },

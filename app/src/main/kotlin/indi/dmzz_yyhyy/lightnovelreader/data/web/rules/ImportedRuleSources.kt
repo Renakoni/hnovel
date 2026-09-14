@@ -31,7 +31,8 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
     private val registry: WebSourceRegistry, private val authority: ExecutionAuthority,
     private val accounts: SourceSessionManager, private val runner: RuleTaskRunner,
     private val storageCipher: hnovel.network.StorageCipher = hnovel.network.StorageCipher.Plain,
-    private val browser: hnovel.network.BrowserExecutor? = null) {
+    private val browser: hnovel.network.BrowserExecutor? = null,
+    private val verification: SourceVerificationCoordinator? = null) {
     private val directory = File(context.filesDir, "rule-sources")
     val definitions by lazy { SourceDefinitionStore(File(directory, "definitions").toPath()) }
     val importer by lazy { SourceDefinitionImporter(definitions) }
@@ -228,10 +229,12 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
             previous?.session?.takeIf { it.scope == session.scope }?.let { session.inheritCookies(it); session.inheritCaches(it) }
             beforePublish()
         }
+        val recovery = verification?.let { RuleRequestRecovery(it,
+            VerificationOwner(id, definition.contentDigest, generation), definition.displayName) }
         val registration = try {
             val oldRegistration = previous?.registration
-            if (oldRegistration == null) { publish(); registry.register(RuleWebBookDataSource(id, source), metadata) }
-            else registry.replace(oldRegistration, RuleWebBookDataSource(id, source), metadata, ticket, publish)
+            if (oldRegistration == null) { publish(); registry.register(RuleWebBookDataSource(id, source, recovery), metadata) }
+            else registry.replace(oldRegistration, RuleWebBookDataSource(id, source, recovery), metadata, ticket, publish)
         }
             catch (failure: Exception) { source.close(); broker.close(); throw failure }
         Binding(installed, registration, broker, session, source)

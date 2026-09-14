@@ -1,0 +1,1176 @@
+{
+  "url": "https://127.0.0.1:7228",
+  "trust": "ephemeral self-signed fixture; production rejects it",
+  "scope": "full TLS handshakes and HTTP2; no QUIC, external routing or resumption proof",
+  "connections": [
+    {
+      "alpn": "h2",
+      "tls": "TLSv1.3",
+      "cipher": [
+        "TLS_AES_256_GCM_SHA384",
+        "TLSv1.3",
+        256
+      ],
+      "settings": [
+        [
+          [
+            4,
+            16777216
+          ]
+        ]
+      ],
+      "requests": [
+        {
+          "stream": 3,
+          "headers": [
+            [
+              ":method",
+              "GET"
+            ],
+            [
+              ":path",
+              "/echo?client=android-okhttp"
+            ],
+            [
+              ":authority",
+              "127.0.0.1:7228"
+            ],
+            [
+              ":scheme",
+              "https"
+            ],
+            [
+              "accept-encoding",
+              "gzip"
+            ],
+            [
+              "user-agent",
+              "okhttp/5.4.0"
+            ]
+          ],
+          "pseudo_order": [
+            ":method",
+            ":path",
+            ":authority",
+            ":scheme"
+          ]
+        }
+      ],
+      "application_bytes_sha256": "ab2923da647b03d467e8220d186db99c1e85bdd82e882bd1804719519c0b556e"
+    },
+    {
+      "alpn": "h2",
+      "tls": "TLSv1.3",
+      "cipher": [
+        "TLS_AES_256_GCM_SHA384",
+        "TLSv1.3",
+        256
+      ],
+      "settings": [
+        [
+          [
+            1,
+            65536
+          ],
+          [
+            2,
+            0
+          ],
+          [
+            3,
+            1000
+          ],
+          [
+            4,
+            6291456
+          ],
+          [
+            6,
+            262144
+          ]
+        ]
+      ],
+      "requests": [
+        {
+          "stream": 1,
+          "headers": [
+            [
+              ":method",
+              "GET"
+            ],
+            [
+              ":authority",
+              "127.0.0.1:7228"
+            ],
+            [
+              ":scheme",
+              "https"
+            ],
+            [
+              ":path",
+              "/echo?client=native-background-fixed"
+            ],
+            [
+              "user-agent",
+              "Mozilla/5.0 (Linux; Android 12; SM-S9260 Build/V417IR; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/110.0.5481.154 Safari/537.36"
+            ],
+            [
+              "accept",
+              "*/*"
+            ],
+            [
+              "x-requested-with",
+              "indi.dmzz_yyhyy.lightnovelreader.debug"
+            ],
+            [
+              "sec-fetch-site",
+              "cross-site"
+            ],
+            [
+              "sec-fetch-mode",
+              "no-cors"
+            ],
+            [
+              "sec-fetch-dest",
+              "empty"
+            ],
+            [
+              "referer",
+              "http://127.0.0.1:18767/"
+            ],
+            [
+              "accept-encoding",
+              "gzip, deflate"
+            ],
+            [
+              "accept-language",
+              "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7"
+            ]
+          ],
+          "pseudo_order": [
+            ":method",
+            ":authority",
+            ":scheme",
+            ":path"
+          ]
+        }
+      ],
+      "application_bytes_sha256": "9f0ec06dc31814f7f2ba505277ca70fdb84d5d0ec8bd2a715a716310db400235"
+    },
+    {
+      "alpn": "h2",
+      "tls": "TLSv1.3",
+      "cipher": [
+        "TLS_AES_256_GCM_SHA384",
+        "TLSv1.3",
+        256
+      ],
+      "settings": [
+        [
+          [
+            1,
+            65536
+          ],
+          [
+            2,
+            0
+          ],
+          [
+            3,
+            1000
+          ],
+          [
+            4,
+            6291456
+          ],
+          [
+            6,
+            262144
+          ]
+        ]
+      ],
+      "requests": [
+        {
+          "stream": 1,
+          "headers": [
+            [
+              ":method",
+              "GET"
+            ],
+            [
+              ":authority",
+              "127.0.0.1:7228"
+            ],
+            [
+              ":scheme",
+              "https"
+            ],
+            [
+              ":path",
+              "/echo?client=native-foreground-fixed"
+            ],
+            [
+              "user-agent",
+              "Mozilla/5.0 (Linux; Android 12; SM-S9260 Build/V417IR; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/110.0.5481.154 Safari/537.36"
+            ],
+            [
+              "accept",
+              "*/*"
+            ],
+            [
+              "x-requested-with",
+              "indi.dmzz_yyhyy.lightnovelreader.debug"
+            ],
+            [
+              "sec-fetch-site",
+              "cross-site"
+            ],
+            [
+              "sec-fetch-mode",
+              "no-cors"
+            ],
+            [
+              "sec-fetch-dest",
+              "empty"
+            ],
+            [
+              "referer",
+              "http://127.0.0.1:18767/"
+            ],
+            [
+              "accept-encoding",
+              "gzip, deflate"
+            ],
+            [
+              "accept-language",
+              "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7"
+            ]
+          ],
+          "pseudo_order": [
+            ":method",
+            ":authority",
+            ":scheme",
+            ":path"
+          ]
+        }
+      ],
+      "application_bytes_sha256": "6dcd50dd303cea482145adbd55ba07df693df1a1c35d4194f41a0c7f93833c5c"
+    }
+  ],
+  "hellos": [
+    {
+      "legacy_version": 771,
+      "ciphers": [
+        4865,
+        4866,
+        4867,
+        49195,
+        49199,
+        49196,
+        49200,
+        52393,
+        52392,
+        49171,
+        49172,
+        156,
+        157,
+        47,
+        53
+      ],
+      "compression": [
+        0
+      ],
+      "extensions": [
+        23,
+        65281,
+        10,
+        11,
+        35,
+        16,
+        5,
+        13,
+        51,
+        45,
+        43
+      ],
+      "groups": [
+        29,
+        23,
+        24
+      ],
+      "signature_algorithms": [
+        1027,
+        2052,
+        1025,
+        1283,
+        2053,
+        1281,
+        2054,
+        1537,
+        513
+      ],
+      "supported_versions": [
+        772,
+        771
+      ],
+      "alpn": [
+        "h2",
+        "http/1.1"
+      ],
+      "key_share_groups": [
+        29
+      ],
+      "message_sha256": "5676b158a1e0dcb8921e8ea292b33d722465cca3e7c13e1b704a636447f2bcdc"
+    },
+    {
+      "legacy_version": 771,
+      "ciphers": [
+        27242,
+        4865,
+        4866,
+        4867,
+        49195,
+        49199,
+        49196,
+        49200,
+        52393,
+        52392,
+        49171,
+        49172,
+        156,
+        157,
+        47,
+        53
+      ],
+      "compression": [
+        0
+      ],
+      "extensions": [
+        31354,
+        23,
+        65281,
+        10,
+        11,
+        35,
+        16,
+        5,
+        13,
+        18,
+        51,
+        45,
+        43,
+        27,
+        17513,
+        39578,
+        21
+      ],
+      "groups": [
+        51914,
+        29,
+        23,
+        24
+      ],
+      "signature_algorithms": [
+        1027,
+        2052,
+        1025,
+        1283,
+        2053,
+        1281,
+        2054,
+        1537
+      ],
+      "supported_versions": [
+        23130,
+        772,
+        771
+      ],
+      "alpn": [
+        "h2",
+        "http/1.1"
+      ],
+      "key_share_groups": [
+        51914,
+        29
+      ],
+      "message_sha256": "95d968f5e0d49390edc4459fbdf1c6ced628e66e4ca3d81b55a2aef389599af4"
+    },
+    {
+      "legacy_version": 771,
+      "ciphers": [
+        27242,
+        4865,
+        4866,
+        4867,
+        49195,
+        49199,
+        49196,
+        49200,
+        52393,
+        52392,
+        49171,
+        49172,
+        156,
+        157,
+        47,
+        53
+      ],
+      "compression": [
+        0
+      ],
+      "extensions": [
+        56026,
+        23,
+        65281,
+        10,
+        11,
+        35,
+        16,
+        5,
+        13,
+        18,
+        51,
+        45,
+        43,
+        27,
+        17513,
+        64250,
+        21
+      ],
+      "groups": [
+        27242,
+        29,
+        23,
+        24
+      ],
+      "signature_algorithms": [
+        1027,
+        2052,
+        1025,
+        1283,
+        2053,
+        1281,
+        2054,
+        1537
+      ],
+      "supported_versions": [
+        51914,
+        772,
+        771
+      ],
+      "alpn": [
+        "h2",
+        "http/1.1"
+      ],
+      "key_share_groups": [
+        27242,
+        29
+      ],
+      "message_sha256": "0490cfacd700e8e41e81a2753b15d78ff5224e11740d7bf05643743c374b925e"
+    },
+    {
+      "legacy_version": 771,
+      "ciphers": [
+        27242,
+        4865,
+        4866,
+        4867,
+        49195,
+        49199,
+        49196,
+        49200,
+        52393,
+        52392,
+        49171,
+        49172,
+        156,
+        157,
+        47,
+        53
+      ],
+      "compression": [
+        0
+      ],
+      "extensions": [
+        64250,
+        23,
+        65281,
+        10,
+        11,
+        35,
+        16,
+        5,
+        13,
+        18,
+        51,
+        45,
+        43,
+        27,
+        17513,
+        14906,
+        21
+      ],
+      "groups": [
+        6682,
+        29,
+        23,
+        24
+      ],
+      "signature_algorithms": [
+        1027,
+        2052,
+        1025,
+        1283,
+        2053,
+        1281,
+        2054,
+        1537
+      ],
+      "supported_versions": [
+        31354,
+        772,
+        771
+      ],
+      "alpn": [
+        "h2",
+        "http/1.1"
+      ],
+      "key_share_groups": [
+        6682,
+        29
+      ],
+      "message_sha256": "96e9b892a9b82887faa993ab552e77539969b5d8f88eb043ee0b3f98f5cc401e"
+    },
+    {
+      "legacy_version": 771,
+      "ciphers": [
+        31354,
+        4865,
+        4866,
+        4867,
+        49195,
+        49199,
+        49196,
+        49200,
+        52393,
+        52392,
+        49171,
+        49172,
+        156,
+        157,
+        47,
+        53
+      ],
+      "compression": [
+        0
+      ],
+      "extensions": [
+        14906,
+        23,
+        65281,
+        10,
+        11,
+        35,
+        16,
+        5,
+        13,
+        18,
+        51,
+        45,
+        43,
+        27,
+        17513,
+        27242,
+        21
+      ],
+      "groups": [
+        35466,
+        29,
+        23,
+        24
+      ],
+      "signature_algorithms": [
+        1027,
+        2052,
+        1025,
+        1283,
+        2053,
+        1281,
+        2054,
+        1537
+      ],
+      "supported_versions": [
+        39578,
+        772,
+        771
+      ],
+      "alpn": [
+        "h2",
+        "http/1.1"
+      ],
+      "key_share_groups": [
+        35466,
+        29
+      ],
+      "message_sha256": "2160ea0db2264b682eb87b2e528b9ca5b96373ea36982580efa0590390a2d667"
+    }
+  ],
+  "handshakeErrors": [],
+  "normalization": "Chromix fingerprint_protocols.compare; GREASE normalized, extension order sorted; other list ordering retained",
+  "captureOrder": [
+    "Android OkHttp (1 hello)",
+    "Native background (2 hellos)",
+    "Native foreground (2 hellos)"
+  ],
+  "httpAgainstNative": [
+    {
+      "status": "mismatch",
+      "differences": {
+        "ciphers": {
+          "expected": [
+            4865,
+            4866,
+            4867,
+            49195,
+            49199,
+            49196,
+            49200,
+            52393,
+            52392,
+            49171,
+            49172,
+            156,
+            157,
+            47,
+            53
+          ],
+          "observed": [
+            2570,
+            4865,
+            4866,
+            4867,
+            49195,
+            49199,
+            49196,
+            49200,
+            52393,
+            52392,
+            49171,
+            49172,
+            156,
+            157,
+            47,
+            53
+          ]
+        },
+        "extensions": {
+          "expected": [
+            5,
+            10,
+            11,
+            13,
+            16,
+            23,
+            35,
+            43,
+            45,
+            51,
+            65281
+          ],
+          "observed": [
+            5,
+            10,
+            11,
+            13,
+            16,
+            18,
+            21,
+            23,
+            27,
+            35,
+            43,
+            45,
+            51,
+            2570,
+            2570,
+            17513,
+            65281
+          ]
+        },
+        "groups": {
+          "expected": [
+            29,
+            23,
+            24
+          ],
+          "observed": [
+            2570,
+            29,
+            23,
+            24
+          ]
+        },
+        "signature_algorithms": {
+          "expected": [
+            1027,
+            2052,
+            1025,
+            1283,
+            2053,
+            1281,
+            2054,
+            1537,
+            513
+          ],
+          "observed": [
+            1027,
+            2052,
+            1025,
+            1283,
+            2053,
+            1281,
+            2054,
+            1537
+          ]
+        },
+        "supported_versions": {
+          "expected": [
+            772,
+            771
+          ],
+          "observed": [
+            2570,
+            772,
+            771
+          ]
+        },
+        "key_share_groups": {
+          "expected": [
+            29
+          ],
+          "observed": [
+            2570,
+            29
+          ]
+        }
+      },
+      "canonical_sha256": "5dca4921e4726525c0e9f1700a7d2e94198bdb5e26fbe5ae16d8cd722e2193ba"
+    },
+    {
+      "status": "mismatch",
+      "differences": {
+        "ciphers": {
+          "expected": [
+            4865,
+            4866,
+            4867,
+            49195,
+            49199,
+            49196,
+            49200,
+            52393,
+            52392,
+            49171,
+            49172,
+            156,
+            157,
+            47,
+            53
+          ],
+          "observed": [
+            2570,
+            4865,
+            4866,
+            4867,
+            49195,
+            49199,
+            49196,
+            49200,
+            52393,
+            52392,
+            49171,
+            49172,
+            156,
+            157,
+            47,
+            53
+          ]
+        },
+        "extensions": {
+          "expected": [
+            5,
+            10,
+            11,
+            13,
+            16,
+            23,
+            35,
+            43,
+            45,
+            51,
+            65281
+          ],
+          "observed": [
+            5,
+            10,
+            11,
+            13,
+            16,
+            18,
+            21,
+            23,
+            27,
+            35,
+            43,
+            45,
+            51,
+            2570,
+            2570,
+            17513,
+            65281
+          ]
+        },
+        "groups": {
+          "expected": [
+            29,
+            23,
+            24
+          ],
+          "observed": [
+            2570,
+            29,
+            23,
+            24
+          ]
+        },
+        "signature_algorithms": {
+          "expected": [
+            1027,
+            2052,
+            1025,
+            1283,
+            2053,
+            1281,
+            2054,
+            1537,
+            513
+          ],
+          "observed": [
+            1027,
+            2052,
+            1025,
+            1283,
+            2053,
+            1281,
+            2054,
+            1537
+          ]
+        },
+        "supported_versions": {
+          "expected": [
+            772,
+            771
+          ],
+          "observed": [
+            2570,
+            772,
+            771
+          ]
+        },
+        "key_share_groups": {
+          "expected": [
+            29
+          ],
+          "observed": [
+            2570,
+            29
+          ]
+        }
+      },
+      "canonical_sha256": "5dca4921e4726525c0e9f1700a7d2e94198bdb5e26fbe5ae16d8cd722e2193ba"
+    },
+    {
+      "status": "mismatch",
+      "differences": {
+        "ciphers": {
+          "expected": [
+            4865,
+            4866,
+            4867,
+            49195,
+            49199,
+            49196,
+            49200,
+            52393,
+            52392,
+            49171,
+            49172,
+            156,
+            157,
+            47,
+            53
+          ],
+          "observed": [
+            2570,
+            4865,
+            4866,
+            4867,
+            49195,
+            49199,
+            49196,
+            49200,
+            52393,
+            52392,
+            49171,
+            49172,
+            156,
+            157,
+            47,
+            53
+          ]
+        },
+        "extensions": {
+          "expected": [
+            5,
+            10,
+            11,
+            13,
+            16,
+            23,
+            35,
+            43,
+            45,
+            51,
+            65281
+          ],
+          "observed": [
+            5,
+            10,
+            11,
+            13,
+            16,
+            18,
+            21,
+            23,
+            27,
+            35,
+            43,
+            45,
+            51,
+            2570,
+            2570,
+            17513,
+            65281
+          ]
+        },
+        "groups": {
+          "expected": [
+            29,
+            23,
+            24
+          ],
+          "observed": [
+            2570,
+            29,
+            23,
+            24
+          ]
+        },
+        "signature_algorithms": {
+          "expected": [
+            1027,
+            2052,
+            1025,
+            1283,
+            2053,
+            1281,
+            2054,
+            1537,
+            513
+          ],
+          "observed": [
+            1027,
+            2052,
+            1025,
+            1283,
+            2053,
+            1281,
+            2054,
+            1537
+          ]
+        },
+        "supported_versions": {
+          "expected": [
+            772,
+            771
+          ],
+          "observed": [
+            2570,
+            772,
+            771
+          ]
+        },
+        "key_share_groups": {
+          "expected": [
+            29
+          ],
+          "observed": [
+            2570,
+            29
+          ]
+        }
+      },
+      "canonical_sha256": "5dca4921e4726525c0e9f1700a7d2e94198bdb5e26fbe5ae16d8cd722e2193ba"
+    },
+    {
+      "status": "mismatch",
+      "differences": {
+        "ciphers": {
+          "expected": [
+            4865,
+            4866,
+            4867,
+            49195,
+            49199,
+            49196,
+            49200,
+            52393,
+            52392,
+            49171,
+            49172,
+            156,
+            157,
+            47,
+            53
+          ],
+          "observed": [
+            2570,
+            4865,
+            4866,
+            4867,
+            49195,
+            49199,
+            49196,
+            49200,
+            52393,
+            52392,
+            49171,
+            49172,
+            156,
+            157,
+            47,
+            53
+          ]
+        },
+        "extensions": {
+          "expected": [
+            5,
+            10,
+            11,
+            13,
+            16,
+            23,
+            35,
+            43,
+            45,
+            51,
+            65281
+          ],
+          "observed": [
+            5,
+            10,
+            11,
+            13,
+            16,
+            18,
+            21,
+            23,
+            27,
+            35,
+            43,
+            45,
+            51,
+            2570,
+            2570,
+            17513,
+            65281
+          ]
+        },
+        "groups": {
+          "expected": [
+            29,
+            23,
+            24
+          ],
+          "observed": [
+            2570,
+            29,
+            23,
+            24
+          ]
+        },
+        "signature_algorithms": {
+          "expected": [
+            1027,
+            2052,
+            1025,
+            1283,
+            2053,
+            1281,
+            2054,
+            1537,
+            513
+          ],
+          "observed": [
+            1027,
+            2052,
+            1025,
+            1283,
+            2053,
+            1281,
+            2054,
+            1537
+          ]
+        },
+        "supported_versions": {
+          "expected": [
+            772,
+            771
+          ],
+          "observed": [
+            2570,
+            772,
+            771
+          ]
+        },
+        "key_share_groups": {
+          "expected": [
+            29
+          ],
+          "observed": [
+            2570,
+            29
+          ]
+        }
+      },
+      "canonical_sha256": "5dca4921e4726525c0e9f1700a7d2e94198bdb5e26fbe5ae16d8cd722e2193ba"
+    }
+  ],
+  "nativeAgainstNative": [
+    {
+      "status": "observed_match",
+      "differences": {},
+      "canonical_sha256": "5dca4921e4726525c0e9f1700a7d2e94198bdb5e26fbe5ae16d8cd722e2193ba"
+    },
+    {
+      "status": "observed_match",
+      "differences": {},
+      "canonical_sha256": "5dca4921e4726525c0e9f1700a7d2e94198bdb5e26fbe5ae16d8cd722e2193ba"
+    },
+    {
+      "status": "observed_match",
+      "differences": {},
+      "canonical_sha256": "5dca4921e4726525c0e9f1700a7d2e94198bdb5e26fbe5ae16d8cd722e2193ba"
+    }
+  ]
+}

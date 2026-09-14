@@ -468,7 +468,8 @@ private fun Card(
                     Box(Modifier.width(10.dp))
                     Text(
                         text =
-                            if (downloadItem.progress < 1)
+                            if (downloadItem.requiresVerification) stringResource(R.string.source_verification_download_paused)
+                            else if (downloadItem.progress >= 0 && downloadItem.progress < 1)
                                 stringResource(R.string.download_item_progress,
                                     formTime(downloadItem.startTime),
                                     (downloadItem.progress*100).toInt()
@@ -484,7 +485,7 @@ private fun Card(
                         color = MaterialTheme.colorScheme.secondary
                     )
                 }
-                if (downloadItem.progress < 1)
+                if (downloadItem.progress >= 0 && downloadItem.progress < 1)
                     LinearProgressIndicator(
                         modifier = Modifier.fillMaxWidth(),
                         progress = { progressAnim },

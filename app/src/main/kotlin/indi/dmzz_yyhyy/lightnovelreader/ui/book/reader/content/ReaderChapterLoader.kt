@@ -7,6 +7,7 @@ import io.nightfish.lightnovelreader.api.error.WebRequestError
 import io.nightfish.lightnovelreader.api.web.WebDataSourcePriority
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.flowOn
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -20,6 +21,7 @@ class ReaderChapterLoader @Inject constructor(
         chapterId: String,
         bookId: String,
         priority: WebDataSourcePriority = WebDataSourcePriority.Default,
+        interactive: Boolean = true,
     ): Flow<Result<ChapterContentUiState, WebRequestError>> =
         chapterSource.getChapterContentFlow(chapterId, bookId, priority).map { result ->
             result.map {
@@ -31,8 +33,11 @@ class ReaderChapterLoader @Inject constructor(
                     nextChapter = it.nextChapter,
                 )
             }
-        }
+        }.flowOn(if (interactive) kotlin.coroutines.EmptyCoroutineContext
+            else indi.dmzz_yyhyy.lightnovelreader.data.web.ForegroundSourceRequest(allowsInteraction = false))
 
     suspend fun preload(chapterId: String, bookId: String) =
-        chapterSource.preloadChapterContent(chapterId, bookId)
+        kotlinx.coroutines.withContext(indi.dmzz_yyhyy.lightnovelreader.data.web.ForegroundSourceRequest(allowsInteraction = false)) {
+            chapterSource.preloadChapterContent(chapterId, bookId)
+        }
 }

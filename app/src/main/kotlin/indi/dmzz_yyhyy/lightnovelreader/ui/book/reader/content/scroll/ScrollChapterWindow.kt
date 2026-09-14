@@ -197,7 +197,7 @@ internal class ScrollChapterWindow(
         chapterId: String,
         onLoaded: suspend (ChapterContentUiState) -> Unit = {}
     ) = coroutineScope.launch {
-        chapters.load(chapterId, uiState.bookId).collect { content ->
+        chapters.load(chapterId, uiState.bookId, interactive = index == 1).collect { content ->
             uiState.contentList[index] = chapterId to content
             content.onOk { onLoaded(it) }
         }

@@ -22,6 +22,7 @@ data class SourceScope(val namespace: String, val sourceId: String, val profile:
 @Serializable enum class CacheMode { Disabled, ReadThrough, Only }
 @Serializable enum class RequestStage { Parse, Permission, Queue, Connect, Response, Storage }
 @Serializable enum class ResponseKind { Http, BrowserDocument }
+@Serializable enum class BrowserChallengeKind { Cloudflare, SiteVerification, Login }
 @Serializable enum class FailureCode {
     InvalidRequest, UnknownOption, ScriptRequired, BrowserRequired, OriginDenied, AddressDenied,
     RedirectLimit, RedirectBodyDenied, Timeout, Network, ResponseTooLarge, CacheMiss, StorageQuota, StorageUnavailable, Dns,
@@ -61,7 +62,8 @@ data class SourceScope(val namespace: String, val sourceId: String, val profile:
 @Serializable sealed interface BrokerResult {
     @Serializable data class Success(val response: BrokerResponse) : BrokerResult
     @Serializable data class Failure(val stage: RequestStage, val code: FailureCode, val attempt: Int = 0,
-        val denial: OriginDenial? = null) : BrokerResult
+        val denial: OriginDenial? = null, val challenge: BrowserChallengeKind? = null,
+        val verificationRequest: BrokerRequest? = null) : BrokerResult
 }
 
 @Serializable sealed interface CompiledRequest {

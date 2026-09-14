@@ -452,7 +452,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val result = RuleEvaluation(identity, authority, session, runner, spec.library, book?.id, chapter?.id,
             book?.state ?: ScriptState(), chapter?.state ?: ScriptState(), book?.id ?: spec.baseUrl, keyword, page,
             headerRule = spec.header, interactive = interactive, trace = trace, sourceLoginUrl = spec.loginUrl,
-            sourceComment = spec.comment)
+            sourceComment = spec.comment, verification = ::verification)
         book?.let {
             result.bookField("bookUrl", it.id)
             if ("name" !in result.book.metadata) result.bookField("name", it.title)
@@ -491,7 +491,8 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         if (!authority.accepts(identity)) throw SourceContentException(ContentError.Unavailable, field)
         val response = when (result) {
             is BrokerResult.Success -> result.response
-            is BrokerResult.Failure -> throw SourceContentException(result.code.contentError(), field, result.denial)
+            is BrokerResult.Failure -> throw SourceContentException(result.code.contentError(), field, result.denial,
+                verification = verification(result))
         }
         if (request.kind == ResourceKind.Image && response.status !in 200..299)
             throw SourceContentException(ContentError.Network, field)
@@ -530,6 +531,25 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         return Regex("<meta\\s+[^>]*http-equiv\\s*=\\s*['\\\"]?refresh", RegexOption.IGNORE_CASE)
             .containsMatchIn(response.text())
     }
+    private fun verification(failure: BrokerResult.Failure): SourceVerification? {
+        val kind = failure.challenge ?: return null
+        val request = failure.verificationRequest ?: return null
+        if (!spec.browserRead || failure.code != hnovel.network.FailureCode.BrowserRequired) return null
+        return SourceVerification(kind) {
+            operation("browser.verification", timeoutMillis = 300000) {
+                val result = session.execute(request.copy(browser = BrowserOptions(interactive = true,
+                    title = definition.displayName)), RequestCommitGuard { authority.authorized(identity, it) })
+                if (result is BrokerResult.Failure)
+                    throw SourceContentException(result.code.contentError(), "browser.verification", result.denial)
+                // A newer failed request must retain its own fallback target.
+                authority.authorized(identity) {
+                    val key = StorageRequest(StorageArea.Account, StorageRequestKey.BROWSER_PENDING_URL)
+                    if ((session.read(key) as? StorageResult.Value)?.value == request.url) session.write(key)
+                }
+            }
+        }
+    }
+
     private fun checkStatus(status: Int, field: String, browserDocument: Boolean = false) {
         if (browserDocument && status == 0) return
         // A public page can return 401/403 for a WAF or other access policy. Only an

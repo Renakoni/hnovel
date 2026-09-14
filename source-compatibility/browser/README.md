@@ -4,6 +4,8 @@
 
 ## 当前状态
 
+当前实施设计见 [职责、Chromix 映射与验收计划](IMPLEMENTATION_PLAN.md)。原生基础 PR #187 的 JVM、API 24、API 35 CI 均已通过；本分支接续 #185，加入前台确认后一次重试、后台停止提示、入口/版本/账号取消和真实布局。下面的实站计数来自 #187 基线；#185 的新增测试与环境数据单独记录在实施计划中。
+
 - 已实现原生联网、iframe、fetch、Worker、POST 表单和持续来源账号 profile，不向网页暴露 `SourceBrowser` 特权桥。
 - 新 MuMu Android 12 / WebView 110 完成外层 Cloudflare 验证、hlib 登录、站内 `/antibot` 验证并返回原搜索页面。真实用户菜单与搜索结果已确认。
 - 当前会话观察到持久 `cf_clearance`、`connect.sid`、`__nuvt`、`__suvt`；只记录名称和属性，不导出值，不借用桌面 Chrome 或 MD3 的 Cookie。
@@ -14,7 +16,7 @@
 
 ## 声明与责任边界
 
-来源 JSON 使用布尔扩展 `"browserRead": true`。默认值为 false。它使 Document 请求（包括规则内 `java.connect`）使用同一原生浏览器账号；图片、二进制和导入请求仍有明确的 HTTP 路径。原生路径只接受 GET 导航；页面自己发出的 POST/fetch 由 Chromium 执行。传入 HTML、显式 Cookie 请求头、`followRedirects=false`、只读缓存、十六进制响应或顶层非 GET 请求会被拒绝，不静默改变含义。DOM 默认上限 512 KiB；显式较大预算也不超过 1 MiB，以保证序列化后仍在 Binder 管道上限内。
+来源 JSON 使用布尔扩展 `"browserRead": true`，默认值为 false。它使 Document 请求使用同一原生浏览器账号。**纠正此前说明：普通规则 `java.connect/ajax` 当前编译为 API 请求，仍走 HTTP；需要原生会话时必须显式声明 URL 的 `webView:true` 选项。** 图片、二进制和导入请求也有明确的 HTTP 路径。原生路径只接受 GET 导航；页面自己发出的 POST/fetch 由 Chromium 执行。传入 HTML、显式 Cookie 请求头、`followRedirects=false`、只读缓存、十六进制响应或顶层非 GET 请求会被拒绝，不静默改变含义。DOM 默认上限 512 KiB；显式较大预算也不超过 1 MiB。
 
 `NativeSourceBrowser` 负责宿主准入、请求串行、进程所有权、取消及结果提交；`NativeBrowserFiles` 负责停止进程后的 profile 文件切换；`NativeSourceBrowserService` 只运行网站和提取结果；`NativeSourceBrowserActivity` 提供前台窗口。使用一个专用进程，所以当前不同原生来源不能并行浏览。
 
@@ -47,9 +49,9 @@ DOM 结果使用 `ResponseKind.BrowserDocument`，保存同一次快照中的实
 
 本轮源码核对：`WebBook.kt:73` 在请求结果返回后执行 `loginCheckJs`；`JsExtensions.kt:358` 调用 `getVerificationResult`；`SourceVerificationHelp.kt:33` 打开窗口、等待结果，`checkResult` 唤醒等待线程；`WebViewModel.kt:97` 处理确认按钮的 DOM/重新请求分支。确认按钮不等于网站已经认证，hlib 辅助函数还会重新检查登录/挑战标记。参考 App 本轮第一次调试也曾等待验证失败，经正常登录窗口确认后重试才完成全流程，不能据此声称它从不重复验证。
 
-我们的非交互原生请求在 service 识别挑战后直接返回 `BrowserRequired`，`RuleSource.executeRequest` 会在执行 `loginCheckJs` **之前**结束。因此即便源 JSON 含相同的 `startBrowserAwait`，该次挑战也不会走到它。#185 需要承接宿主的待验证状态，区分前台操作与后台任务，再恢复具体请求；不能仅复制参考源 JS 就认为自动弹窗已接通。
+我们的非交互原生请求在 service 识别挑战后返回 `BrowserRequired`，`RuleSource.executeRequest` 会在执行 `loginCheckJs` **之前**结束。本分支用宿主拥有的 `SourceVerification` 保留确切请求与来源权限，`SourceVerificationCoordinator` 在规则预算之外等待前台确认，同账号窗口完成后重试读取一次。再次被挑战则返回错误。脚本显式 WebView 请求的失败也保留这一恢复操作。
 
-参考实现按 source key 关联等待者、展平 Cookie、部分 DOM 回传不含实际最终 URL，这些弱点没有照搬。本实现有请求/账号边界和实际最终 URL；后台遇到挑战会保存原始目标、返回 BrowserRequired，前台登录窗口优先打开该目标。读取/管理界面将该错误归为需要登录或验证，避免误报规则故障。完成后当前 UI 仍需重试读取。**自动恢复任意前台读取、后台暂停与统一提示由 [#185](https://github.com/Renakoni/hnovel/issues/185) 继续实现**，不能将当前原型描述成已经完全复现参考体验。
+恢复绑定来源、版本、账号代次和具体请求，不使用可能被另一个请求覆盖的全局 URL。搜索、发现列表、详情和当前阅读请求由 UI 授予交互权限；后台下载、预取、相邻章节不继承该权限。后台返回认证错误并停止，前台提示验证入口，完成后用户重新发起下载；不自动复活 WorkManager。通知队列仅在进程内保存，失败原因由既有 WorkManager output 保留。发现按钮脚本可能有副作用，不自动重放这类动作。
 
 ## 官方论坛对结论的修正
 
@@ -77,9 +79,9 @@ DOM 结果使用 `ResponseKind.BrowserDocument`，保存同一次快照中的实
 
 MD3 没有显式源 UA 时在该探针中使用 Windows Chrome 128 UA，同时 platform 为 Linux、touch 为 5；hlib 已显式调用 `getWebViewUA()`，所以不能把 MD3 的默认 UA 差异当作当前 hlib 的指纹问题。MuMu 报告 Adreno 640，仅代表模拟器/provider 对网页的报告，不证明物理 GPU 是它。真实桌面 Chrome 的 NVIDIA GPU、20 线程、无触摸，与 Android 差异本身正常。
 
-Chromix `1222eec`（Chromium pin 152.0.7977.82）可借鉴稳定进程身份、跨 realm 一致性和网络/渲染探针。其 Blink/V8/GPU/UA-CH 补丁不能通过几个 WebView Java API 等价移植。Android WebView provider 的签名、系统许可、更新与分发也使自编译内核成为独立项目。本轮不随机改 webdriver、UA、Canvas 或硬件值；先消除宿主添加的异常，之后以真实设备、新 provider 和相同网络条件对照。没有完成 TLS ClientHello/HTTP2 指纹采样，不能宣称传输指纹已一致。
+Chromix `1222eec`（Chromium pin 152.0.7977.82）用于借鉴稳定环境、跨 realm 一致性和后端验证。其桌面 persona、Blink/GPU 补丁不是 Android WebView 配置。扩展采样已覆盖 window、同源/跨源 iframe、dedicated Worker、Canvas 像素和 WebGL 实际绘制；当前 provider 不支持 SharedWorker/WebGPU。4 次前后台 ClientHello 规范化后一致，HTTP/2 SETTINGS 和伪首部顺序一致；这是自有回环端点、调试证书例外下的观测，不覆盖外部线路、QUIC 或会话恢复。完整决策及边界见 [实施计划](IMPLEMENTATION_PLAN.md)。
 
-还需单独观察页面生命周期：我们的 service 与参考 `BackstageWebView` 都为后台任务创建未挂到可见界面的 WebView，并在提取后销毁该页面；保留 profile/进程不等于保留同一页面。后续对照应增加前后台 viewport、visibility、页面回报是否完成和导航间隔。当前没有这些因素与 CF 复发的受控因果证据，不以任意延时或伪造尺寸作为已证实的修复。
+基线测出我们和参考 MD3 的后台 viewport 都为 0×0，而前台为 1098×546。本分支在导航前按 Android display metrics 对 WebView 实际 measure/layout，前台附着后由 Activity 正常布局，未覆盖 JS getter。两种路径仍存在焦点/窗口状态差异；保留 profile/进程不等于保留页面，也不保证站点延迟上报在 DOM 提取前结束。没有这些因素与 CF 复发的受控因果证据。
 
 ## 验证和下一步
 

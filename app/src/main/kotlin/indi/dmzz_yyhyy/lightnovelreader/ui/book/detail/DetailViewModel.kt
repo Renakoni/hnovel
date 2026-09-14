@@ -41,6 +41,8 @@ class DetailViewModel @Inject constructor(
     var exportSettings = ExportSettings()
     private var book: indi.dmzz_yyhyy.lightnovelreader.data.book.SourceBookId? = null
     private var informationJob: Job? = null
+    private val foreground = indi.dmzz_yyhyy.lightnovelreader.data.web.ForegroundSourceRequest()
+    fun setActive(value: Boolean, retainBrowser: Boolean = false) = foreground.setActive(value, retainBrowser)
     val uiState: DetailUiState = _uiState
 
     var isInitialized by mutableStateOf(false)
@@ -52,7 +54,7 @@ class DetailViewModel @Inject constructor(
         book = indi.dmzz_yyhyy.lightnovelreader.data.book.BookIdentity.book(bookId)
         isInitialized = true
         loadInformation(bookId)
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(Dispatchers.IO + foreground) {
             bookRepository.readingAvailability(bookId).collectLatest { availability ->
                 _uiState.readingAvailable = availability.available
                 _uiState.canCache = availability.online
@@ -86,8 +88,8 @@ class DetailViewModel @Inject constructor(
 
     private fun loadInformation(bookId: String) {
         informationJob?.cancel()
-        informationJob = viewModelScope.launch(Dispatchers.IO) {
-            _uiState.bookInformation = null
+        _uiState.bookInformation = null
+        informationJob = viewModelScope.launch(Dispatchers.IO + foreground) {
             bookRepository.getBookInformationFlow(bookId, WebDataSourcePriority.High).collect { result ->
                 result.onOk {
                     val metadata = bookshelfRepository.getBookshelfBookMetadata(bookId) ?: return@onOk

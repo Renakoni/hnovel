@@ -61,6 +61,7 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var updateCheckRepository: UpdateCheckRepository
     @Inject lateinit var workManager: WorkManager
     @Inject lateinit var pluginManager: PluginManager
+    @Inject lateinit var sourceVerification: indi.dmzz_yyhyy.lightnovelreader.data.web.rules.SourceVerificationCoordinator
     private val coroutineScope: CoroutineScope = CoroutineScope(Dispatchers.IO)
 
     private var appLocale by mutableStateOf(
@@ -144,6 +145,7 @@ class MainActivity : ComponentActivity() {
                     },
                     onReaderActiveChanged = ::setReaderActive
                 )
+                indi.dmzz_yyhyy.lightnovelreader.ui.SourceVerificationHost(sourceVerification)
             }
         }
     }

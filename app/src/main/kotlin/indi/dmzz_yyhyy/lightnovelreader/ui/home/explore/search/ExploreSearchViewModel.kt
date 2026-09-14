@@ -57,6 +57,7 @@ class ExploreSearchViewModel internal constructor(
     private var version: DiscoveryVersion? = null
     private var session: SourceSearch? = null
     private var active = false
+    private val foreground = ForegroundSourceRequest()
     private var work: Job? = null
     private var suggestions: Job? = null
     // One generation owns both a search/open attempt and any SingleBook navigation it queues.
@@ -94,12 +95,13 @@ class ExploreSearchViewModel internal constructor(
         }
     }
 
-    fun setActive(value: Boolean) {
+    fun setActive(value: Boolean, retainBrowser: Boolean = false) {
         active = value
+        foreground.setActive(value, retainBrowser)
         if (value) {
             load()
             suggest()
-        } else cancelWork()
+        } else if (!retainBrowser || !foreground.verifying) cancelWork()
     }
 
     fun accepts(command: SearchNavigation) = active && command.epoch == epoch
@@ -190,7 +192,7 @@ class ExploreSearchViewModel internal constructor(
         if (session != null && (uiState.submittedKeyword.isBlank() || uiState.isLoadingComplete)) return
         val token = ++epoch
         mutableState.isLoading = true
-        work = viewModelScope.launch {
+        work = viewModelScope.launch(foreground) {
             try {
                 val current = session ?: exploreRepository.open(sourceId).getOrElse {
                     if (token == epoch) {
