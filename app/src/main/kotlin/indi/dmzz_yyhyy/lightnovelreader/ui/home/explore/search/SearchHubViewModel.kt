@@ -2,6 +2,7 @@ package indi.dmzz_yyhyy.lightnovelreader.ui.home.explore.search
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.github.michaelbull.result.Ok
 import com.github.michaelbull.result.getOrElse
 import dagger.hilt.android.lifecycle.HiltViewModel
 import indi.dmzz_yyhyy.lightnovelreader.data.book.BookRepository
@@ -16,6 +17,7 @@ import io.nightfish.lightnovelreader.api.web.search.SearchResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -23,12 +25,15 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
+import io.nightfish.lightnovelreader.api.book.BookInformation
+import io.nightfish.lightnovelreader.api.error.WebRequestError
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import javax.inject.Inject
 
-data class SearchHubSource(val id: Identifier, val name: String, val books: List<String> = emptyList(), val loading: Boolean = false, val error: Boolean = false)
+data class SearchHubBook(val id: String, val information: Flow<com.github.michaelbull.result.Result<BookInformation, WebRequestError>>)
+data class SearchHubSource(val id: Identifier, val name: String, val books: List<SearchHubBook> = emptyList(), val loading: Boolean = false, val error: Boolean = false)
 data class SearchHubState(val query: String = "", val history: List<String> = emptyList(), val selected: Identifier? = null, val aggregate: Boolean = true, val sources: List<SearchHubSource> = emptyList())
 
 @HiltViewModel
@@ -68,17 +73,19 @@ class SearchHubViewModel @Inject constructor(
         }
     }
     private suspend fun load(target: SearchHubSource, keyword: String) {
+        val result = mutableListOf<SearchHubBook>()
         try {
             val session = explore.open(target.id).getOrElse { throw IllegalStateException() }
             val type = session.types.firstOrNull() ?: throw IllegalStateException()
-            val result = mutableListOf<String>()
             session.search(type, keyword).collect { event ->
-                if (event is SearchResult.MultipleBook && result.size < 6) result += event.bookId
+                if (event is SearchResult.MultipleBook && result.size < 6) {
+                    result += SearchHubBook(event.bookId, event.information?.let { kotlinx.coroutines.flow.flowOf(Ok(it)) }
+                        ?: books.getBookInformationFlow(event.bookId))
+                }
                 if (event is SearchResult.End || result.size >= 6) throw StopSearch
             }
-            mutable.update { it.copy(sources = it.sources.map { s -> if (s.id == target.id) s.copy(books = result, loading = false) else s }) }
         } catch (_: StopSearch) {
-            mutable.update { it.copy(sources = it.sources.map { s -> if (s.id == target.id) s.copy(loading = false) else s }) }
+            mutable.update { it.copy(sources = it.sources.map { s -> if (s.id == target.id) s.copy(books = result, loading = false) else s }) }
         } catch (_: Exception) {
             mutable.update { it.copy(sources = it.sources.map { s -> if (s.id == target.id) s.copy(loading = false, error = true) else s }) }
         }

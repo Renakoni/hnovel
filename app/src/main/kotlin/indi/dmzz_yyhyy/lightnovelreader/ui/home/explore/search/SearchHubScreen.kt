@@ -7,8 +7,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import indi.dmzz_yyhyy.lightnovelreader.data.book.SourceBookId
+import androidx.compose.foundation.lazy.LazyRow
+import indi.dmzz_yyhyy.lightnovelreader.ui.components.BookCardItem
 import io.nightfish.lightnovelreader.api.identifier.Identifier
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -33,7 +35,22 @@ fun SearchHubScreen(state: SearchHubState, onQuery: (String) -> Unit, onSearch: 
                 items(state.sources.filter { state.aggregate || it.id == state.selected }, key = { it.id.toString() }) { source ->
                     Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                         Text(source.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.clickable { onOpenSource(source.id, state.query) }.padding(horizontal = 16.dp, vertical = 8.dp))
-                        when { source.loading -> LinearProgressIndicator(Modifier.fillMaxWidth()); source.error -> Text("Search failed", Modifier.padding(horizontal = 16.dp)); source.books.isEmpty() && state.query.isNotBlank() -> Text("No results", Modifier.padding(horizontal = 16.dp)); else -> source.books.forEach { id -> Text(id.substringAfterLast('/'), Modifier.fillMaxWidth().clickable { onBook(id) }.padding(horizontal = 20.dp, vertical = 8.dp)) } }
+                        when {
+                            source.loading -> LinearProgressIndicator(Modifier.fillMaxWidth())
+                            source.error -> Text("Search failed", Modifier.padding(horizontal = 16.dp))
+                            source.books.isEmpty() && state.query.isNotBlank() -> Text("No results", Modifier.padding(horizontal = 16.dp))
+                            else -> LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(horizontal = 16.dp)) {
+                                items(source.books, key = { it.id }) { book ->
+                                    BookCardItem(
+                                        modifier = Modifier.width(180.dp),
+                                        bookInformationFlow = book.information,
+                                        onClick = { onBook(book.id) },
+                                        onLongPress = {},
+                                        titleHeight = 56.dp,
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
