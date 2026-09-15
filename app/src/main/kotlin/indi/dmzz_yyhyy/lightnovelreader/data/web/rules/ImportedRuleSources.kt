@@ -10,6 +10,9 @@ import hnovel.imports.*
 import hnovel.network.NetworkGrant
 import hnovel.network.SourceBroker
 import hnovel.network.SourceScope
+import hnovel.network.StorageArea
+import hnovel.network.StorageRequest
+import hnovel.network.StorageResult
 import indi.dmzz_yyhyy.lightnovelreader.data.web.*
 import io.nightfish.lightnovelreader.api.identifier.Identifier
 import io.nightfish.lightnovelreader.api.web.WebDataSourceItem
@@ -263,6 +266,40 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
         }
     }
 
+    /** Fixed host settings remain accessible without loading a source or granting network access. */
+    internal suspend fun storedSettings(id: Identifier, accountNameField: String? = null): RuleStoredSettings = withStoredSession(id) { session ->
+        fun read(area: StorageArea, key: String) =
+            (session.read(StorageRequest(area, key)) as? StorageResult.Value
+                ?: error("Stored source settings are unavailable")).value
+        val status = read(StorageArea.Account, "login/status")
+        val name = if (accountNameField != null && status in setOf("authenticated", "session")) {
+            val info = (session.read(StorageRequest(StorageArea.Account, hnovel.network.StorageRequestKey.LOGIN_INFO)) as? StorageResult.Value)?.value
+            SourceLoginService.savedAccountName(accountNameField, info)
+        } else null
+        RuleStoredSettings(read(StorageArea.Config, "variable").orEmpty(), status, name)
+    }
+
+    internal suspend fun saveVariable(id: Identifier, value: String) = withStoredSession(id) { session ->
+        require(value.length <= 32768)
+        check(session.write(StorageRequest(StorageArea.Config, "variable", value)) is StorageResult.Value)
+    }
+
+    private suspend fun <T> withStoredSession(id: Identifier, action: (hnovel.network.SourceSession) -> T): T = withContext(Dispatchers.IO) {
+        restore()
+        lock.withLock {
+            val current = checkNotNull(active[id]) { "Source is not installed" }
+            accounts.withCurrent(id) { account ->
+                val live = current.session?.takeIf { !it.closed && it.scope.accountGeneration == account.generation }
+                if (live != null) action(live)
+                else SourceBroker(File(directory, "runtime").toPath(), cipher = storageCipher).use { broker ->
+                    // Same storage identity/cipher as execution, with no origins, browser or rule runner.
+                    action(broker.open(SourceScope(id.namespace, id.id, current.installed.definition.profile,
+                        account.generation), emptyList()))
+                }
+            }
+        }
+    }
+
     internal suspend fun rotateAccount(id: Identifier, expectedGeneration: Long? = null): RuleLoginTarget = withContext(Dispatchers.IO) {
         restore()
         lock.withLock {
@@ -324,3 +361,5 @@ data class InstalledRuleSource(val definition: SourceDefinition, val origins: Li
 
 internal data class RuleLoginTarget(val source: Identifier, val revision: String, val generation: Long,
     val rules: RuleSource, val session: hnovel.network.SourceSession)
+
+internal data class RuleStoredSettings(val variable: String, val loginStatus: String?, val accountName: String? = null)

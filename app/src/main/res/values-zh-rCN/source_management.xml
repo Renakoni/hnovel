@@ -1,4 +1,20 @@
 <resources>
+    <string name="sources_basic_section">基础设置</string>
+    <string name="sources_network_section">网络</string>
+    <string name="sources_account_section">账户</string>
+    <string name="sources_account_name">账户：%1$s</string>
+    <string name="sources_login_again">重新登录</string>
+    <string name="sources_account_required">需要重新登录</string>
+    <string name="sources_account_loading">正在读取账户状态…</string>
+    <string name="sources_account_unknown">无法读取账户状态</string>
+    <string name="sources_plugins_group">插件书源</string>
+    <string name="sources_network_wenku8">文库8暂未接入此绕过开关。</string>
+    <string name="sources_network_plugin">此插件自行管理网络，暂不支持此绕过开关。</string>
+    <string name="sources_login_definition_error">书源登录声明的 %1$s 字段无效，请检查书源定义。</string>
+    <string name="sources_account_unavailable">账户操作暂不可用</string>
+    <string name="sources_session_saved">会话已保存</string>
+    <string name="sources_edit_variable">编辑源变量</string>
+    <string name="sources_variable">源变量</string>
     <string name="sources_bypass_vpn">绕过 VPN</string>
     <string name="sources_bypass_vpn_help">使用非 VPN 网络，没有开启 VPN 时也可正常访问。对新请求生效；VPN 需允许绕过，路线不可用时不会自动切换模式。</string>
     <string name="sources_network_native">此书源使用原生浏览器，暂不支持绕过 VPN。</string>

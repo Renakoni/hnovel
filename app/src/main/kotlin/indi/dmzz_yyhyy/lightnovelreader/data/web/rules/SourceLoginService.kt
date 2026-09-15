@@ -23,9 +23,7 @@ class SourceLoginService @Inject constructor(private val sources: ImportedRuleSo
     suspend fun form(attempt: LoginAttempt): LoginForm = target(attempt).rules.loginForm().also { target(attempt) }
     suspend fun status(source: Identifier): LoginStatus = withContext(Dispatchers.IO) {
         val target = sources.loginTarget(source)
-        val status = (target.session.read(StorageRequest(StorageArea.Account, "login/status")) as? StorageResult.Value)?.value
-        when (status) { "authenticated" -> LoginStatus.Authenticated; "session" -> LoginStatus.SessionSaved
-            "required" -> LoginStatus.Required; else -> LoginStatus.LoggedOut }
+        savedStatus((target.session.read(StorageRequest(StorageArea.Account, "login/status")) as? StorageResult.Value)?.value)
     }
     suspend fun begin(source: Identifier): LoginAttempt {
         val current = sources.loginTarget(source)
@@ -64,5 +62,26 @@ class SourceLoginService @Inject constructor(private val sources: ImportedRuleSo
             accounts.current(attempt.source).generation != attempt.generation)
             throw SourceContentException(ContentError.Unavailable, "login")
         return current
+    }
+    internal companion object {
+        // Conservative display convention, not a new login schema. Ambiguous forms have no label.
+        private val accountNames = setOf("user", "username", "account", "email", "账号", "帐号", "账户", "用户名", "邮箱")
+        fun accountNameField(form: LoginForm?): String? = form?.fields?.filter {
+            it.type == "text" && it.name.trim().lowercase(java.util.Locale.ROOT) in accountNames
+        }?.singleOrNull()?.name
+
+        fun savedAccountName(field: String, info: String?): String? {
+            if (field.trim().lowercase(java.util.Locale.ROOT) !in accountNames || info == null) return null
+            val value = runCatching { (Json.parseToJsonElement(info) as? JsonObject)?.get(field) as? JsonPrimitive }.getOrNull()
+            return value?.takeIf { it.isString }?.content?.trim()?.takeIf {
+                it.isNotEmpty() && it.length <= 128 && it.none(Char::isISOControl)
+            }
+        }
+        fun savedStatus(value: String?) = when (value) {
+            "authenticated" -> LoginStatus.Authenticated
+            "session" -> LoginStatus.SessionSaved
+            "required" -> LoginStatus.Required
+            else -> LoginStatus.LoggedOut
+        }
     }
 }

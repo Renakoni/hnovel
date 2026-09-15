@@ -15,6 +15,7 @@ import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.data.web.*
 import indi.dmzz_yyhyy.lightnovelreader.data.web.rules.*
 import indi.dmzz_yyhyy.lightnovelreader.data.web.zlibrary.*
+import indi.dmzz_yyhyy.lightnovelreader.utils.ofId
 import io.nightfish.lightnovelreader.api.identifier.Identifier
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -31,7 +32,11 @@ data class SourceManagementState(val installed: List<InstalledRuleSource> = empt
     val busy: Boolean = false, val message: Int? = null, val loginForm: LoginForm? = null,
     val loginStatus: LoginStatus = LoginStatus.LoggedOut, val variable: String = "",
     val zLibrary: ZLibraryState = ZLibraryState(), val checks: Map<String, SourceCheckSummary> = emptyMap(),
-    val network: SourceNetworkState? = null)
+    val network: SourceNetworkState? = null, val storedSettingsAvailable: Boolean = false,
+    val accountName: String? = null) {
+    val ruleSettings = installed.find { ImportedRuleSources.id(it.definition) == selected }
+        ?.let { RuleSettingsPresentation.read(it.definition) }
+}
 
 data class SourceNetworkState(val bypassVpn: Boolean = false, val limitation: Int? = null)
 
@@ -100,15 +105,26 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
         reload() // Includes the current session's redacted refusals, including background image loads.
         if (id == ZLibrarySources.ID) zLibrary.refresh()
         mutable.update { it.copy(selected = id, preview = null, updateTarget = null,
-            loginStatus = LoginStatus.LoggedOut, variable = "", network = id?.let(::networkState)) }
-        if (id != null && registry.sources.value.any { it.metadata.id == id && it.metadata.capabilities.isNotEmpty() }) {
-            if (registry.resolve(id) !is SourceResolution.Ready) return
-            if (mutable.value.installed.any { ImportedRuleSources.id(it.definition) == id }) {
-                val target = sources.loginTarget(id)
-                val variable = target.session.read(StorageRequest(StorageArea.Config, "variable")) as StorageResult.Value
-                val status = login.status(id)
-                mutable.update { it.copy(loginStatus = status, variable = variable.value.orEmpty()) }
-            }
+            loginStatus = if (it.selected == id) it.loginStatus else LoginStatus.LoggedOut,
+            variable = if (it.selected == id) it.variable else "", storedSettingsAvailable = false,
+            accountName = if (it.selected == id) it.accountName else null,
+            network = id?.let(::networkState)) }
+        if (id != null && mutable.value.installed.any { ImportedRuleSources.id(it.definition) == id }) {
+            refreshStoredSettings(id)
+        }
+    }
+
+    private suspend fun refreshStoredSettings(id: Identifier, form: LoginForm? = null) {
+        if (state.value.selected != id) return
+        try {
+            val field = if (form != null) SourceLoginService.accountNameField(form) else state.value.ruleSettings?.accountNameField
+            val saved = sources.storedSettings(id, field)
+            mutable.update { if (it.selected == id) it.copy(loginStatus = SourceLoginService.savedStatus(saved.loginStatus),
+                variable = saved.variable, storedSettingsAvailable = true, accountName = saved.accountName) else it }
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) {
+            mutable.update { if (it.selected == id) it.copy(storedSettingsAvailable = false, accountName = null,
+                message = R.string.sources_action_failed) else it }
         }
     }
 
@@ -117,7 +133,7 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
         launch {
             selectSource(id)
             openedFromDiscovery = id
-            if (signIn && registry.sources.value.any { it.metadata.id == id && it.status == SourceStatus.Ready && SourceCapability.Login in it.metadata.capabilities }) {
+            if (signIn && SourceCapability.Login in registry.sources.value.find { it.metadata.id == id }.actionCapabilities()) {
                 openLogin(id)
             }
         }
@@ -240,9 +256,10 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
     private fun networkState(id: Identifier): SourceNetworkState {
         val installed = state.value.installed.find { ImportedRuleSources.id(it.definition) == id }
         val limitation = when {
-            installed != null -> if (Json.parseToJsonElement(installed.definition.rawJson).jsonObject["browserRead"]
-                ?.jsonPrimitive?.booleanOrNull == true) R.string.sources_network_native else null
+            installed != null -> if (RuleSettingsPresentation.read(installed.definition).nativeBrowser) R.string.sources_network_native else null
             id == ZLibrarySources.ID -> null
+            id == "Wenku8".ofId() -> R.string.sources_network_wenku8
+            state.value.registry.find { it.metadata.id == id }?.metadata?.builtIn == false -> R.string.sources_network_plugin
             else -> R.string.sources_network_unsupported
         }
         return SourceNetworkState(networkSettings.mode(id) == SourceNetworkMode.BypassVpn, limitation)
@@ -262,13 +279,12 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
     fun saveConfiguration(id: Identifier, variable: String?, permissions: String) = launch {
         require(variable == null || variable.length <= 32768)
         val approved = grants(permissions)
-        // An inactive editor passes null, so approving grants cannot overwrite stored configuration
-        // with its empty placeholder. Save active configuration before removing the last grant.
+        // A closed variable editor passes null. Preserve its value when only grants are saved.
         if (variable != null && approved.isEmpty())
-            check(sources.loginTarget(id).session.write(StorageRequest(StorageArea.Config, "variable", variable)) is StorageResult.Value)
+            sources.saveVariable(id, variable)
         updates.updatePermissions(id, approved)
         if (variable != null && approved.isNotEmpty())
-            check(sources.loginTarget(id).session.write(StorageRequest(StorageArea.Config, "variable", variable)) is StorageResult.Value)
+            sources.saveVariable(id, variable)
         selectSource(id)
         mutable.update { it.copy(message = R.string.sources_saved) }
     }
@@ -278,40 +294,55 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
     }
     fun beginLogin(id: Identifier) = launch { openLogin(id) }
     private suspend fun openLogin(id: Identifier) {
+        val definition = sources.installedSources().single { ImportedRuleSources.id(it.definition) == id }.definition
+        val declaration = RuleSettingsPresentation.read(definition)
+        if (!declaration.loginDeclared || declaration.loginErrorField != null)
+            throw SourceContentException(hnovel.content.ContentError.InvalidRule, declaration.loginErrorField ?: "loginUi")
         check(registry.resolve(id) is SourceResolution.Ready) { "Source is not initialized" }
         // Keep a handle even if cancellation arrives just after the account has rotated.
         val active = withContext(NonCancellable) { login.begin(id).also { attempt = it } }
+        var form: LoginForm? = null
         try {
-            val form = login.form(active)
+            val loaded = login.form(active).also { form = it }
             currentCoroutineContext().ensureActive()
-            if (form.browserUrl != null && form.fields.isEmpty()) {
+            if (loaded.browserUrl != null && loaded.fields.isEmpty()) {
                 login.submit(active, emptyMap())
                 attempt = null
-                val status = login.status(id)
-                mutable.update { it.copy(loginForm = null, loginStatus = status) }
-            } else mutable.update { it.copy(loginForm = form, loginStatus = LoginStatus.LoggedOut) }
+                mutable.update { it.copy(loginForm = null) }
+            } else mutable.update { it.copy(loginForm = loaded) }
         } catch (failure: Exception) {
             withContext(NonCancellable) { login.cancel(active) }
             if (attempt === active) attempt = null
             throw failure
+        } finally {
+            withContext(NonCancellable) { refreshStoredSettings(id, form) }
         }
     }
     fun submitLogin(values: Map<String, String>, action: String? = null) = launch {
         val active = checkNotNull(attempt)
-        login.submit(active, values, action)
-        val status = login.status(active.source)
-        if (action == null) attempt = null
-        val form = if (action == null) null else login.form(active)
-        mutable.update { it.copy(loginStatus = status, loginForm = form) }
+        val submittedForm = state.value.loginForm
+        try {
+            login.submit(active, values, action)
+            val form = if (action == null) null else login.form(active)
+            if (action == null) attempt = null
+            mutable.update { it.copy(loginForm = form) }
+        } finally {
+            withContext(NonCancellable) { refreshStoredSettings(active.source, submittedForm) }
+        }
     }
-    fun logout(id: Identifier) = launch { login.logout(id); mutable.update { it.copy(loginStatus = LoginStatus.LoggedOut) } }
+    fun logout(id: Identifier) = launch { login.logout(id); refreshStoredSettings(id) }
     fun cancelLogin() {
         operation?.cancel()
         val generation = ++operationGeneration
         mutable.update { it.copy(busy = true) }
         val active = attempt; attempt = null
         viewModelScope.launch {
-            withContext(NonCancellable) { if (active != null) login.cancel(active) }
+            withContext(NonCancellable) {
+                if (active != null) {
+                    login.cancel(active)
+                    if (generation == operationGeneration) refreshStoredSettings(active.source)
+                }
+            }
             if (generation == operationGeneration) mutable.update { it.copy(loginForm = null, busy = false) }
         }
     }

@@ -65,7 +65,7 @@ class SourcesViewModelTest {
         }
     }
 
-    @Test fun initializationFailureKeepsSettingsOpenWithoutReadingRuntimeAccountData(): Unit = runBlocking {
+    @Test fun settingsReadStoredValuesBeforeExplicitLoginAttemptsInitialization(): Unit = runBlocking {
         Dispatchers.setMain(Dispatchers.Unconfined)
         val root = Files.createTempDirectory("source-initialization-ui").toFile()
         val context = object : ContextWrapper(RuntimeEnvironment.getApplication()) {
@@ -73,7 +73,8 @@ class SourcesViewModelTest {
             override fun getCacheDir() = File(root, "cache")
         }
         val definition = hnovel.imports.SourceDefinition("broken", "legado", "fixture", "https://fixture.invalid/", "Broken", true,
-            false, hnovel.imports.ImportOrigin(hnovel.imports.ImportOrigin.Kind.Paste), "digest", 1, "{}")
+            false, hnovel.imports.ImportOrigin(hnovel.imports.ImportOrigin.Kind.Paste), "digest", 1,
+            """{"loginUi":"[{\"name\":\"account\"}]"}""")
         val id = ImportedRuleSources.id(definition)
         val registry = WebSourceRegistry(hnovel.execution.ExecutionAuthority())
         val source = mockk<io.nightfish.lightnovelreader.api.web.WebBookDataSource>()
@@ -83,6 +84,7 @@ class SourcesViewModelTest {
             setOf(SourceCapability.Search, SourceCapability.Login))) { source }
         val sources = mockk<ImportedRuleSources>()
         coEvery { sources.installedSources() } returns listOf(InstalledRuleSource(definition, listOf(NetworkGrant("https://fixture.invalid/")), null))
+        coEvery { sources.storedSettings(id, "account") } returns RuleStoredSettings("saved variable", "session", "reader")
         val login = mockk<SourceLoginService>(relaxed = true)
         val zLibrary = mockk<ZLibrarySources>()
         every { zLibrary.state } returns MutableStateFlow(indi.dmzz_yyhyy.lightnovelreader.data.web.zlibrary.ZLibraryState())
@@ -92,13 +94,23 @@ class SourcesViewModelTest {
             idle()
             assertEquals(SourceStatus.Registered, registry.sources.value.single().status)
             model.select(id)
-            assertEquals(id, idle().selected)
-            withTimeout(10000) { model.state.first { it.registry.singleOrNull()?.status == SourceStatus.Failed } }
-            verify(exactly = 1) { source.onLoad() }
+            val selected = idle()
+            assertEquals(id, selected.selected)
+            assertEquals("saved variable", selected.variable)
+            assertEquals(LoginStatus.SessionSaved, selected.loginStatus)
+            assertEquals("reader", selected.accountName)
+            assertEquals(SourceStatus.Registered, registry.sources.value.single().status)
+            verify(exactly = 0) { source.onLoad() }
             coVerify(exactly = 0) { sources.loginTarget(any()) }
             coVerify(exactly = 0) { login.status(any()) }
             model.beginLogin(id); idle()
+            withTimeout(10000) { model.state.first { it.registry.singleOrNull()?.status == SourceStatus.Failed } }
+            verify(exactly = 1) { source.onLoad() }
             coVerify(exactly = 0) { login.begin(any()) }
+            model.select(id)
+            assertEquals("saved variable", idle().variable)
+            assertEquals(id, idle().selected)
+            verify(exactly = 1) { source.onLoad() }
         } finally { model.cancel(); registration.unregister(); Dispatchers.resetMain(); root.deleteRecursively() }
     }
 
@@ -130,6 +142,9 @@ class SourcesViewModelTest {
                 model.select(id)
                 assertEquals(id, idle().selected)
                 assertNull(idle().message)
+                model.setBypassVpn(true)
+                assertEquals(true, idle().network?.bypassVpn)
+                assertTrue(registry.sources.value.isEmpty())
                 model.setEnabled(id, true); idle()
                 assertTrue(registry.resolve(id) is SourceResolution.Missing)
                 model.saveConfiguration(id, null, "https://fixture.invalid/"); idle()
@@ -137,12 +152,14 @@ class SourcesViewModelTest {
                 model.saveConfiguration(id, "keep this", "https://fixture.invalid/")
                 assertEquals("keep this", idle().variable)
                 model.setEnabled(id, false)
-                assertEquals("", idle().variable)
+                assertEquals("keep this", idle().variable)
+                model.saveConfiguration(id, "edited while disabled", "https://fixture.invalid/")
+                assertEquals("edited while disabled", idle().variable)
                 model.saveConfiguration(id, null, ""); idle()
                 model.saveConfiguration(id, null, "https://fixture.invalid/"); idle()
                 assertTrue(registry.resolve(id) is SourceResolution.Missing)
                 model.setEnabled(id, true)
-                assertEquals("keep this", idle().variable)
+                assertEquals("edited while disabled", idle().variable)
                 model.saveConfiguration(id, "saved before revocation", ""); idle()
                 assertTrue(registry.resolve(id) is SourceResolution.Missing)
                 model.saveConfiguration(id, null, "https://fixture.invalid/")
@@ -225,6 +242,30 @@ class SourcesViewModelTest {
                 model.openFromDiscovery(id, true)
                 idle()
                 assertEquals(generation, accounts.current(id).generation)
+                model.submitLogin(mapOf("user" to "reader"))
+                assertEquals(LoginStatus.Authenticated, idle().loginStatus)
+                assertEquals("reader", idle().accountName)
+                assertNull(idle().loginForm)
+                model.select(null); idle()
+                model.select(id)
+                assertEquals("reader", idle().accountName)
+                assertEquals(generation, accounts.current(id).generation)
+                model.setEnabled(id, false)
+                assertEquals("reader", idle().accountName)
+                assertEquals(LoginStatus.Authenticated, idle().loginStatus)
+                model.setEnabled(id, true); idle()
+                model.logout(id)
+                assertEquals(LoginStatus.LoggedOut, idle().loginStatus)
+                assertNull(idle().accountName)
+                model.beginLogin(id); idle()
+                model.submitLogin(mapOf("user" to "next-reader"))
+                assertEquals("next-reader", idle().accountName)
+                model.beginLogin(id)
+                assertEquals(LoginStatus.LoggedOut, idle().loginStatus)
+                assertNull(idle().accountName)
+                model.cancelLogin()
+                assertEquals(LoginStatus.LoggedOut, idle().loginStatus)
+                assertNull(idle().accountName)
                 assertEquals(0, fixture.documents.get())
             } finally { model.cancel(); sources.stop(); root.deleteRecursively(); Dispatchers.resetMain() }
         }
@@ -294,6 +335,112 @@ class SourcesViewModelTest {
                 model.saveConfiguration(secondId, "kept after rejected candidate", batchPermissions.getValue(1))
                 assertEquals(indi.dmzz_yyhyy.lightnovelreader.R.string.sources_saved, idle().message)
             } finally { model.cancel(); sources.stop(); root.deleteRecursively(); Dispatchers.resetMain() }
+        }
+    }
+
+    @Test fun browserAccountCardRefreshesTheSavedStatusAfterFailedReauthentication(): Unit = runBlocking {
+        Dispatchers.setMain(Dispatchers.Unconfined)
+        val root = Files.createTempDirectory("browser-account-card").toFile()
+        val context = object : ContextWrapper(RuntimeEnvironment.getApplication()) { override fun getFilesDir() = root }
+        RuleSourceFixture().use { fixture ->
+            val registry = WebSourceRegistry(fixture.authority)
+            val accounts = SourceSessionManager(fixture.authority)
+            var httpStatus = 200
+            val browser = hnovel.network.BrowserExecutor { _, request, _, _, _ ->
+                hnovel.network.BrokerResult.Success(hnovel.network.BrokerResponse(httpStatus, request.url, emptyMap(),
+                    byteArrayOf(), "UTF-8", 0))
+            }
+            val sources = ImportedRuleSources(context, registry, fixture.authority, accounts, fixture.runner, browser = browser)
+            val raw = JsonObject(fixture.raw() + mapOf("browserRead" to JsonPrimitive(true),
+                "loginUrl" to JsonPrimitive(fixture.server.url("/login").toString())))
+            val committed = sources.importer.commit(sources.importer.preview(raw.toString()), listOf(ImportSelection(0, ImportDecision.Add)))
+            val id = sources.activate(committed.items.single().reference!!, listOf(NetworkGrant(fixture.server.url("/").toString(), true)))
+            val model = SourcesViewModel(context, sources, SourceRevisionUpdates(context, sources, accounts, fixture.runner, fixture.authority),
+                SourceLoginService(sources, accounts), registry, ZLibrarySources(context, registry, hnovel.network.StorageCipher.Plain))
+            suspend fun idle() = withTimeout(10000) { model.state.first { !it.busy } }
+            try {
+                idle()
+                model.select(id); idle()
+                model.beginLogin(id)
+                assertEquals(LoginStatus.SessionSaved, idle().loginStatus)
+                assertNull(idle().accountName)
+                httpStatus = 503
+                model.beginLogin(id)
+                assertEquals(LoginStatus.SessionSaved, idle().loginStatus)
+                assertNotNull(idle().message)
+                httpStatus = 401
+                model.beginLogin(id)
+                assertEquals(LoginStatus.Required, idle().loginStatus)
+                assertNull(idle().accountName)
+                assertTrue(idle().storedSettingsAvailable)
+                assertEquals(0, fixture.server.requestCount)
+            } finally { model.cancel(); sources.stop(); root.deleteRecursively(); Dispatchers.resetMain() }
+        }
+    }
+
+    @Test fun builtinAndPluginSettingsDoNotConstructLazyProviders(): Unit = runBlocking {
+        Dispatchers.setMain(Dispatchers.Unconfined)
+        val root = Files.createTempDirectory("registered-settings").toFile()
+        val context = object : ContextWrapper(RuntimeEnvironment.getApplication()) { override fun getFilesDir() = root }
+        val registry = WebSourceRegistry()
+        val ids = listOf(io.nightfish.lightnovelreader.api.identifier.Identifier("lightnovelreader", "Wenku8"),
+            io.nightfish.lightnovelreader.api.identifier.Identifier("plugin", "fixture"))
+        var constructions = 0
+        val registrations = ids.mapIndexed { index, id -> registry.register(SourceMetadata(
+            io.nightfish.lightnovelreader.api.web.WebDataSourceItem(id, id.id, "Fixture"), setOf(SourceCapability.Search), builtIn = index == 0)) {
+                constructions++; error("Opening basic settings must not create a provider")
+            }
+        }
+        val sources = mockk<ImportedRuleSources>()
+        coEvery { sources.installedSources() } returns emptyList()
+        val zLibrary = mockk<ZLibrarySources>()
+        every { zLibrary.state } returns MutableStateFlow(indi.dmzz_yyhyy.lightnovelreader.data.web.zlibrary.ZLibraryState())
+        val model = SourcesViewModel(context, sources, mockk(), mockk(), registry, zLibrary)
+        suspend fun idle() = withTimeout(10000) { model.state.first { !it.busy } }
+        try {
+            idle()
+            for (id in ids) {
+                model.select(id)
+                val state = idle()
+                assertEquals(id, state.selected)
+                assertNotNull(state.network?.limitation)
+                assertNull(state.loginForm)
+            }
+            assertEquals(0, constructions)
+            assertTrue(registry.sources.value.all { it.status == SourceStatus.Registered })
+            coVerify(exactly = 0) { sources.loginTarget(any()) }
+            coVerify(exactly = 0) { sources.storedSettings(any(), any()) }
+        } finally { model.cancel(); registrations.forEach { it.unregister() }; Dispatchers.resetMain(); root.deleteRecursively() }
+    }
+
+    @Test fun absentOrInvalidLoginCannotOpenAnEmptyDialogOrRotateAccounts(): Unit = runBlocking {
+        Dispatchers.setMain(Dispatchers.Unconfined)
+        val root = Files.createTempDirectory("login-declarations").toFile()
+        val context = object : ContextWrapper(RuntimeEnvironment.getApplication()) { override fun getFilesDir() = root }
+        RuleSourceFixture().use { fixture ->
+            fixture.afterRun = { error("Opening settings must not evaluate rules") }
+            val registry = WebSourceRegistry(fixture.authority)
+            val accounts = SourceSessionManager(fixture.authority)
+            val sources = ImportedRuleSources(context, registry, fixture.authority, accounts, fixture.runner)
+            val model = SourcesViewModel(context, sources, SourceRevisionUpdates(context, sources, accounts, fixture.runner, fixture.authority),
+                SourceLoginService(sources, accounts), registry, ZLibrarySources(context, registry, hnovel.network.StorageCipher.Plain))
+            suspend fun idle() = withTimeout(10000) { model.state.first { !it.busy } }
+            try {
+                idle()
+                for ((index, ui) in listOf("", "[]", "not a form").withIndex()) {
+                    val raw = JsonObject(fixture.raw() + mapOf("bookSourceUrl" to JsonPrimitive(fixture.server.url("/source-$index").toString()),
+                        "loginUi" to JsonPrimitive(ui), "loginCheckJs" to JsonPrimitive("@js:throw 'never run'")))
+                    val reference = sources.importer.commit(sources.importer.preview(raw.toString()), listOf(ImportSelection(0, ImportDecision.Add))).items.single().reference!!
+                    val id = sources.activate(reference, listOf(NetworkGrant(fixture.server.url("/").toString(), true)))
+                    model.select(id)
+                    assertTrue(idle().storedSettingsAvailable)
+                    model.beginLogin(id)
+                    assertNull(idle().loginForm)
+                    assertEquals(0L, accounts.current(id).generation)
+                    assertEquals(SourceStatus.Registered, registry.sources.value.single { it.metadata.id == id }.status)
+                }
+                assertEquals(0, fixture.server.requestCount)
+            } finally { model.cancel(); sources.stop(); Dispatchers.resetMain(); root.deleteRecursively() }
         }
     }
 }
