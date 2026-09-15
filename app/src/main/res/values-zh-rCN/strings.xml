@@ -229,8 +229,6 @@
     <string name="settings_app_logs_desc">查看与分享应用日志（调试用途）</string>
     <string name="settings_app_log_level">日志等级</string>
     <string name="settings_app_log_level_desc">设置日志过滤等级，重启应用后生效</string>
-    <string name="settings_auto_proxy">自动代理</string>
-    <string name="settings_auto_proxy_desc">自动从网络上获取代理 IP，<b>但这将导致您所浏览的书本数据可能会被截获</b></string>
     <string name="book_manager_title">书籍管理</string>
     <string name="book_manager_tab_downloads">下载</string>
     <string name="book_manager_tab_local_books">本地</string>

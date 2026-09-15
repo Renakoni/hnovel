@@ -231,8 +231,6 @@
     <string name="settings_app_logs_desc">Просмотр и отправка логов для отладки</string>
     <string name="settings_app_log_level">Уровень логирования</string>
     <string name="settings_app_log_level_desc">Выберите уровень фильтрации логов (требуется перезагрузка приложения)</string>
-    <string name="settings_auto_proxy">Auto Proxy</string>
-    <string name="settings_auto_proxy_desc">Automatically fetch proxy IPs from the internet, <b>but this may allow the books you browse to be intercepted</b></string>
     <string name="book_manager_title">Book Manager</string>
     <string name="book_manager_tab_downloads">Downloads</string>
     <string name="book_manager_tab_local_books">Local books</string>

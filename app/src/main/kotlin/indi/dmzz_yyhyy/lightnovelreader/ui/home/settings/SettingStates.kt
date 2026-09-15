@@ -18,7 +18,6 @@ class SettingState(
     val updateChannelKeyUserData = userDataRepository.stringUserData(UserDataPath.Settings.App.UpdateChannel.path)
     val distributionPlatformKeyUserData = userDataRepository.stringUserData(UserDataPath.Settings.App.DistributionPlatform.path)
     val logLevelKeyUserData = userDataRepository.stringUserData(UserDataPath.Settings.Data.LogLevel.path)
-    val isUseProxyUserData = userDataRepository.booleanUserData(UserDataPath.Settings.Data.IsUseProxy.path)
     val enableSimplifiedTraditionalTransformUserData = userDataRepository.booleanUserData(
         UserDataPath.Reader.EnableSimplifiedTraditionalTransform.path)
     val dateFormatUserData = userDataRepository.stringUserData(UserDataPath.Settings.Display.DateStyle.path)
@@ -32,7 +31,6 @@ class SettingState(
     val updateChannelKey by updateChannelKeyUserData.asState("Development")
     val distributionPlatformKey by distributionPlatformKeyUserData.asState("LnrAPI")
     val logLevelKey by logLevelKeyUserData.asState("none")
-    val isUseProxy by isUseProxyUserData.asState(false)
     val enableSimplifiedTraditionalTransform by enableSimplifiedTraditionalTransformUserData.safeAsState(false)
     val dateFormat by dateFormatUserData.safeAsState("numeric")
     val dateShowYear by dateShowYearUserData.asState(true)

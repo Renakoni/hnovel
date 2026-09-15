@@ -38,6 +38,19 @@ private clients do not acquire support merely by appearing in the source list (#
 The reference project's `header.proxy` configures HTTP/SOCKS proxy connections. It is a
 different transport feature and is not used to implement this Android VPN switch.
 
+## Proxy terms and retired setting (#227)
+
+| Mechanism | Meaning in this project |
+| --- | --- |
+| Old “Auto Proxy” | Scraped public proxy lists. No production source called its Jsoup retry helpers; the unused setting, startup hook and `:proxy` module are removed. |
+| Explicit HTTP/SOCKS proxy | A configured proxy server carries requests. MD3 uses [`header.proxy`](https://github.com/HapeLee/legado-with-MD3/blob/fb01a76ebbbca41423e2c4c00080cc0861239fbd/app/src/main/java/io/legado/app/help/http/HttpHelper.kt#L190); broker support is deferred in [#146](https://github.com/Renakoni/hnovel/issues/146). |
+| Clash Fake-IP | A DNS placeholder, commonly `198.18.0.0/15`, which Clash maps back to a hostname. It is not a public proxy address or a real website IP. The default broker resolver can look up the real address when it receives this range, then applies the usual address checks. |
+| Per-source VPN bypass | DNS and sockets use an available non-VPN Android network. It remains usable without a VPN and does not fetch proxy servers. |
+
+The retired `UserDataPath.Settings.Data.IsUseProxy` class and `is_use_proxy` key remain
+for plugin compatibility. Stored values have no host effect. No replacement global
+switch is introduced; source network preferences remain independent of this legacy key.
+
 ## Native browser route
 
 Native bypass requires Android API 28+, the existing native profile capability and a

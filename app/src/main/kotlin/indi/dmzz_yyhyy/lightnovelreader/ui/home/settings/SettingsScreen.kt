@@ -114,7 +114,6 @@ fun SettingsScreen(
                 ) {
                     DataSettingsList(
                         onClickExportUserData = onClickExportUserData,
-                        settingState = settingState,
                         importData = importData,
                         onClickStorageManager = onClickStorageManager,
                         clearReadingCache = clearReadingCache,
