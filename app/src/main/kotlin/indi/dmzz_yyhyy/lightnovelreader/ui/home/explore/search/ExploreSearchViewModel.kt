@@ -47,8 +47,8 @@ class ExploreSearchViewModel internal constructor(
 
     val sourceId = Identifier(requireNotNull(route.namespace), requireNotNull(route.sourceId))
     private val mutableState = MutableExploreSearchUiState { saved["search.expanded"] = it }.apply {
-        query = saved["search.query"] ?: ""
-        submittedKeyword = saved["search.submitted"] ?: ""
+        query = saved["search.query"] ?: route.keyword.orEmpty()
+        submittedKeyword = saved["search.submitted"] ?: route.keyword.orEmpty()
         searchType = saved["search.type"] ?: ""
         searchBarExpanded = saved["search.expanded"] ?: submittedKeyword.isBlank()
     }

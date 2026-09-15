@@ -22,7 +22,7 @@ fun NavGraphBuilder.searchHubDestination() {
         val model = hiltViewModel<SearchHubViewModel>()
         val state by model.state.collectAsState()
         SearchHubScreen(state, model::setQuery, model::search, model::select, model::search,
-            model::deleteHistory, model::clearHistory, { id, keyword -> nav.navigate(Route.Main.Explore.Search(id.namespace, id.id)) },
+            model::deleteHistory, model::clearHistory, { id, keyword -> nav.navigate(Route.Main.Explore.Search(id.namespace, id.id, keyword)) },
             { nav.navigateToBookDetailDestination(it) }, { nav.popBackStackIfResumed() })
     }
 }
