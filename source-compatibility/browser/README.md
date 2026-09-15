@@ -20,6 +20,8 @@
 
 `NativeSourceBrowser` 负责宿主准入、请求串行、进程所有权、取消及结果提交；`NativeBrowserFiles` 负责停止进程后的 profile 文件切换；`NativeSourceBrowserService` 只运行网站和提取结果；`NativeSourceBrowserActivity` 提供前台窗口。使用一个专用进程，所以当前不同原生来源不能并行浏览。
 
+按源网络路线由 [#219](https://github.com/Renakoni/hnovel/issues/219) 接入：支持 API 28+ 且提供 `PROXY_OVERRIDE` 的 WebView。绕过模式仅在专用浏览器进程初始化 Chromium 前绑定本次捕获的非 VPN 网络，并等待 direct proxy override 生效；主进程不绑定网络。来源会话或路线代次改变时先结束旧进程再重用对应账号目录。路线失效、来源关闭也会结束空闲进程及其后台 Service Worker。模式切换保留持久 Cookie/localStorage，不轮换账号；内存 session Cookie 仍遵循进程生命周期。具体限制和实测范围见 [按源网络路线](../SOURCE_NETWORK_MODES.md#native-browser-route)。
+
 入口 URL 仍经过来源授权和地址检查。进入原生 WebView 后，重定向、iframe、子资源、页面 POST、Worker 遵循 Chromium 的网络和同源安全模型；公共 WebView API **无法提供** HTTP broker 对所有请求和实际对端的同等检查。页面可以向其正常浏览器允许访问的网络地址发请求。此边界由 #184 明确修正，不能把它宣称为 #173 的严格逐请求权限验收已完成。
 
 页面没有 JavaScriptInterface；禁用文件/content 访问、混合内容、设备权限、下载和外部 scheme 跳转；内部 frame 的 `about:blank`、`about:srcdoc` 可用；证书错误使用正常拒绝处理。Debug 构建允许开发者调试 WebView，Release 不主动开放调试。

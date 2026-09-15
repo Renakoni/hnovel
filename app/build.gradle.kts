@@ -18,6 +18,7 @@ plugins {
 android {
     sourceSets.getByName("androidTest").assets.srcDir("../source-rhino/src/test/resources")
     sourceSets.getByName("androidTest").assets.srcDir("../source-compatibility/browser")
+    sourceSets.getByName("androidTest").assets.srcDir("../source-compatibility/fixtures/native-routing/site")
     namespace = "indi.dmzz_yyhyy.lightnovelreader"
     compileSdk = 37
 

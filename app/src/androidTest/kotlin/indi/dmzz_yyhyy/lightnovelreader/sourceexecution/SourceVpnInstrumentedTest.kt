@@ -159,7 +159,7 @@ class SourceVpnInstrumentedTest {
             SourceBroker(root.toPath(), browser = AndroidSourceBrowser(context), route = SourceRouteProvider { route }).use { broker ->
                 val session = broker.open(SourceScope("fixture", "native-bypass", "test"), listOf(NetworkGrant("https://example.com/")))
                 session.configureSource("https://example.com/", true, browserRead = true)
-                assertEquals(FailureCode.RouteUnsupported,
+                assertEquals(if (AndroidSourceBrowser.supportsVpnBypass(context)) FailureCode.RouteUnavailable else FailureCode.RouteUnsupported,
                     (session.execute(BrokerRequest("native", "https://example.com/")) as BrokerResult.Failure).code)
             }
         } finally { root.deleteRecursively() }

@@ -3,10 +3,16 @@ package indi.dmzz_yyhyy.lightnovelreader.sourcebrowser
 import android.annotation.SuppressLint
 import android.app.Service
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.Network
 import android.os.*
 import android.webkit.*
+import androidx.webkit.ProxyConfig
+import androidx.webkit.ProxyController
+import androidx.webkit.WebViewFeature
 import hnovel.network.*
 import indi.dmzz_yyhyy.lightnovelreader.BuildConfig
+import indi.dmzz_yyhyy.lightnovelreader.data.web.AndroidSourceNetworks
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.*
 import java.util.concurrent.atomic.AtomicBoolean
@@ -15,6 +21,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 class NativeSourceBrowserService : Service() {
     private val handler = Handler(Looper.getMainLooper())
     private var profile: String? = null
+    private var networkHandle: Long? = null
+    private var networkReady = false
     private var page: Page? = null
     internal var activity: NativeSourceBrowserActivity? = null
     internal val webView get() = page?.view
@@ -29,17 +37,27 @@ class NativeSourceBrowserService : Service() {
                 try {
                     check(page == null)
                     if (profile == null) {
+                        bindNetwork(job.networkHandle)
                         NativeBrowserFiles(this@NativeSourceBrowserService).initialize(job.profile)
                         if (BuildConfig.DEBUG) WebView.setWebContentsDebuggingEnabled(true)
                         profile = job.profile
+                        networkHandle = job.networkHandle
+                        if (networkHandle != null) {
+                            if (!WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE))
+                                throw RouteFailure(FailureCode.RouteUnsupported)
+                            // Binding covers sockets/DNS; this additionally prevents a system HTTP proxy
+                            // from sending the same physical-network connection back into a VPN proxy.
+                            ProxyController.getInstance().setProxyOverride(ProxyConfig.Builder().addDirect().build(),
+                                { handler.post(it) }) {
+                                networkReady = true
+                                openPage(job, callback)
+                            }
+                            return@post
+                        }
+                        networkReady = true
                     }
-                    check(profile == job.profile)
-                    active = this@NativeSourceBrowserService
-                    page = Page(job, callback).also { it.open() }
-                } catch (_: Exception) {
-                    page?.view?.destroy(); page = null
-                    send(callback, BrokerResult.Failure(RequestStage.Response, FailureCode.Network))
-                }
+                    openPage(job, callback)
+                } catch (failure: Exception) { failStart(callback, failure) }
             }
         }
         override fun shutdown() {
@@ -50,6 +68,32 @@ class NativeSourceBrowserService : Service() {
                 Process.killProcess(Process.myPid())
             }
         }
+    }
+
+    private class RouteFailure(val code: FailureCode) : Exception()
+
+    /** Called only in this dedicated process, before any Chromium initialization. */
+    private fun bindNetwork(handle: Long?) {
+        if (handle == null) return
+        if (Build.VERSION.SDK_INT < 28) throw RouteFailure(FailureCode.RouteUnsupported)
+        val connectivity = getSystemService(ConnectivityManager::class.java)
+        val network = Network.fromNetworkHandle(handle)
+        if (connectivity.getNetworkCapabilities(network)?.let(AndroidSourceNetworks::eligible) != true ||
+            !connectivity.bindProcessToNetwork(network)) throw RouteFailure(FailureCode.RouteUnavailable)
+    }
+
+    private fun openPage(job: BrowserJob, callback: IBrowserHost) {
+        try {
+            check(networkReady && profile == job.profile && networkHandle == job.networkHandle && page == null)
+            active = this
+            page = Page(job, callback).also { it.open() }
+        } catch (failure: Exception) { failStart(callback, failure) }
+    }
+
+    private fun failStart(callback: IBrowserHost, failure: Exception) {
+        page?.view?.destroy(); page = null
+        send(callback, BrokerResult.Failure(RequestStage.Connect,
+            if (failure is RouteFailure) failure.code else FailureCode.Network))
     }
 
     internal fun confirm() { page?.evaluate() }

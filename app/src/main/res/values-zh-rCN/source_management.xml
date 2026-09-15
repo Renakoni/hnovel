@@ -23,7 +23,7 @@
     <string name="sources_variable">源变量</string>
     <string name="sources_bypass_vpn">绕过 VPN</string>
     <string name="sources_bypass_vpn_help">使用非 VPN 网络，没有开启 VPN 时也可正常访问。对新请求生效；VPN 需允许绕过，路线不可用时不会自动切换模式。</string>
-    <string name="sources_network_native">此书源使用原生浏览器，暂不支持绕过 VPN。</string>
+    <string name="sources_network_native">此设备的原生浏览器暂不支持绕过 VPN。</string>
     <string name="sources_network_unsupported">此书源的网络连接暂不支持绕过 VPN。</string>
     <string name="sources_route_unavailable">所选网络路线不可用，请检查网络后重试。</string>
     <string name="sources_advanced">高级选项</string>
