@@ -8,18 +8,21 @@ import coil3.request.CachePolicy
 import coil3.request.SuccessResult
 import indi.dmzz_yyhyy.lightnovelreader.data.book.BookIdentity
 import indi.dmzz_yyhyy.lightnovelreader.data.book.SourceBookId
+import indi.dmzz_yyhyy.lightnovelreader.data.download.BookDownloadStore
 import indi.dmzz_yyhyy.lightnovelreader.data.web.SourceResolution
 import indi.dmzz_yyhyy.lightnovelreader.data.web.WebSourceRegistry
 import java.security.MessageDigest
 import javax.inject.Inject
 
 /** Safe to pass through UI/navigation. Credentials are resolved only during execution. */
-data class SourceImage(val book: SourceBookId, val uri: String, val cover: Boolean = false)
+data class SourceImage(val book: SourceBookId, val uri: String, val cover: Boolean = false,
+    val preferDownloaded: Boolean = true)
 
 /** Runs before Coil's memory/disk lookup, so URL equality never implies source equality. */
 class SourceImageInterceptor @Inject constructor(
     private val registry: WebSourceRegistry,
     @dagger.hilt.android.qualifiers.ApplicationContext context: android.content.Context,
+    private val downloads: BookDownloadStore,
 ) : Interceptor {
     // Only opaque cache keys are persisted. A removed source may read its last cached image,
     // but cannot start a network request or borrow another source's credentials.
@@ -27,6 +30,11 @@ class SourceImageInterceptor @Inject constructor(
 
     override suspend fun intercept(chain: Interceptor.Chain): ImageResult {
         val image = chain.request.data as? SourceImage ?: return chain.proceed()
+        if (image.preferDownloaded) downloads.image(image)?.let { file ->
+            val key = sourceImageCacheKey(image, "download:${file.lastModified()}:${file.length()}")
+            return chain.withRequest(chain.request.newBuilder().data(file)
+                .memoryCacheKey(key).diskCacheKey(key).build()).proceed()
+        }
         if (android.net.Uri.parse(image.uri).scheme in setOf("file", "content", "android.resource")) {
             return chain.withRequest(chain.request.newBuilder().data(image.uri).build()).proceed()
         }

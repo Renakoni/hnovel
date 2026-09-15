@@ -69,10 +69,10 @@
     <string name="import_back">Back</string>
     <string name="import_in_progress_title">Importing…</string>
     <string name="import_in_progress_desc">Please wait…</string>
-    <string name="download_in_progress">In Progress</string>
+    <string name="download_in_progress">Unfinished</string>
     <string name="download_item_progress">%1$s downloaded %2$d%%</string>
     <string name="download_item_finished">%s completed</string>
-    <string name="download_item_failed">%s failed, please check your network or seek developer assistance</string>
+    <string name="download_item_failed">%s failed</string>
     <string name="book_updated_to_title">Updated to:</string>
     <string name="book_word_count_limit">Word limit: </string>
     <string name="unavailable">Unavailable</string>
@@ -113,10 +113,10 @@
     <string name="hint_unsaved_changes_will_be_lost">If you exit now, your unsaved changes will be lost.</string>
 
     <!-- Snackbar Hints -->
-    <string name="cache_book_started">Caching started: %1$s</string>
-    <string name="cache_book_running">This book is currently caching</string>
-    <string name="cache_book_finished">Cache completed successfully</string>
-    <string name="cache_book_error">Cache failed</string>
+    <string name="cache_book_started">Downloading: %1$s</string>
+    <string name="cache_book_running">Download in progress</string>
+    <string name="cache_book_finished">Downloaded</string>
+    <string name="cache_book_error">Download failed</string>
     <string name="restart_to_apply_changes">Restart the app to apply changes</string>
     <string name="network_error_message">
         The app is currently unable to retrieve data from the source. This is usually caused by a network issue, and we are unable to troubleshoot network problems. Please check your connection first.
@@ -443,8 +443,8 @@
     <string name="reading_sessions">Reading Sessions</string>
     <string name="reading_duration">Reading Duration</string>
     <string name="reading_duration_unit">h %d min</string>
-    <string name="cached">Cached</string>
-    <string name="cached_false">Not Cached</string>
+    <string name="cached">Downloaded</string>
+    <string name="cached_false">Download</string>
     <string name="others">Others</string>
     <string name="unit_hour_clock">h</string>
     <string name="unit_hours">h&#160;</string>

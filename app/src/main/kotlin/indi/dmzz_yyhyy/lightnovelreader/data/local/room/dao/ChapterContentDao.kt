@@ -18,6 +18,19 @@ interface ChapterContentDao {
     )
     suspend fun update(id: String, title: String, content: JsonObject, prevChapter: String, nextChapter: String)
 
+    /** Reading refreshes cannot replace a download before its new images have been saved. */
+    @TypeConverters(JsonObjectConverter::class)
+    @Query("replace into chapter_content (id, title, content, lastChapter, nextChapter) " +
+            "select :id, :title, :content, :prevChapter, :nextChapter " +
+            "where not exists (select 1 from downloaded_chapter where id = :id)")
+    suspend fun cache(id: String, title: String, content: JsonObject, prevChapter: String, nextChapter: String)
+
+    suspend fun cache(chapter: ChapterContent) = cache(chapter.id, chapter.title, chapter.content,
+        chapter.prevChapter.orEmpty(), chapter.nextChapter.orEmpty())
+
+    suspend fun cache(chapter: ChapterContentEntity) = cache(chapter.id, chapter.title, chapter.content,
+        chapter.prevChapter, chapter.nextChapter)
+
     @Transaction
     suspend fun update(chapterContent: ChapterContent) {
         update(

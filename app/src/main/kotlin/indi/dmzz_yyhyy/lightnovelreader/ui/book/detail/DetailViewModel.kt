@@ -20,12 +20,14 @@ import indi.dmzz_yyhyy.lightnovelreader.data.bookshelf.BookshelfRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadProgressRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadType
 import indi.dmzz_yyhyy.lightnovelreader.data.work.ExportBookToEPUBWork
+import indi.dmzz_yyhyy.lightnovelreader.data.work.CacheBookWork
 import indi.dmzz_yyhyy.lightnovelreader.data.book.observeSubmittedUniqueWork
 import io.nightfish.lightnovelreader.api.web.WebDataSourcePriority
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -70,7 +72,10 @@ class DetailViewModel @Inject constructor(
             }
         }
         viewModelScope.launch(Dispatchers.IO) {
-            _uiState.isCached = bookRepository.getIsBookCached(bookId)
+            combine(bookRepository.downloadChanges(bookId), snapshotFlow { _uiState.bookVolumes },
+                workManager.getWorkInfosForUniqueWorkFlow(CacheBookWork.ofId(bookId))) { _, _, work ->
+                bookRepository.downloadState(bookId, active = work.any { !it.state.isFinished })
+            }.collect { _uiState.downloadState = it }
         }
         viewModelScope.launch(Dispatchers.IO) {
             bookshelfRepository.getBookshelfBookMetadataFlow(bookId).collect {
@@ -103,15 +108,7 @@ class DetailViewModel @Inject constructor(
 
     fun cacheBook(bookId: String): Flow<WorkInfo?> {
         if (!_uiState.canCache) return flowOf(null)
-        val isCachedFlow = bookRepository.cacheBook(bookId)
-        viewModelScope.launch(Dispatchers.IO) {
-            isCachedFlow.collect { workInfo ->
-                if (workInfo?.state == WorkInfo.State.SUCCEEDED) {
-                    _uiState.isCached = bookRepository.getIsBookCached(bookId)
-                }
-            }
-        }
-        return isCachedFlow
+        return bookRepository.cacheBook(bookId)
     }
 
     suspend fun tagPage(tag: String) = book?.let { bookRepository.bookTagPage(it, tag) }

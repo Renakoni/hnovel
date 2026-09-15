@@ -5,9 +5,16 @@ import indi.dmzz_yyhyy.lightnovelreader.data.book.SourceBookId
 import indi.dmzz_yyhyy.lightnovelreader.data.book.SourceChapterId
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.converter.ListConverter
 import io.nightfish.lightnovelreader.api.userdata.UserDataPath
+import kotlinx.serialization.json.Json
 
 /** Validate identity ownership before any import writes, including metadata-only backups. */
 internal fun LocalData.validateIdentities() {
+    val downloadedBooks = bookDownloadEntities.map { SourceBookId.fromStorageKey(it.bookId) }.toSet()
+    downloadedChapterEntities.forEach { chapter ->
+        val book = SourceBookId.fromStorageKey(chapter.bookId)
+        require(book in downloadedBooks && SourceChapterId.fromStorageKey(chapter.id).book == book)
+        Json.decodeFromString<List<String>>(chapter.images)
+    }
     bookInformationEntities.forEach { SourceBookId.fromStorageKey(it.id) }
     bookRecordEntities.forEach { SourceBookId.fromStorageKey(it.bookId) }
     bookshelfEntities.forEach { shelf ->

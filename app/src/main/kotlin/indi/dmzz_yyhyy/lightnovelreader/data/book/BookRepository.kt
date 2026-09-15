@@ -21,6 +21,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.local.LocalBookDataSource
 import indi.dmzz_yyhyy.lightnovelreader.data.text.TextProcessingRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.web.SourceDiscoveryTarget
 import indi.dmzz_yyhyy.lightnovelreader.data.work.CacheBookWork
+import indi.dmzz_yyhyy.lightnovelreader.data.download.BookDownloadStore
 import io.nightfish.lightnovelreader.api.book.BookInformation
 import io.nightfish.lightnovelreader.api.book.BookRepositoryApi
 import io.nightfish.lightnovelreader.api.book.BookVolumes
@@ -59,6 +60,7 @@ class BookRepository @Inject constructor(
     private val chapterRepository: ChapterRepository,
     private val readingDataRepository: BookReadingDataRepository,
     private val sourceRegistry: indi.dmzz_yyhyy.lightnovelreader.data.web.WebSourceRegistry,
+    private val downloads: BookDownloadStore,
 ): BookRepositoryApi {
     companion object {
         private const val TAG = "BookRepository"
@@ -105,8 +107,8 @@ class BookRepository @Inject constructor(
     }
 
     /** Remote-only refresh reports failure even when a local copy exists (background checks). */
-    suspend fun refreshBookInformation(book: SourceBookId, priority: WebDataSourcePriority = WebDataSourcePriority.Low): Result<BookInformation, WebRequestError> =
-        sourceRegistry.request(book) { it.getBookInformation(book.remoteId, priority) }.map(book::bind)
+    suspend fun refreshBookInformation(book: SourceBookId, priority: WebDataSourcePriority = WebDataSourcePriority.Low, fresh: Boolean = false): Result<BookInformation, WebRequestError> =
+        sourceRegistry.request(book) { it.getBookInformation(book.remoteId, priority, refresh = fresh) }.map(book::bind)
             .onOk { remote ->
                 localBookDataSource.updateBookInformation(remote)
                 val bookshelfBookMetadata = bookshelfRepository.getBookshelfBookMetadata(book.storageKey) ?: return@onOk
@@ -154,10 +156,13 @@ class BookRepository @Inject constructor(
 
     fun cacheBook(bookId: String): Flow<WorkInfo?> {
         val key = BookIdentity.bookKey(bookId)
+        val generation = downloads.generation()
         val workRequest = OneTimeWorkRequestBuilder<CacheBookWork>()
+            .addTag(CacheBookWork.generationTag(generation))
             .setInputData(
                 workDataOf(
-                    "bookId" to key
+                    "bookId" to key,
+                    "downloadGeneration" to generation,
                 )
             )
             .build()
@@ -181,6 +186,26 @@ class BookRepository @Inject constructor(
             }
         } ?: return false
         return true
+    }
+
+    internal fun sourceRevision(book: SourceBookId): String = sourceRegistry.sources.value
+        .firstOrNull { it.metadata.id == book.sourceId }?.metadata?.revision.orEmpty()
+
+    fun downloadChanges(bookId: String) = downloads.observe(BookIdentity.book(bookId))
+
+    suspend fun downloadState(bookId: String, active: Boolean = false) = BookIdentity.book(bookId).let { book ->
+        downloads.state(book, localBookDataSource.getBookVolumes(book.storageKey), sourceRevision(book), active)
+    }
+
+    /** Download refresh must report remote failures even when the reader can keep showing local content. */
+    internal suspend fun downloadDirectory(book: SourceBookId): Result<BookVolumes, WebRequestError> =
+        sourceRegistry.request(book) { it.getBookVolumes(book.remoteId, WebDataSourcePriority.Low, refresh = true) }.map(book::bind)
+            .onOk { if (it.volumes.any { volume -> volume.chapters.isNotEmpty() }) localBookDataSource.updateBookVolumes(it) }
+
+    internal suspend fun downloadChapter(book: SourceBookId, chapterId: String): Result<ChapterContent, WebRequestError> {
+        val chapter = BookIdentity.chapter(chapterId, book)
+        return sourceRegistry.request(book) { it.getChapterContent(chapter.remoteId, book.remoteId, WebDataSourcePriority.Low, refresh = true) }
+            .map(chapter::bind)
     }
 
     suspend fun bookTagPage(book: SourceBookId, tag: String): Result<SourceDiscoveryTarget?, WebRequestError> =

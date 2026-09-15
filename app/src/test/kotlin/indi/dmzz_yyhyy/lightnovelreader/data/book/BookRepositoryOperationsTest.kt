@@ -99,7 +99,8 @@ class BookRepositoryOperationsTest {
         val observed = repository.cacheBook("book")
         val work = submitted.captured
         assertEquals(CacheBookWork::class.java.name, work.workSpec.workerClassName)
-        assertEquals(mapOf("bookId" to BookIdentity.bookKey("book")), work.workSpec.input.keyValueMap)
+        assertEquals(mapOf("bookId" to BookIdentity.bookKey("book"), "downloadGeneration" to 0L), work.workSpec.input.keyValueMap)
+        assertTrue(CacheBookWork.generationTag(0) in work.tags)
         verify(exactly = 1) { fixture.workManager.enqueueUniqueWork(CacheBookWork.ofId(BookIdentity.bookKey("book")), ExistingWorkPolicy.KEEP, work) }
 
         val existingWork = mockk<WorkInfo>()

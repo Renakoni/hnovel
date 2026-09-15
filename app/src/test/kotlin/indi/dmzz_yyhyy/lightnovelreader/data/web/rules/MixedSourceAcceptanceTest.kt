@@ -113,10 +113,11 @@ class MixedSourceAcceptanceTest {
             lateinit var shelves: BookshelfRepository
             lateinit var stats: StatsRepository
             lateinit var progress: DownloadProgressRepository
+            lateinit var downloads: indi.dmzz_yyhyy.lightnovelreader.data.download.BookDownloadStore
             val decoder = ContentJsonDecoder(ContentComponentRegistry())
             val factory = object : WorkerFactory() {
                 override fun createWorker(appContext: Context, name: String, params: WorkerParameters): ListenableWorker? = when (name) {
-                    CacheBookWork::class.java.name -> CacheBookWork(appContext, params, local, progress, books, decoder)
+                    CacheBookWork::class.java.name -> CacheBookWork(appContext, params, progress, books, downloads)
                     ExportBookToEPUBWork::class.java.name -> ExportBookToEPUBWork(appContext, params, books, progress, decoder)
                     CheckUpdateWork::class.java.name -> CheckUpdateWork(appContext, params, books, shelves)
                     else -> null
@@ -128,18 +129,19 @@ class MixedSourceAcceptanceTest {
                 db = Room.databaseBuilder(context, LightNovelReaderDatabase::class.java, File(directory.root, "library.db").absolutePath)
                     .allowMainThreadQueries().build()
                 local = LocalBookDataSource(db.bookInformationDao(), db.bookVolumesDao(), db.chapterContentDao(), db.userReadingDataDao())
-                shelves = BookshelfRepository(db.bookshelfDao(), work, registry)
+                downloads = indi.dmzz_yyhyy.lightnovelreader.data.download.BookDownloadStore(context, db, decoder)
+                shelves = BookshelfRepository(db.bookshelfDao(), work, registry, downloads)
                 val text = TextProcessingRepository(mockk { every { enabled } returns false }, mockk { every { enabled } returns false }, ContentComponentRegistry())
                 chapters = ChapterRepository(registry, local, text)
                 readingData = BookReadingDataRepository(local)
-                books = BookRepository(local, shelves, text, work, chapters, readingData, registry)
+                books = BookRepository(local, shelves, text, work, chapters, readingData, registry, downloads)
                 stats = StatsRepository(db.bookRecordDao(), db.dailyCountDao(), books, StatisticsWriteCoordinator())
-                progress = DownloadProgressRepository(db.userDataDao(), books)
+                progress = DownloadProgressRepository(db.userDataDao(), books, downloads)
             }
             openLibrary()
             val cache = coil3.disk.DiskCache.Builder().directory(File(context.filesDir, "images").path.toPath()).maxSizeBytes(1024 * 1024).build()
             fun imageLoader() = coil3.ImageLoader.Builder(context).diskCache(cache).components {
-                add(SourceImageInterceptor(registry, context)); add(SourceImageFetcher.Factory())
+                add(SourceImageInterceptor(registry, context, downloads)); add(SourceImageFetcher.Factory())
             }.build()
             var loader = imageLoader()
             coil3.SingletonImageLoader.setUnsafe(loader)

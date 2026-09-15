@@ -20,7 +20,8 @@ import javax.inject.Singleton
 @Singleton
 class DownloadProgressRepository @Inject constructor(
     userDataDao: UserDataDao,
-    val bookRepository: BookRepository
+    val bookRepository: BookRepository,
+    private val downloads: BookDownloadStore,
 ) {
     class DownItemListUserData (
         override val path: String,
@@ -72,7 +73,12 @@ class DownloadProgressRepository @Inject constructor(
     init {
         coroutineScope.launch {
             val completedBookList = completedBookListUserData.getOrDefault(emptyList())
-            _downloadItemList.addAll(completedBookList.map { it })
+            val owners = downloads.entries().map { it.bookId }.toSet()
+            val saved = completedBookList.filter { it.type != DownloadType.CACHE || it.bookId in owners }.onEach { item ->
+                if (item is MutableDownloadItem && item.type == DownloadType.CACHE)
+                    item.progress = if (bookRepository.downloadState(item.bookId).phase == BookDownloadPhase.Complete) 1f else -1f
+            }
+            _downloadItemList.addAll(saved.filterNot { it in _downloadItemList })
         }
     }
 
@@ -88,12 +94,14 @@ class DownloadProgressRepository @Inject constructor(
         coroutineScope.launch {
             snapshotFlow{ downloadItem.progress }.collect { progress ->
                 if (progress >= 1f) {
+                    if (downloadItem.type == DownloadType.CACHE &&
+                        bookRepository.downloadState(downloadItem.bookId).phase != BookDownloadPhase.Complete) return@collect
                     completedBookListUserData.update(
                         updater = { downloadItems ->
                             val list = downloadItems.toMutableList()
                             if (list.contains(downloadItem))
                                 list.removeIf { it == downloadItem }
-                            downloadItems + downloadItem
+                            list + downloadItem
                         },
                         default = emptyList()
                     )
@@ -105,6 +113,10 @@ class DownloadProgressRepository @Inject constructor(
 
     fun removeExportItem(downloadItem: DownloadItem) {
         _downloadItemList.remove(downloadItem)
+    }
+
+    fun clearCachedItems(bookIds: Set<String>? = null) {
+        _downloadItemList.removeIf { it.type == DownloadType.CACHE && (bookIds == null || it.bookId in bookIds) }
     }
 
     fun clearCompleted() {

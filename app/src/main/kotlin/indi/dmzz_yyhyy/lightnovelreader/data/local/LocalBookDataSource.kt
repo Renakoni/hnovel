@@ -54,7 +54,7 @@ class LocalBookDataSource @Inject constructor(
         listOfNotNull(chapterContent.prevChapter, chapterContent.nextChapter).forEach {
             require(SourceChapterId.fromStorageKey(it).book == chapter.book)
         }
-        chapterContentDao.update(chapterContent)
+        chapterContentDao.cache(chapterContent)
     }
 
     override suspend fun getUserReadingData(id: String) = userReadingDataDao.getEntity(BookIdentity.bookKey(id)).let {

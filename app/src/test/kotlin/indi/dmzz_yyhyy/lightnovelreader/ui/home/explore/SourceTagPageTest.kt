@@ -46,7 +46,7 @@ class SourceTagPageTest {
             }
         }, SourceMetadata(WebDataSourceItem(id, id.id, "fixture"), setOf(SourceCapability.Categories)))
         try {
-            val repository = BookRepository(mockk(), mockk(), mockk(), mockk(), mockk(), mockk(), registry)
+            val repository = BookRepository(mockk(), mockk(), mockk(), mockk(), mockk(), mockk(), registry, mockk())
             val target = repository.bookTagPage(book, "fantasy").get()!!
             registry.resolve(b)
             val route = Route.Main.DiscoveryResults(target.sourceId.namespace, target.sourceId.id, target.target, "Tag", "tag-session")

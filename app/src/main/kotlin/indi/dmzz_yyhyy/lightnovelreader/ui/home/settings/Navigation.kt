@@ -78,6 +78,7 @@ fun NavGraphBuilder.settingsDestination() {
             onClickThemeSettings = navController::navigateToSettingsThemeDestination,
             onClickStorageManager = navController::navigateToStorageManager,
             clearReadingCache = settingsViewModel::clearReadingCache,
+            clearDownloads = settingsViewModel::clearDownloads,
             onOptOut = settingsViewModel::trackOptOut,
             onBack = { navController.popBackStackIfResumed() }
         )

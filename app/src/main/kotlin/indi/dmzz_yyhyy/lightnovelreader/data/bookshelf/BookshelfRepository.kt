@@ -1,6 +1,7 @@
 package indi.dmzz_yyhyy.lightnovelreader.data.bookshelf
 
 import indi.dmzz_yyhyy.lightnovelreader.data.book.BookIdentity
+import indi.dmzz_yyhyy.lightnovelreader.data.download.BookDownloadStore
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
@@ -23,7 +24,8 @@ import javax.inject.Singleton
 @Singleton
 class BookshelfRepository @Inject constructor(
     private val bookshelfDao: BookshelfDao, private val workManager: WorkManager,
-    private val sourceRegistry: indi.dmzz_yyhyy.lightnovelreader.data.web.WebSourceRegistry
+    private val sourceRegistry: indi.dmzz_yyhyy.lightnovelreader.data.web.WebSourceRegistry,
+    private val downloads: BookDownloadStore,
 ) : BookshelfRepositoryApi {
     override suspend fun getAllBookshelfIds(): List<Int> = bookshelfDao.getAllBookshelfIds()
 
@@ -127,9 +129,12 @@ class BookshelfRepository @Inject constructor(
         val sourceId = BookIdentity.book(bookId).sourceId
         val canCache = sourceRegistry.sources.value.any { it.metadata.id == sourceId && it.metadata.supportsReading }
         if (canCache && bookshelf.autoCache && bookshelf.allBookIds.contains(bookId)) {
-            val workRequest = OneTimeWorkRequestBuilder<CacheBookWork>().setInputData(
+            val generation = downloads.generation()
+            val workRequest = OneTimeWorkRequestBuilder<CacheBookWork>()
+                .addTag(CacheBookWork.generationTag(generation)).setInputData(
                     workDataOf(
-                        "bookId" to bookId
+                        "bookId" to bookId,
+                        "downloadGeneration" to generation,
                     )
                 ).build()
             workManager.enqueueUniqueWork(

@@ -14,6 +14,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.local.room.converter.ListConverter
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.converter.UriConverter
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.converter.WorldCountConverter
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.BookInformationDao
+import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.BookDownloadDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.BookRecordDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.BookVolumesDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.BookshelfDao
@@ -24,6 +25,8 @@ import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.StorageStatsDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.UserDataDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.UserReadingDataDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.BookInformationEntity
+import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.BookDownloadEntity
+import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.DownloadedChapterEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.BookRecordEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.BookshelfBookMetadataEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.DailyCountEntity
@@ -51,15 +54,18 @@ import io.nightfish.lightnovelreader.api.content.builder.simpleText
         BookshelfBookMetadataEntity::class,
         BookRecordEntity::class,
         DailyCountEntity::class,
-        FormattingRuleEntity::class
+        FormattingRuleEntity::class,
+        BookDownloadEntity::class,
+        DownloadedChapterEntity::class
     ],
-    version = 17,
+    version = 18,
     exportSchema = false
 )
 abstract class LightNovelReaderDatabase : RoomDatabase() {
     abstract fun bookInformationDao(): BookInformationDao
     abstract fun bookVolumesDao(): BookVolumesDao
     abstract fun chapterContentDao(): ChapterContentDao
+    abstract fun bookDownloadDao(): BookDownloadDao
     abstract fun userReadingDataDao(): UserReadingDataDao
     abstract fun userDataDao(): UserDataDao
     abstract fun bookshelfDao(): BookshelfDao
@@ -94,7 +100,8 @@ abstract class LightNovelReaderDatabase : RoomDatabase() {
                             MIGRATION_13_14,
                             MIGRATION_14_15,
                             MIGRATION_15_16,
-                            MIGRATION_16_17
+                            MIGRATION_16_17,
+                            MIGRATION_17_18
                         )
                         .allowMainThreadQueries()
                         .build()
@@ -886,6 +893,17 @@ abstract class LightNovelReaderDatabase : RoomDatabase() {
                 db.execSQL(
                     "alter table book_shelf add sort_reversed INTEGER NOT NULL DEFAULT 0"
                 )
+            }
+        }
+
+        internal val MIGRATION_17_18 = object : Migration(17, 18) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS book_download (bookId TEXT NOT NULL PRIMARY KEY, " +
+                    "revision TEXT NOT NULL, directoryHash TEXT NOT NULL, phase TEXT NOT NULL, " +
+                    "generation INTEGER NOT NULL, attempt TEXT NOT NULL, coverUri TEXT NOT NULL)")
+                db.execSQL("CREATE TABLE IF NOT EXISTS downloaded_chapter (id TEXT NOT NULL PRIMARY KEY, " +
+                    "bookId TEXT NOT NULL, signature TEXT NOT NULL, images TEXT NOT NULL)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_downloaded_chapter_bookId ON downloaded_chapter (bookId)")
             }
         }
     }

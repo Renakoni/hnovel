@@ -1,6 +1,7 @@
 package indi.dmzz_yyhyy.lightnovelreader.data.work
 
 import android.app.Application
+import androidx.room.Room
 import androidx.work.Data
 import androidx.work.ListenableWorker
 import androidx.work.WorkerParameters
@@ -11,6 +12,10 @@ import indi.dmzz_yyhyy.lightnovelreader.data.book.*
 import indi.dmzz_yyhyy.lightnovelreader.data.bookshelf.BookshelfRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadItem
 import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadProgressRepository
+import indi.dmzz_yyhyy.lightnovelreader.data.download.BookDownloadStore
+import indi.dmzz_yyhyy.lightnovelreader.data.content.ContentJsonDecoder
+import indi.dmzz_yyhyy.lightnovelreader.data.content.ContentComponentRegistry
+import indi.dmzz_yyhyy.lightnovelreader.data.local.room.LightNovelReaderDatabase
 import indi.dmzz_yyhyy.lightnovelreader.data.web.SourceResolution
 import indi.dmzz_yyhyy.lightnovelreader.data.web.SourceRuntime
 import io.mockk.*
@@ -23,6 +28,8 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.*
 import org.junit.Assert.*
 import org.junit.Test
+import org.junit.Before
+import org.junit.After
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
@@ -39,6 +46,16 @@ internal fun workerParameters(data: Data, workId: UUID = UUID.randomUUID()) = mo
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [27], application = Application::class)
 class SourceWorkerTest {
+    private lateinit var db: LightNovelReaderDatabase
+    private lateinit var downloads: BookDownloadStore
+
+    @Before fun setUp() {
+        db = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), LightNovelReaderDatabase::class.java)
+            .allowMainThreadQueries().build()
+        downloads = BookDownloadStore(RuntimeEnvironment.getApplication(), db, ContentJsonDecoder(ContentComponentRegistry()))
+    }
+
+    @After fun close() { db.close() }
     private val a = SourceBookId(Identifier("fixture", "a"), "same")
     private val b = SourceBookId(Identifier("fixture", "b"), "same")
     private val time = LocalDateTime.of(2026, 9, 9, 0, 0)
@@ -62,18 +79,18 @@ class SourceWorkerTest {
         val progress = mockk<DownloadProgressRepository> { every { addExportItem(capture(items)) } just Runs }
         for (book in listOf(a, b)) {
             val runtime = mockk<SourceRuntime> {
-                coEvery { getBookInformation("same", any()) } returns Ok(info("same"))
-                coEvery { getBookVolumes("same", any()) } returns Ok(BookVolumes("same", listOf(Volume("v", "Volume", listOf(ChapterInformation("c", "Chapter"))))))
-                coEvery { getChapterContent("c", "same", any()) } returns Ok(ChapterContent("c", book.sourceId.id, JsonObject(emptyMap())))
+                coEvery { getBookInformation("same", any(), any()) } returns Ok(info("same"))
+                coEvery { getBookVolumes("same", any(), any()) } returns Ok(BookVolumes("same", listOf(Volume("v", "Volume", listOf(ChapterInformation("c", "Chapter"))))))
+                coEvery { getChapterContent("c", "same", any(), any()) } returns Ok(ChapterContent("c", book.sourceId.id, JsonObject(emptyMap())))
             }
             coEvery { fixture.registry.resolve(book.sourceId) } returns SourceResolution.Ready(runtime)
             val data = workDataOf("bookId" to book.storageKey)
             repeat(2) {
-                val worker = CacheBookWork(context, workerParameters(data), fixture.local, progress, fixture.repository(), mockk(relaxed = true))
+                val worker = CacheBookWork(context, workerParameters(data), progress, fixture.repository(), downloads)
                 assertEquals(ListenableWorker.Result.success(), worker.doWork())
             }
-            coVerify(exactly = 2) { runtime.getChapterContent("c", "same", any()) }
-            coVerify { fixture.local.updateChapterContent(match { it.id == SourceChapterId(book, "c").storageKey && it.title == book.sourceId.id }) }
+            coVerify(exactly = 1) { runtime.getChapterContent("c", "same", any(), any()) }
+            assertEquals(book.sourceId.id, db.chapterContentDao().get(SourceChapterId(book, "c").storageKey)!!.title)
         }
         assertEquals(listOf(a.storageKey, a.storageKey, b.storageKey, b.storageKey), items.map { it.bookId })
         assertTrue(items.all { it.progress == 1f })
@@ -83,14 +100,15 @@ class SourceWorkerTest {
         val context = RuntimeEnvironment.getApplication()
         val repository = mockk<BookRepository>()
         every { repository.getBookInformationFlow(any<String>(), any()) } returns kotlinx.coroutines.flow.emptyFlow()
+        every { repository.sourceRevision(any()) } returns "1"
         val items = mutableListOf<DownloadItem>()
         val progress = mockk<DownloadProgressRepository> { every { addExportItem(capture(items)) } just Runs }
         for ((kind, reason) in listOf(WebRequestErrorKind.SourceUnavailable to "source_unavailable",
             WebRequestErrorKind.AuthenticationRequired to "authentication_required",
             WebRequestErrorKind.VerificationRequired to "verification_required")) {
-            every { repository.getBookVolumesFlow(a.storageKey, any()) } returns kotlinx.coroutines.flow.flowOf(
-                Err(WebRequestError("Sign in", "Do not persist this private detail", kind = kind)))
-            val worker = CacheBookWork(context, workerParameters(workDataOf("bookId" to a.storageKey)), mockk(), progress, repository, mockk(relaxed = true))
+            coEvery { repository.downloadDirectory(a) } returns
+                Err(WebRequestError("Sign in", "Do not persist this private detail", kind = kind))
+            val worker = CacheBookWork(context, workerParameters(workDataOf("bookId" to a.storageKey)), progress, repository, downloads)
             val result = worker.doWork() as ListenableWorker.Result.Failure
             assertEquals(reason, result.outputData.getString("reason"))
             assertEquals(a.storageKey, result.outputData.getString("bookId"))

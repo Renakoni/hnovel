@@ -99,14 +99,14 @@ class SourceRuntime internal constructor(
         (source as SourceImageProvider).getImage(bookId, url, cover)
     }
 
-    suspend fun getBookInformation(bookId: String, priority: WebDataSourcePriority = WebDataSourcePriority.Default) =
-        execute { cached.getBookInformation(bookId, priority) }
+    suspend fun getBookInformation(bookId: String, priority: WebDataSourcePriority = WebDataSourcePriority.Default, refresh: Boolean = false) =
+        execute { cached.getBookInformation(bookId, priority, refresh) }
 
-    suspend fun getBookVolumes(bookId: String, priority: WebDataSourcePriority = WebDataSourcePriority.Default) =
-        execute { cached.getBookVolumes(bookId, priority) }
+    suspend fun getBookVolumes(bookId: String, priority: WebDataSourcePriority = WebDataSourcePriority.Default, refresh: Boolean = false) =
+        execute { cached.getBookVolumes(bookId, priority, refresh) }
 
-    suspend fun getChapterContent(chapterId: String, bookId: String, priority: WebDataSourcePriority = WebDataSourcePriority.Default) =
-        execute { cached.getChapterContent(chapterId, bookId, priority) }
+    suspend fun getChapterContent(chapterId: String, bookId: String, priority: WebDataSourcePriority = WebDataSourcePriority.Default, refresh: Boolean = false) =
+        execute { cached.getChapterContent(chapterId, bookId, priority, refresh) }
 
     val search: SearchProvider = object : SearchProvider {
         override val searchTypes get() = run { checkAvailable(); source.searchProvider.searchTypes.toList() }

@@ -8,5 +8,5 @@ enum class DownloadType(
     val typeName: String
 ) {
     EPUB_EXPORT(R.drawable.output_24px, "导出为EPUB"),
-    CACHE(R.drawable.downloading_24px, "缓存")
+    CACHE(R.drawable.downloading_24px, "下载")
 }

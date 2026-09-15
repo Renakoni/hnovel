@@ -2,7 +2,17 @@
 <resources>
     <string name="sources_import_partial">Some sources could not be activated. Successfully activated sources are kept; preview the import again to retry.</string>
     <string name="settings_clear_reading_cache">Clear reading cache</string>
-    <string name="settings_clear_reading_cache_desc">Delete downloaded chapters and images. Bookshelves, reading history, catalogs and login remain saved. Reading may download content again.</string>
-    <string name="settings_cache_cleared">Reading cache cleared</string>
-    <string name="settings_cache_clear_failed">Could not finish clearing the cache</string>
+    <string name="settings_clear_reading_cache_desc">Remove temporary content. Keep downloads.</string>
+    <string name="settings_clear_downloads">Clear downloads</string>
+    <string name="settings_clear_downloads_desc">Remove downloaded chapters and images. Keep bookshelves and reading history.</string>
+    <string name="settings_cache_cleared">Cleared</string>
+    <string name="settings_cache_clear_failed">Could not clear. Try again.</string>
+    <string name="book_download_partial">Partial</string>
+    <string name="book_download_updating">Downloading</string>
+    <string name="book_download_failed">Failed</string>
+    <string name="book_download_outdated">Update available</string>
+    <string name="book_download_check_updates">Check updates</string>
+    <string name="book_download_continue">Continue</string>
+    <string name="book_download_retry">Retry</string>
+    <string name="book_download_update">Update</string>
 </resources>

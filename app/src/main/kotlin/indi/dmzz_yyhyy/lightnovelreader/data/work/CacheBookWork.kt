@@ -1,113 +1,121 @@
 package indi.dmzz_yyhyy.lightnovelreader.data.work
 
-import android.net.Uri
-import coil3.SingletonImageLoader
-import coil3.request.ImageRequest
-import coil3.request.CachePolicy
-import coil3.request.ErrorResult
-import indi.dmzz_yyhyy.lightnovelreader.data.book.SourceBookId
-import indi.dmzz_yyhyy.lightnovelreader.data.image.SourceImage
-import indi.dmzz_yyhyy.lightnovelreader.data.content.ContentJsonDecoder
-import io.nightfish.lightnovelreader.api.content.component.ImageComponentData
-
 import android.content.Context
 import android.util.Log
 import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import com.github.michaelbull.result.andThen
+import coil3.SingletonImageLoader
+import coil3.request.CachePolicy
+import coil3.request.ErrorResult
+import coil3.request.ImageRequest
+import coil3.request.SuccessResult
 import com.github.michaelbull.result.coroutines.coroutineBinding
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import indi.dmzz_yyhyy.lightnovelreader.data.book.BookIdentity
 import indi.dmzz_yyhyy.lightnovelreader.data.book.BookRepository
+import indi.dmzz_yyhyy.lightnovelreader.data.download.BookDownloadStore
 import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadProgressRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadType
 import indi.dmzz_yyhyy.lightnovelreader.data.download.MutableDownloadItem
-import indi.dmzz_yyhyy.lightnovelreader.data.local.LocalBookDataSource
+import indi.dmzz_yyhyy.lightnovelreader.data.download.downloadChapterSignature
+import indi.dmzz_yyhyy.lightnovelreader.data.image.SourceImage
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.flow.last
+import kotlinx.coroutines.withContext
 
 @HiltWorker
 class CacheBookWork @AssistedInject constructor(
     @Assisted appContext: Context,
     @Assisted workerParams: WorkerParameters,
-    private val localBookDataSource: LocalBookDataSource,
     private val downloadProgressRepository: DownloadProgressRepository,
     private val bookRepository: BookRepository,
-    private val contentDecoder: ContentJsonDecoder,
+    private val downloads: BookDownloadStore,
 ) : CoroutineWorker(appContext, workerParams) {
     companion object {
         private const val TAG = "CacheBookWork"
 
         fun ofId(id: String): String = "cache:${BookIdentity.bookKey(id)}"
+        fun generationTag(generation: Long): String = "book-download:$generation"
     }
 
     override suspend fun doWork(): Result {
         val book = inputData.sourceBook() ?: return bookWorkFailure("invalid_book_identity")
-        val bookId = book.storageKey
-        val downloadItem = MutableDownloadItem(
-            DownloadType.CACHE,
-            bookId,
-            bookRepository.getBookInformationFlow(bookId)
-        )
-        downloadProgressRepository.addExportItem(downloadItem)
+        val item = MutableDownloadItem(DownloadType.CACHE, book.storageKey,
+            bookRepository.getBookInformationFlow(book.storageKey))
+        downloadProgressRepository.addExportItem(item)
+        var attempt: BookDownloadStore.Attempt? = null
+        var complete = false
         try {
-            val result = bookRepository.getBookVolumesFlow(bookId).last()
-                .andThen { bookVolumes ->
-                    coroutineBinding {
-                        var count = 0
-                        val total = bookVolumes.volumes.sumOf { it.chapters.size } + 1
-                        localBookDataSource.updateBookVolumes(bookVolumes)
-                        bookVolumes.volumes.forEach { volume ->
-                            volume.chapters.map { it.id }.forEach { chapterId ->
-                                val chapter = bookRepository.getChapterContentFlow(chapterId, bookId).last().bind()
-                                localBookDataSource.updateChapterContent(chapter)
-                                val images = mutableListOf<Uri>()
-                                contentDecoder.getDataFromJsonObject(chapter.content) { component ->
-                                    if (component is ImageComponentData) images += component.uri
-                                }
-                                for (image in images.distinct()) cacheImage(book, image)
-                                count ++
-                                downloadItem.progress = count.toFloat() / total
-                            }
+            // Pre-upgrade queued requests belong to generation zero.
+            val active = downloads.begin(book, inputData.getLong("downloadGeneration", 0), id.toString())
+            attempt = active
+            val revision = bookRepository.sourceRevision(book)
+            val result = coroutineBinding {
+                val volumes = bookRepository.downloadDirectory(book).bind()
+                val chapters = volumes.volumes.flatMap { it.chapters }.distinctBy { it.id }
+                check(chapters.isNotEmpty()) { "Source returned an empty directory" }
+                val information = bookRepository.refreshBookInformation(book, fresh = true).bind()
+                val cover = information.coverUri.toString()
+                val unchanged = downloads.target(active, volumes, revision, cover)
+                val fetchedImages = mutableSetOf<String>()
+                chapters.forEachIndexed { index, chapter ->
+                    currentCoroutineContext().ensureActive()
+                    val signature = downloadChapterSignature(chapters, index, revision)
+                    val saved = downloads.reusable(active, chapter.id, signature)
+                    val content = saved ?: bookRepository.downloadChapter(book, chapter.id).bind()
+                    val images = downloads.chapterImages(content)
+                    for (uri in images) {
+                        if (uri !in fetchedImages && (saved == null || !downloads.hasImage(active, uri))) {
+                            cacheImage(active, SourceImage(book, uri), force = saved == null)
+                            fetchedImages += uri
                         }
                     }
+                    downloads.saveChapter(active, content, signature, images)
+                    item.progress = (index + 1f) / (chapters.size + 1)
                 }
-                .andThen {
-                    coroutineBinding {
-                        val bookInformation = bookRepository.getBookInformationFlow(bookId).last().bind()
-                        localBookDataSource.updateBookInformation(bookInformation)
-                        if (bookInformation.coverUri != Uri.EMPTY) cacheImage(book, bookInformation.coverUri, cover = true)
-                    }
-                }
+                if (cover.isNotEmpty() && (!unchanged || !downloads.hasImage(active, cover, true)))
+                    cacheImage(active, SourceImage(book, cover, cover = true), force = !unchanged)
+                check(bookRepository.sourceRevision(book) == revision) { "Source changed during download" }
+            }
             if (result.isErr) {
-                downloadItem.sourceError = result.component2()?.kind
-                downloadItem.progress = -1f
+                item.sourceError = result.component2()?.kind
                 return bookWorkFailure(bookWorkFailureReason(result.component2()), book)
             }
-            downloadItem.progress = 1f
+            downloads.finish(active, success = true)
+            complete = true
+            item.progress = 1f
             return Result.success()
         } catch (failure: CancellationException) {
-            downloadItem.progress = -1f
             currentCoroutineContext().ensureActive()
             return bookWorkFailure("source_unavailable", book)
         } catch (failure: Exception) {
-            downloadItem.progress = -1f
-            Log.e(TAG, "Cache failed for ${book.fileKey}: ${failure.javaClass.simpleName}")
+            Log.e(TAG, "Download failed for ${book.fileKey}: ${failure.javaClass.simpleName}")
             return bookWorkFailure("cache_failed", book)
+        } finally {
+            if (!complete) {
+                item.progress = -1f
+                attempt?.let { active -> withContext(NonCancellable) {
+                    try { downloads.finish(active, success = false) }
+                    catch (_: CancellationException) { /* Cleared or replaced; do not recreate ownership. */ }
+                    catch (failure: Exception) { Log.e(TAG, "Could not save download state: ${failure.javaClass.simpleName}") }
+                } }
+            }
         }
     }
 
-    private suspend fun cacheImage(book: SourceBookId, uri: Uri, cover: Boolean = false) {
+    private suspend fun cacheImage(attempt: BookDownloadStore.Attempt, image: SourceImage, force: Boolean) {
         val request = ImageRequest.Builder(applicationContext)
-            .data(SourceImage(book, uri.toString(), cover))
+            .data(image.copy(preferDownloaded = false))
             .memoryCachePolicy(CachePolicy.DISABLED)
-            .diskCachePolicy(CachePolicy.ENABLED)
+            .diskCachePolicy(if (force) CachePolicy.WRITE_ONLY else CachePolicy.ENABLED)
             .build()
-        val result = SingletonImageLoader.get(applicationContext).execute(request)
-        if (result is ErrorResult) throw result.throwable
+        when (val result = SingletonImageLoader.get(applicationContext).execute(request)) {
+            is ErrorResult -> throw result.throwable
+            is SuccessResult -> downloads.retainImage(attempt, image, result.diskCacheKey)
+        }
     }
 }

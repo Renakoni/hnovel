@@ -19,7 +19,7 @@ class DownloadProgressLifecycleTest {
             started.complete(Unit)
             try { awaitCancellation() } finally { finished.complete(Unit) }
         }
-        val repository = DownloadProgressRepository(dao, mockk())
+        val repository = DownloadProgressRepository(dao, mockk(), mockk(relaxed = true))
         try {
             withTimeout(5000) { started.await() }
             withTimeout(5000) { repository.close() }

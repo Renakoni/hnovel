@@ -33,7 +33,7 @@ class MetadataBookmarkTest {
         val db = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), LightNovelReaderDatabase::class.java).allowMainThreadQueries().build()
         val registry = WebSourceRegistry()
         val work = mockk<WorkManager>(relaxed = true)
-        val shelves = BookshelfRepository(db.bookshelfDao(), work, registry)
+        val shelves = BookshelfRepository(db.bookshelfDao(), work, registry, mockk(relaxed = true))
         val metadata = SourceBookId(ZLibrarySources.ID, "1/abcdef")
         val novel = SourceBookId(Identifier("fixture", "novel"), "book")
         fun provider(book: SourceBookId) = object : WebBookDataSource by EmptyWebDataSource { override val id = book.sourceId }

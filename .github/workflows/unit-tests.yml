@@ -104,7 +104,7 @@ jobs:
           disable-animations: true
           script: >-
             status=0;
-            bash .github/scripts/connected-tests.sh ',indi.dmzz_yyhyy.lightnovelreader.reader.ReaderSpacingInstrumentedTest,indi.dmzz_yyhyy.lightnovelreader.reader.ReaderLayoutInstrumentedTest${{ matrix.native_tests }}' || status=$?;
+            bash .github/scripts/connected-tests.sh ',indi.dmzz_yyhyy.lightnovelreader.reader.ReaderSpacingInstrumentedTest,indi.dmzz_yyhyy.lightnovelreader.reader.ReaderLayoutInstrumentedTest,indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadPersistenceInstrumentedTest${{ matrix.native_tests }}' || status=$?;
             if [ '${{ matrix.api }}' = '35' ]; then
             mkdir -p app/build/outputs/androidTest-results/connected;
             adb pull /sdcard/Android/data/indi.dmzz_yyhyy.lightnovelreader.debug/files/native-environment.json app/build/outputs/androidTest-results/connected/native-environment.json || status=1;

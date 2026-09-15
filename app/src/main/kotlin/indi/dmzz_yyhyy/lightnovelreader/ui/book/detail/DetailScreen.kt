@@ -101,6 +101,8 @@ import com.valentinilk.shimmer.shimmer
 import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.data.book.get
 import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadItem
+import indi.dmzz_yyhyy.lightnovelreader.data.download.BookDownloadPhase
+import indi.dmzz_yyhyy.lightnovelreader.data.download.BookDownloadState
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.Cover
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.LnrSnackbar
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.Loading
@@ -500,7 +502,7 @@ private fun DetailContent(
             QuickOperationsBlock(
                 modifier = Modifier.fadeInOnce("op"),
                 isInBookshelf = uiState.isInBookshelf,
-                isCached = uiState.isCached,
+                downloadState = uiState.downloadState,
                 canCache = uiState.canCache,
                 downloadItem = uiState.downloadItem,
                 onClickAddToBookShelf = { requestAddBookToBookshelf(bookInformation.id) },
@@ -891,18 +893,22 @@ fun QuickOperationButton(
     icon: Painter,
     title: String,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    supportingText: String? = null,
 ) {
     Button(
         contentPadding = PaddingValues(12.dp),
         modifier = modifier
-            .height(72.dp)
+            .heightIn(min = 88.dp)
             .fillMaxWidth(),
         colors = ButtonDefaults.buttonColors(
-            containerColor = colorScheme.surfaceContainerLow
+            containerColor = colorScheme.surfaceContainerLow,
+            contentColor = colorScheme.primary,
         ),
         shape = RoundedCornerShape(0.dp),
-        onClick = onClick
+        onClick = onClick,
+        enabled = enabled,
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -912,14 +918,15 @@ fun QuickOperationButton(
                 modifier = Modifier.size(18.dp),
                 painter = icon,
                 contentDescription = null,
-                tint = colorScheme.primary
             )
             Text(
                 text = title,
-                color = colorScheme.primary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            supportingText?.let {
+                Text(it, style = typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
         }
     }
 }
@@ -928,7 +935,7 @@ fun QuickOperationButton(
 private fun QuickOperationsBlock(
     modifier: Modifier,
     isInBookshelf: Boolean,
-    isCached: Boolean,
+    downloadState: BookDownloadState,
     canCache: Boolean,
     downloadItem: DownloadItem?,
     onClickAddToBookShelf: () -> Unit,
@@ -965,25 +972,32 @@ private fun QuickOperationsBlock(
             )
         }
 
-        if (isCached) {
+        val phase = downloadState.phase
+        if (canCache || phase != BookDownloadPhase.None) {
+            val status = when (phase) {
+                BookDownloadPhase.None -> R.string.cached_false
+                BookDownloadPhase.Partial -> R.string.book_download_partial
+                BookDownloadPhase.Complete -> R.string.cached
+                BookDownloadPhase.Updating -> R.string.book_download_updating
+                BookDownloadPhase.Failed -> R.string.book_download_failed
+                BookDownloadPhase.Outdated -> R.string.book_download_outdated
+            }
+            val action = when (phase) {
+                BookDownloadPhase.None, BookDownloadPhase.Updating -> null
+                BookDownloadPhase.Complete -> R.string.book_download_check_updates
+                BookDownloadPhase.Partial -> R.string.book_download_continue
+                BookDownloadPhase.Failed -> R.string.book_download_retry
+                BookDownloadPhase.Outdated -> R.string.book_download_update
+            }
             QuickOperationButton(
-                icon = filledCloud,
-                title = if (downloadItem == null || downloadItem.progress == 1f)
-                    stringResource(R.string.cached)
-                else
-                    "${(downloadItem.progress * 100).toInt()}%",
-                onClick = { },
-                modifier = Modifier.weight(1f)
-            )
-        } else if (canCache) {
-            QuickOperationButton(
-                icon = cloud,
-                title = if (downloadItem == null)
-                    stringResource(R.string.cached_false)
-                else
-                    "${(downloadItem.progress * 100).toInt()}%",
-                onClick = if (downloadItem == null) onClickCache else { {} },
-                modifier = Modifier.weight(1f)
+                icon = if (phase == BookDownloadPhase.Complete) filledCloud else cloud,
+                title = stringResource(status),
+                supportingText = if (phase == BookDownloadPhase.Updating)
+                    downloadItem?.progress?.takeIf { it >= 0f && it < 1f }?.let { "${(it * 100).toInt()}%" }
+                else action?.takeIf { canCache }?.let { stringResource(it) },
+                enabled = canCache && phase != BookDownloadPhase.Updating,
+                onClick = onClickCache,
+                modifier = Modifier.weight(1f),
             )
         }
 
