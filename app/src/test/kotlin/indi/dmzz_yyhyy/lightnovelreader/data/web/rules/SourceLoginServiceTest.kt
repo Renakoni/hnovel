@@ -27,7 +27,7 @@ class SourceLoginServiceTest {
         val root = Files.createTempDirectory("native-login").toFile()
         val context = object : ContextWrapper(RuntimeEnvironment.getApplication()) { override fun getFilesDir() = root }
         val visited = mutableListOf<String>()
-        val browser = BrowserExecutor { _, request, options, _ ->
+        val browser = BrowserExecutor { _, request, options, _, _ ->
             assertTrue(options.interactive); visited += request.url
             BrokerResult.Success(BrokerResponse(0, request.url, emptyMap(), "<p>verified</p>".toByteArray(), "UTF-8", 0,
                 protocol = "", kind = ResponseKind.BrowserDocument))
@@ -63,7 +63,7 @@ class SourceLoginServiceTest {
     @Test fun browserLoginNetworkFailurePreservesStatusWhileHttpAuthenticationFailureRequiresLogin() = runBlocking {
         val root = Files.createTempDirectory("browser-login-status").toFile()
         val context = object : ContextWrapper(RuntimeEnvironment.getApplication()) { override fun getFilesDir() = root }
-        val browser = BrowserExecutor { session, request, options, guard ->
+        val browser = BrowserExecutor { session, request, options, guard, _ ->
             assertTrue(options.interactive)
             session.execute(request.copy(browser = null), guard)
         }

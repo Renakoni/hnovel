@@ -33,28 +33,50 @@ through BrowserExecutor; an absent port reports BrowserRequired.
 
 ## Network and credentials
 
-### Supported connection modes (#138)
+### Per-source VPN bypass (#214)
 
-Direct Wi-Fi/mobile connections and OS VPN/TUN routes use the same direct sockets and
-system DNS. A VPN must return real public destination addresses (for example Clash
-`redir-host`, or a source-domain Fake-IP exclusion). The app does not bypass the VPN.
-HTTP/system proxy settings are deliberately not used: with an ordinary HTTP proxy,
-checking the local DNS answer and proxy peer does not validate the proxy's destination.
-There is no per-source transport switch or silently substituted public resolver.
+The default is the current system route, including any OS VPN/TUN. It does not promise
+a remote proxy exit: VPN exclusions and Clash rules still decide that. The existing
+`VpnDns.Default` resolves Fake-IP (`198.18.0.0/15`) answers through its public DoH fallback
+before the usual address validation. Ordinary NXDOMAIN/private answers do not trigger it.
 
-Fake-IP (`198.18.0.0/15`) and HTTP-proxy transport support remain deferred. Do not grant
-private-address access or additional origins as a workaround. Use real DNS with VPN/TUN,
-or a direct network when the upstream is reachable there. An NXDOMAIN/empty lookup is
-`Dns`; a non-public answer is `AddressDenied`; a missing exact-origin grant is
-`OriginDenied`. Only the last case belongs to the site's permission editor. A Fake-IP
-resolver can also synthesize an address for a nonexistent domain, in which case the
-observable failure is correctly `AddressDenied`, not an invented NXDOMAIN.
+The Android host can enable **Bypass VPN** for an installed broker source. It observes
+existing `INTERNET + NOT_VPN` networks, preferring validated Wi-Fi/Ethernet, then available
+cellular. It does not start another network or bind the app process. The selected Android
+`Network` provides **both DNS and sockets**, with `NO_PROXY`; its DNS never calls the global
+DoH client. Clash must allow bypass. A missing/lost route reports `RouteUnavailable`;
+DNS, timeouts and connection failures retain their observed codes. There is no fallback to
+the other mode. Neither mode supports application HTTP/SOCKS proxies or changes TLS policy.
 
-Documents, images, API and downloaded scripts all use SourceSession. Android Chromium
-has native network loads disabled and forwards requests to that same session; main-frame
-and navigation refusals preserve broker codes over Binder. A page may handle a failed
-subresource/XHR itself. Script failures use the host's latest bridge refusal only when
-the worker returns BridgeDenied; handled failures do not replace successful rule results.
+`SourceRouteProvider` is a trusted host port, absent from script/IPC request DTOs. Each
+admitted request captures one `SourceNetworkRoute`, retained through redirects, retries
+and broker-browser child requests. Source settings are keyed by stable host identity,
+outside rule JSON and account state. Switching changes later requests without replacing
+the source runtime or cancelling aggregate searches. Normal caches and cookies survive.
+
+Sessions retain their own dispatcher and separate route/network connection pools.
+Android default-network changes and lost/changed physical networks retire the relevant
+route, cancel its active HTTP calls and evict idle connections. A switch of one source's
+preference does not retire a network used by other sources. Cached response bodies can
+still be read while offline; cache hits are not evidence of a network route.
+
+Rules, JS bridges, external jsLib, provider images, background reads and Z-Library use
+this port. Disposable diagnostics and candidate-rule validation inherit the real source's
+mode; source-definition downloads and initial collection imports use their own default
+download route. Current background work has no separate unmetered-only policy.
+
+The broker-forwarded browser disables native loads and propagates the root route to every
+child HTTP request. The separate persistent **native Chromium** path cannot bind these
+sockets: bypass is disabled in its source settings and dispatch returns `RouteUnsupported`
+if an existing preference reaches it. Native routing is #219; Wenku8's Ktor client and
+unbound legacy images are #220. A plugin's private transport is not host-controlled.
+
+Address and origin enforcement applies to both routes. Do not grant private-address access
+as a workaround. `Dns` means a lookup failed; `AddressDenied` means a non-public answer;
+`OriginDenied` means an exact-origin permission is missing. Only the last belongs in the
+permission editor. Browser main-frame refusals retain broker codes across Binder. A page
+may handle a failed subresource/XHR itself; handled failures do not replace successful
+rule results.
 
 ### Origin approval feedback (#139)
 

@@ -83,6 +83,8 @@ internal class ZLibraryClient(private val session: SourceSession, private val or
                 FailureCode.OriginDenied -> DiscoveryError.PermissionDenied
                 FailureCode.AddressDenied -> DiscoveryError.AddressDenied
                 FailureCode.Dns -> DiscoveryError.Dns
+                FailureCode.RouteUnavailable -> DiscoveryError.RouteUnavailable
+                FailureCode.RouteUnsupported -> DiscoveryError.RouteUnsupported
                 FailureCode.ResponseTooLarge -> DiscoveryError.Limit
                 FailureCode.InvalidRequest -> DiscoveryError.InvalidRequest
                 else -> DiscoveryError.Network

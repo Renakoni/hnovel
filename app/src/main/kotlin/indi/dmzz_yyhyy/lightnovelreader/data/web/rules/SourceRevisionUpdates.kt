@@ -10,6 +10,7 @@ import hnovel.network.*
 import hnovel.rules.OutputKind
 import hnovel.rules.RuleValue
 import indi.dmzz_yyhyy.lightnovelreader.data.web.SourceSessionManager
+import indi.dmzz_yyhyy.lightnovelreader.data.web.SourceNetworkSettings
 import io.nightfish.lightnovelreader.api.identifier.Identifier
 import kotlinx.coroutines.*
 import kotlinx.serialization.json.*
@@ -27,7 +28,8 @@ data class RevisionCheck(val installed: SourceDefinition, val preview: ImportPre
 @Singleton
 class SourceRevisionUpdates @Inject constructor(@ApplicationContext context: Context,
     private val sources: ImportedRuleSources, private val accounts: SourceSessionManager,
-    private val runner: RuleTaskRunner, private val authority: ExecutionAuthority) {
+    private val runner: RuleTaskRunner, private val authority: ExecutionAuthority,
+    private val networkSettings: SourceNetworkSettings? = null) {
     private val temporary = File(context.cacheDir, "source-revision-checks")
 
     suspend fun check(source: Identifier, downloadGrant: NetworkGrant? = null): RevisionCheck = withContext(Dispatchers.IO) {
@@ -93,7 +95,7 @@ class SourceRevisionUpdates @Inject constructor(@ApplicationContext context: Con
         val ticket = authority.issue(definition.sourceId, definition.profile, definition.contentDigest, namespace)
         try {
             withTimeout(30000) {
-                SourceBroker(root.toPath()).use { broker ->
+                SourceBroker(root.toPath(), route = networkSettings?.snapshotFor(ImportedRuleSources.id(definition))).use { broker ->
                     val session = broker.open(SourceScope(namespace, definition.sourceId, definition.profile), grants)
                     val raw = Json.parseToJsonElement(definition.rawJson).jsonObject
                     val base = raw.getValue("bookSourceUrl").jsonPrimitive.content

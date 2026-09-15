@@ -11,13 +11,16 @@ fun interface RuleTaskRunner {
 }
 
 enum class ContentError { Unavailable, LoginRequired, MissingCapability, BrowserRequired, PermissionDenied,
-    Network, InvalidRule, EmptyContent, RepeatedPage, Limit, Storage, AddressDenied, Dns, UnsupportedDependency }
+    Network, InvalidRule, EmptyContent, RepeatedPage, Limit, Storage, AddressDenied, Dns, UnsupportedDependency,
+    RouteUnavailable, RouteUnsupported }
 
 /** Same interpretation for direct requests and host-denied script requests. No URL crosses this boundary. */
 internal fun hnovel.network.FailureCode.contentError(): ContentError = when (this) {
     hnovel.network.FailureCode.OriginDenied -> ContentError.PermissionDenied
     hnovel.network.FailureCode.AddressDenied -> ContentError.AddressDenied
     hnovel.network.FailureCode.Dns -> ContentError.Dns
+    hnovel.network.FailureCode.RouteUnavailable -> ContentError.RouteUnavailable
+    hnovel.network.FailureCode.RouteUnsupported -> ContentError.RouteUnsupported
     hnovel.network.FailureCode.ResponseTooLarge -> ContentError.Limit
     hnovel.network.FailureCode.Timeout -> ContentError.Network
     hnovel.network.FailureCode.BrowserRequired -> ContentError.BrowserRequired

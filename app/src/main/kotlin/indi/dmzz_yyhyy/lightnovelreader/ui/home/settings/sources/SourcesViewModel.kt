@@ -30,14 +30,18 @@ data class SourceManagementState(val installed: List<InstalledRuleSource> = empt
     val previewOrigins: Map<Int, String> = emptyMap(),
     val busy: Boolean = false, val message: Int? = null, val loginForm: LoginForm? = null,
     val loginStatus: LoginStatus = LoginStatus.LoggedOut, val variable: String = "",
-    val zLibrary: ZLibraryState = ZLibraryState(), val checks: Map<String, SourceCheckSummary> = emptyMap())
+    val zLibrary: ZLibraryState = ZLibraryState(), val checks: Map<String, SourceCheckSummary> = emptyMap(),
+    val network: SourceNetworkState? = null)
+
+data class SourceNetworkState(val bypassVpn: Boolean = false, val limitation: Int? = null)
 
 /** Screen state survives rotation; previews grant nothing and each explicit mutation has a single owner. */
 @HiltViewModel
 class SourcesViewModel @Inject constructor(@ApplicationContext private val context: Context,
     private val sources: ImportedRuleSources, private val updates: SourceRevisionUpdates,
     private val login: SourceLoginService, private val registry: WebSourceRegistry,
-    private val zLibrary: ZLibrarySources, private val checkHistory: SourceCheckHistory = SourceCheckHistory(context)) : ViewModel() {
+    private val zLibrary: ZLibrarySources, private val checkHistory: SourceCheckHistory = SourceCheckHistory(context),
+    private val networkSettings: SourceNetworkSettings = SourceNetworkSettings(context, AndroidSourceNetworks(context))) : ViewModel() {
     private val mutable = MutableStateFlow(SourceManagementState())
     val state = mutable.asStateFlow()
     private var operation: Job? = null
@@ -74,6 +78,8 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
                     hnovel.content.ContentError.PermissionDenied -> R.string.sources_permission_denied
                     hnovel.content.ContentError.AddressDenied -> R.string.sources_address_denied
                     hnovel.content.ContentError.Dns -> R.string.sources_dns_failed
+                    hnovel.content.ContentError.RouteUnavailable -> R.string.sources_route_unavailable
+                    hnovel.content.ContentError.RouteUnsupported -> R.string.sources_network_native
                     hnovel.content.ContentError.Network -> R.string.discovery_network
                     hnovel.content.ContentError.UnsupportedDependency -> R.string.sources_dependency_unavailable
                     else -> R.string.sources_rule_failed
@@ -94,7 +100,7 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
         reload() // Includes the current session's redacted refusals, including background image loads.
         if (id == ZLibrarySources.ID) zLibrary.refresh()
         mutable.update { it.copy(selected = id, preview = null, updateTarget = null,
-            loginStatus = LoginStatus.LoggedOut, variable = "") }
+            loginStatus = LoginStatus.LoggedOut, variable = "", network = id?.let(::networkState)) }
         if (id != null && registry.sources.value.any { it.metadata.id == id && it.metadata.capabilities.isNotEmpty() }) {
             if (registry.resolve(id) !is SourceResolution.Ready) return
             if (mutable.value.installed.any { ImportedRuleSources.id(it.definition) == id }) {
@@ -230,6 +236,23 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
     }
     fun setZLibraryEnabled(enabled: Boolean) = launch {
         zLibrary.update(zLibrary.state.value.settings.copy(enabled = enabled))
+    }
+    private fun networkState(id: Identifier): SourceNetworkState {
+        val installed = state.value.installed.find { ImportedRuleSources.id(it.definition) == id }
+        val limitation = when {
+            installed != null -> if (Json.parseToJsonElement(installed.definition.rawJson).jsonObject["browserRead"]
+                ?.jsonPrimitive?.booleanOrNull == true) R.string.sources_network_native else null
+            id == ZLibrarySources.ID -> null
+            else -> R.string.sources_network_unsupported
+        }
+        return SourceNetworkState(networkSettings.mode(id) == SourceNetworkMode.BypassVpn, limitation)
+    }
+    fun setBypassVpn(enabled: Boolean) = launch {
+        val id = checkNotNull(state.value.selected)
+        check(!enabled || networkState(id).limitation == null)
+        networkSettings.setBypassVpn(id, enabled)
+        // No source registration/revision or account change; running chains keep their route.
+        mutable.update { it.copy(network = networkState(id), message = R.string.sources_saved) }
     }
     fun saveZLibrary(origin: String, permissions: String) = launch {
         zLibrary.update(zLibrary.state.value.settings.copy(origin = origin,

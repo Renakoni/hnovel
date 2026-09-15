@@ -25,7 +25,10 @@ import kotlin.coroutines.resumeWithException
 /** Host-owned authority. A script receives a bound session protocol, never open() or a raw client. */
 class SourceBroker(private val storageRoot: Path, private val dns: Dns = VpnDns.Default,
     private val limits: BrokerLimits = BrokerLimits(), private val cipher: StorageCipher = StorageCipher.Plain,
-    private val browser: BrowserExecutor? = null) : AutoCloseable {
+    private val browser: BrowserExecutor? = null, route: SourceRouteProvider? = null) : AutoCloseable {
+    private val routes = route ?: SourceNetworkRoute(SourceNetworkMode.SystemDefault, dns).let { fallback ->
+        SourceRouteProvider { fallback }
+    }
     private val sessions = mutableMapOf<List<String>, SourceSession>()
     @Synchronized fun open(scope: SourceScope, grants: List<NetworkGrant>): SourceSession {
         val key = scope.components(account = false)
@@ -35,7 +38,7 @@ class SourceBroker(private val storageRoot: Path, private val dns: Dns = VpnDns.
             return old
         }
         old?.close()
-        return SourceSession(scope, grants, storageRoot, dns, limits, cipher, browser).also {
+        return SourceSession(scope, grants, storageRoot, dns, limits, cipher, browser, routes).also {
             if (old != null) it.inheritCaches(old)
             sessions[key] = it
         }
@@ -45,7 +48,7 @@ class SourceBroker(private val storageRoot: Path, private val dns: Dns = VpnDns.
 
 class SourceSession internal constructor(val scope: SourceScope, grants: List<NetworkGrant>, root: Path,
     dns: Dns, private val limits: BrokerLimits, cipher: StorageCipher = StorageCipher.Plain,
-    private val browser: BrowserExecutor? = null) : AutoCloseable {
+    private val browser: BrowserExecutor? = null, private val routes: SourceRouteProvider) : AutoCloseable {
     internal val grants = grants.map { it.copy(headers = it.headers.toMap()) }
     private val policy = NetworkPolicy(this.grants, dns)
     private val imagePolicy = NetworkPolicy(this.grants, dns, publicImages = true)
@@ -87,8 +90,8 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         currentCoroutineContext().ensureActive()
         checkOpen()
     }
-    // VPN/TUN still routes these sockets. An HTTP proxy would move DNS/peer validation to
-    // an unchecked destination; keep direct sockets until that transport has its own policy.
+    // An HTTP proxy would move DNS/peer validation to an unchecked destination.
+    // Each route below supplies its own DNS, sockets and connection pool.
     private val client = OkHttpClient.Builder().proxy(Proxy.NO_PROXY).followRedirects(false).followSslRedirects(false)
         .retryOnConnectionFailure(false).cookieJar(CookieJar.NO_COOKIES).cache(null)
         .addNetworkInterceptor { chain ->
@@ -97,6 +100,20 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
             (chain.request().tag(NetworkPolicy::class.java) ?: policy).checkPeer(chain.request().url, peer.address)
             chain.proceed(chain.request())
         }.build()
+    private val routeClients = mutableMapOf<SourceNetworkRoute, OkHttpClient>()
+
+    @Synchronized private fun clientFor(route: SourceNetworkRoute): OkHttpClient {
+        checkOpen()
+        route.checkAvailable()
+        routeClients.entries.removeAll { (network, transport) ->
+            (!network.available).also { if (it) network.detach(transport.connectionPool) }
+        }
+        return routeClients.getOrPut(route) {
+            val pool = ConnectionPool()
+            route.attach(pool)
+            client.newBuilder().socketFactory(route.socketFactory).connectionPool(pool).build()
+        }
+    }
     val closed get() = !lifetime.isActive
 
     suspend fun webViewUserAgent(): String {
@@ -207,9 +224,9 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         execute(request, guard, policy)
 
     /** Host-only HTTP transport for synthetic/image verification documents; avoids browser re-entry. */
-    suspend fun executeHttp(request: BrokerRequest, guard: RequestCommitGuard): BrokerResult {
+    suspend fun executeHttp(request: BrokerRequest, guard: RequestCommitGuard, route: SourceNetworkRoute? = null): BrokerResult {
         require(request.browser == null)
-        return execute(request, guard, policy, browserDefault = false, paceSource = false)
+        return execute(request, guard, policy, browserDefault = false, paceSource = false, route = route)
     }
 
     /** Host-only image loading for an URL already extracted from a book. No script bridge exposes this. */
@@ -220,8 +237,9 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
     }
 
     private suspend fun execute(request: BrokerRequest, guard: RequestCommitGuard, policy: NetworkPolicy,
-        browserDefault: Boolean = true, paceSource: Boolean = true): BrokerResult {
+        browserDefault: Boolean = true, paceSource: Boolean = true, route: SourceNetworkRoute? = null): BrokerResult {
         checkOpen()
+        val selectedRoute = runCatching { route ?: routes.snapshot() }
         // A browser source keeps document reads in the same native session. Binary/image
         // requests stay explicit HTTP operations; URL options can still supply a render script.
         val snapshot = request.copy(headers = request.headers.toMap(), browser = request.browser ?:
@@ -229,6 +247,7 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         val work = lifetime.async {
             var stage = RequestStage.Queue
             try {
+                val transport = selectedRoute.getOrThrow()
                 validate(snapshot)
                 withTimeout(if (snapshot.browser?.interactive == true) 300000 else snapshot.timeoutMillis) {
                     if (snapshot.url.startsWith("data:")) {
@@ -243,9 +262,9 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
                             message = "OK", protocol = "data"))
                     } else if (snapshot.browser != null) {
                         policy.check(snapshot.url.toHttpUrlOrNull() ?: throw BrokerFailure(RequestStage.Parse, FailureCode.InvalidRequest))
-                        browser?.execute(this@SourceSession, snapshot.copy(browser = null), snapshot.browser, guard)
+                        browser?.execute(this@SourceSession, snapshot.copy(browser = null), snapshot.browser, guard, transport)
                             ?: BrokerResult.Failure(RequestStage.Parse, FailureCode.BrowserRequired)
-                    } else permits.withPermit { stage = RequestStage.Connect; perform(snapshot, guard, policy, paceSource) }
+                    } else permits.withPermit { stage = RequestStage.Connect; perform(snapshot, guard, policy, paceSource, transport) }
                 }
             } catch (_: TimeoutCancellationException) {
                 BrokerResult.Failure(stage, FailureCode.Timeout)
@@ -280,7 +299,8 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         }
     }
 
-    private suspend fun perform(request: BrokerRequest, guard: RequestCommitGuard, policy: NetworkPolicy, paceSource: Boolean): BrokerResult {
+    private suspend fun perform(request: BrokerRequest, guard: RequestCommitGuard, policy: NetworkPolicy,
+        paceSource: Boolean, route: SourceNetworkRoute): BrokerResult {
         val initialUrl = request.url.toHttpUrlOrNull() ?: throw BrokerFailure(RequestStage.Parse, FailureCode.InvalidRequest)
         policy.check(initialUrl)
         val initialHeaders = headers(initialUrl, request.headers, policy)
@@ -296,7 +316,7 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         }
         for (attempt in 0..request.retry) {
             try {
-                val response = redirects(request, initialUrl, guard, policy, paceSource)
+                val response = redirects(request, initialUrl, guard, policy, paceSource, route)
                 if (response.status in setOf(429, 502, 503, 504) && attempt < request.retry) continue
                 if (request.cache == CacheMode.ReadThrough && response.status in 200..299) guard.commit {
                     cache.put(cacheKey, response)
@@ -304,6 +324,7 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
                 return BrokerResult.Success(response)
             } catch (failure: BrokerFailure) { throw failure }
               catch (failure: IOException) {
+                route.checkAvailable()
                 if (attempt == request.retry) return BrokerResult.Failure(RequestStage.Connect,
                     when (failure) {
                         is java.net.UnknownHostException -> FailureCode.Dns
@@ -316,7 +337,7 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
     }
 
     private suspend fun redirects(request: BrokerRequest, first: HttpUrl, guard: RequestCommitGuard, policy: NetworkPolicy,
-        paceSource: Boolean): BrokerResponse {
+        paceSource: Boolean, route: SourceNetworkRoute): BrokerResponse {
         var url = first
         var method = request.method
         var body = request.body
@@ -338,10 +359,14 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
             if (bytes != null && bytes.size > limits.maxRequestBytes) throw BrokerFailure(RequestStage.Parse, FailureCode.InvalidRequest)
             val requestBody = if (method in setOf("POST", "PUT", "PATCH") || bytes != null)
                 (bytes ?: ByteArray(0)).toRequestBody(headers["Content-Type"]?.toMediaTypeOrNull()) else null
-            val call = client.newBuilder().dns(policy.dns(url)).callTimeout(request.timeoutMillis, TimeUnit.MILLISECONDS)
+            val transport = clientFor(route)
+            val call = transport.newBuilder().dns(policy.dns(url, route.dns)).callTimeout(request.timeoutMillis, TimeUnit.MILLISECONDS)
                 .readTimeout(request.timeoutMillis, TimeUnit.MILLISECONDS).build()
                 .newCall(Request.Builder().url(url).tag(NetworkPolicy::class.java, policy).headers(headers).method(method, requestBody).build())
-            val response = awaitResponse(call, request.responseCharset, hop, guard, minOf(request.maxResponseBytes ?: limits.maxResponseBytes, limits.maxResponseBytes))
+            route.track(call)
+            val response = try {
+                awaitResponse(call, request.responseCharset, hop, guard, minOf(request.maxResponseBytes ?: limits.maxResponseBytes, limits.maxResponseBytes))
+            } finally { route.finished(call, transport.connectionPool) }
             val location = response.headers.entries.firstOrNull { it.key.equals("Location", true) }?.value?.firstOrNull()
             if (!request.followRedirects || response.status !in setOf(301, 302, 303, 307, 308) || location == null) return response
             if (hop == limits.maxRedirects) throw BrokerFailure(RequestStage.Response, FailureCode.RedirectLimit)
@@ -437,6 +462,8 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         lifetime.cancel()
         denied.clear()
         client.dispatcher.cancelAll()
+        routeClients.forEach { (route, transport) -> route.detach(transport.connectionPool) }
+        routeClients.clear()
         client.connectionPool.evictAll()
         client.dispatcher.executorService.shutdown()
     }

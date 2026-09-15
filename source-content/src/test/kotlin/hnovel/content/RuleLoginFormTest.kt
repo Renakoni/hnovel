@@ -16,7 +16,7 @@ class RuleLoginFormTest {
     @Test fun directAndRedirectedBrowserLoginKeepTheDeniedOriginWithoutItsQuery() = runBlocking {
         val deniedUrl = "https://login.invalid/verify?token=synthetic-secret"
         var navigations = 0
-        val browser = BrowserExecutor { session, request, options, guard ->
+        val browser = BrowserExecutor { session, request, options, guard, _ ->
             assertTrue(options.interactive)
             navigations++
             session.execute(request.copy(browser = null), guard)
@@ -42,7 +42,7 @@ class RuleLoginFormTest {
 
     @Test fun directBrowserLoginPreservesBrokerFailures() = runBlocking {
         var code = FailureCode.Network
-        val browser = BrowserExecutor { _, _, options, _ ->
+        val browser = BrowserExecutor { _, _, options, _, _ ->
             assertTrue(options.interactive)
             BrokerResult.Failure(RequestStage.Connect, code)
         }
@@ -70,7 +70,7 @@ class RuleLoginFormTest {
 
     @Test fun browserFieldActionsKeepTheirTargetAndReportAuthenticationFailures() = runBlocking {
         val paths = mutableListOf<String>()
-        val browser = BrowserExecutor { session, request, options, guard ->
+        val browser = BrowserExecutor { session, request, options, guard, _ ->
             assertTrue(options.interactive)
             paths += java.net.URI(request.url).path
             session.execute(request.copy(browser = null), guard)

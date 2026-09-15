@@ -28,7 +28,7 @@ class RuleSourceTest {
     @Test fun importedNumericAndTextRatesReachTheBrowserSession() = runBlocking {
         for (rate in listOf(JsonPrimitive(350), JsonPrimitive("1/350"))) {
             val starts = mutableListOf<Long>()
-            val browser = BrowserExecutor { session, request, _, _ ->
+            val browser = BrowserExecutor { session, request, _, _, _ ->
                 session.awaitBrowserAdmission()
                 starts += System.nanoTime() / 1_000_000
                 BrokerResult.Success(BrokerResponse(0, request.url, emptyMap(),
@@ -49,7 +49,7 @@ class RuleSourceTest {
 
     @Test fun verificationKeepsTheExactFailedRequestAndCannotOutliveItsSource() = runBlocking {
         val opened = mutableListOf<String>()
-        val browser = BrowserExecutor { _, request, options, guard ->
+        val browser = BrowserExecutor { _, request, options, guard, _ ->
             guard.commit {}
             if (!options.interactive) BrokerResult.Failure(RequestStage.Response, hnovel.network.FailureCode.BrowserRequired,
                 challenge = BrowserChallengeKind.Cloudflare, verificationRequest = request)
@@ -75,7 +75,7 @@ class RuleSourceTest {
 
     @Test fun verificationRetainsTheOriginalDynamicReadinessScript() = runBlocking {
         val script = "document.querySelector('#ready') ? document.documentElement.outerHTML : null"
-        val browser = BrowserExecutor { _, request, options, _ ->
+        val browser = BrowserExecutor { _, request, options, _, _ ->
             if (!options.interactive) BrokerResult.Failure(RequestStage.Response, hnovel.network.FailureCode.BrowserRequired,
                 challenge = BrowserChallengeKind.Cloudflare, verificationRequest = request.copy(browser = options))
             else {
@@ -97,7 +97,7 @@ class RuleSourceTest {
 
     @Test fun scriptNetworkChallengeRetainsItsHostOwnedVerificationAction() = runBlocking {
         val opened = mutableListOf<String>()
-        val browser = BrowserExecutor { _, request, options, _ ->
+        val browser = BrowserExecutor { _, request, options, _, _ ->
             if (request.url.endsWith("/protected") && !options.interactive)
                 BrokerResult.Failure(RequestStage.Response, hnovel.network.FailureCode.BrowserRequired,
                     challenge = BrowserChallengeKind.SiteVerification, verificationRequest = request)
@@ -121,7 +121,7 @@ class RuleSourceTest {
 
     @Test fun declaredBrowserReadsAndLoginHooksAcceptDocumentsWithoutClaimingHttpSuccess() = runBlocking {
         val requests = mutableListOf<String>()
-        val browser = BrowserExecutor { _, request, _, _ ->
+        val browser = BrowserExecutor { _, request, _, _, _ ->
             requests += request.url
             BrokerResult.Success(BrokerResponse(0, request.url, emptyMap(),
                 "<li><a href='/book/one'><h2>Browser novel</h2></a></li>".toByteArray(), "UTF-8", 0,
@@ -230,7 +230,7 @@ class RuleSourceTest {
 
     @Test fun cataloguePageArraysAreExpandedOnceAndKeepScriptChapterUrls() = runBlocking {
         val rendered = mutableListOf<String>()
-        val browser = BrowserExecutor { session, request, _, guard ->
+        val browser = BrowserExecutor { session, request, _, guard, _ ->
             rendered += java.net.URI(request.url).path
             session.execute(request.copy(browser = null), guard)
         }
@@ -335,7 +335,7 @@ class RuleSourceTest {
             val generation = java.util.concurrent.atomic.AtomicReference("before")
             val seen = java.util.concurrent.ConcurrentLinkedQueue<String>()
             val missing = java.util.concurrent.ConcurrentLinkedQueue<String>()
-            val browser = BrowserExecutor { session, request, _, guard ->
+            val browser = BrowserExecutor { session, request, _, guard, _ ->
                 browserPaths += java.net.URI(request.url).path
                 val response = session.execute(request.copy(browser = null), guard)
                 if (request.url.endsWith("/await")) generation.set("after")
@@ -382,7 +382,7 @@ class RuleSourceTest {
     @Test fun directBrowserLoginUsesEvaluatedSourceHeadersOnItsFirstRequest() = runBlocking {
         for (dynamic in listOf(false, true)) {
             var navigations = 0
-            val browser = BrowserExecutor { session, request, options, guard ->
+            val browser = BrowserExecutor { session, request, options, guard, _ ->
                 assertTrue(options.interactive)
                 navigations++
                 session.execute(request.copy(browser = null), guard)

@@ -118,6 +118,7 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
             if (state.busy) item { LinearProgressIndicator(Modifier.fillMaxWidth()); TextButton(onClick = model::cancel) { Text(stringResource(android.R.string.cancel)) } }
             state.message?.let { message -> item { Text(stringResource(message), color = MaterialTheme.colorScheme.primary) } }
             if (state.selected == ZLibrarySources.ID) {
+                state.network?.let { network -> item { SourceNetworkSection(network, state.busy, model::setBypassVpn) } }
                 item { ZLibrarySettingsEditor(state.zLibrary, state.busy, state.registry.find { it.metadata.id == ZLibrarySources.ID },
                     onEnabled = model::setZLibraryEnabled, onSave = model::saveZLibrary,
                     onSearch = { onSearch(ZLibrarySources.ID) }) }
@@ -141,6 +142,7 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                             trailingContent = { Switch(installed.preferences.enabled,
                                 { model.setEnabled(state.selected!!, it) }, enabled = !state.busy,
                                 modifier = Modifier.semantics { contentDescription = enabledLabel }) })
+                        state.network?.let { SourceNetworkSection(it, state.busy, model::setBypassVpn) }
                         if (SourceCapability.Search in capabilities) {
                             Button(onClick = { onSearch(state.selected!!) }, enabled = !state.busy) { Text(stringResource(R.string.explore_search)) }
                         }

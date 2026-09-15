@@ -15,7 +15,7 @@ class HlibNativeSourceTest {
 
     @Test fun publicNavbarDoesNotRequestLoginAndEveryReadUsesTheBrowser() = runBlocking {
         val requests = mutableListOf<BrokerRequest>()
-        val browser = BrowserExecutor { _, request, options, _ ->
+        val browser = BrowserExecutor { _, request, options, _, _ ->
             assertFalse(options.interactive)
             requests += request
             val path = URI(request.url).path
@@ -61,7 +61,7 @@ class HlibNativeSourceTest {
     }
 
     @Test fun tagChallengeKeepsRecoveryAndDoesNotPreventHomepageOrItsLists() = runBlocking {
-        val browser = BrowserExecutor { _, request, _, _ ->
+        val browser = BrowserExecutor { _, request, _, _, _ ->
             if (URI(request.url).path == "/tag") BrokerResult.Failure(RequestStage.Response, FailureCode.BrowserRequired,
                 challenge = BrowserChallengeKind.SiteVerification, verificationRequest = request)
             else BrokerResult.Success(BrokerResponse(0, request.url, emptyMap(), "<html></html>".toByteArray(), "UTF-8", 0,

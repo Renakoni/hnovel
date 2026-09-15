@@ -249,7 +249,7 @@ class RuleDiscoveryProviderTest {
 
     @Test fun nativeSiteChallengeIsNotReportedAsMissingAccountLogin() = runBlocking {
         for (kind in hnovel.network.BrowserChallengeKind.entries) {
-            val browser = hnovel.network.BrowserExecutor { _, request, _, _ ->
+            val browser = hnovel.network.BrowserExecutor { _, request, _, _, _ ->
                 hnovel.network.BrokerResult.Failure(hnovel.network.RequestStage.Response, hnovel.network.FailureCode.BrowserRequired,
                     challenge = kind, verificationRequest = request)
             }

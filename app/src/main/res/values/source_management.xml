@@ -1,4 +1,9 @@
 <resources>
+    <string name="sources_bypass_vpn">Bypass VPN</string>
+    <string name="sources_bypass_vpn_help">Uses a non-VPN network, including when no VPN is running. Applies to new requests. Your VPN must allow bypass; an unavailable route fails without switching modes.</string>
+    <string name="sources_network_native">This source uses the native browser, which does not yet support bypassing VPN.</string>
+    <string name="sources_network_unsupported">This source’s network connection does not yet support bypassing VPN.</string>
+    <string name="sources_route_unavailable">The selected network route is unavailable. Check your connection and retry.</string>
     <string name="sources_advanced">Advanced options</string>
     <string name="sources_origin_candidates_help">Referenced or blocked sites are suggestions only. Review each site, add it to the draft, then save to authorize it. Paths and credentials are never shown.</string>
     <string name="sources_denied_origins">Blocked requests for this source</string>

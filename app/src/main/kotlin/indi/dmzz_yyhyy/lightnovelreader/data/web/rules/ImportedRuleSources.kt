@@ -32,7 +32,8 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
     private val accounts: SourceSessionManager, private val runner: RuleTaskRunner,
     private val storageCipher: hnovel.network.StorageCipher = hnovel.network.StorageCipher.Plain,
     private val browser: hnovel.network.BrowserExecutor? = null,
-    private val verification: SourceVerificationCoordinator? = null) {
+    private val verification: SourceVerificationCoordinator? = null,
+    private val networkSettings: SourceNetworkSettings? = null) {
     private val directory = File(context.filesDir, "rule-sources")
     val definitions by lazy { SourceDefinitionStore(File(directory, "definitions").toPath()) }
     val importer by lazy { SourceDefinitionImporter(definitions) }
@@ -139,7 +140,13 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
         restore()
         lock.withLock {
         val old = active[source] ?: return@withLock
-        save(active.filterKeys { it != source }.values.map { it.installed })
+        val previousMode = networkSettings?.mode(source)
+        networkSettings?.setBypassVpn(source, false)
+        try { save(active.filterKeys { it != source }.values.map { it.installed }) }
+        catch (failure: Exception) {
+            if (previousMode == hnovel.network.SourceNetworkMode.BypassVpn) networkSettings?.setBypassVpn(source, true)
+            throw failure
+        }
         old.registration?.unregister()
         old.broker?.close()
         active.remove(source)
@@ -213,7 +220,8 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
             // Keep same-account in-memory cookies/caches for re-enable, but close all work below.
             return@withCurrent Binding(installed, null, null, previous?.session?.takeIf { it.scope.accountGeneration == generation })
         }
-        val broker = SourceBroker(File(directory, "runtime").toPath(), cipher = storageCipher, browser = browser)
+        val broker = SourceBroker(File(directory, "runtime").toPath(), cipher = storageCipher, browser = browser,
+            route = networkSettings?.forSource(id))
         val session = try { broker.open(SourceScope(id.namespace, id.id, definition.profile, generation), installed.origins) }
             catch (failure: Exception) { broker.close(); throw failure }
         val ticket = authority.issue(id.id, definition.profile, definition.contentDigest, id.namespace, generation)

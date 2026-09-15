@@ -14,6 +14,8 @@ fun sourceFailureMessage(error: DiscoveryError): Int = when (error) {
     DiscoveryError.PermissionDenied -> R.string.discovery_permission
     DiscoveryError.AddressDenied -> R.string.sources_address_denied
     DiscoveryError.Dns -> R.string.sources_dns_failed
+    DiscoveryError.RouteUnavailable -> R.string.sources_route_unavailable
+    DiscoveryError.RouteUnsupported -> R.string.sources_network_native
     DiscoveryError.InvalidRules -> R.string.discovery_invalid_rules
     DiscoveryError.Limit -> R.string.discovery_limit
     DiscoveryError.Network -> R.string.discovery_network
