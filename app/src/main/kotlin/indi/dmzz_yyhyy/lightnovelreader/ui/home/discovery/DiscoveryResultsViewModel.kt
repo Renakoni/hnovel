@@ -140,7 +140,7 @@ class DiscoveryResultsViewModel internal constructor(
                     var catalogValues = emptyMap<String, String>()
                     // Source-search actions have no discovery filters. Catalogue JS would be unused
                     // and may persist infoMap; raw explore targets still need it even without a category ID.
-                    if (source.hasCategories && !target.startsWith(DISCOVERY_SEARCH_PREFIX)) {
+                    if ((source.hasCategories || source.hasInteractions) && !target.startsWith(DISCOVERY_SEARCH_PREFIX)) {
                         val catalog = (if (route.categoryId == null) source.homepageCatalog() else source.catalog())
                             .getOrElse { failureField = source.failureField; permissionFailure = source.permissionFailure; return@discoveryRequest Err(it) }
                         catalogValues = catalog.values

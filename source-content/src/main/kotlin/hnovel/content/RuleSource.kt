@@ -21,7 +21,11 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
     private var prefetchedDirectoryId: String? = null
     val canSearch get() = spec.searchUrl.isNotBlank()
     val canLogin get() = spec.loginUrl.isNotBlank() || spec.loginUi.isNotBlank()
-    val canDiscover get() = discoveryEnabled && spec.exploreUrl.isNotBlank()
+    private val discoveryCapabilities by lazy { RuleDiscoveryClassifier.capabilities(spec) }
+    val canFeed get() = discoveryEnabled && discoveryCapabilities.hasFeed
+    val canCategorize get() = discoveryEnabled && discoveryCapabilities.hasCategories
+    val canDiscover get() = discoveryEnabled && (spec.exploreUrl.isNotBlank() ||
+        spec.homepageModules.isNotBlank() || spec.exploreScreen.isNotBlank() || spec.customButton)
 
     fun openDiscovery(sessionId: String, values: Map<String, String> = emptyMap(),
         environment: RuleDiscoveryEnvironment = RuleDiscoveryEnvironment()) = RuleDiscoverySession(this, sessionId, values, environment)

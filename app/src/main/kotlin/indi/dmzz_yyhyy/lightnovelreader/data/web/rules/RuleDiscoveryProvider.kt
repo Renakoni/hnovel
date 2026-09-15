@@ -14,8 +14,8 @@ import kotlinx.serialization.json.jsonObject
 internal class RuleDiscoveryProvider(private val source: RuleSource,
     private val session: RuleDiscoverySession = source.openDiscovery(java.util.UUID.randomUUID().toString()),
     private val recovery: RuleRequestRecovery? = null) : DiscoveryProvider {
-    override val hasFeed get() = source.canDiscover
-    override val hasCategories get() = source.canDiscover
+    override val hasFeed get() = source.canFeed
+    override val hasCategories get() = source.canCategorize
     override val hasInteractions = true
     override var failureField: String? = null
         private set
@@ -39,23 +39,19 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
             .getOrElse { emit(Err(it)); return@flow }
         current = definition
         val catalog = map(definition)
-        val entries = definition.homepage?.map { DiscoveryCategory(it.id, it.title, it.url) } ?: catalog.categories
-        val first = entries.firstOrNull { it.target.isNotBlank() }
+        val entries = RuleDiscoveryClassifier.feed(definition)
         val sections = mutableListOf<DiscoverySection>()
         for (category in entries) {
-            // Explicit homepage modules each declare a preview. Legacy catalogues can contain
-            // hundreds of URLs; retain their single preview to avoid fetching the whole catalogue.
-            val preview = if (category.target.isNotBlank() && (definition.homepage != null || category == first))
-                request { session.page(category.target, 1, catalog.values).take(6).map(::book) } else Ok(emptyList())
+            val preview = request { session.page(category.url, 1, catalog.values).take(6).map(::book) }
             val failure = preview.getError()?.let { DiscoveryPreviewFailure(it, failureField, permissionFailure) }
-            sections += DiscoverySection(category.id, category.title, preview.get().orEmpty(), category.target.takeIf(String::isNotBlank),
+            sections += DiscoverySection(category.id, category.title, preview.get().orEmpty(), category.url,
                 category.id.takeIf { definition.homepage == null }, failure)
             // A failed preview belongs to its entry, not to the successful catalogue snapshot.
             failureField = null; permissionFailure = null
             // Recovery belongs to the current module, so a later challenge does not replay earlier previews.
-            if (definition.homepage != null) emit(Ok(sections.toList()))
+            emit(Ok(sections.toList()))
         }
-        if (definition.homepage == null || entries.isEmpty()) emit(Ok(sections.toList()))
+        if (entries.isEmpty()) emit(Ok(emptyList()))
     }
     override fun filters(target: String) = if (target.startsWith(DISCOVERY_SEARCH_PREFIX)) emptyList() else
         current?.rows.orEmpty().filter { row -> row.targetPrefixes.isEmpty() || row.targetPrefixes.any(target::startsWith) }.mapNotNull(::filter)
@@ -88,7 +84,7 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
     }
 
     private fun map(catalog: RuleDiscoveryCatalog) = DiscoveryCatalog(
-        catalog.rows.filter { it.type == "url" && catalog.homepage.orEmpty().none { home -> home.url == it.url } }
+        catalog.rows.filter { it.type == "url" }
             .map { DiscoveryCategory(it.id, it.title, it.url) },
         catalog.rows.filter { it.targetPrefixes.isEmpty() }.mapNotNull(::filter),
         catalog.values, catalog.rows.filter { it.type == "button" }.map { DiscoveryButton(it.id, it.title) })

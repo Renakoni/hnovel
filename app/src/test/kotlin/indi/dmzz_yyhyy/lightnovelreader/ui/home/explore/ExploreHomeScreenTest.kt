@@ -144,6 +144,21 @@ class ExploreHomeScreenTest {
         compose.onNode(hasClickAction() and hasText("Same book")).performScrollTo().assertExists()
     }
 
+    @Test fun successfulEmptyPreviewShowsItsStateAlongsideTheMoreAction() {
+        val id = Identifier("fixture", "Empty list source")
+        val section = SourceDiscoverySection("recent", "Recently updated", emptyList(), SourceDiscoveryTarget(id, "/recent"))
+        var opened: SourceDiscoverySection? = null
+        activity.get().setContent { MaterialTheme {
+            ExploreHomeScreen(DiscoveryPageState(listOf(listing(id)), id,
+                mapOf(id to DiscoveryPageContent(loaded = true, sections = listOf(section)))),
+                {}, { _, _ -> }, {}, { opened = it }, {}, {}, {}, {}, { _, _ -> }, { _, _ -> }, {})
+        } }
+        compose.onNodeWithText("Recently updated").assertIsDisplayed()
+        compose.onNodeWithText("This list has no books yet.").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Show more").performClick()
+        assertEquals(section, opened)
+    }
+
     @Test fun ruleInputsAndActionsShareTheFeedAndFailuresKeepVisibleContent() {
         val id = Identifier("fixture", "Rule source")
         val input = mutableListOf<Pair<String, String>>()

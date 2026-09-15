@@ -315,7 +315,7 @@ class MixedSourceAcceptanceTest {
             "loginUrl" to JsonPrimitive("""function fields(){return [{name:'user'}];}
                 function login(){var user=source.getLoginInfoMap().get('user');var response=java.post(baseUrl.substring(0,baseUrl.lastIndexOf('/')+1)+'login','user='+user,{'Content-Type':'application/x-www-form-urlencoded'});if(response.statusCode()!==200)throw 'login failed';source.put('note','note-'+user);}"""),
             "loginUi" to JsonPrimitive(if (extension) "@js:JSON.stringify(fields())" else "[{\"name\":\"user\"}]"),
-            "exploreUrl" to JsonPrimitive(if (extension) "@js:infoMap.region='all';infoMap.save();[{id:'all',title:'All',url:'/search'}]" else "All::/search"),
+            "exploreUrl" to JsonPrimitive(if (extension) "@js:infoMap.region='all';infoMap.save();[{id:'all',title:'Recent',url:'/search'}]" else "Recent::/search"),
             "ruleExplore" to base.getValue("ruleSearch")
         ))
     }
