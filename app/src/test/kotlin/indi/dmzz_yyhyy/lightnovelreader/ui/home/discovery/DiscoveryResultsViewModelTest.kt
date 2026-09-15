@@ -47,11 +47,12 @@ class DiscoveryResultsViewModelTest {
             stores += ViewModelStore().apply { put("result", it) }
             it.setActive(true)
         }
-    private fun add(provider: DiscoveryProvider, id: Identifier = source) {
+    private fun add(provider: DiscoveryProvider, id: Identifier = source,
+        capabilities: Set<SourceCapability> = setOf(SourceCapability.Categories)) {
         registry.register(object : WebBookDataSource by EmptyWebDataSource {
             override val id = id
             override val discoveryProvider = provider
-        }, SourceMetadata(WebDataSourceItem(id, "Source", "fixture"), setOf(SourceCapability.Categories)))
+        }, SourceMetadata(WebDataSourceItem(id, "Source", "fixture"), capabilities))
     }
     private open class Pages : DiscoveryProvider {
         override val hasCategories = true
@@ -160,6 +161,33 @@ class DiscoveryResultsViewModelTest {
         assertEquals(1, catalogs)
         assertEquals("raw-explore", provider.requests.single().target)
         assertEquals(mapOf("sort" to "b"), provider.requests.single().filters)
+    }
+
+    @Test fun feedOnlyMoreInitializesItsScopedFiltersAndPaginatesWithoutCategories() = runTest(dispatcher) {
+        var catalogs = 0
+        val provider = object : Pages() {
+            override val hasFeed = true
+            override val hasCategories = false
+            override val hasInteractions = true
+            override suspend fun catalog(refresh: Boolean): Result<DiscoveryCatalog, DiscoveryError> = error("No category catalogue")
+            override suspend fun homepageCatalog(refresh: Boolean): Result<DiscoveryCatalog, DiscoveryError> {
+                catalogs++
+                return Ok(DiscoveryCatalog(emptyList(), values = mapOf("sort" to "b")))
+            }
+            override fun filters(target: String) = if (catalogs > 0) super.filters(target) else emptyList()
+        }
+        add(provider, capabilities = setOf(SourceCapability.Explore))
+        val model = model(route = route.copy(target = "recent", categoryId = null))
+        advanceUntilIdle()
+        assertNull(model.state.value.error)
+        assertEquals(mapOf("sort" to "b"), model.state.value.filters)
+        assertEquals("b", model.state.value.books.single().title)
+        model.loadMore()
+        advanceUntilIdle()
+        assertEquals(2, model.state.value.books.size)
+        assertTrue(provider.requests.all { it.target == "recent" && it.filters == mapOf("sort" to "b") })
+        assertEquals(listOf(null, "2"), provider.requests.map { it.cursor })
+        assertEquals(1, catalogs)
     }
 
     @Test fun dynamicCategoryKeepsItsIdWhileFiltersRegenerateTheUrlAndPageDraft() = runTest(dispatcher) {

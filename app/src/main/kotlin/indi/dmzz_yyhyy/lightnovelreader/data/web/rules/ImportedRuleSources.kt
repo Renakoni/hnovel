@@ -228,7 +228,8 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
             addAll(listOf(SourceCapability.BookInformation, SourceCapability.Directory, SourceCapability.ChapterContent, SourceCapability.Images))
             if (source.canSearch) add(SourceCapability.Search)
             if (source.canLogin) add(SourceCapability.Login)
-            if (source.canDiscover) addAll(setOf(SourceCapability.Explore, SourceCapability.Categories))
+            if (source.canFeed) add(SourceCapability.Explore)
+            if (source.canCategorize) add(SourceCapability.Categories)
         }, revision = definition.contentDigest, accountGeneration = generation)
         val publish = {
             previous?.session?.takeIf { it.scope == session.scope }?.let { session.inheritCookies(it); session.inheritCaches(it) }

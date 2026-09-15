@@ -7,6 +7,7 @@
     <string name="discovery_apply">应用</string>
     <string name="discovery_load_more">加载更多</string>
     <string name="discovery_no_books">没有符合筛选条件的书籍。</string>
+    <string name="discovery_preview_empty">此书单暂无书籍。</string>
     <string name="discovery_unsupported">此书源不提供这项浏览能力。</string>
     <string name="discovery_login_required">请在书源管理中登录此书源后重试。</string>
     <string name="discovery_permission">此书源缺少网络权限，请在书源管理中检查允许访问的网站。</string>

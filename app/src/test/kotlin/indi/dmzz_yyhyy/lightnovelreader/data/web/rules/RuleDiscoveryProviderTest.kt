@@ -110,14 +110,15 @@ class RuleDiscoveryProviderTest {
     @Test fun legacyBrokenFirstEntryDoesNotHideWorkingLaterEntry() = runBlocking {
         RuleSourceFixture().use { fixture ->
             fixture.source { raw -> JsonObject(definition(raw) + ("exploreUrl" to
-                JsonPrimitive("Broken::/missing\nWorking::/search"))) }.use { source ->
+                JsonPrimitive("最近更新::/missing\n人气榜::/search"))) }.use { source ->
                 val provider = RuleDiscoveryProvider(source)
                 val feed = provider.feed().get()!!
                 assertEquals(2, feed.size)
                 assertNotNull(feed.first().previewFailure)
                 assertNotNull(feed.last().more)
+                assertTrue(feed.last().books.isNotEmpty())
                 assertTrue(provider.page(DiscoveryRequest(feed.last().more!!)).get()!!.books.isNotEmpty())
-                assertEquals(2, fixture.documents.get())
+                assertEquals(3, fixture.documents.get())
             }
         }
     }
@@ -278,14 +279,14 @@ class RuleDiscoveryProviderTest {
                 "ruleExplore" to raw.getValue("ruleSearch"))) }
             val provider = RuleDiscoveryProvider(source)
             val categories = provider.catalog().get()!!.categories
-            assertEquals(listOf("Fantasy", "Science fiction"), categories.map { it.title })
+            assertEquals(listOf("Ranking", "Articles", "Fantasy", "Science fiction"), categories.map { it.title })
             assertEquals(0, fixture.documents.get())
             val feed = provider.feed().get()!!
             assertEquals(listOf("Ranking", "Articles"), feed.map { it.title })
             assertTrue(feed.all { it.books.isNotEmpty() })
             assertEquals("/search?kind=articles&page={{page}}", feed.last().more)
             assertEquals(2, fixture.documents.get())
-            assertTrue(provider.page(DiscoveryRequest(categories.first().target)).get()!!.books.isNotEmpty())
+            assertTrue(provider.page(DiscoveryRequest(categories[2].target)).get()!!.books.isNotEmpty())
             assertEquals(3, fixture.documents.get())
         }
     }
@@ -317,7 +318,7 @@ class RuleDiscoveryProviderTest {
         }
     }
     private fun definition(raw: JsonObject) = JsonObject(raw + mapOf(
-        "exploreUrl" to JsonPrimitive("[{\"title\":\"Sort\",\"type\":\"select\",\"chars\":[\"new\",\"popular\"]},{\"title\":\"Books\",\"url\":\"/search?sort={{infoMap.Sort}}&page={{page}}\"}]"),
+        "exploreUrl" to JsonPrimitive("[{\"title\":\"Sort\",\"type\":\"select\",\"chars\":[\"new\",\"popular\"]},{\"title\":\"Recent\",\"url\":\"/search?sort={{infoMap.Sort}}&page={{page}}\"}]"),
         "ruleExplore" to raw.getValue("ruleSearch")))
 
     @Test fun productionAdapterBindsResultsAndKeepsRetryAndFiltersInTheOwningPage() = runBlocking {
@@ -358,19 +359,21 @@ class RuleDiscoveryProviderTest {
         }
     }
 
-    @Test fun feedUsesSourceOrderAndOnlyLoadsTheFirstPreview() = runBlocking {
+    @Test fun feedUsesSourceOrderAndLoadsEachRecognizedList() = runBlocking {
         RuleSourceFixture().use { fixture ->
             val rule = fixture.source { raw -> definition(raw).let {
                 JsonObject(it + ("exploreUrl" to JsonPrimitive("New::/search&&Completed::/search?complete=1&&Popular::/search?hot=1")))
             } }
             val provider = RuleDiscoveryProvider(rule)
             val feed = provider.feed().get()!!
-            assertEquals(listOf("New", "Completed", "Popular"), feed.map { it.title })
-            assertEquals(listOf(1, 0, 0), feed.map { it.books.size })
+            assertEquals(listOf("New", "Popular"), feed.map { it.title })
+            assertEquals(listOf(1, 1), feed.map { it.books.size })
             assertTrue(feed.all { it.more != null })
             assertTrue(provider.hasInteractions)
-            assertEquals(provider.catalog().get()!!.categories.map { it.id }, feed.map { it.categoryId })
-            assertEquals(1, fixture.documents.get())
+            val categories = provider.catalog().get()!!.categories
+            assertEquals(3, categories.size)
+            assertEquals(listOf(categories.first().id, categories.last().id), feed.map { it.categoryId })
+            assertEquals(2, fixture.documents.get())
         }
     }
 
@@ -388,7 +391,7 @@ class RuleDiscoveryProviderTest {
         }
     }
 
-    @Test fun largeFeedLoadsOnlyOnePreviewAndTheLastCategoryUsesItsOwnTarget() = runBlocking {
+    @Test fun largeGenreCatalogFetchesNoPreviewAndTheLastCategoryUsesItsOwnTarget() = runBlocking {
         RuleSourceFixture().use { fixture ->
             val rows = buildJsonArray { repeat(326) { i -> add(buildJsonObject {
                 put("title", "Category $i"); put("url", "/search?category=$i&page={{page}}")
@@ -402,17 +405,13 @@ class RuleDiscoveryProviderTest {
                 val source = (registry.resolve(id) as SourceResolution.Ready).runtime.discovery!!
                 val categories = source.categories().get()!!
                 assertEquals(0, fixture.documents.get())
-                val feed = source.feed().get()!!
-                assertEquals(326, feed.size)
-                assertEquals(categories.map { it.id }, feed.map { it.categoryId })
-                assertEquals(categories.map { it.target }, feed.map { it.more })
-                assertEquals(listOf(1) + List(325) { 0 }, feed.map { it.books.size })
-                assertEquals(1, fixture.documents.get())
-                assertEquals("/search?category=0&page=1", fixture.server.takeRequest().path)
+                assertFalse(source.hasFeed)
+                assertEquals(Err(DiscoveryError.Unsupported), source.feed())
+                assertEquals(0, fixture.documents.get())
                 val last = source.open(categories.last().target).loadMore().get()!!
                 assertEquals(id, last.books.single().id.sourceId)
                 assertEquals("/search?category=325&page=1", fixture.server.takeRequest().path)
-                assertEquals(2, fixture.documents.get())
+                assertEquals(1, fixture.documents.get())
             } finally { registry.unregister(id) }
         }
     }
@@ -460,7 +459,7 @@ class RuleDiscoveryProviderTest {
             val cases = listOf(
                 fixture.raw("missing") to false,
                 JsonObject(definition(fixture.raw("disabled")) + ("enabledExplore" to JsonPrimitive(false))) to false,
-                JsonObject(definition(fixture.raw("empty")) + ("exploreUrl" to JsonPrimitive("[]"))) to true,
+                JsonObject(definition(fixture.raw("empty")) + ("exploreUrl" to JsonPrimitive("[]"))) to false,
                 JsonObject(definition(fixture.raw("invalid")) + ("exploreUrl" to JsonPrimitive("[{\"title\":\"Broken\",\"type\":\"nativeView\"}]"))) to true
             )
             for ((index, value) in cases.withIndex()) fixture.source { value.first }.use { source ->

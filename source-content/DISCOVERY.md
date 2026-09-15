@@ -37,14 +37,23 @@ navigation remain [#79](https://github.com/Renakoni/hnovel/issues/79) and
 
 ## Data, identity, and ownership
 
-There is one tab per registered source. URL entries become ordered categories and feed
-sections, never nested Home/All/category tabs. A blank URL is a heading. Loading a
-catalogue does not fetch every result list: a feed fetches at most the first actionable
-section's first-page preview (six books); later sections retain their own More target.
+There is one tab per eligible source. All URL entries remain ordered category tags;
+only update, ranking, recommendation and similar lists become automatic feed previews.
+A blank URL is a heading, and its title supplies context for its following entries.
+The automatic feed selects at most six lists in source order and fetches a first-page
+preview (six books) for each, publishing them progressively. Other entries remain tags.
+More opens the original list and pagination, not a catalogue of entry links.
 An explicit `homepageModules` declaration instead selects up to 64 homepage modules,
 each with a six-book preview. Direct module URLs do not require remote categories;
 legacy `kindTitle` references still resolve against the category catalogue. Homepage
 and category routes retain separate ownership and values.
+
+Static capability checks share the catalogue parser and semantic classifier with the
+runtime. Direct homepage modules work without `exploreUrl`; empty static catalogues
+do not advertise feed or category tabs. Dynamic or invalid rules retain candidate
+capabilities so temporary empty results and errors cannot permanently hide a source.
+See [the routing rules and reviewed samples](../source-compatibility/DISCOVERY_ROUTING.md)
+for the four capability combinations and bounded automatic preview selection (#209).
 
 `exploreScreen` inputs may declare the host extension `targetPrefixes`, a nonempty
 array of at most 16 nonblank strings (each at most 2048 characters). Such controls
@@ -106,7 +115,7 @@ In `exploreUrl`, exactly the `title`, `url` and `style` keys with blank string t
 and object-valued style form a layout spacer. Such grid filler produces no category
 or action. It is skipped before duplicate-target occurrence IDs are assigned; error
 indices still refer to the original array. Nonblank titles with blank URLs remain
-headings. An unnamed nonblank target is invalid at `exploreUrl[index].title`; an ID,
+headings. Unnamed nonblank catalogue targets remain navigable with a host label; an ID,
 type, action, viewName or unknown field never becomes an inert spacer. Styles remain
 presentation metadata, not permission for source-defined layouts.
 

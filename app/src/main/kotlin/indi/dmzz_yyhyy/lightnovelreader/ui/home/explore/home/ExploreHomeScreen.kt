@@ -171,7 +171,12 @@ private fun ExploreRowSection(
             row.books.filter { it.id.remoteId.isNotBlank() }.distinctBy { it.id }
         }
 
-        CompositionLocalProvider(LocalOverscrollFactory provides null) {
+        if (validBooks.isEmpty() && row.previewFailure == null) {
+            Text(stringResource(R.string.discovery_preview_empty),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (validBooks.isNotEmpty()) CompositionLocalProvider(LocalOverscrollFactory provides null) {
             LazyRow(
                 modifier = Modifier
                     .fillMaxWidth()

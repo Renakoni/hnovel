@@ -11,3 +11,11 @@ are unchanged; JSON whitespace is compacted for review. No headers, cookies,
 login data, fetched books or chapter text are copied. Tests never fetch these
 targets. Source 9 is disabled in the original definition; parser coverage does
 not imply that the application activates it automatically.
+
+`discovery-routing-samples.json` contains seven catalogue-only excerpts from the
+user-supplied desktop files and one explicitly synthetic homepage-only case (#209).
+Each excerpt records its file checksum, array index and reviewed expected routing.
+No headers, accounts or fetched books are copied. The dynamic sample verifies
+provisional capabilities without executing its catalogue script. Regeneration and
+the complete matrix are documented in
+[`DISCOVERY_ROUTING.md`](../../../../source-compatibility/DISCOVERY_ROUTING.md).
