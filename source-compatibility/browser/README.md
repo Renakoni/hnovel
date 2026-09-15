@@ -18,7 +18,7 @@
 
 来源 JSON 使用布尔扩展 `"browserRead": true`，默认值为 false。它使 Document 请求使用同一原生浏览器账号。**纠正此前说明：普通规则 `java.connect/ajax` 当前编译为 API 请求，仍走 HTTP；需要原生会话时必须显式声明 URL 的 `webView:true` 选项。** 图片、二进制和导入请求也有明确的 HTTP 路径。原生路径只接受 GET 导航；页面自己发出的 POST/fetch 由 Chromium 执行。传入 HTML、显式 Cookie 请求头、`followRedirects=false`、只读缓存、十六进制响应或顶层非 GET 请求会被拒绝，不静默改变含义。DOM 默认上限 512 KiB；显式较大预算也不超过 1 MiB。
 
-`NativeSourceBrowser` 负责宿主准入、请求串行、进程所有权、取消及结果提交；`NativeBrowserFiles` 负责停止进程后的 profile 文件切换；`NativeSourceBrowserService` 只运行网站和提取结果；`NativeSourceBrowserActivity` 提供前台窗口。使用一个专用进程，所以当前不同原生来源不能并行浏览。
+`NativeSourceBrowser` 负责宿主准入、请求串行、进程所有权、取消及结果提交；`NativeBrowserFiles` 负责停止进程后的 profile 文件切换；`NativeSourceBrowserService` 运行网站和提取结果，并承载宿主发起的受控离线 localStorage 读写；`NativeSourceBrowserActivity` 提供前台窗口。使用一个专用进程，所以当前不同原生来源不能并行浏览。
 
 按源网络路线由 [#219](https://github.com/Renakoni/hnovel/issues/219) 接入：支持 API 28+ 且提供 `PROXY_OVERRIDE` 的 WebView。绕过模式仅在专用浏览器进程初始化 Chromium 前绑定本次捕获的非 VPN 网络，并等待 direct proxy override 生效；主进程不绑定网络。来源会话或路线代次改变时先结束旧进程再重用对应账号目录。路线失效、来源关闭也会结束空闲进程及其后台 Service Worker。模式切换保留持久 Cookie/localStorage，不轮换账号；内存 session Cookie 仍遵循进程生命周期。具体限制和实测范围见 [按源网络路线](../SOURCE_NETWORK_MODES.md#native-browser-route)。
 
@@ -36,7 +36,7 @@ DOM 结果使用 `ResponseKind.BrowserDocument`，保存同一次快照中的实
 
 此轮 MuMu 不支持 `MULTI_PROFILE`、目录重定位、UA metadata，支持 `GET_COOKIE_INFO`；因此实际验收覆盖的是 API 28+ 文件切换方案。新 provider 的重定位方案仍需相应设备验收。切换进程/账号及系统杀进程后的 session Cookie 生命周期遵从 Chromium，未把 session Cookie 强行改成持久 Cookie；需要网站的“保持登录”时应使用网站本身的选项。
 
-原生登录/再次验证复用当前账号代次，关闭窗口不会自动退出已有账号。显式退出登录先作废旧账号、取消请求，再清理原生状态；旧回调不能回写。临时书源诊断结束也显式清理其专属 profile。profile 位于应用私有目录并排除备份/设备迁移；这不代表 WebView 数据已通过普通账号存储的 Keystore/AES-GCM 再加密。
+继续已有验证复用当前账号代次；普通登录／重新登录先重置旧账号，再打开登录页。关闭原生窗口保留当前网页会话，显式退出才撤销账号。清理会取消旧请求，并按书源 `preserveLocalStorage` 声明离线保存、恢复同来源同 origin 的通用偏好；其余网页数据随旧 profile 删除，旧回调不能回写。具体协议、预算和失败语义见[网页数据保留](../SOURCE_WEB_STORAGE.md)。临时书源诊断结束也显式清理其专属 profile。profile 与待恢复记录位于应用私有目录并排除备份/设备迁移；这不代表它们已通过普通账号存储的 Keystore/AES-GCM 再加密。
 
 不实现通用 Cookie 双向同步。Android CookieManager 是原生路径的权威；普通 HTTP jar 是 HTTP 路径的权威。`cookie.*` 脚本接口不会神奇地变成原生 Cookie 导入/导出接口。依赖裸 Cookie 注入或受保护图片 HTTP 的来源仍需单独适配。
 

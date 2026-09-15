@@ -11,6 +11,17 @@ import java.util.concurrent.Callable
 import java.util.concurrent.Executors
 
 class SourceDefinitionImporterTest {
+    @Test fun localStorageRetentionIsValidatedAsAnExplicitExtension() {
+        val importer = SourceDefinitionImporter(SourceDefinitionStore(temp.newFolder().toPath()))
+        val raw = json(extra = ",\"preserveLocalStorage\":{\"https://fixture.invalid\":[\"theme\"]}")
+        val valid = importer.preview(raw)
+        assertTrue(valid.issues.toString(), valid.issues.isEmpty())
+        assertFalse(valid.candidates.single().notices.any { it.code == "UnclassifiedField" && it.field == "preserveLocalStorage" })
+        add(importer, valid)
+        val invalid = importer.preview(raw.replace("[\"theme\"]", "[true]"))
+        assertEquals(listOf(ImportIssue(0, ImportCode.InvalidField, "preserveLocalStorage")), invalid.issues)
+    }
+
     @Test fun emptyLegacyRuleArraysAreAbsentRulesButNonemptyArraysRemainInvalid() {
         val importer = SourceDefinitionImporter(SourceDefinitionStore(temp.newFolder().toPath()))
         val original = """{"bookSourceUrl":"https://fixture.invalid","ruleExplore":[],"ruleReview":[]}"""

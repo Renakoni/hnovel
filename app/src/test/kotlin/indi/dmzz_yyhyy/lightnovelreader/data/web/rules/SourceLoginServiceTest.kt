@@ -46,7 +46,7 @@ class SourceLoginServiceTest {
         assertNull(name(JsonObject(mapOf("user" to JsonPrimitive("x".repeat(129)))).toString()))
     }
 
-    @Test fun nativeVerificationReopensThePendingPageWithoutRotatingOrClearingItsAccount() = runBlocking {
+    @Test fun nativeVerificationKeepsItsAccountWhileFreshLoginResetsItBeforeOpening() = runBlocking {
         val root = Files.createTempDirectory("native-login").toFile()
         val context = object : ContextWrapper(RuntimeEnvironment.getApplication()) { override fun getFilesDir() = root }
         val visited = mutableListOf<String>()
@@ -76,6 +76,14 @@ class SourceLoginServiceTest {
                 login.submit(second, emptyMap())
                 assertEquals(listOf(url), visited)
                 assertEquals(StorageResult.Value(null), original.session.read(StorageRequest(StorageArea.Account, StorageRequestKey.BROWSER_PENDING_URL)))
+                original.session.setCookie(fixture.server.url("/").toString(), "old=account")
+                val fresh = login.begin(id)
+                assertFalse(fresh.retireOnCancel)
+                assertNotEquals(original.generation, fresh.generation)
+                assertTrue(original.session.closed)
+                assertEquals("", sources.loginTarget(id).session.cookie(fixture.server.url("/").toString()))
+                login.submit(fresh, emptyMap())
+                assertEquals(listOf(url, fixture.server.url("/login").toString()), visited)
                 login.logout(id)
                 assertTrue(original.session.closed)
                 assertNotEquals(original.generation, sources.loginTarget(id).generation)

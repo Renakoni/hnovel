@@ -8,6 +8,28 @@ import org.junit.Test
 import java.nio.file.Files
 
 class SourceLoginCookiesTest {
+    @Test fun failedAccountFileCleanupStillAttemptsCookieAndBrowserCleanup() {
+        val root = Files.createTempDirectory("account-cleanup-failure")
+        val scope = SourceScope("test", "cleanup", "legado")
+        var browserCleared = false
+        val browser = object : BrowserExecutor {
+            override suspend fun execute(session: SourceSession, request: BrokerRequest, options: BrowserOptions,
+                guard: RequestCommitGuard, route: SourceNetworkRoute): BrokerResult = error("No navigation")
+            override fun clearAccount(scope: SourceScope, localStorage: LocalStorageRetention) { browserCleared = true }
+        }
+        try { SourceBroker(root, browser = browser).use { broker ->
+            val session = broker.open(scope, listOf(NetworkGrant("https://example.org")))
+            session.write(StorageRequest(StorageArea.Account, StorageRequestKey.LOGIN_INFO, "old"))
+            session.setCookie("https://example.org", "sid=old")
+            val directory = root.resolve(hash((scope.components(true) + "account").joinToString("") { "${it.length}:$it" }))
+            Files.createDirectory(directory.resolve("broken-entry"))
+            assertThrows(IllegalStateException::class.java) { session.clearAccount() }
+            assertTrue(session.closed)
+            assertTrue("Browser cleanup must still run after account file failure", browserCleared)
+            assertEquals(StorageResult.Value(null), SourceStorage(root, scope.components(true) + "cookies", BrokerLimits()).read("cookies"))
+        } } finally { root.toFile().deleteRecursively() }
+    }
+
     @Test fun disabledAutomaticJarStillAllowsExplicitCookieApiAndAccountCleanup() = runBlocking {
         val root = Files.createTempDirectory("login-cookies")
         try { SourceBroker(root).use { broker -> MockWebServer().use { server ->

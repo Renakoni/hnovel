@@ -65,7 +65,8 @@ cookies follow Chromium's process lifetime and may be lost; this is not a promis
 website will continue accepting the saved login. New localStorage writes still waiting
 for Chromium's disk flush can also be lost when a page is cancelled and its process ends;
 the public WebView API has no general localStorage flush acknowledgement. Explicit logout still retires the old
-account and clears its profile; the separate general-data retention work is #218.
+account and clears its profile; only explicitly declared general localStorage keys cross the account boundary,
+as described in [the #218 retention contract](SOURCE_WEB_STORAGE.md).
 
 Page navigation, redirects, iframe, fetch/XHR, dedicated Worker and Service Worker use
 Chromium's native stack on this process route. The existing browser safety boundary is

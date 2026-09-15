@@ -3,6 +3,9 @@
 For fixed source settings, offline configuration access and account-status presentation, see
 [SOURCE_BASIC_SETTINGS.md](SOURCE_BASIC_SETTINGS.md) (#215).
 
+For logout, fresh login and explicitly declared native localStorage retention, see
+[SOURCE_WEB_STORAGE.md](SOURCE_WEB_STORAGE.md) (#218).
+
 For native WebView reading, persistent source accounts, verification recovery and
 browser environment comparisons, see [the browser implementation and validation notes](browser/README.md) (#184).
 

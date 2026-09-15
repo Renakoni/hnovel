@@ -13,7 +13,7 @@ fun interface BrowserExecutor {
      * Forward all child HTTP requests with the supplied route; never reread the preference. */
     suspend fun execute(session: SourceSession, request: BrokerRequest, options: BrowserOptions,
         guard: RequestCommitGuard, route: SourceNetworkRoute): BrokerResult
-    fun clearAccount(scope: SourceScope) {}
+    fun clearAccount(scope: SourceScope, localStorage: LocalStorageRetention = LocalStorageRetention()) {}
 }
 
 @Serializable data class BrowserOptions(val script: String = "", val delayMillis: Long = 0,

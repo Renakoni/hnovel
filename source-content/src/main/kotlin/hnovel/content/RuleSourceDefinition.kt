@@ -1,6 +1,7 @@
 package hnovel.content
 
 import hnovel.imports.SourceDefinition
+import hnovel.network.LocalStorageRetention
 import kotlinx.serialization.json.*
 import java.net.URL
 import java.security.MessageDigest
@@ -24,6 +25,7 @@ internal class RuleSourceDefinition(val stored: SourceDefinition) {
     val loginUi = root.string("loginUi")
     val cookiesEnabled = root["enabledCookieJar"]?.jsonPrimitive?.booleanOrNull ?: true
     val browserRead = root["browserRead"]?.jsonPrimitive?.booleanOrNull ?: false
+    val localStorageRetention = LocalStorageRetention.parse(root[LocalStorageRetention.FIELD])
     val concurrentRate = root.string("concurrentRate")
     val coverDecode = root.string("coverDecodeJs")
     val search = rules("ruleSearch")

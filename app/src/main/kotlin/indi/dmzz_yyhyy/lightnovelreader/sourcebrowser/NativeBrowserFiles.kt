@@ -6,8 +6,16 @@ import android.util.AtomicFile
 import android.webkit.WebView
 import androidx.webkit.ProcessGlobalConfig
 import androidx.webkit.WebViewFeature
+import hnovel.network.SourceScope
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import java.io.File
 import java.io.FileNotFoundException
+import java.security.MessageDigest
+
+internal fun nativeBrowserProfile(scope: SourceScope): String = MessageDigest.getInstance("SHA-256")
+    .digest(Json.encodeToString(listOf(scope.namespace, scope.sourceId, scope.profile,
+        scope.accountGeneration.toString())).toByteArray()).joinToString("") { "%02x".format(it.toInt() and 255) }
 
 /** Profile files move only after the dedicated Chromium process has exited. Never copy a live DB. */
 internal class NativeBrowserFiles(private val context: Context) {
@@ -25,6 +33,8 @@ internal class NativeBrowserFiles(private val context: Context) {
     private fun owner(): String? = try {
         ownerFile.openRead().use { it.readBytes().toString(Charsets.UTF_8) }
     } catch (_: FileNotFoundException) { null }
+
+    fun exists(profile: String): Boolean = directory(profile).exists() || !relocated && owner() == profile && active.exists()
 
     fun prepare(profile: String) {
         directory(profile)
