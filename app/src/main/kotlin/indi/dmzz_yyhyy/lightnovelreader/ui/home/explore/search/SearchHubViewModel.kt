@@ -8,6 +8,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.book.BookRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.explore.ExploreRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.userdata.UserDataRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.web.SourceCapability
+import indi.dmzz_yyhyy.lightnovelreader.data.web.SourceStatus
 import indi.dmzz_yyhyy.lightnovelreader.data.web.WebSourceRegistry
 import io.nightfish.lightnovelreader.api.identifier.Identifier
 import io.nightfish.lightnovelreader.api.userdata.UserDataPath
@@ -42,10 +43,13 @@ class SearchHubViewModel @Inject constructor(
     val state: StateFlow<SearchHubState> = mutable.asStateFlow()
     private var work: kotlinx.coroutines.Job? = null
 
-    init { viewModelScope.launch { history.getFlow().collect { values -> mutable.update { it.copy(history = values.orEmpty().reversed()) } } }; refreshSources() }
+    init {
+        viewModelScope.launch { history.getFlow().collect { values -> mutable.update { it.copy(history = values.orEmpty().reversed()) } } }
+        viewModelScope.launch { registry.sources.collect { refreshSources() } }
+    }
 
     fun refreshSources() {
-        val sources = registry.sources.value.filter { it.status.name != "Failed" && SourceCapability.Search in it.metadata.capabilities }
+        val sources = registry.sources.value.filter { it.status == SourceStatus.Ready && SourceCapability.Search in it.metadata.capabilities }
             .map { SearchHubSource(it.metadata.id, it.metadata.item.name) }
         mutable.update { it.copy(sources = sources, selected = it.selected?.takeIf { id -> sources.any { s -> s.id == id } }) }
     }
