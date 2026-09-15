@@ -259,6 +259,11 @@ class RuleDiscoveryProviderTest {
                 val expected = if (kind == hnovel.network.BrowserChallengeKind.Login) DiscoveryError.AuthenticationRequired
                     else DiscoveryError.VerificationRequired
                 assertEquals(Err(expected), provider.page(DiscoveryRequest("/search")))
+                val runtime = RuleWebBookDataSource(io.nightfish.lightnovelreader.api.identifier.Identifier("rules", "fixture"), source)
+                val requestError = runtime.getBookInformation(fixture.server.url("/book/one").toString()).component2()!!
+                assertEquals(if (kind == hnovel.network.BrowserChallengeKind.Login)
+                    io.nightfish.lightnovelreader.api.error.WebRequestErrorKind.AuthenticationRequired
+                    else io.nightfish.lightnovelreader.api.error.WebRequestErrorKind.VerificationRequired, requestError.kind)
             } }
         }
     }

@@ -13,7 +13,8 @@ import javax.inject.Singleton
 
 data class LoginAttempt internal constructor(val source: Identifier, val generation: Long, val revision: String,
     val retireOnCancel: Boolean = true)
-enum class LoginStatus { LoggedOut, Authenticated, SessionSaved, Required }
+/** Saved facts only. Submitting a login script does not confirm server-side authentication. */
+enum class LoginStatus { LoggedOut, LoginSubmitted, SessionSaved, Required }
 
 /** No Activity is launched from a rule/worker. Foreground UI explicitly owns a cancellable login attempt. */
 @Singleton
@@ -78,7 +79,7 @@ class SourceLoginService @Inject constructor(private val sources: ImportedRuleSo
             }
         }
         fun savedStatus(value: String?) = when (value) {
-            "authenticated" -> LoginStatus.Authenticated
+            "authenticated" -> LoginStatus.LoginSubmitted // Keep the existing persisted value compatible.
             "session" -> LoginStatus.SessionSaved
             "required" -> LoginStatus.Required
             else -> LoginStatus.LoggedOut

@@ -90,7 +90,9 @@ internal class RuleWebBookDataSource(override val id: Identifier, private val so
     catch (cancelled: CancellationException) { throw cancelled }
     catch (error: SourceContentException) { Err(WebRequestError("Source request failed", error.message.orEmpty(), error,
         when (error.code) {
-            ContentError.LoginRequired, ContentError.BrowserRequired -> WebRequestErrorKind.AuthenticationRequired
+            ContentError.LoginRequired -> WebRequestErrorKind.AuthenticationRequired
+            ContentError.BrowserRequired -> if (error.verification?.kind == hnovel.network.BrowserChallengeKind.Login)
+                WebRequestErrorKind.AuthenticationRequired else WebRequestErrorKind.VerificationRequired
             ContentError.Unavailable -> WebRequestErrorKind.SourceUnavailable
             else -> WebRequestErrorKind.Other
         })) }

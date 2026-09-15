@@ -13,6 +13,12 @@
     <string name="sources_login_definition_error">The source login declaration is invalid at %1$s. Review the source definition.</string>
     <string name="sources_account_unavailable">Account actions unavailable</string>
     <string name="sources_session_saved">Session saved</string>
+    <string name="sources_verification_section">Website verification</string>
+    <string name="sources_verification_required">Website verification required</string>
+    <string name="sources_verification_incomplete">Website verification incomplete. Retry from the source.</string>
+    <string name="sources_login_continue">Continue sign-in</string>
+    <string name="source_login_background">%1$s needs sign-in. Background reading stopped.</string>
+    <string name="source_login_download_paused">Stopped: sign-in required</string>
     <string name="sources_edit_variable">Edit source variable</string>
     <string name="sources_variable">Source variable</string>
     <string name="sources_bypass_vpn">Bypass VPN</string>
@@ -58,9 +64,9 @@
     <string name="sources_delete_help">Remove this source from online reading. Saved books, progress and readable offline content remain; other sources are unaffected.</string>
     <string name="sources_login">Sign in</string>
     <string name="sources_logout">Sign out</string>
-    <string name="sources_logged_in">Signed in</string>
+    <string name="sources_login_submitted">Sign-in submitted</string>
     <string name="sources_logged_out">Signed out</string>
-    <string name="sources_login_required">Sign in again to continue using this source.</string>
+    <string name="sources_login_required">Sign-in required</string>
     <string name="sources_browser_login">Continue to the source login page. Finish login to return, or cancel to discard this attempt.</string>
     <string name="sources_new">Add as a new source</string>
     <string name="sources_replace">Update existing source</string>
@@ -80,7 +86,7 @@
     <string name="sources_import_problem">%1$s · %2$s</string>
     <string name="sources_import_invalid">Some entries cannot be imported. Review the preview before selecting valid entries.</string>
     <string name="sources_action_failed">The action failed. Check the input and permissions, then retry.</string>
-    <string name="sources_rule_failed">The source rule could not run. Review its definition or sign in again.</string>
+    <string name="sources_rule_failed">The source rule could not run. Review its definition.</string>
     <string name="sources_permission_denied">A required site has not been authorized.</string>
     <string name="sources_address_denied">This site points to a local or reserved address. Check the source address.</string>
     <string name="sources_dns_failed">The site name could not be resolved. Check your connection, DNS and source address, then retry.</string>

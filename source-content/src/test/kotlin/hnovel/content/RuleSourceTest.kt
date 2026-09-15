@@ -95,6 +95,39 @@ class RuleSourceTest {
         } }
     }
 
+    @Test fun verificationSavesOnlyTheSessionAndFailuresKeepThePreviousLoginFact() = runBlocking {
+        lateinit var session: SourceSession
+        var response: BrokerResult? = null
+        var cancel = false
+        val browser = BrowserExecutor { current, request, options, _, _ ->
+            session = current
+            if (!options.interactive) BrokerResult.Failure(RequestStage.Response, hnovel.network.FailureCode.BrowserRequired,
+                challenge = BrowserChallengeKind.Login, verificationRequest = request)
+            else if (cancel) throw CancellationException("Fixture cancelled")
+            else response ?: BrokerResult.Success(BrokerResponse(0, request.url, emptyMap(), "ready".toByteArray(), "UTF-8", 0,
+                kind = ResponseKind.BrowserDocument))
+        }
+        RuleSourceFixture(browser).use { fixture -> fixture.source(customize = { raw -> JsonObject(raw +
+            ("browserRead" to JsonPrimitive(true))) }).use { source ->
+            val failure = runCatching { source.search("fixture") }.exceptionOrNull() as SourceContentException
+            val status = StorageRequest(StorageArea.Account, "login/status")
+            session.write(status.copy(value = "authenticated"))
+            for (result in listOf(BrokerResult.Failure(RequestStage.Connect, hnovel.network.FailureCode.Dns),
+                BrokerResult.Failure(RequestStage.Permission, hnovel.network.FailureCode.OriginDenied),
+                BrokerResult.Success(BrokerResponse(503, fixture.server.url("/").toString(), emptyMap(), byteArrayOf(), "UTF-8", 0)))) {
+                response = result
+                assertTrue(runCatching { failure.verification!!.complete() }.isFailure)
+                assertEquals(StorageResult.Value("authenticated"), session.read(status))
+            }
+            cancel = true
+            assertTrue(runCatching { failure.verification!!.complete() }.exceptionOrNull() is CancellationException)
+            assertEquals(StorageResult.Value("authenticated"), session.read(status))
+            cancel = false; response = null
+            failure.verification!!.complete()
+            assertEquals(StorageResult.Value("session"), session.read(status))
+        } }
+    }
+
     @Test fun scriptNetworkChallengeRetainsItsHostOwnedVerificationAction() = runBlocking {
         val opened = mutableListOf<String>()
         val browser = BrowserExecutor { _, request, options, _, _ ->

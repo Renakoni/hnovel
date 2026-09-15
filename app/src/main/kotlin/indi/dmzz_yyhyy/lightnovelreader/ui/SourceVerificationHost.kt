@@ -12,6 +12,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.data.web.rules.SourceVerificationCoordinator
+import indi.dmzz_yyhyy.lightnovelreader.data.web.sourceFailureMessage
+import hnovel.content.SourceContentException
+import hnovel.network.BrowserChallengeKind
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
@@ -23,23 +26,26 @@ fun SourceVerificationHost(coordinator: SourceVerificationCoordinator) {
     val foreground = prompts.firstOrNull { it.foreground }
     val background = prompts.firstOrNull { !it.foreground }
     val scope = rememberCoroutineScope()
-    var failed by remember { mutableStateOf(false) }
+    var failure by remember { mutableStateOf<Int?>(null) }
     if (foreground == null && background != null && !background.opening) {
         Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.BottomCenter) {
             Snackbar(action = {
                 TextButton(onClick = {
                     scope.launch {
-                        try { failed = false; coordinator.verifyBackground(background.id) }
+                        try { failure = null; coordinator.verifyBackground(background.id) }
                         catch (cancelled: CancellationException) { throw cancelled }
-                        catch (_: Exception) { failed = true }
+                        catch (error: SourceContentException) { failure = sourceFailureMessage(error) }
+                        catch (_: Exception) { failure = R.string.source_verification_failed }
                     }
-                }) { Text(stringResource(R.string.source_verification_background_open)) }
+                }) { Text(stringResource(if (background.kind == BrowserChallengeKind.Login) R.string.sources_login_continue
+                    else R.string.source_verification_background_open)) }
             }, dismissAction = {
                 TextButton(onClick = { coordinator.dismiss(background.id) }) { Text(stringResource(android.R.string.cancel)) }
-            }) { Text(stringResource(R.string.source_verification_background, background.name)) }
+            }) { Text(stringResource(if (background.kind == BrowserChallengeKind.Login) R.string.source_login_background
+                else R.string.source_verification_background, background.name)) }
         }
     }
-    if (failed) AlertDialog(onDismissRequest = { failed = false },
-        text = { Text(stringResource(R.string.source_verification_failed)) },
-        confirmButton = { TextButton(onClick = { failed = false }) { Text(stringResource(android.R.string.ok)) } })
+    failure?.let { message -> AlertDialog(onDismissRequest = { failure = null },
+        text = { Text(stringResource(message)) },
+        confirmButton = { TextButton(onClick = { failure = null }) { Text(stringResource(android.R.string.ok)) } }) }
 }

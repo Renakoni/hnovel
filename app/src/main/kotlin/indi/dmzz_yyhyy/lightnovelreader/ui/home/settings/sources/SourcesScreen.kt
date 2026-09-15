@@ -34,6 +34,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.web.SourceCapability
 import indi.dmzz_yyhyy.lightnovelreader.data.web.SourceListing
 import indi.dmzz_yyhyy.lightnovelreader.data.web.SourceStatus
 import indi.dmzz_yyhyy.lightnovelreader.data.web.rules.ImportedRuleSources
+import indi.dmzz_yyhyy.lightnovelreader.data.web.rules.LoginStatus
 import indi.dmzz_yyhyy.lightnovelreader.data.web.zlibrary.ZLibrarySources
 import io.nightfish.lightnovelreader.api.Route
 import io.nightfish.lightnovelreader.api.identifier.Identifier
@@ -148,15 +149,20 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                             SectionHeader(text = stringResource(R.string.sources_network_section))
                             SourceNetworkSection(it, state.busy, model::setBypassVpn)
                         }
-                        if (settings.loginDeclared || settings.loginErrorField != null) {
-                            SectionHeader(text = stringResource(R.string.sources_account_section))
+                        val savedAccount = state.storedSettingsAvailable && state.loginStatus != LoginStatus.LoggedOut
+                        if (settings.loginDeclared || settings.loginErrorField != null || savedAccount || state.verification != null) {
+                            SectionHeader(text = stringResource(if (settings.loginDeclared || settings.loginErrorField != null || savedAccount)
+                                R.string.sources_account_section else R.string.sources_verification_section))
                             if (settings.loginErrorField != null) {
                                 Text(stringResource(R.string.sources_login_definition_error, settings.loginErrorField), color = MaterialTheme.colorScheme.error)
-                            } else {
+                            }
+                            if (settings.loginErrorField == null || savedAccount || state.verification != null) {
                                 SourceAccountSection(state.loginStatus.takeIf { state.storedSettingsAvailable }, state.accountName,
-                                    SourceCapability.Login in capabilities, state.busy,
+                                    entry?.status in setOf(SourceStatus.Registered, SourceStatus.Ready),
+                                    settings.loginErrorField == null && settings.loginDeclared && SourceCapability.Login in capabilities,
+                                    state.busy, state.verification,
                                     onLogin = { model.beginLogin(state.selected!!) }, onLogout = { model.logout(state.selected!!) },
-                                    onRetry = { model.select(state.selected) })
+                                    onRetry = { model.select(state.selected) }, onVerify = model::verifyPending)
                             }
                         }
                         if (settings.variableDescription.isNotBlank()) {

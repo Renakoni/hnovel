@@ -163,7 +163,7 @@ class SourceLoginServiceTest {
                 login.submit(attemptA, mapOf("user" to "alice", "password" to "alice-secret"))
                 login.submit(attemptB, mapOf("user" to "bob", "password" to "bob-secret"))
                 for (id in listOf(a, b)) {
-                    assertEquals(LoginStatus.Authenticated, login.status(id))
+                    assertEquals(LoginStatus.LoginSubmitted, login.status(id))
                     assertTrue((registry.resolve(id) as SourceResolution.Ready).runtime.getBookInformation(fixture.server.url("/book/one").toString()).isOk)
                 }
                 assertEquals("sid=alice", seen["A"])
@@ -177,7 +177,7 @@ class SourceLoginServiceTest {
                 login.logout(a)
                 assertTrue(old.session.closed)
                 assertEquals(LoginStatus.LoggedOut, login.status(a))
-                assertEquals(LoginStatus.Authenticated, login.status(b))
+                assertEquals(LoginStatus.LoginSubmitted, login.status(b))
                 val fresh = sources.loginTarget(a).session
                 assertEquals(StorageResult.Value(null), fresh.read(StorageRequest(StorageArea.Account, StorageRequestKey.LOGIN_INFO)))
                 assertEquals(StorageResult.Value("note-alice"), fresh.read(StorageRequest(StorageArea.Config, "value:saved")))

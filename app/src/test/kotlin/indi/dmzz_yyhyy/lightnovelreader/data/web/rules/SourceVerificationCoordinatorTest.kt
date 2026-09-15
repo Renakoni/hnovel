@@ -151,4 +151,19 @@ class SourceVerificationCoordinatorTest {
         assertTrue(coordinator.prompts.value.isEmpty())
         coVerify(exactly = 0) { verification.complete() }
     }
+
+    @Test fun replacedRevisionAndDisabledSourcesCannotOpenBackgroundTickets() = runTest {
+        val original = listings.value
+        for (retired in listOf(original.map { it.copy(metadata = it.metadata.copy(revision = "replaced")) },
+            original.map { it.copy(status = SourceStatus.Failed) }, emptyList())) {
+            listings.value = original
+            assertSame(failure, runCatching { coordinator.execute(owner, "Fixture") { throw failure } }.exceptionOrNull())
+            val ticket = coordinator.prompts.value.single()
+            listings.value = retired
+            val rejected = runCatching { coordinator.verifyBackground(ticket.id) }.exceptionOrNull() as SourceContentException
+            assertEquals(ContentError.Unavailable, rejected.code)
+            assertTrue(coordinator.prompts.value.isEmpty())
+        }
+        coVerify(exactly = 0) { verification.complete() }
+    }
 }

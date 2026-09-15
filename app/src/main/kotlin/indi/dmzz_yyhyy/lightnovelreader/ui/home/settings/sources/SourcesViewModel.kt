@@ -33,9 +33,15 @@ data class SourceManagementState(val installed: List<InstalledRuleSource> = empt
     val loginStatus: LoginStatus = LoginStatus.LoggedOut, val variable: String = "",
     val zLibrary: ZLibraryState = ZLibraryState(), val checks: Map<String, SourceCheckSummary> = emptyMap(),
     val network: SourceNetworkState? = null, val storedSettingsAvailable: Boolean = false,
-    val accountName: String? = null) {
+    val accountName: String? = null, val verifications: List<VerificationPrompt> = emptyList()) {
     val ruleSettings = installed.find { ImportedRuleSources.id(it.definition) == selected }
         ?.let { RuleSettingsPresentation.read(it.definition) }
+    val verification get() = verifications.firstOrNull { prompt ->
+        !prompt.foreground && prompt.owner.source == selected && registry.any {
+            it.metadata.id == prompt.owner.source && it.metadata.revision == prompt.owner.revision &&
+                it.metadata.accountGeneration == prompt.owner.generation && it.status == SourceStatus.Ready
+        }
+    }
 }
 
 data class SourceNetworkState(val bypassVpn: Boolean = false, val limitation: Int? = null)
@@ -46,7 +52,8 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
     private val sources: ImportedRuleSources, private val updates: SourceRevisionUpdates,
     private val login: SourceLoginService, private val registry: WebSourceRegistry,
     private val zLibrary: ZLibrarySources, private val checkHistory: SourceCheckHistory = SourceCheckHistory(context),
-    private val networkSettings: SourceNetworkSettings = SourceNetworkSettings(context, AndroidSourceNetworks(context))) : ViewModel() {
+    private val networkSettings: SourceNetworkSettings = SourceNetworkSettings(context, AndroidSourceNetworks(context)),
+    private val verification: SourceVerificationCoordinator = SourceVerificationCoordinator(registry)) : ViewModel() {
     private val mutable = MutableStateFlow(SourceManagementState())
     val state = mutable.asStateFlow()
     private var operation: Job? = null
@@ -57,6 +64,14 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
 
     init {
         viewModelScope.launch { registry.sources.collect { list -> mutable.update { it.copy(registry = list) } } }
+        viewModelScope.launch { verification.prompts.collect { prompts ->
+            val previous = state.value.verifications
+            mutable.update { it.copy(verifications = prompts) }
+            val selected = state.value.selected
+            // Verification can finish through the global notice while this settings page remains open.
+            if (selected != null && previous.any { old -> old.owner.source == selected && prompts.none { it.id == old.id } })
+                refreshStoredSettings(selected)
+        } }
         viewModelScope.launch { zLibrary.state.collect { state -> mutable.update { it.copy(zLibrary = state) } } }
         viewModelScope.launch {
             checkHistory.restore()
@@ -78,17 +93,7 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
                     RevisionError.PermissionRequired -> R.string.sources_permission_denied
                     else -> R.string.sources_revision_failed
                 }
-                is SourceContentException -> when (failure.code) {
-                    hnovel.content.ContentError.LoginRequired, hnovel.content.ContentError.BrowserRequired -> R.string.sources_login_required
-                    hnovel.content.ContentError.PermissionDenied -> R.string.sources_permission_denied
-                    hnovel.content.ContentError.AddressDenied -> R.string.sources_address_denied
-                    hnovel.content.ContentError.Dns -> R.string.sources_dns_failed
-                    hnovel.content.ContentError.RouteUnavailable -> R.string.sources_route_unavailable
-                    hnovel.content.ContentError.RouteUnsupported -> R.string.sources_network_native
-                    hnovel.content.ContentError.Network -> R.string.discovery_network
-                    hnovel.content.ContentError.UnsupportedDependency -> R.string.sources_dependency_unavailable
-                    else -> R.string.sources_rule_failed
-                }
+                is SourceContentException -> sourceFailureMessage(failure)
                 else -> R.string.sources_action_failed
             }) } }
             finally { if (generation == operationGeneration) mutable.update { it.copy(busy = false) } }
@@ -331,6 +336,12 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
         }
     }
     fun logout(id: Identifier) = launch { login.logout(id); refreshStoredSettings(id) }
+    fun verifyPending() = launch {
+        val prompt = state.value.verification ?: return@launch
+        // The coordinator owns the original request and account. Opening verification is not a new login attempt.
+        try { verification.verifyBackground(prompt.id) }
+        finally { withContext(NonCancellable) { refreshStoredSettings(prompt.owner.source) } }
+    }
     fun cancelLogin() {
         operation?.cancel()
         val generation = ++operationGeneration
