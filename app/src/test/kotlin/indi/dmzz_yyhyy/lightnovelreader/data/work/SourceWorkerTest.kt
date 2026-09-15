@@ -79,14 +79,15 @@ class SourceWorkerTest {
         assertTrue(items.all { it.progress == 1f })
     }
 
-    @Test fun missingSourceAndLoginRequiredAreTerminalFailuresWithSafeRecoverableReasons() = runTest {
+    @Test fun missingSourceLoginAndVerificationAreDistinctTerminalFailures() = runTest {
         val context = RuntimeEnvironment.getApplication()
         val repository = mockk<BookRepository>()
         every { repository.getBookInformationFlow(any<String>(), any()) } returns kotlinx.coroutines.flow.emptyFlow()
         val items = mutableListOf<DownloadItem>()
         val progress = mockk<DownloadProgressRepository> { every { addExportItem(capture(items)) } just Runs }
         for ((kind, reason) in listOf(WebRequestErrorKind.SourceUnavailable to "source_unavailable",
-            WebRequestErrorKind.AuthenticationRequired to "authentication_required")) {
+            WebRequestErrorKind.AuthenticationRequired to "authentication_required",
+            WebRequestErrorKind.VerificationRequired to "verification_required")) {
             every { repository.getBookVolumesFlow(a.storageKey, any()) } returns kotlinx.coroutines.flow.flowOf(
                 Err(WebRequestError("Sign in", "Do not persist this private detail", kind = kind)))
             val worker = CacheBookWork(context, workerParameters(workDataOf("bookId" to a.storageKey)), mockk(), progress, repository, mockk(relaxed = true))
@@ -94,6 +95,7 @@ class SourceWorkerTest {
             assertEquals(reason, result.outputData.getString("reason"))
             assertEquals(a.storageKey, result.outputData.getString("bookId"))
             assertFalse(result.outputData.toString().contains("private detail"))
+            assertEquals(kind, items.last().sourceError)
         }
         assertTrue(items.all { it.progress == -1f })
     }

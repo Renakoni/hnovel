@@ -243,7 +243,7 @@ class SourcesViewModelTest {
                 idle()
                 assertEquals(generation, accounts.current(id).generation)
                 model.submitLogin(mapOf("user" to "reader"))
-                assertEquals(LoginStatus.Authenticated, idle().loginStatus)
+                assertEquals(LoginStatus.LoginSubmitted, idle().loginStatus)
                 assertEquals("reader", idle().accountName)
                 assertNull(idle().loginForm)
                 model.select(null); idle()
@@ -252,7 +252,7 @@ class SourcesViewModelTest {
                 assertEquals(generation, accounts.current(id).generation)
                 model.setEnabled(id, false)
                 assertEquals("reader", idle().accountName)
-                assertEquals(LoginStatus.Authenticated, idle().loginStatus)
+                assertEquals(LoginStatus.LoginSubmitted, idle().loginStatus)
                 model.setEnabled(id, true); idle()
                 model.logout(id)
                 assertEquals(LoginStatus.LoggedOut, idle().loginStatus)
@@ -373,6 +373,82 @@ class SourcesViewModelTest {
                 assertEquals(LoginStatus.Required, idle().loginStatus)
                 assertNull(idle().accountName)
                 assertTrue(idle().storedSettingsAvailable)
+                assertEquals(0, fixture.server.requestCount)
+            } finally { model.cancel(); sources.stop(); root.deleteRecursively(); Dispatchers.resetMain() }
+        }
+    }
+
+    @Test fun websiteVerificationUsesItsSavedAccountWithoutALoginDeclaration(): Unit = runBlocking {
+        Dispatchers.setMain(Dispatchers.Unconfined)
+        val root = Files.createTempDirectory("settings-verification").toFile()
+        val context = object : ContextWrapper(RuntimeEnvironment.getApplication()) { override fun getFilesDir() = root }
+        RuleSourceFixture().use { fixture ->
+            val registry = WebSourceRegistry(fixture.authority)
+            val accounts = SourceSessionManager(fixture.authority)
+            val coordinator = SourceVerificationCoordinator(registry)
+            var failureCode: hnovel.network.FailureCode? = hnovel.network.FailureCode.Dns
+            var waitForCancellation = false
+            var interactiveCalls = 0
+            val opened = CompletableDeferred<Unit>()
+            val browser = hnovel.network.BrowserExecutor { _, request, options, _, _ ->
+                if (!options.interactive) hnovel.network.BrokerResult.Failure(hnovel.network.RequestStage.Response,
+                    hnovel.network.FailureCode.BrowserRequired, challenge = hnovel.network.BrowserChallengeKind.SiteVerification,
+                    verificationRequest = request)
+                else {
+                    interactiveCalls++
+                    if (waitForCancellation) { opened.complete(Unit); awaitCancellation() }
+                    failureCode?.let { hnovel.network.BrokerResult.Failure(hnovel.network.RequestStage.Connect, it) }
+                        ?: hnovel.network.BrokerResult.Success(hnovel.network.BrokerResponse(0, request.url, emptyMap(),
+                            "ready".toByteArray(), "UTF-8", 0, kind = hnovel.network.ResponseKind.BrowserDocument))
+                }
+            }
+            val sources = ImportedRuleSources(context, registry, fixture.authority, accounts, fixture.runner,
+                browser = browser, verification = coordinator)
+            val raw = JsonObject(fixture.raw() + ("browserRead" to JsonPrimitive(true)))
+            val committed = sources.importer.commit(sources.importer.preview(raw.toString()), listOf(ImportSelection(0, ImportDecision.Add)))
+            val id = sources.activate(committed.items.single().reference!!, listOf(NetworkGrant(fixture.server.url("/").toString(), true)))
+            val target = sources.loginTarget(id)
+            target.session.write(StorageRequest(StorageArea.Account, "login/status", "authenticated"))
+            val runtime = (registry.resolve(id) as SourceResolution.Ready).runtime
+            val model = SourcesViewModel(context, sources, SourceRevisionUpdates(context, sources, accounts, fixture.runner, fixture.authority),
+                SourceLoginService(sources, accounts), registry, ZLibrarySources(context, registry, hnovel.network.StorageCipher.Plain),
+                verification = coordinator)
+            suspend fun idle() = withTimeout(10000) { model.state.first { !it.busy } }
+            suspend fun challenge() {
+                assertTrue(runtime.getBookInformation(fixture.server.url("/book/one").toString()).isErr)
+                withTimeout(10000) { model.state.first { it.verification != null } }
+                assertEquals(target.generation, model.state.value.verification!!.owner.generation)
+            }
+            try {
+                idle(); model.select(id); idle()
+                assertFalse(model.state.value.ruleSettings!!.loginDeclared)
+                challenge()
+                model.verifyPending()
+                assertEquals(indi.dmzz_yyhyy.lightnovelreader.R.string.sources_dns_failed, idle().message)
+                assertEquals(LoginStatus.LoginSubmitted, idle().loginStatus)
+                assertEquals(target.generation, accounts.current(id).generation)
+                assertNull(idle().loginForm)
+                failureCode = null
+                challenge()
+                // Completing through the global host also refreshes an already-open settings page.
+                coordinator.verifyBackground(coordinator.prompts.value.single().id)
+                withTimeout(10000) { model.state.first { it.loginStatus == LoginStatus.SessionSaved } }
+                assertEquals(target.generation, accounts.current(id).generation)
+                waitForCancellation = true
+                challenge(); model.verifyPending()
+                withTimeout(10000) { opened.await() }
+                model.cancel()
+                assertEquals(LoginStatus.SessionSaved, idle().loginStatus)
+                assertTrue(coordinator.prompts.value.isEmpty())
+                assertEquals(target.generation, accounts.current(id).generation)
+                challenge()
+                val retired = coordinator.prompts.value.single()
+                sources.rotateAccount(id)
+                withTimeout(10000) { model.state.first { it.verification == null } }
+                model.verifyPending(); idle()
+                assertEquals(3, interactiveCalls)
+                assertTrue(runCatching { coordinator.verifyBackground(retired.id) }.isFailure)
+                assertEquals(3, interactiveCalls)
                 assertEquals(0, fixture.server.requestCount)
             } finally { model.cancel(); sources.stop(); root.deleteRecursively(); Dispatchers.resetMain() }
         }

@@ -8,6 +8,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import io.mockk.mockk
+import io.mockk.every
+import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.verify
 import hnovel.imports.ImportOrigin
 import hnovel.imports.SourceDefinition
@@ -426,6 +429,63 @@ class SourcesScreenTest {
         verify(exactly = 0) { model.beginLogin(any()) }
     }
 
+    @Test fun websiteVerificationNeedsNoLoginFormAndUsesOnlyTheCurrentAccountTicket() {
+        val definition = SourceDefinition("verification", "legado", "fixture", "https://fixture.invalid/", "Verification source", true,
+            false, ImportOrigin(ImportOrigin.Kind.Paste), "digest", 1, "{}")
+        val id = ImportedRuleSources.id(definition)
+        val owner = indi.dmzz_yyhyy.lightnovelreader.data.web.rules.VerificationOwner(id, "digest", 2)
+        val prompt = indi.dmzz_yyhyy.lightnovelreader.data.web.rules.VerificationPrompt("ticket", owner, "Verification source",
+            hnovel.network.BrowserChallengeKind.Cloudflare, foreground = false)
+        var state by mutableStateOf(SourceManagementState(installed = listOf(InstalledRuleSource(definition, emptyList(), null)),
+            selected = id, registry = listOf(SourceListing(SourceMetadata(WebDataSourceItem(id, "Verification source", "fixture"),
+                setOf(SourceCapability.Search), revision = "digest", accountGeneration = 2), SourceStatus.Ready)),
+            storedSettingsAvailable = true, loginStatus = LoginStatus.SessionSaved, verifications = listOf(prompt)))
+        activity.get().setContent { MaterialTheme { SourcesScreen(state, model, onDiagnostics = {}) {} } }
+        compose.onNodeWithText("Website verification required").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Sign in").assertDoesNotExist()
+        compose.onNodeWithText("Open verification").performScrollTo().performClick()
+        verify(exactly = 1) { model.verifyPending() }
+        verify(exactly = 0) { model.beginLogin(any()) }
+        compose.runOnIdle { state = state.copy(verifications = emptyList()) }
+        compose.onNodeWithText("Session saved").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Sign out").performScrollTo().performClick()
+        verify(exactly = 1) { model.logout(id) }
+        compose.onNodeWithText("Sign in again").assertDoesNotExist()
+        compose.runOnIdle { state = state.copy(verifications = listOf(prompt.copy(opening = true))) }
+        compose.onNodeWithText("Open verification").assertIsNotEnabled()
+        compose.runOnIdle { state = state.copy(verifications = listOf(prompt.copy(kind = hnovel.network.BrowserChallengeKind.Login))) }
+        compose.onNodeWithText("Sign-in required").assertExists()
+        compose.onNodeWithText("Continue sign-in").performScrollTo().assertIsEnabled()
+        compose.onNodeWithText("Sign in again").assertDoesNotExist()
+        compose.runOnIdle { state = state.copy(registry = state.registry.map {
+            it.copy(metadata = it.metadata.copy(accountGeneration = 3))
+        }) }
+        compose.onNodeWithText("Website verification").assertDoesNotExist()
+        compose.onNodeWithText("Continue sign-in").assertDoesNotExist()
+        compose.runOnIdle { state = state.copy(verifications = listOf(prompt.copy(owner = owner.copy(generation = 3), foreground = true))) }
+        compose.onNodeWithText("Open verification").assertDoesNotExist()
+    }
+
+    @Test fun backgroundLoginNoticeUsesItsTicketAndShowsConnectionFailuresAccurately() {
+        val prompt = indi.dmzz_yyhyy.lightnovelreader.data.web.rules.VerificationPrompt("ticket",
+            indi.dmzz_yyhyy.lightnovelreader.data.web.rules.VerificationOwner(Identifier("rules", "fixture"), "digest", 2),
+            "Fixture", hnovel.network.BrowserChallengeKind.Login, foreground = false)
+        val prompts = kotlinx.coroutines.flow.MutableStateFlow(listOf(prompt))
+        val coordinator = mockk<indi.dmzz_yyhyy.lightnovelreader.data.web.rules.SourceVerificationCoordinator>(relaxed = true) {
+            every { this@mockk.prompts } returns prompts
+            coEvery { verifyBackground("ticket") } coAnswers {
+                prompts.value = emptyList()
+                throw hnovel.content.SourceContentException(hnovel.content.ContentError.Dns, "browser.verification")
+            }
+        }
+        activity.get().setContent { MaterialTheme { indi.dmzz_yyhyy.lightnovelreader.ui.SourceVerificationHost(coordinator) } }
+        compose.onNodeWithText("Fixture needs sign-in. Background reading stopped.").assertIsDisplayed()
+        compose.onNodeWithText("Continue sign-in").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText(activity.get().getString(indi.dmzz_yyhyy.lightnovelreader.R.string.sources_dns_failed)).assertIsDisplayed()
+        coVerify(exactly = 1) { coordinator.verifyBackground("ticket") }
+    }
+
     @Test @Config(qualifiers = "en-rUS-w320dp-h640dp")
     fun accountCardDistinguishesSavedSessionsAndOffersExplicitAccountActions() {
         val definition = SourceDefinition("account", "legado", "fixture", "https://fixture.invalid/", "Account source", true,
@@ -435,9 +495,9 @@ class SourcesScreenTest {
             listOf(hnovel.network.NetworkGrant("https://fixture.invalid/")), null)), selected = id,
             registry = listOf(SourceListing(SourceMetadata(WebDataSourceItem(id, "Account source", "fixture"),
                 setOf(SourceCapability.Login)), SourceStatus.Registered)), storedSettingsAvailable = true,
-            loginStatus = LoginStatus.Authenticated, accountName = "reader"))
+            loginStatus = LoginStatus.LoginSubmitted, accountName = "reader"))
         activity.get().setContent { MaterialTheme { SourcesScreen(state, model, onDiagnostics = {}) {} } }
-        compose.onNodeWithText("Signed in").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Sign-in submitted").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Account: reader").assertExists()
         compose.onNodeWithText("Sign in").assertDoesNotExist()
         compose.onNodeWithText("Sign out").performScrollTo().performClick()
@@ -449,7 +509,7 @@ class SourcesScreenTest {
         compose.onNodeWithText("Sign in again").assertIsNotEnabled()
         compose.runOnIdle { state = state.copy(busy = false, loginStatus = LoginStatus.SessionSaved, accountName = null) }
         compose.onNodeWithText("Session saved").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("Signed in").assertDoesNotExist()
+        compose.onNodeWithText("Sign-in submitted").assertDoesNotExist()
         compose.onNodeWithText("Account: reader").assertDoesNotExist()
         compose.runOnIdle { state = state.copy(loginStatus = LoginStatus.Required) }
         compose.onNodeWithText("Sign-in required").assertExists()
@@ -465,7 +525,7 @@ class SourcesScreenTest {
         compose.onNodeWithText("Sign in").assertDoesNotExist()
         compose.onNodeWithText("Retry").performScrollTo().performClick()
         verify(exactly = 1) { model.select(id) }
-        compose.runOnIdle { state = state.copy(storedSettingsAvailable = true, loginStatus = LoginStatus.Authenticated,
+        compose.runOnIdle { state = state.copy(storedSettingsAvailable = true, loginStatus = LoginStatus.LoginSubmitted,
             accountName = "reader", registry = emptyList()) }
         compose.onNodeWithText("Account: reader").assertExists()
         compose.onNodeWithText("Sign out").assertDoesNotExist()

@@ -14,28 +14,36 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.data.web.rules.LoginStatus
+import indi.dmzz_yyhyy.lightnovelreader.data.web.rules.VerificationPrompt
+import hnovel.network.BrowserChallengeKind
 
 /** Presents the saved status; neither cookies nor account labels establish authentication. */
 @Composable
-internal fun SourceAccountSection(status: LoginStatus?, accountName: String?, available: Boolean, busy: Boolean,
-    onLogin: () -> Unit, onLogout: () -> Unit, onRetry: () -> Unit) {
-    val hasSession = status == LoginStatus.Authenticated || status == LoginStatus.SessionSaved
-    val title = when (status) {
-        LoginStatus.Authenticated -> R.string.sources_logged_in
-        LoginStatus.SessionSaved -> R.string.sources_session_saved
-        LoginStatus.Required -> R.string.sources_account_required
-        LoginStatus.LoggedOut -> R.string.sources_logged_out
-        null -> if (busy) R.string.sources_account_loading else R.string.sources_account_unknown
+internal fun SourceAccountSection(status: LoginStatus?, accountName: String?, available: Boolean, loginAvailable: Boolean, busy: Boolean,
+    verification: VerificationPrompt?, onLogin: () -> Unit, onLogout: () -> Unit, onRetry: () -> Unit,
+    onVerify: () -> Unit) {
+    val hasSession = status == LoginStatus.LoginSubmitted || status == LoginStatus.SessionSaved
+    val working = busy || verification?.opening == true
+    val title = when {
+        verification?.kind == BrowserChallengeKind.Login -> R.string.sources_login_required
+        verification != null -> R.string.sources_verification_required
+        else -> when (status) {
+            LoginStatus.LoginSubmitted -> R.string.sources_login_submitted
+            LoginStatus.SessionSaved -> R.string.sources_session_saved
+            LoginStatus.Required -> R.string.sources_account_required
+            LoginStatus.LoggedOut -> R.string.sources_logged_out
+            null -> if (busy) R.string.sources_account_loading else R.string.sources_account_unknown
+        }
     }
-    val icon = when (status) {
-        LoginStatus.Authenticated -> R.drawable.check_24px
+    val icon = if (verification != null) R.drawable.info_24px else when (status) {
+        LoginStatus.LoginSubmitted -> R.drawable.check_24px
         LoginStatus.Required -> R.drawable.error_24px
         LoginStatus.SessionSaved, null -> R.drawable.info_24px
         LoginStatus.LoggedOut -> R.drawable.person_edit_24px
     }
     val colors = MaterialTheme.colorScheme
-    val background = when (status) {
-        LoginStatus.Authenticated -> colors.primaryContainer
+    val background = if (verification != null) colors.tertiaryContainer else when (status) {
+        LoginStatus.LoginSubmitted -> colors.primaryContainer
         LoginStatus.SessionSaved -> colors.secondaryContainer
         LoginStatus.Required -> colors.errorContainer
         else -> colors.surfaceContainer
@@ -54,15 +62,25 @@ internal fun SourceAccountSection(status: LoginStatus?, accountName: String?, av
                         style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
-            if (status == null) {
+            if (verification != null) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = onVerify, enabled = !working) {
+                        Text(stringResource(if (verification.kind == BrowserChallengeKind.Login) R.string.sources_login_continue
+                            else R.string.source_verification_background_open))
+                    }
+                    if (hasSession && available) OutlinedButton(onClick = onLogout, enabled = !working) {
+                        Text(stringResource(R.string.sources_logout))
+                    }
+                }
+            } else if (status == null) {
                 OutlinedButton(onClick = onRetry, enabled = !busy) { Text(stringResource(R.string.discovery_retry)) }
             } else if (available) {
                 if (hasSession) {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(onClick = onLogout, enabled = !busy) { Text(stringResource(R.string.sources_logout)) }
-                        TextButton(onClick = onLogin, enabled = !busy) { Text(stringResource(R.string.sources_login_again)) }
+                        if (loginAvailable) TextButton(onClick = onLogin, enabled = !busy) { Text(stringResource(R.string.sources_login_again)) }
                     }
-                } else {
+                } else if (loginAvailable) {
                     Button(onClick = onLogin, enabled = !busy) {
                         Text(stringResource(if (status == LoginStatus.Required) R.string.sources_login_again else R.string.sources_login))
                     }

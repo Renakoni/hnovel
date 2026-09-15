@@ -599,8 +599,12 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
                     RequestCommitGuard { authority.authorized(identity, it) })
                 if (result is BrokerResult.Failure)
                     throw SourceContentException(result.code.contentError(), "browser.verification", result.denial)
+                if (result is BrokerResult.Success)
+                    checkStatus(result.response.status, "browser.verification", result.response.kind == ResponseKind.BrowserDocument)
                 // A newer failed request must retain its own fallback target.
                 authority.authorized(identity) {
+                    // Completing a website flow preserves a session, not a universal authentication verdict.
+                    check(session.write(StorageRequest(StorageArea.Account, "login/status", "session")) is StorageResult.Value)
                     val key = StorageRequest(StorageArea.Account, StorageRequestKey.BROWSER_PENDING_URL)
                     if ((session.read(key) as? StorageResult.Value)?.value == request.url) session.write(key)
                 }

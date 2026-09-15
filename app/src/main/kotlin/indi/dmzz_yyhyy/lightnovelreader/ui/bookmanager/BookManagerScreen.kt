@@ -468,7 +468,10 @@ private fun Card(
                     Box(Modifier.width(10.dp))
                     Text(
                         text =
-                            if (downloadItem.requiresVerification) stringResource(R.string.source_verification_download_paused)
+                            if (downloadItem.sourceError == io.nightfish.lightnovelreader.api.error.WebRequestErrorKind.AuthenticationRequired)
+                                stringResource(R.string.source_login_download_paused)
+                            else if (downloadItem.sourceError == io.nightfish.lightnovelreader.api.error.WebRequestErrorKind.VerificationRequired)
+                                stringResource(R.string.source_verification_download_paused)
                             else if (downloadItem.progress >= 0 && downloadItem.progress < 1)
                                 stringResource(R.string.download_item_progress,
                                     formTime(downloadItem.startTime),
