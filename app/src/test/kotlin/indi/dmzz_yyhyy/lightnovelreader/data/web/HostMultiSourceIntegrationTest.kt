@@ -14,6 +14,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.bookshelf.BookshelfRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.content.ContentComponentRegistry
 import indi.dmzz_yyhyy.lightnovelreader.data.content.ContentJsonDecoder
 import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadProgressRepository
+import indi.dmzz_yyhyy.lightnovelreader.data.download.BookDownloadStore
 import indi.dmzz_yyhyy.lightnovelreader.data.explore.ExploreRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.local.LocalBookDataSource
 import indi.dmzz_yyhyy.lightnovelreader.data.local.LocalDataManager
@@ -75,6 +76,7 @@ class HostMultiSourceIntegrationTest {
     private lateinit var stats: StatsRepository
     private lateinit var backup: LocalDataManager
     private lateinit var progress: DownloadProgressRepository
+    private lateinit var downloads: BookDownloadStore
     private lateinit var workManager: WorkManager
     private val decoder = ContentJsonDecoder(ContentComponentRegistry())
     private val a = SourceBookId(Identifier("fixture", "a"), "123")
@@ -84,7 +86,7 @@ class HostMultiSourceIntegrationTest {
         val factory = object : WorkerFactory() {
             override fun createWorker(appContext: Context, workerClassName: String, workerParameters: WorkerParameters): ListenableWorker? =
                 when (workerClassName) {
-                    CacheBookWork::class.java.name -> CacheBookWork(appContext, workerParameters, local, progress, books, decoder)
+                    CacheBookWork::class.java.name -> CacheBookWork(appContext, workerParameters, progress, books, downloads)
                     ExportBookToEPUBWork::class.java.name -> ExportBookToEPUBWork(appContext, workerParameters, books, progress, decoder)
                     CheckUpdateWork::class.java.name -> CheckUpdateWork(appContext, workerParameters, books, shelves)
                     else -> null
@@ -99,19 +101,20 @@ class HostMultiSourceIntegrationTest {
         db = Room.databaseBuilder(context, LightNovelReaderDatabase::class.java,
             directory.root.resolve("library.db").absolutePath).allowMainThreadQueries().build()
         manager = WebBookDataSourceManager(WebSourceRegistry())
+        downloads = BookDownloadStore(context, db, decoder)
         local = LocalBookDataSource(db.bookInformationDao(), db.bookVolumesDao(), db.chapterContentDao(), db.userReadingDataDao())
-        shelves = BookshelfRepository(db.bookshelfDao(), workManager, manager.registry)
+        shelves = BookshelfRepository(db.bookshelfDao(), workManager, manager.registry, downloads)
         // Disable optional display transformations; storage and content decoding use production adapters.
         val text = TextProcessingRepository(mockk { every { enabled } returns false },
             mockk { every { enabled } returns false }, ContentComponentRegistry())
         books = BookRepository(local, shelves, text, workManager, ChapterRepository(manager.registry, local, text),
-            BookReadingDataRepository(local), manager.registry)
+            BookReadingDataRepository(local), manager.registry, downloads)
         val coordinator = StatisticsWriteCoordinator()
         stats = StatsRepository(db.bookRecordDao(), db.dailyCountDao(), books, coordinator)
         backup = LocalDataManager(db, db.bookInformationDao(), db.bookRecordDao(), db.dailyCountDao(), db.bookshelfDao(),
             db.chapterContentDao(), db.bookVolumesDao(), db.formattingRuleDao(), db.userReadingDataDao(), db.userDataDao(),
-            mockk(relaxed = true), coordinator, stats)
-        progress = DownloadProgressRepository(db.userDataDao(), books)
+            mockk(relaxed = true), coordinator, stats, downloads)
+        progress = DownloadProgressRepository(db.userDataDao(), books, downloads)
     }
 
     @After fun close() = runBlocking {

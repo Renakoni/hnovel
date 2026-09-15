@@ -13,6 +13,10 @@ import com.github.michaelbull.result.Err
 import com.github.michaelbull.result.Ok
 import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.data.book.SourceBookId
+import indi.dmzz_yyhyy.lightnovelreader.data.download.BookDownloadState
+import indi.dmzz_yyhyy.lightnovelreader.data.download.BookDownloadPhase
+import indi.dmzz_yyhyy.lightnovelreader.data.download.MutableDownloadItem
+import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadType
 import indi.dmzz_yyhyy.lightnovelreader.data.web.zlibrary.ZLibrarySources
 import indi.dmzz_yyhyy.lightnovelreader.utils.LocalClaimSnackbarHost
 import indi.dmzz_yyhyy.lightnovelreader.utils.LocalSnackbarHost
@@ -45,11 +49,11 @@ class MetadataDetailScreenTest {
         activity.setup()
     }
     @After fun destroy() { activity.pause().stop().destroy() }
-    private fun show(state: MutableDetailUiState, retry: () -> Unit = {}, bookmark: (String) -> Unit = {}) {
+    private fun show(state: MutableDetailUiState, retry: () -> Unit = {}, bookmark: (String) -> Unit = {}, cache: (String) -> Unit = {}) {
         activity.get().setContent {
             CompositionLocalProvider(LocalNavController provides NavHostController(activity.get()),
                 LocalSnackbarHost provides SnackbarHostState(), LocalClaimSnackbarHost provides {}) {
-                MaterialTheme { DetailScreen(state, {}, {}, {}, {}, {}, bookmark, {}, {}, {}, retry) }
+                MaterialTheme { DetailScreen(state, {}, {}, {}, {}, cache, bookmark, {}, {}, {}, retry) }
             }
         }
     }
@@ -85,5 +89,40 @@ class MetadataDetailScreenTest {
         compose.onNodeWithText("Invalid response").assertIsDisplayed()
         compose.onNodeWithText(activity.get().getString(R.string.discovery_retry)).performClick()
         assertEquals(1, retries)
+    }
+
+    @Test fun completedDownloadsCanUpdateAndFailuresCanRetryWithoutNegativeProgress() {
+        val key = SourceBookId(io.nightfish.lightnovelreader.api.identifier.Identifier("fixture", "a"), "book").storageKey
+        val state = MutableDetailUiState().apply {
+            bookInformation = Ok(BookInformation(key, "Book", author = "Author", description = "",
+                publishingHouse = "", wordCount = WordCount(1), lastUpdated = LocalDateTime.of(2026, 9, 15, 0, 0), isComplete = false))
+            canCache = true
+            downloadState = BookDownloadState(BookDownloadPhase.Complete, 3, 3)
+        }
+        var requests = 0
+        show(state, cache = { assertEquals(key, it); requests++ })
+        val update = activity.get().getString(R.string.book_download_check_updates)
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(update))
+        compose.onNodeWithText(update).assertIsEnabled().performClick()
+        assertEquals(1, requests)
+        compose.runOnIdle {
+            state.downloadState = BookDownloadState(BookDownloadPhase.Updating, 1, 3)
+            state.downloadItem = MutableDownloadItem(DownloadType.CACHE, key, kotlinx.coroutines.flow.emptyFlow()).apply { progress = 0.5f }
+        }
+        compose.onNodeWithText(activity.get().getString(R.string.book_download_updating)).assertIsNotEnabled()
+        compose.onNodeWithText("50%").assertExists()
+        compose.runOnIdle {
+            state.downloadState = BookDownloadState(BookDownloadPhase.Failed, 1, 3)
+            (state.downloadItem as MutableDownloadItem).progress = -1f
+        }
+        compose.onNodeWithText(activity.get().getString(R.string.book_download_retry)).assertIsEnabled().performClick()
+        compose.onNodeWithText("-100%").assertDoesNotExist()
+        assertEquals(2, requests)
+        compose.runOnIdle {
+            state.downloadState = BookDownloadState(BookDownloadPhase.Complete, 3, 3)
+            state.canCache = false
+        }
+        compose.onNodeWithText(activity.get().getString(R.string.cached)).assertIsNotEnabled()
+        compose.onNodeWithText(update).assertDoesNotExist()
     }
 }

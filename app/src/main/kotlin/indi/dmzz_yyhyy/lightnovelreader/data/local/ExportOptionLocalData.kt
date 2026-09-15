@@ -1,6 +1,9 @@
 package indi.dmzz_yyhyy.lightnovelreader.data.local
 
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.BookInformationDao
+import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.BookDownloadDao
+import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.BookDownloadEntity
+import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.DownloadedChapterEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.BookRecordDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.BookVolumesDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.BookshelfDao
@@ -23,6 +26,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.VolumeEntity
 
 class ExportOptionLocalData(
     private val bookBookInformationDao: BookInformationDao,
+    private val bookDownloadDao: BookDownloadDao,
     private val bookRecordDao: BookRecordDao,
     private val dailyCountDao: DailyCountDao,
     private val bookshelfDao: BookshelfDao,
@@ -39,6 +43,8 @@ class ExportOptionLocalData(
     }
     
     val bookInformationEntities = mutableListOf<BookInformationEntity>()
+    val bookDownloadEntities = mutableListOf<BookDownloadEntity>()
+    val downloadedChapterEntities = mutableListOf<DownloadedChapterEntity>()
     val bookRecordEntities = mutableListOf<BookRecordEntity>()
     val dailyCountEntities = mutableListOf<DailyCountEntity>()
     val bookshelfEntities = mutableListOf<BookshelfEntity>()
@@ -58,6 +64,8 @@ class ExportOptionLocalData(
             volumeEntities.addAll(bookVolumesDao.getAllVolumeEntities())
             chapterContentEntities.addAll(chapterContentDao.getAllEntities())
             chapterInformationEntities.addAll(bookVolumesDao.getAllChapterInformationEntities())
+            bookDownloadEntities.addAll(bookDownloadDao.getAll().map { it.copy(generation = 0, attempt = "", phase = "partial") })
+            downloadedChapterEntities.addAll(bookDownloadDao.allChapters())
         }
     }.also(options::add)
 

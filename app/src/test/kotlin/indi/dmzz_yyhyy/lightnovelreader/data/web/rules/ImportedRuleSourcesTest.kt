@@ -60,11 +60,13 @@ class ImportedRuleSourcesTest {
             val registry = WebSourceRegistry(fixture.authority)
             val accounts = SourceSessionManager(fixture.authority)
             val service = ImportedRuleSources(context, registry, fixture.authority, accounts, fixture.runner)
+            val db = Room.inMemoryDatabaseBuilder(context, LightNovelReaderDatabase::class.java).allowMainThreadQueries().build()
+            val downloads = indi.dmzz_yyhyy.lightnovelreader.data.download.BookDownloadStore(context, db, ContentJsonDecoder(ContentComponentRegistry()))
             val cache = coil3.disk.DiskCache.Builder().directory(okio.Path.Companion.run {
                 File(context.filesDir, "images").path.toPath()
             }).maxSizeBytes(1024 * 1024).build()
             val loader = coil3.ImageLoader.Builder(context).diskCache(cache).components {
-                add(indi.dmzz_yyhyy.lightnovelreader.data.image.SourceImageInterceptor(registry, context))
+                add(indi.dmzz_yyhyy.lightnovelreader.data.image.SourceImageInterceptor(registry, context, downloads))
                 add(indi.dmzz_yyhyy.lightnovelreader.data.image.SourceImageFetcher.Factory())
             }.build()
             coil3.SingletonImageLoader.setUnsafe(loader)
@@ -72,18 +74,17 @@ class ImportedRuleSourcesTest {
                 android.graphics.Bitmap.createBitmap(2, 2, android.graphics.Bitmap.Config.ARGB_8888)
                     .compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
             }.toByteArray().reversedArray()
-            val db = Room.inMemoryDatabaseBuilder(context, LightNovelReaderDatabase::class.java).allowMainThreadQueries().build()
             try {
                 // A native source can coexist; no rule request consults the browsing selection.
                 registry.register(EmptyWebDataSource, SourceMetadata(WebDataSourceItem(EmptyWebDataSource.id, "Native", "fixture"), emptySet()))
                 val a = install(service, fixture.raw("A"), fixture.server.url("/").toString())
                 val b = install(service, fixture.raw("B"), fixture.server.url("/").toString())
                 val local = LocalBookDataSource(db.bookInformationDao(), db.bookVolumesDao(), db.chapterContentDao(), db.userReadingDataDao())
-                val shelves = BookshelfRepository(db.bookshelfDao(), mockk(), registry)
+                val shelves = BookshelfRepository(db.bookshelfDao(), mockk(), registry, downloads)
                 val components = ContentComponentRegistry()
                 val text = TextProcessingRepository(mockk(relaxed = true), mockk(relaxed = true), components)
                 val chapters = ChapterRepository(registry, local, text)
-                val books = BookRepository(local, shelves, text, mockk(), chapters, BookReadingDataRepository(local), registry)
+                val books = BookRepository(local, shelves, text, mockk(), chapters, BookReadingDataRepository(local), registry, downloads)
                 shelves.addBookshelf(Bookshelf(id = 1, name = "Both sources"))
                 val bound = mutableListOf<SourceBookId>()
                 for (sourceId in listOf(a, b)) {
@@ -95,7 +96,7 @@ class ImportedRuleSourcesTest {
                     val info = books.getBookInformationFlow(book).last().get()!!
                     assertEquals("Same title", info.title)
                     shelves.addBookIntoBookShelf(1, info)
-                    val worker = CacheBookWork(context, workerParameters(workDataOf("bookId" to book.storageKey)), local, mockk(relaxed = true), books, ContentJsonDecoder(components))
+                    val worker = CacheBookWork(context, workerParameters(workDataOf("bookId" to book.storageKey)), mockk(relaxed = true), books, downloads)
                     assertEquals(ListenableWorker.Result.success(), worker.doWork())
                     assertTrue(books.getIsBookCached(book.storageKey))
                     val first = local.getBookVolumes(book.storageKey)!!.volumes.single().chapters.first()

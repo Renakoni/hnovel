@@ -68,10 +68,10 @@
     <string name="import_back">返回</string>
     <string name="import_in_progress_title">正在导入…</string>
     <string name="import_in_progress_desc">请稍候…</string>
-    <string name="download_in_progress">进行中</string>
+    <string name="download_in_progress">未完成</string>
     <string name="download_item_progress">%1$s 已下载 %2$d%%</string>
     <string name="download_item_finished">%s完成</string>
-    <string name="download_item_failed">%s 失败, 请检查您的网络环境或寻求开发者帮助</string>
+    <string name="download_item_failed">%s失败</string>
     <string name="book_updated_to_title">更新至:</string>
     <string name="book_word_count_limit">字数限制:</string>
     <string name="unavailable">不可用</string>
@@ -109,10 +109,10 @@
     <string name="confirm_exit">确认退出？</string>
     <string name="hint_unsaved_changes_will_be_lost">如果现在退出，您未保存的更改将会丢失。</string>
     <!-- Snackbar Hints -->
-    <string name="cache_book_started">开始缓存：%1$s</string>
-    <string name="cache_book_running">此书本正在缓存中</string>
-    <string name="cache_book_finished">缓存成功</string>
-    <string name="cache_book_error">缓存失败</string>
+    <string name="cache_book_started">开始下载：%1$s</string>
+    <string name="cache_book_running">正在下载</string>
+    <string name="cache_book_finished">下载完成</string>
+    <string name="cache_book_error">下载失败</string>
     <string name="restart_to_apply_changes">重启应用以生效</string>
     <string name="network_error_message">
         应用无法从数据源获取信息，这通常是网络问题所致。在提交问题前，请知晓：我们无法协助排查具体网络状况，请先检查您的网络连接。
@@ -427,8 +427,8 @@
     <string name="reading_sessions">阅读会话</string>
     <string name="reading_duration">阅读时长</string>
     <string name="reading_duration_unit">时 %d 分</string>
-    <string name="cached">已缓存</string>
-    <string name="cached_false">未缓存</string>
+    <string name="cached">已下载</string>
+    <string name="cached_false">下载</string>
     <string name="others">其他</string>
     <string name="unit_hour_clock">时</string>
     <string name="unit_hours">&#160;小时&#160;</string>

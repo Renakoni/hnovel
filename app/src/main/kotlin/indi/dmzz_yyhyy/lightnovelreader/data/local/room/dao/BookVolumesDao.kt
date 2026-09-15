@@ -32,6 +32,7 @@ interface BookVolumesDao {
 
     @Transaction
     suspend fun insertVolume(bookId: String, volumes: BookVolumes) {
+        deleteByBookIds(listOf(bookId))
         volumes.volumes.forEachIndexed { index, volume ->
             insertVolume(bookId, volume.volumeId, volume.volumeTitle, ListConverter.stringListToString(volume.chapters.map { it.id }), index)
             volume.chapters.forEach {

@@ -4,6 +4,7 @@ import android.app.Application
 import android.net.Uri
 import androidx.compose.runtime.mutableStateListOf
 import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.viewModelScope
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequest
 import androidx.work.WorkManager
@@ -43,7 +44,9 @@ class DetailCapabilitiesTest {
         every { repository.getBookInformationFlow(key, any()) } returns flowOf(Ok(book))
         every { repository.getUserReadingDataFlow(key) } returns emptyFlow()
         every { repository.getBookVolumesFlow(key, any()) } returns flowOf(Ok(BookVolumes(key, emptyList())))
-        coEvery { repository.getIsBookCached(key) } returns false
+        every { repository.downloadChanges(key) } returns flowOf(Unit)
+        coEvery { repository.downloadState(key, any()) } returns indi.dmzz_yyhyy.lightnovelreader.data.download.BookDownloadState()
+        every { work.getWorkInfosForUniqueWorkFlow(any()) } returns flowOf(emptyList())
         coEvery { shelves.getBookshelfBookMetadata(key) } returns null
         every { shelves.getBookshelfBookMetadataFlow(key) } returns flowOf(null)
         every { downloads.downloadItemIdList } returns mutableStateListOf()
@@ -68,6 +71,11 @@ class DetailCapabilitiesTest {
             assertTrue(model.uiState.readingAvailable)
             assertFalse(model.uiState.canCache)
             verify(exactly = 1) { repository.getBookVolumesFlow(key, any()) }
-        } finally { store.clear(); Dispatchers.resetMain() }
+        } finally {
+            val job = model.viewModelScope.coroutineContext.job
+            store.clear()
+            withTimeout(5000) { job.join() }
+            Dispatchers.resetMain()
+        }
     }
 }

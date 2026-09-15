@@ -1,6 +1,8 @@
 package indi.dmzz_yyhyy.lightnovelreader.data.local.cbor
 
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.BookInformationEntity
+import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.BookDownloadEntity
+import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.DownloadedChapterEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.BookRecordEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.BookshelfBookMetadataEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.BookshelfEntity
@@ -25,7 +27,9 @@ data class LocalData(
     val formattingRuleEntities: List<FormattingRuleEntity>,
     val userDataEntities: List<UserDataEntity>,
     val userReadingDataEntities: List<UserReadingDataEntity>,
-    val volumeEntities: List<VolumeEntity>
+    val volumeEntities: List<VolumeEntity>,
+    val bookDownloadEntities: List<BookDownloadEntity> = emptyList(),
+    val downloadedChapterEntities: List<DownloadedChapterEntity> = emptyList(),
 ) {
     companion object {
         fun empty() = LocalData(

@@ -2,7 +2,17 @@
 <resources>
     <string name="sources_import_partial">未能启用全部来源。已启用来源保留，请重新预览导入以重试。</string>
     <string name="settings_clear_reading_cache">清理阅读缓存</string>
-    <string name="settings_clear_reading_cache_desc">删除已下载正文和图片，保留书架、阅读记录、目录及登录状态。继续阅读时可能重新下载。</string>
-    <string name="settings_cache_cleared">阅读缓存已清理</string>
-    <string name="settings_cache_clear_failed">未能完成缓存清理</string>
+    <string name="settings_clear_reading_cache_desc">清理临时内容，保留下载。</string>
+    <string name="settings_clear_downloads">清理下载</string>
+    <string name="settings_clear_downloads_desc">删除下载的正文和图片，保留书架和阅读记录。</string>
+    <string name="settings_cache_cleared">已清理</string>
+    <string name="settings_cache_clear_failed">清理失败，请重试</string>
+    <string name="book_download_partial">部分下载</string>
+    <string name="book_download_updating">下载中</string>
+    <string name="book_download_failed">下载失败</string>
+    <string name="book_download_outdated">有更新</string>
+    <string name="book_download_check_updates">检查更新</string>
+    <string name="book_download_continue">继续下载</string>
+    <string name="book_download_retry">重试</string>
+    <string name="book_download_update">更新</string>
 </resources>

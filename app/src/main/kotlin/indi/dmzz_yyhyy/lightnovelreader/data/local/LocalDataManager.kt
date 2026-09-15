@@ -3,6 +3,7 @@ package indi.dmzz_yyhyy.lightnovelreader.data.local
 import androidx.room.withTransaction
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.LightNovelReaderDatabase
 import indi.dmzz_yyhyy.lightnovelreader.data.local.cbor.validateIdentities
+import indi.dmzz_yyhyy.lightnovelreader.data.download.BookDownloadStore
 import android.util.Log
 import com.github.michaelbull.result.Err
 import com.github.michaelbull.result.Ok
@@ -43,7 +44,8 @@ class LocalDataManager @Inject constructor(
     private val userDataDao: UserDataDao,
     private val storageUsageRepository: StorageUsageRepository,
     private val statisticsWriteCoordinator: StatisticsWriteCoordinator,
-    private val statsRepository: StatsRepository
+    private val statsRepository: StatsRepository,
+    private val downloads: BookDownloadStore,
 ) {
     companion object {
         const val TAG = "LocalDataManager"
@@ -69,6 +71,7 @@ class LocalDataManager @Inject constructor(
         val globalLocalData = LocalData.empty()
             .copy(userDataEntities = if (settings) userDataDao.getAllEntities().filter {
                 !libraryUserDataPaths.contains(it.path) &&
+                        !it.path.startsWith("hnovel/downloads/") &&
                         it.path != UserDataPath.Settings.Data.StorageUsageSnapshot.path
             }
             else emptyList())
@@ -87,8 +90,10 @@ class LocalDataManager @Inject constructor(
         readingRecord: Boolean = true,
         settings: Boolean = true
     ): Result<LocalData, Throwable> {
+        downloads.prepare()
         val exportOptionLocalData = ExportOptionLocalData(
             bookBookInformationDao = bookBookInformationDao,
+            bookDownloadDao = database.bookDownloadDao(),
             bookRecordDao = bookRecordDao,
             dailyCountDao = dailyCountDao,
             bookshelfDao = bookshelfDao,
@@ -120,7 +125,9 @@ class LocalDataManager @Inject constructor(
                     formattingRuleEntities = exportOptionLocalData.formattingRuleEntities,
                     userReadingDataEntities = exportOptionLocalData.userReadingDataEntities,
                     volumeEntities = exportOptionLocalData.volumeEntities,
-                    userDataEntities = exportOptionLocalData.userDataEntities
+                    userDataEntities = exportOptionLocalData.userDataEntities,
+                    bookDownloadEntities = exportOptionLocalData.bookDownloadEntities,
+                    downloadedChapterEntities = exportOptionLocalData.downloadedChapterEntities,
                 )
             )
         }
@@ -153,7 +160,7 @@ class LocalDataManager @Inject constructor(
 
     suspend fun importLocalDataToDatabase(localData: LocalData): Result<Unit, Throwable> {
         localData.validateIdentities()
-        return statisticsWriteCoordinator.withLock { database.withTransaction {
+        val result = statisticsWriteCoordinator.withLock { database.withTransaction {
           for (entity in localData.bookInformationEntities) {
             bookBookInformationDao.insert(
                 bookBookInformationDao.getEntity(entity.id)?.let(entity::merge) ?: entity
@@ -183,7 +190,7 @@ class LocalDataManager @Inject constructor(
             )
           }
           for (entity in localData.chapterContentEntities) {
-            chapterContentDao.update(chapterContentDao.get(entity.id)?.let(entity::merge) ?: entity)
+            chapterContentDao.cache(chapterContentDao.get(entity.id)?.let(entity::merge) ?: entity)
           }
           for (entity in localData.chapterInformationEntities) {
             bookVolumesDao.insertChapterInformationEntities(
@@ -208,15 +215,20 @@ class LocalDataManager @Inject constructor(
             )
           }
           for (entity in localData.userDataEntities) {
+            if (entity.path.startsWith("hnovel/downloads/")) continue
             userDataDao.insert(userDataDao.getEntity(entity.path)?.let(entity::merge) ?: entity)
           }
           storageUsageRepository.invalidateSnapshot()
           Ok(Unit)
         } }
+        downloads.restore(localData.bookDownloadEntities, localData.downloadedChapterEntities,
+            legacy = localData.userDataEntities.any { it.path == UserDataPath.CompletedDownloadBookList.path })
+        return result
     }
 
     /** Explicit overwrite restore only. Source registration and browsing never call this. */
     suspend fun cleanDatabaseWithoutGlobalUserData() {
+        downloads.clearDownloads()
         statsRepository.withStatisticsResetLock {
           bookBookInformationDao.clear()
           bookRecordDao.clear()

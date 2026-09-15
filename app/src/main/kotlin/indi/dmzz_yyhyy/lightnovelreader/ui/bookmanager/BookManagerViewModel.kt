@@ -4,11 +4,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.room.withTransaction
 import androidx.work.WorkManager
+import androidx.work.await
 import dagger.hilt.android.lifecycle.HiltViewModel
 import indi.dmzz_yyhyy.lightnovelreader.data.book.BookRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadItem
 import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadProgressRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadType
+import indi.dmzz_yyhyy.lightnovelreader.data.download.BookDownloadStore
+import indi.dmzz_yyhyy.lightnovelreader.data.book.BookIdentity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.LightNovelReaderDatabase
 import indi.dmzz_yyhyy.lightnovelreader.data.storage.StorageUsageRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.storage.StorageUsageSnapshot
@@ -27,7 +30,8 @@ class BookManagerViewModel @Inject constructor(
     private val downloadProgressRepository: DownloadProgressRepository,
     private val database: LightNovelReaderDatabase,
     private val storageUsageRepository: StorageUsageRepository,
-    val workManager: WorkManager
+    val workManager: WorkManager,
+    private val downloads: BookDownloadStore,
 ) : ViewModel() {
     val downloadItemIdList get() = downloadProgressRepository.downloadItemIdList
     private val _clearedItemsFlow = MutableSharedFlow<Int>()
@@ -130,6 +134,7 @@ class BookManagerViewModel @Inject constructor(
         val ids = localBookManagerUiState.selectedIds.toList()
         if (ids.isEmpty()) return 0
         localBookManagerUiState.isDeleting = true
+        removeDownloads(ids)
         val chapterIds = database.bookVolumesDao()
             .getVolumeEntitiesByBookIds(ids)
             .flatMap { it.chapterIds }
@@ -151,30 +156,31 @@ class BookManagerViewModel @Inject constructor(
     }
 
     suspend fun clearOrphanedDataItems(): Int {
-        val linkedChapterIds = database.bookVolumesDao()
-            .getAllVolumeEntities()
-            .flatMap { it.chapterIds }
-            .toSet()
-        val orphanChapterInfoIds = database.bookVolumesDao()
-            .getAllChapterInformationEntities()
-            .map { it.id }
-            .filterNot(linkedChapterIds::contains)
-        val orphanChapterContentIds = database.chapterContentDao()
-            .getAllEntities()
-            .map { it.id }
-            .filterNot(linkedChapterIds::contains)
+        val count = database.withTransaction {
+            val linkedChapterIds = database.bookVolumesDao()
+                .getAllVolumeEntities()
+                .flatMap { it.chapterIds }
+                .toSet() + database.bookDownloadDao().allChapters().map { it.id }
+            val orphanChapterInfoIds = database.bookVolumesDao()
+                .getAllChapterInformationEntities()
+                .map { it.id }
+                .filterNot(linkedChapterIds::contains)
+            val orphanChapterContentIds = database.chapterContentDao()
+                .getAllEntities()
+                .map { it.id }
+                .filterNot(linkedChapterIds::contains)
 
-        database.withTransaction {
             if (orphanChapterInfoIds.isNotEmpty()) {
                 database.bookVolumesDao().deleteChapterInformationByIds(orphanChapterInfoIds)
             }
             if (orphanChapterContentIds.isNotEmpty()) {
                 database.chapterContentDao().deleteByIds(orphanChapterContentIds)
             }
+            orphanChapterInfoIds.size + orphanChapterContentIds.size
         }
         storageUsageRepository.invalidateSnapshot()
         refreshLocalBooks()
-        return orphanChapterInfoIds.size + orphanChapterContentIds.size
+        return count
     }
 
     suspend fun clearBookDataItems(bookId: String, targets: List<LocalBookClearTarget>): Int {
@@ -191,6 +197,7 @@ class BookManagerViewModel @Inject constructor(
         } else {
             emptyList()
         }
+        if (LocalBookClearTarget.ChapterContent in targetSet) removeDownloads(listOf(bookId))
 
         database.withTransaction {
             if (LocalBookClearTarget.VolumeAndChapterIndex in targetSet) {
@@ -219,6 +226,12 @@ class BookManagerViewModel @Inject constructor(
             clearedCount += 1
         }
         return clearedCount
+    }
+
+    private suspend fun removeDownloads(bookIds: List<String>) {
+        for (bookId in bookIds) workManager.cancelUniqueWork(CacheBookWork.ofId(bookId)).await()
+        downloads.removeBooks(bookIds.map(BookIdentity::book))
+        downloadProgressRepository.clearCachedItems(bookIds.toSet())
     }
 
     private suspend fun refreshLocalBooks() {

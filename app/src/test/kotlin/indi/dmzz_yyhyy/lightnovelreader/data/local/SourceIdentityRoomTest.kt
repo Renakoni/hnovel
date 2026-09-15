@@ -8,6 +8,9 @@ import androidx.work.ListenableWorker
 import androidx.work.workDataOf
 import indi.dmzz_yyhyy.lightnovelreader.data.book.*
 import indi.dmzz_yyhyy.lightnovelreader.data.bookshelf.BookshelfRepository
+import indi.dmzz_yyhyy.lightnovelreader.data.download.BookDownloadStore
+import indi.dmzz_yyhyy.lightnovelreader.data.content.ContentJsonDecoder
+import indi.dmzz_yyhyy.lightnovelreader.data.content.ContentComponentRegistry
 import indi.dmzz_yyhyy.lightnovelreader.data.local.cbor.AppLocalData
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.LightNovelReaderDatabase
 import indi.dmzz_yyhyy.lightnovelreader.data.statistics.StatisticsWriteCoordinator
@@ -52,6 +55,7 @@ class SourceIdentityRoomTest {
     private lateinit var shelves: BookshelfRepository
     private lateinit var stats: StatsRepository
     private lateinit var backup: LocalDataManager
+    private lateinit var downloads: BookDownloadStore
     private val a = SourceBookId(Identifier("site", "a"), "123")
     private val b = SourceBookId(Identifier("site", "b"), "123")
     private val other = SourceBookId(a.sourceId, "456")
@@ -60,12 +64,13 @@ class SourceIdentityRoomTest {
         db = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), LightNovelReaderDatabase::class.java)
             .allowMainThreadQueries().build()
         local = LocalBookDataSource(db.bookInformationDao(), db.bookVolumesDao(), db.chapterContentDao(), db.userReadingDataDao())
-        shelves = BookshelfRepository(db.bookshelfDao(), mockk(), indi.dmzz_yyhyy.lightnovelreader.data.web.WebSourceRegistry())
+        downloads = BookDownloadStore(RuntimeEnvironment.getApplication(), db, ContentJsonDecoder(ContentComponentRegistry()))
+        shelves = BookshelfRepository(db.bookshelfDao(), mockk(), indi.dmzz_yyhyy.lightnovelreader.data.web.WebSourceRegistry(), downloads)
         val coordinator = StatisticsWriteCoordinator()
         stats = StatsRepository(db.bookRecordDao(), db.dailyCountDao(), mockk(), coordinator)
         backup = LocalDataManager(db, db.bookInformationDao(), db.bookRecordDao(), db.dailyCountDao(),
             db.bookshelfDao(), db.chapterContentDao(), db.bookVolumesDao(), db.formattingRuleDao(),
-            db.userReadingDataDao(), db.userDataDao(), mockk(relaxed = true), coordinator, stats)
+            db.userReadingDataDao(), db.userDataDao(), mockk(relaxed = true), coordinator, stats, downloads)
     }
 
     @After fun tearDown() { db.close() }
@@ -120,7 +125,7 @@ class SourceIdentityRoomTest {
         val loader = coil3.ImageLoader.Builder(context).diskCache(cache).build()
         coil3.SingletonImageLoader.setUnsafe(loader)
         val models = androidx.lifecycle.ViewModelStore()
-        val model = indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.SettingsViewModel(data, mockk(), mockk(), context, db)
+        val model = indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.SettingsViewModel(data, mockk(), mockk(), downloads, mockk())
         val modelJob = model.viewModelScope.coroutineContext.job
         models.put("settings", model)
         try {
@@ -139,6 +144,31 @@ class SourceIdentityRoomTest {
                 // Clearing cancels observers but does not wait for their in-flight Room queries.
                 withTimeout(5_000) { modelJob.join() }
             } finally { loader.shutdown(); cache.shutdown(); coil3.SingletonImageLoader.reset() }
+        }
+    }
+
+    @OptIn(coil3.annotation.DelicateCoilApi::class)
+    @Test fun readingCacheClearKeepsAnExistingExplicitDownload() = runBlocking {
+        save(a, "Downloaded"); save(b, "Read online")
+        val context = RuntimeEnvironment.getApplication()
+        val data = indi.dmzz_yyhyy.lightnovelreader.data.userdata.UserDataRepository(db.userDataDao())
+        data.stringUserData(UserDataPath.CompletedDownloadBookList.path).set("CACHE|${a.storageKey}")
+        val loader = coil3.ImageLoader.Builder(context).diskCache(null).build()
+        coil3.SingletonImageLoader.setUnsafe(loader)
+        val models = androidx.lifecycle.ViewModelStore()
+        val model = indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.SettingsViewModel(data, mockk(), mockk(), downloads, mockk())
+        val modelJob = model.viewModelScope.coroutineContext.job
+        models.put("settings", model)
+        try {
+            model.clearReadingCache()
+            assertNotNull("Explicit downloads must survive reading-cache cleanup",
+                local.getChapterContent(SourceChapterId(a, "9").storageKey))
+            assertNull(local.getChapterContent(SourceChapterId(b, "9").storageKey))
+            assertEquals(30, local.getUserReadingData(a.storageKey).totalReadTime)
+        } finally {
+            models.clear()
+            withTimeout(5_000) { modelJob.join() }
+            loader.shutdown(); coil3.SingletonImageLoader.reset()
         }
     }
 

@@ -57,6 +57,7 @@ fun SettingsScreen(
     onClickTextFormatting: () -> Unit,
     onClickStorageManager: () -> Unit,
     clearReadingCache: suspend () -> Unit,
+    clearDownloads: suspend () -> Unit,
     onOptOut: () -> Unit,
     onBack: () -> Unit,
 ) {
@@ -116,7 +117,8 @@ fun SettingsScreen(
                         settingState = settingState,
                         importData = importData,
                         onClickStorageManager = onClickStorageManager,
-                        clearReadingCache = clearReadingCache
+                        clearReadingCache = clearReadingCache,
+                        clearDownloads = clearDownloads,
                     )
                 }
             }

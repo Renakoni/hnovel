@@ -15,6 +15,7 @@ import coil3.request.SuccessResult
 import indi.dmzz_yyhyy.lightnovelreader.data.book.SourceBookId
 import indi.dmzz_yyhyy.lightnovelreader.data.web.*
 import io.mockk.every
+import io.mockk.coEvery
 import io.mockk.mockk
 import io.nightfish.lightnovelreader.api.identifier.Identifier
 import io.nightfish.lightnovelreader.api.web.WebBookDataSource
@@ -49,7 +50,7 @@ class SourceImageTest {
         }
         val fetched = mutableListOf<String?>()
         val loader = ImageLoader.Builder(context).components {
-            add(SourceImageInterceptor(registry, context))
+            add(SourceImageInterceptor(registry, context, mockk { coEvery { image(any()) } returns null }))
             add(SourceImageFetcher.Factory())
             add(object : Fetcher.Factory<Uri> {
                 override fun create(data: Uri, options: Options, imageLoader: ImageLoader): Fetcher = Fetcher {
@@ -114,7 +115,7 @@ class SourceImageTest {
             java.nio.file.Files.createTempDirectory("source-image-cache").toString().toPath()
         }).maxSizeBytes(1024 * 1024).build()
         val loader = ImageLoader.Builder(context).diskCache(cache).components {
-            add(SourceImageInterceptor(registry, context)); add(SourceImageFetcher.Factory())
+            add(SourceImageInterceptor(registry, context, mockk { coEvery { image(any()) } returns null })); add(SourceImageFetcher.Factory())
         }.build()
         suspend fun load(cover: Boolean) = loader.execute(ImageRequest.Builder(context)
             .data(SourceImage(a, url, cover)).size(2, 2).build())
