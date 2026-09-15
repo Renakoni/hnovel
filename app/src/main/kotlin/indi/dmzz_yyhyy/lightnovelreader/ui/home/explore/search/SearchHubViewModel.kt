@@ -56,7 +56,13 @@ class SearchHubViewModel @Inject constructor(
     fun refreshSources() {
         val sources = registry.sources.value.filter { it.status == SourceStatus.Ready && SourceCapability.Search in it.metadata.capabilities }
             .map { SearchHubSource(it.metadata.id, it.metadata.item.name) }
-        mutable.update { it.copy(sources = sources, selected = it.selected?.takeIf { id -> sources.any { s -> s.id == id } }) }
+        val currentIds = mutable.value.sources.map { it.id }.toSet()
+        val nextIds = sources.map { it.id }.toSet()
+        if (currentIds != nextIds) work?.cancel()
+        mutable.update {
+            val selected = it.selected?.takeIf { id -> sources.any { s -> s.id == id } }
+            it.copy(sources = sources, selected = selected, aggregate = selected == null)
+        }
     }
 
     fun select(id: Identifier?) { work?.cancel(); mutable.update { it.copy(selected = id, aggregate = id == null, sources = it.sources.map { s -> s.copy(books = emptyList(), loading = false, error = false) }) } }
