@@ -25,7 +25,7 @@
 | 后台挑战 → 前台验证 → 后台读取 | 验证设置的 HttpOnly session Cookie 回到后台仍有效 |
 | 取消未完成请求，再读取同账号 | 停止旧进程；已完成任务保存的持久 Cookie/localStorage 保留，账号代次不改变 |
 | 切到其他来源账号，再切回 | 账号之间隔离；原账号持久 Cookie/localStorage 保留 |
-| 清除账号 | 新代次看不到旧 Cookie/localStorage，旧执行不向新代次写入 |
+| 清除账号 | 新代次看不到旧 Cookie 和未声明的 localStorage；仅按[明确声明](../SOURCE_WEB_STORAGE.md)保留通用键，旧执行不向新代次写入 |
 
 取消/切源可能结束 Chromium 进程；这些场景不承诺 session Cookie 永久存活，也不通过添加 Max-Age 来制造该保证。会话目录持久化与 session Cookie 的寿命是两回事。
 

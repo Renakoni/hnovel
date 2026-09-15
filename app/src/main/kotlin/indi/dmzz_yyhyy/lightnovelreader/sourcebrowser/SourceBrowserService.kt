@@ -50,6 +50,11 @@ class SourceBrowserService : Service() {
     }
 
     override fun onBind(intent: Intent): IBinder = object : IBrowserService.Stub() {
+        override fun localStorage(payload: ParcelFileDescriptor, host: IBrowserHost) {
+            check(Binder.getCallingUid() == applicationInfo.uid)
+            payload.close()
+            error("Persistent localStorage belongs to the native browser")
+        }
         override fun start(payload: String, callback: IBrowserHost) {
             check(Binder.getCallingUid() == applicationInfo.uid && payload.length <= 393216)
             check(!::job.isInitialized)

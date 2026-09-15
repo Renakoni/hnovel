@@ -28,11 +28,16 @@ class SourceLoginService @Inject constructor(private val sources: ImportedRuleSo
     }
     suspend fun begin(source: Identifier): LoginAttempt {
         val current = sources.loginTarget(source)
-        // Reopening a website to complete verification must keep the account it challenged.
-        // Explicit logout still rotates and removes that account's entire browser profile.
-        val keepSession = current.session.browserRead
+        // An outstanding verification resumes its account. A fresh login resets the old account
+        // before showing the page, including native sites that store tokens outside Cookie.
+        val native = current.session.browserRead
+        val pending = if (native)
+            (current.session.read(StorageRequest(StorageArea.Account, StorageRequestKey.BROWSER_PENDING_URL)) as? StorageResult.Value
+                ?: error("Stored browser state is unavailable")).value else null
+        val keepSession = !pending.isNullOrBlank()
         val target = if (keepSession) current else sources.rotateAccount(source)
-        return LoginAttempt(source, target.generation, target.revision, retireOnCancel = !keepSession)
+        // Closing a native window still keeps its current (possibly partial) website session.
+        return LoginAttempt(source, target.generation, target.revision, retireOnCancel = !native)
     }
     suspend fun submit(attempt: LoginAttempt, values: Map<String, String>, action: String? = null) {
         val target = target(attempt)

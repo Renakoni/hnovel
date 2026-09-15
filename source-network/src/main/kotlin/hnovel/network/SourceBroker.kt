@@ -72,12 +72,15 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         private set
     var browserRead: Boolean = false
         private set
+    var localStorageRetention = LocalStorageRetention()
+        private set
     @Synchronized fun configureSource(url: String, cookiesEnabled: Boolean, browserRead: Boolean = false,
-        concurrentRate: String? = null) {
+        concurrentRate: String? = null, localStorageRetention: LocalStorageRetention = LocalStorageRetention()) {
         require(sourceUrl.isEmpty() || sourceUrl == url)
         sourceUrl = url
         enabledCookieJar = cookiesEnabled
         this.browserRead = browserRead
+        this.localStorageRetention = localStorageRetention.approved(grants)
         val parsedRate = SourceRequestRate.parse(concurrentRate)
         if (sourcePacing.rate != parsedRate) sourcePacing = SourceRequestPacer(parsedRate)
     }
@@ -168,14 +171,21 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
 
     /** Called by the host after revocation; deletes only the retired account's sensitive state. */
     fun clearAccount() {
-        synchronized(this) {
+        val storageFailure = synchronized(this) {
             close()
-            check(account.clear() is StorageResult.Value && cookieStorage.clear() is StorageResult.Value) { "Account cleanup failed" }
+            val accountCleared = account.clear() is StorageResult.Value
+            val cookiesCleared = cookieStorage.clear() is StorageResult.Value
             cookies.restoreMemory(emptyList())
+            if (accountCleared && cookiesCleared) null else IllegalStateException("Account cleanup failed")
         }
         // Browser cancellation may finish on another thread that checks this session.
         // Do not hold the session monitor while waiting for its process to stop.
-        browser?.clearAccount(scope)
+        try { browser?.clearAccount(scope, localStorageRetention) }
+        catch (failure: Exception) {
+            if (storageFailure == null) throw failure
+            storageFailure.addSuppressed(failure)
+        }
+        storageFailure?.let { throw it }
     }
 
     @Synchronized fun read(request: StorageRequest): StorageResult {

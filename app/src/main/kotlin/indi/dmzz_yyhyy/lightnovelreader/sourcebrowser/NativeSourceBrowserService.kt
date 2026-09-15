@@ -13,6 +13,7 @@ import androidx.webkit.WebViewFeature
 import hnovel.network.*
 import indi.dmzz_yyhyy.lightnovelreader.BuildConfig
 import indi.dmzz_yyhyy.lightnovelreader.data.web.AndroidSourceNetworks
+import kotlinx.coroutines.*
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.*
 import java.util.concurrent.atomic.AtomicBoolean
@@ -24,6 +25,8 @@ class NativeSourceBrowserService : Service() {
     private var networkHandle: Long? = null
     private var networkReady = false
     private var page: Page? = null
+    private val storageScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var storageTask: Job? = null
     internal var activity: NativeSourceBrowserActivity? = null
     internal val webView get() = page?.view
     internal val title get() = page?.job?.options?.title.orEmpty()
@@ -35,34 +38,38 @@ class NativeSourceBrowserService : Service() {
             val job = Json.decodeFromString<BrowserJob>(payload)
             handler.post {
                 try {
-                    check(page == null)
-                    if (profile == null) {
-                        bindNetwork(job.networkHandle)
-                        NativeBrowserFiles(this@NativeSourceBrowserService).initialize(job.profile)
-                        if (BuildConfig.DEBUG) WebView.setWebContentsDebuggingEnabled(true)
-                        profile = job.profile
-                        networkHandle = job.networkHandle
-                        if (networkHandle != null) {
-                            if (!WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE))
-                                throw RouteFailure(FailureCode.RouteUnsupported)
-                            // Binding covers sockets/DNS; this additionally prevents a system HTTP proxy
-                            // from sending the same physical-network connection back into a VPN proxy.
-                            ProxyController.getInstance().setProxyOverride(ProxyConfig.Builder().addDirect().build(),
-                                { handler.post(it) }) {
-                                networkReady = true
-                                openPage(job, callback)
-                            }
-                            return@post
-                        }
-                        networkReady = true
-                    }
-                    openPage(job, callback)
+                    check(page == null && storageTask == null)
+                    initialize(job.profile, job.networkHandle) { openPage(job, callback) }
                 } catch (failure: Exception) { failStart(callback, failure) }
+            }
+        }
+        override fun localStorage(payload: ParcelFileDescriptor, callback: IBrowserHost) {
+            check(Binder.getCallingUid() == applicationInfo.uid)
+            val job = Json.decodeFromString<LocalStorageJob>(BrowserWire.read(payload, NativeBrowserRetention.MAX_BYTES))
+            handler.post {
+                try {
+                    check(page == null && storageTask == null)
+                    initialize(job.profile, job.networkHandle) {
+                        val task = storageScope.launch(start = CoroutineStart.LAZY) {
+                            val result = try {
+                                LocalStorageResult(withTimeout(15000) { transferLocalStorage(this@NativeSourceBrowserService, job) })
+                            } catch (failure: Exception) {
+                                LocalStorageResult(failure = (failure as? LocalStorageFailure)?.code ?: FailureCode.StorageUnavailable)
+                            }
+                            storageTask = null
+                            send(callback, result)
+                        }
+                        storageTask = task
+                        task.start()
+                    }
+                } catch (failure: Exception) { send(callback, LocalStorageResult(
+                    failure = (failure as? RouteFailure)?.code ?: FailureCode.StorageUnavailable)) }
             }
         }
         override fun shutdown() {
             check(Binder.getCallingUid() == applicationInfo.uid)
             handler.post {
+                storageScope.cancel()
                 if (profile != null) CookieManager.getInstance().flush()
                 page?.view?.destroy(); activity?.finish()
                 Process.killProcess(Process.myPid())
@@ -71,6 +78,25 @@ class NativeSourceBrowserService : Service() {
     }
 
     private class RouteFailure(val code: FailureCode) : Exception()
+
+    private fun initialize(owner: String, handle: Long?, ready: () -> Unit) {
+        if (profile != null) {
+            check(profile == owner && networkHandle == handle && networkReady)
+            ready()
+            return
+        }
+        bindNetwork(handle)
+        NativeBrowserFiles(this).initialize(owner)
+        if (BuildConfig.DEBUG) WebView.setWebContentsDebuggingEnabled(true)
+        profile = owner
+        networkHandle = handle
+        if (handle != null) {
+            if (!WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)) throw RouteFailure(FailureCode.RouteUnsupported)
+            // Binding covers sockets/DNS. The direct override also excludes a system HTTP proxy.
+            ProxyController.getInstance().setProxyOverride(ProxyConfig.Builder().addDirect().build(),
+                { handler.post(it) }) { networkReady = true; ready() }
+        } else { networkReady = true; ready() }
+    }
 
     /** Called only in this dedicated process, before any Chromium initialization. */
     private fun bindNetwork(handle: Long?) {
@@ -252,5 +278,8 @@ class NativeSourceBrowserService : Service() {
     private fun send(host: IBrowserHost, result: BrokerResult) {
         runCatching { BrowserWire.pipe(Json.encodeToString(result)).use { host.complete(it) } }
     }
-    override fun onDestroy() { active = null; Process.killProcess(Process.myPid()) }
+    private fun send(host: IBrowserHost, result: LocalStorageResult) {
+        runCatching { BrowserWire.pipe(Json.encodeToString(result)).use { host.complete(it) } }
+    }
+    override fun onDestroy() { storageScope.cancel(); active = null; Process.killProcess(Process.myPid()) }
 }

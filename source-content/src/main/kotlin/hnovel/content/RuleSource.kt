@@ -54,7 +54,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         require(identity.sourceId == definition.sourceId && identity.profile == definition.profile && identity.revision == definition.contentDigest)
         require(session.scope.sourceId == identity.sourceId && session.scope.namespace == identity.namespace &&
             session.scope.profile == identity.profile && session.scope.accountGeneration == identity.accountGeneration)
-        session.configureSource(spec.baseUrl, spec.cookiesEnabled, spec.browserRead, spec.concurrentRate)
+        session.configureSource(spec.baseUrl, spec.cookiesEnabled, spec.browserRead, spec.concurrentRate, spec.localStorageRetention)
     }
 
     private var cachedLoginForm: LoginForm? = null

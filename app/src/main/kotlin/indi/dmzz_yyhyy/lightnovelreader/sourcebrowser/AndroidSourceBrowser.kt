@@ -30,7 +30,7 @@ class AndroidSourceBrowser @Inject constructor(@ApplicationContext private val c
             NativeBrowserFiles(context).supported && WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)
         }.getOrDefault(false)
     }
-    override fun clearAccount(scope: SourceScope) = native.clearAccount(scope)
+    override fun clearAccount(scope: SourceScope, localStorage: LocalStorageRetention) = native.clearAccount(scope, localStorage)
     private var scriptToast: Toast? = null
 
     override suspend fun defaultUserAgent(): String = withContext(Dispatchers.Main) {

@@ -338,7 +338,7 @@ class SourcesViewModelTest {
         }
     }
 
-    @Test fun browserAccountCardRefreshesTheSavedStatusAfterFailedReauthentication(): Unit = runBlocking {
+    @Test fun freshBrowserLoginResetsTheOldStateBeforeReportingTheNewAttempt(): Unit = runBlocking {
         Dispatchers.setMain(Dispatchers.Unconfined)
         val root = Files.createTempDirectory("browser-account-card").toFile()
         val context = object : ContextWrapper(RuntimeEnvironment.getApplication()) { override fun getFilesDir() = root }
@@ -364,9 +364,12 @@ class SourcesViewModelTest {
                 model.beginLogin(id)
                 assertEquals(LoginStatus.SessionSaved, idle().loginStatus)
                 assertNull(idle().accountName)
+                val previous = sources.loginTarget(id)
                 httpStatus = 503
                 model.beginLogin(id)
-                assertEquals(LoginStatus.SessionSaved, idle().loginStatus)
+                assertEquals(LoginStatus.LoggedOut, idle().loginStatus)
+                assertTrue(previous.session.closed)
+                assertNotEquals(previous.generation, sources.loginTarget(id).generation)
                 assertNotNull(idle().message)
                 httpStatus = 401
                 model.beginLogin(id)
