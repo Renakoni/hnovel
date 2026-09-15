@@ -93,6 +93,8 @@ object Route {
             /** 搜索界面路由 */
             @Serializable
             data class Search(val namespace: String, val sourceId: String)
+            @Serializable
+            object SearchHub
         }
         @Serializable
         data class Categories(val namespace: String? = null, val sourceId: String? = null)
@@ -334,3 +336,4 @@ object Route {
     @Serializable
     data class PluginStoreInstall(val pluginId: String)
 }
+

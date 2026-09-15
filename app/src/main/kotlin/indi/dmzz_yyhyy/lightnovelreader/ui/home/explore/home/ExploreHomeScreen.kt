@@ -59,8 +59,8 @@ fun ExploreHomeScreen(
             actions = {
                 if (SourceCapability.Categories in capabilities)
                     TextButton(onClick = onCategories) { Text(stringResource(R.string.categories_title)) }
-                IconButton(onClick = onSearch, enabled = SourceCapability.Search in capabilities) {
-                    Icon(painterResource(R.drawable.search_24px), stringResource(R.string.explore_search))
+                IconButton(onClick = onSearch) {
+                    Icon(painterResource(R.drawable.search_24px), stringResource(R.string.search_hub_title))
                 }
                 HomeSettingsAction(onSettings)
             }, windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top))

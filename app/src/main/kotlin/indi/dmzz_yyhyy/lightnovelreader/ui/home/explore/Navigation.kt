@@ -6,6 +6,7 @@ import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.navigation
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.explore.home.exploreHomeDestination
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.explore.search.exploreSearchDestination
+import indi.dmzz_yyhyy.lightnovelreader.ui.home.explore.search.searchHubDestination
 import io.nightfish.lightnovelreader.api.Route
 
 @OptIn(ExperimentalSharedTransitionApi::class)
@@ -14,6 +15,7 @@ fun NavGraphBuilder.exploreNavigation() {
         startDestination = Route.Main.Explore.Home,
     ) {
         exploreHomeDestination()
+        searchHubDestination()
         exploreSearchDestination()
     }
 }
@@ -22,3 +24,4 @@ fun NavGraphBuilder.exploreNavigation() {
 fun NavController.navigateToExploreNavigation() {
     navigate(Route.Main.Explore)
 }
+

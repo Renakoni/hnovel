@@ -697,6 +697,7 @@
     <string name="never_read">Never read</string>
     <string name="explore_more">Show more</string>
     <string name="explore_search">Search this source</string>
+    <string name="search_hub_title">Search</string>
     <string name="explore_no_sources">No sources support Explore. Add a source in source management, or search a source that supports search.</string>
     <string name="explore_empty">This source has no exploration content.</string>
     <string name="discovery_unnamed_entry">Unnamed entry</string>
