@@ -1,5 +1,8 @@
 # Source compatibility reference tests
 
+For fixed source settings, offline configuration access and account-status presentation, see
+[SOURCE_BASIC_SETTINGS.md](SOURCE_BASIC_SETTINGS.md) (#215).
+
 For native WebView reading, persistent source accounts, verification recovery and
 browser environment comparisons, see [the browser implementation and validation notes](browser/README.md) (#184).
 

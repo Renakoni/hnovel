@@ -1,4 +1,20 @@
 <resources>
+    <string name="sources_basic_section">Basic settings</string>
+    <string name="sources_network_section">Network</string>
+    <string name="sources_account_section">Account</string>
+    <string name="sources_account_name">Account: %1$s</string>
+    <string name="sources_login_again">Sign in again</string>
+    <string name="sources_account_required">Sign-in required</string>
+    <string name="sources_account_loading">Reading account status…</string>
+    <string name="sources_account_unknown">Account status unavailable</string>
+    <string name="sources_plugins_group">Plugin sources</string>
+    <string name="sources_network_wenku8">Wenku8 does not yet support this bypass switch.</string>
+    <string name="sources_network_plugin">This plugin manages its own connections and does not yet support this bypass switch.</string>
+    <string name="sources_login_definition_error">The source login declaration is invalid at %1$s. Review the source definition.</string>
+    <string name="sources_account_unavailable">Account actions unavailable</string>
+    <string name="sources_session_saved">Session saved</string>
+    <string name="sources_edit_variable">Edit source variable</string>
+    <string name="sources_variable">Source variable</string>
     <string name="sources_bypass_vpn">Bypass VPN</string>
     <string name="sources_bypass_vpn_help">Uses a non-VPN network, including when no VPN is running. Applies to new requests. Your VPN must allow bypass; an unavailable route fails without switching modes.</string>
     <string name="sources_network_native">This source uses the native browser, which does not yet support bypassing VPN.</string>

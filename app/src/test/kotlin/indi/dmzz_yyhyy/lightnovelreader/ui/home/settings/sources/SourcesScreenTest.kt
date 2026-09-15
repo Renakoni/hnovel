@@ -17,6 +17,7 @@ import hnovel.content.LoginForm
 import indi.dmzz_yyhyy.lightnovelreader.data.web.*
 import indi.dmzz_yyhyy.lightnovelreader.data.web.rules.ImportedRuleSources
 import indi.dmzz_yyhyy.lightnovelreader.data.web.rules.InstalledRuleSource
+import indi.dmzz_yyhyy.lightnovelreader.data.web.rules.LoginStatus
 import io.nightfish.lightnovelreader.api.identifier.Identifier
 import io.nightfish.lightnovelreader.api.web.WebDataSourceItem
 import org.junit.After
@@ -216,7 +217,7 @@ class SourcesScreenTest {
 
     @Test fun registeredSourcesOfferActionsButInitializingAndFailedSourcesDoNot() {
         val definition = SourceDefinition("initializing", "legado", "fixture", "https://fixture.invalid/", "Loading source", true,
-            false, ImportOrigin(ImportOrigin.Kind.Paste), "digest", 1, "{}")
+            false, ImportOrigin(ImportOrigin.Kind.Paste), "digest", 1, """{"loginUrl":"https://fixture.invalid/login"}""")
         val id = ImportedRuleSources.id(definition)
         val entry = SourceListing(SourceMetadata(WebDataSourceItem(id, "Loading source", "fixture"),
             setOf(SourceCapability.Search, SourceCapability.Login)), SourceStatus.Registered)
@@ -224,7 +225,7 @@ class SourcesScreenTest {
             listOf(hnovel.network.NetworkGrant("https://fixture.invalid/")), null)), registry = listOf(entry)))
         activity.get().setContent { MaterialTheme { SourcesScreen(state, model, onDiagnostics = {}) {} } }
         compose.onNodeWithText("Not initialized").assertDoesNotExist()
-        compose.runOnIdle { state = state.copy(selected = id) }
+        compose.runOnIdle { state = state.copy(selected = id, storedSettingsAvailable = true) }
         compose.onNodeWithText("Initialize source").assertDoesNotExist()
         compose.onNodeWithText("Search this source").assertIsEnabled()
         compose.onNodeWithText("Sign in").assertIsEnabled()
@@ -336,5 +337,138 @@ class SourcesScreenTest {
         compose.onNodeWithText("Remember: no").performScrollTo().performClick()
         compose.onAllNodesWithText("Sign in").filter(hasClickAction()).onFirst().performClick()
         org.junit.Assert.assertEquals(mapOf("user" to "carol", "password" to "", "region" to "west", "remember" to "yes"), submitted)
+    }
+
+    @Test fun builtinAndPluginRowsOpenTheirOwnBasicSettings() {
+        val builtinId = Identifier("lightnovelreader", "Wenku8")
+        val pluginId = Identifier("fixture.plugin", "source")
+        val builtin = SourceListing(SourceMetadata(WebDataSourceItem(builtinId, "Wenku8", "Built-in provider"),
+            setOf(SourceCapability.Search), builtIn = true), SourceStatus.Registered)
+        val plugin = SourceListing(SourceMetadata(WebDataSourceItem(pluginId, "Plugin fixture", "Plugin provider"),
+            setOf(SourceCapability.Search)), SourceStatus.Failed)
+        var state by mutableStateOf(SourceManagementState(registry = listOf(builtin, plugin)))
+        activity.get().setContent { MaterialTheme { SourcesScreen(state, model, onDiagnostics = {}) {} } }
+        compose.onNodeWithText("Wenku8").performClick()
+        verify(exactly = 1) { model.select(builtinId) }
+        compose.onNodeWithText("Plugin fixture").performScrollTo().performClick()
+        verify(exactly = 1) { model.select(pluginId) }
+        compose.runOnIdle { state = state.copy(selected = pluginId, network = SourceNetworkState(limitation =
+            indi.dmzz_yyhyy.lightnovelreader.R.string.sources_network_plugin)) }
+        compose.onNodeWithText("Basic settings").assertExists()
+        compose.onNodeWithText("Plugin provider").assertExists()
+        compose.onNodeWithContentDescription("Bypass VPN").assertIsOff().assertIsNotEnabled()
+        compose.onNodeWithContentDescription("Enable source").assertDoesNotExist()
+        compose.onNodeWithText("Sign in").assertDoesNotExist()
+        compose.runOnIdle { state = state.copy(selected = builtinId, network = SourceNetworkState(limitation =
+            indi.dmzz_yyhyy.lightnovelreader.R.string.sources_network_wenku8)) }
+        compose.onNodeWithText("Wenku8 does not yet support this bypass switch.").assertExists()
+        compose.onNodeWithText("Search this source").assertExists()
+        compose.onNodeWithContentDescription("Bypass VPN").assertIsNotEnabled()
+    }
+
+    @Test fun manualVariableNeedsNoAuthorCommentAndDraftsSurvivePreferenceChanges() {
+        val definition = SourceDefinition("variable", "legado", "fixture", "https://fixture.invalid/", "Variable source", false,
+            false, ImportOrigin(ImportOrigin.Kind.Paste), "digest", 1, "{}")
+        val id = ImportedRuleSources.id(definition)
+        val installed = InstalledRuleSource(definition, listOf(hnovel.network.NetworkGrant("https://fixture.invalid/")), null)
+        var state by mutableStateOf(SourceManagementState(installed = listOf(installed), selected = id, variable = "saved",
+            storedSettingsAvailable = true, network = SourceNetworkState()))
+        activity.get().setContent { MaterialTheme { SourcesScreen(state, model, onDiagnostics = {}) {} } }
+        compose.onNodeWithText("Source variable").assertDoesNotExist()
+        compose.onNodeWithText("Account").assertDoesNotExist()
+        compose.onNodeWithText("Advanced options").performScrollTo().performClick()
+        compose.onNodeWithText("Edit source variable").performScrollTo().performClick()
+        compose.onNodeWithText("Source variable").performScrollTo().performTextReplacement("unsaved variable")
+        compose.onNodeWithText("Allowed site origins, one per line").performScrollTo().performTextReplacement("https://draft.invalid/")
+        compose.onNodeWithContentDescription("Bypass VPN").performScrollTo().performClick()
+        verify(exactly = 1) { model.setBypassVpn(true) }
+        compose.runOnIdle { state = state.copy(network = SourceNetworkState(true), busy = true) }
+        compose.runOnIdle { state = state.copy(busy = false, installed = listOf(installed.copy(
+            preferences = installed.preferences.copy(enabled = true)))) }
+        compose.onNodeWithText("unsaved variable").performScrollTo().assertExists()
+        compose.onNodeWithText("https://draft.invalid/").performScrollTo().assertExists()
+        compose.onNodeWithText("Save configuration and permissions").performScrollTo().performClick()
+        verify(exactly = 1) { model.saveConfiguration(id, "unsaved variable", "https://draft.invalid/") }
+    }
+
+    @Test fun invalidLoginDeclarationKeepsBasicSettingsAndNetworkRepairReachable() {
+        val definition = SourceDefinition("declarations", "legado", "fixture", "https://fixture.invalid/", "Declaration source", true,
+            false, ImportOrigin(ImportOrigin.Kind.Paste), "digest", 1, """{"loginCheckJs":"@js:true"}""")
+        val id = ImportedRuleSources.id(definition)
+        val installed = InstalledRuleSource(definition, emptyList(), null)
+        var state by mutableStateOf(SourceManagementState(installed = listOf(installed), selected = id, network = SourceNetworkState()))
+        activity.get().setContent { MaterialTheme { SourcesScreen(state, model, onDiagnostics = {}) {} } }
+        compose.onNodeWithText("Account").assertDoesNotExist()
+        compose.onNodeWithText("Sign in").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Bypass VPN").assertIsEnabled()
+        compose.runOnIdle { state = state.copy(installed = listOf(installed.copy(definition = definition.copy(
+            rawJson = """{"loginUi":"https://fixture.invalid/login"}""")))) }
+        compose.onNodeWithText("Account").assertExists()
+        compose.onNodeWithText("The source login declaration is invalid at loginUi. Review the source definition.").assertExists()
+        compose.onNodeWithText("Sign in").assertDoesNotExist()
+        compose.onNodeWithText("Basic settings").assertExists()
+        compose.onNodeWithContentDescription("Bypass VPN").assertIsEnabled()
+        compose.onNodeWithText("Advanced options").performScrollTo().performClick()
+        compose.onNodeWithText("Save permissions").performScrollTo().assertIsEnabled()
+    }
+
+    @Test fun unsupportedNativeRouteCanOnlyTurnOffAnExistingBypassPreference() {
+        val definition = SourceDefinition("native", "legado", "fixture", "https://fixture.invalid/", "Native source", false,
+            false, ImportOrigin(ImportOrigin.Kind.Paste), "digest", 1, """{"browserRead":true}""")
+        val id = ImportedRuleSources.id(definition)
+        var state by mutableStateOf(SourceManagementState(installed = listOf(InstalledRuleSource(definition, emptyList(), null)),
+            selected = id, network = SourceNetworkState(limitation = indi.dmzz_yyhyy.lightnovelreader.R.string.sources_network_native)))
+        activity.get().setContent { MaterialTheme { SourcesScreen(state, model, onDiagnostics = {}) {} } }
+        compose.onNodeWithContentDescription("Bypass VPN").assertIsOff().assertIsNotEnabled()
+        compose.runOnIdle { state = state.copy(network = state.network!!.copy(bypassVpn = true)) }
+        compose.onNodeWithContentDescription("Bypass VPN").assertIsOn().assertIsEnabled().performClick()
+        verify(exactly = 1) { model.setBypassVpn(false) }
+        verify(exactly = 0) { model.beginLogin(any()) }
+    }
+
+    @Test @Config(qualifiers = "en-rUS-w320dp-h640dp")
+    fun accountCardDistinguishesSavedSessionsAndOffersExplicitAccountActions() {
+        val definition = SourceDefinition("account", "legado", "fixture", "https://fixture.invalid/", "Account source", true,
+            false, ImportOrigin(ImportOrigin.Kind.Paste), "digest", 1, """{"loginUi":[{"name":"user"}]}""")
+        val id = ImportedRuleSources.id(definition)
+        var state by mutableStateOf(SourceManagementState(installed = listOf(InstalledRuleSource(definition,
+            listOf(hnovel.network.NetworkGrant("https://fixture.invalid/")), null)), selected = id,
+            registry = listOf(SourceListing(SourceMetadata(WebDataSourceItem(id, "Account source", "fixture"),
+                setOf(SourceCapability.Login)), SourceStatus.Registered)), storedSettingsAvailable = true,
+            loginStatus = LoginStatus.Authenticated, accountName = "reader"))
+        activity.get().setContent { MaterialTheme { SourcesScreen(state, model, onDiagnostics = {}) {} } }
+        compose.onNodeWithText("Signed in").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Account: reader").assertExists()
+        compose.onNodeWithText("Sign in").assertDoesNotExist()
+        compose.onNodeWithText("Sign out").performScrollTo().performClick()
+        verify(exactly = 1) { model.logout(id) }
+        compose.onNodeWithText("Sign in again").performScrollTo().performClick()
+        verify(exactly = 1) { model.beginLogin(id) }
+        compose.runOnIdle { state = state.copy(busy = true) }
+        compose.onNodeWithText("Sign out").assertIsNotEnabled()
+        compose.onNodeWithText("Sign in again").assertIsNotEnabled()
+        compose.runOnIdle { state = state.copy(busy = false, loginStatus = LoginStatus.SessionSaved, accountName = null) }
+        compose.onNodeWithText("Session saved").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Signed in").assertDoesNotExist()
+        compose.onNodeWithText("Account: reader").assertDoesNotExist()
+        compose.runOnIdle { state = state.copy(loginStatus = LoginStatus.Required) }
+        compose.onNodeWithText("Sign-in required").assertExists()
+        compose.onNodeWithText("Sign in again").performScrollTo().assertIsEnabled()
+        compose.onNodeWithText("Sign out").assertDoesNotExist()
+        compose.runOnIdle { state = state.copy(loginStatus = LoginStatus.LoggedOut) }
+        compose.onNodeWithText("Signed out").assertExists()
+        compose.onNodeWithText("Sign in").performScrollTo().assertIsEnabled()
+        compose.onNodeWithText("Sign in again").assertDoesNotExist()
+        compose.runOnIdle { state = state.copy(storedSettingsAvailable = false) }
+        compose.onNodeWithText("Account status unavailable").assertExists()
+        compose.onNodeWithText("Signed out").assertDoesNotExist()
+        compose.onNodeWithText("Sign in").assertDoesNotExist()
+        compose.onNodeWithText("Retry").performScrollTo().performClick()
+        verify(exactly = 1) { model.select(id) }
+        compose.runOnIdle { state = state.copy(storedSettingsAvailable = true, loginStatus = LoginStatus.Authenticated,
+            accountName = "reader", registry = emptyList()) }
+        compose.onNodeWithText("Account: reader").assertExists()
+        compose.onNodeWithText("Sign out").assertDoesNotExist()
+        compose.onNodeWithText("Sign in again").assertDoesNotExist()
     }
 }

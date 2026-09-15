@@ -34,12 +34,10 @@ import indi.dmzz_yyhyy.lightnovelreader.data.web.SourceCapability
 import indi.dmzz_yyhyy.lightnovelreader.data.web.SourceListing
 import indi.dmzz_yyhyy.lightnovelreader.data.web.SourceStatus
 import indi.dmzz_yyhyy.lightnovelreader.data.web.rules.ImportedRuleSources
-import indi.dmzz_yyhyy.lightnovelreader.data.web.rules.LoginStatus
 import indi.dmzz_yyhyy.lightnovelreader.data.web.zlibrary.ZLibrarySources
 import io.nightfish.lightnovelreader.api.Route
 import io.nightfish.lightnovelreader.api.identifier.Identifier
 import io.nightfish.lightnovelreader.api.ui.LocalNavController
-import kotlinx.serialization.json.*
 import kotlinx.coroutines.flow.first
 
 fun NavGraphBuilder.settingsSourcesDestination() {
@@ -94,6 +92,7 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
     LaunchedEffect(state.message) { if (state.message == R.string.sources_saved) adding = false }
     val file = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let { uri -> model.previewFile(uri, profile) } }
     val installed = state.installed.find { ImportedRuleSources.id(it.definition) == state.selected }
+    val selectedEntry = state.registry.find { it.metadata.id == state.selected }
     fun back() {
         when {
             state.loginForm != null -> model.cancelLogin()
@@ -107,7 +106,7 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
     BackHandler { back() }
     Scaffold(topBar = {
         TopAppBar(title = { Text(if (state.selected == ZLibrarySources.ID) "Z-Library"
-            else installed?.definition?.displayName ?: stringResource(R.string.sources_title)) },
+            else installed?.definition?.displayName ?: selectedEntry?.metadata?.item?.name ?: stringResource(R.string.sources_title)) },
             navigationIcon = { IconButton(onClick = { back() }) {
                 Icon(painterResource(R.drawable.arrow_back_24px), stringResource(R.string.sources_back))
             } })
@@ -118,41 +117,59 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
             if (state.busy) item { LinearProgressIndicator(Modifier.fillMaxWidth()); TextButton(onClick = model::cancel) { Text(stringResource(android.R.string.cancel)) } }
             state.message?.let { message -> item { Text(stringResource(message), color = MaterialTheme.colorScheme.primary) } }
             if (state.selected == ZLibrarySources.ID) {
-                state.network?.let { network -> item { SourceNetworkSection(network, state.busy, model::setBypassVpn) } }
-                item { ZLibrarySettingsEditor(state.zLibrary, state.busy, state.registry.find { it.metadata.id == ZLibrarySources.ID },
+                item(key = "zlibrary-settings") { ZLibrarySettingsEditor(state.zLibrary, state.busy, state.registry.find { it.metadata.id == ZLibrarySources.ID },
                     onEnabled = model::setZLibraryEnabled, onSave = model::saveZLibrary,
-                    onSearch = { onSearch(ZLibrarySources.ID) }) }
+                    onSearch = { onSearch(ZLibrarySources.ID) }, network = state.network, onBypassVpn = model::setBypassVpn) }
             } else if (installed != null) {
-                item {
+                item(key = "rule-settings") {
                     val definition = installed.definition
-                    val raw = remember(definition) { Json.parseToJsonElement(definition.rawJson).jsonObject }
-                    var configuration by remember(definition.contentDigest, state.variable) { mutableStateOf(state.variable) }
-                    var permissions by remember(definition, installed.origins) { mutableStateOf(installed.origins.joinToString("\n") { it.origin }) }
+                    val settings = checkNotNull(state.ruleSettings)
+                    var configuration by rememberSaveable(definition.sourceId, state.variable) { mutableStateOf(state.variable) }
+                    var permissions by rememberSaveable(definition.sourceId, installed.origins) { mutableStateOf(installed.origins.joinToString("\n") { it.origin }) }
                     var showDetails by rememberSaveable(definition.sourceId) { mutableStateOf(false) }
+                    var editVariable by rememberSaveable(definition.sourceId) { mutableStateOf(false) }
                     val entry = state.registry.find { it.metadata.id == state.selected }
                     val capabilities = entry.actionCapabilities()
                     val active = entry?.status == SourceStatus.Ready && capabilities.isNotEmpty()
-                    val hasConfiguration = active && (raw["variableComment"]?.jsonPrimitive?.content?.isNotBlank() == true || state.variable.isNotEmpty())
-                    val variableLabel = raw["variableComment"]?.jsonPrimitive?.content.orEmpty().ifBlank { stringResource(R.string.sources_configuration) }
                     val check = state.checks[definition.sourceId]
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        SectionHeader(text = stringResource(R.string.sources_basic_section))
                         if (entry?.status == SourceStatus.Failed) Text(stringResource(R.string.sources_action_failed), color = MaterialTheme.colorScheme.error)
+                        if (installed.preferences.enabled && installed.origins.isEmpty()) Text(stringResource(R.string.sources_awaiting_permissions))
                         val enabledLabel = stringResource(R.string.sources_enabled)
                         ListItem(headlineContent = { Text(enabledLabel) },
                             trailingContent = { Switch(installed.preferences.enabled,
                                 { model.setEnabled(state.selected!!, it) }, enabled = !state.busy,
                                 modifier = Modifier.semantics { contentDescription = enabledLabel }) })
-                        state.network?.let { SourceNetworkSection(it, state.busy, model::setBypassVpn) }
                         if (SourceCapability.Search in capabilities) {
                             Button(onClick = { onSearch(state.selected!!) }, enabled = !state.busy) { Text(stringResource(R.string.explore_search)) }
                         }
-                        if (SourceCapability.Login in capabilities) {
-                            Button(onClick = { model.beginLogin(state.selected!!) }, enabled = !state.busy) { Text(stringResource(R.string.sources_login)) }
-                            if (state.loginStatus in setOf(LoginStatus.Authenticated, LoginStatus.SessionSaved)) TextButton(onClick = { model.logout(state.selected!!) }, enabled = !state.busy) { Text(stringResource(R.string.sources_logout)) }
+                        state.network?.let {
+                            SectionHeader(text = stringResource(R.string.sources_network_section))
+                            SourceNetworkSection(it, state.busy, model::setBypassVpn)
+                        }
+                        if (settings.loginDeclared || settings.loginErrorField != null) {
+                            SectionHeader(text = stringResource(R.string.sources_account_section))
+                            if (settings.loginErrorField != null) {
+                                Text(stringResource(R.string.sources_login_definition_error, settings.loginErrorField), color = MaterialTheme.colorScheme.error)
+                            } else {
+                                SourceAccountSection(state.loginStatus.takeIf { state.storedSettingsAvailable }, state.accountName,
+                                    SourceCapability.Login in capabilities, state.busy,
+                                    onLogin = { model.beginLogin(state.selected!!) }, onLogout = { model.logout(state.selected!!) },
+                                    onRetry = { model.select(state.selected) })
+                            }
+                        }
+                        if (settings.variableDescription.isNotBlank()) {
+                            SectionHeader(text = stringResource(R.string.sources_configuration))
+                            Text(settings.variableDescription)
                         }
                         TextButton(onClick = { showDetails = !showDetails }) { Text(stringResource(R.string.sources_advanced)) }
                         if (showDetails) {
-                            if (hasConfiguration) OutlinedTextField(configuration, { configuration = it }, Modifier.fillMaxWidth(), label = { Text(variableLabel) }, enabled = !state.busy)
+                            TextButton(onClick = { editVariable = !editVariable }, enabled = !state.busy && state.storedSettingsAvailable) {
+                                Text(stringResource(R.string.sources_edit_variable))
+                            }
+                            if (editVariable) OutlinedTextField(configuration, { configuration = it }, Modifier.fillMaxWidth(),
+                                label = { Text(stringResource(R.string.sources_variable)) }, enabled = !state.busy && state.storedSettingsAvailable)
                             SourceCheckStatus(check, check?.revision == definition.contentDigest && check.accountGeneration == entry?.metadata?.accountGeneration, details = true)
                             if (installed.deniedOrigins.isNotEmpty()) {
                                 Text(stringResource(R.string.sources_denied_origins), style = MaterialTheme.typography.titleMedium)
@@ -162,8 +179,8 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                                 }
                             }
                             OutlinedTextField(permissions, { permissions = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.sources_permissions)) }, enabled = !state.busy)
-                            Button(onClick = { model.saveConfiguration(state.selected!!, configuration.takeIf { hasConfiguration }, permissions) }, enabled = !state.busy) {
-                                Text(stringResource(if (hasConfiguration) R.string.sources_save else R.string.sources_save_permissions))
+                            Button(onClick = { model.saveConfiguration(state.selected!!, configuration.takeIf { editVariable && state.storedSettingsAvailable }, permissions) }, enabled = !state.busy) {
+                                Text(stringResource(if (editVariable && state.storedSettingsAvailable) R.string.sources_save else R.string.sources_save_permissions))
                             }
                             OutlinedButton(onClick = { model.checkUpdate(state.selected!!) }, enabled = !state.busy) { Text(stringResource(R.string.sources_check_update)) }
                             OutlinedButton(onClick = { onDiagnostics(state.selected!!) }, enabled = !state.busy && active) { Text(stringResource(R.string.sources_diagnostics)) }
@@ -181,6 +198,11 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                     if (rollback) AlertDialog(onDismissRequest = { rollback = false }, title = { Text(stringResource(R.string.sources_rollback)) },
                         text = { Text(stringResource(R.string.sources_rollback_help)) }, confirmButton = { TextButton(onClick = { rollback = false; model.rollback(state.selected!!, permissions) }) { Text(stringResource(R.string.sources_rollback)) } },
                         dismissButton = { TextButton(onClick = { rollback = false }) { Text(stringResource(android.R.string.cancel)) } })
+                }
+            } else if (state.selected != null) {
+                item(key = "registered-settings") {
+                    RegisteredSourceSettings(selectedEntry, state.network, state.busy,
+                        onSearch = { onSearch(state.selected) }, onBypassVpn = model::setBypassVpn)
                 }
             } else {
                 item { Button(onClick = { adding = !adding }, enabled = !state.busy) { Text(stringResource(R.string.sources_add)) } }
@@ -234,7 +256,7 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                         ListItem(headlineContent = { Text(entry.metadata.item.name) }, supportingContent = { Column {
                             Text(stringResource(R.string.sources_builtin))
                         } },
-                            modifier = Modifier.clip(MaterialTheme.shapes.large),
+                            modifier = Modifier.clip(MaterialTheme.shapes.large).clickable(enabled = !state.busy) { model.select(entry.metadata.id) },
                             colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
                             trailingContent = {
                                 if (SourceCapability.Search in entry.actionCapabilities()) IconButton(onClick = { onSearch(entry.metadata.id) }, enabled = !state.busy) {
@@ -250,6 +272,15 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                             supportingContent = { Text(android.net.Uri.parse(source.definition.importKey).host.orEmpty()) },
                             trailingContent = { Switch(source.preferences.enabled, { model.setEnabled(id, it) }, enabled = !state.busy) },
                             modifier = Modifier.clip(MaterialTheme.shapes.large).clickable(enabled = !state.busy) { model.select(id) },
+                            colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer))
+                    }
+                    val installedIds = state.installed.map { ImportedRuleSources.id(it.definition) }.toSet()
+                    val plugins = state.registry.filter { !it.metadata.builtIn && it.metadata.id !in installedIds && it.metadata.id != ZLibrarySources.ID }
+                    if (plugins.isNotEmpty()) item { SectionHeader(text = stringResource(R.string.sources_plugins_group)) }
+                    items(plugins, key = { it.metadata.id.toString() }) { entry ->
+                        ListItem(headlineContent = { Text(entry.metadata.item.name) },
+                            supportingContent = { Text(entry.metadata.item.provider) },
+                            modifier = Modifier.clip(MaterialTheme.shapes.large).clickable(enabled = !state.busy) { model.select(entry.metadata.id) },
                             colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer))
                     }
                 }
