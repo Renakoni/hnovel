@@ -116,6 +116,12 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
     }
     val closed get() = !lifetime.isActive
 
+    /** Host-only: native background work must stop even after its last document completed. */
+    fun onClosed(action: () -> Unit): AutoCloseable {
+        val subscription = lifetime.coroutineContext.job.invokeOnCompletion { action() }
+        return AutoCloseable { subscription.dispose() }
+    }
+
     suspend fun webViewUserAgent(): String {
         checkOpen()
         val value = browser?.defaultUserAgent()

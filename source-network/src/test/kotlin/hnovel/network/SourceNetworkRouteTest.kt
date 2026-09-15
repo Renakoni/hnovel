@@ -34,6 +34,30 @@ class SourceNetworkRouteTest {
         return (result as BrokerResult.Success).response.text()
     }
 
+    @Test fun nativeOwnersStopOnceAndDetachedOwnersAreNotNotified() {
+        val route = route(SourceNetworkMode.BypassVpn)
+        val calls = AtomicInteger()
+        val action = { calls.incrementAndGet(); Unit }
+        val first = route.onInvalidated(action)
+        val second = route.onInvalidated(action)
+        first.close(); first.close()
+        assertEquals(0, calls.get())
+        route.invalidate(); route.invalidate()
+        assertEquals(1, calls.get())
+        second.close()
+        route.onInvalidated(action).close()
+        assertEquals(2, calls.get())
+    }
+
+    @Test fun oneFailedNativeShutdownCannotKeepOtherOwnersOnARetiredRoute() {
+        val route = route(SourceNetworkMode.SystemDefault)
+        route.onInvalidated { error("Fixture shutdown failed") }
+        var stopped = false
+        route.onInvalidated { stopped = true; assertFalse(route.available) }
+        route.invalidate()
+        assertTrue(stopped)
+    }
+
     @Test fun sameOriginSourcesUseTheirOwnDnsAndSocketsConcurrently() = runBlocking {
         MockWebServer().use { server ->
             server.start()

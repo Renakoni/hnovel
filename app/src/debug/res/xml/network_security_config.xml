@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+    <!-- Owned emulator fixtures only. Release keeps its system-only trust configuration. -->
+    <domain-config>
+        <domain>10.0.2.2.nip.io</domain>
+        <domain>vpn-only.hnovel.test</domain>
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="@raw/native_route_fixture_ca" />
+        </trust-anchors>
+    </domain-config>
+</network-security-config>

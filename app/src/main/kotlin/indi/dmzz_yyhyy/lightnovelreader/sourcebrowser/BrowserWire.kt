@@ -8,7 +8,7 @@ import kotlinx.serialization.Serializable
 import java.io.ByteArrayOutputStream
 
 @Serializable internal data class BrowserJob(val request: BrokerRequest, val options: BrowserOptions,
-    val profile: String = "", val cookiesEnabled: Boolean = true)
+    val profile: String = "", val cookiesEnabled: Boolean = true, val networkHandle: Long? = null)
 
 /** Large response bodies use bounded pipes, never the shared Binder transaction buffer. */
 internal object BrowserWire {

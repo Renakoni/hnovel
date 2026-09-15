@@ -1,4 +1,4 @@
-# Per-source VPN bypass (#214)
+# Per-source VPN bypass (#214, #219)
 
 ## Contract
 
@@ -8,9 +8,9 @@ The switch may remain enabled: without an Android VPN it still uses an available
 network, and stopping/restarting a VPN does not require toggling the preference again.
 
 The Android adapter observes networks without requesting a cellular connection or binding
-the process. Validated Wi-Fi/Ethernet wins, followed by available cellular. DNS and sockets
+the main app process. Validated Wi-Fi/Ethernet wins, followed by available cellular. DNS and sockets
 come from the same selected `Network`; bypass never uses the global Fake-IP DoH resolver.
-Both modes retain `NO_PROXY`, exact-origin, address, connected-peer and TLS checks.
+Broker HTTP retains `NO_PROXY`, exact-origin, address, connected-peer and TLS checks in both modes.
 
 The broker captures a route for each admitted request, including retries, redirects and
 broker-forwarded browser children. Sessions own separate pools per network generation.
@@ -31,15 +31,50 @@ browser share the source route. Temporary diagnostics and candidate-rule validat
 the real source's mode. Definition/collection downloads keep their own default route.
 There is no separate background unmetered-only policy in the current app.
 
-Native Chromium cannot use the broker socket factory. Its switch is unavailable and an
-already-enabled preference fails with `RouteUnsupported` before native dispatch. Native
-routing remains #219; Wenku8's independent Ktor client/legacy images remain #220. Plugin
+Native Chromium uses the dedicated-process route described below. Wenku8's independent
+Ktor client/legacy images remain #220. Plugin
 private clients do not acquire support merely by appearing in the source list (#215).
 
 The reference project's `header.proxy` configures HTTP/SOCKS proxy connections. It is a
 different transport feature and is not used to implement this Android VPN switch.
 
-## Verification recorded on 2026-09-15
+## Native browser route
+
+Native bypass requires Android API 28+, the existing native profile capability and a
+WebView provider exposing `PROXY_OVERRIDE`. Settings enable the same per-source switch
+when these capabilities are present. Unsupported combinations return `RouteUnsupported`;
+an absent or retired non-VPN network returns `RouteUnavailable`.
+
+`NativeSourceBrowser` resolves the **captured route** back to the same Android `Network`
+and sends its handle over the existing private Binder. Only `:source_browser_native`
+binds that network, before Chromium initializes. It additionally installs a process-local
+direct proxy override and waits for its completion before navigation. A proxy override
+alone is not VPN bypass: the network binding controls sockets and DNS. Default mode
+keeps normal Chromium system networking and proxy behavior.
+
+The owner is the live source session plus route generation. Before changing either, the
+host shuts down the old process and waits for Binder death before preparing its profile.
+Route invalidation and source-session closure also stop an **idle** native process, so
+Service Workers cannot keep issuing requests after their owner retires. Active request
+cancellation waits for shutdown too. A lost bypass route never opens a replacement
+default-route browser; a new request may select a new eligible physical network.
+
+Changing the mode or rebuilding the process does not rotate the account or clear its
+profile. Persistent Cookie/localStorage remains source/account owned. In-memory session
+cookies follow Chromium's process lifetime and may be lost; this is not a promise that a
+website will continue accepting the saved login. New localStorage writes still waiting
+for Chromium's disk flush can also be lost when a page is cancelled and its process ends;
+the public WebView API has no general localStorage flush acknowledgement. Explicit logout still retires the old
+account and clears its profile; the separate general-data retention work is #218.
+
+Page navigation, redirects, iframe, fetch/XHR, dedicated Worker and Service Worker use
+Chromium's native stack on this process route. The existing browser safety boundary is
+unchanged: native subrequests are not broker HTTP peer/origin checks. No request
+interception, injected networking API, fingerprint change or TLS bypass implements this.
+See [native browser design](browser/README.md) and the
+[controlled fixture](fixtures/native-routing/README.md) for evidence and reproduction.
+
+## HTTP/broker verification recorded on 2026-09-15
 
 - JVM: 55 source-network, 114 source-content and 465 app tests passed. Route tests cover
   concurrent opposite modes at one origin, captured browser/redirect chains, lost routes,
@@ -51,8 +86,10 @@ different transport feature and is not used to implement this Android VPN switch
   sessions; image and broker-browser fetches use the captured route. Responses are uncached.
 - The same session with bypass continuously enabled succeeds through Android VPN states
   off → on → off → on → off. Preference persistence and account generation are checked.
-- Native-browser bypass rejection passes without loading a public site. CI includes this
-  check on API 24/35; opt-in external fixtures are skipped in ordinary CI.
+- A synthetic native bypass route is refused before loading a public site: unsupported
+  platforms return `RouteUnsupported`, while supported platforms require a route issued
+  by the actual Android network observer (`RouteUnavailable` otherwise). CI includes
+  this check on API 24/35; opt-in external fixtures are skipped in ordinary CI.
 - A public `www.wenku8.cc` homepage probe received HTTP redirects in both modes (302 and
   301) with caching disabled. It did not follow redirects, log in, run Wenku8 source rules
   or demonstrate a latency benefit.

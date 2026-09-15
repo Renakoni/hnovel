@@ -4,6 +4,8 @@ import android.content.*
 import android.os.*
 import android.widget.Toast
 import dagger.hilt.android.qualifiers.ApplicationContext
+import androidx.webkit.WebViewFeature
+import indi.dmzz_yyhyy.lightnovelreader.data.web.AndroidSourceNetworks
 import hnovel.network.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
@@ -19,9 +21,15 @@ import javax.inject.Singleton
 
 /** One disposable Chromium process at a time, including API 24's process-wide browser directory. */
 @Singleton
-class AndroidSourceBrowser @Inject constructor(@ApplicationContext private val context: Context) : BrowserExecutor {
+class AndroidSourceBrowser @Inject constructor(@ApplicationContext private val context: Context,
+    networks: AndroidSourceNetworks = AndroidSourceNetworks(context)) : BrowserExecutor {
     private val serial = Mutex()
-    private val native = NativeSourceBrowser(context)
+    private val native = NativeSourceBrowser(context, networks)
+    companion object {
+        fun supportsVpnBypass(context: Context): Boolean = Build.VERSION.SDK_INT >= 28 && runCatching {
+            NativeBrowserFiles(context).supported && WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)
+        }.getOrDefault(false)
+    }
     override fun clearAccount(scope: SourceScope) = native.clearAccount(scope)
     private var scriptToast: Toast? = null
 
@@ -42,9 +50,9 @@ class AndroidSourceBrowser @Inject constructor(@ApplicationContext private val c
             options.delayMillis in 0..30000 && (options.html?.length ?: 0) <= 196608)
         require(!options.verificationCode || options.interactive)
         if (session.browserRead && !options.verificationCode) {
-            if (route.mode == SourceNetworkMode.BypassVpn)
+            if (route.mode == SourceNetworkMode.BypassVpn && !supportsVpnBypass(context))
                 return@withContext BrokerResult.Failure(RequestStage.Connect, FailureCode.RouteUnsupported)
-            return@withContext native.execute(session, request, options, guard)
+            return@withContext native.execute(session, request, options, guard, route)
         }
         val connected = CompletableDeferred<IBrowserService>()
         val died = CompletableDeferred<Unit>()

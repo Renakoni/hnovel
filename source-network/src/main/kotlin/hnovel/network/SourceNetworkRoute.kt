@@ -19,16 +19,29 @@ class SourceNetworkRoute(val mode: SourceNetworkMode, val dns: Dns,
     val socketFactory: SocketFactory = SocketFactory.getDefault()) {
     private val pools = mutableSetOf<ConnectionPool>()
     private val calls = mutableSetOf<Call>()
+    private val invalidations = mutableSetOf<() -> Unit>()
     @Volatile var available: Boolean = true
         private set
 
     fun invalidate() {
         val retired = synchronized(this) {
+            if (!available) return
             available = false
-            (calls.toList() to pools.toList()).also { calls.clear(); pools.clear() }
+            Triple(calls.toList(), pools.toList(), invalidations.toList()).also {
+                calls.clear(); pools.clear(); invalidations.clear()
+            }
         }
         retired.first.forEach { it.cancel() }
         retired.second.forEach { it.evictAll() }
+        retired.third.forEach { runCatching(it) }
+    }
+
+    /** A native browser retains this subscription while its process can still issue requests. */
+    fun onInvalidated(action: () -> Unit): AutoCloseable {
+        val listener = { action() }
+        val registered = synchronized(this) { if (available) invalidations.add(listener) else false }
+        if (!registered) action()
+        return AutoCloseable { synchronized(this) { invalidations.remove(listener) } }
     }
 
     internal fun checkAvailable() {

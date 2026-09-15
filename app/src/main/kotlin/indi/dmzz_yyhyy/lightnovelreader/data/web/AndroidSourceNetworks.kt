@@ -14,7 +14,7 @@ import okhttp3.Dns
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** Observes existing networks; never requests cellular or binds the app process. */
+/** Observes existing networks; never requests cellular or binds the main app process. */
 @Singleton
 class AndroidSourceNetworks @Inject constructor(@ApplicationContext context: Context) : AutoCloseable {
     private val connectivity = context.getSystemService(ConnectivityManager::class.java)
@@ -79,6 +79,10 @@ class AndroidSourceNetworks @Inject constructor(@ApplicationContext context: Con
             defaultProperties = properties
         }
     }
+
+    /** Resolve only a route issued by this observer; never select a different network for a native child. */
+    @Synchronized internal fun boundNetwork(route: SourceNetworkRoute): Network? =
+        direct.entries.firstOrNull { it.value.route === route && route.available }?.key
 
     @Synchronized private fun retire(network: Network) {
         direct.remove(network)?.route?.invalidate()
