@@ -1,5 +1,7 @@
 package hnovel.content
 
+import hnovel.rules.RequestOptionsException
+import hnovel.rules.RequestOptionsJson
 import kotlinx.serialization.json.*
 
 data class LoginField(val name: String, val type: String, val action: String? = null,
@@ -24,7 +26,9 @@ data class LoginForm(val fields: List<LoginField>, val browserUrl: String?, val 
 
     companion object {
         fun parse(ui: String, loginUrl: String, extended: Boolean = false): LoginForm {
-            val rows = if (ui.isBlank()) JsonArray(emptyList()) else Json.parseToJsonElement(ui) as? JsonArray
+            val rows = if (ui.isBlank() && ui.length <= 65536) JsonArray(emptyList()) else try {
+                RequestOptionsJson.parse(ui) as? JsonArray
+            } catch (_: RequestOptionsException) { null }
                 ?: throw SourceContentException(ContentError.InvalidRule, "loginUi")
             if (rows.size > 32) throw SourceContentException(ContentError.Limit, "loginUi")
             val fields = rows.mapIndexed { index, value ->
