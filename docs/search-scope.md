@@ -10,9 +10,10 @@ chip changes the scope to one source. The aggregate scope renders one independen
 block per source; a timeout, verification challenge, or empty result in one block
 does not hide results from other blocks.
 
-Each block is a preview. Tapping its header opens the existing source-owned result
-page, preserving that source's pagination, book identity, login and verification
-semantics. Result items use the existing source-qualified book IDs.
+Each block is a preview. Tapping its header changes the page to that source's
+scope, so subsequent results use that source's normal search stream. Result items
+use the existing source-qualified book IDs; opening a book still goes through the
+existing book detail flow.
 
 ## Query and history
 

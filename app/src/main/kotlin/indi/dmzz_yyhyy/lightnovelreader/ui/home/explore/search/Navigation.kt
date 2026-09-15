@@ -21,11 +21,15 @@ fun NavGraphBuilder.searchHubDestination() {
         val nav = LocalNavController.current
         val model = hiltViewModel<SearchHubViewModel>()
         val state by model.state.collectAsState()
+        LifecycleStartEffect(model) {
+            model.setActive(true)
+            onStopOrDispose { model.setActive(false) }
+        }
         SearchHubScreen(
             state = state, onQuery = model::setQuery, onSearch = model::search,
             onSelect = model::select, onHistory = model::search,
             onDeleteHistory = model::deleteHistory, onClearHistory = model::clearHistory,
-            onOpenSource = { id, _ -> model.select(id); model.search(state.query) },
+            onOpenSource = { id, _ -> model.select(id) },
             onBook = nav::navigateToBookDetailDestination, onBack = nav::popBackStackIfResumed
         )
     }

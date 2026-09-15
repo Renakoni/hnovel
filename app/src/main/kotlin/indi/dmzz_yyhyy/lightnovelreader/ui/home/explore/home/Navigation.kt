@@ -23,7 +23,7 @@ fun NavGraphBuilder.exploreHomeDestination() {
         ExploreHomeScreen(state, model::select, model::scroll, model::refresh,
             onMore = { model.more(it)?.let { route -> nav.navigate(route) } },
             onBook = { nav.navigateToBookDetailDestination(it.storageKey) },
-            onSearch = { model.search()?.let { nav.navigate(it) } },
+            onSearch = { nav.navigate(Route.Main.Explore.SearchHub) },
             onCategories = { model.categories()?.let { nav.navigateToMainRoot(it) } },
             onManageSources = { nav.navigate(state.selected?.let { Route.Main.Settings.SourceDetail(it.namespace, it.id) } ?: Route.Main.Settings.Sources) },
             onInput = { id, value -> model.interact(id, value) },

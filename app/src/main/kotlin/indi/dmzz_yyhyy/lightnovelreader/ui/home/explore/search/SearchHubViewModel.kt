@@ -2,99 +2,185 @@ package indi.dmzz_yyhyy.lightnovelreader.ui.home.explore.search
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.github.michaelbull.result.Ok
+import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.getOrElse
 import dagger.hilt.android.lifecycle.HiltViewModel
 import indi.dmzz_yyhyy.lightnovelreader.data.book.BookRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.explore.ExploreRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.userdata.UserDataRepository
-import indi.dmzz_yyhyy.lightnovelreader.data.web.SourceCapability
-import indi.dmzz_yyhyy.lightnovelreader.data.web.SourceStatus
-import indi.dmzz_yyhyy.lightnovelreader.data.web.WebSourceRegistry
+import indi.dmzz_yyhyy.lightnovelreader.data.web.*
+import indi.dmzz_yyhyy.lightnovelreader.ui.home.discovery.DiscoveryVersion
+import indi.dmzz_yyhyy.lightnovelreader.ui.home.discovery.version
+import io.nightfish.lightnovelreader.api.book.BookInformation
+import io.nightfish.lightnovelreader.api.error.WebRequestError
 import io.nightfish.lightnovelreader.api.identifier.Identifier
 import io.nightfish.lightnovelreader.api.userdata.UserDataPath
 import io.nightfish.lightnovelreader.api.web.search.SearchResult
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.update
-import io.nightfish.lightnovelreader.api.book.BookInformation
-import io.nightfish.lightnovelreader.api.error.WebRequestError
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import javax.inject.Inject
 
-data class SearchHubBook(val id: String, val information: Flow<com.github.michaelbull.result.Result<BookInformation, WebRequestError>>)
-data class SearchHubSource(val id: Identifier, val name: String, val books: List<SearchHubBook> = emptyList(), val loading: Boolean = false, val error: Boolean = false)
-data class SearchHubState(val query: String = "", val history: List<String> = emptyList(), val selected: Identifier? = null, val aggregate: Boolean = true, val sources: List<SearchHubSource> = emptyList())
+data class SearchHubBook(val id: String, val information: Flow<Result<BookInformation, WebRequestError>>)
+data class SearchHubSource(
+    val id: Identifier, val name: String, val books: List<SearchHubBook> = emptyList(),
+    val loading: Boolean = false, val error: Boolean = false, val searched: Boolean = false,
+)
+data class SearchHubState(
+    val query: String = "", val submittedKeyword: String = "", val history: List<String> = emptyList(),
+    val selected: Identifier? = null, val sources: List<SearchHubSource> = emptyList(),
+) {
+    val aggregate get() = selected == null
+}
 
 @HiltViewModel
-class SearchHubViewModel @Inject constructor(
+class SearchHubViewModel internal constructor(
     private val registry: WebSourceRegistry,
     private val explore: ExploreRepository,
     private val books: BookRepository,
     users: UserDataRepository,
+    private val accounts: SourceSessionManager,
+    private val io: CoroutineDispatcher,
 ) : ViewModel() {
+    @Inject constructor(registry: WebSourceRegistry, explore: ExploreRepository, books: BookRepository,
+        users: UserDataRepository, accounts: SourceSessionManager) : this(registry, explore, books, users, accounts, Dispatchers.IO)
+
     private val history = users.stringListUserData(UserDataPath.Search.History.path)
     private val mutable = MutableStateFlow(SearchHubState())
-    val state: StateFlow<SearchHubState> = mutable.asStateFlow()
-    private var work: kotlinx.coroutines.Job? = null
+    val state = mutable.asStateFlow()
+    private var versions = emptyMap<Identifier, DiscoveryVersion>()
+    private var work: Job? = null
+    private var epoch = 0L
+    private var active = false
+    // Shared by submissions: cancelled work releases its permit before a replacement starts.
+    private val gate = Semaphore(4)
 
     init {
-        viewModelScope.launch { history.getFlow().collect { values -> mutable.update { it.copy(history = values.orEmpty().reversed()) } } }
-        viewModelScope.launch { registry.sources.collect { refreshSources() } }
-    }
-
-    fun refreshSources() {
-        val sources = registry.sources.value.filter { it.status == SourceStatus.Ready && SourceCapability.Search in it.metadata.capabilities }
-            .map { SearchHubSource(it.metadata.id, it.metadata.item.name) }
-        val currentIds = mutable.value.sources.map { it.id }.toSet()
-        val nextIds = sources.map { it.id }.toSet()
-        if (currentIds != nextIds) work?.cancel()
-        mutable.update {
-            val selected = it.selected?.takeIf { id -> sources.any { s -> s.id == id } }
-            it.copy(sources = sources, selected = selected, aggregate = selected == null)
-        }
-    }
-
-    fun select(id: Identifier?) { work?.cancel(); mutable.update { it.copy(selected = id, aggregate = id == null, sources = it.sources.map { s -> s.copy(books = emptyList(), loading = false, error = false) }) } }
-    fun setQuery(value: String) { mutable.update { it.copy(query = value) } }
-    fun search(value: String = state.value.query) {
-        if (value.isBlank()) return
-        setQuery(value); viewModelScope.launch(Dispatchers.IO) { history.update { old -> old.filterNot { it == value } + value } }
-        work?.cancel(); work = viewModelScope.launch(Dispatchers.IO) {
-            val selected = state.value.selected
-            val targets = state.value.sources.filter { selected == null || it.id == selected }
-            mutable.update { it.copy(sources = it.sources.map { s -> if (targets.any { t -> t.id == s.id }) s.copy(books = emptyList(), loading = true, error = false) else s }) }
-            val gate = Semaphore(4)
-            targets.map { target -> async { gate.withPermit { load(target, value) } } }.awaitAll()
-        }
-    }
-    private suspend fun load(target: SearchHubSource, keyword: String) {
-        val result = mutableListOf<SearchHubBook>()
-        try {
-            val session = explore.open(target.id).getOrElse { throw IllegalStateException() }
-            val type = session.types.firstOrNull() ?: throw IllegalStateException()
-            session.search(type, keyword).collect { event ->
-                if (event is SearchResult.MultipleBook && result.size < 6) {
-                    result += SearchHubBook(event.bookId, books.getBookInformationFlow(event.bookId))
+        viewModelScope.launch { history.getFlow().collect { values -> mutable.value = state.value.copy(history = values.orEmpty().reversed()) } }
+        viewModelScope.launch {
+            combine(registry.sources, accounts.changes) { sources, generations ->
+                // Registry membership is enablement. Registered sources initialize lazily on first use.
+                sources.filter { SourceCapability.Search in it.metadata.capabilities }
+                    .associate { it.metadata.id to it.version(generations) }
+            }.distinctUntilChanged().collect { next ->
+                cancelWork()
+                val old = state.value
+                val selected = old.selected?.takeIf { it in next }
+                val changedScope = selected != old.selected
+                val sources = next.map { (id, version) ->
+                    old.sources.firstOrNull { it.id == id && versions[id] == version && !changedScope }
+                        ?: SearchHubSource(id, version.metadata.item.name)
                 }
-                if (event is SearchResult.End || result.size >= 6) throw StopSearch
+                versions = next
+                mutable.value = state.value.copy(sources = sources, selected = selected)
+                loadPending()
             }
-        } catch (_: StopSearch) {
-            mutable.update { it.copy(sources = it.sources.map { s -> if (s.id == target.id) s.copy(books = result, loading = false) else s }) }
-        } catch (_: Exception) {
-            mutable.update { it.copy(sources = it.sources.map { s -> if (s.id == target.id) s.copy(loading = false, error = true) else s }) }
         }
     }
-    fun deleteHistory(value: String) { viewModelScope.launch(Dispatchers.IO) { history.update { it.filterNot { item -> item == value } } } }
-    fun clearHistory() { viewModelScope.launch(Dispatchers.IO) { history.update { emptyList() } } }
-    private object StopSearch : Throwable()
+
+    fun setActive(value: Boolean) {
+        active = value
+        if (value) loadPending() else cancelWork()
+    }
+
+    fun select(id: Identifier?) {
+        if (id == state.value.selected || id != null && id !in versions) return
+        cancelWork()
+        mutable.value = state.value.copy(selected = id, sources = state.value.sources.map { SearchHubSource(it.id, it.name) })
+        loadPending()
+    }
+
+    fun setQuery(value: String) {
+        if (value == state.value.query) return
+        cancelWork()
+        mutable.value = state.value.copy(query = value, submittedKeyword = "",
+            sources = state.value.sources.map { SearchHubSource(it.id, it.name) })
+    }
+
+    fun search(value: String = state.value.query) {
+        val keyword = value.trim()
+        if (keyword.isEmpty()) return
+        cancelWork()
+        mutable.value = state.value.copy(query = keyword, submittedKeyword = keyword,
+            sources = state.value.sources.map { SearchHubSource(it.id, it.name) })
+        viewModelScope.launch(io) { history.update { old -> old.filterNot { it == keyword } + keyword } }
+        loadPending()
+    }
+
+    private fun cancelWork() {
+        epoch++
+        work?.cancel()
+        work = null
+        mutable.value = state.value.copy(sources = state.value.sources.map {
+            if (it.loading) it.copy(loading = false, searched = false) else it
+        })
+    }
+
+    private fun loadPending() {
+        val snapshot = state.value
+        if (!active || snapshot.submittedKeyword.isBlank() || work?.isActive == true) return
+        val targets = snapshot.sources.filter { (snapshot.aggregate || it.id == snapshot.selected) && !it.searched }
+        if (targets.isEmpty()) return
+        val token = ++epoch
+        val sourceVersions = versions
+        val ids = targets.map { it.id }.toSet()
+        mutable.value = snapshot.copy(sources = snapshot.sources.map { if (it.id in ids) it.copy(loading = true) else it })
+        work = viewModelScope.launch {
+            supervisorScope {
+                targets.forEach { target -> launch {
+                    gate.withPermit { load(target.id, sourceVersions.getValue(target.id), snapshot.submittedKeyword,
+                        if (snapshot.aggregate) 6 else Int.MAX_VALUE, token) }
+                } }
+            }
+        }
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private suspend fun load(id: Identifier, version: DiscoveryVersion, keyword: String, limit: Int, token: Long) {
+        val results = linkedMapOf<String, SearchHubBook>()
+        var failed = false
+        try {
+            withTimeout(30_000) {
+                flow {
+                    val session = explore.open(id).getOrElse { throw IllegalStateException("Source search unavailable") }
+                    emitAll(session.search(session.types.first(), keyword))
+                }.flowOn(io).buffer(0).transformWhile { event ->
+                    emit(event)
+                    event !is SearchResult.End && event !is SearchResult.Empty
+                }.collect { event ->
+                    val bookId = when (event) {
+                        is SearchResult.MultipleBook -> event.bookId
+                        is SearchResult.SingleBook -> event.bookId
+                        else -> null
+                    }
+                    if (bookId != null && bookId !in results) {
+                        val info = (event as? SearchResult.MultipleBook)?.information
+                        results[bookId] = SearchHubBook(bookId, info?.let { flowOf(Ok(it)) }
+                            ?: books.getBookInformationFlow(bookId))
+                    }
+                    failed = failed || event is SearchResult.Error
+                    publish(id, version, token) { it.copy(books = results.values.toList(), error = failed) }
+                    if (results.size >= limit) throw PreviewComplete()
+                }
+            }
+        } catch (_: PreviewComplete) {
+            // Stop upstream pagination after the aggregate preview, retaining collected results.
+        } catch (_: Exception) {
+            currentCoroutineContext().ensureActive()
+            failed = true
+        }
+        publish(id, version, token) { it.copy(books = results.values.toList(), loading = false, searched = true, error = failed) }
+    }
+
+    private fun publish(id: Identifier, version: DiscoveryVersion, token: Long, update: (SearchHubSource) -> SearchHubSource) {
+        if (!active || token != epoch || registry.sources.value.firstOrNull { it.metadata.id == id }
+                ?.version(accounts.changes.value) != version) return
+        mutable.value = state.value.copy(sources = state.value.sources.map { if (it.id == id) update(it) else it })
+    }
+
+    fun deleteHistory(value: String) { viewModelScope.launch(io) { history.update { it.filterNot { item -> item == value } } } }
+    fun clearHistory() { viewModelScope.launch(io) { history.update { emptyList() } } }
+    private class PreviewComplete : RuntimeException()
 }

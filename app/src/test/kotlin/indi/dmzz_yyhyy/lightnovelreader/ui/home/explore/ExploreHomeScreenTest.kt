@@ -65,7 +65,7 @@ class ExploreHomeScreenTest {
         compose.onNodeWithText("Source B").performClick().assertIsSelected()
         compose.onNode(hasClickAction() and hasText("Same book")).performClick()
         compose.onNodeWithContentDescription("Show more").performClick()
-        compose.onNodeWithContentDescription("Search this source").performClick()
+        compose.onNodeWithContentDescription("Search").performClick()
         compose.onNodeWithText("Categories").performClick()
         assertEquals(listOf(a, b), books.map { it.sourceId })
         assertEquals(listOf(a, b), more.map { it.more!!.sourceId })
@@ -97,7 +97,7 @@ class ExploreHomeScreenTest {
         } }
         compose.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.Selected)).assertCountEquals(1)
         compose.onNodeWithText("Only source").assertIsSelected()
-        compose.onNodeWithContentDescription("Search this source").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("Search").assertIsEnabled()
         compose.onNodeWithText("Categories").assertDoesNotExist()
     }
 

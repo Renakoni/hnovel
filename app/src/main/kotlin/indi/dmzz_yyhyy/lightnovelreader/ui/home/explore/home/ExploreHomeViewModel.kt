@@ -38,7 +38,9 @@ class ExploreHomeViewModel @Inject constructor(
             UUID.randomUUID().toString(), section.categoryId, Json.encodeToString(content.values))
     }
 
-    fun search(): Route.Main.Explore.SearchHub = Route.Main.Explore.SearchHub
+    fun search(): Route.Main.Explore.Search? = selected(SourceCapability.Search)?.let {
+        Route.Main.Explore.Search(it.namespace, it.id)
+    }
 
     fun categories(): Route.Main.Categories? = selected(SourceCapability.Categories)?.let {
         Route.Main.Categories(it.namespace, it.id)
