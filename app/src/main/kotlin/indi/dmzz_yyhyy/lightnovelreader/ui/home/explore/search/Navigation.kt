@@ -13,6 +13,19 @@ import indi.dmzz_yyhyy.lightnovelreader.ui.dialog.navigateToAddBookToBookshelfDi
 import indi.dmzz_yyhyy.lightnovelreader.utils.popBackStackIfResumed
 import io.nightfish.lightnovelreader.api.Route
 import io.nightfish.lightnovelreader.api.ui.LocalNavController
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+
+fun NavGraphBuilder.searchHubDestination() {
+    composable<Route.Main.Explore.SearchHub> {
+        val nav = LocalNavController.current
+        val model = hiltViewModel<SearchHubViewModel>()
+        val state by model.state.collectAsState()
+        SearchHubScreen(state, model::setQuery, model::search, model::select, model::search,
+            model::deleteHistory, model::clearHistory, { id, keyword -> nav.navigate(Route.Main.Explore.Search(id.namespace, id.id)) },
+            { nav.navigateToBookDetailDestination(it) }, { nav.popBackStackIfResumed() })
+    }
+}
 
 fun NavGraphBuilder.exploreSearchDestination() {
     composable<Route.Main.Explore.Search> { entry ->

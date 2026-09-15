@@ -92,7 +92,9 @@ object Route {
             object Home
             /** 搜索界面路由 */
             @Serializable
-            data class Search(val namespace: String, val sourceId: String)
+            data class Search(val namespace: String? = null, val sourceId: String? = null)
+            @Serializable
+            object SearchHub
         }
         @Serializable
         data class Categories(val namespace: String? = null, val sourceId: String? = null)

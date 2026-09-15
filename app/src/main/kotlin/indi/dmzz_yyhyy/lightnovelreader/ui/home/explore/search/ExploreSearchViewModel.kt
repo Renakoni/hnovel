@@ -45,7 +45,7 @@ class ExploreSearchViewModel internal constructor(
         this(exploreRepository, bookshelfRepository, bookRepository, userDataRepository, registry, accounts,
             saved, saved.toRoute<Route.Main.Explore.Search>())
 
-    val sourceId = Identifier(route.namespace, route.sourceId)
+    val sourceId = Identifier(requireNotNull(route.namespace), requireNotNull(route.sourceId))
     private val mutableState = MutableExploreSearchUiState { saved["search.expanded"] = it }.apply {
         query = saved["search.query"] ?: ""
         submittedKeyword = saved["search.submitted"] ?: ""
