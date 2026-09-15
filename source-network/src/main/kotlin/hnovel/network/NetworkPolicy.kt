@@ -31,7 +31,7 @@ internal class NetworkPolicy(grants: List<NetworkGrant>, private val resolver: D
     }
 
     /** This resolver is installed in the actual OkHttp connection path; there is no second unchecked lookup. */
-    fun dns(url: HttpUrl) = Dns { hostname ->
+    fun dns(url: HttpUrl, resolver: Dns = this.resolver) = Dns { hostname ->
         if (hostname != url.host) throw BrokerFailure(RequestStage.Permission, FailureCode.OriginDenied)
         val grant = check(url)
         resolver.lookup(hostname).also { addresses ->

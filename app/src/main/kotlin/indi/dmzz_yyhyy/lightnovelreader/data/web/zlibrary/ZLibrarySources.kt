@@ -32,7 +32,8 @@ data class ZLibraryState(val settings: ZLibrarySettings = ZLibrarySettings(),
 /** One built-in identity with host-approved origins; changing mirrors never changes book IDs. */
 @Singleton
 class ZLibrarySources @Inject constructor(@ApplicationContext private val context: Context,
-    private val registry: WebSourceRegistry, private val cipher: StorageCipher) {
+    private val registry: WebSourceRegistry, private val cipher: StorageCipher,
+    private val networkSettings: SourceNetworkSettings? = null) {
     private val directory = File(context.filesDir, "native-sources/zlibrary")
     private val snapshot = AtomicFile(File(directory, "settings.json"))
     private val lock = Mutex()
@@ -88,7 +89,7 @@ class ZLibrarySources @Inject constructor(@ApplicationContext private val contex
             registration = null; broker = null; session = null
         } else {
             val nextBroker = SourceBroker(File(directory, "runtime").toPath(), cipher = cipher,
-                limits = BrokerLimits(concurrency = 3, minIntervalMillis = 350))
+                limits = BrokerLimits(concurrency = 3, minIntervalMillis = 350), route = networkSettings?.forSource(ID))
             try {
                 val nextSession = nextBroker.open(SourceScope(ID.namespace, ID.id, "zlibrary-eapi"), settings.origins.map { NetworkGrant(it) })
                 val source = ZLibrarySource(context, nextSession, ZLibraryClient(nextSession, settings.origin))

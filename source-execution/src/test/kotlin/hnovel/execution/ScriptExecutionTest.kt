@@ -19,7 +19,7 @@ class ScriptExecutionTest {
         val authority = ExecutionAuthority()
         var calls = 0
         var answer = " A7c "
-        val browser = BrowserExecutor { _, request, options, guard ->
+        val browser = BrowserExecutor { _, request, options, guard, _ ->
             assertTrue(options.interactive)
             assertTrue(options.verificationCode)
             assertTrue(request.url.endsWith("/captcha.png"))
@@ -54,7 +54,7 @@ class ScriptExecutionTest {
     @Test fun browserVerificationRequiresForegroundAndReturnsTheRequestedResponse() = runBlocking {
         val authority = ExecutionAuthority()
         val opened = mutableListOf<String>()
-        val browser = BrowserExecutor { _, request, options, guard ->
+        val browser = BrowserExecutor { _, request, options, guard, _ ->
             assertTrue(options.interactive)
             guard.commit { opened += options.title }
             val body = if (options.title == "large") "rendered".repeat(30000) else "rendered"

@@ -37,11 +37,15 @@ class AndroidSourceBrowser @Inject constructor(@ApplicationContext private val c
     }
 
     override suspend fun execute(session: SourceSession, request: BrokerRequest, options: BrowserOptions,
-        guard: RequestCommitGuard): BrokerResult = serial.withLock { withContext(Dispatchers.IO) {
+        guard: RequestCommitGuard, route: SourceNetworkRoute): BrokerResult = serial.withLock { withContext(Dispatchers.IO) {
         require(options.title.length <= 1024 && options.script.length <= 65536 && options.sourceRegex.length <= 2048 &&
             options.delayMillis in 0..30000 && (options.html?.length ?: 0) <= 196608)
         require(!options.verificationCode || options.interactive)
-        if (session.browserRead && !options.verificationCode) return@withContext native.execute(session, request, options, guard)
+        if (session.browserRead && !options.verificationCode) {
+            if (route.mode == SourceNetworkMode.BypassVpn)
+                return@withContext BrokerResult.Failure(RequestStage.Connect, FailureCode.RouteUnsupported)
+            return@withContext native.execute(session, request, options, guard)
+        }
         val connected = CompletableDeferred<IBrowserService>()
         val died = CompletableDeferred<Unit>()
         val result = CompletableDeferred<BrokerResult>()
@@ -65,7 +69,7 @@ class AndroidSourceBrowser @Inject constructor(@ApplicationContext private val c
                                 check(url == request.url.toHttpUrl())
                                 // Use the host-owned request, including its explicit source Cookie.
                                 val response = session.executeHttp(request.copy(browser = null,
-                                    maxResponseBytes = minOf(request.maxResponseBytes ?: 1024 * 1024, 1024 * 1024)), guard)
+                                    maxResponseBytes = minOf(request.maxResponseBytes ?: 1024 * 1024, 1024 * 1024)), guard, route)
                                 current(); Json.encodeToString(response)
                             }
                             "request" -> {
@@ -75,7 +79,7 @@ class AndroidSourceBrowser @Inject constructor(@ApplicationContext private val c
                                     method = args["method"]?.jsonPrimitive?.content ?: "GET", headers = headers,
                                     body = args["body"]?.takeUnless { it == JsonNull }?.jsonPrimitive?.content,
                                     kind = args["kind"]?.jsonPrimitive?.content?.let(ResourceKind::valueOf) ?: ResourceKind.Document,
-                                    timeoutMillis = request.timeoutMillis, maxResponseBytes = 1024 * 1024), guard)
+                                    timeoutMillis = request.timeoutMillis, maxResponseBytes = 1024 * 1024), guard, route)
                                 current(); Json.encodeToString(response)
                             }
                             "cookie" -> {

@@ -1,0 +1,24 @@
+mixed-port: 7890
+allow-lan: false
+mode: rule
+log-level: info
+ipv6: false
+proxies:
+  - name: FixtureDirect
+    type: direct
+hosts:
+  'vpn-only.hnovel.test': 10.0.2.2
+dns:
+  enable: true
+  ipv6: false
+  enhanced-mode: redir-host
+  use-hosts: true
+  default-nameserver:
+    - 1.1.1.1
+    - 8.8.8.8
+  nameserver:
+    - https://1.1.1.1/dns-query
+    - https://8.8.8.8/dns-query
+rules:
+  - DST-PORT,18764,REJECT
+  - MATCH,DIRECT

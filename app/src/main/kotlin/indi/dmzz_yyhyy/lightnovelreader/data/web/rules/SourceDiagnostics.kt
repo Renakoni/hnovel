@@ -7,6 +7,7 @@ import hnovel.execution.ExecutionAuthority
 import hnovel.network.*
 import hnovel.rules.ScriptDependency
 import indi.dmzz_yyhyy.lightnovelreader.data.web.SourceSessionManager
+import indi.dmzz_yyhyy.lightnovelreader.data.web.SourceNetworkSettings
 import indi.dmzz_yyhyy.lightnovelreader.data.web.WebSourceRegistry
 import io.nightfish.lightnovelreader.api.identifier.Identifier
 import kotlinx.coroutines.*
@@ -34,7 +35,8 @@ class SourceDiagnostics @Inject constructor(@ApplicationContext private val cont
     private val sources: ImportedRuleSources, private val runner: RuleTaskRunner,
     private val authority: ExecutionAuthority, private val accounts: SourceSessionManager,
     private val registry: WebSourceRegistry, private val cipher: StorageCipher,
-    private val browser: BrowserExecutor? = null, private val history: SourceCheckHistory = SourceCheckHistory(context)) {
+    private val browser: BrowserExecutor? = null, private val history: SourceCheckHistory = SourceCheckHistory(context),
+    private val networkSettings: SourceNetworkSettings? = null) {
     suspend fun run(source: Identifier, stage: DiagnosticStage, keyword: String, bookUrl: String, chapterUrl: String, exploreUrl: String = ""): SourceDiagnosticReport =
         withContext(Dispatchers.IO) {
             val definition = sources.installedSources().single { ImportedRuleSources.id(it.definition) == source }
@@ -52,7 +54,8 @@ class SourceDiagnostics @Inject constructor(@ApplicationContext private val cont
             var dependency: ScriptDependency? = null
             var count = 0
             try {
-                SourceBroker(directory.toPath(), cipher = cipher, browser = browser).use { broker ->
+                SourceBroker(directory.toPath(), cipher = cipher, browser = browser,
+                    route = networkSettings?.snapshotFor(source)).use { broker ->
                     val session = broker.open(SourceScope(namespace, source.id, definition.definition.profile, account), definition.origins)
                     val monitor = launch {
                         registry.sources.collect { listings ->

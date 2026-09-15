@@ -100,7 +100,7 @@ class SourceRequestPacingTest {
     @Test fun browserWaitDoesNotReserveCreditAndHttpUsesTheSameGate() = runBlocking {
         val serial = Mutex(locked = true)
         val queued = CompletableDeferred<Unit>()
-        val browser = BrowserExecutor { account, request, _, commit ->
+        val browser = BrowserExecutor { account, request, _, commit, _ ->
             queued.complete(Unit)
             serial.withLock {
                 account.awaitBrowserAdmission()

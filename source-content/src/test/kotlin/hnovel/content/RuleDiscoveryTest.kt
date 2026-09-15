@@ -239,7 +239,7 @@ class RuleDiscoveryTest {
     @Test fun browserActionsReachTheExistingSourceBoundPortWithHeadersAndOptions() = runBlocking {
         var observed: BrowserOptions? = null
         var owner: String? = null
-        val browser = BrowserExecutor { session, request, options, guard ->
+        val browser = BrowserExecutor { session, request, options, guard, _ ->
             observed = options; owner = session.scope.sourceId
             assertEquals("A", request.headers["X-Source"])
             session.execute(request.copy(browser = null), guard)
