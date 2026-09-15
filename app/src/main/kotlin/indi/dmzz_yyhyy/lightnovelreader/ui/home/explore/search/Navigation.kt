@@ -1,6 +1,8 @@
 package indi.dmzz_yyhyy.lightnovelreader.ui.home.explore.search
 
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.DisposableEffect
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
@@ -13,6 +15,21 @@ import indi.dmzz_yyhyy.lightnovelreader.ui.dialog.navigateToAddBookToBookshelfDi
 import indi.dmzz_yyhyy.lightnovelreader.utils.popBackStackIfResumed
 import io.nightfish.lightnovelreader.api.Route
 import io.nightfish.lightnovelreader.api.ui.LocalNavController
+
+fun NavGraphBuilder.searchHubDestination() {
+    composable<Route.Main.Explore.SearchHub> {
+        val nav = LocalNavController.current
+        val model = hiltViewModel<SearchHubViewModel>()
+        val state by model.state.collectAsState()
+        SearchHubScreen(
+            state = state, onQuery = model::setQuery, onSearch = model::search,
+            onSelect = model::select, onHistory = model::search,
+            onDeleteHistory = model::deleteHistory, onClearHistory = model::clearHistory,
+            onOpenSource = { id, _ -> model.select(id); model.search(state.query) },
+            onBook = nav::navigateToBookDetailDestination, onBack = nav::popBackStackIfResumed
+        )
+    }
+}
 
 fun NavGraphBuilder.exploreSearchDestination() {
     composable<Route.Main.Explore.Search> { entry ->
@@ -49,3 +66,4 @@ fun NavGraphBuilder.exploreSearchDestination() {
         )
     }
 }
+
