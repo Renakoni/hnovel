@@ -25,7 +25,7 @@ class NetworkBridgeTest {
                 guard.commit { messages += message to long }
             }
             override suspend fun execute(session: SourceSession, request: BrokerRequest, options: BrowserOptions,
-                guard: RequestCommitGuard): BrokerResult = error("Feedback must not navigate")
+                guard: RequestCommitGuard, route: SourceNetworkRoute): BrokerResult = error("Feedback must not navigate")
         }
         SourceBroker(folder.root.toPath(), okhttp3.Dns { error("Feedback must not resolve DNS") }, browser = browser).use { sessions ->
             val session = sessions.open(SourceScope("fixture", "a", "legado"), emptyList())
@@ -60,7 +60,7 @@ class NetworkBridgeTest {
         val browser = object : BrowserExecutor {
             override suspend fun defaultUserAgent() = "DeviceWebView/1.0/"
             override suspend fun execute(session: SourceSession, request: BrokerRequest, options: BrowserOptions,
-                guard: RequestCommitGuard): BrokerResult = error("UA lookup must not navigate")
+                guard: RequestCommitGuard, route: SourceNetworkRoute): BrokerResult = error("UA lookup must not navigate")
         }
         MockWebServer().use { server ->
             server.start()
