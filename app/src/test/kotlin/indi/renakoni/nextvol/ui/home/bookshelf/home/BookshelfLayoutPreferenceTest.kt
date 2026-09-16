@@ -42,7 +42,7 @@ class BookshelfLayoutPreferenceTest {
         val preference = users.stringUserData(UserDataPath.Settings.Display.BookshelfLayout.path)
         val store = ViewModelStore()
         val modelJobs = mutableListOf<Job>()
-        fun model(key: String) = BookshelfHomeViewModel(context, mockk(), mockk(), users, mockk()).also {
+        fun model(key: String) = BookshelfHomeViewModel(mockk(), mockk(), users).also {
             store.put(key, it)
             modelJobs += it.viewModelScope.coroutineContext.job
         }

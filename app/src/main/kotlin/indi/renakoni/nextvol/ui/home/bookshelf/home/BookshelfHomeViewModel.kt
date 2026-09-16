@@ -1,27 +1,15 @@
 package indi.renakoni.nextvol.ui.home.bookshelf.home
 
-import android.content.Context
-import android.net.Uri
-import android.widget.Toast
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.work.ExistingWorkPolicy
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.WorkInfo
-import androidx.work.WorkManager
-import androidx.work.workDataOf
 import com.github.michaelbull.result.onOk
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
 import indi.renakoni.nextvol.data.book.BookRepository
 import indi.renakoni.nextvol.data.bookshelf.BookshelfRepository
 import indi.renakoni.nextvol.data.userdata.UserDataRepository
-import indi.renakoni.nextvol.data.work.ImportDataWork
-import indi.renakoni.nextvol.data.work.SaveBookshelfWork
 import indi.renakoni.nextvol.ui.home.bookshelf.toBookshelfUiState
 import io.nightfish.lightnovelreader.api.bookshelf.BookshelfSortType
 import io.nightfish.lightnovelreader.api.userdata.UserDataPath
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.last
@@ -31,11 +19,9 @@ import javax.inject.Inject
 
 @HiltViewModel
 class BookshelfHomeViewModel @Inject constructor(
-    @param:ApplicationContext private val context: Context,
     private val bookshelfRepository: BookshelfRepository,
     private val bookRepository: BookRepository,
     userDataRepository: UserDataRepository,
-    private val workManager: WorkManager,
 ) : ViewModel() {
     private val _uiState = MutableBookshelfHomeUiState(
         changePage = ::changePage,
@@ -54,10 +40,6 @@ class BookshelfHomeViewModel @Inject constructor(
         onSelectAll = ::selectAllBooks,
         onPin = ::pinSelectedBooks,
         onRemove = ::removeSelectedBooks,
-        saveAllBookshelfJsonData = ::saveAllBookshelf,
-        saveBookshelfJsonData = ::saveThisBookshelf,
-        importBookshelf = ::importBookshelf,
-        clearToast = ::clearToast,
     )
     val uiState: BookshelfHomeUiState = _uiState
     private val bookshelfOrderUserData = userDataRepository.intListUserData(UserDataPath.BookshelfOrder.path)
@@ -267,93 +249,5 @@ class BookshelfHomeViewModel @Inject constructor(
             _uiState.selectedBookIds.clear()
             _uiState.selectMode = false
         }
-    }
-
-    fun saveAllBookshelf(uri: Uri) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val workRequest = OneTimeWorkRequestBuilder<SaveBookshelfWork>()
-                .setInputData(
-                    workDataOf(
-                        "uri" to uri.toString(),
-                        "bookshelfId" to -1
-                    )
-                )
-                .build()
-            workManager.enqueueUniqueWork(
-                uri.toString(),
-                ExistingWorkPolicy.KEEP,
-                workRequest
-            )
-            CoroutineScope(Dispatchers.Main).launch {
-                workManager.getWorkInfoByIdFlow(workRequest.id).collect {
-                    it ?: return@collect
-                    when(it.state) {
-                        WorkInfo.State.SUCCEEDED -> Toast.makeText(context, "导出成功", Toast.LENGTH_LONG).show()
-                        WorkInfo.State.FAILED -> Toast.makeText(context, "导出失败", Toast.LENGTH_LONG).show()
-                        else -> return@collect
-                    }
-                }
-            }
-        }
-    }
-
-    fun saveThisBookshelf(uri: Uri) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val workRequest = OneTimeWorkRequestBuilder<SaveBookshelfWork>()
-                .setInputData(
-                    workDataOf(
-                        "uri" to uri.toString(),
-                        "bookshelfId" to uiState.selectedBookshelfId
-                    )
-                )
-                .build()
-            workManager.enqueueUniqueWork(
-                uri.toString(),
-                ExistingWorkPolicy.KEEP,
-                workRequest
-            )
-            CoroutineScope(Dispatchers.Main).launch {
-                workManager.getWorkInfoByIdFlow(workRequest.id).collect {
-                    it ?: return@collect
-                    when(it.state) {
-                        WorkInfo.State.SUCCEEDED -> Toast.makeText(context, "导出成功", Toast.LENGTH_LONG).show()
-                        WorkInfo.State.FAILED -> Toast.makeText(context, "导出失败", Toast.LENGTH_LONG).show()
-                        else -> return@collect
-                    }
-                }
-            }
-        }
-    }
-
-    fun importBookshelf(uri: Uri) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val workRequest = OneTimeWorkRequestBuilder<ImportDataWork>()
-                .setInputData(
-                    workDataOf(
-                        "uri" to uri.toString(),
-                    )
-                )
-                .build()
-            workManager.enqueueUniqueWork(
-                uri.toString(),
-                ExistingWorkPolicy.KEEP,
-                workRequest
-            )
-            workManager.getWorkInfoByIdFlow(workRequest.id).collect {
-                it ?: return@collect
-                when(it.state) {
-                    WorkInfo.State.ENQUEUED -> return@collect
-                    WorkInfo.State.RUNNING -> return@collect
-                    WorkInfo.State.SUCCEEDED -> load()
-                    WorkInfo.State.FAILED -> _uiState.toast = "文件损坏或格式错误，请检查后重试。"
-                    WorkInfo.State.BLOCKED -> return@collect
-                    WorkInfo.State.CANCELLED -> return@collect
-                }
-            }
-        }
-    }
-
-    fun clearToast() {
-        _uiState.toast = ""
     }
 }

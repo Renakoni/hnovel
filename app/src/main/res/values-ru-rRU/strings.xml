@@ -21,7 +21,6 @@
     <string name="abort">Abort</string>
     <string name="close">Close</string>
     <string name="decline">Отклонить</string>
-    <string name="options">More</string>
     <string name="copied">Content copied</string>
     <string name="select_all">Select All</string>
     <string name="invert_selection">Invert Selection</string>
@@ -366,10 +365,6 @@
     <string name="bookshelf_adjust_order_locked">Locked by current sort</string>
     <string name="bookshelf_book_count">Всего: %d книг</string>
     <string name="share_bookshelf">Поделиться полкой</string>
-    <string name="import_and_export">Импорт/экспорт…</string>
-    <string name="export_to_lnr_file">Экспорт этой полки в файл .lnr</string>
-    <string name="export_all_to_lnr_file">Экспорт всех полок в файл .lnr</string>
-    <string name="import_from_file">Импорт из файла .lnr</string>
     <string name="add_to_bookshelf">На полку</string>
     <string name="action_cache">Кэш</string>
     <string name="action_show_info">Информация</string>

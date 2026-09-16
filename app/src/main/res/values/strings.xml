@@ -22,7 +22,6 @@
     <string name="abort">Abort</string>
     <string name="close">Close</string>
     <string name="decline">Decline</string>
-    <string name="options">More</string>
     <string name="copied">Content copied</string>
     <string name="select_all">Select All</string>
     <string name="invert_selection">Invert Selection</string>
@@ -379,10 +378,6 @@
     <string name="bookshelf_adjust_order_locked">Locked by current sort</string>
     <string name="bookshelf_book_count">Total: %d Books</string>
     <string name="share_bookshelf">Share Bookshelf</string>
-    <string name="import_and_export">Import &amp; Export…</string>
-    <string name="export_to_lnr_file">Export to .lnr File</string>
-    <string name="export_all_to_lnr_file">Export All to .lnr File</string>
-    <string name="import_from_file">Import from File</string>
     <string name="add_to_bookshelf">Favorite</string>
     <string name="action_cache">Cache</string>
     <string name="action_show_info">Info</string>

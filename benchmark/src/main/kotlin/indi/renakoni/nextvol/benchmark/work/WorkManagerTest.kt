@@ -3,14 +3,18 @@ package indi.renakoni.nextvol.benchmark.work
 import android.os.SystemClock
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
+import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.Direction
 import androidx.test.uiautomator.Until
 import indi.renakoni.nextvol.benchmark.ui.UiAutomatorTest
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.io.File
+import java.util.zip.ZipInputStream
 
 @Suppress("SameParameterValue")
 @LargeTest
@@ -63,16 +67,26 @@ class WorkManagerTest : UiAutomatorTest() {
     }
 
     @Test
-    fun bookshelfExportRunsFromBookshelfUiAndWritesFile() {
-        removeOutput(BOOKSHELF_FILE)
+    fun bookshelfShareGrantsAReadableLnrFileToTheReceivingApp() {
+        val cache = InstrumentationRegistry.getInstrumentation().targetContext.cacheDir
+        val received = File(cache, BookshelfShareTargetActivity.FILE_NAME).apply { delete() }
+        val error = File(cache, BookshelfShareTargetActivity.ERROR_NAME).apply { delete() }
         launchApp()
         openBottomNavigation("Bookshelf")
         openBookshelfMenu()
-        clickText("Import & Export…")
-        clickText("Export to .lnr File")
-        saveCreatedDocument(BOOKSHELF_FILE)
+        clickText("Share Bookshelf")
+        clickText("NextVol share test")
 
-        assertOutputFile(BOOKSHELF_FILE)
+        val deadline = SystemClock.elapsedRealtime() + WORK_TIMEOUT
+        while (!received.exists() && !error.exists() && SystemClock.elapsedRealtime() < deadline) {
+            SystemClock.sleep(100)
+        }
+        assertTrue(error.takeIf { it.exists() }?.readText() ?: "No shared file was received", received.length() > 0)
+        ZipInputStream(received.inputStream()).use { zip ->
+            assertEquals("data", zip.nextEntry?.name)
+            assertTrue("Shared backup lost the selected shelf", zip.readBytes().toString(Charsets.UTF_8).contains("Benchmark Shelf"))
+            assertEquals(null, zip.nextEntry)
+        }
         assertText("Benchmark Shelf")
     }
 
@@ -265,7 +279,6 @@ class WorkManagerTest : UiAutomatorTest() {
 
     companion object {
         private const val SNAPSHOT_FILE = "BenchmarkUiSnapshot.lnr"
-        private const val BOOKSHELF_FILE = "BenchmarkUiBookshelf.lnr"
         private const val EPUB_FILE = "BenchmarkUiNovel.epub"
         private const val LIVE_BOOK_QUERY = "奇招百出的维多利亚"
         private const val WORK_TIMEOUT = 45_000L

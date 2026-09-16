@@ -75,7 +75,7 @@ class HomeSettingsActionTest {
                 when (root) {
                     "Reading" -> ReadingTopBar({}, {}, settings)
                     "Bookshelf" -> BookshelfHomeTopBar(TopAppBarDefaults.pinnedScrollBehavior(), MaterialTheme.colorScheme.surface,
-                        shelf, {}, {}, {}, {}, settings)
+                        shelf, {}, settings)
                     "Explore" -> ExploreHomeScreen(state, {}, { _, _ -> }, {}, {}, {}, {}, {}, {}, { _, _ -> }, { _, _ -> }, settings)
                     "Categories" -> CategoriesScreen(state, {}, {}, { _, _ -> }, {}, {}, settings, {})
                     "Empty" -> CategoriesScreen(DiscoveryPageState(), {}, {}, { _, _ -> }, {}, {}, settings, {})
