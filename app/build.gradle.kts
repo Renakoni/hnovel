@@ -19,12 +19,12 @@ android {
     sourceSets.getByName("androidTest").assets.srcDir("../source-rhino/src/test/resources")
     sourceSets.getByName("androidTest").assets.srcDir("../source-compatibility/browser")
     sourceSets.getByName("androidTest").assets.srcDir("../source-compatibility/fixtures/native-routing/site")
-    namespace = "indi.dmzz_yyhyy.lightnovelreader"
+    namespace = "indi.renakoni.nextvol"
     compileSdk = 37
 
     defaultConfig {
         multiDexEnabled = true
-        applicationId = "indi.dmzz_yyhyy.lightnovelreader"
+        applicationId = "indi.renakoni.nextvol"
         minSdk = 24
         targetSdk = 37
         // 版本号为x.y.z则versionCode为x*1000000+y*10000+z*1000+debug版本号(开发需要时迭代, 三位数)
@@ -83,7 +83,7 @@ android {
         }
 
         base {
-            archivesName = "LightNovelReader-${defaultConfig.versionName}"
+            archivesName = "NextVol-${defaultConfig.versionName}"
         }
     }
 

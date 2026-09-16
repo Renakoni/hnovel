@@ -116,7 +116,7 @@ The second method is opt-in. With the owned server below running and the Android
 fixture already prepared, run it once with VPN stopped and once with VPN running:
 
 ```text
-adb shell am instrument -w -r -e class indi.dmzz_yyhyy.lightnovelreader.defaultplugin.wenku8.Wenku8NetworkInstrumentedTest#preparedClashKeepsBuiltinDocumentsAndImagesOnTheirSelectedRoute -e wenkuRouteUrl http://10.0.2.2:18764/ -e wenkuRouteVpn false indi.dmzz_yyhyy.lightnovelreader.debug.test/androidx.test.runner.AndroidJUnitRunner
+adb shell am instrument -w -r -e class indi.renakoni.nextvol.defaultplugin.wenku8.Wenku8NetworkInstrumentedTest#preparedClashKeepsBuiltinDocumentsAndImagesOnTheirSelectedRoute -e wenkuRouteUrl http://10.0.2.2:18764/ -e wenkuRouteVpn false indi.renakoni.nextvol.debug.test/androidx.test.runner.AndroidJUnitRunner
 ```
 
 Change `wenkuRouteVpn` to `true` for the prepared VPN state. The test does not configure or
@@ -208,7 +208,7 @@ Always-on VPN lockdown, Wi-Fi/cellular handover and IPv6 remain device acceptanc
 3. Build/install the debug app and androidTest APK, then run the method with explicit args:
 
 ```text
-adb shell am instrument -w -r -e class indi.dmzz_yyhyy.lightnovelreader.sourceexecution.SourceVpnInstrumentedTest#clashRoutesStaySourceBound -e sourceRouteUrl http://10.0.2.2.nip.io:18764/ -e sourceRouteVpn false indi.dmzz_yyhyy.lightnovelreader.debug.test/androidx.test.runner.AndroidJUnitRunner
+adb shell am instrument -w -r -e class indi.renakoni.nextvol.sourceexecution.SourceVpnInstrumentedTest#clashRoutesStaySourceBound -e sourceRouteUrl http://10.0.2.2.nip.io:18764/ -e sourceRouteVpn false indi.renakoni.nextvol.debug.test/androidx.test.runner.AndroidJUnitRunner
 ```
 
 With Clash running, change `sourceRouteVpn` to `true` and add

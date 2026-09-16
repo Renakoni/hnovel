@@ -36,8 +36,8 @@ API35 CI 默认执行环境与生命周期用例，API24 保留原有隔离执�
 本地先构建、安装 debug APK 与配套 androidTest APK，再运行：
 
 ```text
-adb -s 127.0.0.1:16416 shell am instrument -w -e class indi.dmzz_yyhyy.lightnovelreader.sourceexecution.NativeBrowserEnvironmentInstrumentedTest,indi.dmzz_yyhyy.lightnovelreader.sourceexecution.NativeBrowserInstrumentedTest indi.dmzz_yyhyy.lightnovelreader.debug.test/androidx.test.runner.AndroidJUnitRunner
-adb -s 127.0.0.1:16416 pull /sdcard/Android/data/indi.dmzz_yyhyy.lightnovelreader.debug/files/native-environment.json
+adb -s 127.0.0.1:16416 shell am instrument -w -e class indi.renakoni.nextvol.sourceexecution.NativeBrowserEnvironmentInstrumentedTest,indi.renakoni.nextvol.sourceexecution.NativeBrowserInstrumentedTest indi.renakoni.nextvol.debug.test/androidx.test.runner.AndroidJUnitRunner
+adb -s 127.0.0.1:16416 pull /sdcard/Android/data/indi.renakoni.nextvol.debug/files/native-environment.json
 ```
 
 下载两次运行的 JSON 后，可生成对照摘要：

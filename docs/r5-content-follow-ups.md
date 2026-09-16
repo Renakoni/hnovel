@@ -65,15 +65,15 @@
 - 影响：旧组件在切换书源后继续显示或重新组合时，可能取到另一个书源的 Header。当前未验证导航和书源切换是否允许到达这一情况。
 - 后续：先复现旧章节与新书源共存时的请求参数，再决定由内容会话还是图片加载边界持有书源上下文；本轮保留原 Header 获取与导航语义。
 
-[decoder]: ../app/src/main/kotlin/indi/dmzz_yyhyy/lightnovelreader/data/content/ContentJsonDecoder.kt
-[factory]: ../app/src/main/kotlin/indi/dmzz_yyhyy/lightnovelreader/data/content/ContentComponentFactory.kt
-[registry]: ../app/src/main/kotlin/indi/dmzz_yyhyy/lightnovelreader/data/content/ContentComponentRegistry.kt
-[injector]: ../app/src/main/kotlin/indi/dmzz_yyhyy/lightnovelreader/data/plugin/injector/PluginInjector.kt
+[decoder]: ../app/src/main/kotlin/indi/renakoni/nextvol/data/content/ContentJsonDecoder.kt
+[factory]: ../app/src/main/kotlin/indi/renakoni/nextvol/data/content/ContentComponentFactory.kt
+[registry]: ../app/src/main/kotlin/indi/renakoni/nextvol/data/content/ContentComponentRegistry.kt
+[injector]: ../app/src/main/kotlin/indi/renakoni/nextvol/data/plugin/injector/PluginInjector.kt
 [processor]: ../api/src/main/kotlin/io/nightfish/lightnovelreader/api/text/ComponentProcessor.kt
-[pagination]: ../app/src/main/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/content/componet/TextPagination.kt
-[renderers]: ../app/src/main/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/content/componet/BuiltInContentRenderers.kt
-[flip]: ../app/src/main/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/content/flip/FlipPageContentComponent.kt
-[pagination-coordinator-test]: ../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/content/flip/FlipPaginationCoordinatorTest.kt
-[decode-test]: ../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/data/content/ContentDecodingContractTest.kt
-[processing-test]: ../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/data/content/TextProcessingContentContractTest.kt
-[text-page-test]: ../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/data/content/TextPaginationContractTest.kt
+[pagination]: ../app/src/main/kotlin/indi/renakoni/nextvol/ui/book/reader/content/componet/TextPagination.kt
+[renderers]: ../app/src/main/kotlin/indi/renakoni/nextvol/ui/book/reader/content/componet/BuiltInContentRenderers.kt
+[flip]: ../app/src/main/kotlin/indi/renakoni/nextvol/ui/book/reader/content/flip/FlipPageContentComponent.kt
+[pagination-coordinator-test]: ../app/src/test/kotlin/indi/renakoni/nextvol/ui/book/reader/content/flip/FlipPaginationCoordinatorTest.kt
+[decode-test]: ../app/src/test/kotlin/indi/renakoni/nextvol/data/content/ContentDecodingContractTest.kt
+[processing-test]: ../app/src/test/kotlin/indi/renakoni/nextvol/data/content/TextProcessingContentContractTest.kt
+[text-page-test]: ../app/src/test/kotlin/indi/renakoni/nextvol/data/content/TextPaginationContractTest.kt

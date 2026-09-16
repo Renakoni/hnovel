@@ -58,14 +58,14 @@ are part of this implementation.
 | --- | --- |
 | `api/src/main/kotlin/io/nightfish/lightnovelreader/api/content/component/SimpleTextComponentData.kt` | Qualified text/break elements; literal text reaches the central XML cleanup |
 | `api/src/main/kotlin/io/nightfish/lightnovelreader/api/content/component/ImageComponentData.kt` | Qualified image elements and `alt` |
-| `app/src/main/kotlin/indi/dmzz_yyhyy/lightnovelreader/data/work/ExportBookToEPUBWork.kt` | Real chapter-title/content wiring and image resource IDs |
+| `app/src/main/kotlin/indi/renakoni/nextvol/data/work/ExportBookToEPUBWork.kt` | Real chapter-title/content wiring and image resource IDs |
 | `epub/src/main/kotlin/io/nightfish/potatoepub/builder/ChapterBuilder.kt` | Effective chapter/title fallback |
 | `epub/src/main/kotlin/io/nightfish/potatoepub/builder/SimpleContentBuilder.kt` | Extension HTML attachment and title/text/image output |
 | `epub/src/main/kotlin/io/nightfish/potatoepub/builder/EpubBuilder.kt` | Manifest, optional metadata and missing book metadata |
 | `epub/src/main/kotlin/io/nightfish/potatoepub/xml/XmlFormat.kt` | XML legal characters and content-preserving serialization |
 | `epub/src/test/kotlin/XmlComplianceTest.kt` | Character/namespace regressions |
 | `epub/src/test/kotlin/EpubComplianceTest.kt` | Actual library EPUB fixtures |
-| `app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/data/work/EpubXhtmlWorkerTest.kt` | Actual host/Worker fixtures |
+| `app/src/test/kotlin/indi/renakoni/nextvol/data/work/EpubXhtmlWorkerTest.kt` | Actual host/Worker fixtures |
 | `epub/verify_epub.py` | Fixed-version conformance verification of generated fixtures |
 | `epub/ACCEPTANCE-72.md` | This design, evidence and follow-up record |
 

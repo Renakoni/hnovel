@@ -68,11 +68,11 @@
 - 影响：异常目录可能重复预加载当前章，或不显示可用的邻章。是否应容忍这类数据，需要与书源协议一起决定。
 - 后续：定义当前章/前章/后章的合法身份关系后，分别评估预加载和显示窗口规则；本轮不把两种操作合并为同一去重策略。
 
-[flip-test]: ../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/content/flip/FlipModeContractTest.kt
-[scroll-test]: ../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/content/scroll/ScrollModeContractTest.kt
-[timing-test]: ../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/content/scroll/ScrollProgressTimingTest.kt
-[ownership-test]: ../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/mode/ReaderModeOwnershipTest.kt
-[window]: ../app/src/main/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/content/scroll/ScrollChapterWindow.kt
-[flip-progress]: ../app/src/main/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/content/flip/FlipReadingProgress.kt
-[throttle]: ../app/src/main/kotlin/indi/dmzz_yyhyy/lightnovelreader/utils/Extentions.kt
-[reader]: ../app/src/main/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/ReaderViewModel.kt
+[flip-test]: ../app/src/test/kotlin/indi/renakoni/nextvol/ui/book/reader/content/flip/FlipModeContractTest.kt
+[scroll-test]: ../app/src/test/kotlin/indi/renakoni/nextvol/ui/book/reader/content/scroll/ScrollModeContractTest.kt
+[timing-test]: ../app/src/test/kotlin/indi/renakoni/nextvol/ui/book/reader/content/scroll/ScrollProgressTimingTest.kt
+[ownership-test]: ../app/src/test/kotlin/indi/renakoni/nextvol/ui/book/reader/mode/ReaderModeOwnershipTest.kt
+[window]: ../app/src/main/kotlin/indi/renakoni/nextvol/ui/book/reader/content/scroll/ScrollChapterWindow.kt
+[flip-progress]: ../app/src/main/kotlin/indi/renakoni/nextvol/ui/book/reader/content/flip/FlipReadingProgress.kt
+[throttle]: ../app/src/main/kotlin/indi/renakoni/nextvol/utils/Extentions.kt
+[reader]: ../app/src/main/kotlin/indi/renakoni/nextvol/ui/book/reader/ReaderViewModel.kt

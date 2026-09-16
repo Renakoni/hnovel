@@ -1,0 +1,24 @@
+package indi.renakoni.nextvol.ui
+
+import androidx.compose.material3.ColorScheme
+import androidx.compose.runtime.staticCompositionLocalOf
+import indi.renakoni.nextvol.theme.AppTheme
+
+
+val LocalAppTheme = staticCompositionLocalOf<AppTheme> {
+    error("No AppTheme provided")
+}
+
+val LocalLightColorScheme = staticCompositionLocalOf<ColorScheme> {
+    error("No Light ColorScheme provided")
+}
+
+val LocalDarkColorScheme = staticCompositionLocalOf<ColorScheme> {
+    error("No Dark ColorScheme provided")
+}
+
+val LocalBottomBarController = staticCompositionLocalOf<(Boolean) -> Unit> {
+    {}
+}
+
+val LocalReaderBookId = staticCompositionLocalOf<String?> { null }

@@ -70,8 +70,8 @@ flowchart TD
 git diff --check
 ```
 
-[decode-test]: ../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/data/content/ContentDecodingContractTest.kt
-[processing-test]: ../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/data/content/TextProcessingContentContractTest.kt
-[text-page-test]: ../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/data/content/TextPaginationContractTest.kt
-[page-test]: ../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/ContentPaginationTest.kt
-[render-test]: ../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/BuiltInContentRenderingTest.kt
+[decode-test]: ../app/src/test/kotlin/indi/renakoni/nextvol/data/content/ContentDecodingContractTest.kt
+[processing-test]: ../app/src/test/kotlin/indi/renakoni/nextvol/data/content/TextProcessingContentContractTest.kt
+[text-page-test]: ../app/src/test/kotlin/indi/renakoni/nextvol/data/content/TextPaginationContractTest.kt
+[page-test]: ../app/src/test/kotlin/indi/renakoni/nextvol/ui/book/reader/ContentPaginationTest.kt
+[render-test]: ../app/src/test/kotlin/indi/renakoni/nextvol/ui/book/reader/BuiltInContentRenderingTest.kt

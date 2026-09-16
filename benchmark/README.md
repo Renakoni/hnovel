@@ -41,14 +41,14 @@
 
 ```powershell
 .\gradlew.bat :benchmark:connectedBenchmarkAndroidTest `
-  "-Pandroid.testInstrumentationRunnerArguments.class=indi.dmzz_yyhyy.lightnovelreader.benchmark.settings.SettingsTest"
+  "-Pandroid.testInstrumentationRunnerArguments.class=indi.renakoni.nextvol.benchmark.settings.SettingsTest"
 ```
 
 只运行一个方法：
 
 ```powershell
 .\gradlew.bat :benchmark:connectedBenchmarkAndroidTest `
-  "-Pandroid.testInstrumentationRunnerArguments.class=indi.dmzz_yyhyy.lightnovelreader.benchmark.performance.StartupBenchmark#coldStartup"
+  "-Pandroid.testInstrumentationRunnerArguments.class=indi.renakoni.nextvol.benchmark.performance.StartupBenchmark#coldStartup"
 ```
 
 `connectedBenchmarkAndroidTest` 构建 benchmark 应用时本身依赖 `lintVitalBenchmark`；上面的完整命令仍将它显式列出，确保发布级 Lint 门禁不会因以后构建链变化而被遗漏。

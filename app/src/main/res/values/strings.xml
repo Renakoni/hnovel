@@ -1,5 +1,5 @@
 <resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
-    <string name="app_name" translatable="false">LightNovelReader</string>
+    <string name="app_name" translatable="false">NextVol</string>
     <string name="language">English</string>
     <string name="language_translators">yukonisen, NightFish</string>
     <!-- Navigation Items -->
@@ -88,7 +88,7 @@
     <string name="nothing_here_desc_book_manager">No books are currently downloading</string>
     <string name="offline">Oops</string>
     <string name="offline_desc">Please check the availability of the source website and your proxy settings.</string>
-    <string name="saved_to_pictures_dir">Saved to Pictures/LightNovelReader/%s</string>
+    <string name="saved_to_pictures_dir">Saved to Pictures/NextVol/%s</string>
     <string name="save_failed">Save failed</string>
     <string name="reader_custom_font_load_failed">Failed to load custom font, reverted to default.</string>
     <string name="reader_custom_background_load_failed">Failed to load custom background, reverted to default.</string>
@@ -275,7 +275,7 @@
     <string name="settings_debug_tools">Debug Options</string>
     <string name="settings_debug_tools_desc">Advanced debugging controls for development use</string>
     <string name="settings_about_source_code"><![CDATA[View the source code at %1$s<br/>Report bugs & request features via %2$s]]></string>
-    <string name="settings_about_oss">LightNovelReader is the gift for all the light novel lovers in the world.</string>
+    <string name="settings_about_oss">NextVol is the gift for all the light novel lovers in the world.</string>
     <string name="settings_github_repo">GitHub Repository</string>
     <string name="settings_github_repo_desc">Star our repo to help us reach more users</string>
     <string name="settings_support_author">Buy the Author a Tea</string>
@@ -284,11 +284,11 @@
     <string name="settings_communication">Communication</string>
     <string name="settings_communication_desc">Join our QQ group for discussions and feedback</string>
     <string name="settings_statistics">Statistics</string>
-    <string name="settings_statistics_desc">We need to collect statistics to improve LightNovelReader</string>
+    <string name="settings_statistics_desc">We need to collect statistics to improve NextVol</string>
     <string name="settings_statistics_disable_dialog_title">Hold on…</string>
     <string name="settings_statistics_disable_dialog_text">
         Do you really want to turn off statistics? ο(=•ω＜=)ρ⌒☆
-        LightNovelReader only collects DAU and similar usage metrics.
+        NextVol only collects DAU and similar usage metrics.
         No personal privacy data is involved, and all statistics are anonymous.
         If you turn this off, NightFish can only cry at 0 DAU ≧ ﹏ ≦
     </string>
@@ -298,9 +298,9 @@
     <string name="privacy_policy_collect_title">We Collect</string>
     <string name="privacy_policy_collect_items">• Device brand and model\n• System and app version\n• Basic daily active usage (session time and duration)\n• Approximate geographic location based on IP address</string>
     <string name="privacy_policy_not_collect_title">We Do NOT Collect</string>
-    <string name="privacy_policy_not_collect_items">Any personal data other than those listed above, including but not limited to: LightNovelReader in-app data, and any other information that could be used to identify you.</string>
+    <string name="privacy_policy_not_collect_items">Any personal data other than those listed above, including but not limited to: NextVol in-app data, and any other information that could be used to identify you.</string>
     <string name="privacy_policy_commitment_title">Our Privacy Commitment</string>
-    <string name="privacy_policy_commitment_items">LightNovelReader will not utilize any data shared with us for targeted advertising, data mining, or other privacy-harmful activities.</string>
+    <string name="privacy_policy_commitment_items">NextVol will not utilize any data shared with us for targeted advertising, data mining, or other privacy-harmful activities.</string>
     <string name="experimental_settings">Experimental</string>
     <string name="debug_settings">Debug</string>
     <string name="item_view_details">View Details</string>
@@ -523,7 +523,7 @@
     <string name="plugin_empty_title">No plugins</string>
     <string name="plugin_empty_desc">Install a supported .lnrp plugin</string>
     <string name="plugin_third_party_tips">
-        Third-party plugins may provide additional sources or features. Before installing, make sure the plugin comes from a trusted source.\nLightNovelReader is not responsible for plugin availability.
+        Third-party plugins may provide additional sources or features. Before installing, make sure the plugin comes from a trusted source.\nNextVol is not responsible for plugin availability.
     </string>
     <string name="plugin_by_author">by %1$s</string>
     <string name="plugin_details">Details</string>

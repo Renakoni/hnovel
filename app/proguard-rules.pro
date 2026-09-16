@@ -47,14 +47,14 @@
 -keepclassmembers class org.xmlpull.** { *; }
 -dontnote kotlinx.serialization.AnnotationsKt
 -dontnote kotlinx.serialization.SerializationKt
--keep,includedescriptorclasses class indi.dmzz_yyhyy.lightnovelreader.**$$serializer { *; }
--keepclassmembers class indi.dmzz_yyhyy.lightnovelreader.** {
+-keep,includedescriptorclasses class indi.renakoni.nextvol.**$$serializer { *; }
+-keepclassmembers class indi.renakoni.nextvol.** {
     *** Companion;
 }
--keepclasseswithmembers class indi.dmzz_yyhyy.lightnovelreader.** {
+-keepclasseswithmembers class indi.renakoni.nextvol.** {
     kotlinx.serialization.KSerializer serializer(...);
 }
--keep class indi.dmzz_yyhyy.lightnovelreader.defaultplugin.** { *; }
+-keep class indi.renakoni.nextvol.defaultplugin.** { *; }
 
 -dontwarn org.dom4j.**
 -keep class org.dom4j.**{*;}
@@ -79,7 +79,7 @@
 -dontwarn com.fasterxml.jackson.module.kotlin.KotlinModule
 
 # The rules for plugins
--keep class indi.dmzz_yyhyy.lightnovelreader.R$* { *; }
+-keep class indi.renakoni.nextvol.R$* { *; }
 -keep public class ** implements io.nightfish.lightnovelreader.api.** { public protected *; }
 -keep public class ** extends io.nightfish.lightnovelreader.api.** { public protected *; }
 -keep,includedescriptorclasses class io.nightfish.lightnovelreader.api.** { *; }

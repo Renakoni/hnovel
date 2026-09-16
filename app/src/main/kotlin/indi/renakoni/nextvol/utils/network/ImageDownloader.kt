@@ -1,0 +1,110 @@
+package indi.renakoni.nextvol.utils.network
+
+import android.content.Context
+import android.graphics.Bitmap
+import android.net.Uri
+import android.util.Log
+import androidx.work.ListenableWorker
+import com.github.michaelbull.result.Err
+import com.github.michaelbull.result.Result
+import com.github.michaelbull.result.onErr
+import com.github.michaelbull.result.onOk
+import indi.renakoni.nextvol.data.book.SourceBookId
+import indi.renakoni.nextvol.utils.ImageUtils
+import indi.renakoni.nextvol.utils.DefaultBookCoverRenderer
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.net.ConnectException
+import java.net.SocketTimeoutException
+
+class ImageDownloader(
+    private val context: Context,
+    private val book: SourceBookId,
+    private val tasks: List<Task>,
+    val onProgress: (Int, Int) -> Unit,
+) {
+    var count = 0
+        private set
+
+    data class Task(val file: File, val uri: Uri, val cover: Boolean = false,
+        val defaultCover: DefaultBookCoverRenderer.Text? = null)
+
+    suspend fun run(): ListenableWorker.Result = withContext(Dispatchers.IO) {
+        Log.i("ImageDownloader", "total tasks: ${tasks.size}")
+        tasks.forEach { task ->
+            val result = downloadWithRetry(task, maxRetry = 3)
+            result
+                .onOk { bitmap ->
+                    try {
+                        task.file.parentFile?.mkdirs()
+                        task.file.outputStream().use {
+                            bitmap.compress(Bitmap.CompressFormat.JPEG, 100, it)
+                        }
+                    } catch (e: Exception) {
+                        Log.e(
+                            "ImageDownloader",
+                            "task $count: file write failed, file=${task.file}",
+                            e
+                        )
+                        return@withContext ListenableWorker.Result.failure()
+                    }
+                }
+                .onErr { t ->
+                    Log.e(
+                        "ImageDownloader",
+                        "task $count failed for ${book.fileKey}: ${t.javaClass.simpleName}"
+                    )
+                    task.defaultCover?.let { text ->
+                        // Only a book/volume cover has a local substitute. Content image failures still fail export.
+                        try {
+                            DefaultBookCoverRenderer.writeTo(context, task.file, text.title, text.bookId, text.author)
+                        } catch (_: Exception) { return@withContext ListenableWorker.Result.failure() }
+                        count++
+                        onProgress(count, tasks.size)
+                        return@forEach
+                    }
+                    return@withContext ListenableWorker.Result.failure()
+                }
+            count++
+            onProgress(count, tasks.size)
+            Log.i("ImageDownloader", "tasks: $count/${tasks.size}")
+        }
+        return@withContext ListenableWorker.Result.success()
+    }
+
+    private suspend fun downloadWithRetry(
+        task: Task,
+        maxRetry: Int
+    ): Result<Bitmap, Throwable> {
+
+        var lastError: Throwable? = null
+
+        repeat(maxRetry) { attempt ->
+            val result = ImageUtils.uriToBitmap(task.uri, context, book.storageKey, task.cover)
+            var shouldRetry = false
+
+            result
+                .onOk {
+                    return result
+                }
+                .onErr { error ->
+                    lastError = error
+                    if (error is SocketTimeoutException || error is ConnectException) {
+                        shouldRetry = true
+                        Log.w(
+                            "ImageDownloader",
+                            "retry ${attempt + 1}/$maxRetry for ${book.fileKey}"
+                        )
+                    } else {
+                        return result
+                    }
+                }
+            if (shouldRetry) {
+                delay(500L * (attempt + 1))
+            }
+        }
+        return Err(lastError ?: RuntimeException("unknown error"))
+    }
+}
