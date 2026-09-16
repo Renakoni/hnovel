@@ -3,7 +3,7 @@
     <application>
         <provider
             android:name="androidx.core.content.FileProvider"
-            android:authorities="indi.dmzz_yyhyy.lightnovelreader.benchmark.files"
+            android:authorities="indi.renakoni.nextvol.benchmark.files"
             android:exported="false"
             android:grantUriPermissions="true">
             <meta-data

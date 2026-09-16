@@ -19,7 +19,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "LightNovelReaderRefactoring"
+rootProject.name = "NextVol"
 include(":app")
 include(":epub")
 include(":api")

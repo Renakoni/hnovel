@@ -17,10 +17,10 @@ for(const mode of ['background','foreground']) for(let index=1;index<=3;index++)
     const key=mode+'-'+index;
     try {
         const log=run(['shell','am','instrument','-w','-e','class',
-            'indi.dmzz_yyhyy.lightnovelreader.sourceexecution.NativeBrowserInstrumentedTest#recordLocalEnvironment',
+            'indi.renakoni.nextvol.sourceexecution.NativeBrowserInstrumentedTest#recordLocalEnvironment',
             '-e','browserProbeUrl','http://127.0.0.1:18767/consistency?client='+key,
             '-e','nativeProbe','true','-e','foregroundProbe',String(mode==='foreground'),
-            'indi.dmzz_yyhyy.lightnovelreader.debug.test/androidx.test.runner.AndroidJUnitRunner']);
+            'indi.renakoni.nextvol.debug.test/androidx.test.runner.AndroidJUnitRunner']);
         fs.writeFileSync(output+'.'+key+'.log',log);
         const raw=log.match(/INSTRUMENTATION_STATUS: browserProbe=(.*)/)?.[1];
         if(!/OK \(1 test\)/.test(log) || !raw) throw Error('Instrumentation did not complete its probe');

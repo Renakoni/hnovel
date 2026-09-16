@@ -37,7 +37,7 @@ UTF-8 output is checked including the envelope, before crossing back to the host
 `./gradlew :source-execution:test :app:testDebugUnitTest` covers JVM protocol/host regressions. Real Android tests run with:
 
 ```sh
-./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=indi.dmzz_yyhyy.lightnovelreader.sourceexecution.IsolatedExecutionInstrumentedTest
+./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=indi.renakoni.nextvol.sourceexecution.IsolatedExecutionInstrumentedTest
 ```
 
 The existing PR workflow includes API 24 and API 35 emulator jobs. They verify remote Binder transport, independent UID, rejection of a forwarded Binder from a foreign isolated UID, input-size rejection, timeout termination, forged identity rejection, revocation, cancellation and a subsequent successful source invocation. These tests execute the actual app Application and services; they are not Robolectric tests.

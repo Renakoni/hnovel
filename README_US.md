@@ -1,7 +1,7 @@
 [简体中文](README.md) | [繁體中文](README_TW.md) | **English** | [Русский](README_RU.md)
 
 <div align="center">
-    <h1>LightNovelReader</h1>
+    <h1>NextVol</h1>
     <a><img alt="Android" src="https://img.shields.io/badge/Android-3DDC84?logo=android&logoColor=white&style=for-the-badge"/></a>
     <a><img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-0095D5.svg?logo=kotlin&logoColor=white&style=for-the-badge"/></a>
     <a><img alt="Jetpack Compose" src="https://img.shields.io/badge/Jetpack%20Compose-4285F4?logo=jetpackcompose&logoColor=white&style=for-the-badge"></a>
@@ -14,7 +14,9 @@
 
 ## Introduction
 
-LightNovelReader <sup>*Refactored Version*</sup> is an open-source app for reading light novels, built with Kotlin and Jetpack Compose. It’s designed for a smooth, modern reading experience and packed with useful features like EPUB exports, offline reading, and support for multiple data sources.
+NextVol is an independent application derived from upstream [LightNovelReader](https://github.com/dmzz-yyhyy/LightNovelReader), installed as `indi.renakoni.nextvol`. Existing release, F-Droid, community, donation and translation links below still refer to upstream; service changes are deferred to [#232](https://github.com/Renakoni/hnovel/issues/232). See the [identity and backup compatibility notes](source-compatibility/NEXTVOL_IDENTITY.md).
+
+NextVol <sup>*Refactored Version*</sup> is an open-source app for reading light novels, built with Kotlin and Jetpack Compose. It’s designed for a smooth, modern reading experience and packed with useful features like EPUB exports, offline reading, and support for multiple data sources.
 
 ## Features
 
@@ -29,7 +31,7 @@ LightNovelReader <sup>*Refactored Version*</sup> is an open-source app for readi
 
 ## Plugin Development and Custom Data Sources
 
-You can add custom data sources and plugins to LightNovelReader.
+You can add custom data sources and plugins to NextVol.
 
 The following are links to relevant resources:
 - [Example Plugin](https://github.com/dmzz-yyhyy/LightNovelReaderPlguin-Template)
@@ -67,11 +69,11 @@ We’ve developed a dedicated module to handle EPUB export more effectively. If 
 
 ## Contributing
 
-We welcome contributions to LightNovelReader! Here's how you can get involved:
+We welcome contributions to NextVol! Here's how you can get involved:
 
 ### Getting Started
 1. Fork the repository.
-2. Clone your fork: `git clone https://github.com/your-username/LightNovelReader.git`
+2. Clone your fork: `git clone https://github.com/your-username/hnovel.git`
 3. Create a new branch for your changes: `git checkout -b feature/your-feature-name`
 4. Make your changes and test them.
 5. Commit your changes following the commit guidelines below.

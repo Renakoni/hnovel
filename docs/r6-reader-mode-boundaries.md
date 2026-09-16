@@ -96,10 +96,10 @@ UI 绘制仍通过 `ContentComponent` 按各自的 `ContentUiState` 选择 Compo
 git diff --check
 ```
 
-[flip-test]: ../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/content/flip/FlipModeContractTest.kt
-[scroll-test]: ../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/content/scroll/ScrollModeContractTest.kt
-[timing-test]: ../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/content/scroll/ScrollProgressTimingTest.kt
-[host-test]: ../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/mode/ReaderModeHostTest.kt
-[ownership-test]: ../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/mode/ReaderModeOwnershipTest.kt
-[loader-test]: ../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/mode/ReaderChapterLoaderTest.kt
-[settings-test]: ../app/src/test/kotlin/indi/dmzz_yyhyy/lightnovelreader/ui/book/reader/content/scroll/ContinuousScrollSettingsTest.kt
+[flip-test]: ../app/src/test/kotlin/indi/renakoni/nextvol/ui/book/reader/content/flip/FlipModeContractTest.kt
+[scroll-test]: ../app/src/test/kotlin/indi/renakoni/nextvol/ui/book/reader/content/scroll/ScrollModeContractTest.kt
+[timing-test]: ../app/src/test/kotlin/indi/renakoni/nextvol/ui/book/reader/content/scroll/ScrollProgressTimingTest.kt
+[host-test]: ../app/src/test/kotlin/indi/renakoni/nextvol/ui/book/reader/mode/ReaderModeHostTest.kt
+[ownership-test]: ../app/src/test/kotlin/indi/renakoni/nextvol/ui/book/reader/mode/ReaderModeOwnershipTest.kt
+[loader-test]: ../app/src/test/kotlin/indi/renakoni/nextvol/ui/book/reader/mode/ReaderChapterLoaderTest.kt
+[settings-test]: ../app/src/test/kotlin/indi/renakoni/nextvol/ui/book/reader/content/scroll/ContinuousScrollSettingsTest.kt

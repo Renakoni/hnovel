@@ -1,7 +1,7 @@
 [简体中文](README.md) | [繁體中文](README_TW.md) | [English](README_US.md) | **Русский**
 
 <div align="center">
-    <h1>LightNovelReader</h1>
+    <h1>NextVol</h1>
     <a><img alt="Android" src="https://img.shields.io/badge/Android-3DDC84?logo=android&logoColor=white&style=for-the-badge"/></a>
     <a><img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-0095D5.svg?logo=kotlin&logoColor=white&style=for-the-badge"/></a>
     <a><img alt="Jetpack Compose" src="https://img.shields.io/badge/Jetpack%20Compose-4285F4?logo=jetpackcompose&logoColor=white&style=for-the-badge"></a>
@@ -14,7 +14,9 @@
 
 ## Введение
 
-LightNovelReader <sup>*Переработанная версия*</sup> — это приложение с открытым исходным кодом для чтения ранобэ, разработанное на Kotlin и Jetpack Compose. Оно создано для плавного и современного чтения с множеством полезных функций, таких как экспорт в EPUB, офлайн-чтение и поддержка нескольких источников данных.
+NextVol — самостоятельное приложение на основе [LightNovelReader](https://github.com/dmzz-yyhyy/LightNovelReader), с идентификатором `indi.renakoni.nextvol`. Ссылки ниже на выпуски, F-Droid, сообщества, пожертвования и переводы пока относятся к исходному проекту; перенос сервисов отложен до [#232](https://github.com/Renakoni/hnovel/issues/232). Подробности — в [описании идентификаторов и совместимости резервных копий](source-compatibility/NEXTVOL_IDENTITY.md).
+
+NextVol <sup>*Переработанная версия*</sup> — это приложение с открытым исходным кодом для чтения ранобэ, разработанное на Kotlin и Jetpack Compose. Оно создано для плавного и современного чтения с множеством полезных функций, таких как экспорт в EPUB, офлайн-чтение и поддержка нескольких источников данных.
 
 ## Особенности
 
@@ -57,11 +59,11 @@ LightNovelReader <sup>*Переработанная версия*</sup> — эт
 
 ## Вклад
 
-Мы приветствуем вклад в LightNovelReader! Вот как вы можете принять участие:
+Мы приветствуем вклад в NextVol! Вот как вы можете принять участие:
 
 ### Начало работы
 1. Форкните репозиторий.
-2. Клонируйте ваш форк: `git clone https://github.com/your-username/LightNovelReader.git`
+2. Клонируйте ваш форк: `git clone https://github.com/your-username/hnovel.git`
 3. Создайте новую ветку для ваших изменений: `git checkout -b feature/your-feature-name`
 4. Внесите изменения и протестируйте их.
 5. Зафиксируйте изменения, следуя приведенным ниже рекомендациям по коммитам.

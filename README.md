@@ -1,7 +1,7 @@
 **简体中文** | [繁體中文](README_TW.md) | [English](README_US.md) | [Русский](README_RU.md)
 
 <div align="center">
-    <h1>LightNovelReader</h1>
+    <h1>NextVol</h1>
     <a><img alt="Android" src="https://img.shields.io/badge/Android-3DDC84?logo=android&logoColor=white&style=for-the-badge"/></a>
     <a><img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-0095D5.svg?logo=kotlin&logoColor=white&style=for-the-badge"/></a>
     <a><img alt="Jetpack Compose" src="https://img.shields.io/badge/Jetpack%20Compose-4285F4?logo=jetpackcompose&logoColor=white&style=for-the-badge"></a>
@@ -14,7 +14,9 @@
 
 ## 介绍
 
-LightNovelReader <sup>*重构版*</sup> 是一款开源的轻小说阅读软件，使用 Kotlin 和 Jetpack Compose 编写，具有轻量化的体积和流畅的阅读体验。此外，还有多种有用的功能，如 EPUB 导出、离线阅读和多数据源支持。
+NextVol 是基于上游 [LightNovelReader](https://github.com/dmzz-yyhyy/LightNovelReader) 的独立应用，安装标识为 `indi.renakoni.nextvol`。下方现有发布、F-Droid、社区、赞助和翻译链接仍属于上游；相关服务暂不迁移，由 [#232](https://github.com/Renakoni/hnovel/issues/232) 后续处理。应用身份与备份兼容边界见 [迁移说明](source-compatibility/NEXTVOL_IDENTITY.md)。
+
+NextVol <sup>*重构版*</sup> 是一款开源的轻小说阅读软件，使用 Kotlin 和 Jetpack Compose 编写，具有轻量化的体积和流畅的阅读体验。此外，还有多种有用的功能，如 EPUB 导出、离线阅读和多数据源支持。
 
 ## 特性
 
@@ -29,7 +31,7 @@ LightNovelReader <sup>*重构版*</sup> 是一款开源的轻小说阅读软件�
 
 ## 插件开发与自定义数据源
 
-您可以为LightNovelReader添加自定义的数据源与插件
+您可以为 NextVol 添加自定义的数据源与插件
 
 以下为相关资源链接
 - [示例插件](https://github.com/dmzz-yyhyy/LightNovelReaderPlguin-Template)
@@ -68,11 +70,11 @@ LightNovelReader <sup>*重构版*</sup> 是一款开源的轻小说阅读软件�
 
 ## 贡献
 
-我们欢迎对 LightNovelReader 的贡献！以下是如何参与：
+我们欢迎对 NextVol 的贡献！以下是如何参与：
 
 ### 开始
 1. Fork 本仓库。
-2. 克隆你的 fork：`git clone https://github.com/your-username/LightNovelReader.git`
+2. 克隆你的 fork：`git clone https://github.com/your-username/hnovel.git`
 3. 为你的更改创建新分支：`git checkout -b feature/your-feature-name`
 4. 进行更改并测试。
 5. 按照下面的提交指南提交更改。

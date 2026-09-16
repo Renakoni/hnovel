@@ -1,0 +1,140 @@
+package indi.renakoni.nextvol.data.web
+
+import com.github.michaelbull.result.Err
+import com.github.michaelbull.result.Ok
+import com.github.michaelbull.result.Result
+import com.github.michaelbull.result.map
+import indi.renakoni.nextvol.data.book.SourceBookId
+import io.nightfish.lightnovelreader.api.identifier.Identifier
+import io.nightfish.lightnovelreader.api.web.discovery.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.channelFlow
+
+/** Reserved host target for source-local search, which has no discovery catalogue or filters. */
+internal const val DISCOVERY_SEARCH_PREFIX = "hnovel-search:"
+
+data class SourceDiscoveryTarget(val sourceId: Identifier, val target: String)
+data class SourceDiscoveryBook(val id: SourceBookId, val title: String, val author: String, val coverUrl: String)
+data class SourceDiscoverySection(val id: String, val title: String, val books: List<SourceDiscoveryBook>,
+    val more: SourceDiscoveryTarget?, val categoryId: String? = null, val previewFailure: DiscoveryPreviewFailure? = null)
+data class SourceDiscoveryCategory(val id: String, val title: String, val target: SourceDiscoveryTarget)
+data class SourceDiscoveryPage(val books: List<SourceDiscoveryBook>, val nextCursor: String?)
+data class SourceDiscoveryCatalog(val categories: List<SourceDiscoveryCategory>, val filters: List<DiscoveryFilter>,
+    val values: Map<String, String>, val buttons: List<DiscoveryButton>)
+data class SourceDiscoveryUpdate(val catalog: SourceDiscoveryCatalog, val actions: List<DiscoveryAction>, val refresh: Boolean)
+
+/** Captures one registration, never a UI selection or a replacement runtime. */
+class SourceDiscovery internal constructor(private val runtime: SourceRuntime, private val provider: DiscoveryProvider) {
+    val hasFeed get() = provider.hasFeed && SourceCapability.Explore in runtime.metadata.capabilities
+    val hasCategories get() = provider.hasCategories && SourceCapability.Categories in runtime.metadata.capabilities
+    val hasInteractions get() = provider.hasInteractions
+    val failureField get() = provider.failureField
+    val permissionFailure get() = provider.permissionFailure
+
+    fun forSession(id: String, values: Map<String, String> = emptyMap(), environment: DiscoveryEnvironment = DiscoveryEnvironment()): SourceDiscovery {
+        runtime.checkAvailable()
+        return SourceDiscovery(runtime, provider.openSession(id, values.toMap(), environment))
+    }
+
+    suspend fun catalog(refresh: Boolean = false): Result<SourceDiscoveryCatalog, DiscoveryError> = runtime.execute {
+        if (!hasCategories) return@execute Err(DiscoveryError.Unsupported)
+        provider.catalog(refresh).map(::bind)
+    }
+
+    suspend fun homepageCatalog(refresh: Boolean = false): Result<SourceDiscoveryCatalog, DiscoveryError> = runtime.execute {
+        if (!hasFeed && !hasCategories) return@execute Err(DiscoveryError.Unsupported)
+        provider.homepageCatalog(refresh).map(::bind)
+    }
+
+    suspend fun interact(id: String, value: String?, longClick: Boolean) = runtime.execute {
+        provider.interact(id, value, longClick).map { SourceDiscoveryUpdate(bind(it.catalog), it.actions.toList(), it.refresh) }
+    }
+
+    suspend fun openBrowser(action: DiscoveryAction.Browser) = runtime.execute { provider.openBrowser(action) }
+
+    suspend fun feed(): Result<List<SourceDiscoverySection>, DiscoveryError> = runtime.execute {
+        if (!hasFeed) return@execute Err(DiscoveryError.Unsupported)
+        provider.feed().map { sections -> sections.map(::bind) }
+    }
+
+    fun feedUpdates(): Flow<Result<List<SourceDiscoverySection>, DiscoveryError>> = channelFlow {
+        // Keep provider work on its runtime dispatcher; send crosses back to the page's collector.
+        runtime.execute {
+            if (!hasFeed) send(Err(DiscoveryError.Unsupported))
+            else provider.feedUpdates().collect { result ->
+                runtime.checkAvailable()
+                send(result.map { sections -> sections.map(::bind) })
+            }
+        }
+    }
+
+    suspend fun categories(): Result<List<SourceDiscoveryCategory>, DiscoveryError> = runtime.execute {
+        if (!hasCategories) return@execute Err(DiscoveryError.Unsupported)
+        provider.categories().map { categories -> categories.map {
+            SourceDiscoveryCategory(it.id, it.title, target(it.target))
+        } }
+    }
+
+    fun open(target: SourceDiscoveryTarget): DiscoverySession {
+        runtime.checkAvailable()
+        require(target.sourceId == runtime.id) { "Discovery target belongs to another source" }
+        return DiscoverySession(this, target.target)
+    }
+
+    internal fun filters(target: String): List<DiscoveryFilter> {
+        runtime.checkAvailable()
+        return provider.filters(target).map {
+            if (it is DiscoveryFilter.Choice) it.copy(options = it.options.toMap()) else it
+        }
+    }
+
+    internal suspend fun page(request: DiscoveryRequest): Result<SourceDiscoveryPage, DiscoveryError> = runtime.execute {
+        if (!hasFeed && !hasCategories) return@execute Err(DiscoveryError.Unsupported)
+        provider.page(request.copy(filters = request.filters.toMap())).map {
+            SourceDiscoveryPage(it.books.map(::bind), it.nextCursor)
+        }
+    }
+
+    private fun target(id: String) = SourceDiscoveryTarget(runtime.id, id)
+    private fun bind(section: DiscoverySection) = SourceDiscoverySection(section.id, section.title,
+        section.books.map(::bind), section.more?.let(::target), section.categoryId, section.previewFailure)
+    private fun bind(catalog: DiscoveryCatalog) = SourceDiscoveryCatalog(catalog.categories.map {
+        SourceDiscoveryCategory(it.id, it.title, target(it.target))
+    }, catalog.filters.map { if (it is DiscoveryFilter.Choice) it.copy(options = it.options.toMap()) else it },
+        catalog.values.toMap(), catalog.buttons.toList())
+    private fun bind(book: DiscoveryBook) = SourceDiscoveryBook(
+        SourceBookId(runtime.id, book.remoteId), book.title, book.author, book.coverUrl,
+    )
+}
+
+/** One instance per result page. Failed loads keep the cursor for retry; reset and load serialize. */
+class DiscoverySession internal constructor(private val source: SourceDiscovery, private val target: String) {
+    val filters = source.filters(target)
+    val failureField get() = source.failureField
+    val permissionFailure get() = source.permissionFailure
+    private val mutex = Mutex()
+    private var values: Map<String, String> = emptyMap()
+    private var cursor: String? = null
+    private var ended = false
+    private var books: List<SourceDiscoveryBook> = emptyList()
+
+    suspend fun reset(filters: Map<String, String> = emptyMap()) = mutex.withLock {
+        values = filters.toMap()
+        cursor = null
+        ended = false
+        books = emptyList()
+    }
+
+    suspend fun loadMore(): Result<SourceDiscoveryPage, DiscoveryError> = mutex.withLock {
+        if (ended) return@withLock Ok(SourceDiscoveryPage(books.toList(), null))
+        source.page(DiscoveryRequest(target, cursor, values)).map { page ->
+            val repeated = page.books.isNotEmpty() && page.books.all { next -> books.any { it.id == next.id } }
+            books = (books + page.books).distinctBy { it.id }
+            cursor = page.nextCursor.takeUnless { repeated }
+            ended = cursor == null
+            SourceDiscoveryPage(books.toList(), cursor)
+        }
+    }
+}

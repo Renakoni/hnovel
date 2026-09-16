@@ -60,7 +60,7 @@ API 35 CI; `SourceVpnInstrumentedTest` checks typed refusal on API 24/35 too.
    With Android Clash stopped, run:
 
 ```text
-adb shell am instrument -w -r -e class indi.dmzz_yyhyy.lightnovelreader.sourceexecution.NativeBrowserRouteInstrumentedTest#preparedClashRoutesAllNativeChildren -e nativeRouteUrl https://10.0.2.2.nip.io:18764/ indi.dmzz_yyhyy.lightnovelreader.debug.test/androidx.test.runner.AndroidJUnitRunner
+adb shell am instrument -w -r -e class indi.renakoni.nextvol.sourceexecution.NativeBrowserRouteInstrumentedTest#preparedClashRoutesAllNativeChildren -e nativeRouteUrl https://10.0.2.2.nip.io:18764/ indi.renakoni.nextvol.debug.test/androidx.test.runner.AndroidJUnitRunner
 ```
 
 4. Start Android Clash and repeat with `-e nativeRouteDefault failure`. The same test

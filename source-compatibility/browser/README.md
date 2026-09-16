@@ -100,7 +100,7 @@ Chromix `1222eec`（Chromium pin 152.0.7977.82）用于借鉴稳定环境、跨 
 ```powershell
 node source-compatibility/browser/probe-server.cjs
 adb -s 127.0.0.1:16416 reverse tcp:18766 tcp:18766
-adb -s 127.0.0.1:16416 shell am instrument -w -r -e class indi.dmzz_yyhyy.lightnovelreader.sourceexecution.NativeBrowserInstrumentedTest indi.dmzz_yyhyy.lightnovelreader.debug.test/androidx.test.runner.AndroidJUnitRunner
+adb -s 127.0.0.1:16416 shell am instrument -w -r -e class indi.renakoni.nextvol.sourceexecution.NativeBrowserInstrumentedTest indi.renakoni.nextvol.debug.test/androidx.test.runner.AndroidJUnitRunner
 ```
 
 手动实站步骤用同一个测试类 `HlibBrowserLiveInstrumentedTest`，先 `hlibAction=install`，再 `login`，完成页面操作后点“返回阅读器”，最后 `read`。遇到 BrowserRequired 再运行 login 应打开原始待验证目标，不重建账号。

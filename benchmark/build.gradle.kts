@@ -3,7 +3,7 @@ plugins {
 }
 
 android {
-    namespace = "indi.dmzz_yyhyy.lightnovelreader.benchmark"
+    namespace = "indi.renakoni.nextvol.benchmark"
     compileSdk = 37
 
     defaultConfig {
