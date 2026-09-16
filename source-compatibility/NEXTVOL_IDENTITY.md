@@ -24,7 +24,7 @@ separate UIDs, private directories, Keystore entries and WorkManager databases.
 This change does not offer an in-place upgrade or automatic private-data transfer.
 There is no old launcher alias, old Worker class map or copy of the old queue.
 
-Room table/column names and the `light_novel_reader_database` storage filename are
+Room table/column names and the `light_novel_reader_source_database` storage filename are
 unchanged. Renaming the host database class does not change these persistent
 contracts. A new installation creates its own database and Hilt Worker factory.
 
