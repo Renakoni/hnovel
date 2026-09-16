@@ -60,6 +60,11 @@
 -keep class org.dom4j.**{*;}
 -keep interface org.dom4j.** { *; }
 
+# Jaxen loads its default XPath parser by class name and public no-arg constructor.
+-keep class org.jaxen.saxpath.base.XPathReader {
+    public <init>();
+}
+
 -dontwarn com.fasterxml.jackson.annotation.JsonInclude$Include
 -dontwarn com.fasterxml.jackson.core.json.JsonWriteFeature
 -dontwarn com.fasterxml.jackson.core.type.TypeReference
