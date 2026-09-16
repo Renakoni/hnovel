@@ -18,7 +18,7 @@ class MainNavigationTest : UiAutomatorTest() {
         assertText("Benchmark Shelf")
 
         openBottomNavigation("Explore")
-        assertDescription("search")
+        assertDescription("Search")
 
         openAppSettings()
         assertText("Extensions")
