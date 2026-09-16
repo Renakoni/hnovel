@@ -176,7 +176,7 @@ fun BookshelfHomeTopBar(
                         IconButton(onClick = { mainMenuExpanded = true }) {
                             Icon(
                                 painter = painterResource(R.drawable.more_vert_24px),
-                                contentDescription = null
+                                contentDescription = "more"
                             )
                         }
                         DropdownMenu(

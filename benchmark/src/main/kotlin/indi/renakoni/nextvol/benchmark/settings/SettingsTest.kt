@@ -12,7 +12,7 @@ import org.junit.runner.RunWith
 class SettingsTest : UiAutomatorTest() {
     private fun openSettings() {
         launchApp()
-        openBottomNavigation("Settings")
+        openAppSettings()
     }
 
     @Test
@@ -64,7 +64,7 @@ class SettingsTest : UiAutomatorTest() {
         pressBack()
         assertForegroundPackage(TARGET_PACKAGE)
 
-        openBottomNavigation("Settings")
+        openAppSettings()
         clickScrolledText("Formats")
         assertText("Formats")
         assertText("Date Format")
@@ -103,7 +103,7 @@ class SettingsTest : UiAutomatorTest() {
         pressBack()
 
         launchApp()
-        openBottomNavigation("Settings")
+        openAppSettings()
         clickScrolledText("Storage Usage")
         assertText("Storage Manager")
         assertTextContains("Database")
@@ -147,7 +147,7 @@ class SettingsTest : UiAutomatorTest() {
         assertFirstSwitchChecked(true)
 
         restartApp()
-        openBottomNavigation("Settings")
+        openAppSettings()
         scrollToText("Traditional Chinese Conversion")
         assertFirstSwitchChecked(true)
     }
@@ -165,7 +165,7 @@ class SettingsTest : UiAutomatorTest() {
 
         clickText("Use Relative Time")
         restartApp()
-        openBottomNavigation("Settings")
+        openAppSettings()
         clickScrolledText("Formats")
         assertText("Written")
         assertText("Use Relative Time")
@@ -220,7 +220,7 @@ class SettingsTest : UiAutomatorTest() {
         clickText("Save rule")
         device.waitForIdle(1_000)
         restartApp()
-        openBottomNavigation("Settings")
+        openAppSettings()
         clickText("Text Formatting")
         clickText("Global Rules")
         assertText("Automation Rule")
@@ -232,7 +232,7 @@ class SettingsTest : UiAutomatorTest() {
         clickText("Delete rule")
         device.waitForIdle(1_000)
         restartApp()
-        openBottomNavigation("Settings")
+        openAppSettings()
         clickText("Text Formatting")
         clickText("Global Rules")
         assertTextNotVisible("Automation Rule")
@@ -270,7 +270,7 @@ class SettingsTest : UiAutomatorTest() {
 
         clickScrolledText("Auto Check for Updates")
         restartApp()
-        openBottomNavigation("Settings")
+        openAppSettings()
         scrollToText("Alpha Version (Unstable)")
         assertText("GitHub")
     }

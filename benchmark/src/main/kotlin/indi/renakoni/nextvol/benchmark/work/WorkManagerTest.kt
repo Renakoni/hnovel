@@ -16,6 +16,16 @@ import org.junit.runner.RunWith
 @LargeTest
 @RunWith(AndroidJUnit4::class)
 class WorkManagerTest : UiAutomatorTest() {
+    private val documentsPackage by lazy {
+        val component = shell(
+            "cmd package resolve-activity --brief " +
+                "-a android.intent.action.CREATE_DOCUMENT " +
+                "-c android.intent.category.OPENABLE -t application/octet-stream"
+        ).trim().lineSequence().last()
+        assertTrue("Document picker did not resolve: $component", '/' in component)
+        component.substringBefore('/')
+    }
+
     @Test
     fun snapshotExportAndImportRoundTripRunFromSettingsUi() {
         removeOutput(SNAPSHOT_FILE)
@@ -36,7 +46,7 @@ class WorkManagerTest : UiAutomatorTest() {
         clickText("OK")
         assertTextNotVisible("Benchmark Shelf")
 
-        openBottomNavigation("Settings")
+        openAppSettings()
         clickScrolledText("Import User Data")
         selectDocument(SNAPSHOT_FILE)
         assertText("Merge")
@@ -154,7 +164,7 @@ class WorkManagerTest : UiAutomatorTest() {
 
     private fun openSettings() {
         launchApp()
-        openBottomNavigation("Settings")
+        openAppSettings()
     }
 
     private fun openFixtureBook() {
@@ -165,15 +175,11 @@ class WorkManagerTest : UiAutomatorTest() {
     }
 
     private fun openBookshelfMenu() {
-        device.click(
-            (device.displayWidth * 0.94).toInt(),
-            (device.displayHeight * 0.075).toInt(),
-        )
-        device.waitForIdle()
+        clickDescription("more")
     }
 
     private fun saveCreatedDocument(fileName: String) {
-        assertForegroundPackage(DOCUMENTS_PACKAGE)
+        assertForegroundPackage(documentsPackage)
         val nameField = device.wait(
             Until.findObject(By.res("android", "title").clazz("android.widget.EditText")),
             TIMEOUT,
@@ -188,7 +194,7 @@ class WorkManagerTest : UiAutomatorTest() {
 
         // DocumentsUI can still ask for replacement if media indexing has not
         // observed the exact-file cleanup yet.
-        if (device.hasObject(By.pkg(DOCUMENTS_PACKAGE))) {
+        if (device.hasObject(By.pkg(documentsPackage))) {
             device.findObject(By.res("android", "button1"))?.click()
         }
         assertTrue(
@@ -198,11 +204,11 @@ class WorkManagerTest : UiAutomatorTest() {
     }
 
     private fun selectDocument(fileName: String) {
-        assertForegroundPackage(DOCUMENTS_PACKAGE)
+        assertForegroundPackage(documentsPackage)
         // Some DocumentsUI builds hide known extensions in their accessibility
         // text even though the selected URI still points at the complete name.
         val displayName = fileName.substringBeforeLast('.')
-        val fileList = device.findObject(By.res(DOCUMENTS_PACKAGE, "dir_list"))
+        val fileList = device.findObject(By.res(documentsPackage, "dir_list"))
         // DocumentsUI remembers the previous directory scroll position. Return
         // to the beginning before searching so an alphabetically early fixture
         // is not left above the viewport.
@@ -226,7 +232,7 @@ class WorkManagerTest : UiAutomatorTest() {
         )
         file.click()
         device.waitForIdle()
-        if (device.hasObject(By.pkg(DOCUMENTS_PACKAGE))) {
+        if (device.hasObject(By.pkg(documentsPackage))) {
             device.findObject(By.res("android", "button1"))?.click()
         }
         assertTrue(
@@ -258,7 +264,6 @@ class WorkManagerTest : UiAutomatorTest() {
     }
 
     companion object {
-        private const val DOCUMENTS_PACKAGE = "com.android.documentsui"
         private const val SNAPSHOT_FILE = "BenchmarkUiSnapshot.lnr"
         private const val BOOKSHELF_FILE = "BenchmarkUiBookshelf.lnr"
         private const val EPUB_FILE = "BenchmarkUiNovel.epub"

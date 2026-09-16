@@ -18,7 +18,7 @@ class PluginSystemTest : UiAutomatorTest() {
         launchApp()
         installExamplePlugin()
 
-        openBottomNavigation("Settings")
+        openAppSettings()
         clickText("Plugins")
         assertText("PotatoLib")
         assertTextContains("1.0")
@@ -56,7 +56,7 @@ class PluginSystemTest : UiAutomatorTest() {
     fun installedPluginDeletionSupportsCancelAndConfirmation() {
         launchApp()
         installExamplePlugin()
-        openBottomNavigation("Settings")
+        openAppSettings()
         clickText("Plugins")
 
         longClickText("PotatoLib")

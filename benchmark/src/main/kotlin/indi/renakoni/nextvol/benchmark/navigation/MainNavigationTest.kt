@@ -10,7 +10,7 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class MainNavigationTest : UiAutomatorTest() {
     @Test
-    fun bottomNavigationVisitsEveryRootDestination() {
+    fun homeNavigationVisitsBookshelfExploreAndSettings() {
         launchApp()
         assertText("Reading")
 
@@ -20,7 +20,7 @@ class MainNavigationTest : UiAutomatorTest() {
         openBottomNavigation("Explore")
         assertDescription("search")
 
-        openBottomNavigation("Settings")
+        openAppSettings()
         assertText("Extensions")
         assertText("Reading")
         assertText("Display")

@@ -169,6 +169,11 @@ abstract class UiAutomatorTest {
         assertText(label)
     }
 
+    protected fun openAppSettings() {
+        clickDescription("Settings")
+        assertText("Settings")
+    }
+
     protected fun pressBack() {
         device.pressBack()
         device.waitForIdle()

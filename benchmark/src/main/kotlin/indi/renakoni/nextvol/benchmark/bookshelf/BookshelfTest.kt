@@ -15,11 +15,7 @@ class BookshelfTest : UiAutomatorTest() {
     }
 
     private fun openBookshelfMenu() {
-        device.click(
-            (device.displayWidth * 0.94).toInt(),
-            (device.displayHeight * 0.075).toInt(),
-        )
-        device.waitForIdle()
+        clickDescription("more")
     }
 
     @Test
