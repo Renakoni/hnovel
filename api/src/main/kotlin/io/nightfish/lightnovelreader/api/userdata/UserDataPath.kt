@@ -160,7 +160,8 @@ sealed class UserDataPath(
         data object Data: UserDataPath("data", Settings) {
             /** 日志级别设置 @since Api 2 */
             data object LogLevel : UserDataPath("log_level", Data)
-            /** 是否使用代理 @since Api 2 */
+            /** 已退役的自动公共代理设置；保留类和路径以兼容旧插件。@since Api 2 */
+            @Deprecated("The host no longer uses the automatic public proxy pool")
             data object IsUseProxy : UserDataPath("is_use_proxy", Data)
             /** 存储统计快照缓存 @since Api 4 */
             data object StorageUsageSnapshot : UserDataPath("storage_usage_snapshot", Data)

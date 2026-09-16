@@ -229,8 +229,6 @@
     <string name="settings_app_logs_desc">檢視與分享應用程式日誌（除錯用途）</string>
     <string name="settings_app_log_level">日誌等級</string>
     <string name="settings_app_log_level_desc">設定日誌過濾等級，重新啟動應用程式後生效</string>
-    <string name="settings_auto_proxy">自動代理</string>
-    <string name="settings_auto_proxy_desc">自動從網路上取得代理 IP，<b>但這將導致您所瀏覽的書本資料可能會被攔截</b></string>
     <string name="book_manager_title">書本管理</string>
     <string name="book_manager_tab_downloads">下載</string>
     <string name="book_manager_tab_local_books">本地書本</string>

@@ -22,7 +22,6 @@ dependencyResolutionManagement {
 rootProject.name = "LightNovelReaderRefactoring"
 include(":app")
 include(":epub")
-include(":proxy")
 include(":api")
 include(":plugin:js")
 include(":compiler")

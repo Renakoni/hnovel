@@ -228,8 +228,6 @@ dependencies {
     implementation(libs.swipe)
     // Chart
     implementation(libs.vico.compose.m3)
-    // Potato Auto Proxy
-    implementation(project(":proxy"))
     // Shimmer
     implementation(libs.compose.shimmer)
     // About Libraries

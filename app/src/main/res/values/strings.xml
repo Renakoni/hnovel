@@ -242,8 +242,6 @@
     <string name="settings_app_logs_desc">View and share application logs for debug purpose</string>
     <string name="settings_app_log_level">Log Level</string>
     <string name="settings_app_log_level_desc">Set log filtering level (requires app restart)</string>
-    <string name="settings_auto_proxy">Auto Proxy</string>
-    <string name="settings_auto_proxy_desc">Automatically fetch proxy IPs from the internet, <b>but this may allow the books you browse to be intercepted</b></string>
     <string name="book_manager_title">Book Manager</string>
     <string name="book_manager_tab_downloads">Downloads</string>
     <string name="book_manager_tab_local_books">Local books</string>

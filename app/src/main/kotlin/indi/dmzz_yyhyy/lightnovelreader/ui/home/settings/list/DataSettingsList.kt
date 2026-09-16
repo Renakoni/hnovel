@@ -25,8 +25,6 @@ import androidx.work.WorkManager
 import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.ImportUserDataDialog
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.SettingsClickableEntry
-import indi.dmzz_yyhyy.lightnovelreader.ui.components.SettingsSwitchEntry
-import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.SettingState
 import indi.dmzz_yyhyy.lightnovelreader.utils.uriLauncher
 import kotlinx.coroutines.launch
 import androidx.compose.material3.AlertDialog
@@ -37,7 +35,6 @@ import kotlinx.coroutines.CancellationException
 @Composable
 fun DataSettingsList(
     onClickExportUserData: () -> Unit,
-    settingState: SettingState,
     importData: (Uri, Boolean) -> OneTimeWorkRequest,
     onClickStorageManager: () -> Unit,
     clearReadingCache: suspend () -> Unit,
@@ -157,14 +154,6 @@ fun DataSettingsList(
         title = stringResource(R.string.settings_clear_downloads),
         description = stringResource(R.string.settings_clear_downloads_desc),
         onClick = { clearDownloadsSelected = true }
-    )
-    SettingsSwitchEntry(
-        modifier = Modifier.background(colorScheme.surfaceContainer),
-        painter = painterResource(R.drawable.wifi_proxy_24px),
-        title = stringResource(R.string.settings_auto_proxy),
-        description = stringResource(R.string.settings_auto_proxy_desc),
-        checked = settingState.isUseProxy,
-        booleanUserData = settingState.isUseProxyUserData
     )
 }
 
