@@ -362,11 +362,10 @@ class SourcesScreenTest {
         compose.onNodeWithContentDescription("Bypass VPN").assertIsOff().assertIsNotEnabled()
         compose.onNodeWithContentDescription("Enable source").assertDoesNotExist()
         compose.onNodeWithText("Sign in").assertDoesNotExist()
-        compose.runOnIdle { state = state.copy(selected = builtinId, network = SourceNetworkState(limitation =
-            indi.dmzz_yyhyy.lightnovelreader.R.string.sources_network_wenku8)) }
-        compose.onNodeWithText("Wenku8 does not yet support this bypass switch.").assertExists()
+        compose.runOnIdle { state = state.copy(selected = builtinId, network = SourceNetworkState()) }
         compose.onNodeWithText("Search this source").assertExists()
-        compose.onNodeWithContentDescription("Bypass VPN").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("Bypass VPN").assertIsOff().assertIsEnabled().performClick()
+        verify(exactly = 1) { model.setBypassVpn(true) }
     }
 
     @Test fun manualVariableNeedsNoAuthorCommentAndDraftsSurvivePreferenceChanges() {

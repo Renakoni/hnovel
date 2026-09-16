@@ -145,7 +145,7 @@ class MixedSourceAcceptanceTest {
             }.build()
             var loader = imageLoader()
             coil3.SingletonImageLoader.setUnsafe(loader)
-            var native = Wenku8Api()
+            var native = Wenku8Api { error("Unexpected native network request") }
             fun registerNative() {
                 registry.register(native, SourceMetadata(WebDataSourceItem(native.id, "Wenku8", "fixture"),
                     setOf(SourceCapability.Search, SourceCapability.BookInformation, SourceCapability.Directory,
@@ -265,7 +265,7 @@ class MixedSourceAcceptanceTest {
                 accounts = SourceSessionManager(fixture.authority, epochs)
                 sources = ImportedRuleSources(context, registry, fixture.authority, accounts, fixture.runner)
                 login = SourceLoginService(sources, accounts)
-                sources.restore(); native = Wenku8Api(); registerNative(); openLibrary()
+                sources.restore(); native = Wenku8Api { error("Unexpected native network request") }; registerNative(); openLibrary()
                 loader = imageLoader(); coil3.SingletonImageLoader.setUnsafe(loader)
                 assertEquals(generation, accounts.current(a).generation)
                 assertEquals(LoginStatus.LoginSubmitted, login.status(b))

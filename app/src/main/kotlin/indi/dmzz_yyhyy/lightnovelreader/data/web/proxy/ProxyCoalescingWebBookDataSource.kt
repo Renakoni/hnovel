@@ -4,6 +4,7 @@ import com.santimattius.resilient.composition.asResilientScope
 import com.santimattius.resilient.coalescing.CoalesceConfig
 import com.santimattius.resilient.coalescing.DefaultCoalescingPolicy
 import io.nightfish.lightnovelreader.api.web.WebDataSourcePriority
+import indi.dmzz_yyhyy.lightnovelreader.data.web.SourceRequestOwner
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -45,7 +46,8 @@ class ProxyCoalescingWebBookDataSource(
         // Interactive continuations belong to their UI caller. Sharing detached work
         // with background downloads would lose cancellation and interaction ownership.
         if (currentCoroutineContext()[indi.dmzz_yyhyy.lightnovelreader.data.web.ForegroundSourceRequest]?.allowsInteraction == true) return block()
-        return withContext(RequestContext(key)) { coalescing.execute(block) }
+        val owner = currentCoroutineContext()[SourceRequestOwner] ?: kotlin.coroutines.EmptyCoroutineContext
+        return withContext(RequestContext(key)) { coalescing.execute { withContext(owner) { block() } } }
     }
 
     override suspend fun getBookInformation(id: String, priority: WebDataSourcePriority) = coalesce(RequestKey(RequestType.Information, id, priority.priority)) {

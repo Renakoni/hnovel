@@ -8,7 +8,6 @@
     <string name="sources_account_loading">正在读取账户状态…</string>
     <string name="sources_account_unknown">无法读取账户状态</string>
     <string name="sources_plugins_group">插件书源</string>
-    <string name="sources_network_wenku8">文库8暂未接入此绕过开关。</string>
     <string name="sources_network_plugin">此插件自行管理网络，暂不支持此绕过开关。</string>
     <string name="sources_login_definition_error">书源登录声明的 %1$s 字段无效，请检查书源定义。</string>
     <string name="sources_account_unavailable">账户操作暂不可用</string>

@@ -1,4 +1,4 @@
-# Per-source VPN bypass (#214, #219)
+# Per-source VPN bypass (#214, #219, #220)
 
 ## Contract
 
@@ -31,9 +31,9 @@ browser share the source route. Temporary diagnostics and candidate-rule validat
 the real source's mode. Definition/collection downloads keep their own default route.
 There is no separate background unmetered-only policy in the current app.
 
-Native Chromium uses the dedicated-process route described below. Wenku8's independent
-Ktor client/legacy images remain #220. Plugin
-private clients do not acquire support merely by appearing in the source list (#215).
+Native Chromium uses the dedicated-process route described below. Built-in Wenku8 uses
+the same source preference for its Ktor content client and source-owned images (#220).
+Plugin private clients do not acquire support merely by appearing in the source list (#215).
 
 The reference project's `header.proxy` configures HTTP/SOCKS proxy connections. It is a
 different transport feature and is not used to implement this Android VPN switch.
@@ -50,6 +50,80 @@ different transport feature and is not used to implement this Android VPN switch
 The retired `UserDataPath.Settings.Data.IsUseProxy` class and `is_use_proxy` key remain
 for plugin compatibility. Stored values have no host effect. No replacement global
 switch is introduced; source network preferences remain independent of this legacy key.
+
+## Built-in Wenku8 route
+
+`Wenku8Api` keeps its parser, GB18030 decoding, content headers/Cookies, business retries
+and request limiter. `PluginManager` supplies the existing `SourceNetworkSettings` when
+constructing the built-in source. This does not convert Wenku8 to an imported rule source
+or add another network setting.
+
+The host carries the actual `SourceRuntime.id` in `SourceRequestOwner` through content
+calls, search flows, discovery, coalescing and source-owned background work. Adapters
+sharing one API object therefore cannot overwrite each other's current source. The
+built-in periodic reachability check has no host caller and uses Wenku8's own identity.
+
+`Wenku8HttpClients` owns Ktor/OkHttp clients per source and route generation. Each HTTP
+request resolves its route once; retries and redirects retain it. Bypass installs the
+selected network's DNS **and** socket factory and explicitly disables HTTP proxies.
+Default mode retains the content engine's system-proxy behavior and uses the existing
+host default resolver. Route loss cancels pending calls and Ktor work and retires their
+connection pools; failure never switches to the other mode. Caller/source cancellation
+continues to cancel its work. A new request can use a new eligible route.
+
+Wenku8 implements the existing `SourceImageProvider`: Coil covers, illustrations, volume
+cover decoding and background downloads keep their source identity instead of falling
+back to a bare URL. Images retain the existing `imageHeader` and normal OkHttp defaults;
+content Cookies are not copied into image requests. Cache keys, download ownership,
+source identity and account state do not change when the mode changes.
+
+The settings page enables the switch only for the built-in Wenku8 registration. Opening
+settings or saving the mode still does not construct a lazy provider or contact a site.
+Other private plugin clients continue to display their existing unsupported state.
+
+The reference [MD3 transport](https://github.com/HapeLee/legado-with-MD3/blob/fb01a76ebbbca41423e2c4c00080cc0861239fbd/app/src/main/java/io/legado/app/help/http/HttpHelper.kt#L190)
+caches clients for explicit `header.proxy` addresses. This implementation reuses our
+Android route adapter; it does not require users to supply an HTTP/SOCKS address.
+
+### Wenku8 verification and reproduction
+
+Recorded on 2026-09-16: 509 app JVM tests and 61 source-network tests passed with no
+failures, errors or skips; debug and androidTest APKs built. The complete app suite and
+both APKs also passed after integrating main `e9103ab6` (#228/#229).
+
+On Android API 35, the ordinary no-VPN method passed (the opt-in method skipped when
+no URL was supplied). The explicit external fixture then passed with Android Clash
+stopped and with Clash Meta 2.11.34 running: default → bypass → default → bypass
+produced successful documents and decoded PNGs in every no-VPN step, and failure →
+success → failure → success with the port-reject VPN profile. Allow Bypass and System
+Proxy were enabled; Bypass Private Network was disabled only for the local test.
+No Private DNS or host proxy changes were needed for this IP-address fixture.
+
+`Wenku8NetworkTest` exercises real Ktor/OkHttp, Coil and download workers against local
+servers: two owners sharing one API, same-URL isolation, DNS/socket selection, content
+encoding/headers, image bytes, redirects/retries during mode changes, route loss,
+cancellation, route recovery and downloaded content after reading-cache cleanup.
+The socket fixture is explicitly direct so a JVM SOCKS lookup cannot masquerade as an
+HTTP proxy lookup. `MixedSourceAcceptanceTest` retains the native parser regression.
+
+`SourcesViewModelTest` and `SourcesScreenTest` cover the enabled built-in switch, persisted
+preference and the private-plugin limitation. `Wenku8NetworkInstrumentedTest` is included
+in API 24/35 CI. Its ordinary test uses Android DNS/socket factories with VPN stopped,
+checks true → false → true modes and reopening with bypass saved, decodes actual PNGs,
+refuses a retired route and checks that the main process remains unbound.
+
+The second method is opt-in. With the owned server below running and the Android Clash
+fixture already prepared, run it once with VPN stopped and once with VPN running:
+
+```text
+adb shell am instrument -w -r -e class indi.dmzz_yyhyy.lightnovelreader.defaultplugin.wenku8.Wenku8NetworkInstrumentedTest#preparedClashKeepsBuiltinDocumentsAndImagesOnTheirSelectedRoute -e wenkuRouteUrl http://10.0.2.2:18764/ -e wenkuRouteVpn false indi.dmzz_yyhyy.lightnovelreader.debug.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+Change `wenkuRouteVpn` to `true` for the prepared VPN state. The test does not configure or
+start a VPN. It checks both the document marker and a decoded `/image` PNG: all modes
+work without Android VPN; with port 18764 rejected by Android Clash, default fails and
+bypass succeeds. These are controlled transport checks, subject to the host-network
+limitation below; they do not measure a real site's availability, account state or speed.
 
 ## Native browser route
 

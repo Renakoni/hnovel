@@ -3,6 +3,7 @@ package indi.dmzz_yyhyy.lightnovelreader.defaultplugin.wenku8.explore
 import com.github.michaelbull.result.Err
 import com.github.michaelbull.result.Ok
 import com.github.michaelbull.result.Result
+import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.wenku8.Wenku8RouteUnavailableException
 import io.nightfish.lightnovelreader.api.web.discovery.*
 import kotlinx.coroutines.CancellationException
 import org.jsoup.nodes.Document
@@ -91,6 +92,8 @@ class Wenku8Discovery(private val host: String, private val fetch: suspend (Stri
         block()
     } catch (cancelled: CancellationException) {
         throw cancelled
+    } catch (_: Wenku8RouteUnavailableException) {
+        Err(DiscoveryError.RouteUnavailable)
     } catch (_: Exception) {
         Err(DiscoveryError.Network)
     }

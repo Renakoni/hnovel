@@ -10,6 +10,8 @@ import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.get
 import com.github.michaelbull.result.getOrElse
 import com.github.michaelbull.result.runCatching
+import hnovel.network.SourceNetworkRoute
+import indi.dmzz_yyhyy.lightnovelreader.data.web.SourceRequestOwner
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.wenku8.book.BookRequestDispatcher
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.wenku8.explore.Wenku8ExplorePageProvider
 import io.nightfish.lightnovelreader.api.Route
@@ -37,12 +39,15 @@ import io.nightfish.lightnovelreader.api.book.Volume
 import io.nightfish.lightnovelreader.api.book.WordCount
 import io.nightfish.lightnovelreader.api.content.component.ImageComponentData
 import io.nightfish.lightnovelreader.api.error.WebRequestError
+import io.nightfish.lightnovelreader.api.identifier.Identifier
+import io.nightfish.lightnovelreader.api.image.SourceImageProvider
 import io.nightfish.lightnovelreader.api.util.Cache
 import io.nightfish.lightnovelreader.api.web.WebBookDataSource
 import io.nightfish.lightnovelreader.api.web.WebDataSource
 import io.nightfish.lightnovelreader.api.web.explore.ExplorePageProvider
 import io.nightfish.lightnovelreader.api.web.search.SearchProvider
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
@@ -61,6 +66,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.jsoup.Jsoup
+import okhttp3.OkHttpClient
 import org.jsoup.nodes.Document
 import org.jsoup.select.Elements
 import java.net.ConnectException
@@ -78,7 +84,7 @@ private val WENKU8_CHARSET: Charset = Charset.forName("GB18030")
     "Wenku8",
     "LightNovelReader from wenku8.net"
 )
-class Wenku8Api : WebBookDataSource, AutoCloseable {
+class Wenku8Api(routes: (Identifier) -> SourceNetworkRoute) : WebBookDataSource, SourceImageProvider, AutoCloseable {
     private val tagList = listOf(
         "校园", "青春", "恋爱", "治愈", "群像",
         "竞技", "音乐", "美食", "旅行", "欢乐向",
@@ -91,7 +97,10 @@ class Wenku8Api : WebBookDataSource, AutoCloseable {
         "大小姐", "性转", "伪娘", "人外",
         "后宫", "百合", "耽美", "NTR", "女性视角"
     )
-    val ktorClient = HttpClient(OkHttp) {
+    private val clients = Wenku8HttpClients(routes, ::createContentClient)
+
+    private fun createContentClient(transport: OkHttpClient) = HttpClient(OkHttp) {
+        engine { preconfigured = transport }
         install(UserAgent) {
             agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
                     "AppleWebKit/537.36 (KHTML, like Gecko) " +
@@ -158,7 +167,7 @@ class Wenku8Api : WebBookDataSource, AutoCloseable {
 
     override fun close() {
         coroutineScope.cancel()
-        ktorClient.close()
+        clients.close()
     }
 
     override var offLine: Boolean = true
@@ -217,12 +226,12 @@ class Wenku8Api : WebBookDataSource, AutoCloseable {
 
     override suspend fun isOffLine(): Boolean = withContext(Dispatchers.IO) {
         suspend fun webSite(index: Int): Boolean = runCatching {
-            ktorClient.get(hosts[index]) {
+            clients.request(requestSourceId()) { ktorClient -> ktorClient.get(hosts[index]) {
                 userAgent(UserAgentGenerator.generate())
                 wenku8Cookies().forEach { (name, value) ->
                     cookie(name, value)
                 }
-            }.status.isSuccess()
+            }.status.isSuccess() }
         }.getOrElse { false }
         return@withContext !anyTrue(listOf(
             { webSite(0) },
@@ -232,6 +241,17 @@ class Wenku8Api : WebBookDataSource, AutoCloseable {
     }
 
     override val id = "Wenku8".ofId()
+
+    // The periodic built-in reachability check has no host caller and belongs to this source.
+    private suspend fun requestSourceId() = currentCoroutineContext()[SourceRequestOwner]?.id ?: id
+
+    override suspend fun getImage(bookId: String, url: String, cover: Boolean): Result<ByteArray, WebRequestError> = try {
+        Ok(clients.image(requestSourceId(), url, imageHeader))
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (failure: Exception) {
+        Err(WebRequestError("图片加载失败", "无法获取图片", failure))
+    }
 
     override suspend fun getBookInformation(id: String) = bookRequestDispatcher.getBookInformation(id)
 
@@ -273,7 +293,7 @@ class Wenku8Api : WebBookDataSource, AutoCloseable {
                     ?.forEach {
                         val uri = it["data"]?.jsonObject["uri"]?.jsonPrimitive?.content?.toUri()
                             ?: return null
-                        val bitmap = ImageUtils.uriToBitmap(uri, context, indi.dmzz_yyhyy.lightnovelreader.data.book.SourceBookId(id, bookId).storageKey).get() ?: return@forEach
+                        val bitmap = ImageUtils.uriToBitmap(uri, context, indi.dmzz_yyhyy.lightnovelreader.data.book.SourceBookId(requestSourceId(), bookId).storageKey).get() ?: return@forEach
                         if (bitmap.height > bitmap.width) return uri
                     }
                 return null
@@ -343,20 +363,21 @@ class Wenku8Api : WebBookDataSource, AutoCloseable {
 
     suspend fun getWithWenku8Cookie(url: String): Result<Document, Throwable> = withContext(Dispatchers.IO) {
         requestLimiter.withPermit {
-            runCatching {
+            try {
                 // wenku8 实际以 GB18030 输出：• ・ 〜 等字符不在 GBK 字符集内，
                 // 会以 GB18030 独有的 4 字节序列传输，按 GBK 解码后碎成乱码（issue #485）。
                 // GB18030 是 GBK 的严格超集，原本能正确解出的内容不受影响。
                 //
                 // 这里读原始字节自行解码，而不是把字符集交给 bodyAsText：
                 // 后者的参数只是 fallback，响应头声明了 charset 时并不生效。
-                val res = String(ktorClient.get(url).bodyAsBytes(), WENKU8_CHARSET)
-                Jsoup.parse(res).outputSettings(
+                val res = clients.request(requestSourceId()) { String(it.get(url).bodyAsBytes(), WENKU8_CHARSET) }
+                Ok(Jsoup.parse(res).outputSettings(
                     Document.OutputSettings()
                         .prettyPrint(false)
                         .syntax(Document.OutputSettings.Syntax.xml)
-                )
-            }
+                ))
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (failure: Exception) { Err(failure) }
         }
     }
 }

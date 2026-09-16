@@ -54,17 +54,13 @@ class WebBookDataSourceManager @Inject constructor (
         registrationsByPackage[packageName] = items
     }
 
-    fun <T: WebBookDataSource>loadWebDataSourceFromClass(clazz: Class<T>, injector: PluginInjector) {
-        if (!WebBookDataSource::class.java.isAssignableFrom(clazz)) return
-        val instance = injector.provide<WebBookDataSource>(clazz)
-        if (instance is WebBookDataSource) {
-            val item = loadWebDataSourceClass(instance, builtIn = true)
-            val packageName = clazz.`package`?.name ?: return
-            if (registrationsByPackage.contains(packageName)) {
-                registrationsByPackage[packageName] = registrationsByPackage[packageName]!! + listOf(item)
-            } else {
-                registrationsByPackage[packageName] = listOf(item)
-            }
+    fun loadBuiltInSource(instance: WebBookDataSource) {
+        val item = loadWebDataSourceClass(instance, builtIn = true)
+        val packageName = instance.javaClass.`package`?.name ?: return
+        if (registrationsByPackage.contains(packageName)) {
+            registrationsByPackage[packageName] = registrationsByPackage[packageName]!! + listOf(item)
+        } else {
+            registrationsByPackage[packageName] = listOf(item)
         }
     }
 
