@@ -22,6 +22,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
@@ -48,7 +49,7 @@ class SourceRuntime internal constructor(
     internal suspend fun <T> execute(block: suspend () -> T): T {
         checkAvailable()
         val interaction = currentCoroutineContext()[ForegroundSourceRequest] ?: kotlin.coroutines.EmptyCoroutineContext
-        val request = lifetime.async(interaction) { block() }
+        val request = lifetime.async(interaction + SourceRequestOwner(id)) { block() }
         return try {
             request.await().also { checkAvailable() }
         } finally {
@@ -67,14 +68,14 @@ class SourceRuntime internal constructor(
                 handle.dispose()
             }
         }
-    }
+    }.flowOn(SourceRequestOwner(id))
 
     internal fun ownedScope(parent: CoroutineScope): CoroutineScope {
         checkAvailable()
         val child = Job(parent.coroutineContext[Job])
         val handle = requireNotNull(lifetime.coroutineContext[Job]).invokeOnCompletion { child.cancel() }
         child.invokeOnCompletion { handle.dispose() }
-        return CoroutineScope(parent.coroutineContext + child)
+        return CoroutineScope(parent.coroutineContext + child + SourceRequestOwner(id))
     }
 
     fun bookTagPage(tag: String): String? {

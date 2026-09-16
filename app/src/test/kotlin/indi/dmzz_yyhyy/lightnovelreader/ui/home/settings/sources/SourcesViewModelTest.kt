@@ -10,6 +10,7 @@ import hnovel.network.StorageArea
 import hnovel.network.StorageRequest
 import hnovel.network.StorageRequestKey
 import hnovel.network.NetworkGrant
+import hnovel.network.SourceNetworkMode
 import io.mockk.*
 import indi.dmzz_yyhyy.lightnovelreader.data.web.*
 import indi.dmzz_yyhyy.lightnovelreader.data.web.rules.*
@@ -482,7 +483,12 @@ class SourcesViewModelTest {
                 model.select(id)
                 val state = idle()
                 assertEquals(id, state.selected)
-                assertNotNull(state.network?.limitation)
+                if (id == ids.first()) {
+                    assertNull(state.network?.limitation)
+                    model.setBypassVpn(true)
+                    assertTrue(idle().network!!.bypassVpn)
+                    assertEquals(SourceNetworkMode.BypassVpn, SourceNetworkSettings(context, mockk()).mode(id))
+                } else assertNotNull(state.network?.limitation)
                 assertNull(state.loginForm)
             }
             assertEquals(0, constructions)

@@ -1,9 +1,6 @@
 package indi.dmzz_yyhyy.lightnovelreader.data.web
 
 import android.app.Application
-import indi.dmzz_yyhyy.lightnovelreader.data.plugin.injector.PluginInjector
-import io.mockk.every
-import io.mockk.mockk
 import io.nightfish.lightnovelreader.api.identifier.Identifier
 import io.nightfish.lightnovelreader.api.web.WebBookDataSource
 import io.nightfish.lightnovelreader.api.web.WebDataSource
@@ -21,18 +18,12 @@ import java.util.concurrent.atomic.AtomicInteger
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [27], application = Application::class)
 class SourceManagerRegistrationTest {
-    private fun WebBookDataSourceManager.load(source: BuiltInFixture) {
-        val injector = mockk<PluginInjector>()
-        every { injector.provide<WebBookDataSource>(BuiltInFixture::class.java) } returns source
-        loadWebDataSourceFromClass(BuiltInFixture::class.java, injector)
-    }
-
     @Test(timeout = 10000)
     fun registrationAndInventoryDoNotInitializeSourcesWhileExplicitResolutionReusesOneRuntime() = runBlocking {
         val manager = WebBookDataSourceManager(WebSourceRegistry())
         val source = BuiltInFixture()
         val other = BuiltInFixture(Identifier("fixture", "other"))
-        manager.load(source)
+        manager.loadBuiltInSource(source)
         manager.registerWebDataSource(other, WebDataSourceItem(other.id, "Other", "fixture"))
         try {
             assertEquals(2, manager.webDataSourceItems.size)
@@ -60,7 +51,7 @@ class SourceManagerRegistrationTest {
     @Test fun missingIdentityDoesNotInitializeAnotherRegisteredSource() = runBlocking {
         val manager = WebBookDataSourceManager(WebSourceRegistry())
         val source = BuiltInFixture()
-        manager.load(source)
+        manager.loadBuiltInSource(source)
         try {
             assertTrue(manager.registry.resolve(Identifier("fixture", "missing")) is SourceResolution.Missing)
             assertEquals(0, source.loads.get())
@@ -71,7 +62,7 @@ class SourceManagerRegistrationTest {
     fun unloadingAnOldPackageDoesNotRemoveAReplacementWithTheSameIdentity() = runBlocking {
         val manager = WebBookDataSourceManager(WebSourceRegistry())
         val old = BuiltInFixture()
-        manager.load(old)
+        manager.loadBuiltInSource(old)
         val oldRuntime = (manager.registry.resolve(old.id) as SourceResolution.Ready).runtime
         manager.unregisterWebDataSource(old.id)
         val replacement = BuiltInFixture()

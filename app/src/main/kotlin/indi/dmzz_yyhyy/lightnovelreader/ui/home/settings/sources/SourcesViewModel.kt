@@ -261,12 +261,13 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
     }
     private fun networkState(id: Identifier): SourceNetworkState {
         val installed = state.value.installed.find { ImportedRuleSources.id(it.definition) == id }
+        val listing = state.value.registry.find { it.metadata.id == id }
         val limitation = when {
             installed != null -> if (RuleSettingsPresentation.read(installed.definition).nativeBrowser &&
                 !AndroidSourceBrowser.supportsVpnBypass(context)) R.string.sources_network_native else null
             id == ZLibrarySources.ID -> null
-            id == "Wenku8".ofId() -> R.string.sources_network_wenku8
-            state.value.registry.find { it.metadata.id == id }?.metadata?.builtIn == false -> R.string.sources_network_plugin
+            id == "Wenku8".ofId() && listing?.metadata?.builtIn == true -> null
+            listing?.metadata?.builtIn == false -> R.string.sources_network_plugin
             else -> R.string.sources_network_unsupported
         }
         return SourceNetworkState(networkSettings.mode(id) == SourceNetworkMode.BypassVpn, limitation)

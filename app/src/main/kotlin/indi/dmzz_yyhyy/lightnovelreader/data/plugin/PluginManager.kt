@@ -24,6 +24,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.plugin.install.InstallState
 import indi.dmzz_yyhyy.lightnovelreader.data.plugin.install.PluginInstallError
 import indi.dmzz_yyhyy.lightnovelreader.data.userdata.UserDataRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.web.WebBookDataSourceManager
+import indi.dmzz_yyhyy.lightnovelreader.data.web.SourceNetworkSettings
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.wenku8.Wenku8Api
 import indi.dmzz_yyhyy.lightnovelreader.utils.classLoader
 import indi.dmzz_yyhyy.lightnovelreader.utils.getApkSignatures
@@ -49,7 +50,8 @@ class PluginManager @Inject constructor(
     @field:ApplicationContext private val appContext: Context,
     private val webBookDataSourceManager: WebBookDataSourceManager,
     private val pluginInjector: PluginInjector,
-    userDataRepository: UserDataRepository
+    userDataRepository: UserDataRepository,
+    private val networkSettings: SourceNetworkSettings,
 ) {
     companion object {
         const val TAG = "PluginManager"
@@ -165,10 +167,7 @@ class PluginManager @Inject constructor(
 
     suspend fun initAllPlugin() {
         pluginsTempDir.deleteRecursively()
-        webBookDataSourceManager.loadWebDataSourceFromClass(
-            Wenku8Api::class.java,
-            pluginInjector
-        )
+        webBookDataSourceManager.loadBuiltInSource(Wenku8Api { id -> networkSettings.forSource(id).snapshot() })
         appPluginInfos = initAllAppPlugin()
         val enabledPlugins = enabledPluginsUserData.getOrDefault(emptyList())
         val pluginDirs = pluginsDir.listFiles()

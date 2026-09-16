@@ -8,7 +8,6 @@
     <string name="sources_account_loading">Reading account status…</string>
     <string name="sources_account_unknown">Account status unavailable</string>
     <string name="sources_plugins_group">Plugin sources</string>
-    <string name="sources_network_wenku8">Wenku8 does not yet support this bypass switch.</string>
     <string name="sources_network_plugin">This plugin manages its own connections and does not yet support this bypass switch.</string>
     <string name="sources_login_definition_error">The source login declaration is invalid at %1$s. Review the source definition.</string>
     <string name="sources_account_unavailable">Account actions unavailable</string>
