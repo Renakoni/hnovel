@@ -29,6 +29,13 @@
 -dontwarn org.slf4j.impl.StaticLoggerBinder
 -dontwarn org.jetbrains.kotlin.**
 -dontwarn com.google.gson.**
+# Rhino 1.8.1's optional BEAN JSON converter uses desktop JavaBeans introspection.
+# Android has none of these types; the host leaves Context's STRING default in use.
+-dontwarn java.beans.BeanDescriptor
+-dontwarn java.beans.BeanInfo
+-dontwarn java.beans.IntrospectionException
+-dontwarn java.beans.Introspector
+-dontwarn java.beans.PropertyDescriptor
 -keep,allowobfuscation,allowshrinking class kotlin.coroutines.Continuation
 
 -keepattributes Signature, *Annotation*, InnerClasses

@@ -2,6 +2,14 @@
 
 Production Rhino is pinned to 1.8.1, matching the source-compatibility oracle. Each invocation owns an interpreted ContextFactory, an ES6 scope, an instruction counter, and a ClassShutter. Exceeding the instruction budget throws an internal Error and returns Timeout; script try/catch cannot suppress it. Interpreter recursion is limited to at most 1000 frames, matching the pinned engine limit; callers may lower it. Compile errors return Syntax; execution/stack exhaustion returns Runtime. Thread interruption returns Cancelled. ContextFactory releases the context on every exit. An already-entered foreign Rhino context is rejected because it could bypass the owned observer.
 
+Android packaging retains Rhino's default `JavaToJSONConverters.STRING` behavior.
+The optional `BEAN` converter requires five desktop `java.beans` introspection
+types absent from Android; the host never selects it. The app's
+[R8 rules](../app/proguard-rules.pro) suppress only those five missing types,
+without adding a JavaBeans implementation or changing script/JSON behavior.
+PR CI builds the minified release APK and preserves shrinker diagnostics. Recheck
+the converter and removed-code report when upgrading Rhino or changing this boundary.
+
 Scripts retain global completion-value semantics: `21*2` and `var n=21; n*2` return 42, while a raw top-level `return` is a syntax error. The pinned RhinoScriptEngine uses global evaluateReader. The compatibility ReferenceRunner wraps synthetic fixture bodies in an IIFE as a harness convention; this is not the production script entry contract. `book`/`chapter` have ordinary Object prototypes, and all bridge functions have Function prototypes supporting call/apply/bind, including null receivers. Binding a host method does not grant a new capability.
 
 Success carries bounded JSON text, not a live Rhino object. Serialization traverses plain objects and arrays and checks capacity before every append, including keys, punctuation and escaping. Strings, booleans, numbers and null retain their JSON types. Undefined/hole array values become null; undefined/function object properties are omitted; non-finite numbers become null. Cycles, excessive nesting and non-data host objects fail explicitly. Custom toJSON hooks are not invoked; this is a JSON-data result protocol, not a promise of arbitrary object serialization. Getters still execute under the instruction observer. A large nested value cannot hide behind `[object Object]`.
