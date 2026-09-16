@@ -1,16 +1,6 @@
 package indi.renakoni.nextvol.ui.home.bookshelf.home
 
-import android.app.Activity
-import android.content.Intent
-import android.net.Uri
-import android.os.Build
-import android.provider.DocumentsContract
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.ManagedActivityResultLauncher
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.ActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.lazy.LazyListState
@@ -19,7 +9,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -54,9 +43,6 @@ fun BookshelfHomeScreen(
         if (uiState.selectMode) MaterialTheme.colorScheme.surfaceVariant
         else MaterialTheme.colorScheme.surface
     )
-    val saveAllBookshelfLauncher = launcher(uiState.saveAllBookshelfJsonData)
-    val saveThisBookshelfLauncher = launcher(uiState.saveBookshelfJsonData)
-    val importBookshelfLauncher = launcher(uiState.importBookshelf)
     val listState = rememberSaveable(uiState.selectedBookshelfId, saver = LazyListState.Saver) { LazyListState() }
     val gridState = rememberSaveable(uiState.selectedBookshelfId, saver = LazyGridState.Saver) { LazyGridState() }
 
@@ -66,12 +52,6 @@ fun BookshelfHomeScreen(
 
     LifecycleEventEffect(Lifecycle.Event.ON_START) {
         init()
-    }
-
-    LaunchedEffect(uiState.toast) {
-        if (uiState.toast.isEmpty()) return@LaunchedEffect
-        Toast.makeText(context, uiState.toast, Toast.LENGTH_SHORT).show()
-        uiState.clearToast()
     }
 
     val shareBookshelf: () -> Unit = remember(
@@ -124,20 +104,6 @@ fun BookshelfHomeScreen(
             backgroundColor = backgroundColor,
             uiState = uiState,
             onShareBookshelf = shareBookshelf,
-            onSaveThisBookshelf = {
-                uiState.selectedBookshelf?.name?.let {
-                    createBookshelfDataFile(
-                        it,
-                        saveThisBookshelfLauncher
-                    )
-                }
-            },
-            onSaveAllBookshelf = {
-                createBookshelfDataFile("bookshelves", saveAllBookshelfLauncher)
-            },
-            onImportBookshelf = {
-                selectBookshelfDataFile(importBookshelfLauncher)
-            },
             onSettings = onSettings
         )
 
@@ -148,40 +114,4 @@ fun BookshelfHomeScreen(
             scrollBehavior = scrollBehavior
         )
     }
-}
-
-@Suppress("DuplicatedCode")
-fun createBookshelfDataFile(fileName: String, launcher: ManagedActivityResultLauncher<Intent, ActivityResult>) {
-    val initUri = DocumentsContract.buildDocumentUri("com.android.externalstorage.documents", "primary:Documents")
-    val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
-        addCategory(Intent.CATEGORY_OPENABLE)
-        type = "application/x-lightnovelreader-data"
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            putExtra(DocumentsContract.EXTRA_INITIAL_URI, initUri)
-        }
-        putExtra(Intent.EXTRA_TITLE, "$fileName.lnr")
-    }
-    launcher.launch(Intent.createChooser(intent, "选择一位置"))
-}
-
-@Composable
-fun launcher(block: (Uri) -> Unit): ManagedActivityResultLauncher<Intent, ActivityResult> {
-    return rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { activityResult ->
-        if (activityResult.resultCode == Activity.RESULT_OK) {
-            activityResult.data?.data?.let(block)
-        }
-    }
-}
-
-@Suppress("DuplicatedCode")
-fun selectBookshelfDataFile(launcher: ManagedActivityResultLauncher<Intent, ActivityResult>) {
-    val initUri = DocumentsContract.buildDocumentUri("com.android.externalstorage.documents", "primary:Documents")
-    val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-        addCategory(Intent.CATEGORY_OPENABLE)
-        type = "*/*"
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            putExtra(DocumentsContract.EXTRA_INITIAL_URI, initUri)
-        }
-    }
-    launcher.launch(Intent.createChooser(intent, "选择数据文件"))
 }

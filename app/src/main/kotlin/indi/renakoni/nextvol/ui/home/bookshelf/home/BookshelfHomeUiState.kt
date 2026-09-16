@@ -1,6 +1,5 @@
 package indi.renakoni.nextvol.ui.home.bookshelf.home
 
-import android.net.Uri
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -30,7 +29,6 @@ interface BookshelfHomeUiState {
     val selectedBookIds: List<String>
     val reorderBookIds: List<Pair<String, Flow<Result<BookshelfBookItem, WebRequestError>>>>
     val reorderBookshelfIds: List<Int>
-    val toast: String
     val changePage: (Int) -> Unit
     val changeLayout: (BookshelfLayout) -> Unit
     val changeSortType: (BookshelfSortType) -> Unit
@@ -51,10 +49,6 @@ interface BookshelfHomeUiState {
     val onPin: () -> Unit
     val onRemove: () -> Unit
     val onMarkSelectedBooks: () -> Unit
-    val saveAllBookshelfJsonData: (Uri) -> Unit
-    val saveBookshelfJsonData: (Uri) -> Unit
-    val importBookshelf: (Uri) -> Unit
-    val clearToast: () -> Unit
 }
 
 class MutableBookshelfHomeUiState(
@@ -78,10 +72,6 @@ class MutableBookshelfHomeUiState(
     override val onPin: () -> Unit = {},
     override val onRemove: () -> Unit = {},
     override val onMarkSelectedBooks: () -> Unit = {},
-    override val saveAllBookshelfJsonData: (Uri) -> Unit = {},
-    override val saveBookshelfJsonData: (Uri) -> Unit = {},
-    override val importBookshelf: (Uri) -> Unit = {},
-    override val clearToast: () -> Unit = {},
 ) : BookshelfHomeUiState {
     override var bookshelfList by mutableStateOf(emptyList<BookshelfUiState>())
     override var selectedBookshelfId by mutableIntStateOf(-1)
@@ -95,5 +85,4 @@ class MutableBookshelfHomeUiState(
     override val selectedBookIds: MutableList<String> = mutableStateListOf()
     override val reorderBookIds: MutableList<Pair<String, Flow<Result<BookshelfBookItem, WebRequestError>>>> = mutableStateListOf()
     override val reorderBookshelfIds: MutableList<Int> = mutableStateListOf()
-    override var toast by mutableStateOf("")
 }

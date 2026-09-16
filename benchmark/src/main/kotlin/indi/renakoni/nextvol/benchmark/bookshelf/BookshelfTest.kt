@@ -36,7 +36,8 @@ class BookshelfTest : UiAutomatorTest() {
     @Test
     fun createBookshelfFlowPersistsNewShelf() {
         openBookshelf()
-        clickDescription("create")
+        openBookshelfMenu()
+        clickText("Create Bookshelf")
         assertText("New Bookshelf")
         setFirstTextField("Automation Shelf")
         clickDescription("save")

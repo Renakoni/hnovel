@@ -28,13 +28,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.ui.components.AnimatedText
@@ -49,16 +46,9 @@ fun BookshelfHomeTopBar(
     backgroundColor: Color,
     uiState: BookshelfHomeUiState,
     onShareBookshelf: () -> Unit,
-    onSaveThisBookshelf: () -> Unit,
-    onSaveAllBookshelf: () -> Unit,
-    onImportBookshelf: () -> Unit,
     onSettings: () -> Unit,
 ) {
-    val localDensity = LocalDensity.current
     var mainMenuExpanded by remember { mutableStateOf(false) }
-    var exportImportMenuExpanded by remember { mutableStateOf(false) }
-    var mainMenuItemHeight by remember { mutableStateOf(0.dp) }
-    var exportImportMenuWidth by remember { mutableStateOf(0.dp) }
     val sortLocked = uiState.selectedBookshelf?.sortType != BookshelfSortType.Default
 
     MediumTopAppBar(
@@ -101,12 +91,6 @@ fun BookshelfHomeTopBar(
             }
             when {
                 !uiState.selectMode -> {
-                    IconButton(onClick = uiState.onCreate) {
-                        Icon(
-                            painter = painterResource(R.drawable.library_add_24px),
-                            contentDescription = "create"
-                        )
-                    }
                     Box {
                         var sortMenuExpanded by remember { mutableStateOf(false) }
                         IconButton(onClick = { sortMenuExpanded = true }) {
@@ -180,11 +164,6 @@ fun BookshelfHomeTopBar(
                             )
                         }
                         DropdownMenu(
-                            modifier = Modifier.onGloballyPositioned { layoutCoordinates ->
-                                with(localDensity) {
-                                    mainMenuItemHeight = layoutCoordinates.size.height.toDp().div(7)
-                                }
-                            },
                             expanded = mainMenuExpanded,
                             onDismissRequest = { mainMenuExpanded = false }
                         ) {
@@ -254,15 +233,6 @@ fun BookshelfHomeTopBar(
                                 },
                                 onClick = onShareBookshelf
                             )
-                            Text(
-                                text = stringResource(R.string.options),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier
-                                    .padding(horizontal = 12.dp)
-                                    .padding(top = 12.dp, bottom = 6.dp)
-                            )
                             DropdownMenuItem(
                                 text = {
                                     Text(
@@ -273,74 +243,6 @@ fun BookshelfHomeTopBar(
                                 onClick = {
                                     mainMenuExpanded = false
                                     uiState.enableBookshelfReorderMode()
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = {
-                                    Text(
-                                        text = stringResource(R.string.import_and_export),
-                                        style = MaterialTheme.typography.bodyLarge
-                                    )
-                                },
-                                trailingIcon = {
-                                    Icon(
-                                        painter = painterResource(R.drawable.arrow_right_24px),
-                                        contentDescription = null
-                                    )
-                                },
-                                onClick = { exportImportMenuExpanded = true }
-                            )
-                        }
-                        DropdownMenu(
-                            modifier = Modifier.onGloballyPositioned { layoutCoordinates ->
-                                with(localDensity) {
-                                    exportImportMenuWidth = layoutCoordinates.size.width.toDp()
-                                }
-                            },
-                            offset = DpOffset(
-                                x = -exportImportMenuWidth,
-                                y = mainMenuItemHeight.times(6.5f)
-                            ),
-                            expanded = exportImportMenuExpanded,
-                            onDismissRequest = { exportImportMenuExpanded = false }
-                        ) {
-                            DropdownMenuItem(
-                                text = {
-                                    Text(
-                                        text = stringResource(R.string.export_to_lnr_file),
-                                        style = MaterialTheme.typography.bodyLarge
-                                    )
-                                },
-                                onClick = {
-                                    onSaveThisBookshelf()
-                                    exportImportMenuExpanded = false
-                                    mainMenuExpanded = false
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = {
-                                    Text(
-                                        text = stringResource(R.string.export_all_to_lnr_file),
-                                        style = MaterialTheme.typography.bodyLarge
-                                    )
-                                },
-                                onClick = {
-                                    onSaveAllBookshelf()
-                                    exportImportMenuExpanded = false
-                                    mainMenuExpanded = false
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = {
-                                    Text(
-                                        text = stringResource(R.string.import_from_file),
-                                        style = MaterialTheme.typography.bodyLarge
-                                    )
-                                },
-                                onClick = {
-                                    onImportBookshelf()
-                                    exportImportMenuExpanded = false
-                                    mainMenuExpanded = false
                                 }
                             )
                         }
