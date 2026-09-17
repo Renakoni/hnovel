@@ -95,14 +95,14 @@ class BookDownloadTest {
 
     private fun openLibrary() {
         db = Room.databaseBuilder(context, NextVolDatabase::class.java, directory.root.resolve("library.db").path)
-            .addMigrations(NextVolDatabase.MIGRATION_17_18).allowMainThreadQueries().build()
+            .addMigrations(NextVolDatabase.MIGRATION_17_18, NextVolDatabase.MIGRATION_18_19).allowMainThreadQueries().build()
         local = LocalBookDataSource(db.bookInformationDao(), db.bookVolumesDao(), db.chapterContentDao(), db.userReadingDataDao())
         downloads = BookDownloadStore(context, db, decoder)
         val shelves = BookshelfRepository(db.bookshelfDao(), mockk(relaxed = true), registry, downloads)
         val text = TextProcessingRepository(mockk { every { enabled } returns false },
             mockk { every { enabled } returns false }, ContentComponentRegistry())
-        books = BookRepository(local, shelves, text, mockk(relaxed = true), ChapterRepository(registry, local, text),
-            BookReadingDataRepository(local), registry, downloads)
+        books = BookRepository(local, shelves, text, mockk(relaxed = true), ChapterRepository(registry, local, text, mockk()),
+            BookReadingDataRepository(local), registry, downloads, mockk())
     }
 
     private fun openImages() {
@@ -301,7 +301,7 @@ class BookDownloadTest {
         Dispatchers.setMain(UnconfinedTestDispatcher())
         val models = androidx.lifecycle.ViewModelStore()
         val model = indi.renakoni.nextvol.ui.bookmanager.BookManagerViewModel(
-            books, progress, db, mockk(relaxed = true), mockk(relaxed = true), downloads)
+            books, progress, db, mockk(relaxed = true), mockk(relaxed = true), downloads, mockk(relaxed = true))
         models.put("manager", model)
         val job = model.viewModelScope.coroutineContext[Job]
         try {
@@ -331,10 +331,10 @@ class BookDownloadTest {
             .putString(sourceImageCacheKey(image, ""), key).commit()
         db.userDataDao().insert(UserDataPath.CompletedDownloadBookList.path, "fixture", "CompletedDownloadItemList", "CACHE|${a.storageKey}")
         db.openHelper.writableDatabase.apply {
-            execSQL("DROP TABLE downloaded_chapter"); execSQL("DROP TABLE book_download"); version = 17
+            execSQL("DROP TABLE downloaded_chapter"); execSQL("DROP TABLE book_download"); execSQL("DROP TABLE imported_book"); version = 17
         }
         db.close(); openLibrary()
-        assertEquals(18, db.openHelper.writableDatabase.version)
+        assertEquals(19, db.openHelper.writableDatabase.version)
         val blocked = File(context.filesDir, "book-downloads").apply { writeText("not a directory") }
         try { downloads.prepare(); fail("Image copy must fail before ownership is committed") }
         catch (_: java.io.IOException) { }

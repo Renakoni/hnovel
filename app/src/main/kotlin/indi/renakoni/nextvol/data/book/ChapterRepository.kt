@@ -8,6 +8,7 @@ import com.github.michaelbull.result.onErr
 import com.github.michaelbull.result.onOk
 import indi.renakoni.nextvol.BuildConfig
 import indi.renakoni.nextvol.data.local.LocalBookDataSource
+import indi.renakoni.nextvol.data.localbook.LocalBookStore
 import indi.renakoni.nextvol.data.text.TextProcessingRepository
 import indi.renakoni.nextvol.data.web.WebSourceRegistry
 import io.nightfish.lightnovelreader.api.book.BookVolumes
@@ -25,6 +26,7 @@ class ChapterRepository @Inject constructor(
     private val sourceRegistry: WebSourceRegistry,
     private val localBookDataSource: LocalBookDataSource,
     private val textProcessingRepository: TextProcessingRepository,
+    private val localBooks: LocalBookStore,
 ) : ChapterSource {
     companion object {
         private const val TAG = "BookRepository"
@@ -36,6 +38,10 @@ class ChapterRepository @Inject constructor(
         priority: WebDataSourcePriority
     ): Flow<Result<BookVolumes, WebRequestError>> = flow {
         val book = BookIdentity.book(id)
+        if (LocalBookStore.isLocal(book)) {
+            emit(localBooks.readVolumes(book))
+            return@flow
+        }
         val local = localBookDataSource.getBookVolumes(book.storageKey)
         local?.also {
             emit(Ok(it))
@@ -62,6 +68,10 @@ class ChapterRepository @Inject constructor(
         priority: WebDataSourcePriority
     ): Flow<Result<ChapterContent, WebRequestError>> = flow {
         val chapter = BookIdentity.chapter(chapterId, BookIdentity.book(bookId))
+        if (LocalBookStore.isLocal(chapter.book)) {
+            emit(localBooks.readChapter(chapter))
+            return@flow
+        }
         val local = localBookDataSource.getChapterContent(chapter.storageKey)
         local?.also {
             emit(Ok(it))
@@ -88,6 +98,7 @@ class ChapterRepository @Inject constructor(
         priority: WebDataSourcePriority
     ) {
         val chapter = BookIdentity.chapter(chapterId, BookIdentity.book(bookId))
+        if (LocalBookStore.isLocal(chapter.book)) return
         sourceRegistry.request(chapter.book) { it.getChapterContent(chapter.remoteId, chapter.book.remoteId, priority) }.map(chapter::bind)
             .onOk { remote ->
                 localBookDataSource.updateChapterContent(remote)

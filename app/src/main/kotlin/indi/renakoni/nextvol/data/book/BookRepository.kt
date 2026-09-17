@@ -18,6 +18,7 @@ import com.github.michaelbull.result.onOk
 import indi.renakoni.nextvol.BuildConfig
 import indi.renakoni.nextvol.data.bookshelf.BookshelfRepository
 import indi.renakoni.nextvol.data.local.LocalBookDataSource
+import indi.renakoni.nextvol.data.localbook.LocalBookStore
 import indi.renakoni.nextvol.data.text.TextProcessingRepository
 import indi.renakoni.nextvol.data.web.SourceDiscoveryTarget
 import indi.renakoni.nextvol.data.work.CacheBookWork
@@ -33,6 +34,7 @@ import io.nightfish.lightnovelreader.api.web.WebDataSourcePriority
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.distinctUntilChanged
 import javax.inject.Inject
@@ -61,6 +63,7 @@ class BookRepository @Inject constructor(
     private val readingDataRepository: BookReadingDataRepository,
     private val sourceRegistry: indi.renakoni.nextvol.data.web.WebSourceRegistry,
     private val downloads: BookDownloadStore,
+    private val localBooks: LocalBookStore,
 ): BookRepositoryApi {
     companion object {
         private const val TAG = "BookRepository"
@@ -71,6 +74,7 @@ class BookRepository @Inject constructor(
     fun readingAvailability(bookId: String): Flow<BookReadingAvailability> {
         val book = BookIdentity.book(bookId)
         return sourceRegistry.sources.map { sources ->
+            if (LocalBookStore.isLocal(book)) return@map BookReadingAvailability(false, localBooks.contains(book), false, null)
             val entry = sources.find { it.metadata.id == book.sourceId }
             val capabilities = entry?.metadata?.capabilities.orEmpty()
             val online = entry?.metadata?.supportsReading == true &&
@@ -91,6 +95,13 @@ class BookRepository @Inject constructor(
         priority: WebDataSourcePriority
     ): Flow<Result<BookInformation, WebRequestError>> = flow {
         val book = BookIdentity.book(id)
+        if (LocalBookStore.isLocal(book)) {
+            val stored = localBookDataSource.getBookInformation(book.storageKey)
+            stored?.let { emit(Ok(it)) }
+            val result = localBooks.readInformation(book)
+            if (result.isOk || stored == null) emit(result)
+            return@flow
+        }
         val local = localBookDataSource.getBookInformation(book.storageKey)
         local?.also {
             emit(Ok(it))
@@ -107,8 +118,9 @@ class BookRepository @Inject constructor(
     }
 
     /** Remote-only refresh reports failure even when a local copy exists (background checks). */
-    suspend fun refreshBookInformation(book: SourceBookId, priority: WebDataSourcePriority = WebDataSourcePriority.Low, fresh: Boolean = false): Result<BookInformation, WebRequestError> =
-        sourceRegistry.request(book) { it.getBookInformation(book.remoteId, priority, refresh = fresh) }.map(book::bind)
+    suspend fun refreshBookInformation(book: SourceBookId, priority: WebDataSourcePriority = WebDataSourcePriority.Low, fresh: Boolean = false): Result<BookInformation, WebRequestError> {
+        if (LocalBookStore.isLocal(book)) return localBooks.readInformation(book)
+        return sourceRegistry.request(book) { it.getBookInformation(book.remoteId, priority, refresh = fresh) }.map(book::bind)
             .onOk { remote ->
                 localBookDataSource.updateBookInformation(remote)
                 val bookshelfBookMetadata = bookshelfRepository.getBookshelfBookMetadata(book.storageKey) ?: return@onOk
@@ -123,6 +135,7 @@ class BookRepository @Inject constructor(
             }.onErr {
                 Log.e(TAG, "Source request failed for ${book.fileKey}: ${it.kind}")
             }
+    }
 
     override fun getBookVolumesFlow(
         id: String,
@@ -155,6 +168,7 @@ class BookRepository @Inject constructor(
         readingDataRepository.updateUserReadingData(id, update)
 
     fun cacheBook(bookId: String): Flow<WorkInfo?> {
+        if (LocalBookStore.isLocal(BookIdentity.book(bookId))) return flowOf(null)
         val key = BookIdentity.bookKey(bookId)
         val generation = downloads.generation()
         val workRequest = OneTimeWorkRequestBuilder<CacheBookWork>()
@@ -175,6 +189,8 @@ class BookRepository @Inject constructor(
     }
 
     override suspend fun getIsBookCached(bookId: String): Boolean {
+        val book = BookIdentity.book(bookId)
+        if (LocalBookStore.isLocal(book)) return localBooks.contains(book)
         localBookDataSource.getBookVolumes(bookId)?.let { bookVolumes ->
             if (bookVolumes.volumes.isEmpty())
                 return false
@@ -199,17 +215,19 @@ class BookRepository @Inject constructor(
 
     /** Download refresh must report remote failures even when the reader can keep showing local content. */
     internal suspend fun downloadDirectory(book: SourceBookId): Result<BookVolumes, WebRequestError> =
-        sourceRegistry.request(book) { it.getBookVolumes(book.remoteId, WebDataSourcePriority.Low, refresh = true) }.map(book::bind)
+        if (LocalBookStore.isLocal(book)) localBooks.readVolumes(book)
+        else sourceRegistry.request(book) { it.getBookVolumes(book.remoteId, WebDataSourcePriority.Low, refresh = true) }.map(book::bind)
             .onOk { if (it.volumes.any { volume -> volume.chapters.isNotEmpty() }) localBookDataSource.updateBookVolumes(it) }
 
     internal suspend fun downloadChapter(book: SourceBookId, chapterId: String): Result<ChapterContent, WebRequestError> {
         val chapter = BookIdentity.chapter(chapterId, book)
+        if (LocalBookStore.isLocal(book)) return localBooks.readChapter(chapter)
         return sourceRegistry.request(book) { it.getChapterContent(chapter.remoteId, book.remoteId, WebDataSourcePriority.Low, refresh = true) }
             .map(chapter::bind)
     }
 
     suspend fun bookTagPage(book: SourceBookId, tag: String): Result<SourceDiscoveryTarget?, WebRequestError> =
-        sourceRegistry.request(book) { runtime ->
+        if (LocalBookStore.isLocal(book)) Ok(null) else sourceRegistry.request(book) { runtime ->
             Ok(runtime.bookTagPage(tag)?.let { SourceDiscoveryTarget(book.sourceId, it) })
         }
 
@@ -218,7 +236,9 @@ class BookRepository @Inject constructor(
         volume: Volume,
         chapters: Map<String, ChapterContent>,
         context: Context,
-    ): Result<Uri?, WebRequestError> = sourceRegistry.request(book) { runtime ->
+    ): Result<Uri?, WebRequestError> = if (LocalBookStore.isLocal(book)) {
+        localBooks.readInformation(book).map { it.coverUri.takeUnless { uri -> uri == Uri.EMPTY } }
+    } else sourceRegistry.request(book) { runtime ->
         val remoteChapters = chapters.values.map(book::remoteContent).associateBy { it.id }.toMutableMap()
         Ok(runtime.volumeCover(book.remoteId, book.remoteVolume(volume), remoteChapters, context))
     }

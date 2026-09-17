@@ -14,6 +14,7 @@ import indi.renakoni.nextvol.data.local.room.converter.ListConverter
 import indi.renakoni.nextvol.data.local.room.converter.UriConverter
 import indi.renakoni.nextvol.data.local.room.converter.WorldCountConverter
 import indi.renakoni.nextvol.data.local.room.dao.BookInformationDao
+import indi.renakoni.nextvol.data.local.room.dao.ImportedBookDao
 import indi.renakoni.nextvol.data.local.room.dao.BookDownloadDao
 import indi.renakoni.nextvol.data.local.room.dao.BookRecordDao
 import indi.renakoni.nextvol.data.local.room.dao.BookVolumesDao
@@ -25,6 +26,7 @@ import indi.renakoni.nextvol.data.local.room.dao.StorageStatsDao
 import indi.renakoni.nextvol.data.local.room.dao.UserDataDao
 import indi.renakoni.nextvol.data.local.room.dao.UserReadingDataDao
 import indi.renakoni.nextvol.data.local.room.entity.BookInformationEntity
+import indi.renakoni.nextvol.data.local.room.entity.ImportedBookEntity
 import indi.renakoni.nextvol.data.local.room.entity.BookDownloadEntity
 import indi.renakoni.nextvol.data.local.room.entity.DownloadedChapterEntity
 import indi.renakoni.nextvol.data.local.room.entity.BookRecordEntity
@@ -56,9 +58,10 @@ import io.nightfish.lightnovelreader.api.content.builder.simpleText
         DailyCountEntity::class,
         FormattingRuleEntity::class,
         BookDownloadEntity::class,
-        DownloadedChapterEntity::class
+        DownloadedChapterEntity::class,
+        ImportedBookEntity::class
     ],
-    version = 18,
+    version = 19,
     exportSchema = false
 )
 abstract class NextVolDatabase : RoomDatabase() {
@@ -66,6 +69,7 @@ abstract class NextVolDatabase : RoomDatabase() {
     abstract fun bookVolumesDao(): BookVolumesDao
     abstract fun chapterContentDao(): ChapterContentDao
     abstract fun bookDownloadDao(): BookDownloadDao
+    abstract fun importedBookDao(): ImportedBookDao
     abstract fun userReadingDataDao(): UserReadingDataDao
     abstract fun userDataDao(): UserDataDao
     abstract fun bookshelfDao(): BookshelfDao
@@ -101,7 +105,8 @@ abstract class NextVolDatabase : RoomDatabase() {
                             MIGRATION_14_15,
                             MIGRATION_15_16,
                             MIGRATION_16_17,
-                            MIGRATION_17_18
+                            MIGRATION_17_18,
+                            MIGRATION_18_19
                         )
                         .allowMainThreadQueries()
                         .build()
@@ -904,6 +909,12 @@ abstract class NextVolDatabase : RoomDatabase() {
                 db.execSQL("CREATE TABLE IF NOT EXISTS downloaded_chapter (id TEXT NOT NULL PRIMARY KEY, " +
                     "bookId TEXT NOT NULL, signature TEXT NOT NULL, images TEXT NOT NULL)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_downloaded_chapter_bookId ON downloaded_chapter (bookId)")
+            }
+        }
+
+        internal val MIGRATION_18_19 = object : Migration(18, 19) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS imported_book (bookId TEXT NOT NULL PRIMARY KEY)")
             }
         }
     }

@@ -2,6 +2,8 @@ package indi.renakoni.nextvol.benchmark.book
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
+import androidx.test.uiautomator.By
+import androidx.test.uiautomator.Direction
 import indi.renakoni.nextvol.benchmark.ui.UiAutomatorTest
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -56,13 +58,14 @@ class BookAndReaderTest : UiAutomatorTest() {
     fun readerSettingsExposeAllGroupsAndPageModes() {
         openBookDetails()
         clickText("Benchmark Chapter One")
+        assertTextContains("Benchmark paragraph")
         device.click(device.displayWidth / 2, device.displayHeight / 2)
         clickDescription("setting")
 
         assertText("Reader Settings")
         assertText("Appearance")
         assertText("Controls")
-        assertText("Margins")
+        assertText("Layout")
         assertText("Keep Screen On")
         assertText("Hide Status Bar")
         assertText("Theme Settings…")
@@ -164,25 +167,29 @@ class BookAndReaderTest : UiAutomatorTest() {
     fun readerModeSwitchesExposeConditionalControlsAndMargins() {
         openBookDetails()
         clickText("Benchmark Chapter One")
+        assertTextContains("Benchmark paragraph")
         device.click(device.displayWidth / 2, device.displayHeight / 2)
         clickDescription("setting")
 
         clickText("Controls")
         assertText("Page Turn Mode")
-        assertText("Continuous Scrolling")
+        scrollToText("Continuous Scrolling")
+        device.findObjects(By.scrollable(true))
+            .maxByOrNull { it.visibleBounds.height() }
+            ?.scroll(Direction.DOWN, 1f)
+        device.waitForIdle()
         clickText("Page Turn Mode")
         assertText("Volume Key Navigation")
         scrollToText("Tap to Turn Pages")
+        scrollToText("Page Turn Animation")
         scrollToText("Quick Chapter Switch")
-        assertText("Page Turn Animation")
 
-        clickText("Margins")
-        assertText("Auto Margin Adjustment")
-        clickText("Auto Margin Adjustment")
-        assertText("Top Margin")
-        assertText("Bottom Margin")
+        clickText("Layout")
+        clickScrolledText("Auto Margin Adjustment")
+        scrollToText("Top Margin")
+        scrollToText("Bottom Margin")
+        scrollToText("Left Margin")
         scrollToText("Right Margin")
-        assertText("Left Margin")
     }
 
     @Test

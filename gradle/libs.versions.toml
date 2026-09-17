@@ -16,6 +16,7 @@ matomoSdkAndroid = "4.4"
 okhttp = "5.4.0"
 profileinstaller = "1.4.1"
 re2j = "1.8"
+universalChardet = "2.5.0"
 reorderable = "3.1.0"
 resilient = "2.0.0"
 runtime = "1.11.4"
@@ -81,6 +82,7 @@ matomo-sdk-android = { module = "com.github.matomo-org:matomo-sdk-android", vers
 okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
 okhttp3-logging-interceptor = { module = "com.squareup.okhttp3:logging-interceptor", version.ref = "loggingInterceptor" }
 re2j = { module = "com.google.re2j:re2j", version.ref = "re2j" }
+universal-chardet = { module = "com.github.albfernandez:juniversalchardet", version.ref = "universalChardet" }
 symbol-processing-api = { module = "com.google.devtools.ksp:symbol-processing-api", version.ref = "ksp" }
 reorderable = { module = "sh.calvin.reorderable:reorderable", version.ref = "reorderable" }
 resilient = { module = "io.github.santimattius.resilient:resilient", version.ref = "resilient" }

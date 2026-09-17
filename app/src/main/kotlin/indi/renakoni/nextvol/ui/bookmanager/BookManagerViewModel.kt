@@ -12,6 +12,7 @@ import indi.renakoni.nextvol.data.download.DownloadProgressRepository
 import indi.renakoni.nextvol.data.download.DownloadType
 import indi.renakoni.nextvol.data.download.BookDownloadStore
 import indi.renakoni.nextvol.data.book.BookIdentity
+import indi.renakoni.nextvol.data.localbook.LocalBookStore
 import indi.renakoni.nextvol.data.local.room.NextVolDatabase
 import indi.renakoni.nextvol.data.storage.StorageUsageRepository
 import indi.renakoni.nextvol.data.storage.StorageUsageSnapshot
@@ -32,6 +33,7 @@ class BookManagerViewModel @Inject constructor(
     private val storageUsageRepository: StorageUsageRepository,
     val workManager: WorkManager,
     private val downloads: BookDownloadStore,
+    private val localBooks: LocalBookStore,
 ) : ViewModel() {
     val downloadItemIdList get() = downloadProgressRepository.downloadItemIdList
     private val _clearedItemsFlow = MutableSharedFlow<Int>()
@@ -134,16 +136,18 @@ class BookManagerViewModel @Inject constructor(
         val ids = localBookManagerUiState.selectedIds.toList()
         if (ids.isEmpty()) return 0
         localBookManagerUiState.isDeleting = true
-        removeDownloads(ids)
+        val (imported, cached) = ids.partition { LocalBookStore.isLocal(BookIdentity.book(it)) }
+        imported.forEach { localBooks.delete(BookIdentity.book(it)) }
+        removeDownloads(cached)
         val chapterIds = database.bookVolumesDao()
-            .getVolumeEntitiesByBookIds(ids)
+            .getVolumeEntitiesByBookIds(cached)
             .flatMap { it.chapterIds }
             .distinct()
         database.withTransaction {
             if (chapterIds.isNotEmpty()) {
                 database.chapterContentDao().deleteByIds(chapterIds)
             }
-            database.bookInformationDao().deleteByIds(ids)
+            database.bookInformationDao().deleteByIds(cached)
         }
         storageUsageRepository.invalidateSnapshot()
         withContext(Dispatchers.Main) {
@@ -238,6 +242,7 @@ class BookManagerViewModel @Inject constructor(
         withContext(Dispatchers.Main) {
             localBookManagerUiState.isLoading = true
         }
+        localBooks.restoreMetadata()
         updateLocalBooks(storageUsageRepository.refreshSnapshot(), loading = false)
     }
 
@@ -255,10 +260,11 @@ class BookManagerViewModel @Inject constructor(
 
         val bookList = snapshot.books.map { usage ->
             val readingRecordBytes = bookReadingBytesMap[usage.bookId] ?: 0L
+            val importedFileBytes = localBooks.storedBytes(BookIdentity.book(usage.bookId))
             LocalBookItem(
                 id = usage.bookId,
                 bookInformationFlow = bookRepository.getBookInformationFlow(usage.bookId),
-                size = usage.totalBytes + readingRecordBytes,
+                size = usage.totalBytes + readingRecordBytes + importedFileBytes,
                 chapterCount = bookChapterCountMap[usage.bookId] ?: 0,
                 volumeCount = bookVolumeCountMap[usage.bookId] ?: 0,
                 lastReadTime = bookLastReadTimeMap[usage.bookId],
@@ -266,7 +272,8 @@ class BookManagerViewModel @Inject constructor(
                 volumeBytes = usage.volumeBytes,
                 chapterInformationBytes = usage.chapterInformationBytes,
                 chapterContentBytes = usage.chapterContentBytes,
-                readingRecordBytes = readingRecordBytes
+                readingRecordBytes = readingRecordBytes,
+                importedFileBytes = importedFileBytes,
             )
         }.filter { it.size > 0L }
         val retainedSelectedIds = localBookManagerUiState.selectedIds.intersect(bookList.map { it.id }.toSet())

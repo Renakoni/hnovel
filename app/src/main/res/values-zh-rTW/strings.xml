@@ -452,7 +452,7 @@
     <string name="dialog_updates_available">更新可用</string>
     <string name="dialog_snap_user_data_text">選擇要匯出的使用者資料</string>
     <string name="dialog_snap_local_book_cache">書籍本地快取</string>
-    <string name="dialog_snap_local_book_cache_text">包括所有已快取的書籍以及裝置上的本地書籍</string>
+    <string name="dialog_snap_local_book_cache_text">包含已快取的書籍資料，不包含匯入的 EPUB/TXT 原始檔及其本地檔案。</string>
     <string name="dialog_snap_bookshelf">書架</string>
     <string name="dialog_snap_bookshelf_text">包括書架及書本資訊</string>
     <string name="dialog_snap_reading_data">閱讀資訊</string>
@@ -658,4 +658,38 @@
     <string name="sources_apply_field">執行欄位動作</string>
     <string name="source_diagnostics_login_form">檢查登入表單</string>
     <string name="source_verification_code">圖片驗證碼</string>
+    <string name="local_book_supported_formats">請選擇 EPUB 或 TXT 檔案。</string>
+    <string name="local_book_file_too_large">支援匯入最大 16 MB 的 TXT 或 64 MB 的 EPUB 檔案。</string>
+    <string name="local_book_shelf_changed">目標書架已變更，請從書架重新選擇檔案。</string>
+    <string name="local_bookshelf_name">本機書籍</string>
+    <string name="local_book_unavailable">本機書籍無法使用</string>
+    <string name="local_book_reimport">本機檔案遺失或損壞，請重新匯入原始 EPUB 或 TXT 檔案。</string>
+    <string name="local_book_import">匯入本機書籍</string>
+    <string name="local_book_confirm_import">匯入</string>
+    <string name="local_book_preparing">正在準備書籍…</string>
+    <string name="local_book_import_failed">暫時無法匯入</string>
+    <string name="local_book_title">書名</string>
+    <string name="local_book_title_error">請輸入 1–200 個字元的書名。</string>
+    <string name="local_book_target">匯入至「%1$s」</string>
+    <string name="local_book_copy_note">每次匯入都會建立獨立副本，原有書籍及閱讀進度會保留。</string>
+    <string name="local_book_chapter_detection">章節辨識</string>
+    <string name="local_book_encoding">文字編碼</string>
+    <string name="local_book_auto">自動辨識</string>
+    <string name="local_book_chapter_rule">章節規則</string>
+    <string name="local_book_default_rule">預設規則 · 中英文標題</string>
+    <string name="local_book_whole_text">全文匯入 · 依長度自動分段</string>
+    <string name="local_book_custom_rule">自訂規則 · 請核對目錄預覽</string>
+    <string name="local_book_regex">標題正規表示式</string>
+    <string name="local_book_rule_help">逐行比對標題，留空則匯入全文。最多 1024 個字元，不支援環視及反向參照。</string>
+    <string name="local_book_reset_rule">恢復預設規則</string>
+    <plurals name="local_book_contents_count">
+        <item quantity="other">目錄 · %1$d 章</item>
+    </plurals>
+    <string name="local_book_preview_hint">點擊章節即可檢查正文與標題是否正確。</string>
+    <string name="local_book_image_chapter">本章包含插圖。</string>
+    <string name="local_book_empty_chapter">本章只有標題。</string>
+    <string name="local_book_backup_note">本機檔案儲存在目前裝置中，現有 .lnr 分享與備份不包含這些檔案。更換裝置時請使用原始 EPUB 或 TXT 檔案。</string>
+    <string name="local_book_stored_files">匯入原檔與解析內容</string>
+    <string name="local_book_delete_title">刪除本機書籍？</string>
+    <string name="local_book_delete_originals">選取的匯入書籍將從所有書架移除，並永久刪除本應用程式內對應的原檔與解析內容。其他匯入副本及應用程式外的原檔會保留。線上書籍僅清除選取的本機快取。</string>
 </resources>

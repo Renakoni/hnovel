@@ -452,7 +452,7 @@
     <string name="dialog_updates_available">更新可用</string>
     <string name="dialog_snap_user_data_text">选择要导出的用户数据</string>
     <string name="dialog_snap_local_book_cache">书籍本地缓存</string>
-    <string name="dialog_snap_local_book_cache_text">包括所有已缓存的书籍以及设备上的本地书籍</string>
+    <string name="dialog_snap_local_book_cache_text">包括已缓存的书籍数据，不包含导入的 EPUB/TXT 原文件及其本地文件。</string>
     <string name="dialog_snap_bookshelf">书架</string>
     <string name="dialog_snap_bookshelf_text">包括书架及书本信息</string>
     <string name="dialog_snap_reading_data">阅读信息</string>
@@ -681,4 +681,38 @@
     <string name="source_verification_background">%1$s 需要验证，后台读取已停止。验证后请重新开始下载。</string>
     <string name="source_verification_failed">验证未完成，或来源账号已经改变。请从该来源重试。</string>
     <string name="discovery_verification_required">网站验证尚未完成，请重试以打开验证页面。</string>
+    <string name="local_book_supported_formats">请选择 EPUB 或 TXT 文件。</string>
+    <string name="local_book_file_too_large">支持导入最大 16 MB 的 TXT 或 64 MB 的 EPUB 文件。</string>
+    <string name="local_book_shelf_changed">目标书架已变更，请从书架重新选择文件。</string>
+    <string name="local_bookshelf_name">本地书籍</string>
+    <string name="local_book_unavailable">本地书籍不可用</string>
+    <string name="local_book_reimport">本地文件缺失或损坏，请重新导入原始 EPUB 或 TXT 文件。</string>
+    <string name="local_book_import">导入本地书籍</string>
+    <string name="local_book_confirm_import">导入</string>
+    <string name="local_book_preparing">正在准备书籍…</string>
+    <string name="local_book_import_failed">暂时无法导入</string>
+    <string name="local_book_title">书名</string>
+    <string name="local_book_title_error">请输入 1–200 个字符的书名。</string>
+    <string name="local_book_target">导入到「%1$s」</string>
+    <string name="local_book_copy_note">每次导入都会创建独立副本，已有书籍和阅读进度会保留。</string>
+    <string name="local_book_chapter_detection">章节识别</string>
+    <string name="local_book_encoding">文字编码</string>
+    <string name="local_book_auto">自动识别</string>
+    <string name="local_book_chapter_rule">章节规则</string>
+    <string name="local_book_default_rule">默认规则 · 中英文标题</string>
+    <string name="local_book_whole_text">全文导入 · 按长度自动分段</string>
+    <string name="local_book_custom_rule">自定义规则 · 请核对目录预览</string>
+    <string name="local_book_regex">标题正则表达式</string>
+    <string name="local_book_rule_help">逐行匹配标题，留空则按全文导入。最多 1024 个字符，不支持环视和反向引用。</string>
+    <string name="local_book_reset_rule">恢复默认规则</string>
+    <plurals name="local_book_contents_count">
+        <item quantity="other">目录 · %1$d 章</item>
+    </plurals>
+    <string name="local_book_preview_hint">点击章节即可检查正文和标题是否正确。</string>
+    <string name="local_book_image_chapter">本章包含插图。</string>
+    <string name="local_book_empty_chapter">本章只有标题。</string>
+    <string name="local_book_backup_note">本地文件保存在当前设备中，现有 .lnr 分享与备份不包含这些文件。换设备时请使用原始 EPUB 或 TXT 文件。</string>
+    <string name="local_book_stored_files">导入原文件与解析内容</string>
+    <string name="local_book_delete_title">删除本地书籍？</string>
+    <string name="local_book_delete_originals">选中的导入书籍将从所有书架移除，并永久删除本应用内对应的原文件和解析内容。其他导入副本及应用外的原文件会保留。在线书籍仅清除选中的本地缓存。</string>
 </resources>
