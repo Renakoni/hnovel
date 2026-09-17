@@ -71,10 +71,10 @@
     <string name="sources_replace">Update existing source</string>
     <string name="sources_disabled_definition">Disabled by default. You can enable it in source settings after importing.</string>
     <string name="sources_enabled">Enable source</string>
-    <string name="sources_discovery_visible">Show in Explore and Categories</string>
+    <string name="sources_discovery_visible">Show in Discover and Categories</string>
     <string name="sources_discovery_help">Hide discovery without disabling search or reading.</string>
     <string name="sources_no_discovery">This source does not declare a discovery catalogue.</string>
-    <string name="sources_discovery_hidden">Hidden from Explore and Categories</string>
+    <string name="sources_discovery_hidden">Hidden from Discover and Categories</string>
     <string name="sources_disabled_by_default">Disabled by the source definition</string>
     <string name="sources_disabled_by_user">Disabled by you</string>
     <string name="sources_awaiting_permissions">Waiting for network permission approval</string>

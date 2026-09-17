@@ -286,7 +286,7 @@ class SourcesScreenTest {
         compose.onNodeWithContentDescription("Enable source").performScrollTo().performClick()
         verify(exactly = 1) { model.setEnabled(id, true) }
         compose.runOnIdle { state = state.copy(installed = listOf(installed.copy(definition = definition.copy(rawJson = "{}")))) }
-        compose.onNodeWithContentDescription("Show in Explore and Categories").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Show in Discover and Categories").assertDoesNotExist()
     }
 
     private fun previewState(preview: hnovel.imports.ImportPreview) = SourceManagementState(preview = preview,

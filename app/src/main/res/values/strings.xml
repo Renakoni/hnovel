@@ -81,7 +81,7 @@
 
     <!-- Hints -->
     <string name="nothing_here">Nothing Here</string>
-    <string name="nothing_here_desc_reading">Once you\'ve read some books, they will show up here.\nGo to the ‘Explore’ page via the navigation bar below to find new books.</string>
+    <string name="nothing_here_desc_reading">Once you\'ve read some books, they will show up here.\nGo to the ‘Discover’ page via the navigation bar below to find new books.</string>
     <string name="nothing_here_desc_search">Recent searches will be saved here. Use the search bar to search for something.</string>
     <string name="nothing_here_desc_bookshelf">Click the "Favorite" button to add the book to this bookshelf.</string>
     <string name="nothing_here_desc_book_manager">No books are currently downloading</string>
@@ -691,7 +691,7 @@
     <string name="explore_more">Show more</string>
     <string name="explore_search">Search this source</string>
     <string name="search_hub_title">Search</string>
-    <string name="explore_no_sources">No sources support Explore. Add a source in source management, or search a source that supports search.</string>
+    <string name="explore_no_sources">No sources support Discover. Add a source in source management, or search a source that supports search.</string>
     <string name="explore_empty">This source has no exploration content.</string>
     <string name="discovery_unnamed_entry">Unnamed entry</string>
     <string name="bookshelf_selection_actions">Selected book actions</string>

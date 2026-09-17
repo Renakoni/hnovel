@@ -78,7 +78,7 @@
     <string name="settings">设置</string>
     <!-- Hints -->
     <string name="nothing_here">没有内容</string>
-    <string name="nothing_here_desc_reading">阅读一些书本之后，它们将显示在此处\n通过下方导航栏前往『探索』页面以获取新书</string>
+    <string name="nothing_here_desc_reading">阅读一些书本之后，它们将显示在此处\n通过下方导航栏前往『发现』页面以获取新书</string>
     <string name="nothing_here_desc_search">这里将保存最近的搜索结果\n单击搜索栏右侧图标，指定搜索范围</string>
     <string name="nothing_here_desc_bookshelf">单击“收藏”按钮，将书本加入此书架</string>
     <string name="nothing_here_desc_book_manager">没有正在下载的书本</string>
@@ -660,8 +660,8 @@
     <string name="never_read">未读</string>
     <string name="explore_more">查看更多</string>
     <string name="explore_search">搜索此来源</string>
-    <string name="explore_no_sources">暂无支持探索的来源。可在来源管理中添加书源，或搜索支持搜索的来源。</string>
-    <string name="explore_empty">此来源暂无探索内容。</string>
+    <string name="explore_no_sources">暂无支持发现的来源。可在来源管理中添加书源，或搜索支持搜索的来源。</string>
+    <string name="explore_empty">此来源暂无发现内容。</string>
     <string name="discovery_unnamed_entry">未命名入口</string>
     <string name="bookshelf_selection_actions">已选书籍操作</string>
     <string name="bookshelf_pin_selected">置顶 / 取消置顶</string>
