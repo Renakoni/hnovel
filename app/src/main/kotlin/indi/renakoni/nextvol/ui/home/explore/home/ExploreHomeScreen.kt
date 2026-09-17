@@ -30,7 +30,6 @@ import indi.renakoni.nextvol.data.web.*
 import indi.renakoni.nextvol.ui.components.Cover
 import indi.renakoni.nextvol.ui.home.HomeSettingsAction
 import indi.renakoni.nextvol.ui.home.discovery.*
-import indi.renakoni.nextvol.utils.bottomBarSpacer
 import indi.renakoni.nextvol.utils.fadingEdge
 import io.nightfish.lightnovelreader.api.identifier.Identifier
 
@@ -53,12 +52,16 @@ fun ExploreHomeScreen(
     val selected = state.sources.firstOrNull { it.metadata.id == state.selected }
     val capabilities = selected?.metadata?.capabilities.orEmpty()
     Scaffold(topBar = {
-        MediumTopAppBar(
-            title = { Text(stringResource(R.string.nav_explore), maxLines = 1, overflow = TextOverflow.Ellipsis) },
-            navigationIcon = { Icon(painterResource(R.drawable.outline_explore_24px), null, Modifier.padding(12.dp)) },
+        TopAppBar(
+            title = {},
+            expandedHeight = 56.dp,
+            navigationIcon = { Icon(painterResource(R.drawable.outline_explore_24px), stringResource(R.string.nav_explore), Modifier.padding(12.dp)) },
             actions = {
-                if (SourceCapability.Categories in capabilities)
-                    TextButton(onClick = onCategories) { Text(stringResource(R.string.categories_title)) }
+                if (SourceCapability.Categories in capabilities) {
+                    IconButton(onClick = onCategories) {
+                        Icon(painterResource(R.drawable.view_list_24px), stringResource(R.string.categories_title))
+                    }
+                }
                 IconButton(onClick = onSearch) {
                     Icon(painterResource(R.drawable.search_24px), stringResource(R.string.search_hub_title))
                 }
@@ -71,7 +74,12 @@ fun ExploreHomeScreen(
             } else if (state.sources.isEmpty()) {
                 DiscoveryEmpty(stringResource(R.string.explore_no_sources), onManageSources)
             } else {
-                ScrollableTabRow(selectedTabIndex = state.sources.indexOfFirst { it.metadata.id == state.selected }.coerceAtLeast(0)) {
+                PrimaryScrollableTabRow(
+                    selectedTabIndex = state.sources.indexOfFirst { it.metadata.id == state.selected }.coerceAtLeast(0),
+                    modifier = Modifier.fillMaxWidth(),
+                    edgePadding = 0.dp,
+                    divider = {},
+                ) {
                     state.sources.forEach { source ->
                         Tab(selected = source.metadata.id == state.selected, onClick = { onSelect(source.metadata.id) },
                             text = { Text(source.metadata.item.name, maxLines = 1, overflow = TextOverflow.Ellipsis) })
@@ -88,7 +96,8 @@ fun ExploreHomeScreen(
                     }
                     val titleHeight = with(LocalDensity.current) { (16.sp * 2.2f).toDp() }
                     PullToRefreshBox(isRefreshing = content.loading, onRefresh = onRefresh, modifier = Modifier.fillMaxSize()) {
-                        LazyColumn(state = list, modifier = Modifier.fillMaxSize()) {
+                        // A keyed trailing spacer would anchor the empty list when the first feed arrives.
+                        LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 80.dp)) {
                             content.error?.let { error -> item(key = "error") {
                                 DiscoveryFailure(error, onRefresh, onManageSources, back = null, field = content.errorField, permission = content.errorPermission)
                             } }
@@ -110,7 +119,6 @@ fun ExploreHomeScreen(
                             items(content.sections, key = { "section:" + it.id }) { section ->
                                 ExploreRowSection(Modifier, section, titleHeight, onMore, onBook, onManageSources)
                             }
-                            bottomBarSpacer()
                         }
                     }
                 }

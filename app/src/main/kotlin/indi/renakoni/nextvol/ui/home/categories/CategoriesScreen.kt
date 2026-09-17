@@ -24,7 +24,6 @@ import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.data.web.SourceDiscoveryCategory
 import indi.renakoni.nextvol.ui.home.discovery.*
 import indi.renakoni.nextvol.ui.home.HomeSettingsAction
-import indi.renakoni.nextvol.utils.bottomBarSpacer
 import io.nightfish.lightnovelreader.api.identifier.Identifier
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -49,10 +48,16 @@ fun CategoriesScreen(
             } else if (state.sources.isEmpty()) {
                 DiscoveryEmpty(stringResource(R.string.categories_no_sources), onManageSources)
             } else {
-                ScrollableTabRow(selectedTabIndex = state.sources.indexOfFirst { it.metadata.id == state.selected }.coerceAtLeast(0)) {
+                PrimaryScrollableTabRow(
+                    selectedTabIndex = state.sources.indexOfFirst { it.metadata.id == state.selected }.coerceAtLeast(0),
+                    modifier = Modifier.fillMaxWidth(),
+                    edgePadding = 0.dp,
+                    divider = {},
+                ) {
                     state.sources.forEach { source ->
                         Tab(selected = source.metadata.id == state.selected,
-                            onClick = { onSelect(source.metadata.id) }, text = { Text(source.metadata.item.name) })
+                            onClick = { onSelect(source.metadata.id) },
+                            text = { Text(source.metadata.item.name, maxLines = 1, overflow = TextOverflow.Ellipsis) })
                     }
                 }
                 val id = state.selected
@@ -79,7 +84,8 @@ fun CategoriesScreen(
                             }
                         }
                     }
-                    LazyColumn(state = list, modifier = Modifier.fillMaxSize()) {
+                    // Keep bottom clearance out of the item keys so delayed content starts at the top.
+                    LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 80.dp)) {
                         items(content.filters, key = { "input:${it.id}" }) { filter ->
                             Column(Modifier.padding(horizontal = 16.dp)) {
                                 DiscoveryFilterControl(filter, content.values[filter.id].orEmpty()) { if (!content.acting) onInput(filter.id, it) }
@@ -108,7 +114,6 @@ fun CategoriesScreen(
                                 } }
                             }
                         }
-                        bottomBarSpacer()
                     }
                 }
             }
@@ -119,10 +124,12 @@ fun CategoriesScreen(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun CategoriesTopBar(onRefresh: () -> Unit, onSettings: () -> Unit) {
-    MediumTopAppBar(title = { Text(stringResource(R.string.categories_title), maxLines = 1, overflow = TextOverflow.Ellipsis) },
-        navigationIcon = { Icon(painterResource(R.drawable.view_list_24px), null, Modifier.padding(12.dp)) },
+    TopAppBar(title = {}, expandedHeight = 56.dp,
+        navigationIcon = { Icon(painterResource(R.drawable.view_list_24px), stringResource(R.string.categories_title), Modifier.padding(12.dp)) },
         actions = {
-            TextButton(onClick = onRefresh) { Text(stringResource(R.string.discovery_refresh)) }
+            IconButton(onClick = onRefresh) {
+                Icon(painterResource(R.drawable.refresh_24px), stringResource(R.string.discovery_refresh))
+            }
             HomeSettingsAction(onSettings)
         }, windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top))
 }

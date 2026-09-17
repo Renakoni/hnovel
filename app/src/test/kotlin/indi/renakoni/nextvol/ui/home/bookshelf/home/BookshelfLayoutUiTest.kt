@@ -103,7 +103,12 @@ class BookshelfLayoutUiTest {
 
     private fun toggleLayout() {
         val resource = if (state.layout == BookshelfLayout.List) R.string.bookshelf_layout_switch_grid else R.string.bookshelf_layout_switch_list
-        compose.onNodeWithContentDescription(activity.get().getString(resource)).performClick()
+        if (state.selectMode) {
+            compose.onNodeWithContentDescription(activity.get().getString(R.string.bookshelf_selection_actions)).performClick()
+            compose.onNodeWithText(activity.get().getString(resource)).performClick()
+        } else {
+            compose.onNodeWithContentDescription(activity.get().getString(resource)).performClick()
+        }
         compose.waitForIdle()
     }
 

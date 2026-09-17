@@ -37,7 +37,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PrimaryScrollableTabRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRowDefaults.SecondaryIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
@@ -106,19 +105,9 @@ internal fun BookshelfHomeContent(
 
                 PrimaryScrollableTabRow(
                     selectedTabIndex = selectedIndex,
+                    modifier = Modifier.fillMaxWidth(),
                     edgePadding = 0.dp,
-                    indicator = {
-                        SecondaryIndicator(
-                            modifier = Modifier
-                                .tabIndicatorOffset(
-                                    selectedTabIndex = selectedIndex,
-                                    matchContentSize = true
-                                )
-                                .height(4.dp)
-                                .clip(RoundedCornerShape(topStart = 3.dp, topEnd = 3.dp)),
-                            color = MaterialTheme.colorScheme.secondary
-                        )
-                    }
+                    divider = {},
                 ) {
                     uiState.bookshelfList.forEach { bookshelf ->
                         Tab(
