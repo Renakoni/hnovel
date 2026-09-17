@@ -24,6 +24,8 @@ abstract class UiAutomatorTest {
         device.pressHome()
         shell("pm clear $TARGET_PACKAGE")
         shell("cmd locale set-app-locales $TARGET_PACKAGE --user 0 --locales en-US")
+        // The one-time Android fullscreen tutorial otherwise covers the reader controls.
+        shell("settings put secure immersive_mode_confirmations confirmed")
         shell("pm grant $TARGET_PACKAGE android.permission.POST_NOTIFICATIONS")
         shell(
             "am broadcast -W -n $TARGET_PACKAGE/.benchmark.BenchmarkFixtureReceiver " +

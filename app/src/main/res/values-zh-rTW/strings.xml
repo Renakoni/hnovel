@@ -682,7 +682,9 @@
     <string name="local_book_regex">標題正規表示式</string>
     <string name="local_book_rule_help">逐行比對標題，留空則匯入全文。最多 1024 個字元，不支援環視及反向參照。</string>
     <string name="local_book_reset_rule">恢復預設規則</string>
-    <string name="local_book_contents_count">目錄 · %1$d 章</string>
+    <plurals name="local_book_contents_count">
+        <item quantity="other">目錄 · %1$d 章</item>
+    </plurals>
     <string name="local_book_preview_hint">點擊章節即可檢查正文與標題是否正確。</string>
     <string name="local_book_image_chapter">本章包含插圖。</string>
     <string name="local_book_empty_chapter">本章只有標題。</string>

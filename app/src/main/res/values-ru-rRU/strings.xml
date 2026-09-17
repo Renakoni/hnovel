@@ -690,7 +690,12 @@
     <string name="local_book_regex">Регулярное выражение заголовка</string>
     <string name="local_book_rule_help">Сопоставляется с каждой строкой заголовка. Оставьте пустым для всего текста. До 1024 символов; проверки контекста и обратные ссылки не поддерживаются.</string>
     <string name="local_book_reset_rule">Восстановить правило</string>
-    <string name="local_book_contents_count">Оглавление · глав: %1$d</string>
+    <plurals name="local_book_contents_count">
+        <item quantity="one">Оглавление · %1$d глава</item>
+        <item quantity="few">Оглавление · %1$d главы</item>
+        <item quantity="many">Оглавление · %1$d глав</item>
+        <item quantity="other">Оглавление · %1$d главы</item>
+    </plurals>
     <string name="local_book_preview_hint">Нажмите на главу, чтобы проверить текст и заголовок.</string>
     <string name="local_book_image_chapter">Эта глава содержит иллюстрации.</string>
     <string name="local_book_empty_chapter">В этой главе только заголовок.</string>

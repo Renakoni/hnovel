@@ -42,8 +42,9 @@ class LocalBookImportTest : UiAutomatorTest() {
             clickText("UTF-16LE")
             scrollToText("Contents · 2 chapters")
             scrollToTop()
+            device.findObject(By.clazz("android.widget.EditText")).click()
             setFirstTextField("Imported TXT book")
-            device.pressBack() // Hide the title keyboard.
+            hideKeyboard()
             clickScrolledText("Chapter rule")
             scrollToText("Title regular expression")
             setRule("(")
@@ -54,7 +55,7 @@ class LocalBookImportTest : UiAutomatorTest() {
             scrollToTop()
             scrollToText("Title regular expression")
             setRule("")
-            scrollToText("Contents · 1 chapters")
+            scrollToText("Contents · 1 chapter")
             scrollToTop()
             clickScrolledText("Restore default rule")
             scrollToText("Contents · 2 chapters")
@@ -109,7 +110,7 @@ class LocalBookImportTest : UiAutomatorTest() {
         val uri = document(name, "application/epub+zip", epub())
         try {
             openPicker()
-            pressBack()
+            repeat(3) { if (device.currentPackageName == documentsPackage) pressBack() }
             assertText("Benchmark Shelf")
             clickDescription("more")
             clickText("Import Local Book")
@@ -136,8 +137,14 @@ class LocalBookImportTest : UiAutomatorTest() {
 
     private fun selectDocument(name: String) {
         device.waitForIdle()
-        device.findObject(By.desc("Show roots"))?.click()
-        device.findObject(By.text("Downloads"))?.click()
+        val rootsSelector = By.res(documentsPackage, "roots_list")
+        if (!device.hasObject(rootsSelector)) clickDescription("Show roots")
+        device.waitForIdle()
+        val roots = device.wait(Until.findObject(rootsSelector), TIMEOUT)
+        assertNotNull("DocumentsUI navigation drawer was not visible", roots)
+        val downloads = roots.findObject(By.text("Downloads"))
+        assertNotNull("Downloads root was not visible", downloads)
+        clickCenter(downloads)
         device.waitForIdle()
         val list = device.findObject(By.res(documentsPackage, "dir_list"))
         repeat(10) { if (list?.scroll(Direction.DOWN, 0.9f) != true) return@repeat }
@@ -165,8 +172,14 @@ class LocalBookImportTest : UiAutomatorTest() {
     private fun setRule(value: String) {
         val fields = device.findObjects(By.clazz("android.widget.EditText"))
         assertTrue("The chapter rule field was not visible", fields.isNotEmpty())
+        fields.last().click()
         fields.last().text = value
-        device.pressBack()
+        hideKeyboard()
+    }
+
+    private fun hideKeyboard() {
+        device.waitForIdle()
+        if ("mInputShown=true" in shell("dumpsys input_method")) device.pressBack()
         device.waitForIdle()
     }
 

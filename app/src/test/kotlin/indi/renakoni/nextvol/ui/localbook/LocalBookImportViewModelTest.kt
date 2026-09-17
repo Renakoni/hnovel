@@ -3,6 +3,7 @@ package indi.renakoni.nextvol.ui.localbook
 import android.app.Application
 import android.content.ContextWrapper
 import androidx.core.net.toUri
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewModelScope
 import androidx.room.Room
@@ -66,11 +67,12 @@ class LocalBookImportViewModelTest {
         books = LocalBookStore(context, database)
     }
 
-    private fun model(store: LocalBookStore = books) = LocalBookImportViewModel(context, store, mockk(relaxed = true)).also {
-        models.put(jobs.size.toString(), it)
-        jobs += it.viewModelScope.coroutineContext.job
-        it.selectTarget(7, "Shelf")
-    }
+    private fun model(store: LocalBookStore = books, savedState: SavedStateHandle = SavedStateHandle(), selectTarget: Boolean = true) =
+        LocalBookImportViewModel(context, store, mockk(relaxed = true), savedState).also {
+            models.put(jobs.size.toString(), it)
+            jobs += it.viewModelScope.coroutineContext.job
+            if (selectTarget) it.selectTarget(7, "Shelf")
+        }
 
     private fun file(charset: java.nio.charset.Charset = Charsets.UTF_8) = temporary.newFile("book.txt").apply {
         writeBytes("第一章 开始\n完整正文甲\n第二章 结束\n完整正文乙".toByteArray(charset))
@@ -133,6 +135,20 @@ class LocalBookImportViewModelTest {
         assertFalse(model.state.visible)
         assertTrue(database.bookshelfDao().getBookshelf(7)!!.allBookIds.isEmpty())
         assertTrue(file.isFile)
+    }
+
+    @Test fun aPickerResultAfterRecreationKeepsThePreviouslySelectedShelf() = runBlocking {
+        val selected = SavedStateHandle()
+        model(savedState = selected).selectTarget(7, "Chosen shelf")
+        val restored = SavedStateHandle(selected.keys().associateWith { selected.get<Any?>(it) })
+        models.clear()
+        val model = model(savedState = restored, selectTarget = false)
+        model.open(file().toUri())
+        await { model.state.canImport }
+        assertEquals("Chosen shelf", model.state.shelfName)
+        model.confirm()
+        assertEquals(7, withTimeout(10_000) { model.imported.first() })
+        assertEquals(1, database.bookshelfDao().getBookshelf(7)!!.allBookIds.size)
     }
 
     @Test fun aSlowSupersededPreviewCannotReplaceTheLatestResult() = runBlocking {

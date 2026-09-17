@@ -705,7 +705,9 @@
     <string name="local_book_regex">标题正则表达式</string>
     <string name="local_book_rule_help">逐行匹配标题，留空则按全文导入。最多 1024 个字符，不支持环视和反向引用。</string>
     <string name="local_book_reset_rule">恢复默认规则</string>
-    <string name="local_book_contents_count">目录 · %1$d 章</string>
+    <plurals name="local_book_contents_count">
+        <item quantity="other">目录 · %1$d 章</item>
+    </plurals>
     <string name="local_book_preview_hint">点击章节即可检查正文和标题是否正确。</string>
     <string name="local_book_image_chapter">本章包含插图。</string>
     <string name="local_book_empty_chapter">本章只有标题。</string>

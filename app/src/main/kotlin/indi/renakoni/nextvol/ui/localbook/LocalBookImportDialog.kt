@@ -1,5 +1,6 @@
 package indi.renakoni.nextvol.ui.localbook
 
+import android.os.Build
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -30,6 +31,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -39,17 +41,22 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.core.view.WindowCompat
 import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.data.localbook.LocalBookBlock
 import indi.renakoni.nextvol.data.localbook.LocalBookFormat
 import indi.renakoni.nextvol.data.localbook.TxtBookParser
+import indi.renakoni.nextvol.ui.LocalAppTheme
 import indi.renakoni.nextvol.ui.components.Cover
 import indi.renakoni.nextvol.ui.components.SectionDescription
 import indi.renakoni.nextvol.ui.components.SectionHeader
@@ -72,6 +79,16 @@ fun LocalBookImportDialog(
     Dialog(onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false,
             dismissOnBackPress = !state.importing, dismissOnClickOutside = false)) {
+        val view = LocalView.current
+        val isDark = LocalAppTheme.current.isDark
+        SideEffect {
+            (view.parent as? DialogWindowProvider)?.window?.let { window ->
+                WindowCompat.getInsetsController(window, view).apply {
+                    isAppearanceLightStatusBars = !isDark
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) isAppearanceLightNavigationBars = !isDark
+                }
+            }
+        }
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
             Scaffold(
                 modifier = Modifier.imePadding(),
@@ -175,7 +192,7 @@ fun LocalBookImportDialog(
                         state.preview?.let { preview ->
                             item {
                                 SectionHeader(Modifier.padding(start = 24.dp, top = 20.dp, bottom = 8.dp),
-                                    stringResource(R.string.local_book_contents_count, preview.chapters.size))
+                                    pluralStringResource(R.plurals.local_book_contents_count, preview.chapters.size, preview.chapters.size))
                                 SectionDescription(Modifier.padding(start = 24.dp, end = 24.dp, bottom = 12.dp),
                                     stringResource(R.string.local_book_preview_hint))
                             }

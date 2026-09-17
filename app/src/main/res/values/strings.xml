@@ -736,7 +736,10 @@
     <string name="local_book_regex">Title regular expression</string>
     <string name="local_book_rule_help">Matches each title line. Leave empty to keep the whole text. Up to 1024 characters; lookaround and backreferences are unsupported.</string>
     <string name="local_book_reset_rule">Restore default rule</string>
-    <string name="local_book_contents_count">Contents · %1$d chapters</string>
+    <plurals name="local_book_contents_count">
+        <item quantity="one">Contents · %1$d chapter</item>
+        <item quantity="other">Contents · %1$d chapters</item>
+    </plurals>
     <string name="local_book_preview_hint">Tap a chapter to check its text and heading.</string>
     <string name="local_book_image_chapter">This chapter contains illustrations.</string>
     <string name="local_book_empty_chapter">This chapter contains only a heading.</string>

@@ -21,7 +21,7 @@ data class LocalBookItem(
     val importedFileBytes: Long = 0L,
 ) {
     val hasChapterContent: Boolean
-        get() = chapterContentBytes > 0L
+        get() = chapterContentBytes > 0L || importedFileBytes > 0L
 
     fun bytesOf(target: LocalBookClearTarget): Long = when (target) {
         LocalBookClearTarget.VolumeAndChapterIndex -> volumeBytes + chapterInformationBytes

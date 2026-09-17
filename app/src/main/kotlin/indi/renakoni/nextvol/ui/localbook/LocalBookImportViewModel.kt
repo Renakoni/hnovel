@@ -7,6 +7,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.net.toUri
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -55,18 +56,22 @@ class LocalBookImportViewModel @Inject constructor(
     @param:ApplicationContext private val context: Context,
     private val books: LocalBookStore,
     private val storage: StorageUsageRepository,
+    private val savedState: SavedStateHandle,
 ) : ViewModel() {
     var state by mutableStateOf(LocalBookImportState())
         private set
     private var draft: LocalBookDraft? = null
-    private var targetShelf: Int? = null
-    private var targetName = ""
+    private val targetShelf: Int? get() = savedState["targetShelf"]
+    private val targetName: String get() = savedState["targetName"] ?: context.getString(R.string.local_bookshelf_name)
     private var operation: Job? = null
     private var revision = 0
     private val completed = Channel<Int>(Channel.BUFFERED)
     val imported = completed.receiveAsFlow()
 
-    fun selectTarget(id: Int?, name: String) { targetShelf = id; targetName = name }
+    fun selectTarget(id: Int?, name: String) {
+        savedState["targetShelf"] = id
+        savedState["targetName"] = name
+    }
 
     fun open(uri: Uri) {
         if (state.importing) return
