@@ -71,6 +71,7 @@ class LocalBookImportTest : UiAutomatorTest() {
             device.click(device.displayWidth / 2, device.displayHeight / 2)
             clickDescription("menu")
             clickText("Chapter 1 First")
+            pressBack()
             assertTextContains("First local paragraph")
         } finally {
             resolver.delete(uri, null, null)
@@ -99,6 +100,7 @@ class LocalBookImportTest : UiAutomatorTest() {
             device.click(device.displayWidth / 2, device.displayHeight / 2)
             clickDescription("menu")
             clickText("Ending")
+            pressBack()
             assertTextContains("Final EPUB paragraph")
         } finally {
             resolver.delete(uri, null, null)
