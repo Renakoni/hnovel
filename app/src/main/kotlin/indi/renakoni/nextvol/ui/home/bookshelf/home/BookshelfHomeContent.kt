@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
@@ -111,6 +112,7 @@ internal fun BookshelfHomeContent(
                 ) {
                     uiState.bookshelfList.forEach { bookshelf ->
                         Tab(
+                            modifier = Modifier.widthIn(max = 240.dp),
                             selected = uiState.selectedBookshelfId == bookshelf.id,
                             onClick = {
                                 if (!uiState.selectMode) uiState.changePage(bookshelf.id)

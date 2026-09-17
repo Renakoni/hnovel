@@ -82,6 +82,7 @@ fun ExploreHomeScreen(
                 ) {
                     state.sources.forEach { source ->
                         Tab(selected = source.metadata.id == state.selected, onClick = { onSelect(source.metadata.id) },
+                            modifier = Modifier.widthIn(max = 240.dp),
                             text = { Text(source.metadata.item.name, maxLines = 1, overflow = TextOverflow.Ellipsis) })
                     }
                 }

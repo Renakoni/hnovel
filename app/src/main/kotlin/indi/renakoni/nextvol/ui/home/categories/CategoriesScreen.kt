@@ -56,6 +56,7 @@ fun CategoriesScreen(
                 ) {
                     state.sources.forEach { source ->
                         Tab(selected = source.metadata.id == state.selected,
+                            modifier = Modifier.widthIn(max = 240.dp),
                             onClick = { onSelect(source.metadata.id) },
                             text = { Text(source.metadata.item.name, maxLines = 1, overflow = TextOverflow.Ellipsis) })
                     }
