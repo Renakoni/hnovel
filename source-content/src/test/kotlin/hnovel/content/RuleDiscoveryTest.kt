@@ -32,6 +32,48 @@ class RuleDiscoveryTest {
     private fun definition(raw: JsonObject, url: String, extra: JsonObject = JsonObject(emptyMap())) =
         JsonObject(raw + mapOf("exploreUrl" to JsonPrimitive(url), "ruleExplore" to raw.getValue("ruleSearch")) + extra)
 
+    @Test fun dynamicCataloguesOwnResultWhileBookRulesKeepTheirInput() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            for (declaration in listOf("var", "let", "const")) {
+                fixture.source { definition(it, """
+                    @js:$declaration result = [{title:'Books '+infoMap.Sort,url:'/search?page={{page}}'}];
+                    JSON.stringify(result);
+                """.trimIndent()) }.use { source ->
+                    val a = source.openDiscovery("a", mapOf("Sort" to "new"))
+                    val b = source.openDiscovery("b", mapOf("Sort" to "popular"))
+                    assertEquals("Books new", a.catalog().rows.single().title)
+                    assertEquals("Books popular", b.catalog().rows.single().title)
+                    assertEquals("Books new", a.catalog(refresh = true).rows.single().title)
+                    assertEquals("/search?page={{page}}", a.catalog().rows.single().url)
+                    assertEquals("Same title", a.page(a.catalog().rows.single().url, 2, emptyMap()).single().title)
+                }
+            }
+        }
+    }
+
+    @Test fun sourceCallbacksCanDeclareResultAndResolveLibraryNames() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            fixture.source { definition(it, """
+                @js:const result = [
+                  {id:'Mode',title:'Mode',type:'text',default:'first',viewName:"const result='Mode '+infoMap.Mode;result"},
+                  {id:'apply',title:libraryName(),type:'button',action:"const result='second';infoMap.Mode=result;java.refreshExplore();"}
+                ];result;
+            """.trimIndent(), buildJsonObject { put("jsLib", "var label='Library';function libraryName(){return label;}") }) }.use { source ->
+                val page = source.openDiscovery("callbacks")
+                assertEquals(listOf("Mode first", "Library"), page.catalog().rows.map { it.title })
+                assertTrue(page.interact("apply").refresh)
+                assertEquals("Mode second", page.catalog().rows.first().title)
+            }
+            fixture.source { definition(it, "@js:[{title:typeof result,url:'/search'}]") }.use { source ->
+                assertEquals("undefined", source.openDiscovery("absent-input").catalog().rows.single().title)
+            }
+            fixture.source { definition(it, "@js:[{title:result,url:'/search'}]",
+                buildJsonObject { put("jsLib", "var result='Library';") }) }.use { source ->
+                assertEquals("Library", source.openDiscovery("library-input").catalog().rows.single().title)
+            }
+        }
+    }
+
     @Test fun staticCatalogKeepsOrderAndDoesNotFetchBookPreviews() = runBlocking {
         RuleSourceFixture().use { fixture ->
             val source = fixture.source { definition(it, "Heading\nNew::/search?page={{page}}&&Completed::/complete") }

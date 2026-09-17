@@ -16,6 +16,9 @@ import hnovel.execution.ExecutionWire
 import hnovel.execution.FailureCode
 import hnovel.execution.SourceExecutionBroker
 import hnovel.execution.ExecutedRule
+import hnovel.content.RuleSource
+import hnovel.content.RuleTaskRunner
+import hnovel.imports.*
 import hnovel.rules.RuleError
 import hnovel.rules.RuleLocation
 import hnovel.rules.RuleStage
@@ -46,6 +49,40 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class IsolatedExecutionInstrumentedTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
+
+    @Test fun dynamicCataloguesCanDeclareResultInsideThePackagedWorker() = runBlocking {
+        val authority = ExecutionAuthority()
+        val executor = AndroidIsolatedExecutor(context, authority)
+        val root = java.io.File(context.cacheDir, "catalog-scope-${System.nanoTime()}")
+        try {
+            val store = SourceDefinitionStore(java.io.File(root, "definitions").toPath())
+            val importer = SourceDefinitionImporter(store)
+            val raw = buildJsonObject {
+                put("bookSourceUrl", "https://catalog.invalid/")
+                put("bookSourceName", "Dynamic catalogue")
+                put("bookSourceType", 0)
+                put("jsLib", "function label(){return 'Books ';}")
+                put("exploreUrl", "@js:const result=[{title:label()+infoMap.Sort,url:'/books?page={{page}}'}];JSON.stringify(result)")
+            }
+            val preview = importer.preview(raw.toString(), LEGADO_PROFILE)
+            assertTrue(preview.issues.toString(), preview.issues.isEmpty())
+            assertNull(importer.commit(preview, listOf(ImportSelection(0, ImportDecision.Add))).error)
+            val definition = store.list().single()
+            val identity = authority.issue(definition.sourceId, definition.profile, definition.contentDigest, "rules")
+            SourceBroker(java.io.File(root, "broker").toPath()).use { broker ->
+                val session = broker.open(SourceScope("rules", definition.sourceId, definition.profile), emptyList())
+                val runner = RuleTaskRunner { owner, task, limits, bridge -> executor.execute(owner, task, limits, bridge) }
+                RuleSource(definition, identity, authority, session, runner).use { source ->
+                    val first = source.openDiscovery("first", mapOf("Sort" to "new"))
+                    val second = source.openDiscovery("second", mapOf("Sort" to "popular"))
+                    assertEquals("Books new", first.catalog().rows.single().title)
+                    assertEquals("Books popular", second.catalog().rows.single().title)
+                    assertEquals("Books new", first.catalog(refresh = true).rows.single().title)
+                    assertEquals("/books?page={{page}}", first.catalog().rows.single().url)
+                }
+            }
+        } finally { executor.close(); root.deleteRecursively() }
+    }
 
     @Test fun exclusionSelectorsRunAgainstThePackagedJsoupWithoutMutatingTheDocument() = runBlocking {
         val authority = ExecutionAuthority()
