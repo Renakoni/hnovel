@@ -99,6 +99,7 @@ class BenchmarkFixtureReceiver : BroadcastReceiver() {
                         return types.every(type => new type([42])[0] === view.getInt32(0));
                     }),
                     row('Continuation', () => typeof Continuation),
+                    row('Errors', () => { try { throw new Error('controlled'); } catch (error) { return error.message; } }),
                     row('Library', () => sharedLabel()),
                     row('Bridge', () => String(source.getLoginHeader()) + '/' + java.base64Decode('aGVsbG8=')),
                     row('DOM', () => org.jsoup.Jsoup.parse('<h1>Chapter</h1>').select('h1').first().text()),

@@ -22,7 +22,7 @@ class MinifiedSourceRuntimeTest : UiAutomatorTest() {
         clickText("Runtime fixture")
         listOf(
             "JavaScript: 42", "RegExp: 35", "Typed arrays: true", "Continuation: function",
-            "Library: Shared", "Bridge: null/hello", "DOM: Chapter", "Isolation: undefined/undefined",
+            "Errors: controlled", "Library: Shared", "Bridge: null/hello", "DOM: Chapter", "Isolation: undefined/undefined",
         ).forEach { assertText(it) }
 
         restartApp()

@@ -1,4 +1,9 @@
 # Rhino 1.8.1 loads these implementations through Kit.classOrNull/newInstanceOrNull.
+# ScriptRuntime also resolves these type constants by name when matching init signatures.
+-keep,allowoptimization class org.mozilla.javascript.Context,org.mozilla.javascript.ContextFactory,
+    org.mozilla.javascript.ScriptableObject
+-keep,allowoptimization interface org.mozilla.javascript.Function
+
 -keep class org.mozilla.javascript.jdk18.VMBridge_jdk18 {
     public <init>();
 }
