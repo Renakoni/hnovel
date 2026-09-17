@@ -132,9 +132,9 @@ class MixedSourceAcceptanceTest {
                 downloads = indi.renakoni.nextvol.data.download.BookDownloadStore(context, db, decoder)
                 shelves = BookshelfRepository(db.bookshelfDao(), work, registry, downloads)
                 val text = TextProcessingRepository(mockk { every { enabled } returns false }, mockk { every { enabled } returns false }, ContentComponentRegistry())
-                chapters = ChapterRepository(registry, local, text)
+                chapters = ChapterRepository(registry, local, text, mockk())
                 readingData = BookReadingDataRepository(local)
-                books = BookRepository(local, shelves, text, work, chapters, readingData, registry, downloads)
+                books = BookRepository(local, shelves, text, work, chapters, readingData, registry, downloads, mockk())
                 stats = StatsRepository(db.bookRecordDao(), db.dailyCountDao(), books, StatisticsWriteCoordinator())
                 progress = DownloadProgressRepository(db.userDataDao(), books, downloads)
             }

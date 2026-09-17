@@ -332,7 +332,7 @@ class Wenku8NetworkTest {
             val text = TextProcessingRepository(mockk { every { enabled } returns false },
                 mockk { every { enabled } returns false }, ContentComponentRegistry())
             val books = BookRepository(local, shelves, text, mockk(relaxed = true),
-                ChapterRepository(fixture.registry, local, text), BookReadingDataRepository(local), fixture.registry, downloads)
+                ChapterRepository(fixture.registry, local, text, mockk()), BookReadingDataRepository(local), fixture.registry, downloads, mockk())
             val cache = DiskCache.Builder().directory(directory.root.resolve("coil").path.toPath()).maxSizeBytes(1024 * 1024).build()
             val loader = ImageLoader.Builder(context).diskCache(cache).components {
                 add(SourceImageInterceptor(fixture.registry, context, downloads)); add(SourceImageFetcher.Factory())

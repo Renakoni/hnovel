@@ -10,6 +10,7 @@
 | 主导航 | `navigation/MainNavigationTest` | 四个根页面、统计概览、周/月/年统计详情 |
 | 阅读与缓存管理 | `reading/ReadingAndManagerTest` | 继续阅读、最近阅读、下载、本地书籍、排序和缓存详情 |
 | 书架 | `bookshelf/BookshelfTest` | 创建、重命名、重启持久化、空名称校验、排序、选择模式、移动、移除和删除确认 |
+| 本地导入 | `bookshelf/LocalBookImportTest` | 系统文件选择、TXT 编码/正则修正与目录预览、取消导入、EPUB 阅读顺序、移除原文件后的重启阅读；需 API 29 以上 |
 | 探索与联网 | `explore/ExploreTest` | 真实首页内容与书籍详情、搜索请求/响应、数据源标签页、展开页筛选/刷新/分页、搜索历史的创建、单项删除与全部清除 |
 | 书籍与阅读器 | `book/BookAndReaderTest` | 元数据、跨卷章节选择、EPUB 导出分支、批量已读、阅读器外观/控制/边距及设置持久化 |
 | 设置 | `settings/SettingsTest` | 插件、主题、排版规则 CRUD、繁体转换、语言与日期格式、更新、快照、存储、代理、日志、统计和许可证 |
@@ -17,7 +18,7 @@
 | 后台任务 | `work/WorkManagerTest` | 从应用 UI 触发完整数据导出/导入回环、书架导出、EPUB 导出、线上书籍缓存，以及主界面注册周期更新任务 |
 | 系统入口 | `system/ExternalIntentTest` | 插件安装与插件发现外部 Intent |
 
-当前共有 **52 项功能测试**和 **2 项启动性能测试**。
+当前共有 **55 项功能测试**和 **2 项启动性能测试**。
 
 ## 固定测试数据
 

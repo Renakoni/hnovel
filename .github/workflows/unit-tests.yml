@@ -106,7 +106,7 @@ jobs:
           disable-animations: true
           script: >-
             status=0;
-            bash .github/scripts/connected-tests.sh ',indi.renakoni.nextvol.reader.ReaderSpacingInstrumentedTest,indi.renakoni.nextvol.reader.ReaderLayoutInstrumentedTest,indi.renakoni.nextvol.data.download.DownloadPersistenceInstrumentedTest,indi.renakoni.nextvol.defaultplugin.wenku8.Wenku8NetworkInstrumentedTest${{ matrix.native_tests }}' || status=$?;
+            bash .github/scripts/connected-tests.sh ',indi.renakoni.nextvol.reader.ReaderSpacingInstrumentedTest,indi.renakoni.nextvol.reader.ReaderLayoutInstrumentedTest,indi.renakoni.nextvol.data.download.DownloadPersistenceInstrumentedTest,indi.renakoni.nextvol.data.localbook.LocalBookImportInstrumentedTest,indi.renakoni.nextvol.defaultplugin.wenku8.Wenku8NetworkInstrumentedTest${{ matrix.native_tests }}' || status=$?;
             if [ '${{ matrix.api }}' = '35' ]; then
             mkdir -p app/build/outputs/androidTest-results/connected;
             adb pull /sdcard/Android/data/indi.renakoni.nextvol.debug/files/native-environment.json app/build/outputs/androidTest-results/connected/native-environment.json || status=1;

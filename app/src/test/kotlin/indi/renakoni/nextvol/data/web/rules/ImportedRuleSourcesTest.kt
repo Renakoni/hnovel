@@ -83,8 +83,8 @@ class ImportedRuleSourcesTest {
                 val shelves = BookshelfRepository(db.bookshelfDao(), mockk(), registry, downloads)
                 val components = ContentComponentRegistry()
                 val text = TextProcessingRepository(mockk(relaxed = true), mockk(relaxed = true), components)
-                val chapters = ChapterRepository(registry, local, text)
-                val books = BookRepository(local, shelves, text, mockk(), chapters, BookReadingDataRepository(local), registry, downloads)
+                val chapters = ChapterRepository(registry, local, text, mockk())
+                val books = BookRepository(local, shelves, text, mockk(), chapters, BookReadingDataRepository(local), registry, downloads, mockk())
                 shelves.addBookshelf(Bookshelf(id = 1, name = "Both sources"))
                 val bound = mutableListOf<SourceBookId>()
                 for (sourceId in listOf(a, b)) {

@@ -47,6 +47,7 @@ fun BookshelfHomeTopBar(
     uiState: BookshelfHomeUiState,
     onShareBookshelf: () -> Unit,
     onSettings: () -> Unit,
+    onImportLocalBook: () -> Unit,
 ) {
     var mainMenuExpanded by remember { mutableStateOf(false) }
     val sortLocked = uiState.selectedBookshelf?.sortType != BookshelfSortType.Default
@@ -244,6 +245,10 @@ fun BookshelfHomeTopBar(
                                     mainMenuExpanded = false
                                     uiState.enableBookshelfReorderMode()
                                 }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.local_book_import), style = MaterialTheme.typography.bodyLarge) },
+                                onClick = { mainMenuExpanded = false; onImportLocalBook() }
                             )
                         }
                     }

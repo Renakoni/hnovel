@@ -22,7 +22,7 @@ class BookReadingAvailabilityTest {
     @Test fun metadataSourceHasNoReadingWhileDisabledCachedNovelsRemainReadable() = runBlocking {
         val registry = WebSourceRegistry()
         val local = mockk<LocalBookDataSource>()
-        val repository = BookRepository(local, mockk(), mockk(), mockk(), mockk(), mockk(), registry, mockk())
+        val repository = BookRepository(local, mockk(), mockk(), mockk(), mockk(), mockk(), registry, mockk(), mockk())
         val book = SourceBookId(ZLibrarySources.ID, "1/abcdef")
         coEvery { local.getBookVolumes(book.storageKey) } returns null
         val provider = object : WebBookDataSource by EmptyWebDataSource { override val id = book.sourceId }

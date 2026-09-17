@@ -31,11 +31,12 @@ internal class BookRepositoryFixture {
     val bookshelves by lazy { mockk<BookshelfRepository>() }
 
     val downloads = mockk<BookDownloadStore>(relaxed = true)
+    val localBooks = mockk<indi.renakoni.nextvol.data.localbook.LocalBookStore>()
 
-    fun chapterRepository() = ChapterRepository(registry, local, text)
+    fun chapterRepository() = ChapterRepository(registry, local, text, localBooks)
 
     fun repository() = BookRepository(
         local, bookshelves, text, workManager,
-        chapterRepository(), BookReadingDataRepository(local), registry, downloads,
+        chapterRepository(), BookReadingDataRepository(local), registry, downloads, localBooks,
     )
 }

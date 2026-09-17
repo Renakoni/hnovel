@@ -34,6 +34,7 @@ fun BookshelfHomeScreen(
     init: () -> Unit,
     uiState: BookshelfHomeUiState,
     onSettings: () -> Unit,
+    onImportLocalBook: () -> Unit,
 ) {
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -104,7 +105,8 @@ fun BookshelfHomeScreen(
             backgroundColor = backgroundColor,
             uiState = uiState,
             onShareBookshelf = shareBookshelf,
-            onSettings = onSettings
+            onSettings = onSettings,
+            onImportLocalBook = onImportLocalBook,
         )
 
         BookshelfHomeContent(

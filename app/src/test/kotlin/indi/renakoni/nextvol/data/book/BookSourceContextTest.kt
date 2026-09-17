@@ -55,7 +55,7 @@ class BookSourceContextTest {
             val content = firstArg<ChapterContent>(); saved[content.id] = content
         }
         every { fixture.text.processChapterContent(any(), any()) } answers { secondArg<() -> ChapterContent>()() }
-        val repository = ChapterRepository(registry, fixture.local, fixture.text)
+        val repository = ChapterRepository(registry, fixture.local, fixture.text, fixture.localBooks)
         try {
             val pendingA = async { repository.getChapterContentFlow("chapter", a.storageKey).last().get()!! }
             started.await()

@@ -147,10 +147,13 @@ fun LocalBookManagerContent(
         return
     }
     if (deleteDialogVisible) {
+        val deletesImportedFiles = uiState.selectedIds.any {
+            indi.renakoni.nextvol.data.localbook.LocalBookStore.isLocal(indi.renakoni.nextvol.data.book.BookIdentity.book(it))
+        }
         AlertDialog(
             onDismissRequest = { deleteDialogVisible = false },
-            title = { Text(stringResource(R.string.book_manager_delete_cache_title)) },
-            text = { Text(stringResource(R.string.book_manager_delete_cache_content)) },
+            title = { Text(stringResource(if (deletesImportedFiles) R.string.local_book_delete_title else R.string.book_manager_delete_cache_title)) },
+            text = { Text(stringResource(if (deletesImportedFiles) R.string.local_book_delete_originals else R.string.book_manager_delete_cache_content)) },
             dismissButton = {
                 TextButton(onClick = { deleteDialogVisible = false }) {
                     Text(stringResource(R.string.cancel))
@@ -676,6 +679,9 @@ private fun LocalBookInfoCard(
             ) { clearing ->
                 if (!clearing) {
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        if (item.importedFileBytes > 0) {
+                            LocalBookInfoRow(stringResource(R.string.local_book_stored_files), formatSize(item.importedFileBytes))
+                        }
                         LocalBookInfoRow(
                             stringResource(R.string.local_book_info_book_information),
                             formatSize(
