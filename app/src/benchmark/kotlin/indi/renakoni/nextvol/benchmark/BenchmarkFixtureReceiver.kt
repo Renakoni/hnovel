@@ -5,6 +5,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import dagger.hilt.android.AndroidEntryPoint
 import indi.renakoni.nextvol.data.book.BookIdentity
 import indi.renakoni.nextvol.data.book.SourceChapterId
 import indi.renakoni.nextvol.data.local.room.NextVolDatabase
@@ -19,13 +20,20 @@ import indi.renakoni.nextvol.data.local.room.entity.UserReadingDataEntity
 import indi.renakoni.nextvol.data.local.room.entity.UserDataEntity
 import indi.renakoni.nextvol.data.local.room.entity.VolumeEntity
 import indi.renakoni.nextvol.data.statistics.Count
+import indi.renakoni.nextvol.data.web.rules.ImportedRuleSources
+import hnovel.imports.ImportDecision
+import hnovel.imports.ImportSelection
+import hnovel.network.NetworkGrant
 import io.nightfish.lightnovelreader.api.book.WordCount
 import io.nightfish.lightnovelreader.api.content.builder.ContentBuilder
 import io.nightfish.lightnovelreader.api.content.builder.simpleText
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
+import javax.inject.Inject
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 /**
  * Seeds deterministic, local-only UI data into the benchmark build.
@@ -33,7 +41,10 @@ import kotlinx.coroutines.runBlocking
  * This receiver is compiled only into the `benchmark` variant and is never
  * present in debug, snapshot, or release artifacts.
  */
+@AndroidEntryPoint
 class BenchmarkFixtureReceiver : BroadcastReceiver() {
+    @Inject lateinit var sources: ImportedRuleSources
+
     override fun onReceive(context: Context, intent: Intent) {
         val pending = goAsync()
         Thread {
@@ -44,6 +55,10 @@ class BenchmarkFixtureReceiver : BroadcastReceiver() {
                             seed(NextVolDatabase.getInstance(context))
                         }
                         "seed=SUCCEEDED"
+                    }
+                    ACTION_SEED_SOURCE -> {
+                        runBlocking { seedSource() }
+                        "source=SUCCEEDED"
                     }
                     else -> "unsupported-action=${intent.action}"
                 }
@@ -57,6 +72,45 @@ class BenchmarkFixtureReceiver : BroadcastReceiver() {
                 pending.finish()
             }
         }.start()
+    }
+
+    private suspend fun seedSource() {
+        val raw = buildJsonObject {
+            put("bookSourceUrl", "https://runtime.invalid/")
+            put("bookSourceName", "Runtime fixture")
+            put("bookSourceType", 0)
+            put("enabledExplore", true)
+            put("jsLib", "function sharedLabel(){return 'Shared';}")
+            put("exploreUrl", """
+                @js:
+                function row(name, read) {
+                    let value;
+                    try { value = read(); } catch (error) { value = 'ERROR ' + error; }
+                    return {title: name + ': ' + value, url: '/books'};
+                }
+                JSON.stringify([
+                    row('JavaScript', () => { const count = 6; return count * 7; }),
+                    row('RegExp', () => /chapter (\d+)/.exec('chapter 35')[1]),
+                    row('Typed arrays', () => {
+                        const types = [Int8Array, Uint8Array, Uint8ClampedArray, Int16Array,
+                            Uint16Array, Int32Array, Uint32Array, Float32Array, Float64Array];
+                        const view = new DataView(new ArrayBuffer(4));
+                        view.setInt32(0, 42);
+                        return types.every(type => new type([42])[0] === view.getInt32(0));
+                    }),
+                    row('Continuation', () => typeof Continuation),
+                    row('Library', () => sharedLabel()),
+                    row('Bridge', () => String(source.getLoginHeader()) + '/' + java.base64Decode('aGVsbG8=')),
+                    row('DOM', () => org.jsoup.Jsoup.parse('<h1>Chapter</h1>').select('h1').first().text()),
+                    row('Isolation', () => typeof Packages + '/' + typeof java.getClass)
+                ])
+            """.trimIndent())
+        }
+        val preview = sources.importer.preview(raw.toString())
+        check(preview.issues.isEmpty())
+        check(sources.importer.commit(preview, listOf(ImportSelection(0, ImportDecision.Add))).error == null)
+        val definition = sources.definitions.list().single { it.importKey == "https://runtime.invalid/" }
+        sources.activate(definition.reference(), listOf(NetworkGrant("https://runtime.invalid/")))
     }
 
     private suspend fun seed(database: NextVolDatabase) {
@@ -194,6 +248,7 @@ class BenchmarkFixtureReceiver : BroadcastReceiver() {
 
     companion object {
         const val ACTION_SEED = "indi.renakoni.nextvol.benchmark.SEED"
+        const val ACTION_SEED_SOURCE = "indi.renakoni.nextvol.benchmark.SEED_SOURCE"
         // The built-in Wenku8 source parses book IDs as integers when it
         // performs its background refresh, so the fixture ID must be numeric.
         private val book = BookIdentity.book("9999999")
