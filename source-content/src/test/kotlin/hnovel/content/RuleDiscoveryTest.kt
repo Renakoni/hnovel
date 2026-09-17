@@ -74,6 +74,58 @@ class RuleDiscoveryTest {
         }
     }
 
+    @Test fun nestedRulesRestoreAbsentAndInheritedCatalogueResultBindings() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            for ((library, expected) in listOf("" to "Nested", "var result='Library';" to "Library")) {
+                for (operation in listOf("java.getString('@js:result', 'nested');",
+                    "try { java.getString('@js:throw new Error(\"fixture\")', 'nested'); } catch (error) {}")) {
+                    fixture.source { definition(it, """
+                        @js:$operation
+                        typeof result === 'undefined'
+                            ? eval("const result = [{title:'Nested',url:'/search'}]; result")
+                            : [{title:result,url:'/search'}]
+                    """.trimIndent(), buildJsonObject { put("jsLib", library) }) }.use { source ->
+                        assertEquals(expected, source.openDiscovery("nested-result").catalog().rows.single().title)
+                    }
+                }
+            }
+        }
+    }
+
+    @Test fun requestTemplatesRestoreAbsentAndInheritedCatalogueResultBindings() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            for ((library, expected) in listOf("" to "Template", "var result='Library';" to "Library")) {
+                for (operation in listOf("java.ajax('/search?q={{1+1}}');",
+                    """try { java.ajax("@js:throw new Error('fixture')"); } catch (error) {}""")) {
+                    fixture.source { definition(it, """
+                        @js:$operation
+                        typeof result === 'undefined'
+                            ? eval("const result = [{title:'Template',url:'/search'}]; result")
+                            : [{title:result,url:'/search'}]
+                    """.trimIndent(), buildJsonObject { put("jsLib", library) }) }.use { source ->
+                        assertEquals(expected, source.openDiscovery("template-result").catalog().rows.single().title)
+                    }
+                }
+            }
+        }
+    }
+
+    @Test fun nestedInputsDoNotReplaceCatalogueLocalResultDeclarations() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            for (declaration in listOf("var", "let", "const")) {
+                fixture.source { definition(it, """
+                    @js:$declaration result = 'Outer';
+                    var nested = java.getString('@js:result', 'Inner');
+                    var request = host.call('request.prepare', '/books?value={{result === null ? 42 : 0}}')[0];
+                    [{title:result+':'+nested+':'+request,url:'/search'}]
+                """.trimIndent()) }.use { source ->
+                    assertEquals(declaration, "Outer:Inner:/books?value=42",
+                        source.openDiscovery("local-result").catalog().rows.single().title)
+                }
+            }
+        }
+    }
+
     @Test fun staticCatalogKeepsOrderAndDoesNotFetchBookPreviews() = runBlocking {
         RuleSourceFixture().use { fixture ->
             val source = fixture.source { definition(it, "Heading\nNew::/search?page={{page}}&&Completed::/complete") }

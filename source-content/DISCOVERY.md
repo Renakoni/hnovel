@@ -102,6 +102,14 @@ closures. Retained discovery-native methods reject a later invocation. All value
 deferred actions cross the worker wire as bounded JSON, never Compose, Activity, or
 NavController objects.
 
+Catalogue, `viewName`, and interaction callbacks have no implicit `result` input.
+Book-list rules and login callbacks retain their explicit input; sharing the discovery
+envelope does not make their bindings interchangeable. Nested AnalyzeRule helpers and
+URL templates use their own input scope over the caller's lookup scope, so an absent,
+inherited, or `const result` in the caller survives both success and failure. Their
+locals remain inside that evaluation. The existing ContextFactory, instruction/depth
+budgets, explicit variable writes, and host authority remain shared and bounded.
+
 ## Finite rows and action protocol
 
 URL rows and the `text`, `toggle`, `select`, and `button` extension types are recognized.

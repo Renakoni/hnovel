@@ -94,18 +94,15 @@ internal class ScriptRequestTemplates(private val scope: Scriptable, private val
         fun bounded(text: String): String { if (text.length > limit) throw ResultTooLarge(); return text }
         fun evaluate(code: String, input: String? = null, base: String? = null, emptyNull: Boolean = false): String {
             bounded(code)
-            val oldResult = scope.get("result", scope)
-            val oldBase = scope.get("baseUrl", scope)
-            try {
-                scope.put("result", scope, input)
-                if (base != null) scope.put("baseUrl", scope, base)
-                val result = evaluateGlobal(cx, scope, code, "request-script")
-                if (!Undefined.isUndefined(result)) BoundedJsonResult(limit).encode(result)
-                return bounded(if (emptyNull && (result == null || Undefined.isUndefined(result))) "" else Context.toString(result))
-            } finally {
-                scope.put("result", scope, oldResult)
-                scope.put("baseUrl", scope, oldBase)
+            // URL stages own their input even when the caller declares a read-only result.
+            val nested = NativeObject().apply {
+                prototype = scope
+                put("result", this, input)
+                if (base != null) put("baseUrl", this, base)
             }
+            val result = evaluateGlobal(cx, nested, code, "request-script")
+            if (!Undefined.isUndefined(result)) BoundedJsonResult(limit).encode(result)
+            return bounded(if (emptyNull && (result == null || Undefined.isUndefined(result))) "" else Context.toString(result))
         }
         try {
             var value = original

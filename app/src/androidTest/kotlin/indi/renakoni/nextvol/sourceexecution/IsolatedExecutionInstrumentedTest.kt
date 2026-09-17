@@ -62,7 +62,13 @@ class IsolatedExecutionInstrumentedTest {
                 put("bookSourceName", "Dynamic catalogue")
                 put("bookSourceType", 0)
                 put("jsLib", "function label(){return 'Books ';}")
-                put("exploreUrl", "@js:const result=[{title:label()+infoMap.Sort,url:'/books?page={{page}}'}];JSON.stringify(result)")
+                put("exploreUrl", """
+                    @js:const result = 'Outer';
+                    const nested = java.getString('@js:result', label());
+                    const prepared = host.call('request.prepare', '/books?value={{result === null ? 42 : 0}}')[0];
+                    if (result !== 'Outer' || prepared !== '/books?value=42') throw new Error('nested input');
+                    JSON.stringify([{title:nested+infoMap.Sort,url:'/books?page={{page}}'}])
+                """.trimIndent())
             }
             val preview = importer.preview(raw.toString(), LEGADO_PROFILE)
             assertTrue(preview.issues.toString(), preview.issues.isEmpty())
