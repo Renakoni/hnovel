@@ -6,8 +6,8 @@
     <string name="nav_reading">正在阅读</string>
     <string name="nav_bookshelf">书架</string>
     <string name="nav_bookshelf_select_mode">选择 书架 (%d)</string>
-    <string name="nav_explore">探索</string>
-    <string name="nav_explore_child">探索 · %s</string>
+    <string name="nav_explore">发现</string>
+    <string name="nav_explore_child">发现 · %s</string>
     <string name="nav_explore_homepage">首页</string>
     <string name="nav_explore_categories">分类</string>
     <string name="nav_settings">设置</string>

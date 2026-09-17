@@ -18,7 +18,7 @@ class ExploreTest : UiAutomatorTest() {
     @Test
     fun liveHomepageLoadsNetworkBooksAndOpensDetail() {
         launchApp()
-        openBottomNavigation("Explore")
+        openBottomNavigation("Discover")
 
         val covers = waitForDescriptions("cover")
         clickCenter(covers.first())
@@ -32,7 +32,7 @@ class ExploreTest : UiAutomatorTest() {
     @Test
     fun exploreSourceTabsAndContentWork() {
         launchApp()
-        openBottomNavigation("Explore")
+        openBottomNavigation("Discover")
 
         // Source-provided tab labels are intentionally not localized by the
         // app and can change remotely. Exercise each stable tab position.
@@ -48,7 +48,7 @@ class ExploreTest : UiAutomatorTest() {
     @Test
     fun searchInputFilterClearAndBackWork() {
         launchApp()
-        openBottomNavigation("Explore")
+        openBottomNavigation("Discover")
         clickDescription("search")
         assertDescription("back")
 
@@ -59,13 +59,13 @@ class ExploreTest : UiAutomatorTest() {
         pressBack()
         clickDescription("clear")
         pressBack()
-        assertText("Explore")
+        assertText("Discover")
     }
 
     @Test
     fun searchHistoryCanBeCreatedDeletedAndCleared() {
         launchApp()
-        openBottomNavigation("Explore")
+        openBottomNavigation("Discover")
         clickDescription("search")
         setFirstTextField("automation-history")
         device.pressEnter()
@@ -97,7 +97,7 @@ class ExploreTest : UiAutomatorTest() {
     @Test
     fun liveExactSearchLoadsNetworkBookAndOpensDetail() {
         launchApp()
-        openBottomNavigation("Explore")
+        openBottomNavigation("Discover")
         clickDescription("search")
 
         val query = "奇招百出的维多利亚"
@@ -126,7 +126,7 @@ class ExploreTest : UiAutomatorTest() {
     @Test
     fun liveExpandedPageLoadsFiltersResultsAndPaging() {
         launchApp()
-        openBottomNavigation("Explore")
+        openBottomNavigation("Discover")
 
         // The second source tab is the built-in "All" page. Its labels are
         // supplied by the source, so select it by stable tab position.

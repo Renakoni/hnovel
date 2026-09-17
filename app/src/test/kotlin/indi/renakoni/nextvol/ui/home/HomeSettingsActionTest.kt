@@ -106,9 +106,10 @@ class HomeSettingsActionTest {
         assertTrue("settings remains below the safe top inset", bounds.top >= 24)
         assertTrue("minimum touch target", bounds.width >= 48 && bounds.height >= 48)
         if (root in listOf("Bookshelf", "Explore", "Categories")) {
-            compose.onNodeWithText(root).assertDoesNotExist()
+            val label = if (root == "Explore") "Discover" else root
+            compose.onNodeWithText(label).assertDoesNotExist()
             if (root != "Bookshelf" || !shelf.selectMode) {
-                compose.onNodeWithContentDescription(root).assertIsDisplayed()
+                compose.onNodeWithContentDescription(label).assertIsDisplayed()
             }
         }
         if (root in listOf("Explore", "Categories")) {
