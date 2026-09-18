@@ -249,7 +249,10 @@ class RhinoScriptEngine(private val bridge: HostBridge, private val limits: Scri
                 scope.put("nextChapterUrl", scope, frame.nextChapterUrl)
                 // The rule input is already inside the worker; reverse host-call limits do not apply.
                 val inputLimit = frame.ruleBudget?.limits?.maxInputChars ?: limits.maxBridgeChars
-                scope.put("result", scope, JsonScriptData(context, scope, inputLimit).convert(frame.variables["result"] ?: JsonNull))
+                // BaseSource discovery callbacks have no rule input and may declare their own result.
+                if (frame.discovery?.snapshot?.get("noResult")?.jsonPrimitive?.boolean != true) {
+                    scope.put("result", scope, JsonScriptData(context, scope, inputLimit).convert(frame.variables["result"] ?: JsonNull))
+                }
                 scope.put("key", scope, frame.key)
                 scope.put("page", scope, frame.page)
                 scope.put("baseUrl", scope, ruleContext.contentBaseUrl)

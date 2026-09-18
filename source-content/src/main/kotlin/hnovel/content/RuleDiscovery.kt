@@ -117,6 +117,8 @@ class RuleDiscoverySession internal constructor(private val source: RuleSource, 
             context.discovery = buildJsonObject {
                 put("sessionId", id); put("values", jsonValues(values + draft)); put("interactive", interactive)
                 put("event", event?.let(::JsonPrimitive) ?: JsonNull); put("longClick", longClick); put("noBook", noBook)
+                // Source callbacks omit rule input; login uses this envelope with an explicit result.
+                put("noResult", noBook)
                 put("saveSeconds", saveSeconds?.let(::JsonPrimitive) ?: JsonNull)
                 put("themeMode", environment.themeMode); put("theme", environment.theme); put("reading", environment.reading)
             }

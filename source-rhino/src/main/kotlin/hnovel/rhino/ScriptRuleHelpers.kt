@@ -3,6 +3,7 @@ package hnovel.rhino
 import hnovel.rules.*
 import kotlinx.serialization.json.*
 import org.mozilla.javascript.Context
+import org.mozilla.javascript.NativeObject
 import org.mozilla.javascript.Scriptable
 import org.apache.commons.text.StringEscapeUtils
 
@@ -82,20 +83,15 @@ internal class ScriptRuleHelpers(private val scope: Scriptable, frame: ScriptFra
             }
             val evaluator = RuleEvaluator(unescapeHtml = false) { request, _, _ ->
                 budget.checkSize(request.script.length, limits.maxScriptChars)
-                val old = scope.get("result", scope)
-                val oldBase = scope.get("baseUrl", scope)
-                val oldSource = scope.get("src", scope)
-                try {
-                    scope.put("result", scope, JsonScriptData(cx, scope, budget.limits.maxInputChars).convert(json(request.input)))
-                    scope.put("baseUrl", scope, baseUrl)
-                    scope.put("src", scope, sourceValue(cx))
-                    value(Json.parseToJsonElement(BoundedJsonResult(limits.maxBridgeChars)
-                        .encode(evaluateGlobal(cx, scope, request.script, "nested-rule"))))
-                } finally {
-                    scope.put("result", scope, old)
-                    scope.put("baseUrl", scope, oldBase)
-                    scope.put("src", scope, oldSource)
+                // Nested input must neither create a caller binding nor write through its const result.
+                val nested = NativeObject().apply {
+                    prototype = scope
+                    put("result", this, JsonScriptData(cx, this, budget.limits.maxInputChars).convert(json(request.input)))
+                    put("baseUrl", this, baseUrl)
+                    put("src", this, sourceValue(cx))
                 }
+                value(Json.parseToJsonElement(BoundedJsonResult(limits.maxBridgeChars)
+                    .encode(evaluateGlobal(cx, nested, request.script, "nested-rule"))))
             }
             val result = evaluator.evaluate(rule, input, context, output, RuleLocation(name), budget, context.baseUrl, baseUrl)
             if (result is RuleResult.Failure) {
