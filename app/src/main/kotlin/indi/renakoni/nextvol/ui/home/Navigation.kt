@@ -17,6 +17,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.navigation.NavController
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavGraphBuilder
@@ -77,25 +78,25 @@ fun HomeNavigateBar(
             selected = isReading,
             onClick = { controller.navigateToMainRoot(Route.Main.Reading) },
             icon = { Icon(painter = rememberAnimatedVectorPainter(avdReading, isReading), null) },
-            label = { Text(stringResource(R.string.nav_reading), maxLines = 1) }
+            label = { Text(stringResource(R.string.nav_reading), maxLines = 1, overflow = TextOverflow.Ellipsis) }
         )
         NavigationBarItem(
             selected = isBookshelf,
             onClick = { controller.navigateToMainRoot(Route.Main.Bookshelf) },
             icon = { Icon(painter = rememberAnimatedVectorPainter(avdShelf, isBookshelf), null) },
-            label = { Text(stringResource(R.string.nav_bookshelf), maxLines = 1) }
+            label = { Text(stringResource(R.string.nav_bookshelf), maxLines = 1, overflow = TextOverflow.Ellipsis) }
         )
         NavigationBarItem(
             selected = isExploration,
             onClick = { controller.navigateToMainRoot(Route.Main.Explore) },
             icon = { Icon(painter = rememberAnimatedVectorPainter(avdExplore, isExploration), null) },
-            label = { Text(stringResource(R.string.nav_explore), maxLines = 1) }
+            label = { Text(stringResource(R.string.nav_explore), maxLines = 1, overflow = TextOverflow.Ellipsis) }
         )
         NavigationBarItem(
             selected = isCategories,
             onClick = { controller.navigateToMainRoot(Route.Main.Categories()) },
             icon = { Icon(painterResource(R.drawable.view_list_24px), null) },
-            label = { Text(stringResource(R.string.categories_title), maxLines = 1) }
+            label = { Text(stringResource(R.string.categories_title), maxLines = 1, overflow = TextOverflow.Ellipsis) }
         )
     }
 }

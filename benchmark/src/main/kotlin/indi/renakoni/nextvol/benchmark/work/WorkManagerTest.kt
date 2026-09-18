@@ -106,7 +106,7 @@ class WorkManagerTest : UiAutomatorTest() {
     @Test
     fun cacheBookRunsFromLiveBookUiAndMarksBookCached() {
         launchApp()
-        openBottomNavigation("Explore")
+        openBottomNavigation("Discover")
         clickDescription("search")
         setFirstTextField(LIVE_BOOK_QUERY)
         // The real source rate-limits searches from the same public IP.

@@ -6,8 +6,8 @@
     <string name="nav_reading">閱讀中</string>
     <string name="nav_bookshelf">書架</string>
     <string name="nav_bookshelf_select_mode">選取 書架 (%d)</string>
-    <string name="nav_explore">探索</string>
-    <string name="nav_explore_child">探索 · %s</string>
+    <string name="nav_explore">發現</string>
+    <string name="nav_explore_child">發現 · %s</string>
     <string name="nav_explore_homepage">首頁</string>
     <string name="nav_explore_categories">分類</string>
     <string name="nav_settings">設定</string>
@@ -78,7 +78,7 @@
     <string name="settings">設定</string>
     <!-- Hints -->
     <string name="nothing_here">沒有內容</string>
-    <string name="nothing_here_desc_reading">閱讀一些書本後，它們會顯示在這裡。\n透過下方的導覽列前往「探索」頁面尋找新書。</string>
+    <string name="nothing_here_desc_reading">閱讀一些書本後，它們會顯示在這裡。\n透過下方的導覽列前往「發現」頁面尋找新書。</string>
     <string name="nothing_here_desc_search">這裡會儲存最近的搜尋結果\n點擊搜尋列右側圖示，指定搜尋範圍</string>
     <string name="nothing_here_desc_bookshelf">點擊「收藏」按鈕，將書本加入此書架</string>
     <string name="nothing_here_desc_book_manager">沒有正在下載的書本</string>

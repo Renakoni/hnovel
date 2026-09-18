@@ -39,7 +39,7 @@ fun BookshelfHomeScreen(
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
     val workManager = WorkManager.getInstance(context)
-    val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior()
+    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
     val backgroundColor by animateColorAsState(
         if (uiState.selectMode) MaterialTheme.colorScheme.surfaceVariant
         else MaterialTheme.colorScheme.surface

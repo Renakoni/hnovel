@@ -22,6 +22,7 @@ import androidx.core.graphics.Insets
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.data.web.*
 import indi.renakoni.nextvol.ui.home.bookshelf.home.*
 import indi.renakoni.nextvol.ui.home.categories.CategoriesScreen
@@ -57,7 +58,10 @@ class HomeSettingsActionTest {
     private var pinned = 0
     private var removed = 0
     private var collected = 0
-    private val shelf = MutableBookshelfHomeUiState(onPin = { pinned++ }, onRemove = { removed++ }, onMarkSelectedBooks = { collected++ })
+    private var layoutChanges = 0
+    private var cancelled = 0
+    private val shelf = MutableBookshelfHomeUiState(onPin = { pinned++ }, onRemove = { removed++ }, onMarkSelectedBooks = { collected++ },
+        changeLayout = { layoutChanges++ }, onDisableSelectMode = { cancelled++ })
     @Before fun create() {
         activity = Robolectric.buildActivity(ComponentActivity::class.java)
         activity.get().setTheme(android.R.style.Theme_Material_Light_NoActionBar)
@@ -101,6 +105,17 @@ class HomeSettingsActionTest {
         assertTrue("settings remains within the safe right inset: $root $bounds in $screen", bounds.right <= screen.right - 28 + 1)
         assertTrue("settings remains below the safe top inset", bounds.top >= 24)
         assertTrue("minimum touch target", bounds.width >= 48 && bounds.height >= 48)
+        if (root in listOf("Bookshelf", "Explore", "Categories")) {
+            val label = if (root == "Explore") "Discover" else root
+            compose.onNodeWithText(label).assertDoesNotExist()
+            if (root != "Bookshelf" || !shelf.selectMode) {
+                compose.onNodeWithContentDescription(label).assertIsDisplayed()
+            }
+        }
+        if (root in listOf("Explore", "Categories")) {
+            val tab = compose.onNodeWithText("Source").fetchSemanticsNode().touchBoundsInRoot
+            assertEquals("source tabs directly follow the compact toolbar", 24f + 56f, tab.top, 1f)
+        }
         compose.onAllNodes(hasClickAction()).fetchSemanticsNodes().forEach { node ->
             val other = node.touchBoundsInRoot
             if (other != bounds && other.top <= bounds.center.y && other.bottom >= bounds.center.y) {
@@ -130,8 +145,16 @@ class HomeSettingsActionTest {
     }
 
     @Test fun selectedBooksKeepLayoutAndAllActionsReachableBesideSettings() {
-        compose.runOnIdle { root = "Bookshelf"; shelf.selectMode = true }
+        compose.runOnIdle {
+            root = "Bookshelf"
+            shelf.selectMode = true
+            shelf.selectedBookIds.addAll(List(128) { "book:$it" })
+        }
+        compose.onNodeWithContentDescription(activity.get().getString(R.string.nav_bookshelf_select_mode, 128)).assertIsDisplayed()
         checkAction()
+        compose.onNodeWithContentDescription("Selected book actions").performClick()
+        val layoutLabel = if (shelf.layout == BookshelfLayout.List) R.string.bookshelf_layout_switch_grid else R.string.bookshelf_layout_switch_list
+        compose.onNodeWithText(activity.get().getString(layoutLabel)).performClick()
         compose.onNodeWithContentDescription("Selected book actions").performClick()
         compose.onNodeWithText("Pin / unpin selected books").performClick()
         compose.onNodeWithContentDescription("Selected book actions").performClick()
@@ -141,6 +164,9 @@ class HomeSettingsActionTest {
         assertEquals(1, pinned)
         assertEquals(1, removed)
         assertEquals(1, collected)
+        assertEquals(1, layoutChanges)
         assertEquals(1, opened)
+        compose.onNodeWithContentDescription("cancel").performClick()
+        assertEquals(1, cancelled)
     }
 }

@@ -66,7 +66,7 @@ class ExploreHomeScreenTest {
         compose.onNode(hasClickAction() and hasText("Same book")).performClick()
         compose.onNodeWithContentDescription("Show more").performClick()
         compose.onNodeWithContentDescription("Search").performClick()
-        compose.onNodeWithText("Categories").performClick()
+        compose.onNodeWithContentDescription("Categories").performClick()
         assertEquals(listOf(a, b), books.map { it.sourceId })
         assertEquals(listOf(a, b), more.map { it.more!!.sourceId })
         assertEquals(b, search)
@@ -89,6 +89,65 @@ class ExploreHomeScreenTest {
         assertEquals(page.sections.single(), more)
     }
 
+    @Test fun delayedFeedStartsAtTheTopAndLaterUpdatesKeepTheReadersPosition() {
+        val id = Identifier("fixture", "Delayed source")
+        val sections = List(20) { index ->
+            SourceDiscoverySection("$index", "Section $index", emptyList(), SourceDiscoveryTarget(id, "/$index"))
+        }
+        var page by mutableStateOf(DiscoveryPageContent(loading = true))
+        var scroll = DiscoveryScroll()
+        activity.get().setContent { MaterialTheme {
+            ExploreHomeScreen(DiscoveryPageState(listOf(listing(id)), id, mapOf(id to page)),
+                {}, { _, position -> scroll = position }, {}, {}, {}, {}, {}, {}, { _, _ -> }, { _, _ -> }, {})
+        } }
+        compose.mainClock.autoAdvance = false
+        compose.mainClock.advanceTimeByFrame()
+        compose.waitForIdle()
+        compose.runOnIdle { page = page.copy(sections = sections.take(10)) }
+        compose.mainClock.advanceTimeByFrame()
+        compose.onNodeWithText("Section 0").assertIsDisplayed()
+        compose.runOnIdle { assertEquals(DiscoveryScroll(), scroll) }
+
+        compose.runOnIdle { page = page.copy(sections = sections, loaded = true, loading = false) }
+        compose.mainClock.autoAdvance = true
+        compose.onNodeWithText("Section 0").assertIsDisplayed()
+        compose.runOnIdle { assertEquals(DiscoveryScroll(), scroll) }
+
+        compose.onNode(hasScrollToIndexAction() and SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange))
+            .performScrollToIndex(8)
+        compose.onNodeWithText("Section 8").assertIsDisplayed()
+        val previous = scroll
+        compose.runOnIdle { page = page.copy(sections = sections + sections.last().copy(id = "20", title = "Section 20")) }
+        compose.onNodeWithText("Section 8").assertIsDisplayed()
+        compose.runOnIdle { assertEquals(previous, scroll) }
+    }
+
+    @Test fun returningToTheFeedRestoresTheSavedPositionForEachSource() {
+        val a = Identifier("fixture", "Source A")
+        val b = Identifier("fixture", "Source B")
+        fun page(id: Identifier) = DiscoveryPageContent(loaded = true, sections = List(20) { index ->
+            SourceDiscoverySection("$index", "${id.id} section $index", emptyList(), SourceDiscoveryTarget(id, "/$index"))
+        })
+        var state by mutableStateOf(DiscoveryPageState(listOf(listing(a), listing(b)), a, mapOf(a to page(a), b to page(b))))
+        var visible by mutableStateOf(true)
+        activity.get().setContent { MaterialTheme {
+            if (visible) ExploreHomeScreen(state, { state = state.copy(selected = it) }, { id, position ->
+                state = state.copy(content = state.content + (id to state.content.getValue(id).copy(scroll = position)))
+            }, {}, {}, {}, {}, {}, {}, { _, _ -> }, { _, _ -> }, {})
+        } }
+        compose.onNode(hasScrollToIndexAction() and SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange))
+            .performScrollToIndex(8)
+        compose.onNodeWithText("Source A section 8").assertIsDisplayed()
+        compose.onNodeWithText("Source B").performClick()
+        compose.onNodeWithText("Source B section 0").assertIsDisplayed()
+        compose.onNodeWithText("Source A").performClick()
+        compose.onNodeWithText("Source A section 8").assertIsDisplayed()
+        compose.runOnIdle { visible = false }
+        compose.waitForIdle()
+        compose.runOnIdle { visible = true }
+        compose.onNodeWithText("Source A section 8").assertIsDisplayed()
+    }
+
     @Test fun oneRealSourceAndItsUnsupportedSearchDoNotCreatePlaceholders() {
         val id = Identifier("fixture", "Only source")
         activity.get().setContent { MaterialTheme {
@@ -98,7 +157,7 @@ class ExploreHomeScreenTest {
         compose.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.Selected)).assertCountEquals(1)
         compose.onNodeWithText("Only source").assertIsSelected()
         compose.onNodeWithContentDescription("Search").assertIsEnabled()
-        compose.onNodeWithText("Categories").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Categories").assertDoesNotExist()
     }
 
     @Test fun largeFeedCanOpenTheLastSectionWithoutLosingItsCategoryOrSource() {

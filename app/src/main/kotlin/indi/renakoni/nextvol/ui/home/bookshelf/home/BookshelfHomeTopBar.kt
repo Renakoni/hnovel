@@ -1,6 +1,9 @@
 package indi.renakoni.nextvol.ui.home.bookshelf.home
 
-import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.graphics.ExperimentalAnimationGraphicsApi
+import androidx.compose.animation.graphics.res.animatedVectorResource
+import androidx.compose.animation.graphics.res.rememberAnimatedVectorPainter
+import androidx.compose.animation.graphics.vector.AnimatedImageVector
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,7 +19,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.MediumTopAppBar
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
@@ -30,16 +33,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import indi.renakoni.nextvol.R
-import indi.renakoni.nextvol.ui.components.AnimatedText
 import indi.renakoni.nextvol.ui.home.HomeSettingsAction
 import indi.renakoni.nextvol.ui.home.settings.data.MenuOptions.BookshelfSortTypeOptions
 import io.nightfish.lightnovelreader.api.bookshelf.BookshelfSortType
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalAnimationGraphicsApi::class)
 @Composable
 fun BookshelfHomeTopBar(
     scrollBehavior: TopAppBarScrollBehavior,
@@ -51,22 +55,28 @@ fun BookshelfHomeTopBar(
 ) {
     var mainMenuExpanded by remember { mutableStateOf(false) }
     val sortLocked = uiState.selectedBookshelf?.sortType != BookshelfSortType.Default
+    val layoutIcon = if (uiState.layout == BookshelfLayout.List) R.drawable.bookshelf_layout_grid_24px else R.drawable.view_list_24px
+    val layoutLabel = stringResource(if (uiState.layout == BookshelfLayout.List) R.string.bookshelf_layout_switch_grid else R.string.bookshelf_layout_switch_list)
+    val switchLayout = {
+        uiState.changeLayout(if (uiState.layout == BookshelfLayout.List) BookshelfLayout.Grid else BookshelfLayout.List)
+    }
 
-    MediumTopAppBar(
+    TopAppBar(
+        expandedHeight = 56.dp,
         title = {
-            AnimatedText(
-                text = when {
-                    uiState.selectMode -> stringResource(R.string.nav_bookshelf_select_mode, uiState.selectedBookIds.size)
-                    else -> stringResource(R.string.nav_bookshelf)
-                },
-                style = MaterialTheme.typography.displayLarge,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            if (uiState.selectMode) {
+                val selectionLabel = stringResource(R.string.nav_bookshelf_select_mode, uiState.selectedBookIds.size)
+                Text(
+                    text = uiState.selectedBookIds.size.toString(),
+                    modifier = Modifier.clearAndSetSemantics { contentDescription = selectionLabel },
+                    style = MaterialTheme.typography.titleLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         },
         navigationIcon = {
-            AnimatedVisibility(visible = uiState.selectMode) {
+            if (uiState.selectMode) {
                 IconButton(
                     onClick = uiState.onDisableSelectMode
                 ) {
@@ -75,20 +85,19 @@ fun BookshelfHomeTopBar(
                         contentDescription = "cancel"
                     )
                 }
+            } else {
+                Icon(
+                    painter = rememberAnimatedVectorPainter(AnimatedImageVector.animatedVectorResource(R.drawable.animated_bookshelf), false),
+                    contentDescription = stringResource(R.string.nav_bookshelf),
+                    modifier = Modifier.padding(12.dp)
+                )
             }
         },
         actions = {
-            IconButton(onClick = {
-                uiState.changeLayout(if (uiState.layout == BookshelfLayout.List) BookshelfLayout.Grid else BookshelfLayout.List)
-            }) {
-                Icon(
-                    painter = painterResource(
-                        if (uiState.layout == BookshelfLayout.List) R.drawable.bookshelf_layout_grid_24px else R.drawable.view_list_24px
-                    ),
-                    contentDescription = stringResource(
-                        if (uiState.layout == BookshelfLayout.List) R.string.bookshelf_layout_switch_grid else R.string.bookshelf_layout_switch_list
-                    )
-                )
+            if (!uiState.selectMode) {
+                IconButton(onClick = switchLayout) {
+                    Icon(painterResource(layoutIcon), layoutLabel)
+                }
             }
             when {
                 !uiState.selectMode -> {
@@ -267,6 +276,9 @@ fun BookshelfHomeTopBar(
                             Icon(painterResource(R.drawable.more_vert_24px), stringResource(R.string.bookshelf_selection_actions))
                         }
                         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                            DropdownMenuItem(text = { Text(layoutLabel) },
+                                leadingIcon = { Icon(painterResource(layoutIcon), null) },
+                                onClick = { expanded = false; switchLayout() })
                             DropdownMenuItem(text = { Text(stringResource(R.string.bookshelf_pin_selected)) },
                                 onClick = { expanded = false; uiState.onPin() })
                             DropdownMenuItem(text = { Text(stringResource(R.string.bookshelf_remove_selected)) },

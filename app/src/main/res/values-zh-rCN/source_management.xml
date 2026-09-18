@@ -71,10 +71,10 @@
     <string name="sources_replace">更新已有书源</string>
     <string name="sources_disabled_definition">此定义默认停用，导入后可在来源详情中启用。</string>
     <string name="sources_enabled">启用来源</string>
-    <string name="sources_discovery_visible">在探索和分类中显示</string>
+    <string name="sources_discovery_visible">在发现和分类中显示</string>
     <string name="sources_discovery_help">隐藏发现入口不会关闭搜索和阅读能力。</string>
     <string name="sources_no_discovery">此来源未声明发现目录。</string>
-    <string name="sources_discovery_hidden">已从探索和分类中隐藏</string>
+    <string name="sources_discovery_hidden">已从发现和分类中隐藏</string>
     <string name="sources_disabled_by_default">书源定义默认停用</string>
     <string name="sources_disabled_by_user">已由你停用</string>
     <string name="sources_awaiting_permissions">等待批准网络访问权限</string>

@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
@@ -37,7 +38,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PrimaryScrollableTabRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRowDefaults.SecondaryIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
@@ -106,22 +106,13 @@ internal fun BookshelfHomeContent(
 
                 PrimaryScrollableTabRow(
                     selectedTabIndex = selectedIndex,
+                    modifier = Modifier.fillMaxWidth(),
                     edgePadding = 0.dp,
-                    indicator = {
-                        SecondaryIndicator(
-                            modifier = Modifier
-                                .tabIndicatorOffset(
-                                    selectedTabIndex = selectedIndex,
-                                    matchContentSize = true
-                                )
-                                .height(4.dp)
-                                .clip(RoundedCornerShape(topStart = 3.dp, topEnd = 3.dp)),
-                            color = MaterialTheme.colorScheme.secondary
-                        )
-                    }
+                    divider = {},
                 ) {
                     uiState.bookshelfList.forEach { bookshelf ->
                         Tab(
+                            modifier = Modifier.widthIn(max = 240.dp),
                             selected = uiState.selectedBookshelfId == bookshelf.id,
                             onClick = {
                                 if (!uiState.selectMode) uiState.changePage(bookshelf.id)

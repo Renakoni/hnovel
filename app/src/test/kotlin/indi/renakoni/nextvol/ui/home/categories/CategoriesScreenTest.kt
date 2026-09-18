@@ -78,6 +78,27 @@ class CategoriesScreenTest {
         compose.onNodeWithText("Same category").assertExists()
     }
 
+    @Test fun delayedCategoriesStartAtTheFirstTag() {
+        val id = Identifier("fixture", "delayed")
+        var page by mutableStateOf(DiscoveryPageContent(loading = true))
+        var scroll = DiscoveryScroll()
+        activity.get().setContent { MaterialTheme {
+            CategoriesScreen(DiscoveryPageState(listOf(listing(id, "Delayed source")), id, mapOf(id to page)),
+                {}, {}, { _, position -> scroll = position }, {}, {}, {}, {})
+        } }
+        compose.mainClock.autoAdvance = false
+        compose.mainClock.advanceTimeByFrame()
+        compose.waitForIdle()
+        compose.runOnIdle {
+            page = page.copy(loaded = true, loading = false, categories = List(80) { index ->
+                SourceDiscoveryCategory("$index", "Category $index", SourceDiscoveryTarget(id, "/$index"))
+            })
+        }
+        compose.mainClock.autoAdvance = true
+        compose.onNodeWithText("Category 0").assertIsDisplayed()
+        compose.runOnIdle { assertEquals(DiscoveryScroll(), scroll) }
+    }
+
     @Test fun qidianCatalogScrollsPast128RowsAndSelectsItsLastOriginalTarget() {
         val (id, categories) = runBlocking {
             RuleSourceFixture().use { fixture ->

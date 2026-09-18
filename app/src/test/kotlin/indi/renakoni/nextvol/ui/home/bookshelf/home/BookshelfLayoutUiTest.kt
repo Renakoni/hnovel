@@ -13,9 +13,12 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import com.github.michaelbull.result.Err
 import com.github.michaelbull.result.Ok
 import com.github.michaelbull.result.Result
@@ -103,8 +106,32 @@ class BookshelfLayoutUiTest {
 
     private fun toggleLayout() {
         val resource = if (state.layout == BookshelfLayout.List) R.string.bookshelf_layout_switch_grid else R.string.bookshelf_layout_switch_list
-        compose.onNodeWithContentDescription(activity.get().getString(resource)).performClick()
+        if (state.selectMode) {
+            compose.onNodeWithContentDescription(activity.get().getString(R.string.bookshelf_selection_actions)).performClick()
+            compose.onNodeWithText(activity.get().getString(resource)).performClick()
+        } else {
+            compose.onNodeWithContentDescription(activity.get().getString(resource)).performClick()
+        }
         compose.waitForIdle()
+    }
+
+    @Test
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun longBookshelfNameLeavesRoomForNeighbouringTabsAtLargeFont() {
+        show(emptyList(), fontScale = 1.5f)
+        val name = "🏷我的本地书架【EPUB、TXT 与长篇小说合集】"
+        compose.runOnIdle {
+            val original = state.bookshelfList.single()
+            state.bookshelfList = listOf(original.copy(name = name), original.copy(id = 2, name = "Next shelf"))
+        }
+        val tab = compose.onNodeWithText(name).assertIsSelected().assertIsDisplayed().assertHeightIsAtLeast(48.dp)
+        assertTrue("leave room for neighbouring tabs", tab.fetchSemanticsNode().size.width <= 272)
+        val layouts = mutableListOf<TextLayoutResult>()
+        compose.onNodeWithText(name, useUnmergedTree = true)
+            .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
+        assertEquals(1, layouts.single().lineCount)
+        assertTrue("long shelf names must ellipsize", layouts.single().isLineEllipsized(0))
+        compose.onNodeWithText("Next shelf").performScrollTo().assertIsDisplayed().assertHasClickAction()
     }
 
     @Test fun switchingDuringSelectionKeepsSourceQualifiedBooksAndActions() {
