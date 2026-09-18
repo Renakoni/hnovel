@@ -7,9 +7,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import indi.renakoni.nextvol.ui.components.BookCardItem
 import io.nightfish.lightnovelreader.api.identifier.Identifier
@@ -47,14 +45,9 @@ fun SearchHubScreen(
             LazyColumn(Modifier.fillMaxSize()) {
                 items(state.sources.filter { state.aggregate || it.id == state.selected }, key = { it.id.toString() }) { source ->
                     Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-                        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text(source.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f).clickable { onOpenSource(source.id, state.submittedKeyword) }.padding(vertical = 12.dp))
-                            Box(Modifier.size(24.dp)) {
-                                if (source.loading) CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
-                            }
-                        }
+                        Text(source.name, style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.clickable { onOpenSource(source.id, state.submittedKeyword) }.padding(horizontal = 16.dp, vertical = 8.dp))
+                        if (source.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
                         if (source.error) Text("Search failed", Modifier.padding(horizontal = 16.dp))
                         if (source.books.isNotEmpty()) LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(horizontal = 16.dp)) {
                             items(source.books, key = { it.id }) { book ->

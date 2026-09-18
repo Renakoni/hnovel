@@ -8,7 +8,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -43,11 +42,7 @@ fun DiscoveryResultsScreen(
                 DiscoveryFilterControl(filter, state.filters[filter.id].orEmpty()) { onFilter(filter.id, it) }
             }
             items(state.books, key = { it.id.storageKey }) { book -> DiscoveryBookCard(book) { onBook(book.id) } }
-            if (state.loading) item {
-                Box(Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
-                }
-            }
+            if (state.loading) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
             state.error?.let { error -> item { DiscoveryFailure(error, onLoadMore, onManageSources, onBack, state.errorField, state.errorPermission) } }
             if (state.loaded && state.books.isEmpty() && state.error == null) item { Text(stringResource(R.string.discovery_no_books)) }
             if (state.hasMore && state.error == null) item {
