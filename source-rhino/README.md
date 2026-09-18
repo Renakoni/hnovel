@@ -57,3 +57,16 @@ importScript/cacheFile/downloadFile/readFile/deleteFile use the merged source/ac
 JsURL data properties/query maps and toNumChapter are implemented against the pinned reference, including full-width digits, duplicate query keys and first-match chapter output. Book/chapter changes and separate small/big variable writes are returned explicitly by rule tasks; they never change execution identity or implicitly write to Room.
 
 Discovery invocations additionally install `ScriptDiscovery`: page-local `infoMap`, explicit callback data, read-only host snapshots, and bounded deferred UI intents. Native action methods cannot be retained for a later invocation. The current-source `searchBook` object overload is reduced to a source-local intent before JSON serialization. The host owns execution, navigation, and persistence; see [the #91 protocol and compatibility boundaries](../source-content/DISCOVERY.md).
+
+Android consumers must retain the engine's reflection entry points when shrinking.
+The JAR includes [R8 consumer rules](src/main/resources/META-INF/proguard/source-rhino.pro)
+for Rhino's VM bridge, interpreter, regular expressions and lazy standard objects,
+plus the public data methods that `ScriptDom` dispatches by reflection. Keeping
+those methods does not add entries to the script API allowlist.
+Without them a build can succeed while the isolated worker fails during startup
+with `Failed to create VMBridge instance`. The rules preserve the existing runtime;
+they do not enable Java class access or change script permissions and budgets.
+[MinifiedSourceRuntimeTest](../benchmark/src/main/kotlin/indi/renakoni/nextvol/benchmark/explore/MinifiedSourceRuntimeTest.kt)
+imports an offline fixture through the production source store and opens its
+catalogue in a minified APK, including after a process restart. CI runs this on
+API 35 in addition to the JVM and debug Binder tests.
