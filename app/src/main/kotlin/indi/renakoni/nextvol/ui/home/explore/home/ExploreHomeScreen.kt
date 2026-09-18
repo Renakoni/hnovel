@@ -70,7 +70,9 @@ fun ExploreHomeScreen(
     }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             if (state.loadingSources) {
-                LinearProgressIndicator(Modifier.fillMaxWidth())
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
             } else if (state.sources.isEmpty()) {
                 DiscoveryEmpty(stringResource(R.string.explore_no_sources), onManageSources)
             } else {
@@ -82,13 +84,12 @@ fun ExploreHomeScreen(
                 ) {
                     state.sources.forEach { source ->
                         Tab(selected = source.metadata.id == state.selected, onClick = { onSelect(source.metadata.id) },
-                            modifier = Modifier.widthIn(max = 240.dp),
-                            text = { Text(source.metadata.item.name, maxLines = 1, overflow = TextOverflow.Ellipsis) })
+                            text = { Text(source.metadata.item.name, Modifier.widthIn(max = 208.dp),
+                                maxLines = 1, overflow = TextOverflow.Ellipsis) })
                     }
                 }
                 val id = state.selected
                 val content = state.content[id] ?: DiscoveryPageContent()
-                if (content.acting) LinearProgressIndicator(Modifier.fillMaxWidth())
                 if (id != null) key(id, content.resetId) {
                     val list = rememberLazyListState(content.scroll.index, content.scroll.offset)
                     LaunchedEffect(list) {
@@ -96,7 +97,7 @@ fun ExploreHomeScreen(
                             .collect { onScroll(id, it) }
                     }
                     val titleHeight = with(LocalDensity.current) { (16.sp * 2.2f).toDp() }
-                    PullToRefreshBox(isRefreshing = content.loading, onRefresh = onRefresh, modifier = Modifier.fillMaxSize()) {
+                    PullToRefreshBox(isRefreshing = content.loading || content.acting, onRefresh = onRefresh, modifier = Modifier.fillMaxSize()) {
                         // A keyed trailing spacer would anchor the empty list when the first feed arrives.
                         LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 80.dp)) {
                             content.error?.let { error -> item(key = "error") {

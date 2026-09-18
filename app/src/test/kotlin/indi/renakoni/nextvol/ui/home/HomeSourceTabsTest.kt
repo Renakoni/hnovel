@@ -46,9 +46,12 @@ class HomeSourceTabsTest {
 
     @Test fun categoriesKeepLongMixedCharacterTabsBoundedAndSelectable() = checkTabs(explore = false)
     @Test fun exploreKeepsLongMixedCharacterTabsBoundedAndSelectable() = checkTabs(explore = true)
+    @Test fun categoriesKeepShortTabsCompactAndNearTheStart() = checkTabs(explore = false, short = true)
+    @Test fun exploreKeepsShortTabsCompactAndNearTheStart() = checkTabs(explore = true, short = true)
 
-    private fun checkTabs(explore: Boolean) {
-        val names = listOf("🏷晋江文学【阅读版本请用3.6版本及以上】", "追书神器~m.zhuishushenqi.com", "🔤 BestLightNovel")
+    private fun checkTabs(explore: Boolean, short: Boolean = false) {
+        val names = if (short) listOf("Wenku8", "晋江", "Books")
+            else listOf("🏷晋江文学【阅读版本请用3.6版本及以上】", "追书神器~m.zhuishushenqi.com", "🔤 BestLightNovel")
         val sources = names.mapIndexed { index, name ->
             SourceListing(SourceMetadata(WebDataSourceItem(Identifier("fixture", "$index"), name, "fixture"),
                 setOf(SourceCapability.Explore, SourceCapability.Categories)), SourceStatus.Ready)
@@ -71,7 +74,14 @@ class HomeSourceTabsTest {
         compose.onNodeWithText(names.first(), useUnmergedTree = true)
             .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
         assertEquals(1, layouts.single().lineCount)
-        assertTrue("long names must ellipsize instead of clipping both ends", layouts.single().isLineEllipsized(0))
+        if (short) {
+            assertTrue("short tabs must size to their content", first.fetchSemanticsNode().size.width <= 160)
+            val label = compose.onNodeWithText(names.first(), useUnmergedTree = true).fetchSemanticsNode()
+            assertTrue("the first label must stay near the start edge", label.positionInRoot.x <= 32)
+            assertFalse("short names must remain complete", layouts.single().isLineEllipsized(0))
+        } else {
+            assertTrue("long names must ellipsize instead of clipping both ends", layouts.single().isLineEllipsized(0))
+        }
         for (name in names.drop(1) + names.first()) {
             val tab = compose.onNodeWithText(name).performScrollTo().performClick().assertIsSelected()
             assertTrue("selected tab stays bounded", tab.fetchSemanticsNode().size.width <= 272)

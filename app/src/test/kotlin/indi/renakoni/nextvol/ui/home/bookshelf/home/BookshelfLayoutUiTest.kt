@@ -117,6 +117,19 @@ class BookshelfLayoutUiTest {
 
     @Test
     @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun shortBookshelfNameDoesNotLeaveALargeLeadingGap() {
+        show(emptyList())
+        compose.runOnIdle {
+            state.bookshelfList = listOf(state.bookshelfList.single().copy(name = "已收藏"))
+        }
+        val tab = compose.onNodeWithText("已收藏").assertIsSelected().assertIsDisplayed().assertHeightIsAtLeast(48.dp)
+        assertTrue("short shelf tabs must size to their content", tab.fetchSemanticsNode().size.width <= 160)
+        val label = compose.onNodeWithText("已收藏", useUnmergedTree = true).fetchSemanticsNode()
+        assertTrue("the first shelf label must stay near the start edge", label.positionInRoot.x <= 32)
+    }
+
+    @Test
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
     fun longBookshelfNameLeavesRoomForNeighbouringTabsAtLargeFont() {
         show(emptyList(), fontScale = 1.5f)
         val name = "🏷我的本地书架【EPUB、TXT 与长篇小说合集】"
