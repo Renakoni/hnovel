@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -23,7 +24,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SearchBar
@@ -42,6 +43,7 @@ import androidx.compose.ui.semantics.isTraversalGroup
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.traversalIndex
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -295,7 +297,8 @@ fun ExploreSearchScreen(
             exploreSearchUiState.failure?.let { failure ->
                 DiscoveryFailure(failure.error, refresh, onManageSources, onClickBack, failure.field, failure.permission)
             }
-            if (exploreSearchUiState.isLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
+            val loading = exploreSearchUiState.failure == null && (exploreSearchUiState.isLoading ||
+                (!exploreSearchUiState.isLoadingComplete && exploreSearchUiState.submittedKeyword.isNotBlank()))
             if (exploreSearchUiState.isLoadingComplete && exploreSearchUiState.searchResult.isEmpty() && exploreSearchUiState.failure == null) {
                 EmptyPage(
                     icon = painterResource(R.drawable.not_found_90dp),
@@ -306,34 +309,43 @@ fun ExploreSearchScreen(
             val density = LocalDensity.current
             val lineHeight = MaterialTheme.typography.titleMedium.lineHeight
             val titleHeight = with(density) { (lineHeight * 2.2f).toDp() }
-            LazyColumn(Modifier.weight(1f)) {
-                if (exploreSearchUiState.submittedKeyword.isNotBlank()) stickyHeader {
-                    Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).padding(top = 8.dp)) {
-                        AnimatedText(
-                            modifier = Modifier.padding(vertical = 12.dp, horizontal = 20.dp),
-                            text = stringResource(R.string.search_results_title, exploreSearchUiState.submittedKeyword,
-                                exploreSearchUiState.searchResult.size, if (exploreSearchUiState.isLoadingComplete) "" else "..."),
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.W600,
-                            letterSpacing = 0.5.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+            Box(Modifier.weight(1f)) {
+                LazyColumn(Modifier.fillMaxSize()) {
+                    if (exploreSearchUiState.submittedKeyword.isNotBlank()) stickyHeader {
+                        Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).padding(top = 8.dp)) {
+                            Text(
+                                modifier = Modifier.padding(vertical = 12.dp, horizontal = 20.dp),
+                                text = stringResource(R.string.search_results_title, exploreSearchUiState.submittedKeyword,
+                                    exploreSearchUiState.searchResult.size, if (exploreSearchUiState.isLoadingComplete) "" else "..."),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.W600,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                letterSpacing = 0.5.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    items(exploreSearchUiState.searchResult, key = { it.first }) {
+                        val addToBookshelf = addToBookshelfAction.toSwipeAction { requestAddBookToBookshelf(it.first) }
+                        BookCardItem(
+                            modifier = Modifier.padding(horizontal = 16.dp).padding(vertical = 3.dp),
+                            bookInformationFlow = it.second,
+                            onClick = { onClickBook(it.first) },
+                            onLongPress = withHaptic {},
+                            collected = exploreSearchUiState.allBookshelfBookIds.contains(it.first),
+                            swipeToRightActions = listOf(addToBookshelf),
+                            titleHeight = titleHeight
                         )
                     }
+                    if (loading && exploreSearchUiState.searchResult.isNotEmpty()) item {
+                        Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+                        }
+                    }
                 }
-                items(exploreSearchUiState.searchResult, key = { it.first }) {
-                    val addToBookshelf = addToBookshelfAction.toSwipeAction { requestAddBookToBookshelf(it.first) }
-                    BookCardItem(
-                        modifier = Modifier.padding(horizontal = 16.dp).padding(vertical = 3.dp),
-                        bookInformationFlow = it.second,
-                        onClick = { onClickBook(it.first) },
-                        onLongPress = withHaptic {},
-                        collected = exploreSearchUiState.allBookshelfBookIds.contains(it.first),
-                        swipeToRightActions = listOf(addToBookshelf),
-                        titleHeight = titleHeight
-                    )
-                }
-                if (!exploreSearchUiState.isLoadingComplete && exploreSearchUiState.failure == null && exploreSearchUiState.submittedKeyword.isNotBlank()) item {
-                    LinearProgressIndicator(Modifier.fillMaxWidth().padding(vertical = 8.dp, horizontal = 20.dp))
+                if (loading && exploreSearchUiState.searchResult.isEmpty()) {
+                    CircularProgressIndicator(Modifier.align(Alignment.Center))
                 }
             }
         }

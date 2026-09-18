@@ -42,7 +42,7 @@ internal fun DiscoveryFailure(error: DiscoveryError, retry: () -> Unit, manage: 
         Text(stringResource(message), color = MaterialTheme.colorScheme.error)
         if (error == DiscoveryError.PermissionDenied) permission?.let { SourcePermissionLabel(it.origin, it.resourceKind) }
         field?.let { Text(stringResource(R.string.discovery_rule_field, it), style = MaterialTheme.typography.bodySmall) }
-        Row {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             TextButton(onClick = retry) { Text(stringResource(R.string.discovery_retry)) }
             TextButton(onClick = manage) { Text(stringResource(R.string.sources_title)) }
             if (back != null && (error == DiscoveryError.InvalidRequest || error == DiscoveryError.Unavailable))

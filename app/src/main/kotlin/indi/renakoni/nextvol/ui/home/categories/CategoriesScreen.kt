@@ -10,10 +10,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.stringResource
@@ -40,11 +42,15 @@ fun CategoriesScreen(
     onInput: (String, String) -> Unit = { _, _ -> },
     onAction: (String, Boolean) -> Unit = { _, _ -> },
 ) {
-    Scaffold(topBar = { CategoriesTopBar(onRefresh, onSettings) }) { padding ->
+    val content = state.content[state.selected] ?: DiscoveryPageContent()
+    Scaffold(topBar = { CategoriesTopBar(onRefresh, onSettings,
+        loading = !state.loadingSources && (content.loading || content.acting)) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             if (state.loadingSources) {
                 // No inventory snapshot yet is not an authoritative empty-source result.
-                LinearProgressIndicator(Modifier.fillMaxWidth())
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
             } else if (state.sources.isEmpty()) {
                 DiscoveryEmpty(stringResource(R.string.categories_no_sources), onManageSources)
             } else {
@@ -56,14 +62,12 @@ fun CategoriesScreen(
                 ) {
                     state.sources.forEach { source ->
                         Tab(selected = source.metadata.id == state.selected,
-                            modifier = Modifier.widthIn(max = 240.dp),
                             onClick = { onSelect(source.metadata.id) },
-                            text = { Text(source.metadata.item.name, maxLines = 1, overflow = TextOverflow.Ellipsis) })
+                            text = { Text(source.metadata.item.name, Modifier.widthIn(max = 208.dp),
+                                maxLines = 1, overflow = TextOverflow.Ellipsis) })
                     }
                 }
                 val id = state.selected
-                val content = state.content[id] ?: DiscoveryPageContent()
-                if (content.loading || content.acting) LinearProgressIndicator(Modifier.fillMaxWidth())
                 content.error?.let { DiscoveryFailure(it, onRefresh, onManageSources, onBack, content.errorField, content.errorPermission) }
                 if (id != null) key(id, content.resetId) {
                     val list = rememberLazyListState(content.scroll.index, content.scroll.offset)
@@ -124,12 +128,17 @@ fun CategoriesScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun CategoriesTopBar(onRefresh: () -> Unit, onSettings: () -> Unit) {
+internal fun CategoriesTopBar(onRefresh: () -> Unit, onSettings: () -> Unit, loading: Boolean = false) {
+    val refreshLabel = stringResource(R.string.discovery_refresh)
     TopAppBar(title = {}, expandedHeight = 56.dp,
         navigationIcon = { Icon(painterResource(R.drawable.view_list_24px), stringResource(R.string.categories_title), Modifier.padding(12.dp)) },
         actions = {
             IconButton(onClick = onRefresh) {
-                Icon(painterResource(R.drawable.refresh_24px), stringResource(R.string.discovery_refresh))
+                if (loading) {
+                    CircularProgressIndicator(Modifier.size(24.dp).semantics { contentDescription = refreshLabel }, strokeWidth = 2.dp)
+                } else {
+                    Icon(painterResource(R.drawable.refresh_24px), refreshLabel)
+                }
             }
             HomeSettingsAction(onSettings)
         }, windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top))

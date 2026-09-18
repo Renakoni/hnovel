@@ -112,7 +112,6 @@ internal fun BookshelfHomeContent(
                 ) {
                     uiState.bookshelfList.forEach { bookshelf ->
                         Tab(
-                            modifier = Modifier.widthIn(max = 240.dp),
                             selected = uiState.selectedBookshelfId == bookshelf.id,
                             onClick = {
                                 if (!uiState.selectMode) uiState.changePage(bookshelf.id)
@@ -120,6 +119,7 @@ internal fun BookshelfHomeContent(
                             text = {
                                 Text(
                                     text = bookshelf.name,
+                                    modifier = Modifier.widthIn(max = 208.dp),
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
