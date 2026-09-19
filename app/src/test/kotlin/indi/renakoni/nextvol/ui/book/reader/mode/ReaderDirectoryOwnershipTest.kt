@@ -115,6 +115,7 @@ class ReaderDirectoryOwnershipTest {
             readingData = mockk(relaxed = true),
             userDataRepository = UserDataRepository(dao),
             modeFactory = factory,
+            readAloud = mockk(),
         )
         store.put("reader", reader)
         readerJobs += reader.viewModelScope.coroutineContext[Job]!!
@@ -180,7 +181,7 @@ class ReaderDirectoryOwnershipTest {
         val factory = mockk<ReaderModeFactory> {
             every { create(any(), any(), any(), any()) } returns mockk(relaxed = true)
         }
-        val reader = ReaderViewModel(mockk(relaxed = true), chapters, mockk(relaxed = true), UserDataRepository(dao), factory)
+        val reader = ReaderViewModel(mockk(relaxed = true), chapters, mockk(relaxed = true), UserDataRepository(dao), factory, mockk())
         store.put("reader", reader)
         readerJobs += reader.viewModelScope.coroutineContext[Job]!!
         try {

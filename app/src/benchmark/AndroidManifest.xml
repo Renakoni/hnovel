@@ -7,6 +7,7 @@
             <intent-filter>
                 <action android:name="indi.renakoni.nextvol.benchmark.SEED" />
                 <action android:name="indi.renakoni.nextvol.benchmark.SEED_SOURCE" />
+                <action android:name="indi.renakoni.nextvol.benchmark.SPEECH_ENGINE" />
             </intent-filter>
         </receiver>
     </application>

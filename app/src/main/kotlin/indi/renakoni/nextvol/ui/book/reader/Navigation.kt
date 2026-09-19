@@ -33,6 +33,7 @@ import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.ui.book.reader.imageview.ImageViewerScreen
 import indi.renakoni.nextvol.ui.components.ColorPickerDialog
 import indi.renakoni.nextvol.ui.home.settings.theme.navigateToSettingsThemeDestination
+import indi.renakoni.nextvol.ui.tts.navigateToSpeechSettings
 import indi.renakoni.nextvol.utils.ImageUtils.saveBitmapAsPng
 import indi.renakoni.nextvol.utils.ImageUtils.uriToBitmap
 import indi.renakoni.nextvol.utils.isResumed
@@ -54,6 +55,7 @@ fun NavGraphBuilder.bookReaderDestination(onReaderActiveChanged: (Boolean) -> Un
         // Keep the existing Book-graph lifetime for queued recording writes, while each
         // restored reader entry owns a separate session during navigation transitions.
         val viewModel = hiltViewModel<ReaderViewModel>(parentEntry, key = navBackStackEntry.id)
+        val speechState by viewModel.readAloud.state.collectAsStateWithLifecycle()
         androidx.lifecycle.compose.LifecycleStartEffect(viewModel) {
             viewModel.setActive(true)
             onStopOrDispose { viewModel.setActive(false, navController.currentBackStackEntry?.id == navBackStackEntry.id) }
@@ -77,7 +79,11 @@ fun NavGraphBuilder.bookReaderDestination(onReaderActiveChanged: (Boolean) -> Un
                     onClickPrevChapter = viewModel::prevChapter,
                     onClickNextChapter = viewModel::nextChapter,
                     onChangeChapter = viewModel::changeChapter,
-                    onClickThemeSettings = navController::navigateToSettingsThemeDestination
+                    onClickThemeSettings = navController::navigateToSettingsThemeDestination,
+                    speechState = speechState,
+                    onStartReadAloud = viewModel::startReadAloud,
+                    onSpeechCommand = viewModel.readAloud::command,
+                    onSpeechSettings = navController::navigateToSpeechSettings,
                 )
             }
         }

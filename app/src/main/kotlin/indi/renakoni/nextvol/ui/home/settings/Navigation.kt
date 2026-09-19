@@ -45,6 +45,8 @@ import indi.renakoni.nextvol.ui.home.settings.textformatting.settingsTextFormatt
 import indi.renakoni.nextvol.ui.home.settings.theme.navigateToSettingsThemeDestination
 import indi.renakoni.nextvol.ui.home.settings.theme.settingsThemeDestination
 import indi.renakoni.nextvol.ui.storagemanager.navigateToStorageManager
+import indi.renakoni.nextvol.ui.tts.navigateToSpeechSettings
+import indi.renakoni.nextvol.ui.tts.speechSettingsDestination
 import indi.renakoni.nextvol.utils.isResumed
 import indi.renakoni.nextvol.utils.popBackStackIfResumed
 import androidx.navigation.NavDestination.Companion.hasRoute
@@ -74,6 +76,7 @@ fun NavGraphBuilder.settingsDestination() {
             onClickExportUserData = navController::navigateToExportUserDataDialog,
             onClickLogcat = navController::navigateToSettingsLogcatDestination,
             onClickTextFormatting = navController::navigateToSettingsTextFormattingManagerDestination,
+            onClickReadAloud = navController::navigateToSpeechSettings,
             onClickPluginManager = navController::navigateToSettingsPluginManagerHomeDestination,
             onClickThemeSettings = navController::navigateToSettingsThemeDestination,
             onClickStorageManager = navController::navigateToStorageManager,
@@ -103,6 +106,7 @@ fun NavGraphBuilder.settingsNavigation() {
         settingsPluginManagerNavigation()
         settingsLicensesDestination()
         settingsFormatsDestination()
+        speechSettingsDestination()
     }
 }
 

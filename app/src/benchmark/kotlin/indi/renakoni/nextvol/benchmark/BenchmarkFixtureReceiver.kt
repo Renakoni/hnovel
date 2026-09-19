@@ -60,6 +60,14 @@ class BenchmarkFixtureReceiver : BroadcastReceiver() {
                         runBlocking { seedSource() }
                         "source=SUCCEEDED"
                     }
+                    ACTION_SPEECH_ENGINE -> {
+                        val settings = buildJsonObject { put("engine", intent.getStringExtra("engine").orEmpty()) }
+                        runBlocking {
+                            NextVolDatabase.getInstance(context).userDataDao().insert(
+                                UserDataEntity("tts.settings", "", "String", settings.toString()))
+                        }
+                        "speech=SUCCEEDED"
+                    }
                     else -> "unsupported-action=${intent.action}"
                 }
                 pending.resultCode = Activity.RESULT_OK
@@ -250,6 +258,7 @@ class BenchmarkFixtureReceiver : BroadcastReceiver() {
     companion object {
         const val ACTION_SEED = "indi.renakoni.nextvol.benchmark.SEED"
         const val ACTION_SEED_SOURCE = "indi.renakoni.nextvol.benchmark.SEED_SOURCE"
+        const val ACTION_SPEECH_ENGINE = "indi.renakoni.nextvol.benchmark.SPEECH_ENGINE"
         // The built-in Wenku8 source parses book IDs as integers when it
         // performs its background refresh, so the fixture ID must be numeric.
         private val book = BookIdentity.book("9999999")

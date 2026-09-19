@@ -1,0 +1,382 @@
+package indi.renakoni.nextvol.tts
+
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
+import org.junit.Assert.*
+import org.junit.Rule
+import org.junit.Test
+import org.junit.rules.TemporaryFolder
+import java.io.File
+import java.util.UUID
+
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+class ReadAloudSessionTest {
+    @get:Rule val files = TemporaryFolder()
+
+    @Test fun prefetchIsBoundedAndCannotAdvanceTheListeningPosition() = runTest {
+        val env = Environment(this)
+        env.session.start(SpeechRequest("book", "one"))
+        runCurrent()
+        assertEquals(1, env.player.started.size)
+        assertEquals(4, env.synthesized.size)
+        assertEquals(4, env.audioFiles())
+        assertEquals(0, env.progress.saved.getValue("book").offset)
+        val first = env.player.started.single()
+        env.player.finish()
+        runCurrent()
+        assertEquals(2, env.player.started.size)
+        assertEquals(env.player.started.last().segment.start, env.progress.saved.getValue("book").offset)
+        assertFalse(first.file.exists())
+        assertTrue(env.audioFiles() <= 4)
+        env.stop()
+        assertEquals(0, env.audioFiles())
+    }
+
+    @Test fun pauseDuringPreparationStaysPausedWhenAudioArrives() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val env = Environment(this)
+        env.beforeSynthesis = { gate.await() }
+        env.session.start(SpeechRequest("book", "one"))
+        runCurrent()
+        env.session.pause()
+        gate.complete(Unit)
+        runCurrent()
+        assertEquals(SpeechPhase.Paused, env.session.state.value.phase)
+        assertFalse(env.player.playing)
+        assertEquals(0, env.progress.saved.getValue("book").offset)
+        env.session.resume()
+        assertEquals(SpeechPhase.Playing, env.session.state.value.phase)
+        assertTrue(env.player.playing)
+        env.stop()
+    }
+
+    @Test fun lateSynthesisAfterStopCannotPlayAndItsFilesAreRemoved() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val env = Environment(this)
+        env.beforeSynthesis = { withContext(NonCancellable) { gate.await() } }
+        env.session.start(SpeechRequest("book", "one"))
+        runCurrent()
+        env.session.stop()
+        gate.complete(Unit)
+        runCurrent()
+        assertTrue(env.player.started.isEmpty())
+        assertEquals(SpeechPhase.Stopped, env.session.state.value.phase)
+        assertEquals(0, env.audioFiles())
+    }
+
+    @Test fun switchingBooksWaitsForOldCleanupAndOnlyPlaysTheNewBook() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val env = Environment(this)
+        env.beforeSynthesis = { withContext(NonCancellable) { gate.await() } }
+        env.session.start(SpeechRequest("old", "one"))
+        runCurrent()
+        env.session.start(SpeechRequest("new", "one"))
+        runCurrent()
+        gate.complete(Unit)
+        runCurrent()
+        assertEquals(listOf("new"), env.player.started.map { it.chapter.bookId })
+        assertEquals("new", env.session.state.value.request?.bookId)
+        assertFalse(env.progress.saved.containsKey("old"))
+        env.stop()
+    }
+
+    @Test fun aThirdBookStillWaitsForTheOriginalSessionsCleanup() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val env = Environment(this)
+        env.beforeSynthesis = { withContext(NonCancellable) { gate.await() } }
+        try {
+            env.session.start(SpeechRequest("old", "one"))
+            runCurrent()
+            env.session.start(SpeechRequest("middle", "one"))
+            runCurrent()
+            env.session.start(SpeechRequest("new", "one"))
+            runCurrent()
+            assertEquals("The original engine still owns its audio directory", 1, env.opened.size)
+            gate.complete(Unit)
+            runCurrent()
+            assertEquals(listOf("new"), env.player.started.map { it.chapter.bookId })
+            assertEquals(2, env.opened.size)
+        } finally {
+            gate.complete(Unit)
+            env.stop()
+        }
+    }
+
+    @Test fun stoppingDuringABookmarkWriteCannotStartAudioAfterTheWriteFinishes() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val env = Environment(this)
+        env.progress.beforeSave = { gate.await() }
+        try {
+            env.session.start(SpeechRequest("book", "one"))
+            runCurrent()
+            assertTrue(env.player.started.isEmpty())
+            env.session.stop()
+            gate.complete(Unit)
+            runCurrent()
+            assertTrue("Stopping while saving must not allow late playback", env.player.started.isEmpty())
+            assertEquals(SpeechPhase.Stopped, env.session.state.value.phase)
+            assertEquals(0, env.audioFiles())
+        } finally {
+            gate.complete(Unit)
+            env.stop()
+        }
+    }
+
+    @Test fun failedFutureSegmentDoesNotInterruptCurrentAudioAndRetryDoesNotSkipIt() = runTest {
+        val env = Environment(this)
+        var fail = true
+        env.beforeSynthesis = { if (env.synthesized.size == 2 && fail) throw SpeechException(SpeechError.Network) }
+        env.session.start(SpeechRequest("book", "one"))
+        runCurrent()
+        assertEquals(SpeechPhase.Playing, env.session.state.value.phase)
+        assertEquals(1, env.player.started.size)
+        env.player.finish()
+        runCurrent()
+        assertEquals(SpeechError.Network, env.session.state.value.error)
+        val expected = speechSegments(env.text)[1]
+        assertEquals(expected.start, env.progress.saved.getValue("book").offset)
+        fail = false
+        env.session.resume()
+        runCurrent()
+        assertEquals(expected.text, env.player.started.last().segment.text)
+        assertEquals(1, env.player.started.last().index)
+        env.stop()
+    }
+
+    @Test fun crossChapterProgressFollowsPlaybackAndFailureIsRetryableAtTheNextChapter() = runTest {
+        val env = Environment(this)
+        var sourceFails = true
+        env.load = { book, chapter ->
+            if (chapter == "two" && sourceFails) throw SpeechException(SpeechError.SourceUnavailable)
+            SpeechChapter(book, chapter, "Book", chapter, "Chapter $chapter.", nextId = if (chapter == "one") "two" else null)
+        }
+        env.session.start(SpeechRequest("book", "one"))
+        runCurrent()
+        assertEquals("one", env.session.state.value.request?.chapterId)
+        env.player.finish()
+        runCurrent()
+        assertEquals("two", env.session.state.value.request?.chapterId)
+        assertEquals(SpeechError.SourceUnavailable, env.session.state.value.error)
+        assertEquals("two", env.progress.saved.getValue("book").chapterId)
+        sourceFails = false
+        env.session.resume()
+        runCurrent()
+        assertEquals("two", env.player.started.last().chapter.id)
+        env.player.finish()
+        runCurrent()
+        assertEquals(SpeechPhase.Completed, env.session.state.value.phase)
+        assertTrue(env.progress.saved.getValue("book").completed)
+        env.stop()
+    }
+
+    @Test fun changedTextRestartsSafelyAndPreviewNeverOverwritesBookProgress() = runTest {
+        val env = Environment(this)
+        val original = SpeechBookmark("book", "one", "old-text", 400)
+        env.progress.saved["book"] = original
+        env.session.start(SpeechRequest("book", "one"))
+        runCurrent()
+        assertEquals(0, env.player.started.single().index)
+        val saved = env.progress.saved.getValue("book")
+        env.session.start(SpeechRequest("", "", "Voice preview."))
+        runCurrent()
+        env.player.finish()
+        runCurrent()
+        assertEquals(saved, env.progress.saved.getValue("book"))
+        assertEquals(setOf("book"), env.progress.saved.keys)
+        env.stop()
+    }
+
+    @Test fun enteringABookResumesItsListeningChapterIndependentlyOfTheReader() = runTest {
+        val env = Environment(this)
+        val chapter = SpeechChapter("book", "two", "Book", "Chapter two", env.text)
+        val segment = speechSegments(env.text)[2]
+        env.progress.saved["book"] = SpeechBookmark("book", "two", chapter.fingerprint, segment.start)
+        try {
+            env.session.start(SpeechRequest("book", "one"))
+            runCurrent()
+            val clip = env.player.started.single()
+            assertEquals("two", clip.chapter.id)
+            assertEquals(segment.start, clip.segment.start)
+            // An explicit chapter command still starts at that chapter, not the saved location.
+            env.session.start(SpeechRequest("book", "one"), resumeSaved = false)
+            runCurrent()
+            assertEquals("one", env.player.started.last().chapter.id)
+            assertEquals(0, env.player.started.last().segment.start)
+        } finally { env.stop() }
+    }
+
+    @Test fun changingVoiceWhilePausedPreservesThePauseAndCurrentBoundary() = runTest {
+        val env = Environment(this)
+        env.session.start(SpeechRequest("book", "one"))
+        runCurrent()
+        env.player.finish()
+        runCurrent()
+        val index = env.player.started.last().index
+        env.session.pause()
+        env.configuration = SpeechSettings(voice = "new-voice")
+        env.session.reloadSettings()
+        runCurrent()
+        assertEquals(index, env.player.started.last().index)
+        assertEquals(SpeechPhase.Paused, env.session.state.value.phase)
+        assertEquals("new-voice", env.opened.last().voice)
+        env.stop()
+    }
+
+    @Test fun changingVoiceAfterTextChangesDoesNotSkipNewText() = runTest {
+        val env = Environment(this)
+        env.session.start(SpeechRequest("book", "one"))
+        runCurrent()
+        env.player.finish()
+        runCurrent()
+        assertTrue(env.player.started.last().index > 0)
+        env.load = { book, chapter -> SpeechChapter(book, chapter, "Book", "Edited", "New introduction. " + env.text) }
+        env.session.reloadSettings()
+        runCurrent()
+        assertEquals(0, env.player.started.last().index)
+        assertTrue(env.player.started.last().segment.text.startsWith("New introduction."))
+        env.stop()
+    }
+
+    @Test fun failedNextChapterClearsThePreviousChaptersControlsAndText() = runTest {
+        val env = Environment(this)
+        env.load = { book, chapter ->
+            if (chapter == "two") throw SpeechException(SpeechError.SourceUnavailable)
+            SpeechChapter(book, chapter, "Book", "First", "First chapter.", nextId = "two")
+        }
+        env.session.start(SpeechRequest("book", "one"))
+        runCurrent()
+        env.player.finish()
+        runCurrent()
+        val state = env.session.state.value
+        assertEquals(SpeechPhase.Failed, state.phase)
+        assertEquals("Book", state.bookTitle)
+        assertEquals(0, state.segmentCount)
+        assertEquals("", state.currentText)
+        assertNull(state.previousChapterId)
+        assertNull(state.nextChapterId)
+        assertEquals("Book", env.progress.saved.getValue("book").bookTitle)
+        env.stop()
+    }
+
+    @Test fun nextPassageAtTheEndDoesNotRestartTheCurrentPassage() = runTest {
+        val env = Environment(this)
+        env.load = { book, chapter -> SpeechChapter(book, chapter, "Book", "Last", "The end.") }
+        env.session.start(SpeechRequest("book", "one"))
+        runCurrent()
+        env.session.skipSegment(1)
+        runCurrent()
+        assertEquals(1, env.player.started.size)
+        env.stop()
+    }
+
+    @Test fun aNewSessionRemovesAudioLeftByADeadProcess() = runTest {
+        val env = Environment(this)
+        val stale = File(env.directory, UUID.randomUUID().toString()).apply { mkdir() }
+        File(stale, "audio.wav.part").writeText("incomplete audio")
+        env.session.start(SpeechRequest("book", "one"))
+        runCurrent()
+        assertFalse(stale.exists())
+        assertTrue(env.audioFiles() <= 4)
+        env.stop()
+    }
+
+    @Test fun waitingForTheNextChapterShowsBufferingWithoutAdvancingProgress() = runTest {
+        val env = Environment(this)
+        val gate = CompletableDeferred<Unit>()
+        env.load = { book, chapter ->
+            if (chapter == "two") gate.await()
+            SpeechChapter(book, chapter, "Book", chapter, "Chapter $chapter.", nextId = if (chapter == "one") "two" else null)
+        }
+        env.session.start(SpeechRequest("book", "one"))
+        runCurrent()
+        env.player.finish()
+        runCurrent()
+        assertEquals(SpeechPhase.Buffering, env.session.state.value.phase)
+        assertEquals("one", env.progress.saved.getValue("book").chapterId)
+        gate.complete(Unit)
+        runCurrent()
+        assertEquals("two", env.player.started.last().chapter.id)
+        env.stop()
+    }
+
+    @Test fun reopeningAfterStoppingAtACompletedChapterDoesNotReplayThatChapter() = runTest {
+        val env = Environment(this)
+        val gate = CompletableDeferred<Unit>()
+        env.load = { book, chapter ->
+            if (chapter == "two") gate.await()
+            SpeechChapter(book, chapter, "Book", chapter, "Chapter $chapter.", nextId = if (chapter == "one") "two" else null)
+        }
+        try {
+            env.session.start(SpeechRequest("book", "one"))
+            runCurrent()
+            env.player.finish()
+            runCurrent()
+            assertEquals(SpeechPhase.Buffering, env.session.state.value.phase)
+            assertEquals("Chapter one.".length, env.progress.saved.getValue("book").offset)
+            env.stop()
+            gate.complete(Unit)
+            env.session.start(SpeechRequest("book", "one"))
+            runCurrent()
+            assertEquals("two", env.player.started.last().chapter.id)
+        } finally { gate.complete(Unit); env.stop() }
+    }
+
+    private inner class Environment(val scope: TestScope) {
+        val text = "这是正常的小说内容，保留顺序并且持续朗读。".repeat(100)
+        var load: suspend (String, String) -> SpeechChapter = { book, chapter -> SpeechChapter(book, chapter, "Book", "Chapter", text) }
+        var beforeSynthesis: suspend () -> Unit = {}
+        var configuration = SpeechSettings()
+        val synthesized = mutableListOf<String>()
+        val opened = mutableListOf<SpeechSettings>()
+        val directory = files.newFolder()
+        val progress = MemoryProgress()
+        val player = FakePlayback()
+        val session = ReadAloudSession(scope, SpeechChapterSource { book, chapter -> load(book, chapter) },
+            { configuration }, progress, {
+                object : SpeechSynthesizer {
+                    override suspend fun open(settings: SpeechSettings): String { opened += settings; return "Test voice" }
+                    override suspend fun synthesize(text: String, output: File) {
+                        synthesized += text
+                        beforeSynthesis()
+                        output.writeText(text)
+                    }
+                    override fun cancel() = Unit
+                    override fun close() = Unit
+                }
+            }, player, directory, StandardTestDispatcher(scope.testScheduler))
+        fun audioFiles() = directory.walkTopDown().count { it.isFile }
+        fun stop() { session.stop(); scope.runCurrent() }
+    }
+
+    private class MemoryProgress : SpeechProgressStore {
+        val saved = mutableMapOf<String, SpeechBookmark>()
+        var beforeSave: suspend () -> Unit = {}
+        override suspend fun load(bookId: String) = saved[bookId]
+        override suspend fun save(bookmark: SpeechBookmark) { beforeSave(); saved[bookmark.bookId] = bookmark }
+    }
+
+    private class FakePlayback : SpeechPlayback {
+        val started = mutableListOf<SpeechClip>()
+        var playing = false
+        private var pending: CompletableDeferred<Unit>? = null
+        private var callback: ((SpeechPhase, Boolean) -> Unit)? = null
+        override suspend fun play(clip: SpeechClip, playWhenReady: Boolean, onState: (SpeechPhase, Boolean) -> Unit) {
+            val complete = CompletableDeferred<Unit>()
+            pending = complete
+            callback = onState
+            started += clip
+            playing = playWhenReady
+            onState(if (playing) SpeechPhase.Playing else SpeechPhase.Paused, playing)
+            try { complete.await() } finally { if (pending === complete) { pending = null; callback = null } }
+        }
+        fun finish() { check(playing); pending!!.complete(Unit) }
+        override fun pause() { playing = false; callback?.invoke(SpeechPhase.Paused, false) }
+        override fun resume() { playing = true; callback?.invoke(SpeechPhase.Playing, true) }
+        override fun stop() { pending?.cancel(); pending = null; callback = null; playing = false }
+    }
+}

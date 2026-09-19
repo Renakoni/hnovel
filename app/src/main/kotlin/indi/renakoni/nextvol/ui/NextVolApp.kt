@@ -12,6 +12,8 @@ import indi.renakoni.nextvol.ui.dialog.UpdatesAvailableDialogViewModel
 import indi.renakoni.nextvol.ui.dialog.navigateToPluginInstallerDialog
 import indi.renakoni.nextvol.ui.dialog.navigateUpdatesAvailableDialog
 import indi.renakoni.nextvol.ui.navigation.NextVolNavHost
+import indi.renakoni.nextvol.tts.ReadAloudController
+import indi.renakoni.nextvol.ui.tts.navigateToSpeechSettings
 import io.nightfish.lightnovelreader.api.ui.ReaderStyle
 import kotlinx.coroutines.flow.Flow
 import hnovel.imports.sourceImportUrl
@@ -35,6 +37,10 @@ fun NextVolApp(
     }
     LaunchedEffect(Unit) {
         intentFlow.collect { intent ->
+            if (intent.action == ReadAloudController.OPEN_PLAYER) {
+                navController.navigateToSpeechSettings()
+                return@collect
+            }
             if (intent.action == Intent.ACTION_VIEW) {
                 val uri = intent.data ?: return@collect
                 if (uri.scheme == "legado") {
