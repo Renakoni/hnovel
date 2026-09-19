@@ -1,5 +1,8 @@
 package indi.renakoni.nextvol.ui.tts
 
+import android.os.SystemClock
+import android.text.format.DateUtils
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
@@ -12,6 +15,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -23,11 +28,20 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -38,6 +52,7 @@ import indi.renakoni.nextvol.tts.SpeechAction
 import indi.renakoni.nextvol.tts.SpeechPhase
 import indi.renakoni.nextvol.tts.labelResource
 import indi.renakoni.nextvol.tts.messageResource
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -46,6 +61,7 @@ fun ReadAloudSheet(
     onCommand: (SpeechAction) -> Unit,
     onSettings: (() -> Unit)?,
     onDismiss: () -> Unit,
+    onSleepTimer: ((Int?) -> Unit)? = null,
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -62,6 +78,7 @@ fun ReadAloudSheet(
                 if (it == SpeechAction.Stop) onDismiss()
             },
             onSettings = onSettings,
+            onSleepTimer = onSleepTimer,
             modifier = Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, bottom = 16.dp),
         )
     }
@@ -73,6 +90,7 @@ fun ReadAloudControls(
     onCommand: (SpeechAction) -> Unit,
     onSettings: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
+    onSleepTimer: ((Int?) -> Unit)? = null,
 ) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(20.dp)) {
         // Let long titles and errors scroll while keeping playback actions within reach.
@@ -173,6 +191,44 @@ fun ReadAloudControls(
             ) {
                 Text(stringResource(R.string.next_chapter), textAlign = TextAlign.Center)
             }
+            if (onSleepTimer != null && state.request?.isPreview == false) {
+                SpeechSleepTimerButton(state, onSleepTimer)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SpeechSleepTimerButton(state: ReadAloudState, onSelect: (Int?) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    val deadline = state.sleepTimerDeadline
+    var now by remember(deadline) { mutableLongStateOf(SystemClock.elapsedRealtime()) }
+    LaunchedEffect(deadline) {
+        while (deadline != null && now < deadline) {
+            delay(1_000)
+            now = SystemClock.elapsedRealtime()
+        }
+    }
+    val title = stringResource(R.string.tts_sleep_timer)
+    val remaining = deadline?.let { DateUtils.formatElapsedTime(((it - now).coerceAtLeast(0) + 999) / 1_000) }
+    val description = if (remaining == null) stringResource(R.string.tts_timer_off)
+        else stringResource(R.string.tts_timer_remaining, remaining)
+    Box {
+        TextButton(
+            onClick = { expanded = true },
+            enabled = state.isActive || state.phase == SpeechPhase.Paused,
+            modifier = Modifier.semantics { contentDescription = title; stateDescription = description },
+            colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurfaceVariant),
+        ) {
+            Icon(painterResource(R.drawable.timer_24px), null, Modifier.size(20.dp))
+            Text(remaining ?: title, Modifier.padding(start = 6.dp))
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            for (minutes in listOf(null, 15, 30, 45, 60)) DropdownMenuItem(
+                text = { Text(if (minutes == null) stringResource(R.string.tts_timer_off)
+                    else stringResource(R.string.tts_timer_minutes, minutes)) },
+                onClick = { expanded = false; onSelect(minutes) },
+            )
         }
     }
 }

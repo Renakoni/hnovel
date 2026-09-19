@@ -49,6 +49,48 @@ class SpeechControlsTest {
     @After fun destroy() { activity.pause().stop().destroy() }
 
     @Test
+    @Config(sdk = [35], qualifiers = "en-rUS-w320dp-h640dp")
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun sleepTimerCanBeSetAndCancelledOnANarrowLargeTextScreen() {
+        checkSleepTimerMenu("Sleep timer", "15 min", "Off", "Pause", "Stop")
+    }
+
+    @Test
+    @Config(sdk = [35], qualifiers = "zh-rCN-w320dp-h640dp")
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun sleepTimerUsesChineseLabelsAndKeepsPlaybackControlsReachable() {
+        checkSleepTimerMenu("定时停止", "15 分钟", "关闭定时", "暂停", "停止")
+    }
+
+    private fun checkSleepTimerMenu(title: String, minutes: String, off: String, pause: String, stop: String) {
+        val selected = mutableListOf<Int?>()
+        activity.get().setContent {
+            CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, 1.8f)) {
+                MaterialTheme(typography = AppTypography) {
+                    ReadAloudControls(ReadAloudState(SpeechRequest("book", "one"), SpeechPhase.Playing,
+                        bookTitle = "Book", nextChapterId = "two"), {}, {},
+                        Modifier.width(320.dp).padding(horizontal = 24.dp), onSleepTimer = { selected += it })
+                }
+            }
+        }
+        compose.onNodeWithContentDescription(pause).assertIsDisplayed()
+        compose.onNodeWithText(stop).assertIsDisplayed()
+        compose.onNodeWithContentDescription(title).assertIsDisplayed().performClick()
+        compose.onNodeWithText(minutes).assertIsDisplayed().performClick()
+        compose.onNodeWithContentDescription(title).performClick()
+        compose.onNodeWithText(off).assertIsDisplayed().performClick()
+        assertEquals(listOf(15, null), selected)
+    }
+
+    @Test fun previewDoesNotOfferASleepTimerAndFinishedPlaybackCannotSetOne() {
+        val state = androidx.compose.runtime.mutableStateOf(ReadAloudState(SpeechRequest("", "", "Preview"), SpeechPhase.Playing))
+        activity.get().setContent { MaterialTheme { ReadAloudControls(state.value, {}, onSleepTimer = {}) } }
+        compose.onNodeWithContentDescription("Sleep timer").assertDoesNotExist()
+        compose.runOnIdle { state.value = ReadAloudState(SpeechRequest("book", "one"), SpeechPhase.Completed) }
+        compose.onNodeWithContentDescription("Sleep timer").assertIsNotEnabled()
+    }
+
+    @Test
     @Config(sdk = [35])
     @GraphicsMode(GraphicsMode.Mode.NATIVE)
     fun longReaderTitleLeavesAFixedAccessibleListeningActionOnNarrowLargeTextScreens() {
