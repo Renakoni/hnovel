@@ -21,7 +21,7 @@ class ReadAloudSmokeTest : UiAutomatorTest() {
         assertFalse(shell("dumpsys activity services $TARGET_PACKAGE").contains("ReadAloudService"))
         openBottomNavigation("Bookshelf")
         clickText("Benchmark Sample Novel")
-        clickText("Benchmark Chapter One")
+        clickScrolledText("Benchmark Chapter One")
         assertTextContains("Benchmark paragraph")
         device.click(device.displayWidth / 2, device.displayHeight / 2)
         clickDescription("Listen to this book")
