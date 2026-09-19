@@ -90,7 +90,7 @@ fun PluginManagerScreen(
                 icon = {
                     Icon(
                         painter = painterResource(id = R.drawable.archive_24px),
-                        contentDescription = "install"
+                        contentDescription = null
                     )
                 },
                 text = {
@@ -173,7 +173,7 @@ private fun ThirdPartyPluginTips() {
         ) {
             Icon(
                 painter = painterResource(id = R.drawable.info_24px),
-                contentDescription = "warning"
+                contentDescription = null
             )
             Spacer(Modifier.width(12.dp))
             Column {
@@ -208,7 +208,7 @@ private fun TopBar(
             IconButton(onClick = onClickBack) {
                 Icon(
                     painter = painterResource(id = R.drawable.arrow_back_24px),
-                    contentDescription = "back"
+                    contentDescription = stringResource(R.string.sources_back)
                 )
             }
         },

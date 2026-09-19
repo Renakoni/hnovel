@@ -452,7 +452,7 @@ private fun CollapseHeader(
                         .rotate(rotation)
                         .padding(8.dp),
                     painter = painterResource(R.drawable.keyboard_arrow_up_24px),
-                    contentDescription = "expand",
+                    contentDescription = stringResource(if (expanded) R.string.collapse else R.string.expand),
                     tint = MaterialTheme.colorScheme.primary
                 )
             }

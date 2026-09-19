@@ -45,6 +45,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -175,8 +176,8 @@ fun MarkAllChaptersAsReadDialog(
                 )
 
                 val desc = when (mode) {
-                    MarkReadMode.All -> "将本书所有章节标记为已读。"
-                    MarkReadMode.Range -> "选择起点和终点章节，将范围内章节标记为已读。"
+                    MarkReadMode.All -> stringResource(R.string.mark_read_all_description)
+                    MarkReadMode.Range -> stringResource(R.string.mark_read_range_description)
                 }
                 Text(
                     desc,
@@ -212,8 +213,8 @@ fun MarkAllChaptersAsReadDialog(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 val label = when (mode) {
-                    MarkReadMode.All -> "标记全部为已读"
-                    MarkReadMode.Range -> "标记已选 ${selectedIds.size} 章为已读"
+                    MarkReadMode.All -> stringResource(R.string.mark_read_all)
+                    MarkReadMode.Range -> pluralStringResource(R.plurals.mark_read_selected, selectedIds.size, selectedIds.size)
                 }
                 Text(label)
             }
@@ -223,7 +224,7 @@ fun MarkAllChaptersAsReadDialog(
                 onClick = onDismissRequest,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("取消")
+                Text(stringResource(R.string.cancel))
             }
         },
         shape = RoundedCornerShape(20.dp)
@@ -241,7 +242,7 @@ private fun MarkReadModeSegmentedButton(
             onClick = { onChange(MarkReadMode.All) },
             shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
         ) {
-            Text("全部章节")
+            Text(stringResource(R.string.mark_read_all_chapters))
         }
 
         SegmentedButton(
@@ -249,7 +250,7 @@ private fun MarkReadModeSegmentedButton(
             onClick = { onChange(MarkReadMode.Range) },
             shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
         ) {
-            Text("选择范围")
+            Text(stringResource(R.string.mark_read_choose_range))
         }
     }
 }

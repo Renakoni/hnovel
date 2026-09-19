@@ -139,7 +139,7 @@ private fun TopBar(
             IconButton(onClickBack) {
                 Icon(
                     painterResource(id = R.drawable.arrow_back_24px),
-                    contentDescription = "back"
+                    contentDescription = stringResource(R.string.sources_back)
                 )
             }
         },
@@ -149,14 +149,14 @@ private fun TopBar(
                     IconButton(onClickClearLogs) {
                         Icon(
                             painterResource(id = R.drawable.delete_forever_24px),
-                            contentDescription = "clear"
+                            contentDescription = stringResource(R.string.log_clear)
                         )
                     }
                 }
                 IconButton(onClickShareLogs) {
                     Icon(
                         painterResource(id = R.drawable.ios_share_24px),
-                        contentDescription = "share"
+                        contentDescription = stringResource(R.string.export_and_share)
                     )
                 }
             }
@@ -252,7 +252,7 @@ private fun BottomBar(
 
             Box {
                 IconButton(onClick = { menuExpanded = true }) {
-                    Icon(painterResource(R.drawable.more_vert_24px), contentDescription = "more")
+                    Icon(painterResource(R.drawable.more_vert_24px), contentDescription = stringResource(R.string.action_more_options))
                 }
                 DropdownMenu(
                     expanded = menuExpanded,
@@ -349,7 +349,7 @@ fun EmptyLogListContent() {
                 modifier = Modifier.size(44.dp),
                 painter = painterResource(R.drawable.bug_report_24px),
                 tint = MaterialTheme.colorScheme.outline,
-                contentDescription = "empty_list_icon"
+                contentDescription = null
             )
             Spacer(Modifier.height(18.dp))
             Text(stringResource(R.string.log_empty_list))

@@ -396,7 +396,7 @@ private fun TopBar(
             IconButton(onClick = onClickBack) {
                 Icon(
                     painter = painterResource(id = R.drawable.arrow_back_24px),
-                    contentDescription = "back"
+                    contentDescription = stringResource(R.string.sources_back)
                 )
             }
         },

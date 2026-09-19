@@ -540,7 +540,7 @@ fun SettingsAboutInfoDialog(
                     ) {
                         Image(
                             painter = painterResource(id = R.drawable.icon_foreground),
-                            contentDescription = "appIcon",
+                            contentDescription = null,
                             modifier = Modifier.scale(1.4f)
                         )
                     }
@@ -807,7 +807,7 @@ fun SliderValueDialog(
                 OutlinedTextField(
                     value = text,
                     onValueChange = { text = it },
-                    label = { Text("Value") },
+                    label = { Text(stringResource(R.string.dialog_value)) },
                     isError = error,
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),

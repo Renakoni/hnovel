@@ -1,0 +1,45 @@
+<resources>
+    <string name="action_sort">排序</string>
+    <string name="action_select">選擇</string>
+    <string name="action_more_options">更多選項</string>
+    <string name="action_refresh">重新整理</string>
+    <string name="action_bookmark">書籤</string>
+    <string name="action_save">儲存</string>
+    <string name="action_add">新增</string>
+    <string name="action_open">開啟</string>
+    <string name="action_clear_text">清除文字</string>
+    <string name="action_retry">重試</string>
+    <string name="image_load_failed">圖片載入失敗</string>
+    <string name="plugin_signature_invalid">簽章無效</string>
+    <string name="plugin_runtime_error">執行錯誤</string>
+    <string name="plugin_incompatible">不相容</string>
+    <string name="plugin_app_badge">應用程式</string>
+    <string name="dialog_value">數值</string>
+    <string name="paper_background_downloading">正在下載紙張背景…</string>
+    <string name="data_export_failed">匯出失敗</string>
+    <string name="data_export_success">匯出成功</string>
+    <string name="share_file">分享檔案</string>
+    <string name="reader_content_error">無法顯示內容</string>
+    <string name="debug_open_book">開啟書籍</string>
+    <string name="debug_book_key">Wenku8 ID / 來源限定書籍鍵</string>
+    <string name="debug_sql">SQL 偵錯</string>
+    <string name="debug_sql_statement">SQL 指令</string>
+    <string name="debug_run">執行</string>
+    <string name="debug_crash_tests">當機測試</string>
+    <string name="debug_looper_crash">主執行緒當機</string>
+    <string name="debug_null_crash">空指標當機</string>
+    <string name="mark_read_all_description">將本書所有章節標記為已讀。</string>
+    <string name="mark_read_range_description">選擇起點和終點章節，將範圍內章節標記為已讀。</string>
+    <string name="mark_read_all">全部標記為已讀</string>
+    <string name="mark_read_all_chapters">全部章節</string>
+    <string name="mark_read_choose_range">選擇範圍</string>
+    <plurals name="mark_read_selected">
+        <item quantity="other">將已選 %1$d 章標記為已讀</item>
+    </plurals>
+    <plurals name="formatting_rules_count">
+        <item quantity="other">%1$d 個規則</item>
+    </plurals>
+    <string name="plugin_delete_action">刪除外掛</string>
+    <string name="plugin_uninstall_action">解除安裝並刪除</string>
+    <string name="stats_total">總計</string>
+</resources>

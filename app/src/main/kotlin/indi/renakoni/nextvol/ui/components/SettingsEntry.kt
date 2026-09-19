@@ -105,7 +105,7 @@ fun SettingsSwitchEntry(
                     .size(24.dp),
                 painter = it,
                 tint = colorScheme.onSurfaceVariant,
-                contentDescription = "Icon"
+                contentDescription = null
             )
         }
 
@@ -219,7 +219,7 @@ private fun SettingsSliderEntry(
                     .size(24.dp),
                 painter = it,
                 tint = colorScheme.onSurfaceVariant,
-                contentDescription = "Icon"
+                contentDescription = null
             )
         }
 
@@ -346,7 +346,7 @@ fun SettingsMenuEntry(
                     .size(24.dp),
                 painter = it,
                 tint = colorScheme.onSurfaceVariant,
-                contentDescription = "Icon"
+                contentDescription = null
             )
         }
 
@@ -460,7 +460,7 @@ fun SettingsClickableEntry(
                     .size(24.dp),
                 painter = it,
                 tint = colorScheme.onSurfaceVariant,
-                contentDescription = "Icon"
+                contentDescription = null
             )
         }
 

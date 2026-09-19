@@ -14,6 +14,7 @@ import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.workDataOf
 import dagger.hilt.android.lifecycle.HiltViewModel
+import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.data.work.ExportDataWork
 import indi.renakoni.nextvol.ui.components.ExportContext
 import kotlinx.coroutines.flow.first
@@ -70,13 +71,13 @@ class ExportUserDataDialogViewModel @Inject constructor(
             if (workInfo?.state == WorkInfo.State.SUCCEEDED) {
                 val intent = ShareCompat.IntentBuilder(context)
                     .setType("application/zip")
-                    .setSubject("分享文件")
+                    .setSubject(context.getString(R.string.share_file))
                     .addStream(uri)
-                    .setChooserTitle("分享")
+                    .setChooserTitle(context.getString(R.string.export_and_share))
                     .intent
                     .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 context.startActivity(
-                    Intent.createChooser(intent, "Share")
+                    Intent.createChooser(intent, context.getString(R.string.export_and_share))
                 )
             }
             onFinish()

@@ -376,7 +376,7 @@ internal fun ReadingTopBar(
             ) {
                 Icon(
                     painter = painterResource(R.drawable.analytics_24px),
-                    contentDescription = "statistics"
+                    contentDescription = stringResource(R.string.nav_statistics)
                 )
             }
             HomeSettingsAction(onSettings)

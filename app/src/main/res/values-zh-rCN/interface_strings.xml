@@ -1,0 +1,45 @@
+<resources>
+    <string name="action_sort">排序</string>
+    <string name="action_select">选择</string>
+    <string name="action_more_options">更多选项</string>
+    <string name="action_refresh">刷新</string>
+    <string name="action_bookmark">书签</string>
+    <string name="action_save">保存</string>
+    <string name="action_add">添加</string>
+    <string name="action_open">打开</string>
+    <string name="action_clear_text">清除文本</string>
+    <string name="action_retry">重试</string>
+    <string name="image_load_failed">图片加载失败</string>
+    <string name="plugin_signature_invalid">签名无效</string>
+    <string name="plugin_runtime_error">运行错误</string>
+    <string name="plugin_incompatible">不兼容</string>
+    <string name="plugin_app_badge">应用</string>
+    <string name="dialog_value">数值</string>
+    <string name="paper_background_downloading">正在下载纸张背景…</string>
+    <string name="data_export_failed">导出失败</string>
+    <string name="data_export_success">导出成功</string>
+    <string name="share_file">分享文件</string>
+    <string name="reader_content_error">内容无法显示</string>
+    <string name="debug_open_book">打开书本</string>
+    <string name="debug_book_key">Wenku8 ID / 来源限定书籍键</string>
+    <string name="debug_sql">SQL 调试</string>
+    <string name="debug_sql_statement">SQL 指令</string>
+    <string name="debug_run">执行</string>
+    <string name="debug_crash_tests">崩溃测试</string>
+    <string name="debug_looper_crash">主线程崩溃</string>
+    <string name="debug_null_crash">空指针崩溃</string>
+    <string name="mark_read_all_description">将本书所有章节标记为已读。</string>
+    <string name="mark_read_range_description">选择起点和终点章节，将范围内章节标记为已读。</string>
+    <string name="mark_read_all">标记全部为已读</string>
+    <string name="mark_read_all_chapters">全部章节</string>
+    <string name="mark_read_choose_range">选择范围</string>
+    <plurals name="mark_read_selected">
+        <item quantity="other">标记已选 %1$d 章为已读</item>
+    </plurals>
+    <plurals name="formatting_rules_count">
+        <item quantity="other">%1$d 个规则</item>
+    </plurals>
+    <string name="plugin_delete_action">删除插件</string>
+    <string name="plugin_uninstall_action">卸载并删除</string>
+    <string name="stats_total">总计</string>
+</resources>

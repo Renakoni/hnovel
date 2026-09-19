@@ -120,7 +120,7 @@ fun EditBookshelfScreen(
                         IconButton(onClick = { onNameChange("") }) {
                             Icon(
                                 painter = painterResource(R.drawable.cancel_24px),
-                                contentDescription = "cancel",
+                                contentDescription = stringResource(R.string.action_clear_text),
                                 tint =
                                     if (isFocused) OutlinedTextFieldDefaults.colors().focusedTrailingIconColor
                                     else OutlinedTextFieldDefaults.colors().unfocusedTrailingIconColor
@@ -200,7 +200,7 @@ private fun TopBar(
             IconButton(onClickBack) {
                 Icon(painterResource(
                     id = R.drawable.arrow_back_24px),
-                    contentDescription = "back"
+                    contentDescription = stringResource(R.string.sources_back)
                 )
             }
         },
@@ -208,7 +208,7 @@ private fun TopBar(
             IconButton(onClickSave) {
                 Icon(
                     painter = painterResource(R.drawable.save_24px),
-                    contentDescription = "save"
+                    contentDescription = stringResource(R.string.action_save)
                 )
             }
         },

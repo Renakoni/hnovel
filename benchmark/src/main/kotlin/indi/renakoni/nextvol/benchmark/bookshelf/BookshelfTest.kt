@@ -15,7 +15,7 @@ class BookshelfTest : UiAutomatorTest() {
     }
 
     private fun openBookshelfMenu() {
-        clickDescription("more")
+        clickDescription("More options")
     }
 
     @Test
@@ -28,9 +28,9 @@ class BookshelfTest : UiAutomatorTest() {
         assertText("Benchmark Sample Novel")
         assertText("Benchmark Author")
         assertText("Benchmark Volume")
-        assertDescription("export")
-        assertDescription("formatting")
-        assertDescription("more")
+        assertDescription("Export")
+        assertDescription("Text Formatting")
+        assertDescription("More options")
     }
 
     @Test
@@ -40,7 +40,7 @@ class BookshelfTest : UiAutomatorTest() {
         clickText("Create Bookshelf")
         assertText("New Bookshelf")
         setFirstTextField("Automation Shelf")
-        clickDescription("save")
+        clickDescription("Save")
         assertText("Automation Shelf")
 
         restartApp()
@@ -51,7 +51,7 @@ class BookshelfTest : UiAutomatorTest() {
     @Test
     fun sortAndReorderControlsOpen() {
         openBookshelf()
-        clickDescription("sort")
+        clickDescription("Sort")
         assertText("Sort Type")
         assertText("Default")
         assertText("Recently Updated")
@@ -76,7 +76,7 @@ class BookshelfTest : UiAutomatorTest() {
         setFirstTextField("Renamed Benchmark Shelf")
         clickText("Auto Cache")
         clickText("Update Notification")
-        clickDescription("save")
+        clickDescription("Save")
         assertText("Renamed Benchmark Shelf")
 
         restartApp()
@@ -92,8 +92,8 @@ class BookshelfTest : UiAutomatorTest() {
         openBookshelf()
         openBookshelfMenu()
         clickText("Bookshelf Settings")
-        clickDescription("cancel")
-        clickDescription("save")
+        clickDescription("Clear text")
+        clickDescription("Save")
 
         assertText("Enter the bookshelf name.")
         assertText("Edit Bookshelf")
@@ -103,7 +103,7 @@ class BookshelfTest : UiAutomatorTest() {
     fun selectionModeSupportsPinMoveAndCancel() {
         openBookshelf()
         longClickText("Benchmark Sample Novel")
-        assertDescription("select all")
+        assertDescription("Select All")
         assertDescription("Settings")
         clickDescription("Selected book actions")
         assertText("Pin / unpin selected books")
@@ -114,7 +114,7 @@ class BookshelfTest : UiAutomatorTest() {
         assertText("Switch to list")
         pressBack()
 
-        clickDescription("cancel")
+        clickDescription("Cancel")
         assertText("Bookshelf")
 
         longClickText("Benchmark Sample Novel")

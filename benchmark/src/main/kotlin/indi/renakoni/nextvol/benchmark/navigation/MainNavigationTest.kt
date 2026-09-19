@@ -29,7 +29,7 @@ class MainNavigationTest : UiAutomatorTest() {
     @Test
     fun readingStatisticsOverviewAndDetailsOpen() {
         launchApp()
-        clickDescription("statistics")
+        clickDescription("Statistics")
         assertText("Statistics")
         assertTextContains("1")
 
@@ -48,7 +48,7 @@ class MainNavigationTest : UiAutomatorTest() {
     @Test
     fun dailyStatisticsDetailSupportsWeeklyMonthlyAndYearlyViews() {
         launchApp()
-        clickDescription("statistics")
+        clickDescription("Statistics")
         assertText("Statistics")
         assertText("Calendar")
         clickText("Detail")

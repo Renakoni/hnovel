@@ -305,7 +305,7 @@ fun ReaderThemeSettingsList(
                 val diskHit = loader.diskCache?.openSnapshot(key)?.use { true } ?: false
 
                 if (!memHit && !diskHit) {
-                    snackbarHostState.showSnackbar("正在下载纸张背景…")
+                    snackbarHostState.showSnackbar(context.getString(R.string.paper_background_downloading))
 
                     loader.enqueue(
                         ImageRequest.Builder(context)
@@ -772,7 +772,7 @@ private fun TopBar(
             IconButton(onClickBack) {
                 Icon(
                     painterResource(id = R.drawable.arrow_back_24px),
-                    contentDescription = "back"
+                    contentDescription = stringResource(R.string.sources_back)
                 )
             }
         }

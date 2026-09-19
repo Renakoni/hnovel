@@ -367,7 +367,7 @@ fun LocalBookManagerContent(
                     ) {
                         Icon(
                             painter = painterResource(id = R.drawable.close_24px),
-                            contentDescription = "close"
+                            contentDescription = stringResource(R.string.cancel)
                         )
                     }
                 },
@@ -376,13 +376,13 @@ fun LocalBookManagerContent(
                     IconButton(uiState.selectAll) {
                         Icon(
                             painter = painterResource(id = R.drawable.select_all_24px),
-                            contentDescription = "select_all"
+                            contentDescription = stringResource(R.string.select_all)
                         )
                     }
                     IconButton({ deleteDialogVisible = true }) {
                         Icon(
                             painter = painterResource(id = R.drawable.delete_forever_24px),
-                            contentDescription = "delete"
+                            contentDescription = stringResource(R.string.plugin_delete_confirm)
                         )
                     }
                 }
@@ -573,7 +573,7 @@ private fun LocalBookRow(
                     Icon(
                         painter = painterResource(R.drawable.info_24px),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        contentDescription = "info"
+                        contentDescription = stringResource(R.string.action_show_info)
                     )
                 }
             }
@@ -614,7 +614,7 @@ private fun LocalBookInfoCard(
                 ) {
                     Icon(
                         painter = painterResource(id = R.drawable.expand_circle_down_24px),
-                        contentDescription = "expand"
+                        contentDescription = stringResource(R.string.close)
                     )
                 }
                 Text(

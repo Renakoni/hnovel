@@ -115,7 +115,7 @@ fun BookCardContent(
                             Icon(
                                 modifier = Modifier.scale(0.75f, 0.75f),
                                 painter = painterResource(R.drawable.filled_bookmark_24px),
-                                contentDescription = "collected_indicator",
+                                contentDescription = stringResource(R.string.activity_collections),
                                 tint = colorScheme.onSurfaceVariant,
                             )
                         }

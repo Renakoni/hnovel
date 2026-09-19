@@ -30,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -186,7 +187,7 @@ private fun Group(
                     color = colorScheme.primary
                 )
                 Text(
-                    text = "${formattingGroup.size} 个规则",
+                    text = pluralStringResource(R.plurals.formatting_rules_count, formattingGroup.size, formattingGroup.size),
                     style = typography.labelMedium,
                     color = colorScheme.secondary
                 )
@@ -203,7 +204,7 @@ private fun Group(
                 modifier = Modifier.size(18.dp),
                 painter = painterResource(R.drawable.arrow_forward_ios_24px),
                 tint = colorScheme.secondary,
-                contentDescription = "enter"
+                contentDescription = stringResource(R.string.action_open)
             )
         }
     }
@@ -229,7 +230,7 @@ private fun TopBar(
             IconButton(onClick = onClickBack) {
                 Icon(
                     painter = painterResource(id = R.drawable.arrow_back_24px),
-                    contentDescription = "back"
+                    contentDescription = stringResource(R.string.sources_back)
                 )
             }
         },

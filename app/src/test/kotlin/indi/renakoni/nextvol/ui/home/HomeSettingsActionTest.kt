@@ -166,7 +166,7 @@ class HomeSettingsActionTest {
         assertEquals(1, collected)
         assertEquals(1, layoutChanges)
         assertEquals(1, opened)
-        compose.onNodeWithContentDescription("cancel").performClick()
+        compose.onNodeWithContentDescription("Cancel").performClick()
         assertEquals(1, cancelled)
     }
 }

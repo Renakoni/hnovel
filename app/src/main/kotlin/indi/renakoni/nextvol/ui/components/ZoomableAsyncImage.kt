@@ -31,6 +31,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -113,7 +114,7 @@ fun ZoomableImage(
                             contentDescription = null
                         )
                         Spacer(Modifier.height(6.dp))
-                        Text("图片加载失败", style = typography.labelLarge)
+                        Text(stringResource(R.string.image_load_failed), style = typography.labelLarge)
                         lastError?.let {
                             Text(
                                 text = it,
@@ -126,7 +127,7 @@ fun ZoomableImage(
                             retryKey++
                             lastError = null
                         }) {
-                            Text("重试")
+                            Text(stringResource(R.string.action_retry))
                         }
                     }
                 },

@@ -24,9 +24,9 @@ class ExploreTest : UiAutomatorTest() {
         clickCenter(covers.first())
         device.waitForIdle()
 
-        assertDescription("export")
-        assertDescription("formatting")
-        assertDescription("more")
+        assertDescription("Export")
+        assertDescription("Text Formatting")
+        assertDescription("More options")
     }
 
     @Test
@@ -112,7 +112,7 @@ class ExploreTest : UiAutomatorTest() {
         val queryNodes = device.wait(Until.findObjects(By.text(query)), TIMEOUT)
         assertTrue("Submitted query is not visible", queryNodes.isNotEmpty())
 
-        waitForDescriptions("export")
+        waitForDescriptions("Export")
         val networkLog = shell("logcat -d")
         assertTrue(
             "Search endpoint was not requested",
@@ -120,7 +120,7 @@ class ExploreTest : UiAutomatorTest() {
         )
         assertTrue("Search response was not received", "Ktor Client: FROM:" in networkLog)
 
-        assertDescription("formatting")
+        assertDescription("Text Formatting")
     }
 
     @Test

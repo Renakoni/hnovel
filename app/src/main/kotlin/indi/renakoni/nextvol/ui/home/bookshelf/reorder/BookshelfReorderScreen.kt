@@ -394,7 +394,7 @@ private fun ReorderTopBar(
             IconButton(onClick = onBack) {
                 Icon(
                     painter = painterResource(R.drawable.arrow_back_24px),
-                    contentDescription = "back"
+                    contentDescription = stringResource(R.string.sources_back)
                 )
             }
         }

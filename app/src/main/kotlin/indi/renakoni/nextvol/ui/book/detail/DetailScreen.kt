@@ -653,7 +653,7 @@ private fun TopBar(
             },
             navigationIcon = {
                 IconButton(onClick = onClickBackButton) {
-                    Icon(painterResource(id = R.drawable.arrow_back_24px), contentDescription = "back")
+                    Icon(painterResource(id = R.drawable.arrow_back_24px), contentDescription = stringResource(R.string.sources_back))
                 }
             },
             actions = {
@@ -700,14 +700,14 @@ private fun TopBarActions(
     var menuExpanded by remember { mutableStateOf(false) }
 
     IconButton(enabled = !volumesEmpty, onClick = onClickExport) {
-        Icon(painterResource(id = R.drawable.file_export_24px), contentDescription = "export")
+        Icon(painterResource(id = R.drawable.file_export_24px), contentDescription = stringResource(R.string.export))
     }
     IconButton(enabled = !volumesEmpty, onClick = onClickTextFormatting) {
-        Icon(painterResource(id = R.drawable.find_replace_24px), contentDescription = "formatting")
+        Icon(painterResource(id = R.drawable.find_replace_24px), contentDescription = stringResource(R.string.settings_text_formatting))
     }
     Box {
         IconButton(enabled = !volumesEmpty, onClick = { menuExpanded = true }) {
-            Icon(painterResource(id = R.drawable.more_vert_24px), contentDescription = "more")
+            Icon(painterResource(id = R.drawable.more_vert_24px), contentDescription = stringResource(R.string.action_more_options))
         }
         DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
             DropdownMenuItem(
@@ -1221,7 +1221,7 @@ private fun ChapterItem(
                         .size(24.dp),
                     painter = painterResource(R.drawable.target_24px),
                     tint = colorScheme.primary,
-                    contentDescription = "last_read"
+                    contentDescription = stringResource(R.string.last_read)
                 )
 
         }
