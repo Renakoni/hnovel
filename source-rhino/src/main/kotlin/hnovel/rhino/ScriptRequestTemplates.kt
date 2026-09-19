@@ -35,9 +35,10 @@ internal class ScriptRequestTemplates(private val scope: Scriptable, private val
         return bridge.call("request.withHeaders", arguments)
     }
 
-    private fun headers(cx: Context): JsonObject {
+    fun headers(cx: Context): JsonObject {
         val limit = cx.getThreadLocal(bridgeLimitKey) as Int
         val rule = frame.sourceHeaderRule.trim()
+        if (rule.isEmpty()) return JsonObject(emptyMap())
         if (rule.length > limit) throw ResultTooLarge()
         resolvingHeaders = true
         try {
@@ -66,7 +67,10 @@ internal class ScriptRequestTemplates(private val scope: Scriptable, private val
         try {
             val limit = cx.getThreadLocal(bridgeLimitKey) as Int
             var used = 2L
-            fun item(value: JsonElement): JsonPrimitive = JsonPrimitive(expand(cx, value.jsonPrimitive.content)).also {
+            // In speech scripts, nested request arguments have already been produced by JS.
+            // Reinterpreting them as source templates would execute braces from the book text.
+            fun item(value: JsonElement): JsonPrimitive = JsonPrimitive(if (frame.speakText != null) value.jsonPrimitive.content
+                else expand(cx, value.jsonPrimitive.content)).also {
                 used += it.toString().length + 1L
                 if (used > limit) throw ResultTooLarge()
             }
@@ -85,6 +89,58 @@ internal class ScriptRequestTemplates(private val scope: Scriptable, private val
                 if (JsonArray(it).toString().length > limit) throw ResultTooLarge()
             }
         } finally { depth-- }
+    }
+
+    /** Only the original speech URL field is code. Generated strings and expression results are data. */
+    fun speech(cx: Context, args: List<JsonElement>): JsonObject {
+        require(frame.speakText != null && args.size == 1)
+        val limit = cx.getThreadLocal(bridgeLimitKey) as Int
+        val original = args.single().jsonPrimitive.content.trim()
+        if (original.length > limit) throw ResultTooLarge()
+        fun evaluate(code: String): String {
+            val nested = NativeObject().apply { prototype = scope; put("result", this, null) }
+            val value = evaluateGlobal(cx, nested, code, "speech-request")
+            if (value == null || Undefined.isUndefined(value)) return ""
+            BoundedJsonResult(limit).encode(value)
+            return Context.toString(value).also { if (it.length > limit) throw ResultTooLarge() }
+        }
+        val expressions = linkedMapOf<String, JsonElement>()
+        val scripted = original.startsWith("@js:", true) || original.startsWith("<js>", true)
+        val rule = if (scripted) {
+            val code = if (original.startsWith("@js:", true)) original.substring(4) else {
+                require(original.endsWith("</js>", true))
+                original.substring(4, original.length - 5)
+            }
+            evaluate(code).trim()
+        } else {
+            val budget = RuleBudget(RuleLimits(maxRuleChars = limit, maxOutputChars = limit))
+            val at = RuleLocation("speech.url")
+            val output = StringBuilder()
+            var index = 0
+            var used = 0L
+            while (index < original.length) {
+                budget.check()
+                if (!original.startsWith("{{", index)) { output.append(original[index++]); continue }
+                val end = parser.balancedEnd(original, index, at, budget)
+                require(original.substring(end - 2, end) == "}}")
+                val expression = original.substring(index + 2, end - 2).trim()
+                if (expression in setOf("speakText", "speakSpeed", "key", "page", "baseUrl")) output.append(original.substring(index, end))
+                else {
+                    if (expressions.size >= 1024) throw ResultTooLarge()
+                    val name = "speechExpression${expressions.size}"
+                    val value = JsonPrimitive(evaluate(expression))
+                    used += value.toString().length
+                    if (used > limit) throw ResultTooLarge()
+                    expressions[name] = value
+                    output.append("{{").append(name).append("}}")
+                }
+                index = end
+            }
+            output.toString()
+        }
+        return buildJsonObject {
+            put("rule", rule); put("templates", !scripted); put("values", JsonObject(expressions))
+        }.also { if (it.toString().length > limit) throw ResultTooLarge() }
     }
 
     private fun expand(cx: Context, original: String): String {
@@ -121,7 +177,8 @@ internal class ScriptRequestTemplates(private val scope: Scriptable, private val
                     require(text.substring(end - 2, end) == "}}")
                     val expression = text.substring(index + 2, end - 2)
                     // Keep existing static compiler's charset-aware key/body/header expansion.
-                    expanded.append(if (expression.trim() in setOf("key", "page", "baseUrl")) text.substring(index, end)
+                    expanded.append(if (expression.trim() in setOf("key", "page", "baseUrl") ||
+                        frame.speakText != null && expression.trim() in setOf("speakText", "speakSpeed")) text.substring(index, end)
                         else evaluate(expression, emptyNull=true))
                     index = end
                 } else expanded.append(text[index++])
@@ -129,8 +186,11 @@ internal class ScriptRequestTemplates(private val scope: Scriptable, private val
             }
             value = expanded.toString()
             val optionStart = Regex(",\\s*(?=\\{)").find(value) ?: return value
-            val options = RequestOptionsJson.options(value.substring(optionStart.range.last + 1), mapOf(
-                "key" to JsonPrimitive("{{key}}"), "page" to JsonPrimitive(frame.page), "baseUrl" to JsonPrimitive("{{baseUrl}}")))
+            val variables = buildMap {
+                put("key", JsonPrimitive("{{key}}")); put("page", JsonPrimitive(frame.page)); put("baseUrl", JsonPrimitive("{{baseUrl}}"))
+                if (frame.speakText != null) { put("speakText", JsonPrimitive("{{speakText}}")); put("speakSpeed", JsonPrimitive(frame.speakSpeed)) }
+            }
+            val options = RequestOptionsJson.options(value.substring(optionStart.range.last + 1), variables)
             val script = options["js"]?.jsonPrimitive?.content
                 ?: return bounded(value.substring(0, optionStart.range.first) + "," + options)
             // URL-option JS receives the resolved URL, and baseUrl follows its authority.

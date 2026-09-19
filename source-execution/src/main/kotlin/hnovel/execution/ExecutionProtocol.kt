@@ -42,7 +42,8 @@ internal val ExecutionLimits.scriptDataLimit: Int get() = maxDataBytes ?: maxOut
   val chapterId: String? = null, val key: String = "", val page: Int = 1, val baseUrl: String = "",
   val libraryCode: String? = null, val book: JsonObject = JsonObject(emptyMap()),
   val chapter: JsonObject = JsonObject(emptyMap()), val chineseConverter: Int = 0, val sourceLoginUrl: String = "",
-  val sourceComment: String? = null, val nextChapterUrl: String? = null) : ExecutionTask
+  val sourceComment: String? = null, val nextChapterUrl: String? = null,
+  val sourceHeaderRule: String = "", val speakText: String? = null, val speakSpeed: Int = 10) : ExecutionTask
  @Serializable data class Rule(val rule: String, val input: RuleValue, val output: OutputKind = OutputKind.TextList,
   val location: RuleLocation = RuleLocation("rule"), val bookId: String? = null, val chapterId: String? = null,
   val key: String = "", val page: Int = 1, val baseUrl: String = "", val libraryCode: String? = null,
@@ -238,7 +239,8 @@ class WorkerRuntime(private val archives: hnovel.rhino.ArchiveDecoder = hnovel.r
      mapOf("result" to task.result), task.key, task.page, task.baseUrl, book = task.book, chapter = task.chapter,
      ruleContext = ruleContext,
      chineseConverter = task.chineseConverter, sourceLoginUrl = task.sourceLoginUrl, sourceComment = task.sourceComment,
-     nextChapterUrl = task.nextChapterUrl)
+     nextChapterUrl = task.nextChapterUrl, sourceHeaderRule = task.sourceHeaderRule,
+     speakText = task.speakText, speakSpeed = task.speakSpeed)
     when (val evaluated = RhinoScriptEngine(bridge, ScriptLimits(maxResultChars = wire.limits.maxOutputBytes,
      maxBridgeChars = wire.limits.scriptDataLimit), archives)
      .evaluate(task.code, frame, library(wire.identity, task.libraryCode, wire.libraryScripts))) {
@@ -267,7 +269,8 @@ object WorkerMain {
   WorkerRuntime().use { it.executeSerialized(input, bridge) }
 
  @JvmStatic fun main(args: Array<String>) {
-  val input = generateSequence { readLine() }.firstOrNull() ?: return
-  print(executeSerialized(input))
+  val input = System.`in`.bufferedReader(Charsets.UTF_8).readLine() ?: return
+  System.out.write(executeSerialized(input).toByteArray(Charsets.UTF_8))
+  System.out.flush()
  }
 }

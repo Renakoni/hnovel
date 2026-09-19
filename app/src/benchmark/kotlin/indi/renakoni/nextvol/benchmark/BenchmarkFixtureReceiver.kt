@@ -44,6 +44,7 @@ import kotlinx.serialization.json.put
 @AndroidEntryPoint
 class BenchmarkFixtureReceiver : BroadcastReceiver() {
     @Inject lateinit var sources: ImportedRuleSources
+    @Inject lateinit var speechSources: indi.renakoni.nextvol.tts.HttpSpeechRepository
 
     override fun onReceive(context: Context, intent: Intent) {
         val pending = goAsync()
@@ -59,6 +60,10 @@ class BenchmarkFixtureReceiver : BroadcastReceiver() {
                     ACTION_SEED_SOURCE -> {
                         runBlocking { seedSource() }
                         "source=SUCCEEDED"
+                    }
+                    ACTION_SPEECH_SOURCE -> {
+                        runBlocking { speechSources.save(listOf(speechFixture())) }
+                        "speech-source=SUCCEEDED"
                     }
                     ACTION_SPEECH_ENGINE -> {
                         val settings = buildJsonObject { put("engine", intent.getStringExtra("engine").orEmpty()) }
@@ -259,6 +264,7 @@ class BenchmarkFixtureReceiver : BroadcastReceiver() {
         const val ACTION_SEED = "indi.renakoni.nextvol.benchmark.SEED"
         const val ACTION_SEED_SOURCE = "indi.renakoni.nextvol.benchmark.SEED_SOURCE"
         const val ACTION_SPEECH_ENGINE = "indi.renakoni.nextvol.benchmark.SPEECH_ENGINE"
+        const val ACTION_SPEECH_SOURCE = "indi.renakoni.nextvol.benchmark.SPEECH_SOURCE"
         // The built-in Wenku8 source parses book IDs as integers when it
         // performs its background refresh, so the fixture ID must be numeric.
         private val book = BookIdentity.book("9999999")

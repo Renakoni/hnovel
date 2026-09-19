@@ -38,6 +38,8 @@ private class ScriptBridge(private val bridge: HostBridge, private val rules: Sc
                 if (name.removePrefix("java.") in ScriptCryptoObjects.factories && name.startsWith("java."))
                     return ScriptCryptoObjects.create(cx, scope, name.removePrefix("java."), arguments)
                 val result = if (name == "request.prepare") JsonArray(requests.prepare(cx, "java.connect", arguments))
+                else if (name == "request.speech") requests.speech(cx, arguments)
+                else if (name == "request.headers") { require(arguments.isEmpty()); requests.headers(cx) }
                 else if (name == "java.readTxtFile") resources.text(cx, arguments)
                 else if (name.startsWith("java.") && name.substringAfter("java.") in resources.methods) resources.archive(cx, name.substringAfter("java."), arguments)
                 else if (rules.supports(name, arguments)) rules.call(cx, name, arguments)
@@ -124,6 +126,7 @@ private class ScriptBridge(private val bridge: HostBridge, private val rules: Sc
         // initiate login, and the worker never receives a mutable Android Source object.
         source.defineProperty("loginUrl", frame.sourceLoginUrl, ScriptableObject.READONLY or ScriptableObject.PERMANENT)
         method(source, "getLoginUrl") { _, _, args -> require(args.isEmpty()); frame.sourceLoginUrl }
+        method(source, "getHeader") { _, _, args -> require(args.isEmpty()); frame.sourceHeaderRule }
         source.defineProperty("bookSourceComment", frame.sourceComment, ScriptableObject.READONLY or ScriptableObject.PERMANENT)
         method(source, "getBookSourceComment") { _, _, args -> require(args.isEmpty()); frame.sourceComment }
         method(javaBridge, "getSource") { _, _, args -> require(args.isEmpty()); source }
@@ -140,7 +143,7 @@ data class ScriptFrame(val sourceId: String, val profile: String, val bookId: St
     val ruleBudget: RuleBudget? = null, val book: JsonObject = JsonObject(emptyMap()),
     val chapter: JsonObject = JsonObject(emptyMap()), val chineseConverter: Int = 0, val sourceHeaderRule: String = "",
     val discovery: ScriptDiscovery? = null, val sourceLoginUrl: String = "", val sourceComment: String? = null,
-    val nextChapterUrl: String? = null)
+    val nextChapterUrl: String? = null, val speakText: String? = null, val speakSpeed: Int = 10)
 
 data class ScriptLimits(val instructionLimit: Int = 1_000_000, val maxResultChars: Int = 256 * 1024,
     val maxScriptChars: Int = 256 * 1024, val maxBridgeChars: Int = DEFAULT_BRIDGE_CHARS,
@@ -254,6 +257,10 @@ class RhinoScriptEngine(private val bridge: HostBridge, private val limits: Scri
                     scope.put("result", scope, JsonScriptData(context, scope, inputLimit).convert(frame.variables["result"] ?: JsonNull))
                 }
                 scope.put("key", scope, frame.key)
+                if (frame.speakText != null) {
+                    scope.put("speakText", scope, frame.speakText)
+                    scope.put("speakSpeed", scope, frame.speakSpeed)
+                }
                 scope.put("page", scope, frame.page)
                 scope.put("baseUrl", scope, ruleContext.contentBaseUrl)
                 context.putThreadLocal(bridgeLimitKey, limits.maxBridgeChars)

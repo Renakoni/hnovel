@@ -9,16 +9,24 @@ import java.nio.charset.Charset
 /** Static Legado URL/options. Expressions requiring JS/browser return an explicit deferred requirement. */
 class RequestCompiler {
     fun compile(id: String, rule: String, baseUrl: String, keyword: String = "", page: Int = 1,
-        headers: Map<String, String> = emptyMap(), kind: ResourceKind = ResourceKind.Document): CompiledRequest {
-        if (rule.length > 65536 || keyword.length > 65536 || page < 1) return CompiledRequest.Rejected(FailureCode.InvalidRequest)
+        headers: Map<String, String> = emptyMap(), kind: ResourceKind = ResourceKind.Document,
+        speakText: String? = null, speakSpeed: Int = 10, expandTemplates: Boolean = true,
+        templateValues: Map<String, String> = emptyMap()): CompiledRequest {
+        if (rule.length > 65536 || keyword.length > 65536 || page < 1 || (speakText?.length ?: 0) > 65536 ||
+            speakText != null && speakSpeed !in 5..85) return CompiledRequest.Rejected(FailureCode.InvalidRequest)
         return try {
-            if (rule.contains("<js>", true) || rule.contains("@js:", true)) return CompiledRequest.Rejected(FailureCode.ScriptRequired)
-            if (Regex("\\{\\{(.*?)\\}\\}").findAll(rule).any { it.groupValues[1].trim() !in setOf("key", "page", "baseUrl") }) {
+            if (expandTemplates && (rule.contains("<js>", true) || rule.contains("@js:", true))) return CompiledRequest.Rejected(FailureCode.ScriptRequired)
+            val variables = buildMap {
+                put("key", JsonPrimitive("{{key}}")); put("page", JsonPrimitive(page)); put("baseUrl", JsonPrimitive("{{baseUrl}}"))
+                if (speakText != null) { put("speakText", JsonPrimitive("{{speakText}}")); put("speakSpeed", JsonPrimitive(speakSpeed)) }
+                require(templateValues.size <= 1024 && templateValues.keys.none { it in this })
+                templateValues.forEach { (name, _) -> put(name, JsonPrimitive("{{$name}}")) }
+            }
+            if (expandTemplates && Regex("\\{\\{(.*?)\\}\\}").findAll(rule).any { it.groupValues[1].trim() !in variables }) {
                 return CompiledRequest.Rejected(FailureCode.ScriptRequired)
             }
             val optionStart = Regex(",\\s*(?=\\{)").find(rule)
-            val options = optionStart?.let { RequestOptionsJson.options(rule.substring(it.range.last + 1), mapOf(
-                "key" to JsonPrimitive("{{key}}"), "page" to JsonPrimitive(page), "baseUrl" to JsonPrimitive("{{baseUrl}}"))) } ?: buildJsonObject {}
+            val options = optionStart?.let { RequestOptionsJson.options(rule.substring(it.range.last + 1), if (expandTemplates) variables else emptyMap()) } ?: buildJsonObject {}
             if (options.keys.any { it in setOf("js") }) return CompiledRequest.Rejected(FailureCode.ScriptRequired)
             if ("serverID" in options) return CompiledRequest.Rejected(FailureCode.BrowserRequired)
             if (options.keys.any { it !in setOf("method", "body", "headers", "header", "charset", "retry", "webView", "webJs", "webViewDelayTime", "type") }) return CompiledRequest.Rejected(FailureCode.UnknownOption)
@@ -31,6 +39,7 @@ class RequestCompiler {
             val charset = options["charset"]?.jsonPrimitive?.content ?: "UTF-8"
             if (charset != "escape") Charset.forName(charset)
             fun expand(value: String, encodeKey: Boolean, pageAlternatives: Boolean = false): String {
+                if (!expandTemplates) return value
                 val template = Regex("\\{\\{\\s*(.*?)\\s*\\}\\}")
                 // Validate the rule before substitution. Inserted keyword text is data, even
                 // when it contains braces that look like another request template.
@@ -39,7 +48,10 @@ class RequestCompiler {
                     "key" -> if (encodeKey) encode(keyword, charset) else keyword
                     "page" -> page.toString()
                     "baseUrl" -> baseUrl
-                    else -> throw BrokerFailure(RequestStage.Parse, FailureCode.ScriptRequired)
+                    "speakText" -> speakText?.let { if (encodeKey) encode(it, charset) else it }
+                        ?: throw BrokerFailure(RequestStage.Parse, FailureCode.ScriptRequired)
+                    "speakSpeed" -> if (speakText != null) speakSpeed.toString() else throw BrokerFailure(RequestStage.Parse, FailureCode.ScriptRequired)
+                    else -> templateValues[match.groupValues[1].trim()] ?: throw BrokerFailure(RequestStage.Parse, FailureCode.ScriptRequired)
                 } }
                 if (pageAlternatives) text = Regex("<([^<>]+)>").replace(text) { match ->
                     val pages = match.groupValues[1].split(',')
@@ -48,7 +60,7 @@ class RequestCompiler {
                 return text
             }
             val rawUrl = rule.substring(0, optionStart?.range?.first ?: rule.length).trim()
-            val expandedUrl = expand(rawUrl, true, pageAlternatives = true)
+            val expandedUrl = expand(rawUrl, true, pageAlternatives = speakText == null)
             val url = if (expandedUrl.startsWith("data:")) expandedUrl else (baseUrl.toHttpUrlOrNull()?.resolve(encodeNonAscii(expandedUrl, charset))
                 ?: encodeNonAscii(expandedUrl, charset).toHttpUrlOrNull()
                 ?: return CompiledRequest.Rejected(FailureCode.InvalidRequest)).toString()

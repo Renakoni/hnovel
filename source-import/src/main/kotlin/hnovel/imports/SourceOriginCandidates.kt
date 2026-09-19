@@ -10,7 +10,12 @@ data class OriginCandidate(val origin: String, val kind: ResourceKind)
 object SourceOriginCandidates {
     private val absolute = Regex("https?://[^\\s\"'<>\\\\/?#]+", RegexOption.IGNORE_CASE)
 
-    fun discover(raw: JsonObject): List<OriginCandidate> {
+    fun discover(raw: JsonObject): List<OriginCandidate> = scanFields(raw, listOf("bookSourceUrl", "searchUrl", "exploreUrl", "loginUrl", "jsLib",
+        "ruleSearch", "ruleExplore", "ruleBookInfo", "ruleToc", "ruleContent"))
+
+    fun speech(raw: JsonObject): List<OriginCandidate> = scanFields(raw, listOf("url", "header", "loginUrl", "jsLib"))
+
+    private fun scanFields(raw: JsonObject, fields: List<String>): List<OriginCandidate> {
         val found = linkedSetOf<OriginCandidate>()
         fun scan(value: JsonElement, kind: ResourceKind) {
             if (found.size >= 32) return
@@ -31,8 +36,7 @@ object SourceOriginCandidates {
                 else -> Unit
             }
         }
-        for (field in listOf("bookSourceUrl", "searchUrl", "exploreUrl", "loginUrl", "jsLib",
-            "ruleSearch", "ruleExplore", "ruleBookInfo", "ruleToc", "ruleContent")) {
+        for (field in fields) {
             val kind = when (field) {
                 "jsLib" -> ResourceKind.Script
                 "searchUrl" -> ResourceKind.Api
