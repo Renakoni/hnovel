@@ -98,7 +98,7 @@ class ReaderDirectoryProgressTest {
             every { getFlow(any()) } returns flowOf(null)
         }
         coEvery { dao.get(any()) } returns null
-        val reader = ReaderViewModel(mockk(relaxed = true), chapters, readingData, UserDataRepository(dao), factory)
+        val reader = ReaderViewModel(mockk(relaxed = true), chapters, readingData, UserDataRepository(dao), factory, mockk())
         store.put("reader", reader)
         scheduler.runCurrent()
         withTimeout(5_000) {

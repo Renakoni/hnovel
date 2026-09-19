@@ -15,7 +15,8 @@ import indi.renakoni.nextvol.ui.home.settings.SettingState
 fun ReadingSettingsList(
     settingState: SettingState,
     onClickTheme: () -> Unit,
-    onClickTextFormatting: () -> Unit
+    onClickTextFormatting: () -> Unit,
+    onClickReadAloud: () -> Unit,
 ) {
     SettingsClickableEntry(
         modifier = Modifier.background(colorScheme.surfaceContainer),
@@ -30,6 +31,13 @@ fun ReadingSettingsList(
         title = stringResource(R.string.settings_text_formatting),
         description = stringResource(R.string.settings_text_formatting_desc),
         onClick = onClickTextFormatting
+    )
+    SettingsClickableEntry(
+        modifier = Modifier.background(colorScheme.surfaceContainer),
+        painter = painterResource(R.drawable.headphones_24px),
+        title = stringResource(R.string.tts_title),
+        description = stringResource(R.string.tts_settings_description),
+        onClick = onClickReadAloud,
     )
     SettingsSwitchEntry(
         modifier = Modifier.background(colorScheme.surfaceContainer),

@@ -11,6 +11,7 @@ import indi.renakoni.nextvol.data.book.ChapterSource
 import indi.renakoni.nextvol.data.reading.RepositoryReaderRecordStore
 import indi.renakoni.nextvol.data.statistics.StatsRepository
 import indi.renakoni.nextvol.data.userdata.UserDataRepository
+import indi.renakoni.nextvol.tts.ReadAloudController
 import indi.renakoni.nextvol.ui.book.reader.content.ReaderMode
 import indi.renakoni.nextvol.ui.book.reader.content.ReaderModeFactory
 import indi.renakoni.nextvol.ui.book.reader.content.ReaderModeHost
@@ -28,7 +29,8 @@ class ReaderViewModel @Inject constructor(
     private val chapterSource: ChapterSource,
     private val readingData: BookReadingDataAccess,
     userDataRepository: UserDataRepository,
-    private val modeFactory: ReaderModeFactory
+    private val modeFactory: ReaderModeFactory,
+    val readAloud: ReadAloudController,
 ) : ViewModel() {
     private val foreground = indi.renakoni.nextvol.data.web.ForegroundSourceRequest()
     private val readerScope = CoroutineScope(viewModelScope.coroutineContext + foreground)
@@ -105,6 +107,11 @@ class ReaderViewModel @Inject constructor(
     fun prevChapter() = modeHost.loadPrevChapter()
 
     fun nextChapter() = modeHost.loadNextChapter()
+
+    fun startReadAloud() {
+        val chapter = currentChapterIdForModeSwitch()
+        if (bookId.isNotBlank() && chapter.isNotBlank()) readAloud.start(bookId, chapter)
+    }
 
     fun changeChapter(chapterId: String) {
         this.chapterId = chapterId

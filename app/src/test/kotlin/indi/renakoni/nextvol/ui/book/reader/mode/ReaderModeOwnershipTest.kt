@@ -82,7 +82,7 @@ class ReaderModeOwnershipTest {
                 }
             }
         }
-        val reader = ReaderViewModel(mockk(), mockk(), mockk(), UserDataRepository(dao), factory)
+        val reader = ReaderViewModel(mockk(), mockk(), mockk(), UserDataRepository(dao), factory, mockk())
         store.put("reader", reader)
         reader.changeChapter("initial")
         scheduler.runCurrent()
@@ -152,7 +152,7 @@ class ReaderModeOwnershipTest {
                 }
             }
         }
-        val reader = ReaderViewModel(mockk(), mockk(), mockk(), UserDataRepository(dao), factory)
+        val reader = ReaderViewModel(mockk(), mockk(), mockk(), UserDataRepository(dao), factory, mockk())
         store.put("reader", reader)
 
         reader.changeChapter("initial")

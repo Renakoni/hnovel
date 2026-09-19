@@ -55,6 +55,7 @@ fun SettingsScreen(
     onClickThemeSettings: () -> Unit,
     onClickPluginManager: () -> Unit,
     onClickTextFormatting: () -> Unit,
+    onClickReadAloud: () -> Unit,
     onClickStorageManager: () -> Unit,
     clearReadingCache: suspend () -> Unit,
     clearDownloads: suspend () -> Unit,
@@ -86,7 +87,8 @@ fun SettingsScreen(
                     ReadingSettingsList(
                         settingState = settingState,
                         onClickTheme = onClickThemeSettings,
-                        onClickTextFormatting = onClickTextFormatting
+                        onClickTextFormatting = onClickTextFormatting,
+                        onClickReadAloud = onClickReadAloud,
                     )
                 }
             }

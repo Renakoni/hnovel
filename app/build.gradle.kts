@@ -163,6 +163,8 @@ tasks.withType<JavaCompile>().configureEach {
 }
 
 dependencies {
+    implementation(libs.media3.exoplayer)
+    implementation(libs.media3.session)
     implementation("me.zhanghai.android.libarchive:library:1.1.6")
     // Desugaring
     coreLibraryDesugaring(libs.desugar.jdk.libs)

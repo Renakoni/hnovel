@@ -10,7 +10,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,7 +28,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsIgnoringVisibility
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.BottomAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -62,6 +60,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -77,6 +76,8 @@ import com.github.michaelbull.result.map
 import com.github.michaelbull.result.onErr
 import com.github.michaelbull.result.onOk
 import indi.renakoni.nextvol.R
+import indi.renakoni.nextvol.tts.ReadAloudState
+import indi.renakoni.nextvol.tts.SpeechAction
 import indi.renakoni.nextvol.ui.book.reader.content.ContentComponent
 import indi.renakoni.nextvol.ui.book.reader.content.LocalReaderVolumeKeysEnabled
 import indi.renakoni.nextvol.ui.components.AnimatedText
@@ -84,6 +85,7 @@ import indi.renakoni.nextvol.ui.components.AnimatedTextLine
 import indi.renakoni.nextvol.ui.components.LnrSnackbar
 import indi.renakoni.nextvol.ui.components.RollingNumber
 import indi.renakoni.nextvol.ui.home.settings.data.MenuOptions
+import indi.renakoni.nextvol.ui.tts.ReadAloudSheet
 import indi.renakoni.nextvol.utils.LocalClaimSnackbarHost
 import indi.renakoni.nextvol.utils.LocalSnackbarHost
 import indi.renakoni.nextvol.utils.readerBackgroundColor
@@ -106,7 +108,11 @@ fun ReaderScreen(
     onClickPrevChapter: () -> Unit,
     onClickNextChapter: () -> Unit,
     onChangeChapter: (chapterId: String) -> Unit,
-    onClickThemeSettings: () -> Unit
+    onClickThemeSettings: () -> Unit,
+    speechState: ReadAloudState,
+    onStartReadAloud: () -> Unit,
+    onSpeechCommand: (SpeechAction) -> Unit,
+    onSpeechSettings: () -> Unit,
 ) {
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
     var isImmersive by remember { mutableStateOf(true) }
@@ -116,6 +122,7 @@ fun ReaderScreen(
     var lastBackPressTime: Long by remember { mutableLongStateOf(0) }
     var showSettingsBottomSheet by remember { mutableStateOf(false) }
     var showChapterSelectionBottomSheet by remember { mutableStateOf(false) }
+    var showReadAloud by remember { mutableStateOf(false) }
     var selectedVolumeId by remember { mutableStateOf("") }
 
     val coroutineScope = rememberCoroutineScope()
@@ -206,7 +213,7 @@ fun ReaderScreen(
 
         Content(
             isImmersive = isImmersive,
-            volumeKeysEnabled = !showSettingsBottomSheet && !showChapterSelectionBottomSheet,
+            volumeKeysEnabled = !showSettingsBottomSheet && !showChapterSelectionBottomSheet && !showReadAloud,
             readingScreenUiState = readingScreenUiState,
             settingState = settingState,
             fontFamilySettings = fontFamilySettings,
@@ -217,13 +224,17 @@ fun ReaderScreen(
 
         if (!isImmersive) {
             Box(Modifier.align(Alignment.TopCenter).readerProbeLayout("top-bar")) {
-                TopBar(
+                ReaderTopBar(
                     onClickBackButton = onClickBackButton,
                     title = readingScreenUiState.contentUiState?.readingChapterContent
                         ?.map { it.title }
                         ?.getOrElse { "Unknowing" }
                         ?: "Unknowing",
-                    scrollBehavior
+                    scrollBehavior = scrollBehavior,
+                    onReadAloud = {
+                        onStartReadAloud()
+                        showReadAloud = true
+                    },
                 )
             }
             Box(Modifier.align(Alignment.BottomCenter).readerProbeLayout("bottom-bar")) {
@@ -242,6 +253,14 @@ fun ReaderScreen(
             }
         }
         }
+    }
+    if (showReadAloud) {
+        ReadAloudSheet(
+            state = speechState,
+            onCommand = onSpeechCommand,
+            onSettings = { showReadAloud = false; onSpeechSettings() },
+            onDismiss = { showReadAloud = false },
+        )
     }
     AnimatedVisibility(visible = showSettingsBottomSheet) {
         SettingsBottomSheet(
@@ -388,37 +407,36 @@ fun Content(
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
-private fun TopBar(
+internal fun ReaderTopBar(
     onClickBackButton: () -> Unit,
     title: String,
-    scrollBehavior: TopAppBarScrollBehavior
+    scrollBehavior: TopAppBarScrollBehavior,
+    onReadAloud: () -> Unit,
 ) {
     TopAppBar(
         navigationIcon = {
             IconButton(
                 onClick = onClickBackButton) {
-                Icon(painterResource(id = R.drawable.arrow_back_24px), "back")
+                Icon(painterResource(id = R.drawable.arrow_back_24px), stringResource(R.string.sources_back))
             }
         },
         title = {
-            Row(
-                modifier = Modifier
-                    .horizontalScroll(rememberScrollState())
-                    .fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                AnimatedContent(title, label = "TitleAnimate") { text ->
-                    Text(
-                        text = text,
-                        style = typography.displayLarge,
-                        fontWeight = FontWeight.W400,
-                        color = colorScheme.onSurface,
-                        maxLines = 1,
-                        softWrap = false,
-                        overflow = TextOverflow.Visible,
-                        modifier = Modifier.readerProbeLayout("top-title")
-                    )
-                }
+            AnimatedContent(title, label = "TitleAnimate") { text ->
+                Text(
+                    text = text,
+                    style = typography.displayLarge,
+                    fontWeight = FontWeight.W400,
+                    color = colorScheme.onSurface,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.readerProbeLayout("top-title")
+                )
+            }
+        },
+        actions = {
+            IconButton(onClick = onReadAloud, modifier = Modifier.size(48.dp).testTag("reader-read-aloud")) {
+                Icon(painterResource(R.drawable.headphones_24px), stringResource(R.string.tts_start))
             }
         },
         scrollBehavior = scrollBehavior,
