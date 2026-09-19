@@ -41,6 +41,10 @@ class FilterLocalizationTest {
     fun commonFiltersUseChineseAndLegacyPluginTextIsPreserved() =
         assertFilterText("字数: 无限制", "已完结")
 
+    @Test @Config(qualifiers = "ru")
+    fun commonFiltersUseRussianAndLegacyPluginTextIsPreserved() =
+        assertFilterText("Число слов: Без ограничений", "Завершено")
+
     private fun assertFilterText(wordCount: String, completed: String) {
         val builtIn = WordCountFilter()
         val completedFilter = IsCompletedSwitchFilter()
