@@ -1,13 +1,13 @@
 package indi.renakoni.nextvol.data.update
 
 import android.util.Log
+import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.BuildConfig
 import kotlinx.coroutines.flow.MutableStateFlow
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
 import java.io.File
-import java.io.IOException
 import java.util.concurrent.TimeUnit
 import java.util.zip.ZipFile
 
@@ -35,11 +35,11 @@ object APIParser {
 
     private fun fetchUpdate(
         channel: String,
-        updatePhase: MutableStateFlow<String>,
+        updatePhase: MutableStateFlow<UpdatePhase>,
         allowZipFallback: Boolean = false
     ): Release? {
         return try {
-            updatePhase.tryEmit("API步骤: 正在请求 $channel 频道更新信息")
+            updatePhase.tryEmit(UpdatePhase(R.string.update_phase_api_request, listOf(channel)))
             val request = Request.Builder()
                 .url("$BASE_URL$API_PATH?channel=$channel&ref=lnr-app&ver=${BuildConfig.VERSION_NAME}")
                 .header("Accept", "application/json")
@@ -53,7 +53,7 @@ object APIParser {
                 response.body.string()
             }
 
-            updatePhase.tryEmit("API步骤: 解析更新信息")
+            updatePhase.tryEmit(UpdatePhase(R.string.update_phase_api_parse))
             val json = JSONObject(responseBody)
 
             if (json.has("error")) {
@@ -65,7 +65,7 @@ object APIParser {
             val versionName = json.getString("version")
             val releaseNotes = json.getString("release_notes")
 
-            updatePhase.tryEmit("API步骤: 获取下载链接")
+            updatePhase.tryEmit(UpdatePhase(R.string.update_phase_api_download_link))
             val artifacts = json.getJSONArray("artifacts")
             var downloadUrl: String? = null
             var isZip = false
@@ -102,7 +102,7 @@ object APIParser {
                                 entry.name.endsWith(".apk") &&
                                         "release" in entry.name
                             }
-                            ?: throw IOException("在压缩包 [${zipFile.name}] 中未找到 APK 文件")
+                            ?: throw MissingUpdateApkException(zipFile.name)
 
                         targetApk.parentFile?.mkdirs()
                         if (targetApk.exists()) targetApk.delete()
@@ -120,7 +120,7 @@ object APIParser {
                 }
             } else null
 
-            updatePhase.tryEmit("API步骤: 更新信息获取完成")
+            updatePhase.tryEmit(UpdatePhase(R.string.update_phase_api_complete))
             APIRelease(
                 version = versionCode,
                 versionName = versionName,
@@ -135,19 +135,19 @@ object APIParser {
     }
 
     object StableParser : UpdateParser {
-        override fun parser(updatePhase: MutableStateFlow<String>): Release? {
+        override fun parser(updatePhase: MutableStateFlow<UpdatePhase>): Release? {
             return fetchUpdate("stable", updatePhase)
         }
     }
 
     object BetaParser : UpdateParser {
-        override fun parser(updatePhase: MutableStateFlow<String>): Release? {
+        override fun parser(updatePhase: MutableStateFlow<UpdatePhase>): Release? {
             return fetchUpdate("beta", updatePhase)
         }
     }
 
     object UnstableParser : UpdateParser {
-        override fun parser(updatePhase: MutableStateFlow<String>): Release? {
+        override fun parser(updatePhase: MutableStateFlow<UpdatePhase>): Release? {
             return fetchUpdate("unstable", updatePhase, allowZipFallback = true)
         }
     }

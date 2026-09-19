@@ -50,8 +50,8 @@ class UpdateCheckRepository @Inject constructor(
         private set
     private val mutableAvailable: MutableStateFlow<Boolean> = MutableStateFlow(false)
     val availableFlow: Flow<Boolean> = mutableAvailable
-    private val _updatePhase = MutableStateFlow("未检查")
-    val updatePhase: Flow<String> = _updatePhase
+    private val _updatePhase = MutableStateFlow(UpdatePhase(R.string.update_phase_not_checked))
+    val updatePhase: Flow<UpdatePhase> = _updatePhase
     private val _isDownloading = MutableStateFlow(false)
     val isDownloading: StateFlow<Boolean> = _isDownloading.asStateFlow()
     private val _downloadProgress = MutableStateFlow(0f)
@@ -84,7 +84,7 @@ class UpdateCheckRepository @Inject constructor(
             val updateChannelKey = userDataRepository.stringUserData(UserDataPath.Settings.App.UpdateChannel.path).get() ?: MenuOptions.UpdateChannelOptions.DEVELOPMENT
             val distributionPlatform = userDataRepository.stringUserData(UserDataPath.Settings.App.DistributionPlatform.path).get() ?: MenuOptions.UpdatePlatformOptions.LnrAPI
             Log.i("UpdateChecker", "Checking for updates from $distributionPlatform/$updateChannelKey")
-            _updatePhase.update { "已请求更新，等待 $distributionPlatform 应答" }
+            _updatePhase.update { UpdatePhase(R.string.update_phase_waiting, listOf(distributionPlatform)) }
             try {
                 release =
                     MenuOptions.UpdatePlatformOptions
@@ -94,15 +94,15 @@ class UpdateCheckRepository @Inject constructor(
             } catch (e: Exception) {
                 Log.e("UpdateChecker", "failed to get release")
                 e.printStackTrace()
-                _updatePhase.emit("${formattedNow()} | 失败: ${e.javaClass.simpleName}\n${e.message}")
+                _updatePhase.emit(UpdatePhase(R.string.update_phase_check_failed, listOf(formattedNow(), e.javaClass.simpleName, e.message.orEmpty())))
             }
             if (release != null) {
                 if (release!!.version > BuildConfig.VERSION_CODE) {
                     Log.i("UpdateChecker", "Updates available: ${release!!.versionName}")
-                    _updatePhase.emit("${formattedNow()} | 有可用更新: ${release!!.versionName}")
+                    _updatePhase.emit(UpdatePhase(R.string.update_phase_available, listOf(formattedNow(), release!!.versionName)))
                 } else {
                     Log.i("UpdateChecker", "App is up to date (${release!!.versionName})")
-                    _updatePhase.emit("${formattedNow()} | 已是最新 (远程: ${release!!.versionName})")
+                    _updatePhase.emit(UpdatePhase(R.string.update_phase_current, listOf(formattedNow(), release!!.versionName)))
                 }
             }
             mutableAvailable.emit(release != null && release!!.version > BuildConfig.VERSION_CODE)
@@ -132,7 +132,7 @@ class UpdateCheckRepository @Inject constructor(
             _isDownloading.emit(true)
             _downloadProgress.emit(0f)
             try {
-                _updatePhase.emit("下载更新中…")
+                _updatePhase.emit(UpdatePhase(R.string.update_phase_downloading))
                 createNotificationChannel()
                 showDownloadNotification(0, release.versionName)
 
@@ -149,7 +149,7 @@ class UpdateCheckRepository @Inject constructor(
                 client.newCall(request).execute().use { response ->
                     if (!response.isSuccessful) {
                         Log.e("UpdateChecker", "Failed to download update: ${response.code}")
-                        _updatePhase.emit("下载失败 (${response.code})")
+                        _updatePhase.emit(UpdatePhase(R.string.update_phase_download_failed, listOf("HTTP ${response.code}")))
                         showDownloadFailedNotification("HTTP ${response.code}")
                         return@use
                     }
@@ -172,7 +172,7 @@ class UpdateCheckRepository @Inject constructor(
                                     val progress = bytesCopied.toFloat() / total.toFloat()
                                     _downloadProgress.emit(progress)
                                     val progressPercent = (progress * 100).toInt()
-                                    _updatePhase.emit("下载中... $progressPercent%")
+                                    _updatePhase.emit(UpdatePhase(R.string.update_phase_download_progress, listOf(progressPercent)))
 
                                     val now = System.currentTimeMillis()
                                     if (now - lastNotificationUpdate > 500) {
@@ -186,26 +186,31 @@ class UpdateCheckRepository @Inject constructor(
                 }
 
                 release.downloadFileProgress?.let { transform ->
-                    _updatePhase.emit("合并更新文件…")
+                    _updatePhase.emit(UpdatePhase(R.string.update_phase_processing))
                     transform(tempFile, apkFile)
                 } ?: tempFile.renameTo(apkFile)
 
                 if (apkFile.exists() && apkFile.length() > 0L) {
                     _downloadProgress.emit(1f)
-                    _updatePhase.emit("下载完成")
+                    _updatePhase.emit(UpdatePhase(R.string.update_phase_download_complete))
                     showDownloadCompleteNotification(apkFile)
                     withContext(Dispatchers.Main) {
                         installApk(apkFile)
                     }
                 } else {
                     Log.e("UpdateChecker", "Downloaded file is empty")
-                    _updatePhase.emit("下载失败 (空文件)")
-                    showDownloadFailedNotification("文件为空")
+                    _updatePhase.emit(UpdatePhase(R.string.update_phase_empty_file))
+                    showDownloadFailedNotification(context.getString(R.string.update_download_empty_file))
                 }
             } catch (e: Exception) {
                 Log.e("UpdateChecker", "Download failed", e)
-                _updatePhase.emit("下载失败 (${e.localizedMessage})")
-                showDownloadFailedNotification(e.localizedMessage ?: "未知错误")
+                val phase = when {
+                    e is MissingUpdateApkException -> UpdatePhase(R.string.update_phase_missing_apk, listOf(e.archiveName))
+                    e.localizedMessage != null -> UpdatePhase(R.string.update_phase_download_failed, listOf(e.localizedMessage!!))
+                    else -> UpdatePhase(R.string.update_phase_download_failed_unknown)
+                }
+                _updatePhase.emit(phase)
+                showDownloadFailedNotification(context.getString(phase.messageId, *phase.arguments.toTypedArray()))
             } finally {
                 _isDownloading.emit(false)
             }
@@ -225,10 +230,10 @@ class UpdateCheckRepository @Inject constructor(
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 NOTIFICATION_CHANNEL_ID,
-                "应用更新",
+                context.getString(R.string.update_notification_channel),
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "应用更新下载进度"
+                description = context.getString(R.string.update_notification_channel_description)
                 setShowBadge(false)
             }
             val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -240,8 +245,8 @@ class UpdateCheckRepository @Inject constructor(
         if (ActivityCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
         val notification = NotificationCompat.Builder(context, NOTIFICATION_CHANNEL_ID)
             .setSmallIcon(R.drawable.icon_foreground)
-            .setContentTitle("正在下载更新 $versionName")
-            .setContentText("$progress%")
+            .setContentTitle(context.getString(R.string.update_notification_downloading, versionName))
+            .setContentText(context.getString(R.string.update_notification_progress, progress))
             .setProgress(100, progress, false)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
@@ -263,8 +268,8 @@ class UpdateCheckRepository @Inject constructor(
         )
         val notification = NotificationCompat.Builder(context, NOTIFICATION_CHANNEL_ID)
             .setSmallIcon(R.drawable.icon_foreground)
-            .setContentTitle("更新下载完成")
-            .setContentText("点击安装")
+            .setContentTitle(context.getString(R.string.update_notification_complete))
+            .setContentText(context.getString(R.string.update_notification_install))
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
             .setOngoing(false)
@@ -277,7 +282,7 @@ class UpdateCheckRepository @Inject constructor(
         if (ActivityCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
         val notification = NotificationCompat.Builder(context, NOTIFICATION_CHANNEL_ID)
             .setSmallIcon(R.drawable.icon_foreground)
-            .setContentTitle("更新下载失败")
+            .setContentTitle(context.getString(R.string.update_notification_failed))
             .setContentText(reason)
             .setAutoCancel(true)
             .setOngoing(false)

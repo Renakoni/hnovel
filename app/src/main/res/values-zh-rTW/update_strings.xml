@@ -1,0 +1,34 @@
+<resources>
+    <string name="update_phase_not_checked">未檢查</string>
+    <string name="update_phase_waiting">等待 %1$s 回應…</string>
+    <string name="update_phase_check_failed">%1$s | 檢查失敗：%2$s\n%3$s</string>
+    <string name="update_phase_available">%1$s | 有可用更新：%2$s</string>
+    <string name="update_phase_current">%1$s | 已是最新（遠端：%2$s）</string>
+    <string name="update_phase_downloading">正在下載更新…</string>
+    <string name="update_phase_download_failed">下載失敗（%1$s）</string>
+    <string name="update_phase_download_failed_unknown">下載失敗（未知錯誤）</string>
+    <string name="update_phase_download_progress">正在下載… %1$d%%</string>
+    <string name="update_phase_processing">正在處理更新檔案…</string>
+    <string name="update_phase_download_complete">下載完成</string>
+    <string name="update_phase_empty_file">下載失敗（檔案為空）</string>
+    <string name="update_phase_api_request">API：請求 %1$s 頻道更新</string>
+    <string name="update_phase_api_parse">API：解析更新資訊</string>
+    <string name="update_phase_api_download_link">API：取得下載連結</string>
+    <string name="update_phase_api_complete">API：更新資訊取得完成</string>
+    <string name="update_phase_github_download_link">GitHub：取得 APK 下載連結</string>
+    <string name="update_phase_github_version">GitHub：取得遠端版本號</string>
+    <string name="update_phase_github_parse_notes">GitHub：解析更新日誌</string>
+    <string name="update_phase_github_release">GitHub：取得最新版本</string>
+    <string name="update_phase_github_fetch_notes">GitHub：取得更新日誌</string>
+    <string name="update_phase_github_compare">GitHub：比對版本號</string>
+    <string name="update_download_empty_file">下載的檔案為空</string>
+    <string name="update_notification_channel">應用程式更新</string>
+    <string name="update_notification_channel_description">應用程式更新下載進度</string>
+    <string name="update_notification_downloading">正在下載更新 %1$s</string>
+    <string name="update_notification_progress">%1$d%%</string>
+    <string name="update_notification_complete">更新下載完成</string>
+    <string name="update_notification_install">點選安裝</string>
+    <string name="update_notification_failed">更新下載失敗</string>
+    <string name="update_phase_missing_apk">下載失敗：%1$s 中未找到 APK</string>
+    <string name="update_ci_warning">**此版本由 GitHub Actions 建置，尚未經過充分測試。**</string>
+</resources>
