@@ -1,13 +1,13 @@
 package indi.renakoni.nextvol.data.update
 
 import android.util.Log
+import indi.renakoni.nextvol.R
 import androidx.compose.ui.util.fastFilter
 import indi.renakoni.nextvol.utils.md.HtmlToMdUtil
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import java.io.File
-import java.io.IOException
 import java.util.zip.ZipFile
 
 /***
@@ -62,10 +62,11 @@ object GithubParser {
         override val versionName: String,
         override val releaseNotes: String,
         override val downloadUrl: String,
-        override val downloadFileProgress: ((File, File) -> Unit)? = null
+        override val downloadFileProgress: ((File, File) -> Unit)? = null,
+        override val isCiBuild: Boolean = false,
     ): Release
 
-    private fun progressReleasePage(url: String, updatePhase: MutableStateFlow<String>): Release? {
+    private fun progressReleasePage(url: String, updatePhase: MutableStateFlow<UpdatePhase>): Release? {
         Jsoup
             .connect(url)
             .also {
@@ -73,7 +74,7 @@ object GithubParser {
             }
             .get()
             .let { releaseDocument ->
-                updatePhase.tryEmit("GitHub步骤: 获取apk下载链接")
+                updatePhase.tryEmit(UpdatePhase(R.string.update_phase_github_download_link))
                 val downloadUrl = releaseDocument
                     .select("include-fragment")
                     .fastFilter { it.attr("src").contains("releases") }
@@ -87,7 +88,7 @@ object GithubParser {
                     .map { it.attr("href") }
                     .firstOrNull { it.endsWith("apk") }
                     ?.let { "https://gh-proxy.com/github.com$it" }?: Log.e("GithubParser", "failed to get downloadUrl").let { return null }
-                updatePhase.tryEmit("GitHub步骤: 拉取远程分支版本号")
+                updatePhase.tryEmit(UpdatePhase(R.string.update_phase_github_version))
                 val gradle = releaseDocument
                     .select("""a[href^="/dmzz-yyhyy/LightNovelReader/tree/"]""")
                     .attr("href")
@@ -104,7 +105,7 @@ object GithubParser {
                     .toString()
                 val versionCode = versionCodeRegex.find(gradle)?.groups?.get(1)?.value?.replace("_", "")?.toInt() ?: Log.e("GithubParser", "failed to get versionCode").also { return null }
                 val versionName = versionNameRegex.find(gradle)?.groups?.get(1)?.value ?: Log.e("GithubParser", "failed to get versionName").also { return null }
-                updatePhase.tryEmit("GitHub步骤: 解析更新日志")
+                updatePhase.tryEmit(UpdatePhase(R.string.update_phase_github_parse_notes))
                 val releaseNotes = releaseDocument
                     .selectFirst("div.markdown-body")
                     .toString()
@@ -120,7 +121,7 @@ object GithubParser {
 
     object ReleaseParser: UpdateParser {
         private const val URL = "/dmzz-yyhyy/LightNovelReader"
-        override fun parser(updatePhase: MutableStateFlow<String>): Release? {
+        override fun parser(updatePhase: MutableStateFlow<UpdatePhase>): Release? {
             System.setProperty("sun.net.http.allowRestrictedHeaders", "true")
             host = updateHost()
             return Jsoup
@@ -132,13 +133,13 @@ object GithubParser {
                 .selectFirst("""a[href^="/dmzz-yyhyy/LightNovelReader/releases/tag/"]""")
                 ?.attr("href")
                 .let { host+it }
-                .also { updatePhase.tryEmit("GitHub步骤: 获取最新Release") }
+                .also { updatePhase.tryEmit(UpdatePhase(R.string.update_phase_github_release)) }
                 .let { progressReleasePage(it, updatePhase) }
         }
     }
     object DevelopmentParser: UpdateParser {
         private const val URL = "/dmzz-yyhyy/LightNovelReader/releases"
-        override fun parser(updatePhase: MutableStateFlow<String>): Release? {
+        override fun parser(updatePhase: MutableStateFlow<UpdatePhase>): Release? {
             System.setProperty("sun.net.http.allowRestrictedHeaders", "true")
             host = updateHost()
             return Jsoup
@@ -149,7 +150,7 @@ object GithubParser {
                 .get()
                 .selectFirst("""a[href^="/dmzz-yyhyy/LightNovelReader/releases/tag/"]""")
                 ?.attr("href")
-                .also { updatePhase.tryEmit("GitHub步骤: 获取最新Release") }
+                .also { updatePhase.tryEmit(UpdatePhase(R.string.update_phase_github_release)) }
                 .let { host+it }
                 .let { progressReleasePage(it, updatePhase) }
         }
@@ -157,12 +158,12 @@ object GithubParser {
     object CIParser: UpdateParser {
         private const val URL = "/dmzz-yyhyy/LightNovelReader/actions/workflows/marge.yml"
         private val prIdRegex = Regex("Merge pull request #([0-9]*)")
-        override fun parser(updatePhase: MutableStateFlow<String>): Release? {
+        override fun parser(updatePhase: MutableStateFlow<UpdatePhase>): Release? {
             System.setProperty("sun.net.http.allowRestrictedHeaders", "true")
             host = updateHost()
-            updatePhase.tryEmit("GitHub步骤: 获取最新Release")
+            updatePhase.tryEmit(UpdatePhase(R.string.update_phase_github_release))
             val downloadUrl: String?
-            updatePhase.tryEmit("GitHub步骤: 拉取远程分支版本号")
+            updatePhase.tryEmit(UpdatePhase(R.string.update_phase_github_version))
             val gradle = Jsoup
                 .connect("https://gh-proxy.com/raw.githubusercontent.com/dmzz-yyhyy/LightNovelReader/refs/heads/refactoring/app/build.gradle.kts")
                 .ignoreContentType(true)
@@ -180,7 +181,7 @@ object GithubParser {
                 connection.header("Host", "github.com")
             }
             val document = connection.get()
-            updatePhase.tryEmit("Github步骤: 获取apk下载链接")
+            updatePhase.tryEmit(UpdatePhase(R.string.update_phase_github_download_link))
             val apkLinkElement = document.select(
                 "div[id^=check_suite_]:contains(ReleaseApkBuild) > div > div.d-table-cell.v-align-top.col-11.col-md-6.position-relative > a"
             ).first()
@@ -201,7 +202,7 @@ object GithubParser {
                                         "release" in entry.name
                             }
 
-                            ?: throw IOException("failed to extract apk file from archive [${zipFile.name}]")
+                            ?: throw MissingUpdateApkException(zipFile.name)
 
                         targetApk.parentFile?.mkdirs()
                         if (targetApk.exists()) targetApk.delete()
@@ -218,7 +219,7 @@ object GithubParser {
                     throw e
                 }
             }
-            updatePhase.tryEmit("GitHub步骤: 获取更新日志")
+            updatePhase.tryEmit(UpdatePhase(R.string.update_phase_github_fetch_notes))
 
             val spanText = document.select("span").text()
             val prId = prIdRegex.find(spanText)?.groups?.get(1)?.value
@@ -235,17 +236,17 @@ object GithubParser {
 
             val releaseNotes = taskListElement
                 ?.let(HtmlToMdUtil::convertHtml)
-                ?.let { "**注意! 这是一个由 GitHub Actions 构建出来的版本, 此版本未经过严格测试**\n\n$it" }
 
-            updatePhase.tryEmit("GitHub步骤: 比对版本号")
-            val lastReleaseRelease = ReleaseParser.parser(MutableStateFlow(""))
+            updatePhase.tryEmit(UpdatePhase(R.string.update_phase_github_compare))
+            val lastReleaseRelease = ReleaseParser.parser(MutableStateFlow(UpdatePhase(R.string.update_phase_not_checked)))
             return if (lastReleaseRelease == null || lastReleaseRelease.version < versionCode)
                 GithubRelease(
                     versionCode,
                     versionName.toString() ,
                     releaseNotes!!,
                     downloadUrl,
-                    downloadFileProgress
+                    downloadFileProgress,
+                    isCiBuild = true,
                 )
             else lastReleaseRelease
         }

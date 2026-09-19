@@ -6,6 +6,7 @@ interface Release {
     val version: Int
     val versionName: String
     val releaseNotes: String
+    val isCiBuild: Boolean get() = false
     val downloadUrl: String
 
     /***

@@ -12,6 +12,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
@@ -23,6 +24,7 @@ import androidx.navigation.toRoute
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import indi.renakoni.nextvol.R
+import indi.renakoni.nextvol.data.update.UpdatePhase
 import indi.renakoni.nextvol.ui.components.ExportContext
 import indi.renakoni.nextvol.ui.components.ExportUserDataDialog
 import indi.renakoni.nextvol.ui.components.MutableExportContext
@@ -65,9 +67,9 @@ fun NavGraphBuilder.settingsDestination() {
         val navController = LocalNavController.current
         val settingsViewModel = hiltViewModel<SettingsViewModel>()
         val updatesAvailableDialogViewModel = hiltViewModel<UpdatesAvailableDialogViewModel>()
-        val updatePhase by updatesAvailableDialogViewModel.updatePhaseFlow.collectAsStateWithLifecycle("Not Checked")
+        val updatePhase by updatesAvailableDialogViewModel.updatePhaseFlow.collectAsStateWithLifecycle(UpdatePhase(R.string.update_phase_not_checked))
         SettingsScreen(
-            updatePhase = updatePhase,
+            updatePhase = stringResource(updatePhase.messageId, *updatePhase.arguments.toTypedArray()),
             settingState = settingsViewModel.settingState,
             checkUpdate = updatesAvailableDialogViewModel::checkUpdate,
             importData = settingsViewModel::importFromFile,
