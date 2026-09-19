@@ -16,9 +16,9 @@ plugins {
 }
 
 android {
-    sourceSets.getByName("androidTest").assets.srcDir("../source-rhino/src/test/resources")
-    sourceSets.getByName("androidTest").assets.srcDir("../source-compatibility/browser")
-    sourceSets.getByName("androidTest").assets.srcDir("../source-compatibility/fixtures/native-routing/site")
+    sourceSets.getByName("androidTest").assets.srcDir("../sources/rhino/src/test/resources")
+    sourceSets.getByName("androidTest").assets.srcDir("../tests/source-compatibility/browser")
+    sourceSets.getByName("androidTest").assets.srcDir("../tests/source-compatibility/fixtures/native-routing/site")
     namespace = "indi.renakoni.nextvol"
     compileSdk = 37
 

@@ -42,14 +42,8 @@ dependencies can still require downloads. Release-only work and test execution
 remain in their own checks. Splitting workflows improves feedback and targeted
 reruns; it does not eliminate each runner's build or promise a fixed speedup.
 
-## Verification
+## Maintenance
 
-- Run `actionlint` after workflow edits and preserve the existing test selections.
-- Verify all three workflows for the exact PR head, including all five jobs.
-- After a successful main warm run, rerun the PR checks and inspect setup-gradle's
-  cache report: the Gradle User Home and `wrapper-zips` entries should restore,
-  with no repeat download of the unchanged Gradle distribution.
-- Compare build and test durations separately; runner load and emulator startup
-  can vary independently of cache effectiveness.
-- When a run has multiple artifacts with the same name, use the newest artifact
-  from that run and head and inspect its XML results. Skipped tests are not passes.
+After workflow changes, run `actionlint` and the affected checks. For cache issues,
+inspect setup-gradle's cache report before scheduling another run. Generated test
+reports belong in Actions artifacts or local build directories, not in Git.

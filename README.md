@@ -14,7 +14,7 @@
 
 ## 介绍
 
-NextVol 是基于上游 [LightNovelReader](https://github.com/dmzz-yyhyy/LightNovelReader) 的独立应用，安装标识为 `indi.renakoni.nextvol`。下方现有发布、F-Droid、社区、赞助和翻译链接仍属于上游；相关服务暂不迁移，由 [#232](https://github.com/Renakoni/hnovel/issues/232) 后续处理。应用身份与备份兼容边界见 [迁移说明](source-compatibility/NEXTVOL_IDENTITY.md)。
+NextVol 是基于上游 [LightNovelReader](https://github.com/dmzz-yyhyy/LightNovelReader) 的独立应用，安装标识为 `indi.renakoni.nextvol`。下方现有发布、F-Droid、社区、赞助和翻译链接仍属于上游；相关服务暂不迁移，由 [#232](https://github.com/Renakoni/hnovel/issues/232) 后续处理。与上游分别安装，数据不会自动迁移；已有备份可通过导入功能迁移。
 
 NextVol <sup>*重构版*</sup> 是一款开源的轻小说阅读软件，使用 Kotlin 和 Jetpack Compose 编写，具有轻量化的体积和流畅的阅读体验。此外，还有多种有用的功能，如 EPUB 导出、离线阅读和多数据源支持。
 
@@ -119,3 +119,12 @@ Copyright (C) 2024 by yukonisen <yukonisen@curiousers.org>
    See the License for the specific language governing permissions and
    limitations under the License.
 ```
+
+## 目录结构
+
+- `app/`：Android 应用。
+- `sources/`：书源解析、网络、执行、导入、正文与在线朗读模块。
+- `tests/`：书源兼容性及 Android UI/性能测试。
+- `api/`、`plugin/`、`epub/`、`compiler/`：公共 API、插件、导出与编译支持。
+
+本地调研、交接和截图放在被忽略的 `.local/`，不提交测试运行报告或个人配置。

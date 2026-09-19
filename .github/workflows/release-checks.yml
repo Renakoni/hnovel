@@ -77,8 +77,8 @@ jobs:
         with:
           name: minified-source-runtime
           path: |
-            benchmark/build/reports/androidTests/connected
-            benchmark/build/outputs/androidTest-results/connected
+            tests/benchmark/build/reports/androidTests/connected
+            tests/benchmark/build/outputs/androidTest-results/connected
             app/build/outputs/mapping/benchmark/usage.txt
             app/build/outputs/mapping/benchmark/missing_rules.txt
           if-no-files-found: ignore
