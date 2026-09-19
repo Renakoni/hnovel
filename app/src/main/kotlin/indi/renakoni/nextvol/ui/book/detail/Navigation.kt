@@ -32,6 +32,7 @@ import indi.renakoni.nextvol.utils.popBackStackIfResumed
 import indi.renakoni.nextvol.utils.showSnackbar
 import indi.renakoni.nextvol.utils.uriLauncher
 import io.nightfish.lightnovelreader.api.Route
+import io.nightfish.lightnovelreader.api.error.WebRequestErrorKind
 import io.nightfish.lightnovelreader.api.ui.LocalNavController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -175,7 +176,12 @@ fun NavGraphBuilder.bookDetailDestination() {
                     viewModel.tagPage(tag)?.onOk { page ->
                         if (page != null && navController.isResumed()) navController.navigate(Route.Main.DiscoveryResults(
                             page.sourceId.namespace, page.sourceId.id, page.target, tag, java.util.UUID.randomUUID().toString()))
-                    }?.onErr { error -> snackbarHostState.showSnackbar(error.title) }
+                    }?.onErr { error ->
+                        snackbarHostState.showSnackbar(
+                            if (error.kind == WebRequestErrorKind.SourceUnavailable) context.getString(R.string.sources_unavailable)
+                            else error.title
+                        )
+                    }
                 }
             },
             onClickCover = { uri -> navController.navigateToImageViewerDialog(uri, bookId, cover = true) },
