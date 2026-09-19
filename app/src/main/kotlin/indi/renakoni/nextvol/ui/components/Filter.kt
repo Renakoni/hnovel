@@ -123,12 +123,12 @@ fun Filter<*>.Component(
                             onSlideChange = { value = it },
                             onSliderChangeFinished = {  },
                             title = this@Component.getTitle().resolve(),
-                            description = this@Component.description
+                            description = this@Component.getDescriptionText().resolve()
                         )
                 }
             }
             BaseFilter(
-                title = "${this.displayTitle.resolve()}: ${this.displayValue}",
+                title = "${this.displayTitle.resolve()}: ${this.getValueText().resolve()}",
                 selected = enabled,
                 onClick = {
                     displayDialog = true

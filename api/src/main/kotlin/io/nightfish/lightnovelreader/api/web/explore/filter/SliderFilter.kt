@@ -2,6 +2,7 @@ package io.nightfish.lightnovelreader.api.web.explore.filter
 
 import androidx.annotation.IntRange
 import io.nightfish.lightnovelreader.api.util.LocalString
+import io.nightfish.lightnovelreader.api.util.local
 
 /**
  * 滑块过滤器的抽象基类
@@ -26,6 +27,9 @@ abstract class SliderFilter(
     abstract var enabled: Boolean
     abstract val displayValue: String
     open val displayTitle = title
+    /** Localized presentation hooks preserve existing plugin constructors and String getters. */
+    open fun getDescriptionText(): LocalString = description.local()
+    open fun getValueText(): LocalString = displayValue.local()
     /**
      * 获取过滤器的显示标题
      *
