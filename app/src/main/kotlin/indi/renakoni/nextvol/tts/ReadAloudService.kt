@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.PowerManager
+import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.media3.common.AudioAttributes
@@ -31,6 +32,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import java.io.File
+import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -47,6 +49,9 @@ class ReadAloudService : MediaSessionService() {
     private lateinit var preparationWakeLock: PowerManager.WakeLock
     private var mediaSession: MediaSession? = null
     private var shuttingDown = false
+    // System UI can dismiss an old entry asynchronously after a new service has started.
+    // Negative IDs also keep these entries separate from the app's update/export notifications.
+    private val notificationId = -notificationIds.updateAndGet { if (it == Int.MAX_VALUE) 1 else it + 1 }
 
     override fun onCreate() {
         super.onCreate()
@@ -154,7 +159,7 @@ class ReadAloudService : MediaSessionService() {
             required || state.isActive || state.phase == SpeechPhase.Paused && player.playWhenReady -> foreground()
             else -> {
                 ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_DETACH)
-                getSystemService(NotificationManager::class.java).notify(NOTIFICATION, notification())
+                getSystemService(NotificationManager::class.java).notify(notificationId, notification())
             }
         }
     }
@@ -162,7 +167,7 @@ class ReadAloudService : MediaSessionService() {
     private fun foreground(): Boolean {
         if (shuttingDown) return false
         return try {
-            ServiceCompat.startForeground(this, NOTIFICATION, notification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+            ServiceCompat.startForeground(this, notificationId, notification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
             true
         } catch (_: IllegalStateException) { serviceUnavailable(); false }
         catch (_: SecurityException) { serviceUnavailable(); false }
@@ -216,7 +221,7 @@ class ReadAloudService : MediaSessionService() {
         mediaSession = null
         player.release()
         if (preparationWakeLock.isHeld) preparationWakeLock.release()
-        getSystemService(NotificationManager::class.java).cancel(NOTIFICATION)
+        getSystemService(NotificationManager::class.java).cancel(notificationId)
         if (last.isActive && controller.state.value.error != SpeechError.ServiceUnavailable) {
             controller.publish(last.copy(phase = SpeechPhase.Paused))
         }
@@ -225,6 +230,6 @@ class ReadAloudService : MediaSessionService() {
 
     companion object {
         private const val CHANNEL = "read-aloud"
-        private const val NOTIFICATION = 56
+        private val notificationIds = AtomicInteger((SystemClock.elapsedRealtime() % Int.MAX_VALUE).toInt())
     }
 }

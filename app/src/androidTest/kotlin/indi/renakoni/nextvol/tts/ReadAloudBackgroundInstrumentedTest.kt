@@ -1,6 +1,7 @@
 package indi.renakoni.nextvol.tts
 
 import android.app.ActivityManager
+import android.app.Notification
 import android.app.NotificationManager
 import android.content.ComponentName
 import android.content.Context
@@ -38,6 +39,25 @@ import java.util.concurrent.TimeUnit
 /** Opt-in acceptance with an installed, initialized engine; never substitutes generated test tones. */
 @RunWith(AndroidJUnit4::class)
 class ReadAloudBackgroundInstrumentedTest {
+    @Test fun aNewPlaybackDoesNotReuseTheStoppedServicesNotification() = runBlocking {
+        var previousId: Int? = null
+        repeat(3) {
+            withBook { fixture ->
+                fixture.await("new service playing") { fixture.player.isPlaying && fixture.notificationRecord() != null }
+                val id = fixture.notificationRecord()!!.id
+                assertNotEquals("System UI must not apply old notification removal to this service", previousId, id)
+                previousId = id
+                shell("input keyevent KEYCODE_HOME")
+                shell("input keyevent KEYCODE_SLEEP")
+                // Give the previous entry's asynchronous System UI removal time to arrive.
+                repeat(15) {
+                    fixture.assertPlaybackAdvances("new service remains playing")
+                    assertEquals(id, fixture.notificationRecord()?.id)
+                }
+            }
+        }
+    }
+
     @Test fun realBookContinuesAcrossChaptersAfterHomeLockAndTaskRemoval() = runBlocking {
         withBook { fixture ->
             fixture.await("first chapter playing") {
@@ -233,8 +253,9 @@ class ReadAloudBackgroundInstrumentedTest {
         private var released = false
         fun service() = context.getSystemService(ActivityManager::class.java).getRunningServices(Int.MAX_VALUE)
             .find { it.service.className == ReadAloudService::class.java.name }
-        fun notification() = context.getSystemService(NotificationManager::class.java).activeNotifications
-            .find { it.id == 56 }?.notification
+        fun notificationRecord() = context.getSystemService(NotificationManager::class.java).activeNotifications
+            .find { it.notification.category == Notification.CATEGORY_TRANSPORT }
+        fun notification() = notificationRecord()?.notification
 
         suspend fun await(description: String, timeout: Long = 20_000, condition: suspend () -> Boolean) {
             val passed = withTimeoutOrNull(timeout) {

@@ -6,7 +6,7 @@ service, player and listening bookmarks. Supply an installed, initialized system
 TTS engine on a dedicated device. Installing an engine APK alone does not prove
 its voice data is ready.
 
-The two short tests cover:
+The three short tests cover:
 
 - Home, screen off and removal of the reader activity's task while audio advances;
   natural entry into the next chapter and completion of the last chapter.
@@ -14,6 +14,10 @@ The two short tests cover:
   resume in the foreground service, and Stop removing the service, notification
   and temporary audio. These invoke the notification's pending intents; they do
   not verify the visual arrangement of System UI controls.
+- Stop followed by a new playback service: each instance owns a distinct media
+  notification key and keeps playing while System UI removes the previous one.
+  Reusing a constant ID let Android 15's asynchronous dismissal address the new
+  session and send it Stop. The test checks identity and actual audio advancement.
 
 The fixture restores the previous speech settings and removes its imported book,
 listening bookmark and temporary files. It does not use an in-memory replacement
@@ -29,6 +33,11 @@ On API 33+, run the short tests with `POST_NOTIFICATIONS` both granted and denie
 and restore the initial permission afterwards. The app already declares the
 media-playback foreground service and requests notification permission; tests
 must establish which behavior needs changing before adding another prompt.
+
+App screenshots for frontend review must come from MuMu. If no connected MuMu
+instance is available, ask the user to start it. API/AVD devices remain valid
+for automated functional tests; their screenshots and JVM renders do not
+replace MuMu visual acceptance. Broader visual changes await user feedback.
 
 ## Continuous playback
 
