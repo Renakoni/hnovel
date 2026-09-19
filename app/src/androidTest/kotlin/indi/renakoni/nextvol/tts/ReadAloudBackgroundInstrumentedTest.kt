@@ -58,6 +58,85 @@ class ReadAloudBackgroundInstrumentedTest {
         }
     }
 
+    @Test fun timerKeepsItsDeadlineAcrossChaptersAndVoiceChangesInTheBackground() = runBlocking {
+        withBook(chapterCount = 10) { fixture ->
+            fixture.await("timer book playing") { fixture.player.isPlaying }
+            val deadline = fixture.setTimer(1)!!
+            shell("input keyevent KEYCODE_HOME")
+            shell("input keyevent KEYCODE_SLEEP")
+            fixture.await("timer chapter transition", 50_000) {
+                fixture.player.isPlaying && fixture.player.mediaMetadata.title.toString() == "Chapter 2"
+            }
+            assertEquals(deadline, fixture.commands.state.value.sleepTimerDeadline)
+            val data = UserDataRepository(NextVolDatabase.getInstance(fixture.context).userDataDao())
+            withContext(Dispatchers.IO) {
+                val stored = data.stringUserData("tts.settings")
+                val current = Json.decodeFromString<SpeechSettings>(stored.get()!!)
+                stored.set(Json.encodeToString(current.copy(pitch = 1.2f)))
+            }
+            fixture.assertPlaybackAdvances("after voice adjustment with timer")
+            assertEquals(deadline, fixture.commands.state.value.sleepTimerDeadline)
+            fixture.assertTimerStopped(deadline)
+            assertFalse("Timer must not mark the remaining book finished", fixture.progress.load(fixture.book.storageKey)!!.completed)
+        }
+    }
+
+    @Test fun timerCanBeReplacedOrCancelledAndStillExpiresWhilePaused() = runBlocking {
+        withBook(chapterCount = 10) { fixture ->
+            fixture.await("playing before pause timer") { fixture.player.isPlaying }
+            val original = fixture.setTimer(1)!!
+            assertTrue(fixture.setTimer(15)!! > original + 13 * 60_000)
+            assertNull(fixture.setTimer(null))
+            val deadline = fixture.setTimer(1)!!
+            withContext(Dispatchers.Main) { fixture.commands.command(SpeechAction.Pause) }
+            fixture.await("paused timer") { fixture.commands.state.value.phase == SpeechPhase.Paused }
+            val pausedAt = withContext(Dispatchers.Main) { fixture.player.currentPosition }
+            shell("input keyevent KEYCODE_HOME")
+            shell("input keyevent KEYCODE_SLEEP")
+            delay(2_000)
+            assertEquals(deadline, fixture.commands.state.value.sleepTimerDeadline)
+            withContext(Dispatchers.Main) { assertEquals(pausedAt, fixture.player.currentPosition) }
+            fixture.assertTimerStopped(deadline)
+        }
+    }
+
+    @Test fun newPlaybackCompletionFailureAndStopClearTheTimer() = runBlocking {
+        withBook(chapterCount = 10) { fixture ->
+            fixture.await("playing before timer lifecycle checks") { fixture.player.isPlaying }
+            fixture.setTimer(15)
+            withContext(Dispatchers.Main) { fixture.commands.preview("This is a short preview of the selected voice.") }
+            fixture.await("new Start clears the old timer") {
+                fixture.player.isPlaying && fixture.commands.state.value.request?.isPreview == true &&
+                    fixture.commands.state.value.sleepTimerDeadline == null
+            }
+            fixture.setTimer(15)
+            fixture.await("completion clears timer") {
+                fixture.commands.state.value.phase == SpeechPhase.Completed && fixture.commands.state.value.sleepTimerDeadline == null
+            }
+            withContext(Dispatchers.Main) { fixture.commands.preview("A quiet morning begins our next chapter. ".repeat(50)) }
+            fixture.await("playing before failure") { fixture.player.isPlaying }
+            fixture.setTimer(15)
+            val data = UserDataRepository(NextVolDatabase.getInstance(fixture.context).userDataDao())
+            val stored = data.stringUserData("tts.settings")
+            val valid = withContext(Dispatchers.IO) { stored.get()!! }
+            withContext(Dispatchers.IO) {
+                stored.set(Json.encodeToString(SpeechSettings(engine = "invalid.nextvol.timer.engine")))
+            }
+            fixture.await("failure clears timer") {
+                fixture.commands.state.value.phase == SpeechPhase.Failed && fixture.commands.state.value.sleepTimerDeadline == null
+            }
+            withContext(Dispatchers.IO) { stored.set(valid) }
+            fixture.await("valid voice restored") { fixture.player.isPlaying }
+            fixture.setTimer(15)
+            withContext(Dispatchers.Main) { fixture.commands.command(SpeechAction.Stop) }
+            fixture.await("Stop clears timer") {
+                fixture.commands.state.value.phase == SpeechPhase.Stopped && fixture.commands.state.value.sleepTimerDeadline == null
+            }
+            fixture.releasePlayer()
+            fixture.await("Stop releases timer service") { fixture.service() == null }
+        }
+    }
+
     @Test fun realBookContinuesAcrossChaptersAfterHomeLockAndTaskRemoval() = runBlocking {
         withBook { fixture ->
             fixture.await("first chapter playing") {
@@ -195,7 +274,7 @@ class ReadAloudBackgroundInstrumentedTest {
         var createdShelf: Int? = null
         var fixture: Fixture? = null
         var activity: ActivityScenario<ReaderLayoutTestActivity>? = null
-        val commands = ReadAloudController(context)
+        val commands = dagger.hilt.android.EntryPointAccessors.fromApplication(context, SpeechDebugEntryPoint::class.java).controller()
         try {
             withContext(Dispatchers.IO) {
                 stored.set(Json.encodeToString(SpeechSettings(engine = engine!!, rate = 1.4f)))
@@ -217,7 +296,7 @@ class ReadAloudBackgroundInstrumentedTest {
                 MediaController.Builder(context, SessionToken(context, ComponentName(context, ReadAloudService::class.java))).buildAsync()
             }
             val player = withContext(Dispatchers.IO) { pending.get(15, TimeUnit.SECONDS) }
-            fixture = Fixture(context, published.first, RepositorySpeechProgressStore(data), activity, player)
+            fixture = Fixture(context, published.first, RepositorySpeechProgressStore(data), activity, player, commands)
             block(fixture)
         } finally {
             val created = fixture
@@ -249,6 +328,7 @@ class ReadAloudBackgroundInstrumentedTest {
         val progress: SpeechProgressStore,
         val activity: ActivityScenario<ReaderLayoutTestActivity>,
         val player: MediaController,
+        val commands: ReadAloudController,
     ) {
         private var released = false
         fun service() = context.getSystemService(ActivityManager::class.java).getRunningServices(Int.MAX_VALUE)
@@ -271,6 +351,29 @@ class ReadAloudBackgroundInstrumentedTest {
             await(description) {
                 player.isPlaying && service()?.foreground == true &&
                     (player.currentMediaItem?.mediaId != before.first || player.currentPosition > before.second + 700)
+            }
+        }
+
+        suspend fun setTimer(minutes: Int?): Long? {
+            val previous = commands.state.value.sleepTimerDeadline
+            withContext(Dispatchers.Main) { commands.setSleepTimer(minutes) }
+            await("timer set to $minutes") {
+                val deadline = commands.state.value.sleepTimerDeadline
+                if (minutes == null) deadline == null else deadline != null && deadline != previous
+            }
+            return commands.state.value.sleepTimerDeadline
+        }
+
+        suspend fun assertTimerStopped(deadline: Long) {
+            await("timer stops playback", (deadline - SystemClock.elapsedRealtime()).coerceAtLeast(0) + 10_000) {
+                commands.state.value.phase == SpeechPhase.Stopped && !player.isPlaying
+            }
+            assertTrue("Timer must not expire early", SystemClock.elapsedRealtime() >= deadline)
+            assertNull(commands.state.value.sleepTimerDeadline)
+            releasePlayer()
+            await("timer releases service, notification and audio") {
+                service() == null && notification() == null &&
+                    File(context.cacheDir, "read-aloud").listFiles().orEmpty().isEmpty()
             }
         }
 

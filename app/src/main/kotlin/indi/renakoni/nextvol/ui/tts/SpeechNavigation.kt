@@ -40,6 +40,7 @@ fun NavGraphBuilder.speechSettingsDestination() {
         SpeechSettingsScreen(state, playback, nav::popBackStackIfResumed,
             viewModel::selectEngine, viewModel::selectVoice, viewModel::setRate, viewModel::setPitch,
             onPreview = { viewModel.controller.preview(preview) }, onCommand = viewModel.controller::command,
+            onSleepTimer = viewModel.controller::setSleepTimer,
             onSystemSettings = {
                 try { context.startActivity(Intent("com.android.settings.TTS_SETTINGS")) }
                 catch (_: ActivityNotFoundException) { context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }

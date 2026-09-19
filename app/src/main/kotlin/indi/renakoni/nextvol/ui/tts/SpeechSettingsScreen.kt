@@ -70,6 +70,7 @@ fun SpeechSettingsScreen(
     onCommand: (SpeechAction) -> Unit,
     onSystemSettings: () -> Unit, onRefresh: () -> Unit,
     onHttpSources: () -> Unit = {},
+    onSleepTimer: ((Int?) -> Unit)? = null,
 ) {
     var choice by remember { mutableStateOf<String?>(null) }
     var showPlayback by remember { mutableStateOf(false) }
@@ -166,6 +167,7 @@ fun SpeechSettingsScreen(
         onCommand = onCommand,
         onSettings = null,
         onDismiss = { showPlayback = false },
+        onSleepTimer = onSleepTimer,
     )
     if (choice != null) {
         val engine = choice == "engine"
