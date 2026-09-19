@@ -39,6 +39,28 @@ instance is available, ask the user to start it. API/AVD devices remain valid
 for automated functional tests; their screenshots and JVM renders do not
 replace MuMu visual acceptance. Broader visual changes await user feedback.
 
+## Sleep timer
+
+The reader's listening panel offers Off and 15/30/45/60 minutes. The service owns
+an elapsed-realtime deadline: pauses, chapter transitions and voice adjustments
+do not extend it. A new Start, Stop, completion, failure or service destruction
+clears it. Expiry cancels synthesis/chapter loading and stops playback while
+preserving the last durable passage boundary. It does not claim a word-precise
+bookmark. The timer is not persisted across service/process lifetimes.
+
+Playback and preparation already use bounded wake locks. No exact-alarm
+permission is needed for this in-session feature. While paused, a sleeping
+device may defer the callback; resume and active-state transitions also check
+the monotonic deadline before continuing. This is not a device wake-up alarm.
+
+Three additional real-engine tests in `ReadAloudBackgroundInstrumentedTest`
+exercise a one-minute deadline through Home/screen off, a natural chapter
+transition, a voice adjustment, pause, replacement/cancellation, new playback,
+completion, failure and Stop. One minute is an internal test duration; the UI
+presets remain 15/30/45/60. The same fixture uses the production controller via
+a debug-only Hilt entry point. These tests also skip without `speechEngine`.
+
+
 ## Continuous playback
 
 The optional long test imports a 600-chapter book, moves to Home and turns the

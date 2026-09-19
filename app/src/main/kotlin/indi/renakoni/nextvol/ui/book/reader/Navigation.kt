@@ -83,6 +83,7 @@ fun NavGraphBuilder.bookReaderDestination(onReaderActiveChanged: (Boolean) -> Un
                     speechState = speechState,
                     onStartReadAloud = viewModel::startReadAloud,
                     onSpeechCommand = viewModel.readAloud::command,
+                    onSleepTimer = viewModel.readAloud::setSleepTimer,
                     onSpeechSettings = navController::navigateToSpeechSettings,
                 )
             }

@@ -113,6 +113,7 @@ fun ReaderScreen(
     onStartReadAloud: () -> Unit,
     onSpeechCommand: (SpeechAction) -> Unit,
     onSpeechSettings: () -> Unit,
+    onSleepTimer: (Int?) -> Unit,
 ) {
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
     var isImmersive by remember { mutableStateOf(true) }
@@ -260,6 +261,7 @@ fun ReaderScreen(
             onCommand = onSpeechCommand,
             onSettings = { showReadAloud = false; onSpeechSettings() },
             onDismiss = { showReadAloud = false },
+            onSleepTimer = onSleepTimer,
         )
     }
     AnimatedVisibility(visible = showSettingsBottomSheet) {
