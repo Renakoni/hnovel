@@ -554,7 +554,7 @@ private fun DetailContent(
                         modifier = Modifier.fadeInOnce(volume.volumeId),
                         volume = volume,
                         hideReadChapters = hideReadChapters,
-                        readCompletedChapterIds = uiState.userReadingData?.maxChapterReadingProgressMap?.filterValues { it >= 1f }?.keys?.toList() ?: emptyList(),
+                        chapterReadingProgress = uiState.userReadingData?.maxChapterReadingProgressMap ?: emptyMap(),
                         onClickChapter = onClickChapter,
                         volumesSize = bookVolumes.volumes.size,
                         lastReadingChapterId = uiState.userReadingData?.lastReadChapterId
@@ -1090,12 +1090,14 @@ private fun VolumeItem(
     modifier: Modifier,
     volume: Volume,
     hideReadChapters: Boolean = false,
-    readCompletedChapterIds: List<String>,
+    chapterReadingProgress: Map<String, Float>,
     onClickChapter: (String) -> Unit,
     volumesSize: Int,
     lastReadingChapterId: String?
 ) {
-    val readIds = remember(readCompletedChapterIds) { readCompletedChapterIds.toSet() }
+    val readIds = remember(chapterReadingProgress) {
+        chapterReadingProgress.filterValues { it >= 1f }.keys
+    }
     val (readCount, totalCount) = remember(volume.volumeId, readIds) {
         val count = volume.chapters.count { it.id in readIds }
         count to volume.chapters.size
@@ -1166,6 +1168,7 @@ private fun VolumeItem(
                             chapter = chapter,
                             isRead = chapter.id in readIds,
                             isLastRead = chapter.id == lastReadingChapterId,
+                            readingProgress = chapterReadingProgress[chapter.id] ?: 0f,
                             onClick = { onClickChapter(chapter.id) }
                         )
                     }
@@ -1180,6 +1183,7 @@ private fun ChapterItem(
     chapter: ChapterInformation,
     isRead: Boolean,
     isLastRead: Boolean,
+    readingProgress: Float,
     onClick: () -> Unit
 ) {
     Box(
@@ -1214,7 +1218,7 @@ private fun ChapterItem(
                     )
                 }
             }
-            if (isLastRead)
+            if (isLastRead) {
                 Icon(
                     modifier = Modifier
                         .padding(start = 22.dp)
@@ -1223,7 +1227,16 @@ private fun ChapterItem(
                     tint = colorScheme.primary,
                     contentDescription = stringResource(R.string.last_read)
                 )
-
+            } else if (readingProgress > 0f) {
+                Text(
+                    modifier = Modifier.padding(start = 22.dp),
+                    text = "${(readingProgress.coerceIn(0f, 1f) * 100).toInt()}%",
+                    maxLines = 1,
+                    style = typography.titleSmall,
+                    fontWeight = FontWeight.Normal,
+                    color = if (isRead) colorScheme.secondary else colorScheme.primary
+                )
+            }
         }
     }
 }
