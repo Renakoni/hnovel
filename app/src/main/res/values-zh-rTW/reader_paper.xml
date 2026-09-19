@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="reader_paper_default">預設</string>
+    <string name="reader_paper_clear">清紙</string>
+    <string name="reader_paper_warm">暖紙</string>
+    <string name="reader_paper_sage">豆綠</string>
+    <string name="reader_paper_night">夜讀</string>
+    <string name="reader_paper_mist">霧灰</string>
+    <string name="reader_paper_black">純黑</string>
+    <string name="reader_paper_ink">水墨</string>
+    <string name="reader_paper_sample">文</string>
+</resources>

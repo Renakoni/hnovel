@@ -5,12 +5,16 @@ import android.net.Uri
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -41,6 +45,7 @@ import io.nightfish.lightnovelreader.api.ui.theme.AppTypography
 import kotlinx.coroutines.flow.flowOf
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -97,6 +102,63 @@ class BuiltInContentRenderingTest {
         assertStyle(Color.Red, 20, 26, 400)
         compose.runOnIdle { theme = AppTheme(false, lightColorScheme(onSurface = Color.Green)) }
         assertStyle(Color.Magenta, 20, 26, 400)
+    }
+
+    @Test
+    fun papersScopeBodyAndMenuColorsWithoutRecreatingContentOrChangingTheAppTheme() {
+        val component = SimpleTextComponent(SimpleTextComponentData("Paper body"), mockk(relaxed = true), activity.get())
+        every { component.fontFamilyUriUserData.getFlowWithDefault(Uri.EMPTY) } returns flowOf(Uri.EMPTY)
+        var choice by mutableStateOf("default")
+        var dark by mutableStateOf(false)
+        val settings = object : ReaderSettings by mockk<ReaderSettings>(relaxed = true) {
+            override val paperId get() = choice
+        }
+        var readerIdentity: Any? = null
+        var readerDark = false
+        val light = lightColorScheme(onSurface = Color.Green)
+        val night = darkColorScheme(onSurface = Color.Cyan)
+        val style = ReaderStyle(18f, 4f, 600f, Color.Magenta, Color.Red)
+        setContent {
+            val appColors = if (dark) night else light
+            MaterialTheme(colorScheme = appColors, typography = AppTypography) {
+                CompositionLocalProvider(LocalAppTheme provides AppTheme(dark, appColors), LocalReaderStyle provides style) {
+                    Column {
+                        Text("Library", color = MaterialTheme.colorScheme.onSurface)
+                        ReaderPaperTheme(settings) {
+                            val identity = remember { Any() }
+                            val paperDark = LocalAppTheme.current.isDark
+                            SideEffect { readerIdentity = identity; readerDark = paperDark }
+                            Column {
+                                Text("Paper menu", color = MaterialTheme.colorScheme.onSurface)
+                                component.Content(Modifier.testTag("paper-body"))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        fun textColor(text: String): Color {
+            val layouts = mutableListOf<TextLayoutResult>()
+            compose.onNodeWithText(text).performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
+            return layouts.single().layoutInput.style.color
+        }
+        compose.waitForIdle()
+        val initialIdentity = readerIdentity
+        for (paper in ReaderPaper.entries + ReaderPaper.Default) {
+            compose.runOnIdle { choice = paper.id }
+            assertEquals(paper.colors?.text ?: Color.Magenta, textColor("Paper body"))
+            assertEquals(paper.colors?.text ?: Color.Green, textColor("Paper menu"))
+            assertEquals(Color.Green, textColor("Library"))
+            assertSame(initialIdentity, readerIdentity)
+            assertEquals(paper.colors?.isDark ?: false, readerDark)
+        }
+        compose.runOnIdle { choice = ReaderPaper.Sepia.id; dark = true }
+        assertEquals(ReaderPaper.Sepia.colors!!.text, textColor("Paper body"))
+        assertEquals(Color.Cyan, textColor("Library"))
+        compose.runOnIdle { choice = ReaderPaper.Default.id }
+        assertEquals(Color.Red, textColor("Paper body"))
+        assertEquals(Color.Cyan, textColor("Paper menu"))
+        assertSame(initialIdentity, readerIdentity)
     }
 
     @Test

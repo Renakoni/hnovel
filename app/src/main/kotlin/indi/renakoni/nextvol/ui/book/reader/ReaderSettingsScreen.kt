@@ -22,6 +22,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme.colorScheme
 import androidx.compose.material3.MaterialTheme.typography
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.ModalBottomSheetProperties
 import androidx.compose.material3.SecondaryTabRow
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.Slider
@@ -39,6 +40,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -64,6 +66,10 @@ fun SettingsBottomSheet(
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
         sheetState = sheetState,
+        properties = ModalBottomSheetProperties(
+            isAppearanceLightStatusBars = colorScheme.surface.luminance() > 0.5f,
+            isAppearanceLightNavigationBars = colorScheme.surface.luminance() > 0.5f,
+        ),
         shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
         containerColor = colorScheme.surfaceContainerHigh,
         tonalElevation = 16.dp
@@ -195,6 +201,11 @@ fun LazyListScope.AppearancePage(
     settingState: ReaderSettingsEditor,
     onClickThemeSettings: () -> Unit
 ) {
+    item {
+        Text(stringResource(R.string.paper_settings), style = typography.titleSmall,
+            modifier = Modifier.padding(start = 16.dp, top = 8.dp))
+        ReaderPaperSelector(settingState)
+    }
     item {
         SettingsClickableEntry(
             modifier = Modifier.background(colorScheme.surfaceContainerHigh).animateItem(),

@@ -67,6 +67,8 @@ import indi.renakoni.nextvol.ui.LocalAppTheme
 import indi.renakoni.nextvol.ui.LocalDarkColorScheme
 import indi.renakoni.nextvol.ui.LocalLightColorScheme
 import indi.renakoni.nextvol.ui.book.reader.ReaderSettingsEditor
+import indi.renakoni.nextvol.ui.book.reader.ReaderPaper
+import indi.renakoni.nextvol.ui.book.reader.ReaderPaperSelector
 import indi.renakoni.nextvol.ui.book.reader.ReaderFontEntry
 import indi.renakoni.nextvol.ui.book.reader.ReaderLayoutPreview
 import indi.renakoni.nextvol.ui.book.reader.ReaderLayoutSettings
@@ -289,6 +291,8 @@ fun ReaderThemeSettingsList(
     SettingsCategory(
         title = stringResource(R.string.paper_settings),
     ) {
+        ReaderPaperSelector(settingState)
+        if (ReaderPaper.fromId(settingState.paperId) != ReaderPaper.Default) return@SettingsCategory
         val context = LocalContext.current
         val snackbarHostState = LocalSnackbarHost.current
 
@@ -382,7 +386,7 @@ fun ReaderTextSettings(settingState: ReaderSettingsEditor, onClickChangeTextColo
     SettingsCategory(
         title = stringResource(R.string.text_settings),
     ) {
-        SettingsClickableEntry(
+        if (ReaderPaper.fromId(settingState.paperId) == ReaderPaper.Default) SettingsClickableEntry(
             modifier = Modifier.background(colorScheme.surfaceContainer),
             painter = painterResource(R.drawable.palette_24px),
             title = stringResource(R.string.settings_theme_text_color),
@@ -455,7 +459,7 @@ fun BackgroundSettings(settingState: ReaderSettingsEditor, context: Context) {
         }
     }
 
-    if (!settingState.enableBackgroundImage) return
+    if (!settingState.enableBackgroundImage || ReaderPaper.fromId(settingState.paperId) != ReaderPaper.Default) return
 
     SettingsCategory(title = stringResource(R.string.paper_custom)) {
         BackgroundCard(

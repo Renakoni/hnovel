@@ -24,6 +24,7 @@ internal class UserDataReaderFontFamilySettings(
 }
 
 interface ReaderSettings {
+    val paperId: String get() = "default"
     val fontSize: Float
     val fontLineHeight: Float
     val paragraphSpacing: Float get() = 0f
@@ -60,6 +61,7 @@ interface ReaderSettings {
 }
 
 interface ReaderSettingsEditor : ReaderSettings {
+    val paperIdUserData: StringUserData
     val fontSizeUserData: FloatUserData
     val fontLineHeightUserData: FloatUserData
     val paragraphSpacingUserData: FloatUserData

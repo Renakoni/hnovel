@@ -114,7 +114,7 @@ fun ReaderScreen(
     onSpeechCommand: (SpeechAction) -> Unit,
     onSpeechSettings: () -> Unit,
     onSleepTimer: (Int?) -> Unit,
-) {
+) = ReaderPaperTheme(settingState, manageSystemBars = true) {
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
     var isImmersive by remember { mutableStateOf(true) }
     val context = LocalContext.current
@@ -181,7 +181,7 @@ fun ReaderScreen(
         contentWindowInsets = WindowInsets(0, 0, 0, 0)
     ) { _ ->
         Box(Modifier.fillMaxSize()) {
-        if (settingState.enableBackgroundImage) {
+        if (settingState.usesBackgroundImage) {
             val bgPainter = rememberReaderBackgroundPainter(settingState)
             val bgState by remember(bgPainter) {
                 (bgPainter as? AsyncImagePainter)?.state
