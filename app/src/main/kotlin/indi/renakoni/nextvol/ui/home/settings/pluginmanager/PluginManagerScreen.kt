@@ -90,7 +90,7 @@ fun PluginManagerScreen(
                 icon = {
                     Icon(
                         painter = painterResource(id = R.drawable.archive_24px),
-                        contentDescription = null
+                        contentDescription = stringResource(R.string.plugin_install_plugin)
                     )
                 },
                 text = {
@@ -217,7 +217,8 @@ private fun TopBar(
                 onClick = onClickPluginApps
             ) {
                 Icon(
-                    painter = painterResource(R.drawable.deployed_code_24px), null
+                    painter = painterResource(R.drawable.deployed_code_24px),
+                    contentDescription = stringResource(R.string.plugin_app_list)
                 )
             }
         },

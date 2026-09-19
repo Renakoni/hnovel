@@ -25,7 +25,8 @@ class SettingsTest : UiAutomatorTest() {
 
         clickText("Plugins")
         assertText("Plugins")
-        assertText("Install plugin")
+        assertDescription("Install plugin")
+        assertDescription("Plugin apps")
         pressBack()
         assertText("Settings")
     }
