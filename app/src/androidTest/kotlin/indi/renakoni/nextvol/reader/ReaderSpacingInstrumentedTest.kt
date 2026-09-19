@@ -16,7 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.font.FontFamily
@@ -206,6 +206,108 @@ class ReaderSpacingInstrumentedTest {
             anchor in start until start + displayed.length
         })
         assertEquals(chapter.id, flip.readingChapterId)
+    }
+
+    @Test fun sequentialLayoutChangesRetainTheOriginalVisibleCharacter() {
+        val fixture = ReflowFixture()
+        fixture.moveToMiddle()
+        val anchor = fixture.visibleAnchor()
+        assertTrue(anchor > 0)
+        fixture.reflow("font=22", anchor) { runBlocking { settings.fontSizeUserData.set(22f) } }
+        fixture.reflow("line spacing=12", anchor) { runBlocking { settings.fontLineHeightUserData.set(12f) } }
+        fixture.reflow("paragraph spacing=8", anchor) { runBlocking { settings.paragraphSpacingUserData.set(8f) } }
+        fixture.reflow("width=250", anchor) { compose.runOnIdle { fixture.width = 250.dp } }
+        fixture.reflow("font=16", anchor) { runBlocking { settings.fontSizeUserData.set(16f) } }
+        fixture.reflow("font=28", anchor) { runBlocking { settings.fontSizeUserData.set(28f) } }
+        fixture.reflow("width=320", anchor) { compose.runOnIdle { fixture.width = 320.dp } }
+        fixture.reflow("width=250 again", anchor) { compose.runOnIdle { fixture.width = 250.dp } }
+        assertEquals(fixture.chapter.id, fixture.flip.readingChapterId)
+    }
+
+    @Test fun turningThePageAfterReflowEstablishesANewCharacterAnchor() {
+        val fixture = ReflowFixture()
+        fixture.moveToMiddle()
+        val original = fixture.visibleAnchor()
+        fixture.reflow("font=22", original) { runBlocking { settings.fontSizeUserData.set(22f) } }
+        val previousPage = fixture.flip.pagerState.settledPage
+        compose.onNode(hasScrollToIndexAction()).performTouchInput { swipeLeft() }
+        compose.waitUntil(5_000) { fixture.flip.pagerState.settledPage > previousPage }
+        compose.waitForIdle()
+        val afterTurn = fixture.visibleAnchor()
+        assertTrue(afterTurn > original)
+        fixture.reflow("line spacing after swipe", afterTurn) { runBlocking { settings.fontLineHeightUserData.set(12f) } }
+        fixture.reflow("width after swipe", afterTurn) { compose.runOnIdle { fixture.width = 250.dp } }
+    }
+
+    @Test fun changingChaptersDoesNotReuseThePreviousChapterAnchor() {
+        val fixture = ReflowFixture()
+        fixture.moveToMiddle()
+        fixture.reflow("font=22", fixture.visibleAnchor()) { runBlocking { settings.fontSizeUserData.set(22f) } }
+        val nextChapter = ChapterContentUiState("next-chapter", fixture.chapter.title, fixture.chapter.content, null, null)
+        val previousPager = fixture.flip.pagerState
+        compose.runOnIdle {
+            fixture.flip.readingChapterId = nextChapter.id
+            fixture.flip.readingChapterContent = Ok(nextChapter)
+        }
+        compose.waitUntil(15_000) { fixture.flip.pagerState !== previousPager && fixture.flip.pagerState.pageCount > 0 }
+        compose.waitForIdle()
+        assertEquals(0, fixture.flip.pagerState.settledPage)
+        assertEquals(0, fixture.visibleAnchor())
+        fixture.reflow("new chapter width", 0) { compose.runOnIdle { fixture.width = 250.dp } }
+        assertEquals(nextChapter.id, fixture.flip.readingChapterId)
+    }
+
+    private inner class ReflowFixture {
+        val text = (1..100).joinToString("\n") { paragraph ->
+            (1..5).joinToString(" ") { sentence -> "Sentence $paragraph.$sentence is part of the reading position." }
+        }
+        private val component = SimpleTextComponent(SimpleTextComponentData(text), UserDataRepository(database.userDataDao()), context)
+        val chapter = ChapterContentUiState("sequential-reflow", "Reflow", listOf(component), null, null)
+        val flip = MutableFlipPageContentUiState({}, {}, {}, { updatePager(it) }).apply {
+            readingChapterId = chapter.id
+            readingChapterContent = Ok(chapter)
+        }
+        var width by mutableStateOf(320.dp)
+
+        init {
+            compose.setContent {
+                val colors = lightColorScheme()
+                MaterialTheme(colorScheme = colors, typography = AppTypography) {
+                    CompositionLocalProvider(
+                        LocalAppTheme provides AppTheme(false, colors),
+                        LocalReaderTextLayout provides rememberReaderTextLayout(settings),
+                    ) {
+                        Box(Modifier.width(width).height(420.dp)) {
+                            FlipPageContentComponent(Modifier, flip, settings, PaddingValues(0.dp), {}, {}, {})
+                        }
+                    }
+                }
+            }
+            compose.waitUntil(15_000) { flip.pagerState.pageCount > 5 }
+        }
+
+        private fun updatePager(pager: androidx.compose.foundation.pager.PagerState) { flip.pagerState = pager }
+
+        fun moveToMiddle() {
+            compose.runOnIdle { scope.launch { flip.pagerState.scrollToPage(flip.pagerState.pageCount / 2) } }
+            compose.waitForIdle()
+        }
+
+        fun visibleAnchor() = text.indexOf(visibleTextLayouts().first().layoutInput.text.text)
+
+        fun reflow(change: String, anchor: Int, apply: () -> Unit) {
+            val previous = flip.pagerState
+            apply()
+            compose.waitUntil(15_000) { flip.pagerState !== previous && flip.pagerState.pageCount > 0 }
+            compose.waitForIdle()
+            val ranges = visibleTextLayouts().map { result ->
+                val displayed = result.layoutInput.text.text
+                val start = text.indexOf(displayed)
+                start until start + displayed.length
+            }
+            assertTrue("$change: anchor=$anchor, visible=$ranges, page=${flip.pagerState.currentPage}/${flip.pagerState.pageCount}",
+                ranges.any { anchor in it })
+        }
     }
 
     private fun visibleTextLayouts(): List<TextLayoutResult> {

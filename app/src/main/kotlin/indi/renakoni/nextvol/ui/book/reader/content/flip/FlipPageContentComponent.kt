@@ -95,7 +95,8 @@ private fun SimpleFlipPageTextComponent(
     val density = LocalDensity.current
     val layoutDirection = LocalLayoutDirection.current
     var slippedContentComponentList by remember(chapterContent.id, chapterContent.content) { mutableStateOf(emptyList<AbstractContentComponent<*>>()) }
-    var pendingAnchor by remember(chapterContent.id, chapterContent.content) { mutableStateOf<ReaderContentAnchor?>(null) }
+    var readingAnchor by remember(chapterContent.id, chapterContent.content) { mutableStateOf<ReaderContentAnchor?>(null) }
+    var anchoredPage by remember(chapterContent.id, chapterContent.content) { mutableStateOf<ReaderPage?>(null) }
     var contentSize by remember { mutableStateOf(IntSize.Zero) }
     val readerStyle = LocalReaderStyle.current
     val textLayout = LocalReaderTextLayout.current
@@ -122,14 +123,19 @@ private fun SimpleFlipPageTextComponent(
         textLocaleList = textLocaleList,
         textLayout = textLayout,
     )
-    SideEffect { pagination.syncInput(paginationInput) }
+    val visiblePage = slippedContentComponentList.getOrNull(uiState.pagerState.settledPage) as? ReaderPage
+    SideEffect {
+        pagination.syncInput(paginationInput)
+        // A user page change establishes a new position; a reflow keeps the original character.
+        if (visiblePage != null && visiblePage !== anchoredPage) {
+            readingAnchor = visiblePage.anchor
+            anchoredPage = visiblePage
+        }
+    }
     DisposableEffect(pagination) {
         onDispose { pagination.close() }
     }
     LaunchedEffect(paginationInput) {
-        (slippedContentComponentList.getOrNull(uiState.pagerState.settledPage) as? ReaderPage)?.let {
-            pendingAnchor = it.anchor
-        }
         val width = contentSize.width - horizontalPadding
         val height = contentSize.height - verticalPadding
         if (width <= 0 || height <= 0) {
@@ -142,11 +148,16 @@ private fun SimpleFlipPageTextComponent(
         uiState.updatePageState(PagerState { 0 })
         pagination.submit(paginationInput, chapterContent.content, height, width) { result ->
             slippedContentComponentList = result
-            val anchor = pendingAnchor
+            val anchor = readingAnchor
             val target = if (anchor == null) -1 else result.indexOfFirst { (it as? ReaderPage)?.contains(anchor) == true }
-            if (target >= 0) uiState.updateAnchoredPageState(PagerState(currentPage = target) { result.size })
-            else uiState.updatePageState(PagerState { result.size })
-            pendingAnchor = null
+            if (target >= 0) {
+                anchoredPage = result[target] as ReaderPage
+                uiState.updateAnchoredPageState(PagerState(currentPage = target) { result.size })
+            } else {
+                readingAnchor = null
+                anchoredPage = null
+                uiState.updatePageState(PagerState { result.size })
+            }
         }
     }
     val snackbarHostState = LocalSnackbarHost.current
