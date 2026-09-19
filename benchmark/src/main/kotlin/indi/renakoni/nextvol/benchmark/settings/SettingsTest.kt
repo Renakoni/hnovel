@@ -18,14 +18,15 @@ class SettingsTest : UiAutomatorTest() {
     @Test
     fun extensionSourceAndPluginManagerOpen() {
         openSettings()
-        clickText("Data Source")
-        assertText("Data Source")
+        clickText("Book sources")
+        assertText("Book sources")
         assertForegroundPackage(TARGET_PACKAGE)
         pressBack()
 
         clickText("Plugins")
         assertText("Plugins")
-        assertDescription("install")
+        assertDescription("Install plugin")
+        assertDescription("Plugin apps")
         pressBack()
         assertText("Settings")
     }
@@ -47,7 +48,7 @@ class SettingsTest : UiAutomatorTest() {
         SystemClock.sleep(500)
         clickText("Global Rules")
         SystemClock.sleep(500)
-        assertDescription("add")
+        assertDescription("Add")
         pressBack()
         pressBack()
 
@@ -118,7 +119,7 @@ class SettingsTest : UiAutomatorTest() {
         openSettings()
         clickScrolledText("App Logs")
         assertText("Logs")
-        assertDescription("more")
+        assertDescription("More options")
         pressBack()
 
         clickScrolledText("Log Level")
@@ -135,7 +136,7 @@ class SettingsTest : UiAutomatorTest() {
 
         clickScrolledText("Open-source licenses")
         assertText("Open-source licenses")
-        assertDescription("back")
+        assertDescription("Back")
     }
 
     @Test
@@ -196,7 +197,7 @@ class SettingsTest : UiAutomatorTest() {
         clickText("Text Formatting")
         clickText("Global Rules")
         SystemClock.sleep(500)
-        clickDescription("add")
+        clickDescription("Add")
 
         assertText("Edit Rule")
         setTextField(0, "Automation Rule")
@@ -279,7 +280,7 @@ class SettingsTest : UiAutomatorTest() {
     fun logViewerMenusAndStatisticsDisableConfirmationWork() {
         openSettings()
         clickScrolledText("App Logs")
-        clickDescription("more")
+        clickDescription("More options")
         assertText("Clear Temporary Logs")
         assertText("Auto-scroll")
         assertText("Word Wrap")

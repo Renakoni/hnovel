@@ -133,7 +133,7 @@ fun PluginCard(
                         ) {
                             Icon(
                                 painter = painterResource(R.drawable.extension_24px),
-                                contentDescription = "plugin",
+                                contentDescription = null,
                                 modifier = Modifier.size(24.dp)
                             )
                         }
@@ -145,7 +145,7 @@ fun PluginCard(
                     ) {
                         Image(
                             bitmap = iconBitmap,
-                            contentDescription = "icon",
+                            contentDescription = null,
                             modifier = Modifier.size(36.dp)
                         )
                     }
@@ -169,7 +169,7 @@ fun PluginCard(
                                 shape = RoundedCornerShape(5.dp)
                             ) {
                                 Text(
-                                    text = "APP",
+                                    text = stringResource(R.string.plugin_app_badge),
                                     style = typography.labelSmall,
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                 )
@@ -231,7 +231,7 @@ fun PluginCard(
                 if (!pluginInfo.hasSignature) {
                     AssistChip(
                         onClick = onClickKeyAlert,
-                        label = { Text("签名无效") },
+                        label = { Text(stringResource(R.string.plugin_signature_invalid)) },
                         leadingIcon = {
                             Icon(
                                 painter = painterResource(R.drawable.key_off_24px),
@@ -250,7 +250,7 @@ fun PluginCard(
                 if (disabledByError) {
                     AssistChip(
                         onClick = onClickErrorAlert,
-                        label = { Text("运行错误") },
+                        label = { Text(stringResource(R.string.plugin_runtime_error)) },
                         leadingIcon = {
                             Icon(
                                 painter = painterResource(R.drawable.release_alert_24px),
@@ -269,7 +269,7 @@ fun PluginCard(
                 if (disabledByCompatibility) {
                     AssistChip(
                         onClick = onClickIncompatibleAlert,
-                        label = { Text("不兼容") },
+                        label = { Text(stringResource(R.string.plugin_incompatible)) },
                         leadingIcon = {
                             Icon(
                                 painter = painterResource(R.drawable.release_alert_24px),
@@ -306,7 +306,7 @@ fun PluginCard(
                     DropdownMenuItem(
                         text = {
                             Text(
-                                text = "删除插件",
+                                text = stringResource(R.string.plugin_delete_action),
                                 style = typography.bodyLarge
                             )
                         },
@@ -319,7 +319,7 @@ fun PluginCard(
                     DropdownMenuItem(
                         text = {
                             Text(
-                                text = "卸载并删除",
+                                text = stringResource(R.string.plugin_uninstall_action),
                                 style = typography.bodyLarge
                             )
                         },

@@ -22,15 +22,15 @@ class BookAndReaderTest : UiAutomatorTest() {
     fun detailActionsOpenExportFormattingAndMoreMenus() {
         openBookDetails()
 
-        clickDescription("export")
+        clickDescription("Export")
         assertText("Export as Epub")
         pressBack()
 
-        clickDescription("formatting")
+        clickDescription("Text Formatting")
         assertText("Book Rules")
         pressBack()
 
-        clickDescription("more")
+        clickDescription("More options")
         assertText("Mark as read…")
         pressBack()
     }
@@ -42,11 +42,11 @@ class BookAndReaderTest : UiAutomatorTest() {
         assertTextContains("Benchmark paragraph")
 
         device.click(device.displayWidth / 2, device.displayHeight / 2)
-        assertDescription("menu")
-        assertDescription("setting")
-        assertDescription("mark")
+        assertDescription("Contents")
+        assertDescription("Settings")
+        assertDescription("Bookmark")
 
-        clickDescription("menu")
+        clickDescription("Contents")
         assertText("Select Chapter")
         assertText("Benchmark Chapter One")
         clickCenter(scrollToText("Benchmark Bonus Volume"))
@@ -60,7 +60,7 @@ class BookAndReaderTest : UiAutomatorTest() {
         clickText("Benchmark Chapter One")
         assertTextContains("Benchmark paragraph")
         device.click(device.displayWidth / 2, device.displayHeight / 2)
-        clickDescription("setting")
+        clickDescription("Settings")
 
         assertText("Reader Settings")
         assertText("Appearance")
@@ -112,7 +112,7 @@ class BookAndReaderTest : UiAutomatorTest() {
     @Test
     fun epubExportOptionsSupportVolumeAndSelectionBranches() {
         openBookDetails()
-        clickDescription("export")
+        clickDescription("Export")
 
         assertText("Export as Epub")
         assertText("Include images")
@@ -129,18 +129,18 @@ class BookAndReaderTest : UiAutomatorTest() {
     @Test
     fun markReadDialogSupportsRangeSelectionAndConfirmation() {
         openBookDetails()
-        clickDescription("more")
+        clickDescription("More options")
         clickText("Mark as read…")
 
-        assertText("全部章节")
-        assertText("选择范围")
-        clickText("选择范围")
+        assertText("All chapters")
+        assertText("Choose range")
+        clickText("Choose range")
         assertText("Benchmark Chapter One")
         assertText("Benchmark Chapter Two")
         clickText("Benchmark Chapter One")
         clickText("Benchmark Chapter Two")
-        assertText("标记已选 2 章为已读")
-        clickText("标记已选 2 章为已读")
+        assertText("Mark 2 chapters as read")
+        clickText("Mark 2 chapters as read")
 
         assertText("Benchmark Sample Novel")
         device.waitForIdle(2_000)
@@ -153,14 +153,14 @@ class BookAndReaderTest : UiAutomatorTest() {
     @Test
     fun markReadDialogCanBeCancelledWithoutChangingProgress() {
         openBookDetails()
-        clickDescription("more")
+        clickDescription("More options")
         clickText("Mark as read…")
-        clickText("取消")
+        clickText("Cancel")
 
         assertText("Benchmark Sample Novel")
-        clickDescription("more")
+        clickDescription("More options")
         clickText("Mark as read…")
-        assertText("标记全部为已读")
+        assertText("Mark all as read")
     }
 
     @Test
@@ -169,7 +169,7 @@ class BookAndReaderTest : UiAutomatorTest() {
         clickText("Benchmark Chapter One")
         assertTextContains("Benchmark paragraph")
         device.click(device.displayWidth / 2, device.displayHeight / 2)
-        clickDescription("setting")
+        clickDescription("Settings")
 
         clickText("Controls")
         assertText("Page Turn Mode")
@@ -197,7 +197,7 @@ class BookAndReaderTest : UiAutomatorTest() {
         openBookDetails()
         clickText("Benchmark Chapter One")
         device.click(device.displayWidth / 2, device.displayHeight / 2)
-        clickDescription("setting")
+        clickDescription("Settings")
         assertText("Keep Screen On")
         clickText("Keep Screen On")
         assertFirstSwitchChecked(true)
@@ -206,7 +206,7 @@ class BookAndReaderTest : UiAutomatorTest() {
         pressBack()
         clickText("Benchmark Chapter One")
         device.click(device.displayWidth / 2, device.displayHeight / 2)
-        clickDescription("setting")
+        clickDescription("Settings")
         assertFirstSwitchChecked(true)
     }
 }

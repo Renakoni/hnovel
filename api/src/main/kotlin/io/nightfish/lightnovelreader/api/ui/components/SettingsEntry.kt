@@ -100,7 +100,7 @@ fun SettingsSwitchEntry(
                 modifier = Modifier.padding(end = 22.dp).size(24.dp),
                 painter = it,
                 tint = colorScheme.onSurfaceVariant,
-                contentDescription = "Icon"
+                contentDescription = null
             )
         }
 
@@ -206,7 +206,7 @@ fun SettingsClickableEntry(
                 modifier = Modifier.padding(end = 22.dp).size(24.dp),
                 painter = it,
                 tint = colorScheme.onSurfaceVariant,
-                contentDescription = "Icon"
+                contentDescription = null
             )
         }
 

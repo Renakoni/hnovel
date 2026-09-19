@@ -497,21 +497,21 @@ private fun BottomBar(
                 ) {
                     Icon(
                         painter = painterResource(R.drawable.outline_bookmark_24px),
-                        contentDescription = "mark"
+                        contentDescription = stringResource(R.string.action_bookmark)
                     )
                 }
 
                 IconButton(onClick = onClickChapterSelector) {
                     Icon(
                         painter = painterResource(id = R.drawable.menu_24px),
-                        contentDescription = "menu"
+                        contentDescription = stringResource(R.string.detail_contents)
                     )
                 }
 
                 IconButton(onClick = onClickSettings) {
                     Icon(
                         painter = painterResource(R.drawable.outline_settings_24px),
-                        contentDescription = "setting"
+                        contentDescription = stringResource(R.string.settings)
                     )
                 }
             }

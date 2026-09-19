@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import indi.renakoni.nextvol.data.book.BookIdentity
@@ -77,7 +78,7 @@ fun ImageViewerScreen(
         ) {
             Icon(
                 painter = painterResource(R.drawable.close_24px),
-                contentDescription = "close",
+                contentDescription = stringResource(R.string.close),
                 tint = Color.Black
             )
         }
@@ -101,7 +102,7 @@ fun ImageViewerScreen(
         ) {
             Icon(
                 painter = painterResource(R.drawable.save_24px),
-                contentDescription = "save",
+                contentDescription = stringResource(R.string.action_save),
                 tint = MaterialTheme.colorScheme.onSecondaryContainer,
                 modifier = Modifier.size(28.dp)
             )

@@ -198,7 +198,7 @@ fun LicenseDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("OK")
+                Text(stringResource(R.string.confirm))
             }
         },
         title = {
@@ -260,7 +260,7 @@ private fun TopBar(
             IconButton(onClickBack) {
                 Icon(
                     painterResource(id = R.drawable.arrow_back_24px),
-                    contentDescription = "back"
+                    contentDescription = stringResource(R.string.sources_back)
                 )
             }
         },

@@ -22,6 +22,7 @@ import androidx.navigation.compose.navigation
 import androidx.navigation.toRoute
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
+import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.ui.components.ExportContext
 import indi.renakoni.nextvol.ui.components.ExportUserDataDialog
 import indi.renakoni.nextvol.ui.components.MutableExportContext
@@ -152,10 +153,10 @@ private fun NavGraphBuilder.exportUserDataDialog() {
                 workManager.getWorkInfoByIdFlow(viewModel.exportToFile(uri, exportContext).id).collect {
                     when (it?.state) {
                         WorkInfo.State.FAILED -> {
-                            Toast.makeText(context, "导出失败", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, context.getString(R.string.data_export_failed), Toast.LENGTH_SHORT).show()
                         }
                         WorkInfo.State.SUCCEEDED -> {
-                            Toast.makeText(context, "导出成功", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, context.getString(R.string.data_export_success), Toast.LENGTH_SHORT).show()
                         }
                         else -> {}
                     }

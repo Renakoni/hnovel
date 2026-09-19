@@ -73,7 +73,7 @@ class MetadataDetailScreenTest {
         compose.onNodeWithText(activity.get().getString(R.string.detail_contents)).assertDoesNotExist()
         compose.onNodeWithText(activity.get().getString(R.string.start_reading)).assertDoesNotExist()
         compose.onNodeWithText(activity.get().getString(R.string.cached_false)).assertDoesNotExist()
-        compose.onNodeWithContentDescription("export").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Export").assertDoesNotExist()
         compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(activity.get().getString(R.string.add_to_bookshelf)))
         compose.onNodeWithText(activity.get().getString(R.string.add_to_bookshelf)).performClick()
         assertEquals(key, saved)

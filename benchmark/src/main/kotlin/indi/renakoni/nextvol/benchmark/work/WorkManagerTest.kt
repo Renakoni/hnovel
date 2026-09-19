@@ -94,7 +94,7 @@ class WorkManagerTest : UiAutomatorTest() {
     fun epubExportRunsFromBookUiAndWritesFile() {
         removeOutput(EPUB_FILE)
         openFixtureBook()
-        clickDescription("export")
+        clickDescription("Export")
         assertText("Export as Epub")
         clickText("Export")
         saveCreatedDocument(EPUB_FILE)
@@ -112,7 +112,7 @@ class WorkManagerTest : UiAutomatorTest() {
         // The real source rate-limits searches from the same public IP.
         SystemClock.sleep(6_000)
         device.pressEnter()
-        waitForDescription("export", NETWORK_WORK_TIMEOUT)
+        waitForDescription("Export", NETWORK_WORK_TIMEOUT)
 
         scrollToText("Not Cached")
         var started = false
@@ -189,7 +189,7 @@ class WorkManagerTest : UiAutomatorTest() {
     }
 
     private fun openBookshelfMenu() {
-        clickDescription("more")
+        clickDescription("More options")
     }
 
     private fun saveCreatedDocument(fileName: String) {

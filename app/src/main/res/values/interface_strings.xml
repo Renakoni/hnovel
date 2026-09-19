@@ -1,0 +1,47 @@
+<resources>
+    <string name="action_sort">Sort</string>
+    <string name="action_select">Select</string>
+    <string name="action_more_options">More options</string>
+    <string name="action_refresh">Refresh</string>
+    <string name="action_bookmark">Bookmark</string>
+    <string name="action_save">Save</string>
+    <string name="action_add">Add</string>
+    <string name="action_open">Open</string>
+    <string name="action_clear_text">Clear text</string>
+    <string name="action_retry">Retry</string>
+    <string name="image_load_failed">Image could not be loaded</string>
+    <string name="plugin_signature_invalid">Invalid signature</string>
+    <string name="plugin_runtime_error">Runtime error</string>
+    <string name="plugin_incompatible">Incompatible</string>
+    <string name="plugin_app_badge">App</string>
+    <string name="dialog_value">Value</string>
+    <string name="paper_background_downloading">Downloading paper background…</string>
+    <string name="data_export_failed">Export failed</string>
+    <string name="data_export_success">Export successful</string>
+    <string name="share_file">Share file</string>
+    <string name="reader_content_error">Content could not be displayed</string>
+    <string name="debug_open_book">Open book</string>
+    <string name="debug_book_key">Wenku8 ID / source-scoped book key</string>
+    <string name="debug_sql">SQL debugging</string>
+    <string name="debug_sql_statement">SQL statement</string>
+    <string name="debug_run">Run</string>
+    <string name="debug_crash_tests">Crash tests</string>
+    <string name="debug_looper_crash">Main thread crash</string>
+    <string name="debug_null_crash">Null pointer crash</string>
+    <string name="mark_read_all_description">Mark all chapters of this book as read.</string>
+    <string name="mark_read_range_description">Choose the first and last chapters to mark the range as read.</string>
+    <string name="mark_read_all">Mark all as read</string>
+    <string name="mark_read_all_chapters">All chapters</string>
+    <string name="mark_read_choose_range">Choose range</string>
+    <plurals name="mark_read_selected">
+        <item quantity="one">Mark %1$d chapter as read</item>
+        <item quantity="other">Mark %1$d chapters as read</item>
+    </plurals>
+    <plurals name="formatting_rules_count">
+        <item quantity="one">%1$d rule</item>
+        <item quantity="other">%1$d rules</item>
+    </plurals>
+    <string name="plugin_delete_action">Delete plugin</string>
+    <string name="plugin_uninstall_action">Uninstall and delete</string>
+    <string name="stats_total">Total</string>
+</resources>

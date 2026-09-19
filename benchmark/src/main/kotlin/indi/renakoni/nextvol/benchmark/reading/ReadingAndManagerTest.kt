@@ -30,7 +30,7 @@ class ReadingAndManagerTest : UiAutomatorTest() {
     @Test
     fun downloadAndLocalBookManagerExposeTabsMenusAndCacheDetails() {
         launchApp()
-        val statistics = assertDescription("statistics")
+        val statistics = assertDescription("Statistics")
         val bounds = statistics.visibleBounds
         device.click(
             statistics.visibleBounds.centerX() - (device.displayWidth * 0.10f).toInt(),
@@ -45,17 +45,17 @@ class ReadingAndManagerTest : UiAutomatorTest() {
 
         clickText("Local books")
         assertText("Benchmark Sample Novel")
-        assertDescription("sort")
-        assertDescription("select")
-        assertDescription("more")
+        assertDescription("Sort")
+        assertDescription("Select")
+        assertDescription("More options")
 
-        clickDescription("sort")
+        clickDescription("Sort")
         assertText("Sort by size")
         assertText("Sort by last read")
         assertText("Sort by chapter count")
         clickText("Sort by chapter count")
 
-        clickDescription("info")
+        clickDescription("Info")
         assertText("Book Cache Details")
         assertText("Book information")
         assertText("Volume index")

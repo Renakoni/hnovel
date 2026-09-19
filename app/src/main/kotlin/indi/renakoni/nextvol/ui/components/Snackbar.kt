@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import indi.renakoni.nextvol.R
 
@@ -53,7 +54,7 @@ fun LnrSnackbar(
                     content = {
                         Icon(
                             painterResource(R.drawable.close_24px),
-                            contentDescription = "dismiss",
+                            contentDescription = stringResource(R.string.close),
                         )
                     }
                 )

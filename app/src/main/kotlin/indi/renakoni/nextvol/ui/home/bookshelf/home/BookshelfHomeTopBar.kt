@@ -82,7 +82,7 @@ fun BookshelfHomeTopBar(
                 ) {
                     Icon(
                         painter = painterResource(R.drawable.cancel_24px),
-                        contentDescription = "cancel"
+                        contentDescription = stringResource(R.string.cancel)
                     )
                 }
             } else {
@@ -106,7 +106,7 @@ fun BookshelfHomeTopBar(
                         IconButton(onClick = { sortMenuExpanded = true }) {
                             Icon(
                                 painter = painterResource(R.drawable.sort_24px),
-                                contentDescription = "sort"
+                                contentDescription = stringResource(R.string.action_sort)
                             )
                         }
                         DropdownMenu(
@@ -170,7 +170,7 @@ fun BookshelfHomeTopBar(
                         IconButton(onClick = { mainMenuExpanded = true }) {
                             Icon(
                                 painter = painterResource(R.drawable.more_vert_24px),
-                                contentDescription = "more"
+                                contentDescription = stringResource(R.string.action_more_options)
                             )
                         }
                         DropdownMenu(
@@ -267,7 +267,7 @@ fun BookshelfHomeTopBar(
                     IconButton(onClick = uiState.onSelectAll) {
                         Icon(
                             painter = painterResource(R.drawable.select_all_24px),
-                            contentDescription = "select all"
+                            contentDescription = stringResource(R.string.select_all)
                         )
                     }
                     Box {

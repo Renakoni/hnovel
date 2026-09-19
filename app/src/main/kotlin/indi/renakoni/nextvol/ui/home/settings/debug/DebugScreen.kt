@@ -50,12 +50,12 @@ fun BookBlock(onClickOpenBook: (String) -> Unit) {
     Column(Modifier.fillMaxWidth()) {
         SectionHeader(
             modifier = Modifier.padding(horizontal = 22.dp, vertical = 10.dp),
-            text = "打开书本"
+            text = stringResource(R.string.debug_open_book)
         )
         OutlinedTextField(
             value = bookId,
             onValueChange = { bookId = it },
-            label = { Text("Wenku8 ID / 来源限定书籍键") },
+            label = { Text(stringResource(R.string.debug_book_key)) },
             maxLines = 1,
             modifier = Modifier
                 .fillMaxWidth()
@@ -69,7 +69,7 @@ fun BookBlock(onClickOpenBook: (String) -> Unit) {
             horizontalArrangement = Arrangement.End
         ) {
             Button(onClick = { onClickOpenBook(bookId) }) {
-                Text("打开")
+                Text(stringResource(R.string.action_open))
             }
         }
     }
@@ -82,12 +82,12 @@ fun SqlBlock(onClickQuery: (String) -> Unit, result: String) {
     Column(Modifier.fillMaxWidth()) {
         SectionHeader(
             modifier = Modifier.padding(horizontal = 22.dp, vertical = 10.dp),
-            text = "SQL调试"
+            text = stringResource(R.string.debug_sql)
         )
         OutlinedTextField(
             value = sqlCommand,
             onValueChange = { sqlCommand = it },
-            label = { Text("SQL指令") },
+            label = { Text(stringResource(R.string.debug_sql_statement)) },
             maxLines = 1,
             modifier = Modifier
                 .fillMaxWidth()
@@ -101,7 +101,7 @@ fun SqlBlock(onClickQuery: (String) -> Unit, result: String) {
             horizontalArrangement = Arrangement.End
         ) {
             Button(onClick = { onClickQuery(sqlCommand) }) {
-                Text("执行")
+                Text(stringResource(R.string.debug_run))
             }
         }
         Text(
@@ -116,15 +116,15 @@ fun CrashBlock() {
     Column(Modifier.fillMaxWidth()) {
         SectionHeader(
             modifier = Modifier.padding(horizontal = 22.dp, vertical = 10.dp),
-            text = "崩溃测试"
+            text = stringResource(R.string.debug_crash_tests)
         )
         SettingsClickableEntry(
-            title = "Crash by Lopper",
+            title = stringResource(R.string.debug_looper_crash),
             description = "Looper.getMainLooper().quit()",
             onClick = { Looper.getMainLooper().quit() }
         )
         SettingsClickableEntry(
-            title = "Crash by NPE",
+            title = stringResource(R.string.debug_null_crash),
             description = "NullPointerException",
             onClick = { throw NullPointerException() }
         )
@@ -146,7 +146,7 @@ private fun TopBar(
             IconButton(onClickBack) {
                 Icon(
                     painterResource(id = R.drawable.arrow_back_24px),
-                    contentDescription = "back"
+                    contentDescription = stringResource(R.string.sources_back)
                 )
             }
         },

@@ -27,6 +27,7 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.data.content.component.ErrorContentComponent
 import indi.renakoni.nextvol.data.content.component.SimpleTextComponent
 import indi.renakoni.nextvol.theme.AppTheme
@@ -102,7 +103,7 @@ class BuiltInContentRenderingTest {
     fun errorComponentStillDisplaysTheErrorLabelAndOriginalMessage() {
         val component = ErrorContentComponent.of("component class not found\nid=fixture:missing")
         setContent { component.Content(Modifier) }
-        compose.onNodeWithText("ERROR").assertIsDisplayed()
+        compose.onNodeWithText(activity.get().getString(R.string.reader_content_error)).assertIsDisplayed()
         compose.onNodeWithText("component class not found\nid=fixture:missing").assertIsDisplayed()
     }
 

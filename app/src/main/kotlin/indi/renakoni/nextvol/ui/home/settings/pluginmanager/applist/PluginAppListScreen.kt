@@ -173,7 +173,7 @@ private fun AppCard(
                 modifier = Modifier.padding(horizontal = 12.dp).size(24.dp),
                 painter = painterResource(R.drawable.open_in_new_24px),
                 tint = colorScheme.onSurfaceVariant,
-                contentDescription = "detail",
+                contentDescription = null,
             )
         }
     }
@@ -200,7 +200,7 @@ private fun TopBar(
             IconButton(onClick = onClickBack) {
                 Icon(
                     painter = painterResource(id = R.drawable.arrow_back_24px),
-                    contentDescription = "back"
+                    contentDescription = stringResource(R.string.sources_back)
                 )
             }
         },

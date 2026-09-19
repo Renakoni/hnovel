@@ -209,7 +209,7 @@ private fun AppBar(
             IconButton(onClick = onClickBack) {
                 Icon(
                     painter = painterResource(id = R.drawable.arrow_back_24px),
-                    contentDescription = "back"
+                    contentDescription = stringResource(R.string.sources_back)
                 )
             }
         },
@@ -222,7 +222,7 @@ private fun AppBar(
                     ) {
                         Icon(
                             painter = painterResource(id = R.drawable.filter_list_24px),
-                            contentDescription = "sort"
+                            contentDescription = stringResource(R.string.action_sort)
                         )
                     }
                     DropdownMenu(
@@ -274,7 +274,7 @@ private fun AppBar(
                 ) {
                     Icon(
                         painter = painterResource(id = R.drawable.checklist_24px),
-                        contentDescription = "select"
+                        contentDescription = stringResource(R.string.action_select)
                     )
                 }
                 Box {
@@ -284,7 +284,7 @@ private fun AppBar(
                     ) {
                         Icon(
                             painter = painterResource(id = R.drawable.more_vert_24px),
-                            contentDescription = "more"
+                            contentDescription = stringResource(R.string.action_more_options)
                         )
                     }
                     DropdownMenu(
@@ -327,7 +327,7 @@ private fun SelectingAppBar(
             IconButton(onClick = uiState.exitSelection) {
                 Icon(
                     painter = painterResource(id = R.drawable.close_24px),
-                    contentDescription = "close"
+                    contentDescription = stringResource(R.string.cancel)
                 )
             }
         }
@@ -498,7 +498,7 @@ private fun Card(
                 IconButton(onClickCancel) {
                     Icon(
                         painter = painterResource(R.drawable.cancel_24px),
-                        contentDescription = "cancel"
+                        contentDescription = stringResource(R.string.cancel)
                     )
                 }
             Box(Modifier.width(7.dp))

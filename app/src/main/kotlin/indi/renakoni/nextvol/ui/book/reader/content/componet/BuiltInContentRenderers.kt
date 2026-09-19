@@ -10,8 +10,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.isUnspecified
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.ui.book.reader.LocalReaderTextLayout
 import indi.renakoni.nextvol.ui.LocalAppTheme
 import indi.renakoni.nextvol.ui.book.reader.navigateToImageViewerDialog
@@ -85,7 +87,7 @@ internal fun ReaderImageContent(uri: Uri, modifier: Modifier) {
 @Composable
 internal fun ReaderErrorContent(message: String) {
     Column {
-        Text("ERROR")
+        Text(stringResource(R.string.reader_content_error))
         Text(message)
     }
 }

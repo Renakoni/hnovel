@@ -69,7 +69,7 @@ class LocalBookImportTest : UiAutomatorTest() {
             clickScrolledText("Chapter 2 Second")
             assertTextContains("Second local paragraph")
             device.click(device.displayWidth / 2, device.displayHeight / 2)
-            clickDescription("menu")
+            clickDescription("Contents")
             clickText("Chapter 1 First")
             pressBack()
             assertTextContains("First local paragraph")
@@ -98,7 +98,7 @@ class LocalBookImportTest : UiAutomatorTest() {
             clickScrolledText("Opening")
             assertTextContains("First EPUB paragraph")
             device.click(device.displayWidth / 2, device.displayHeight / 2)
-            clickDescription("menu")
+            clickDescription("Contents")
             clickText("Ending")
             pressBack()
             assertTextContains("Final EPUB paragraph")
@@ -114,7 +114,7 @@ class LocalBookImportTest : UiAutomatorTest() {
             openPicker()
             repeat(3) { if (device.currentPackageName == documentsPackage) pressBack() }
             assertText("Benchmark Shelf")
-            clickDescription("more")
+            clickDescription("More options")
             clickText("Import Local Book")
             selectDocument(name)
             assertText("Imported illustrated book")
@@ -132,7 +132,7 @@ class LocalBookImportTest : UiAutomatorTest() {
     private fun openPicker() {
         launchApp()
         openBottomNavigation("Bookshelf")
-        clickDescription("more")
+        clickDescription("More options")
         clickText("Import Local Book")
         assertTrue("SAF picker did not open", device.wait(Until.hasObject(By.pkg(documentsPackage)), TIMEOUT))
     }
