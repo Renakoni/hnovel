@@ -165,7 +165,7 @@ class MainActivity : ComponentActivity() {
                 bookshelfRepository.addBookshelf(
                     Bookshelf(
                         id = 1145140721,
-                        name = "已收藏",
+                        name = getString(R.string.activity_collections),
                         sortType = BookshelfSortType.Default,
                         sortReversed = false,
                         autoCache = false,

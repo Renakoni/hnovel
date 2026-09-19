@@ -23,6 +23,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.workDataOf
+import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.data.work.SaveBookshelfWork
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -86,9 +87,9 @@ fun BookshelfHomeScreen(
                         WorkInfo.State.SUCCEEDED -> {
                             ShareCompat.IntentBuilder(context)
                                 .setType("application/zip")
-                                .setSubject("分享文件")
+                                .setSubject(context.getString(R.string.share_bookshelf))
                                 .addStream(uri)
-                                .setChooserTitle("分享书架")
+                                .setChooserTitle(context.getString(R.string.share_bookshelf))
                                 .startChooser()
                         }
 

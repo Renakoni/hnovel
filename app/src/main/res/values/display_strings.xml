@@ -1,0 +1,10 @@
+<resources>
+    <string name="download_type_epub">EPUB export</string>
+    <string name="download_type_cache">Download</string>
+    <string name="book_update_notification">%1$s has new chapters</string>
+    <string name="book_update_channel">Book updates</string>
+    <string name="book_update_channel_description">Notifications for new book chapters</string>
+    <string name="data_file_choose">Choose a data file</string>
+    <string name="paper_custom">Custom paper</string>
+    <string name="log_live">Live</string>
+</resources>

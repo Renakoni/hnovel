@@ -132,7 +132,7 @@ fun DataSettingsList(
         painter = painterResource(R.drawable.input_24px),
         title = stringResource(R.string.settings_import_data),
         description = stringResource(R.string.settings_import_data_desc),
-        onClick = { selectDataFile(importDataLauncher) }
+        onClick = { selectDataFile(importDataLauncher, context.getString(R.string.data_file_choose)) }
     )
     SettingsClickableEntry(
         modifier = Modifier.background(colorScheme.surfaceContainer),
@@ -157,7 +157,7 @@ fun DataSettingsList(
     )
 }
 
-fun selectDataFile(launcher: ManagedActivityResultLauncher<Intent, ActivityResult>) {
+fun selectDataFile(launcher: ManagedActivityResultLauncher<Intent, ActivityResult>, chooserTitle: String) {
     val initUri = DocumentsContract.buildDocumentUri("com.android.externalstorage.documents", "primary:Documents")
     val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
         addCategory(Intent.CATEGORY_OPENABLE)
@@ -165,5 +165,5 @@ fun selectDataFile(launcher: ManagedActivityResultLauncher<Intent, ActivityResul
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
             putExtra(DocumentsContract.EXTRA_INITIAL_URI, initUri)
     }
-    launcher.launch(Intent.createChooser(intent, "选择数据文件"))
+    launcher.launch(Intent.createChooser(intent, chooserTitle))
 }

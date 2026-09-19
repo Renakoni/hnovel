@@ -457,7 +457,7 @@ fun BackgroundSettings(settingState: ReaderSettingsEditor, context: Context) {
 
     if (!settingState.enableBackgroundImage) return
 
-    SettingsCategory(title = "自定义纸张") {
+    SettingsCategory(title = stringResource(R.string.paper_custom)) {
         BackgroundCard(
             title = stringResource(R.string.settings_theme_bg_image_built_in),
             desc = stringResource(R.string.settings_theme_bg_image_built_in_desc),
