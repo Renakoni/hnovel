@@ -26,7 +26,7 @@ object BridgeWire {
     /** Shared preflight for every untrusted worker message, including execution results. */
     fun validate(bytes: ByteArray): String = validate(bytes, MAX_BYTES)
 
-    internal fun validate(bytes: ByteArray, maxBytes: Int): String {
+    fun validate(bytes: ByteArray, maxBytes: Int): String {
         require(bytes.size <= maxBytes) { "Bridge request too large" }
         val text = bytes.toString(Charsets.UTF_8)
         var quoted = false

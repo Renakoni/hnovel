@@ -69,6 +69,7 @@ fun SpeechSettingsScreen(
     onRate: (Float?) -> Unit, onPitch: (Float?) -> Unit, onPreview: () -> Unit,
     onCommand: (SpeechAction) -> Unit,
     onSystemSettings: () -> Unit, onRefresh: () -> Unit,
+    onHttpSources: () -> Unit = {},
 ) {
     var choice by remember { mutableStateOf<String?>(null) }
     var showPlayback by remember { mutableStateOf(false) }
@@ -105,6 +106,11 @@ fun SpeechSettingsScreen(
             item(key = "voice") {
                 Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
                     Column {
+                        if (state.settings.httpSource != null) {
+                            val name = state.httpSources.find { it.definition.id == state.settings.httpSource }?.definition?.name
+                                ?: stringResource(R.string.tts_voice_unavailable)
+                            SpeechSetting(stringResource(R.string.tts_online_sources), name, onClick = onHttpSources)
+                        } else {
                         val name = if (state.settings.engine.isEmpty()) stringResource(R.string.tts_system_default)
                             else state.engines.find { it.packageName == state.settings.engine }?.name ?: state.settings.engine
                         SpeechSetting(stringResource(R.string.tts_engine), name) { choice = "engine" }
@@ -117,6 +123,7 @@ fun SpeechSettingsScreen(
                                 Locale.forLanguageTag(it.locale).getDisplayName(locale) + " · " + it.id
                             } ?: stringResource(R.string.tts_voice_unavailable)
                         SpeechSetting(stringResource(R.string.tts_voice), voice, enabled = !state.loading) { choice = "voice" }
+                        }
                     }
                 }
             }
@@ -127,15 +134,17 @@ fun SpeechSettingsScreen(
                 }
             }
             item(key = "rate") {
-                SpeechParameter(stringResource(R.string.tts_rate), state.settings.rate, onRate)
+                SpeechParameter(stringResource(R.string.tts_rate), state.settings.rate, onRate,
+                    defaultLabel = stringResource(if (state.settings.httpSource == null) R.string.tts_engine_default else R.string.tts_source_default))
             }
-            item(key = "pitch") {
+            if (state.settings.httpSource == null) item(key = "pitch") {
                 SpeechParameter(stringResource(R.string.tts_pitch), state.settings.pitch, onPitch)
             }
             item(key = "preview") {
                 FilledTonalButton(
                     onClick = onPreview,
-                    enabled = !state.loading && state.engines.isNotEmpty(),
+                    enabled = !state.loading && (if (state.settings.httpSource == null) state.engines.isNotEmpty()
+                        else state.httpSources.any { it.definition.id == state.settings.httpSource }),
                     modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("speech-preview"),
                     shape = RoundedCornerShape(16.dp),
                     contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
@@ -144,8 +153,11 @@ fun SpeechSettingsScreen(
                     Text(stringResource(R.string.tts_preview))
                 }
             }
-            item(key = "system") {
+            if (state.settings.httpSource == null) item(key = "system") {
                 SpeechSetting(stringResource(R.string.tts_system_settings), onClick = onSystemSettings)
+            }
+            if (state.settings.httpSource == null) item(key = "online") {
+                SpeechSetting(stringResource(R.string.tts_online_sources), onClick = onHttpSources)
             }
         }
     }
@@ -274,10 +286,11 @@ private fun SpeechSetting(title: String, value: String? = null, enabled: Boolean
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SpeechParameter(title: String, value: Float?, onChange: (Float?) -> Unit) {
+private fun SpeechParameter(title: String, value: Float?, onChange: (Float?) -> Unit,
+    defaultLabel: String = stringResource(R.string.tts_engine_default)) {
     var slider by remember(value) { mutableFloatStateOf(value ?: 1f) }
     var edited by remember(value) { mutableStateOf(false) }
-    val description = if (value == null && !edited) stringResource(R.string.tts_engine_default)
+    val description = if (value == null && !edited) defaultLabel
         else stringResource(R.string.tts_factor, slider)
     val colors = SliderDefaults.colors(
         thumbColor = MaterialTheme.colorScheme.onSurface,

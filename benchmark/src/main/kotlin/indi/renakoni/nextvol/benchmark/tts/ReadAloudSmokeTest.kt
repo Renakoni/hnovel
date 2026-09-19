@@ -57,6 +57,28 @@ class ReadAloudSmokeTest : UiAutomatorTest() {
         assertServiceStopped()
     }
 
+    @Test fun importedVoiceCanBeSelectedPlayedAndRemovedWithoutASystemEngine() {
+        val result = shell("am broadcast -W -n $TARGET_PACKAGE/.benchmark.BenchmarkFixtureReceiver " +
+            "-a $TARGET_PACKAGE.benchmark.SPEECH_SOURCE")
+        assertTrue(result, result.contains("speech-source=SUCCEEDED"))
+        configureEngine("invalid.nextvol.speech.engine")
+        launchApp()
+        shell("am start -W -n $TARGET_PACKAGE/.MainActivity -a indi.renakoni.nextvol.OPEN_READ_ALOUD")
+        clickScrolledText("Online voices")
+        clickText("Imported test voice")
+        device.pressBack()
+        assertText("Imported test voice")
+        clickScrolledText("Preview voice")
+        assertText("Finished")
+        clickDescription("Stop")
+        assertServiceStopped()
+        clickScrolledText("Online voices")
+        clickDescription("Voice options")
+        clickText("Remove voice")
+        assertTrue(device.wait(Until.gone(By.text("Imported test voice")), TIMEOUT))
+        assertText("System speech")
+    }
+
     private fun assertServiceStopped() {
         val deadline = SystemClock.uptimeMillis() + TIMEOUT
         var service: String

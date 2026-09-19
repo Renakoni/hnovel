@@ -3,6 +3,8 @@ package indi.renakoni.nextvol.ui.tts
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -21,6 +23,9 @@ import kotlinx.serialization.Serializable
 @Serializable
 object SpeechSettingsRoute
 
+@Serializable
+object HttpSpeechSourcesRoute
+
 fun NavController.navigateToSpeechSettings() = navigate(SpeechSettingsRoute) { launchSingleTop = true }
 
 fun NavGraphBuilder.speechSettingsDestination() {
@@ -38,6 +43,17 @@ fun NavGraphBuilder.speechSettingsDestination() {
             onSystemSettings = {
                 try { context.startActivity(Intent("com.android.settings.TTS_SETTINGS")) }
                 catch (_: ActivityNotFoundException) { context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
-            }, onRefresh = viewModel::refresh)
+            }, onRefresh = viewModel::refresh,
+            onHttpSources = { nav.navigate(HttpSpeechSourcesRoute) { launchSingleTop = true } })
+    }
+    composable<HttpSpeechSourcesRoute> {
+        val nav = LocalNavController.current
+        val viewModel = hiltViewModel<HttpSpeechSourcesViewModel>()
+        val state by viewModel.state.collectAsStateWithLifecycle()
+        val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(viewModel::preview) }
+        HttpSpeechSourcesScreen(state, nav::popBackStackIfResumed,
+            onImport = { picker.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) },
+            onSelect = viewModel::select, onDelete = viewModel::delete, onSites = viewModel::sites,
+            onConfirmImport = viewModel::confirmImport, onDismissImport = viewModel::dismissPreview, onEdit = viewModel::edit)
     }
 }

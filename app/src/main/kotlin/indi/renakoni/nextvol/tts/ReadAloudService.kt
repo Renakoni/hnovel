@@ -40,7 +40,7 @@ class ReadAloudService : MediaSessionService() {
     @Inject lateinit var chapters: SpeechChapterSource
     @Inject lateinit var settings: SpeechSettingsRepository
     @Inject lateinit var progress: SpeechProgressStore
-    @Inject lateinit var engines: SystemSpeechEngines
+    @Inject lateinit var synthesizers: SpeechSynthesizers
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private lateinit var player: ExoPlayer
     private lateinit var speech: ReadAloudSession
@@ -60,7 +60,7 @@ class ReadAloudService : MediaSessionService() {
             setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_SPEECH).build(), true)
             setHandleAudioBecomingNoisy(true)
         }
-        speech = ReadAloudSession(scope, chapters, settings::get, progress, engines::synthesizer,
+        speech = ReadAloudSession(scope, chapters, settings::get, progress, synthesizers::synthesizer,
             ExoSpeechPlayback(player, this), File(cacheDir, "read-aloud"))
         val controls = object : ForwardingSimpleBasePlayer(player) {
             override fun handleSetPlayWhenReady(playWhenReady: Boolean): ListenableFuture<*> {

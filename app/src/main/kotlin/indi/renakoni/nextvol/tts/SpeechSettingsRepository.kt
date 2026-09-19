@@ -19,6 +19,7 @@ data class SpeechSettings(
     val voice: String = "",
     val rate: Float? = null,
     val pitch: Float? = null,
+    val httpSource: String? = null,
 ) {
     fun validated() = copy(
         rate = rate?.takeIf { it.isFinite() }?.coerceIn(0.5f, 2f),

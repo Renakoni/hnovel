@@ -50,4 +50,34 @@
     <string name="tts_error_content">This chapter contains a content type that cannot be read aloud yet.</string>
     <string name="tts_error_playback">This passage could not be played. Your position is saved; retry to continue.</string>
     <string name="tts_error_service">Background playback could not start. Return to the app and retry.</string>
+    <string name="tts_online_sources">Online voices</string>
+    <string name="tts_system_speech">System speech</string>
+    <string name="tts_import_sources">Import voices</string>
+    <plurals name="tts_import_count">
+        <item quantity="one">Import %1$d voice</item>
+        <item quantity="other">Import %1$d voices</item>
+    </plurals>
+    <plurals name="tts_import_invalid">
+        <item quantity="one">%1$d entry could not be imported.</item>
+        <item quantity="other">%1$d entries could not be imported.</item>
+    </plurals>
+    <string name="tts_import_failed">This file could not be imported.</string>
+    <string name="tts_online_empty">Import an online voice to get started.</string>
+    <string name="tts_online_privacy">Book text is sent to the selected speech service.</string>
+    <string name="tts_source_sites">Service websites</string>
+    <string name="tts_remove_source">Remove voice</string>
+    <string name="tts_error_http_source">This online voice is unavailable. Import it again or choose another.</string>
+    <string name="tts_error_http_permission">This voice needs access to another website. Check its service websites.</string>
+    <string name="tts_error_http_unsupported">This voice uses a feature that is not supported yet. Choose another voice.</string>
+    <string name="tts_error_http_login">This voice needs account information.</string>
+    <string name="tts_edit_source">Edit voice</string>
+    <string name="tts_source_name">Name</string>
+    <string name="tts_source_request">Request URL or script</string>
+    <string name="tts_source_headers">Request headers</string>
+    <string name="tts_source_invalid">Check the voice name and request configuration.</string>
+    <string name="tts_source_sites_invalid">Enter one HTTP or HTTPS website per line.</string>
+    <string name="tts_microsoft_sites">Allowing Microsoft Translator also permits its regional speech servers (*.tts.speech.microsoft.com).</string>
+    <string name="tts_allow_source_site">Allow %1$s</string>
+    <string name="tts_source_actions">Voice options</string>
+    <string name="tts_source_default">Source default</string>
 </resources>

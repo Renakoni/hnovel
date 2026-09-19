@@ -10,7 +10,8 @@ import kotlinx.serialization.json.*
 class SourceExecutionBroker(val identity: ExecutionIdentity, private val authority: ExecutionAuthority,
     private val session: SourceSession, val limits: ExecutionLimits,
     private val baseUrl: String = "", private val keyword: String = "", private val page: Int = 1,
-    private val allowInteraction: Boolean = false) : AutoCloseable {
+    private val allowInteraction: Boolean = false, private val speakText: String? = null,
+    private val speakSpeed: Int = 10) : AutoCloseable {
     private val lifetime = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var requests = 0
     private var closed = false
@@ -32,8 +33,9 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
 
     /** The script-visible context and request compiler must describe the same invocation. */
     fun matchesTaskContext(task: ExecutionTask): Boolean = when (task) {
-        is ExecutionTask.Script -> baseUrl == task.baseUrl && keyword == task.key && page == task.page
-        is ExecutionTask.Rule -> baseUrl == task.baseUrl && keyword == task.key && page == task.page
+        is ExecutionTask.Script -> baseUrl == task.baseUrl && keyword == task.key && page == task.page &&
+            speakText == task.speakText && speakSpeed == task.speakSpeed
+        is ExecutionTask.Rule -> speakText == null && baseUrl == task.baseUrl && keyword == task.key && page == task.page
         else -> true
     }
 
@@ -225,7 +227,8 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
     }
 
     private fun compiled(number: Int, rule: String, headers: Map<String, String>): BrokerRequest {
-        val compiled = RequestCompiler().compile("script-$number", rule, baseUrl, keyword, page, headers, kind = ResourceKind.Api)
+        val compiled = RequestCompiler().compile("script-$number", rule, baseUrl, keyword, page, headers, kind = ResourceKind.Api,
+            speakText = speakText, speakSpeed = speakSpeed, expandTemplates = speakText == null)
         check(compiled is CompiledRequest.Ready) { "Request requires an unsupported option" }
         return compiled.request
     }
