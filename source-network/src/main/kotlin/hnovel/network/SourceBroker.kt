@@ -486,7 +486,8 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
 }
 
 /** Source-owned script values survive process restarts; zero TTL has no deadline. */
-private class ValueCache(private val limits: BrokerLimits, private val storage: SourceStorage) {
+internal class ValueCache(private val limits: BrokerLimits, private val storage: SourceStorage,
+    private val nowMillis: () -> Long = System::currentTimeMillis) {
     @Serializable private data class Entry(val value: String, val deadline: Long)
 
     @Synchronized fun read(key: String): StorageResult = access { entries -> StorageResult.Value(entries[key]?.value) }
@@ -499,7 +500,7 @@ private class ValueCache(private val limits: BrokerLimits, private val storage: 
                 (request.key.length.toLong() + request.value.length) * 2
             if (size > limits.maxCacheBytes || request.key !in entries && entries.size >= limits.maxStorageEntries)
                 return@access StorageResult.Failure(FailureCode.StorageQuota)
-            entries[request.key] = Entry(request.value, if (ttl == 0L) 0 else Math.addExact(System.currentTimeMillis(), ttl))
+            entries[request.key] = Entry(request.value, if (ttl == 0L) 0 else Math.addExact(nowMillis(), ttl))
         }
         when (val saved = storage.write("entries", Json.encodeToString(entries))) {
             is StorageResult.Failure -> saved
@@ -512,7 +513,7 @@ private class ValueCache(private val limits: BrokerLimits, private val storage: 
         if (stored !is StorageResult.Value) return stored
         return try {
             val entries = stored.value?.let { Json.decodeFromString<Map<String, Entry>>(it).toMutableMap() } ?: linkedMapOf()
-            val now = System.currentTimeMillis()
+            val now = nowMillis()
             entries.entries.removeAll { it.value.deadline != 0L && it.value.deadline <= now }
             block(entries)
         } catch (_: Exception) { StorageResult.Failure(FailureCode.StorageUnavailable) }

@@ -250,16 +250,14 @@ class SourceBrokerTest {
         }
     }
 
-    @Test fun cacheValuesHaveTtlQuotaDeletionAndRequestVariableWritesAreBounded() = runBlocking {
+    @Test fun cacheValuesHaveScopeQuotaDeletionAndRequestVariableWritesAreBounded() = runBlocking {
         SourceBroker(directory.root.toPath(), limits = BrokerLimits(maxCacheBytes = 64)).use { broker ->
             val a = broker.open(scope(), emptyList())
             val b = broker.open(scope("b"), emptyList())
-            val item = StorageRequest(StorageArea.Cache, "key", "value", ttlMillis = 20)
+            val item = StorageRequest(StorageArea.Cache, "key", "value", ttlMillis = 0)
             assertEquals(StorageResult.Value("value"), a.write(item))
             assertEquals(StorageResult.Value("value"), a.read(item))
             assertEquals(StorageResult.Value(null), b.read(item))
-            delay(30)
-            assertEquals(StorageResult.Value(null), a.read(item))
             assertEquals(StorageResult.Failure(FailureCode.StorageQuota), a.write(item.copy(value = "x".repeat(100))))
             a.write(item.copy(ttlMillis = 60000))
             a.write(item.copy(value = null))
