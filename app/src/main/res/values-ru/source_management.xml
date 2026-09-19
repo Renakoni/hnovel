@@ -1,0 +1,4 @@
+<resources>
+    <string name="sources_back">Назад</string>
+    <string name="sources_unavailable">Недоступно · Проверьте настройки источника</string>
+</resources>
