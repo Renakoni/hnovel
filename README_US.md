@@ -14,7 +14,7 @@
 
 ## Introduction
 
-NextVol is an independent application derived from upstream [LightNovelReader](https://github.com/dmzz-yyhyy/LightNovelReader), installed as `indi.renakoni.nextvol`. Existing release, F-Droid, community, donation and translation links below still refer to upstream; service changes are deferred to [#232](https://github.com/Renakoni/hnovel/issues/232). See the [identity and backup compatibility notes](source-compatibility/NEXTVOL_IDENTITY.md).
+NextVol is an independent application derived from upstream [LightNovelReader](https://github.com/dmzz-yyhyy/LightNovelReader), installed as `indi.renakoni.nextvol`. Existing release, F-Droid, community, donation and translation links below still refer to upstream; service changes are deferred to [#232](https://github.com/Renakoni/hnovel/issues/232). The apps install separately without automatic data migration; existing backups can be imported.
 
 NextVol <sup>*Refactored Version*</sup> is an open-source app for reading light novels, built with Kotlin and Jetpack Compose. It’s designed for a smooth, modern reading experience and packed with useful features like EPUB exports, offline reading, and support for multiple data sources.
 

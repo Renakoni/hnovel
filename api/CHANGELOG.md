@@ -41,7 +41,7 @@
 - Exhaustive consumers must handle the new case when recompiling; previously
   compiled consumers that receive it can fail an exhaustive dispatch. This does
   not publish an API artifact, change compatibility groups or claim external
-  plugin binary compatibility. See [catalogue bounds](../source-content/DISCOVERY.md).
+  plugin binary compatibility. See [catalogue bounds](../sources/content/DISCOVERY.md).
 
 ## Unreleased — retire global source selection (#81)
 
@@ -101,5 +101,5 @@ results. Do not republish this as an undocumented compatible replacement or infe
 external plugin ABI support from the monorepo's passing tests. No plugin binary
 compatibility verification or release is claimed by this PR.
 
-See [the discovery protocol](../source-content/DISCOVERY.md) for input-key identity,
+See [the discovery protocol](../sources/content/DISCOVERY.md) for input-key identity,
 catalogue persistence, source-local search, and browser lifecycle semantics.

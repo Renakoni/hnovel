@@ -14,7 +14,7 @@
 
 ## 介紹
 
-NextVol 是基於上游 [LightNovelReader](https://github.com/dmzz-yyhyy/LightNovelReader) 的獨立應用程式，安裝識別碼為 `indi.renakoni.nextvol`。下方現有發布、F-Droid、社群、贊助和翻譯連結仍屬於上游；相關服務暫不遷移，由 [#232](https://github.com/Renakoni/hnovel/issues/232) 後續處理。應用程式身分與備份相容邊界見 [遷移說明](source-compatibility/NEXTVOL_IDENTITY.md)。
+NextVol 是基於上游 [LightNovelReader](https://github.com/dmzz-yyhyy/LightNovelReader) 的獨立應用程式，安裝識別碼為 `indi.renakoni.nextvol`。下方現有發布、F-Droid、社群、贊助和翻譯連結仍屬於上游；相關服務暫不遷移，由 [#232](https://github.com/Renakoni/hnovel/issues/232) 後續處理。與上游分別安裝，資料不會自動遷移；既有備份可透過匯入功能遷移。
 
 NextVol <sup>*重構版*</sup> 是一款開源的輕小說閱讀軟體，使用 Kotlin 和 Jetpack Compose 開發，具有輕量化的體積和流暢的閱讀體驗。此外，還有多種實用功能，如 EPUB 匯出、離線閱讀和多資料來源支援。
 

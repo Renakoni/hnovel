@@ -13,16 +13,20 @@ local.properties
 .idea/misc.xml
 .idea/compiler.xml
 .DS_Store
-./build
-./captures
+build/
+captures/
 .externalNativeBuild
 .cxx
-./local.properties
 .kotlin/
 /app/snapshot/
-/proxy/build/**
-/compiler/build/**
-/build/**
 /artifacts/
 /docs/
 /.codex-logs/
+
+# Local research, handoff notes and browser captures are never project sources.
+/.local/
+/.playwright-mcp/
+/ref/
+/research/
+__pycache__/
+*.py[cod]
