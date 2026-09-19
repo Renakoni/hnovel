@@ -1,4 +1,8 @@
 <resources>
+    <string name="tts_sleep_timer">定时停止</string>
+    <string name="tts_timer_off">关闭定时</string>
+    <string name="tts_timer_minutes">%1$d 分钟</string>
+    <string name="tts_timer_remaining">剩余 %1$s</string>
     <string name="tts_title">听书</string>
     <string name="tts_start">听这本书</string>
     <string name="tts_settings">听书设置</string>

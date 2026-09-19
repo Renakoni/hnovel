@@ -11,7 +11,7 @@ import kotlinx.serialization.json.Json
 import javax.inject.Inject
 import javax.inject.Singleton
 
-enum class SpeechAction { Start, Pause, Resume, Stop, Previous, Next, PreviousChapter, NextChapter }
+enum class SpeechAction { Start, Pause, Resume, Stop, Previous, Next, PreviousChapter, NextChapter, SleepTimer }
 
 /** UI sends explicit commands. Merely observing this state never starts a service or an engine. */
 @Singleton
@@ -38,12 +38,16 @@ class ReadAloudController @Inject constructor(@ApplicationContext private val co
     }
 
     fun command(action: SpeechAction) = send(action, state.value.request)
+    fun setSleepTimer(minutes: Int?) {
+        require(minutes == null || minutes in 1..60)
+        send(SpeechAction.SleepTimer, state.value.request, minutes)
+    }
     internal fun publish(state: ReadAloudState) { mutableState.value = state }
 
-    private fun send(action: SpeechAction, request: SpeechRequest?) {
+    private fun send(action: SpeechAction, request: SpeechRequest?, timerMinutes: Int? = null) {
         if (request == null) return
         try {
-            val intent = intent(context, action, request)
+            val intent = intent(context, action, request).putExtra(TIMER_MINUTES, timerMinutes ?: 0)
             if (action == SpeechAction.Start || action == SpeechAction.Resume) ContextCompat.startForegroundService(context, intent)
             else context.startService(intent)
         } catch (_: IllegalStateException) {
@@ -56,6 +60,7 @@ class ReadAloudController @Inject constructor(@ApplicationContext private val co
     companion object {
         internal const val ACTION = "speech.action"
         internal const val REQUEST = "speech.request"
+        internal const val TIMER_MINUTES = "speech.timerMinutes"
         const val OPEN_PLAYER = "indi.renakoni.nextvol.OPEN_READ_ALOUD"
         internal fun intent(context: Context, action: SpeechAction, request: SpeechRequest): Intent =
             Intent(context, ReadAloudService::class.java).putExtra(ACTION, action.name)
