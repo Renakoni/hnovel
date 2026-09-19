@@ -41,15 +41,15 @@ class LogcatViewModel @Inject constructor (
 
     fun deleteLogFile(fileName: String) {
         loggerRepository.deleteLogFile(fileName)
-        onSelectLogFile("实时")
+        onSelectLogFile(LIVE_LOG_OPTION)
     }
 
     fun onSelectLogFile(fileName: String) {
-        _uiState.isFileMode =  fileName.startsWith("lnr")
+        _uiState.isFileMode = fileName != LIVE_LOG_OPTION
         _uiState.selectedLogFile = fileName
-        loggerRepository.loadLogFile(fileName)
+        if (_uiState.isFileMode) loggerRepository.loadLogFile(fileName)
     }
 
     val logFilenameList: List<String>
-        get() = loggerRepository.getAvailableLogFiles() + "实时"
+        get() = loggerRepository.getAvailableLogFiles() + LIVE_LOG_OPTION
 }

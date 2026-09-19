@@ -1,8 +1,8 @@
 package indi.renakoni.nextvol.utils
 
 import android.icu.text.MeasureFormat
+import android.icu.util.Measure
 import android.icu.util.MeasureUnit
-import android.os.Build
 import java.util.Locale
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.days
@@ -18,6 +18,7 @@ data class DurationFormat(val locale: Locale = Locale.getDefault()) {
 
     fun format(duration: Duration, smallestUnit: Unit = Unit.SECOND, largestUnit: Unit = Unit.DAY): String {
         val formattedStringComponents = mutableListOf<String>()
+        val measureFormat = MeasureFormat.getInstance(locale, MeasureFormat.FormatWidth.NARROW)
         var remainder = duration
 
         for (unit in Unit.entries) {
@@ -33,17 +34,15 @@ data class DurationFormat(val locale: Locale = Locale.getDefault()) {
                 Unit.MILLISECOND -> remainder - component.milliseconds
             }
 
-            val unitDisplayName = unitDisplayName(unit)
+            val measureUnit = measureUnit(unit)
 
             if (component > 0) {
-                val formattedComponent = android.icu.text.NumberFormat.getInstance(locale).format(component)
-                formattedStringComponents.add("$formattedComponent$unitDisplayName")
+                formattedStringComponents.add(measureFormat.format(Measure(component, measureUnit)))
             }
 
             if (unit == smallestUnit) {
-                val formattedZero = android.icu.text.NumberFormat.getInstance(locale).format(0)
                 if (formattedStringComponents.isEmpty()) {
-                    formattedStringComponents.add("$formattedZero$unitDisplayName")
+                    formattedStringComponents.add(measureFormat.format(Measure(0, measureUnit)))
                 }
                 break
             }
@@ -60,22 +59,11 @@ data class DurationFormat(val locale: Locale = Locale.getDefault()) {
         Unit.MILLISECOND -> remainder.inWholeMilliseconds
     }
 
-    private fun unitDisplayName(unit: Unit) = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-        val measureFormat = MeasureFormat.getInstance(locale, MeasureFormat.FormatWidth.NARROW)
-        when (unit) {
-            Unit.DAY -> measureFormat.getUnitDisplayName(MeasureUnit.DAY)
-            Unit.HOUR -> measureFormat.getUnitDisplayName(MeasureUnit.HOUR)
-            Unit.MINUTE -> measureFormat.getUnitDisplayName(MeasureUnit.MINUTE)
-            Unit.SECOND -> measureFormat.getUnitDisplayName(MeasureUnit.SECOND)
-            Unit.MILLISECOND -> measureFormat.getUnitDisplayName(MeasureUnit.MILLISECOND)
-        }
-    } else {
-        when (unit) {
-            Unit.DAY -> "天"
-            Unit.HOUR -> "小时"
-            Unit.MINUTE -> "分钟"
-            Unit.SECOND -> "秒"
-            Unit.MILLISECOND -> "毫秒"
-        }
+    private fun measureUnit(unit: Unit) = when (unit) {
+        Unit.DAY -> MeasureUnit.DAY
+        Unit.HOUR -> MeasureUnit.HOUR
+        Unit.MINUTE -> MeasureUnit.MINUTE
+        Unit.SECOND -> MeasureUnit.SECOND
+        Unit.MILLISECOND -> MeasureUnit.MILLISECOND
     }
 }

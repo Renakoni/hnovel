@@ -97,7 +97,7 @@ class CheckUpdateWork @AssistedInject constructor(
                     NotificationCompat.Builder(appContext, "BookUpdate")
                         .setSmallIcon(R.drawable.icon_foreground)
                         .setContentTitle(appContext.getString(R.string.app_name))
-                        .setContentText("您关注的轻小说 ${it.title} 更新了")
+                        .setContentText(appContext.getString(R.string.book_update_notification, it.title))
                         .setPriority(NotificationCompat.PRIORITY_DEFAULT)
                         .build()
                 )
@@ -126,8 +126,8 @@ class CheckUpdateWork @AssistedInject constructor(
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val name = "更新提示"
-            val descriptionText = "轻小说更新提示"
+            val name = appContext.getString(R.string.book_update_channel)
+            val descriptionText = appContext.getString(R.string.book_update_channel_description)
             val importance = NotificationManager.IMPORTANCE_DEFAULT
             val channel = NotificationChannel("BookUpdate", name, importance).apply {
                 description = descriptionText

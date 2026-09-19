@@ -6,6 +6,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import indi.renakoni.nextvol.data.logging.LogEntry
 
+internal const val LIVE_LOG_OPTION = ""
+
 @Stable
 interface LogcatUiState {
     val isFileMode: Boolean
@@ -15,6 +17,6 @@ interface LogcatUiState {
 
 class MutableLogcatUiState : LogcatUiState {
     override var isFileMode: Boolean by mutableStateOf(false)
-    override var selectedLogFile: String by mutableStateOf("实时")
+    override var selectedLogFile: String by mutableStateOf(LIVE_LOG_OPTION)
     override var displayedLogEntries: List<LogEntry> by mutableStateOf(emptyList())
 }

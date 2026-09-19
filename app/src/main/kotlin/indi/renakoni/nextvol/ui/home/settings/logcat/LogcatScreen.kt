@@ -128,7 +128,7 @@ private fun TopBar(
                     style = MaterialTheme.typography.displayLarge
                 )
                 AnimatedTextLine(
-                    text = uiState.selectedLogFile,
+                    text = logFileLabel(uiState.selectedLogFile),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.secondary,
                     overflow = TextOverflow.Ellipsis
@@ -196,7 +196,7 @@ private fun BottomBar(
                 modifier = Modifier.weight(1f)
             ) {
                 TextField(
-                    value = uiState.selectedLogFile,
+                    value = logFileLabel(uiState.selectedLogFile),
                     onValueChange = {},
                     readOnly = true,
                     label = { Text(stringResource(R.string.log_source)) },
@@ -304,6 +304,10 @@ private fun BottomBar(
 
 
 @Composable
+private fun logFileLabel(fileName: String): String =
+    if (fileName == LIVE_LOG_OPTION) stringResource(R.string.log_live) else fileName
+
+@Composable
 private fun parseFileLabel(fileName: String): Pair<String, String> {
     val formatter = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss")
     val displayFormatter = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss")
@@ -323,13 +327,13 @@ private fun parseFileLabel(fileName: String): Pair<String, String> {
         null
     }
     val subLabel = if (prefix != null && timestamp != null) "$prefix - $timestamp" else ""
-    return fileName to subLabel
+    return logFileLabel(fileName) to subLabel
 }
 
 @Composable
 private fun colorForFile(fileName: String): Color {
     return when {
-        fileName == "实时" -> Color(0xFF4CAF50)
+        fileName == LIVE_LOG_OPTION -> Color(0xFF4CAF50)
         fileName.startsWith("lnr_panic_") -> Color(0xFFF44336)
         fileName.startsWith("lnr_export_") -> Color(0xFF2196F3)
         else -> MaterialTheme.colorScheme.onSurfaceVariant

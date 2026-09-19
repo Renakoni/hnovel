@@ -173,7 +173,7 @@ private fun NavGraphBuilder.exportUserDataDialog() {
             },
             onClickSaveToFile = {
                 exportContext = it
-                createDataFile("NextVolData", saveDataToFileLauncher)
+                createDataFile("NextVolData", context.getString(R.string.select_location), saveDataToFileLauncher)
             }
         )
     }
@@ -184,7 +184,7 @@ private fun NavController.navigateToExportUserDataDialog() {
 }
 
 @Suppress("DuplicatedCode", "SameParameterValue")
-private fun createDataFile(fileName: String, launcher: ManagedActivityResultLauncher<Intent, ActivityResult>) {
+private fun createDataFile(fileName: String, chooserTitle: String, launcher: ManagedActivityResultLauncher<Intent, ActivityResult>) {
     val initUri = DocumentsContract.buildDocumentUri("com.android.externalstorage.documents", "primary:Documents")
     val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
         addCategory(Intent.CATEGORY_OPENABLE)
@@ -193,5 +193,5 @@ private fun createDataFile(fileName: String, launcher: ManagedActivityResultLaun
             putExtra(DocumentsContract.EXTRA_INITIAL_URI, initUri)
         putExtra(Intent.EXTRA_TITLE, "$fileName.lnr")
     }
-    launcher.launch(Intent.createChooser(intent, "选择一位置"))
+    launcher.launch(Intent.createChooser(intent, chooserTitle))
 }

@@ -478,8 +478,8 @@ private fun Card(
                                     (downloadItem.progress*100).toInt()
                                 )
                             else if (downloadItem.progress > 0)
-                                stringResource(R.string.download_item_finished, downloadItem.type.typeName)
-                            else stringResource(R.string.download_item_failed, downloadItem.type.typeName),
+                                stringResource(R.string.download_item_finished, stringResource(downloadItem.type.typeNameRes))
+                            else stringResource(R.string.download_item_failed, stringResource(downloadItem.type.typeNameRes)),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.bodyMedium,

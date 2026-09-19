@@ -1,0 +1,10 @@
+<resources>
+    <string name="download_type_epub">EPUB 导出</string>
+    <string name="download_type_cache">下载</string>
+    <string name="book_update_notification">您关注的轻小说 %1$s 更新了</string>
+    <string name="book_update_channel">更新提示</string>
+    <string name="book_update_channel_description">轻小说更新提示</string>
+    <string name="data_file_choose">选择数据文件</string>
+    <string name="paper_custom">自定义纸张</string>
+    <string name="log_live">实时</string>
+</resources>
