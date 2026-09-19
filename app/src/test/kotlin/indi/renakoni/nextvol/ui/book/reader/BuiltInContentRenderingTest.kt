@@ -7,6 +7,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
@@ -21,15 +22,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.sp
 import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.data.content.component.ErrorContentComponent
@@ -159,6 +164,46 @@ class BuiltInContentRenderingTest {
         assertEquals(Color.Red, textColor("Paper body"))
         assertEquals(Color.Cyan, textColor("Paper menu"))
         assertSame(initialIdentity, readerIdentity)
+    }
+
+    @Test
+    @Config(sdk = [35], qualifiers = "en-rUS-w320dp-h640dp")
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun readerMenuKeepsChapterAndCenterActionsReachableWithLargeEnglishText() {
+        val clicked = mutableListOf<String>()
+        setContent {
+            CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, 1.8f)) {
+                MaterialTheme(colorScheme = ReaderPaper.Sepia.colors!!.colorScheme(), typography = AppTypography) {
+                    Column(Modifier.width(320.dp)) {
+                        Box(Modifier.testTag("reader-menu")) {
+                            ReaderBottomBar(true, true,
+                                { clicked += "previous" }, { clicked += "next" },
+                                { clicked += "settings" }, { clicked += "contents" })
+                        }
+                        TabsRow(listOf(TabItem("Appearance", R.drawable.filled_menu_book_24px),
+                            TabItem("Controls", R.drawable.settings_applications_24px),
+                            TabItem("Layout", R.drawable.aspect_ratio_24px)), 0, {})
+                    }
+                }
+            }
+        }
+        val previous = compose.onNodeWithText(activity.get().getString(R.string.previous_chapter))
+        val next = compose.onNodeWithText(activity.get().getString(R.string.next_chapter))
+        val contents = compose.onNodeWithContentDescription(activity.get().getString(R.string.detail_contents))
+        val settings = compose.onNodeWithContentDescription(activity.get().getString(R.string.settings))
+        val menu = compose.onNodeWithTag("reader-menu").fetchSemanticsNode().boundsInRoot
+        for (node in listOf(previous, contents, settings, next)) {
+            node.assertIsDisplayed().performClick()
+            val bounds = node.fetchSemanticsNode().boundsInRoot
+            assertTrue("Control must stay inside the menu: $bounds / $menu",
+                bounds.left >= menu.left && bounds.right <= menu.right && bounds.bottom <= menu.bottom)
+        }
+        assertTrue(previous.fetchSemanticsNode().boundsInRoot.right <= contents.fetchSemanticsNode().boundsInRoot.left)
+        assertTrue(settings.fetchSemanticsNode().boundsInRoot.right <= next.fetchSemanticsNode().boundsInRoot.left)
+        assertEquals(listOf("previous", "contents", "settings", "next"), clicked)
+        val layouts = mutableListOf<TextLayoutResult>()
+        compose.onNodeWithText("Appearance").performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
+        assertTrue("Tab label must fit without clipping", !layouts.single().hasVisualOverflow)
     }
 
     @Test

@@ -239,7 +239,7 @@ fun ReaderScreen(
                 )
             }
             Box(Modifier.align(Alignment.BottomCenter).readerProbeLayout("bottom-bar")) {
-            BottomBar(
+            ReaderBottomBar(
                 hasNextChapter = readingScreenUiState.contentUiState?.readingChapterContent
                     ?.get()
                     ?.hasNextChapter() ?: false,
@@ -449,7 +449,7 @@ internal fun ReaderTopBar(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun BottomBar(
+internal fun ReaderBottomBar(
     hasPrevChapter: Boolean,
     hasNextChapter: Boolean,
     onClickPrevChapter: () -> Unit,
@@ -468,11 +468,12 @@ private fun BottomBar(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             TextButton(
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
                 onClick = onClickPrevChapter,
                 enabled = hasPrevChapter
             ) {
                 Column(
-                    modifier = Modifier.padding(horizontal = 6.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Icon(
@@ -483,7 +484,10 @@ private fun BottomBar(
                     Spacer(Modifier.height(2.dp))
                     Text(
                         text = stringResource(R.string.previous_chapter),
-                        style = typography.labelSmall
+                        style = typography.labelSmall,
+                        textAlign = TextAlign.Center,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
@@ -519,11 +523,12 @@ private fun BottomBar(
             }
 
             TextButton(
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
                 onClick = onClickNextChapter,
                 enabled = hasNextChapter
             ) {
                 Column(
-                    modifier = Modifier.padding(horizontal = 6.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Icon(
@@ -534,7 +539,10 @@ private fun BottomBar(
                     Spacer(Modifier.height(2.dp))
                     Text(
                         text = stringResource(R.string.next_chapter),
-                        style = typography.labelSmall
+                        style = typography.labelSmall,
+                        textAlign = TextAlign.Center,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
