@@ -4,12 +4,17 @@ import android.app.Application
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.unit.dp
 import com.github.michaelbull.result.Err
 import com.github.michaelbull.result.Ok
@@ -120,5 +125,26 @@ class ReaderChapterErrorTest {
         compose.runOnIdle {
             assertEquals(false, state.lazyListState.layoutInfo.visibleItemsInfo.first { it.key == "4" }.contentType)
         }
+    }
+
+    @Test fun longErrorRemainsScrollableWhileSuccessfulProgressRestorationIsPending() {
+        val state = MutableScrollContentUiSate({}, {}, {}, {}, {}).apply {
+            readingChapterId = "4"
+            isRestoringProgress = true
+            contentList[1] = "4" to Err(WebRequestError("Offline", List(30) { "Error details $it" }.joinToString("\n")))
+        }
+        compose.runOnUiThread {
+            activity.get().setContent {
+                MaterialTheme {
+                    Box(Modifier.height(320.dp)) {
+                        ScrollContentComponent(Modifier, state, mockk(relaxed = true), mockk(),
+                            PaddingValues(0.dp), {}, {}, {}, chapterTitle = { "Chapter $it" })
+                    }
+                }
+            }
+        }
+        compose.onRoot().performTouchInput { swipeUp() }
+        compose.waitForIdle()
+        assertTrue(state.lazyListState.firstVisibleItemScrollOffset > 0)
     }
 }

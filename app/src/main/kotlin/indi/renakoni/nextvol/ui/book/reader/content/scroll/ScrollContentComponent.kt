@@ -287,7 +287,7 @@ fun ScrollContentTextComponent(
                     }
                 },
             state = listState,
-            userScrollEnabled = !uiState.isRestoringProgress,
+            userScrollEnabled = !uiState.isRestoringProgress || uiState.readingChapterContent?.isErr == true,
         ) {
             itemsIndexed(
                 items = uiState.contentList,
