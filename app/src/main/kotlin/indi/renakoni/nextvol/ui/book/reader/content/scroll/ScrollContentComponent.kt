@@ -72,6 +72,7 @@ import indi.renakoni.nextvol.ui.book.reader.usesBackgroundImage
 import indi.renakoni.nextvol.utils.rememberReaderFontFamily
 import indi.renakoni.nextvol.utils.showSnackbar
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 
 @Composable
@@ -83,7 +84,8 @@ fun ScrollContentComponent(
     paddingValues: PaddingValues,
     changeIsImmersive: () -> Unit,
     onClickPrevChapter: () -> Unit,
-    onClickNextChapter: () -> Unit
+    onClickNextChapter: () -> Unit,
+    chapterTitle: (String) -> String? = { null },
 ) {
     ScrollContentTextComponent(
         modifier = modifier,
@@ -93,7 +95,8 @@ fun ScrollContentComponent(
         paddingValues = paddingValues,
         changeIsImmersive = changeIsImmersive,
         onClickPrevChapter = onClickPrevChapter,
-        onClickNextChapter = onClickNextChapter
+        onClickNextChapter = onClickNextChapter,
+        chapterTitle = chapterTitle,
     )
 }
 
@@ -106,7 +109,8 @@ fun ScrollContentTextComponent(
     paddingValues: PaddingValues,
     changeIsImmersive: () -> Unit,
     onClickPrevChapter: () -> Unit,
-    onClickNextChapter: () -> Unit
+    onClickNextChapter: () -> Unit,
+    chapterTitle: (String) -> String? = { null },
 ) {
     val snackbarHostState = LocalSnackbarHost.current
     val density = LocalDensity.current
@@ -124,17 +128,25 @@ fun ScrollContentTextComponent(
     val reachedEndMsg = stringResource(R.string.reader_reached_end)
 
     LaunchedEffect(listState) {
-        snapshotFlow { listState.layoutInfo.visibleItemsInfo }.first { it.isNotEmpty() }
-        withFrameNanos {  }
+        snapshotFlow {
+            uiState.readingChapterContent?.isOk == true && lazyColumnSize.height > 0 &&
+                listState.layoutInfo.visibleItemsInfo.isNotEmpty()
+        }.first { it }
+        val restoredProgress = uiState.readingProgress
+        // A cached previous chapter can initially occupy the whole viewport.
         listState.scrollToItem(1)
-        val item = uiState.lazyListState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == uiState.readingChapterId } ?: return@LaunchedEffect
-        snapshotFlow { lazyColumnSize }.first { lazyColumnSize.height > 0 }
-        val offset = if (uiState.readingProgress <= 0f) {
+        val item = snapshotFlow {
+            listState.layoutInfo.visibleItemsInfo.firstOrNull {
+                it.key == uiState.readingChapterId && it.contentType == true
+            }
+        }.filterNotNull().first()
+        val offset = if (restoredProgress <= 0f) {
             0
         } else {
-            (item.size * uiState.readingProgress).toInt() - lazyColumnSize.height
+            ((item.size * restoredProgress).toInt() - lazyColumnSize.height).coerceAtLeast(0)
         }
         listState.scrollToItem(1, offset)
+        uiState.onProgressRestored(listState)
     }
     LaunchedEffect(listState) {
         var atTop = false
@@ -262,6 +274,7 @@ fun ScrollContentTextComponent(
                 .padding(paddingValues)
                 .readerVolumeKeys(
                     enabled = settingState.isUsingVolumeKeyFlip && !settingState.isUsingFlipPage &&
+                        !uiState.isRestoringProgress &&
                         uiState.readingChapterContent?.get() != null && lazyColumnSize.height > 0,
                     intervalSeconds = settingState.volumeKeyContinuousFlipInterval,
                 ) { direction ->
@@ -280,10 +293,12 @@ fun ScrollContentTextComponent(
                     }
                 },
             state = listState,
+            userScrollEnabled = !uiState.isRestoringProgress || uiState.readingChapterContent?.isErr == true,
         ) {
             itemsIndexed(
                 items = uiState.contentList,
-                key = { index, pair -> pair?.first ?: "placeholder-$index" }
+                key = { index, pair -> pair?.first ?: "placeholder-$index" },
+                contentType = { _, pair -> pair?.second?.isOk == true },
             ) { index, pair ->
                 pair?.second.let { result ->
                     uiState.contentList.getOrNull(index + 1)?.second?.get()?.let {
@@ -300,7 +315,9 @@ fun ScrollContentTextComponent(
                             content = it
                         )
                     }?.onErr {
-                        ChapterContentError(it)
+                        ChapterContentError(it, pair?.first?.let(chapterTitle)) {
+                            pair?.first?.let(uiState.retryChapter)
+                        }
                     } ?: ChapterContentLoading()
                 }
             }

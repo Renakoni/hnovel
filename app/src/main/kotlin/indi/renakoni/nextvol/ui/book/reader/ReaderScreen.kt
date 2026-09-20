@@ -77,7 +77,6 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImagePainter
 import com.github.michaelbull.result.get
-import com.github.michaelbull.result.getOrElse
 import com.github.michaelbull.result.map
 import com.github.michaelbull.result.onErr
 import com.github.michaelbull.result.onOk
@@ -234,10 +233,8 @@ fun ReaderScreen(
             Box(Modifier.align(Alignment.TopCenter).readerProbeLayout("top-bar")) {
                 ReaderTopBar(
                     onClickBackButton = onClickBackButton,
-                    title = readingScreenUiState.contentUiState?.readingChapterContent
-                        ?.map { it.title }
-                        ?.getOrElse { "Unknowing" }
-                        ?: "Unknowing",
+                    title = readingScreenUiState.chapterTitle(readingScreenUiState.contentUiState?.readingChapterId)
+                        ?: stringResource(R.string.reader_chapter),
                     scrollBehavior = scrollBehavior,
                     onReadAloud = {
                         onStartReadAloud()
@@ -381,7 +378,8 @@ fun Content(
                         paddingValues = readerPadding(textLayout.settings, if (isEnableIndicator) 40.dp else 0.dp),
                         changeIsImmersive = onChangeIsImmersive,
                         onClickPrevChapter = onClickPrevChapter,
-                        onClickNextChapter = onClickNextChapter
+                        onClickNextChapter = onClickNextChapter,
+                        chapterTitle = readingScreenUiState::chapterTitle,
                     )
                 }
             }
@@ -410,10 +408,8 @@ fun Content(
                     enableBatteryIndicator = settingState.batteryIndicatorDisplayMode == "classic",
                     enableTimeIndicator = settingState.enableTimeIndicator,
                     enableChapterTitle = settingState.enableChapterTitleIndicator,
-                    chapterTitle = readingScreenUiState.contentUiState?.readingChapterContent
-                        ?.map { it.title }
-                        ?.getOrElse { "Unknowing" }
-                        ?: "Unknowing",
+                    chapterTitle = readingScreenUiState.chapterTitle(readingScreenUiState.contentUiState?.readingChapterId)
+                        ?: stringResource(R.string.reader_chapter),
                     enableReadingChapterProgressIndicator = settingState.enableReadingChapterProgressIndicator,
                     readingChapterProgress = readingScreenUiState.contentUiState?.readingProgress ?: 0f,
                 )

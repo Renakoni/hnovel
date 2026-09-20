@@ -59,6 +59,25 @@ class ReaderReadingRecordsTest {
         assertFalse(store.events.any { it.startsWith("finished:") })
     }
 
+    @Test
+    fun delayedProgressKeepsChapterHistoryWithoutReplacingTheNewResumeTarget() {
+        var current = true
+        val gate = CompletableDeferred<Unit>()
+        store.updateGate = gate
+        records.saveProgress("old", 0.6f) { current }
+        scheduler.runCurrent()
+        current = false
+        store.data["book"] = UserReadingData("book", lastReadTime = time.plusSeconds(1),
+            lastReadChapterId = "new", lastReadChapterTitle = "New chapter")
+        gate.complete(Unit)
+        scheduler.runCurrent()
+        val saved = store.data.getValue("book")
+        assertEquals("new", saved.lastReadChapterId)
+        assertEquals("New chapter", saved.lastReadChapterTitle)
+        assertEquals(time.plusSeconds(1), saved.lastReadTime)
+        assertEquals(0.6f, saved.currentChapterReadingProgressMap["old"])
+    }
+
     @After
     fun tearDown() {
         scope.cancel()

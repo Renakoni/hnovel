@@ -42,4 +42,5 @@
     <string name="plugin_delete_action">刪除外掛</string>
     <string name="plugin_uninstall_action">解除安裝並刪除</string>
     <string name="stats_total">總計</string>
+    <string name="reader_chapter">章節</string>
 </resources>

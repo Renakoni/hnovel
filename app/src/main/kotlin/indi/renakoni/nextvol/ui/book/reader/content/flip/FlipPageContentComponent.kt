@@ -66,6 +66,7 @@ fun FlipPageContentComponent(
     changeIsImmersive: () -> Unit,
     onClickPrevChapter: () -> Unit,
     onClickNextChapter: () -> Unit,
+    chapterTitle: (String) -> String? = { null },
 ) {
     uiState.readingChapterContent?.onOk {
         SimpleFlipPageTextComponent(
@@ -79,7 +80,9 @@ fun FlipPageContentComponent(
             onClickPrevChapter = onClickPrevChapter,
         )
     }?.onErr {
-        ChapterContentError(it)
+        ChapterContentError(it, uiState.readingChapterId?.let(chapterTitle)) {
+            uiState.readingChapterId?.let(uiState.changeChapter)
+        }
     } ?: ChapterContentLoading()
 }
 
