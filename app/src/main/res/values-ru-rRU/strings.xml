@@ -228,8 +228,8 @@
     <string name="settings_snap_data_desc">Создать снимок текущих данных пользователя в формате .lnr</string>
     <string name="settings_import_data">Импорт данных пользователя</string>
     <string name="settings_import_data_desc">Импорт данных пользователя из выбранного файла .lnr</string>
-    <string name="settings_storage_manager">Storage Usage</string>
-    <string name="settings_storage_manager_desc">Review how storage is used by the app, cache, plugins, and local files.</string>
+    <string name="settings_storage_manager">Хранилище и очистка</string>
+    <string name="settings_storage_manager_desc">Просмотр занятого места и очистка кеша чтения или загрузок.</string>
     <string name="settings_plugins">Plugins</string>
     <string name="settings_plugins_desc">Install and manage Plugins</string>
     <string name="settings_app_logs">Логи приложения</string>
@@ -251,7 +251,7 @@
     <string name="book_manager_clear_orphaned_content">Remove chapter data that is no longer linked to any local book?</string>
     <string name="book_manager_group_index_only">Books without cached content (%1$d)</string>
     <string name="book_manager_cleared_items">Cleared %1$d items</string>
-    <string name="storage_manager_title">Storage Manager</string>
+    <string name="storage_manager_title">Хранилище и очистка</string>
     <string name="storage_manager_empty_description">There is no local cache available to analyze.</string>
     <string name="storage_manager_used">used</string>
     <string name="storage_manager_section_app_title">App</string>

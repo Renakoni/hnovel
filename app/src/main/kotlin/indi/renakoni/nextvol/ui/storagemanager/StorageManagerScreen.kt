@@ -22,6 +22,8 @@ import indi.renakoni.nextvol.R
 fun StorageManagerScreen(
     onClickBack: () -> Unit,
     uiState: StorageManagerUiState,
+    clearReadingCache: suspend () -> Unit,
+    clearDownloads: suspend () -> Unit,
 ) {
     val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior()
     Scaffold(
@@ -58,6 +60,8 @@ fun StorageManagerScreen(
             modifier = Modifier.padding(it)
                 .nestedScroll(scrollBehavior.nestedScrollConnection),
             uiState = uiState,
+            clearReadingCache = clearReadingCache,
+            clearDownloads = clearDownloads,
         )
     }
 }

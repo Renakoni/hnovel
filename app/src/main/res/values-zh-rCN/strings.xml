@@ -226,8 +226,8 @@
     <string name="settings_snap_data_desc">将应用内的用户数据导出为 .lnr 文件</string>
     <string name="settings_import_data">导入数据</string>
     <string name="settings_import_data_desc">从选定的 .lnr 文件导入用户数据</string>
-    <string name="settings_storage_manager">存储使用</string>
-    <string name="settings_storage_manager_desc">查看软件缓存, 插件存储使用情况</string>
+    <string name="settings_storage_manager">存储与清理</string>
+    <string name="settings_storage_manager_desc">查看存储占用，清理阅读缓存或下载内容</string>
     <string name="settings_plugins">扩展插件</string>
     <string name="settings_plugins_desc">安装和管理扩展插件</string>
     <string name="settings_app_logs">应用日志</string>
@@ -249,7 +249,7 @@
     <string name="book_manager_clear_orphaned_content">删除未关联到任何本地书本的章节数据？</string>
     <string name="book_manager_group_index_only">书本内容未缓存（ %1$d ）</string>
     <string name="book_manager_cleared_items">已删除 %1$d 个项目</string>
-    <string name="storage_manager_title">存储管理</string>
+    <string name="storage_manager_title">存储与清理</string>
     <string name="storage_manager_empty_description">没有可分析的本地缓存。</string>
     <string name="storage_manager_used">已使用</string>
     <string name="storage_manager_section_app_title">应用</string>

@@ -14,7 +14,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
@@ -24,17 +23,15 @@ import androidx.navigation.toRoute
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import indi.renakoni.nextvol.R
-import indi.renakoni.nextvol.data.update.UpdatePhase
 import indi.renakoni.nextvol.ui.components.ExportContext
 import indi.renakoni.nextvol.ui.components.ExportUserDataDialog
 import indi.renakoni.nextvol.ui.components.MutableExportContext
 import indi.renakoni.nextvol.ui.components.SliderValueDialog
 import indi.renakoni.nextvol.ui.dialog.SliderValueDialogViewModel
-import indi.renakoni.nextvol.ui.dialog.UpdatesAvailableDialogViewModel
+import indi.renakoni.nextvol.ui.home.settings.about.settingsAboutDestination
 import indi.renakoni.nextvol.ui.home.settings.debug.navigateToSettingsDebugDestination
 import indi.renakoni.nextvol.ui.home.settings.debug.settingsDebugDestination
 import indi.renakoni.nextvol.ui.home.settings.formats.settingsFormatsDestination
-import indi.renakoni.nextvol.ui.home.settings.licenses.navigateToSettingsLicensesDestination
 import indi.renakoni.nextvol.ui.home.settings.licenses.settingsLicensesDestination
 import indi.renakoni.nextvol.ui.home.settings.logcat.navigateToSettingsLogcatDestination
 import indi.renakoni.nextvol.ui.home.settings.logcat.settingsLogcatDestination
@@ -47,6 +44,7 @@ import indi.renakoni.nextvol.ui.home.settings.textformatting.navigateToSettingsT
 import indi.renakoni.nextvol.ui.home.settings.textformatting.settingsTextFormattingNavigation
 import indi.renakoni.nextvol.ui.home.settings.theme.navigateToSettingsThemeDestination
 import indi.renakoni.nextvol.ui.home.settings.theme.settingsThemeDestination
+import indi.renakoni.nextvol.ui.home.settings.updates.settingsUpdatesDestination
 import indi.renakoni.nextvol.ui.storagemanager.navigateToStorageManager
 import indi.renakoni.nextvol.ui.tts.navigateToSpeechSettings
 import indi.renakoni.nextvol.ui.tts.speechSettingsDestination
@@ -66,15 +64,12 @@ fun NavGraphBuilder.settingsDestination() {
     composable<Route.Main.Settings.Home> {
         val navController = LocalNavController.current
         val settingsViewModel = hiltViewModel<SettingsViewModel>()
-        val updatesAvailableDialogViewModel = hiltViewModel<UpdatesAvailableDialogViewModel>()
-        val updatePhase by updatesAvailableDialogViewModel.updatePhaseFlow.collectAsStateWithLifecycle(UpdatePhase(R.string.update_phase_not_checked))
         SettingsScreen(
-            updatePhase = stringResource(updatePhase.messageId, *updatePhase.arguments.toTypedArray()),
             settingState = settingsViewModel.settingState,
-            checkUpdate = updatesAvailableDialogViewModel::checkUpdate,
             importData = settingsViewModel::importFromFile,
             onClickDebugMode = navController::navigateToSettingsDebugDestination,
-            onClickLicenses = navController::navigateToSettingsLicensesDestination,
+            onClickUpdates = { if (navController.isResumed()) navController.navigate(Route.Main.Settings.Updates) },
+            onClickAbout = { if (navController.isResumed()) navController.navigate(Route.Main.Settings.About) },
             onClickChangeSource = { navController.navigate(Route.Main.Settings.Sources) },
             onClickExportUserData = navController::navigateToExportUserDataDialog,
             onClickLogcat = navController::navigateToSettingsLogcatDestination,
@@ -83,9 +78,6 @@ fun NavGraphBuilder.settingsDestination() {
             onClickPluginManager = navController::navigateToSettingsPluginManagerHomeDestination,
             onClickThemeSettings = navController::navigateToSettingsThemeDestination,
             onClickStorageManager = navController::navigateToStorageManager,
-            clearReadingCache = settingsViewModel::clearReadingCache,
-            clearDownloads = settingsViewModel::clearDownloads,
-            onOptOut = settingsViewModel::trackOptOut,
             onBack = { navController.popBackStackIfResumed() }
         )
     }
@@ -104,6 +96,8 @@ fun NavGraphBuilder.settingsNavigation() {
         settingsDestination()
         settingsDebugDestination()
         settingsLogcatDestination()
+        settingsUpdatesDestination()
+        settingsAboutDestination()
         settingsThemeDestination()
         settingsTextFormattingNavigation()
         settingsPluginManagerNavigation()

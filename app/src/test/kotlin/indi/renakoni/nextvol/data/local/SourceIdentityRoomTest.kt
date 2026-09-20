@@ -21,14 +21,20 @@ import indi.renakoni.nextvol.data.work.workerParameters
 import indi.renakoni.nextvol.utils.readAppLocalData
 import indi.renakoni.nextvol.utils.ofId
 import com.github.michaelbull.result.get
+import io.mockk.coEvery
 import io.mockk.mockk
 import io.nightfish.lightnovelreader.api.book.*
 import io.nightfish.lightnovelreader.api.bookshelf.Bookshelf
 import io.nightfish.lightnovelreader.api.identifier.Identifier
 import io.nightfish.lightnovelreader.api.userdata.UserDataPath
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.job
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.cbor.Cbor
@@ -49,7 +55,7 @@ import java.time.LocalTime
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [27], application = Application::class)
-@OptIn(ExperimentalSerializationApi::class)
+@OptIn(ExperimentalSerializationApi::class, ExperimentalCoroutinesApi::class)
 class SourceIdentityRoomTest {
     private lateinit var db: NextVolDatabase
     private lateinit var local: LocalBookDataSource
@@ -62,6 +68,7 @@ class SourceIdentityRoomTest {
     private val other = SourceBookId(a.sourceId, "456")
 
     @Before fun setUp() {
+        Dispatchers.setMain(UnconfinedTestDispatcher())
         db = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), NextVolDatabase::class.java)
             .allowMainThreadQueries().build()
         local = LocalBookDataSource(db.bookInformationDao(), db.bookVolumesDao(), db.chapterContentDao(), db.userReadingDataDao())
@@ -74,7 +81,9 @@ class SourceIdentityRoomTest {
             db.userReadingDataDao(), db.userDataDao(), mockk(relaxed = true), coordinator, stats, downloads)
     }
 
-    @After fun tearDown() { db.close() }
+    @After fun tearDown() {
+        try { db.close() } finally { Dispatchers.resetMain() }
+    }
 
     private fun info(book: SourceBookId, title: String) = book.bind(BookInformation(
         id = book.remoteId, title = title, author = "author", description = "", publishingHouse = "",
@@ -126,9 +135,14 @@ class SourceIdentityRoomTest {
         val loader = coil3.ImageLoader.Builder(context).diskCache(cache).build()
         coil3.SingletonImageLoader.setUnsafe(loader)
         val models = androidx.lifecycle.ViewModelStore()
-        val model = indi.renakoni.nextvol.ui.home.settings.SettingsViewModel(data, mockk(), mockk(), downloads, mockk())
+        val model = indi.renakoni.nextvol.ui.storagemanager.StorageManagerViewModel(
+            mockk {
+                coEvery { getCachedSnapshot() } returns null
+                coEvery { refreshSnapshot() } returns indi.renakoni.nextvol.data.storage.StorageUsageSnapshot()
+            }, downloads, mockk(), mockk()
+        )
         val modelJob = model.viewModelScope.coroutineContext.job
-        models.put("settings", model)
+        models.put("storage", model)
         try {
             assertNotNull(cache.openSnapshot("image")?.also { it.close() })
             model.clearReadingCache()
@@ -157,9 +171,14 @@ class SourceIdentityRoomTest {
         val loader = coil3.ImageLoader.Builder(context).diskCache(null).build()
         coil3.SingletonImageLoader.setUnsafe(loader)
         val models = androidx.lifecycle.ViewModelStore()
-        val model = indi.renakoni.nextvol.ui.home.settings.SettingsViewModel(data, mockk(), mockk(), downloads, mockk())
+        val model = indi.renakoni.nextvol.ui.storagemanager.StorageManagerViewModel(
+            mockk {
+                coEvery { getCachedSnapshot() } returns null
+                coEvery { refreshSnapshot() } returns indi.renakoni.nextvol.data.storage.StorageUsageSnapshot()
+            }, downloads, mockk(), mockk()
+        )
         val modelJob = model.viewModelScope.coroutineContext.job
-        models.put("settings", model)
+        models.put("storage", model)
         try {
             model.clearReadingCache()
             assertNotNull("Explicit downloads must survive reading-cache cleanup",

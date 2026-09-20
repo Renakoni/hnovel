@@ -27,18 +27,12 @@ import indi.renakoni.nextvol.ui.components.ImportUserDataDialog
 import indi.renakoni.nextvol.ui.components.SettingsClickableEntry
 import indi.renakoni.nextvol.utils.uriLauncher
 import kotlinx.coroutines.launch
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import kotlinx.coroutines.CancellationException
 
 @Composable
 fun DataSettingsList(
     onClickExportUserData: () -> Unit,
     importData: (Uri, Boolean) -> OneTimeWorkRequest,
     onClickStorageManager: () -> Unit,
-    clearReadingCache: suspend () -> Unit,
-    clearDownloads: suspend () -> Unit,
 ) {
     val dataImportFailedText = stringResource(R.string.data_import_failed)
     val dataImportSuccessText = stringResource(R.string.data_import_success)
@@ -50,30 +44,6 @@ fun DataSettingsList(
     var pendingImportUri by remember { mutableStateOf<Uri?>(null) }
     var showImportDialog by remember { mutableStateOf(false) }
     var isImporting by remember { mutableStateOf(false) }
-    var clearDownloadsSelected by remember { mutableStateOf<Boolean?>(null) }
-    var clearingCache by remember { mutableStateOf(false) }
-
-    if (clearDownloadsSelected != null) AlertDialog(
-        onDismissRequest = { if (!clearingCache) clearDownloadsSelected = null },
-        title = { Text(stringResource(if (clearDownloadsSelected == true) R.string.settings_clear_downloads else R.string.settings_clear_reading_cache)) },
-        text = { Text(stringResource(if (clearDownloadsSelected == true) R.string.settings_clear_downloads_desc else R.string.settings_clear_reading_cache_desc)) },
-        confirmButton = { TextButton(enabled = !clearingCache, onClick = {
-            clearingCache = true
-            scope.launch {
-                try {
-                    if (clearDownloadsSelected == true) clearDownloads() else clearReadingCache()
-                    clearDownloadsSelected = null
-                    Toast.makeText(context, R.string.settings_cache_cleared, Toast.LENGTH_SHORT).show()
-                } catch (cancelled: CancellationException) { throw cancelled }
-                catch (_: Exception) { Toast.makeText(context, R.string.settings_cache_clear_failed, Toast.LENGTH_SHORT).show() }
-                finally { clearingCache = false }
-            }
-        }) { Text(stringResource(android.R.string.ok)) } },
-        dismissButton = { TextButton(enabled = !clearingCache, onClick = { clearDownloadsSelected = null }) {
-            Text(stringResource(android.R.string.cancel))
-        } }
-    )
-
     val startImport: (Uri, Boolean) -> Unit = { uri, overwrite ->
         isImporting = true
         scope.launch {
@@ -140,20 +110,6 @@ fun DataSettingsList(
         title = stringResource(R.string.settings_storage_manager),
         description = stringResource(R.string.settings_storage_manager_desc),
         onClick = onClickStorageManager
-    )
-    SettingsClickableEntry(
-        modifier = Modifier.background(colorScheme.surfaceContainer),
-        painter = painterResource(R.drawable.database_24px),
-        title = stringResource(R.string.settings_clear_reading_cache),
-        description = stringResource(R.string.settings_clear_reading_cache_desc),
-        onClick = { clearDownloadsSelected = false }
-    )
-    SettingsClickableEntry(
-        modifier = Modifier.background(colorScheme.surfaceContainer),
-        painter = painterResource(R.drawable.cloud_download_24px),
-        title = stringResource(R.string.settings_clear_downloads),
-        description = stringResource(R.string.settings_clear_downloads_desc),
-        onClick = { clearDownloadsSelected = true }
     )
 }
 

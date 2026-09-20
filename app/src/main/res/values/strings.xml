@@ -239,8 +239,8 @@
     <string name="settings_snap_data_desc">Create a snapshot of current user data as a .lnr file</string>
     <string name="settings_import_data">Import User Data</string>
     <string name="settings_import_data_desc">Import user data from a selected .lnr file</string>
-    <string name="settings_storage_manager">Storage Usage</string>
-    <string name="settings_storage_manager_desc">Review how storage is used by the app, cache, plugins, and local files.</string>
+    <string name="settings_storage_manager">Storage &amp; cleanup</string>
+    <string name="settings_storage_manager_desc">View storage usage and clear reading cache or downloads.</string>
     <string name="settings_plugins">Plugins</string>
     <string name="settings_plugins_desc">Install and manage Plugins</string>
     <string name="settings_app_logs">App Logs</string>
@@ -262,7 +262,7 @@
     <string name="book_manager_clear_orphaned_content">Remove chapter data that is no longer linked to any local book?</string>
     <string name="book_manager_group_index_only">Books without cached content (%1$d)</string>
     <string name="book_manager_cleared_items">Cleared %1$d items</string>
-    <string name="storage_manager_title">Storage Manager</string>
+    <string name="storage_manager_title">Storage &amp; cleanup</string>
     <string name="storage_manager_empty_description">There is no local cache available to analyze.</string>
     <string name="storage_manager_used">used</string>
     <string name="storage_manager_section_app_title">App</string>
