@@ -1,6 +1,7 @@
 package indi.renakoni.nextvol.data.bangumi
 
 import androidx.room.withTransaction
+import androidx.room.InvalidationTracker
 import indi.renakoni.nextvol.data.book.BookIdentity
 import indi.renakoni.nextvol.data.local.room.NextVolDatabase
 import kotlinx.coroutines.*
@@ -8,6 +9,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.IOException
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -22,6 +24,23 @@ class BangumiRepository @Inject constructor(
     val records = dao.observeRecords()
     private val mutex = Mutex()
     @Volatile private var activeSync: Pair<String, Job>? = null
+    private val catalogRevision = AtomicLong()
+    private data class ReconciledCatalog(
+        val entity: BangumiBindingEntity,
+        val generation: String,
+        val catalogRevision: Long,
+        val completedChapters: Set<String>,
+        val editions: Set<String>?,
+    )
+    private val reconciled = mutableMapOf<String, ReconciledCatalog>()
+
+    init {
+        database.invalidationTracker.addObserver(object : InvalidationTracker.Observer(
+            "book_information", "volume", "chapter_information",
+        ) {
+            override fun onInvalidated(tables: Set<String>) { catalogRevision.incrementAndGet() }
+        })
+    }
 
     suspend fun refreshProfile() {
         val session = accounts.session() ?: return
@@ -120,26 +139,41 @@ class BangumiRepository @Inject constructor(
 
     private fun interrupt(bookId: String) { activeSync?.takeIf { it.first == bookId }?.second?.cancel() }
 
-    /** Runs after database commits and at startup. No HTTP request is made from reading writes. */
-    suspend fun reconcile(): Set<String> = mutex.withLock {
+    /** Runs after commits and at startup, without HTTP. Only the continuous observer reuses
+     * unchanged catalogs; manual/periodic recovery and the send path always recheck them. */
+    suspend fun reconcile(reuseCatalog: Boolean = false): Set<String> = mutex.withLock {
         val session = accounts.session() ?: return@withLock emptySet()
+        val reading = dao.getReadingInputs().associateBy { it.id }
+        val bindingsByBook = dao.getAll(session.user.id).associateBy { it.bookId }
+        val revision = catalogRevision.get()
         val pending = mutableSetOf<String>()
         for (book in dao.getReadingBooks()) {
             session.checkActive()
-            if (BangumiMatching.supports(BookIdentity.book(book.id)) && hasReading(book.id) && dao.get(session.user.id, book.id) == null) {
+            if (BangumiMatching.supports(BookIdentity.book(book.id)) && reading[book.id]?.hasReading == true && book.id !in bindingsByBook) {
                 val value = BangumiBinding(book.title, "", UUID.randomUUID().toString(), emptyList(), automatic = true)
                 dao.save(BangumiBindingEntity(session.user.id, book.id, null, bangumiJson.encodeToString(value)))
             }
         }
-        for (entity in dao.getAll(session.user.id)) {
+        val entities = dao.getAll(session.user.id)
+        reconciled.keys.retainAll(entities.map { it.bookId }.toSet())
+        for (entity in entities) {
             session.checkActive()
             val old = entity.binding()
-            if (entity.subjectId == null && !hasReading(entity.bookId)) {
+            if (entity.subjectId == null && reading[entity.bookId]?.hasReading != true) {
                 dao.delete(entity.accountId, entity.bookId)
+                reconciled.remove(entity.bookId)
                 continue
             }
             if (old.status in pausedStatuses) continue
-            val local = snapshot(entity, old)
+            val completed = reading[entity.bookId]?.completed.orEmpty()
+            val previous = reconciled[entity.bookId]
+            val local = if (reuseCatalog && previous != null && previous.entity == entity &&
+                previous.generation == session.generation && previous.catalogRevision == revision &&
+                previous.completedChapters == completed) previous.editions else {
+                snapshot(entity, old, completed.associateWith { 1f }).also {
+                    reconciled[entity.bookId] = ReconciledCatalog(entity, session.generation, revision, completed, it)
+                }
+            }
             val status = if (local == null) BangumiSyncStatus.PENDING
                 else if (old.initializeCollection || old.forceSync || old.pendingEditions.isNotEmpty() || local.size > old.remote) BangumiSyncStatus.PENDING
                 else if (old.remote > local.size) BangumiSyncStatus.REMOTE_AHEAD
@@ -147,7 +181,11 @@ class BangumiRepository @Inject constructor(
             val value = old.copy(target = local?.size ?: old.target,
                 status = if (status == BangumiSyncStatus.PENDING && old.status == BangumiSyncStatus.OFFLINE && old.target == (local?.size ?: old.target))
                     BangumiSyncStatus.OFFLINE else status)
-            if (value != old) dao.save(entity.withBinding(value))
+            if (value != old) {
+                val updated = entity.withBinding(value)
+                dao.save(updated)
+                reconciled[entity.bookId]?.let { reconciled[entity.bookId] = it.copy(entity = updated) }
+            }
             if (status == BangumiSyncStatus.PENDING) pending += "${session.generation}:${entity.bookId}:${value.revision}:${value.target}"
         }
         pending
@@ -326,11 +364,12 @@ class BangumiRepository @Inject constructor(
         }
     }
 
-    private suspend fun snapshot(entity: BangumiBindingEntity, value: BangumiBinding): Set<String>? = database.withTransaction {
+    private suspend fun snapshot(entity: BangumiBindingEntity, value: BangumiBinding,
+        knownProgress: Map<String, Float>? = null): Set<String>? = database.withTransaction {
         if (!BangumiMatching.supports(BookIdentity.book(entity.bookId))) return@withTransaction null
         val volumes = database.bookVolumesDao().getBookVolumes(entity.bookId)?.volumes ?: return@withTransaction null
         if (!BangumiMatching.catalogMatches(value.mapping, volumes)) return@withTransaction null
-        val progress = database.userReadingDataDao().getEntity(entity.bookId)?.maxChapterReadingProgressMap.orEmpty()
+        val progress = knownProgress ?: database.userReadingDataDao().getEntity(entity.bookId)?.maxChapterReadingProgressMap.orEmpty()
         if (needsMappingReview(value, progress)) return@withTransaction null
         value.baseline + value.acknowledged + BangumiMatching.completed(value.mapping, progress)
     }
