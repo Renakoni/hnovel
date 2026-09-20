@@ -14,7 +14,10 @@ import io.nightfish.lightnovelreader.api.book.*
 import io.nightfish.lightnovelreader.api.identifier.Identifier
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
-import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.buildJsonObject
+import indi.renakoni.nextvol.data.content.ContentJsonDecoder
+import indi.renakoni.nextvol.data.content.ContentComponentRegistry
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -34,6 +37,7 @@ class SourceExportWorkerTest {
     @Test fun fullAndSelectedVolumeExportsKeepSameNamedBooksAndVolumesIndependent() = runTest {
         val context = RuntimeEnvironment.getApplication()
         val repository = mockk<BookRepository>()
+        stubExportRepository(repository)
         val items = mutableListOf<DownloadItem>()
         val progress = mockk<DownloadProgressRepository> { every { addExportItem(capture(items)) } just Runs }
         val output = context.filesDir.resolve("exports-${UUID.randomUUID()}").apply { mkdirs() }
@@ -62,7 +66,7 @@ class SourceExportWorkerTest {
                 every { repository.getBookVolumesFlow(book.storageKey, any()) } returns flowOf(Ok(volumes))
                 for (chapter in volumes.volumes.flatMap { it.chapters }) {
                     every { repository.getChapterContentFlow(chapter.id, book.storageKey, any()) } returns
-                        flowOf(Ok(ChapterContent(chapter.id, "Chapter", JsonObject(emptyMap()))))
+                        flowOf(Ok(ChapterContent(chapter.id, "Chapter", buildJsonObject { put("components", JsonArray(emptyList())) })))
                 }
                 coEvery { repository.volumeCover(book, any(), any(), any()) } returns Ok(null)
                 for (type in listOf("BOOK", "VOLUMES")) {
@@ -73,9 +77,9 @@ class SourceExportWorkerTest {
                     val otherWork = context.cacheDir.resolve("epub/${book.fileKey}/other-work/keep").apply {
                         parentFile!!.mkdirs(); writeText("keep")
                     }
-                    val worker = ExportBookToEPUBWork(context, workerParameters(data, workId), repository, progress, mockk(relaxed = true))
-                    assertEquals(org.robolectric.shadows.ShadowLog.getLogsForTag("ExportEPUB").toString(),
-                        ListenableWorker.Result.success(), worker.doWork())
+                    val worker = ExportBookToEPUBWork(context, workerParameters(data, workId), repository, progress, ContentJsonDecoder(ContentComponentRegistry()), exportDownloads())
+                    assertTrue(org.robolectric.shadows.ShadowLog.getLogsForTag("ExportEPUB").toString(),
+                        worker.doWork() is ListenableWorker.Result.Success)
                     assertFalse(context.cacheDir.resolve("epub/${book.fileKey}/$workId").exists())
                     assertTrue(otherWork.exists())
                 }
@@ -97,7 +101,7 @@ class SourceExportWorkerTest {
         val repository = mockk<BookRepository>()
         val data = workDataOf("bookId" to a.storageKey, "exportType" to "VOLUMES",
             "selectedVolume" to BookIdentity.volumeKey(b, "v1"))
-        val result = ExportBookToEPUBWork(context, workerParameters(data), repository, mockk(), mockk()).doWork()
+        val result = ExportBookToEPUBWork(context, workerParameters(data), repository, mockk(), mockk(), exportDownloads()).doWork()
             as ListenableWorker.Result.Failure
         assertEquals("invalid_volume_identity", result.outputData.getString("reason"))
         verify { repository wasNot Called }

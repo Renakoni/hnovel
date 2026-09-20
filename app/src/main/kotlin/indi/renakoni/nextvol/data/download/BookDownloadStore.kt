@@ -30,6 +30,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -41,6 +42,7 @@ class BookDownloadStore @Inject constructor(@ApplicationContext private val cont
 
     private val dao = database.bookDownloadDao()
     private val lock = Mutex()
+    private val bookOperations = ConcurrentHashMap<String, Mutex>()
     private val root = File(context.filesDir, "book-downloads")
     private val imageKeys = context.getSharedPreferences("source_image_cache_keys", Context.MODE_PRIVATE)
 
@@ -54,7 +56,14 @@ class BookDownloadStore @Inject constructor(@ApplicationContext private val cont
     fun observe(book: SourceBookId) = combine(dao.observe(book.storageKey), dao.observeChapters(book.storageKey)) { _, _ -> Unit }
 
     suspend fun prepare() = withContext(Dispatchers.IO) { lock.withLock { migrateLegacy() } }
+    /** Normal downloads and export preparation must not replace each other's attempt. */
+    suspend fun <T> withBookOperation(book: SourceBookId, block: suspend () -> T): T =
+        bookOperations.getOrPut(book.storageKey) { Mutex() }.withLock { block() }
     suspend fun entries() = withContext(Dispatchers.IO) { lock.withLock { migrateLegacy(); dao.getAll() } }
+
+    suspend fun revision(book: SourceBookId): String? = withContext(Dispatchers.IO) {
+        lock.withLock { dao.get(book.storageKey)?.revision }
+    }
 
     internal fun chapterImages(chapter: ChapterContent): List<String> = buildList {
         decoder.getDataFromJsonObject(chapter.content) { if (it is ImageComponentData) add(it.uri.toString()) }
@@ -103,6 +112,11 @@ class BookDownloadStore @Inject constructor(@ApplicationContext private val cont
         }
     }
 
+    suspend fun hasVersionedChapter(attempt: Attempt, chapterId: String): Boolean = current(attempt) {
+        // Unversioned pre-upgrade downloads remain usable offline, like ordinary reading cache.
+        !dao.chapter(chapterId)?.signature.isNullOrEmpty()
+    }
+
     suspend fun hasImage(attempt: Attempt, uri: String, cover: Boolean = false): Boolean = current(attempt) {
         imageFile(attempt.book, attempt.generation, uri, cover).isFile
     }
@@ -131,12 +145,13 @@ class BookDownloadStore @Inject constructor(@ApplicationContext private val cont
             check(target.setLastModified(previousTime + 1)) { "Could not update downloaded image version" }
     }
 
-    suspend fun saveChapter(attempt: Attempt, chapter: ChapterContent, signature: String, images: List<String>) = current(attempt) {
+    suspend fun saveChapter(attempt: Attempt, chapter: ChapterContent, signature: String, images: List<String>,
+        requireImages: Boolean = true) = current(attempt) {
         require(SourceChapterId.fromStorageKey(chapter.id).book == attempt.book)
         listOfNotNull(chapter.prevChapter, chapter.nextChapter).forEach {
             require(SourceChapterId.fromStorageKey(it).book == attempt.book)
         }
-        check(images.all { uri -> imageFile(attempt.book, attempt.generation, uri, false).isFile })
+        if (requireImages) check(images.all { uri -> imageFile(attempt.book, attempt.generation, uri, false).isFile })
         database.withTransaction {
             database.chapterContentDao().update(chapter)
             dao.put(DownloadedChapterEntity(chapter.id, attempt.book.storageKey, signature, Json.encodeToString(images)))

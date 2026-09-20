@@ -44,6 +44,10 @@ class CacheBookWork @AssistedInject constructor(
 
     override suspend fun doWork(): Result {
         val book = inputData.sourceBook() ?: return bookWorkFailure("invalid_book_identity")
+        return downloads.withBookOperation(book) { cacheBook(book) }
+    }
+
+    private suspend fun cacheBook(book: indi.renakoni.nextvol.data.book.SourceBookId): Result {
         val item = MutableDownloadItem(DownloadType.CACHE, book.storageKey,
             bookRepository.getBookInformationFlow(book.storageKey))
         downloadProgressRepository.addExportItem(item)

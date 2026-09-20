@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="epub_export_error_empty">所選內容中沒有可匯出的章節。</string>
+    <string name="epub_export_error_content">章節內文缺失或包含不支援的內容。</string>
+    <string name="epub_export_error_image">插圖準備失敗，可嘗試關閉插圖後匯出。</string>
+    <string name="epub_export_error_save">EPUB 儲存失敗，請檢查剩餘空間和目錄權限。</string>
+    <string name="epub_export_error_cancelled">匯出已取消。</string>
+    <string name="epub_export_failure_detail">%1$s\n%2$s\n已儲存 %3$d / %4$d 個檔案。</string>
+    <string name="epub_export_error_cache">離線內容儲存失敗，請檢查剩餘儲存空間。</string>
+    <string name="epub_export_cleanup_failed">未能刪除不完整檔案，請到目標目錄手動刪除。</string>
+</resources>

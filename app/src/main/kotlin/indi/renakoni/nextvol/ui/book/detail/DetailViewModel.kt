@@ -131,12 +131,16 @@ class DetailViewModel @Inject constructor(
     fun exportToEpub(uri: Uri, bookId: String, title: String): Flow<WorkInfo?> {
         if (!_uiState.readingAvailable) return flowOf(null)
         val key = indi.renakoni.nextvol.data.book.BookIdentity.bookKey(bookId)
+        val generation = bookRepository.downloadGeneration()
         val workRequest = OneTimeWorkRequestBuilder<ExportBookToEPUBWork>()
+            .addTag(indi.renakoni.nextvol.data.work.CacheBookWork.generationTag(generation))
             .setInputData(
                 workDataOf(
                     "bookId" to key,
                     "uri" to uri.toString(),
                     "title" to title,
+                    "downloadGeneration" to generation,
+                    "createdDocument" to (exportSettings.exportType == ExportType.BOOK),
                     "includeImages" to exportSettings.includeImages,
                     "exportType" to exportSettings.exportType.name,
                     "selectedVolume" to exportSettings.selectedVolumeIds.joinToString(",")

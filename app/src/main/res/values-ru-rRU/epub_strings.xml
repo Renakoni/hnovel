@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="epub_export_error_empty">В выбранных томах нет глав для экспорта.</string>
+    <string name="epub_export_error_content">Текст главы отсутствует или содержит неподдерживаемые компоненты.</string>
+    <string name="epub_export_error_image">Не удалось подготовить иллюстрацию. Попробуйте экспорт без иллюстраций.</string>
+    <string name="epub_export_error_save">Не удалось сохранить EPUB. Проверьте свободное место и доступ к папке.</string>
+    <string name="epub_export_error_cancelled">Экспорт отменён.</string>
+    <string name="epub_export_failure_detail">%1$s\n%2$s\nСохранено файлов: %3$d из %4$d.</string>
+    <string name="epub_export_error_cache">Не удалось сохранить содержимое для чтения офлайн. Проверьте свободное место.</string>
+    <string name="epub_export_cleanup_failed">Не удалось удалить незавершённый файл. Удалите его из папки назначения вручную.</string>
+</resources>

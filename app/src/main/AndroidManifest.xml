@@ -107,6 +107,10 @@
         tools:node="remove" />
     </provider>
     <service
+        android:name="androidx.work.impl.foreground.SystemForegroundService"
+        android:foregroundServiceType="dataSync"
+        tools:node="merge" />
+    <service
         android:name=".tts.ReadAloudService"
         android:exported="false"
         android:foregroundServiceType="mediaPlayback">

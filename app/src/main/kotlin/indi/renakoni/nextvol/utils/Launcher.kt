@@ -14,10 +14,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 
 @Composable
-fun uriLauncher(block: (Uri) -> Unit): ManagedActivityResultLauncher<Intent, ActivityResult> {
+fun uriLauncher(persistPermission: Boolean = false, block: (Uri) -> Unit): ManagedActivityResultLauncher<Intent, ActivityResult> {
+    val context = androidx.compose.ui.platform.LocalContext.current
     return rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { activityResult ->
         if (activityResult.resultCode == Activity.RESULT_OK) {
             activityResult.data?.data?.let { uri ->
+                if (persistPermission) {
+                    val flags = (activityResult.data?.flags ?: 0) and
+                        (Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                    try { context.contentResolver.takePersistableUriPermission(uri, flags) }
+                    catch (_: SecurityException) { /* Some providers only offer the current grant. */ }
+                }
                 block(uri)
             }
         }

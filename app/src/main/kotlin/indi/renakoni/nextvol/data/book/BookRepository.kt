@@ -207,6 +207,27 @@ class BookRepository @Inject constructor(
     internal fun sourceRevision(book: SourceBookId): String = sourceRegistry.sources.value
         .firstOrNull { it.metadata.id == book.sourceId }?.metadata?.revision.orEmpty()
 
+    fun downloadGeneration(): Long = downloads.generation()
+
+    /** Export works from one offline snapshot, filling only missing source data. */
+    internal suspend fun exportInformation(book: SourceBookId): Result<BookInformation, WebRequestError> =
+        localBookDataSource.getBookInformation(book.storageKey)?.let(::Ok) ?: refreshBookInformation(book)
+
+    internal suspend fun exportVolumes(book: SourceBookId): Result<BookVolumes, WebRequestError> =
+        localBookDataSource.getBookVolumes(book.storageKey)?.takeIf { it.volumes.isNotEmpty() }?.let(::Ok)
+            ?: downloadDirectory(book)
+
+    internal suspend fun exportChapter(book: SourceBookId, chapterId: String): Result<ChapterContent, WebRequestError> =
+        localBookDataSource.getChapterContent(chapterId)?.let(::Ok)
+            ?: downloadChapter(book, chapterId)
+
+    internal suspend fun exportContent(book: SourceBookId, chapter: ChapterContent): ChapterContent =
+        textProcessingRepository.processChapterContent(book.storageKey) { chapter }
+
+    internal fun exportMetadata(information: BookInformation) = textProcessingRepository.processBookInformation { information }
+
+    internal fun exportCatalog(volumes: BookVolumes) = textProcessingRepository.processBookVolumes { volumes }
+
     fun downloadChanges(bookId: String) = downloads.observe(BookIdentity.book(bookId))
 
     suspend fun downloadState(bookId: String, active: Boolean = false) = BookIdentity.book(bookId).let { book ->

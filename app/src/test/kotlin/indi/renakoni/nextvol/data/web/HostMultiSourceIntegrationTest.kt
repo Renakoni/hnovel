@@ -87,7 +87,7 @@ class HostMultiSourceIntegrationTest {
             override fun createWorker(appContext: Context, workerClassName: String, workerParameters: WorkerParameters): ListenableWorker? =
                 when (workerClassName) {
                     CacheBookWork::class.java.name -> CacheBookWork(appContext, workerParameters, progress, books, downloads)
-                    ExportBookToEPUBWork::class.java.name -> ExportBookToEPUBWork(appContext, workerParameters, books, progress, decoder)
+                    ExportBookToEPUBWork::class.java.name -> ExportBookToEPUBWork(appContext, workerParameters, books, progress, decoder, downloads)
                     CheckUpdateWork::class.java.name -> CheckUpdateWork(appContext, workerParameters, books, shelves)
                     else -> null
                 }

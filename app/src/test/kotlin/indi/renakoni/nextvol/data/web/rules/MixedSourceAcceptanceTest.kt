@@ -118,7 +118,7 @@ class MixedSourceAcceptanceTest {
             val factory = object : WorkerFactory() {
                 override fun createWorker(appContext: Context, name: String, params: WorkerParameters): ListenableWorker? = when (name) {
                     CacheBookWork::class.java.name -> CacheBookWork(appContext, params, progress, books, downloads)
-                    ExportBookToEPUBWork::class.java.name -> ExportBookToEPUBWork(appContext, params, books, progress, decoder)
+                    ExportBookToEPUBWork::class.java.name -> ExportBookToEPUBWork(appContext, params, books, progress, decoder, downloads)
                     CheckUpdateWork::class.java.name -> CheckUpdateWork(appContext, params, books, shelves)
                     else -> null
                 }

@@ -53,7 +53,7 @@ fun NavGraphBuilder.bookDetailDestination() {
         }
         val context = LocalContext.current
         val coroutineScope = rememberCoroutineScope()
-        val exportBookToEPUBLauncher = uriLauncher { uri ->
+        val exportBookToEPUBLauncher = uriLauncher(persistPermission = true) { uri ->
             CoroutineScope(Dispatchers.Main).launch {
                 viewModel.uiState.bookInformation
                     ?.map { it.title }
@@ -63,10 +63,11 @@ fun NavGraphBuilder.bookDetailDestination() {
                             if (it != null)
                                 when (it.state) {
                                     WorkInfo.State.SUCCEEDED -> {
-                                        Toast.makeText(context, context.getString(R.string.export_book_success, it), Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, context.getString(R.string.export_book_success, title), Toast.LENGTH_SHORT).show()
                                     }
                                     WorkInfo.State.FAILED -> {
-                                        Toast.makeText(context, context.getString(R.string.export_book_failed, it), Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, it.outputData.getString("message")
+                                            ?: context.getString(R.string.export_book_failed, title), Toast.LENGTH_LONG).show()
                                     }
                                     else -> {}
                                 }

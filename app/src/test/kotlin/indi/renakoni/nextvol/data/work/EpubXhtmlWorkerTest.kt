@@ -54,6 +54,7 @@ class EpubXhtmlWorkerTest {
         val context = RuntimeEnvironment.getApplication()
         val book = SourceBookId(Identifier("fixture", "epub"), "book")
         val repository = mockk<BookRepository>()
+        stubExportRepository(repository)
         val progress = mockk<DownloadProgressRepository>(relaxed = true)
         val registry = ContentComponentRegistry().apply {
             registrar.id(Identifier("fixture", "text")).component(NoArgFixtureComponent::class)
@@ -80,7 +81,7 @@ class EpubXhtmlWorkerTest {
         mockkStatic(DocumentFile::class)
         mockkObject(ImageUtils)
         every { DocumentFile.fromTreeUri(context, any()) } returns folder
-        coEvery { ImageUtils.uriToBitmap(any(), context, book.storageKey) } answers {
+        coEvery { ImageUtils.uriToBitmap(any(), context, book.storageKey, allowMemoryCache = false) } answers {
             assertTrue(firstArg<Uri>().toString() in imageUrls)
             Ok(BitmapFactory.decodeByteArray(png, 0, png.size))
         }
@@ -125,8 +126,7 @@ class EpubXhtmlWorkerTest {
                     val data = workDataOf("bookId" to book.storageKey, "exportType" to type,
                         "selectedVolume" to volumes.volumes.joinToString(",") { it.volumeId },
                         "uri" to (if (type == "BOOK") outputUri(name) else Uri.parse("content://fixture/tree/epub")).toString())
-                    assertEquals(ListenableWorker.Result.success(),
-                        ExportBookToEPUBWork(context, workerParameters(data), repository, progress, decoder).doWork())
+                    assertTrue(ExportBookToEPUBWork(context, workerParameters(data), repository, progress, decoder, exportDownloads()).doWork() is ListenableWorker.Result.Success)
                     val files = if (type == "BOOK") listOf(name) else names.toList()
                     assertEquals(if (type == "BOOK") 1 else volumeCount, files.size)
                     files.forEach { verifyEpub(output.resolve(it), if (type == "BOOK") volumeCount * 2 else 2, missingMetadata) }

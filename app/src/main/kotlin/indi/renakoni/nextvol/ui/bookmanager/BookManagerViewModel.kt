@@ -233,7 +233,10 @@ class BookManagerViewModel @Inject constructor(
     }
 
     private suspend fun removeDownloads(bookIds: List<String>) {
-        for (bookId in bookIds) workManager.cancelUniqueWork(CacheBookWork.ofId(bookId)).await()
+        for (bookId in bookIds) {
+            workManager.cancelUniqueWork(CacheBookWork.ofId(bookId)).await()
+            workManager.cancelUniqueWork(ExportBookToEPUBWork.ofId(bookId)).await()
+        }
         downloads.removeBooks(bookIds.map(BookIdentity::book))
         downloadProgressRepository.clearCachedItems(bookIds.toSet())
     }

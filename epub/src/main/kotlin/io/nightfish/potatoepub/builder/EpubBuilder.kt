@@ -37,6 +37,7 @@ class EpubBuilder {
     var contentChapters: MutableList<Chapter> = mutableListOf()
     var resFiles: MutableMap<String, File> = mutableMapOf()
     var documents: MutableMap<String, Document> = mutableMapOf()
+    private var generatedChapterIds: Set<String> = emptySet()
 
     fun chapter(builder: ChapterBuilder.() -> Unit) {
         val chapter = ChapterBuilder().let { chapterBuilder ->
@@ -129,7 +130,7 @@ class EpubBuilder {
                 content = "${this.id}.xhtml"
             )
         this.chapters!!
-        if (this.chapters.isEmpty()) throw Error("TheChapterList is empty")
+        if (this.chapters.isEmpty()) throw IllegalArgumentException("TheChapterList is empty")
         fun List<Chapter>.fistChapterWithContent(): Chapter {
             return if (this.first().chapterContent != null)
                 this.first()
@@ -151,20 +152,33 @@ class EpubBuilder {
             val regex1 = Regex("src=\"(.*?)\"")
             regex1.findAll(xml).toList().forEach {
                 if (!resFiles.containsKey(it.groupValues[1]))
-                    throw Error("Didn't find res '${it.groupValues[1]}' which appear in file {${chapter.title}}. Pleas make sure use method 'res' to add the res into the EPUB.")
+                    throw IllegalArgumentException("Didn't find res '${it.groupValues[1]}' which appear in file {${chapter.title}}. Pleas make sure use method 'res' to add the res into the EPUB.")
             }
             val regex2 = Regex("herf=\"(.*?)\"")
             regex2.findAll(xml).toList().forEach {
                 if (!resFiles.containsKey(it.groupValues[1]))
-                    throw Error("Didn't find res '${it.groupValues[1]}' which appear in file {${chapter.title}}. Pleas make sure use method 'res' to add the res into the EPUB.")
+                    throw IllegalArgumentException("Didn't find res '${it.groupValues[1]}' which appear in file {${chapter.title}}. Pleas make sure use method 'res' to add the res into the EPUB.")
             }
         }
     }
 
     fun build(): Epub {
+        require(chapters.isNotEmpty()) { "The book has no chapters" }
+        fun assignIds(items: List<Chapter>, prefix: String) {
+            items.forEachIndexed { index, chapter ->
+                chapter.id = "${prefix}_$index"
+                chapter.chapters?.let { assignIds(it, chapter.id) }
+            }
+        }
+        assignIds(chapters, "chapter")
+        contentChapters.clear()
+        manifestItems.removeAll { it.id in generatedChapterIds }
+        spineItems.removeAll { it.idref in generatedChapterIds }
+        generatedChapterIds.forEach { documents.remove("$it.xhtml") }
         id = id?.takeIf(String::isNotBlank) ?: title?.takeIf(String::isNotBlank) ?: "urn:uuid:${UUID.randomUUID()}"
         title = title?.takeIf(String::isNotBlank) ?: "Untitled book"
         val ol = chapters.toOl()
+        generatedChapterIds = contentChapters.map { it.id }.toSet()
         val navPoints = chapters.map { it.toNavPoint() }
         val container = Container(
             rootFilePaths = listOf("EPUB/content.opf")
@@ -190,12 +204,12 @@ class EpubBuilder {
         }
         checkXmlFileHref()
         val metadata = Metadata(
-            id = id ?: throw Error("Missing 'id'"),
-            title = title ?: throw Error("Missing 'title'"),
+            id = id ?: throw IllegalArgumentException("Missing 'id'"),
+            title = title ?: throw IllegalArgumentException("Missing 'title'"),
             titleLang = titleLang,
             titleDir = titleDir,
             language = language,
-            modified = modifier ?: throw Error("Missing 'modifier'"),
+            modified = modifier ?: throw IllegalArgumentException("Missing 'modifier'"),
             coverId = if (hasCover) "cover" else null,
             creator = creator?.takeIf(String::isNotBlank),
             description = description?.takeIf(String::isNotBlank),
@@ -207,7 +221,7 @@ class EpubBuilder {
         )
         val spine = Spine(
             id = spineId,
-            itemrefList = spineItems
+            itemrefList = spineItems.toList()
         )
         val opfPackage = OpfPackage(
             metadata = metadata,
@@ -215,12 +229,12 @@ class EpubBuilder {
             spine = spine
         )
         val nav = Nav(
-            title = title ?: throw Error("Missing 'title'"),
+            title = title ?: throw IllegalArgumentException("Missing 'title'"),
             ol = ol
         )
         val tocNcx = TocNcx(
-            uid = id ?: throw Error("Missing 'id'"),
-            title = title ?: throw Error("Missing 'title'"),
+            uid = id ?: throw IllegalArgumentException("Missing 'id'"),
+            title = title ?: throw IllegalArgumentException("Missing 'title'"),
             navPoints = navPoints,
         )
         return Epub(
@@ -228,8 +242,8 @@ class EpubBuilder {
             opfPackage = opfPackage,
             nav = nav,
             tocNcx = tocNcx,
-            res = resFiles,
-            documents = documents
+            res = resFiles.toMap(),
+            documents = documents.toMap()
         )
     }
 }

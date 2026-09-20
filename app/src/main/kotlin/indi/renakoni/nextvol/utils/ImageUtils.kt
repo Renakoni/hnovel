@@ -24,12 +24,18 @@ object ImageUtils {
         imageUri: Uri,
         context: Context,
         bookId: String,
-        cover: Boolean = false
+        cover: Boolean = false,
+        fresh: Boolean = false,
+        allowMemoryCache: Boolean = true,
     ):  Result<Bitmap, Throwable> = withContext(Dispatchers.IO) {
         try {
             val loader = SingletonImageLoader.get(context)
             val request = ImageRequest.Builder(context)
-                .data(SourceImage(BookIdentity.book(bookId), imageUri.toString(), cover))
+                .data(SourceImage(BookIdentity.book(bookId), imageUri.toString(), cover, preferDownloaded = !fresh))
+                .apply {
+                    if (fresh || !allowMemoryCache) memoryCachePolicy(coil3.request.CachePolicy.DISABLED)
+                    if (fresh) diskCachePolicy(coil3.request.CachePolicy.WRITE_ONLY)
+                }
                 .interceptorCoroutineContext(Dispatchers.IO)
                 .build()
 
