@@ -28,19 +28,29 @@ fun BangumiScreen(
     state: BangumiUiState, bookId: String?, onBack: () -> Unit, onAccount: () -> Unit, onBook: (String) -> Unit,
     onConnect: (String) -> Unit, onDisconnect: () -> Unit, onQuery: (String) -> Unit,
     onSearch: () -> Unit, onMore: () -> Unit, onChoose: (Int) -> Unit,
-    onUnlink: (String) -> Unit, onRetry: (String) -> Unit,
+    onUnlink: (String) -> Unit, onRetryFailures: () -> Unit,
     onMapping: (String, String?) -> Unit, onComplete: (String, Boolean) -> Unit, onBaseline: (String, Boolean) -> Unit,
     onPrivate: (Boolean) -> Unit, onConfirm: () -> Unit, onDismiss: () -> Unit,
 ) {
     var token by remember { mutableStateOf("") }
     var disconnect by remember { mutableStateOf(false) }
     var unlink by remember { mutableStateOf<String?>(null) }
+    var selectingBook by remember { mutableStateOf(false) }
+    var showRecords by remember { mutableStateOf(false) }
+    var changeToken by remember { mutableStateOf(false) }
     val uri = LocalUriHandler.current
     val listState = rememberLazyListState()
-    LaunchedEffect(bookId, state.preview?.subject?.id) { listState.scrollToItem(0) }
+    LaunchedEffect(bookId, state.preview?.subject?.id, selectingBook, showRecords) { listState.scrollToItem(0) }
     BackHandler(state.preview != null && !state.busy, onDismiss)
+    BackHandler(selectingBook || showRecords) { selectingBook = false; showRecords = false }
     Scaffold(topBar = { TopAppBar(title = { Text(stringResource(R.string.bangumi_title)) }, navigationIcon = {
-        IconButton(onClick = { if (state.preview != null) onDismiss() else onBack() }) {
+        IconButton(onClick = {
+            when {
+                selectingBook || showRecords -> { selectingBook = false; showRecords = false }
+                state.preview != null -> onDismiss()
+                else -> onBack()
+            }
+        }) {
             Icon(painterResource(R.drawable.arrow_back_24px), stringResource(R.string.sources_back))
         }
     }) }) { padding ->
@@ -48,27 +58,73 @@ fun BangumiScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (state.busy || !state.account.loaded) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
             state.error?.let { error -> item { Text(stringResource(error), color = MaterialTheme.colorScheme.error) } }
-            if (bookId == null) {
+            if (selectingBook) {
+                item { Text(stringResource(R.string.bangumi_choose_book), style = MaterialTheme.typography.titleLarge) }
+                val available = state.localBooks.filter { book -> state.bindings.none { it.bookId == book.id } }
+                if (available.isEmpty()) item { Text(stringResource(R.string.bangumi_no_local_books)) }
+                items(available, key = { it.id }) { book ->
+                    OutlinedCard(onClick = { selectingBook = false; onBook(book.id) }, modifier = Modifier.fillMaxWidth()) {
+                        Text(book.title, Modifier.padding(16.dp))
+                    }
+                }
+            } else if (bookId == null && showRecords) {
+                item { Text(stringResource(R.string.bangumi_records), style = MaterialTheme.typography.titleLarge) }
+                item { Text(stringResource(R.string.bangumi_records_help), style = MaterialTheme.typography.bodySmall) }
+                if (state.records.isEmpty()) item { Text(stringResource(R.string.bangumi_no_records)) }
+                items(state.records, key = { it.id }) { record ->
+                    OutlinedCard(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(record.bookTitle, style = MaterialTheme.typography.titleMedium)
+                            Text(stringResource(statusText(record.status)))
+                            if (record.httpStatus != null) Text(stringResource(R.string.bangumi_http_failure, record.httpStatus,
+                                stringResource(bangumiHttpError(record.httpStatus))), style = MaterialTheme.typography.bodySmall)
+                            else if (record.status == BangumiSyncStatus.OFFLINE) Text(stringResource(R.string.bangumi_no_response), style = MaterialTheme.typography.bodySmall)
+                            else if (record.status == BangumiSyncStatus.REQUEST_REJECTED) Text(stringResource(R.string.bangumi_invalid_response), style = MaterialTheme.typography.bodySmall)
+                            if (record.pendingConfirmation) Text(stringResource(R.string.bangumi_pending_confirmation), style = MaterialTheme.typography.bodySmall)
+                            Text(stringResource(R.string.bangumi_progress, record.target, record.remote))
+                            Text(DateFormat.getDateTimeInstance().format(Date(record.timestamp)), style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            } else if (bookId == null) {
                 item { Text(stringResource(R.string.bangumi_description)) }
                 item {
                     state.account.user?.let { user ->
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(stringResource(R.string.bangumi_connected, user.nickname.ifBlank { user.username }))
-                            TextButton(onClick = { disconnect = true }, enabled = !state.busy) { Text(stringResource(R.string.bangumi_disconnect)) }
+                            Row {
+                                TextButton(onClick = { changeToken = !changeToken }, enabled = !state.busy) { Text(stringResource(R.string.bangumi_change_token)) }
+                                TextButton(onClick = { disconnect = true }, enabled = !state.busy) { Text(stringResource(R.string.bangumi_disconnect)) }
+                            }
                         }
                     }
                     if (state.account.unreadable) Text(stringResource(R.string.bangumi_error_storage), color = MaterialTheme.colorScheme.error)
-                    TextButton(onClick = { uri.openUri("https://next.bgm.tv/demo/access-token") }) { Text(stringResource(R.string.bangumi_open_token)) }
-                    OutlinedTextField(value = token, onValueChange = { token = it }, label = { Text(stringResource(R.string.bangumi_token)) },
-                        visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false),
-                        singleLine = true, modifier = Modifier.fillMaxWidth(), enabled = !state.busy)
-                    Button(onClick = { val value = token; token = ""; onConnect(value) }, enabled = token.isNotBlank() && !state.busy) {
-                        Text(stringResource(R.string.bangumi_connect))
+                    if (state.account.user == null || changeToken) {
+                        TextButton(onClick = { uri.openUri("https://next.bgm.tv/demo/access-token") }) { Text(stringResource(R.string.bangumi_open_token)) }
+                        OutlinedTextField(value = token, onValueChange = { token = it }, label = { Text(stringResource(R.string.bangumi_token)) },
+                            visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false),
+                            singleLine = true, modifier = Modifier.fillMaxWidth(), enabled = !state.busy)
+                        Button(onClick = { val value = token; token = ""; onConnect(value) }, enabled = token.isNotBlank() && !state.busy) {
+                            Text(stringResource(R.string.bangumi_connect))
+                        }
+                    }
+                }
+                if (state.account.user != null) item {
+                    val statuses = state.bindings.map { it.binding().status }
+                    val pending = statuses.count { it in setOf(BangumiSyncStatus.PENDING, BangumiSyncStatus.OFFLINE) }
+                    val errors = statuses.count { it !in setOf(BangumiSyncStatus.READY, BangumiSyncStatus.PENDING, BangumiSyncStatus.SYNCED, BangumiSyncStatus.REMOTE_AHEAD) }
+                    Text(stringResource(R.string.bangumi_sync_overview, pending, errors), style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(R.string.bangumi_sync_schedule), style = MaterialTheme.typography.bodySmall)
+                    if (statuses.any { it in setOf(BangumiSyncStatus.OFFLINE, BangumiSyncStatus.REQUEST_REJECTED) })
+                        TextButton(onClick = onRetryFailures, enabled = !state.busy) { Text(stringResource(R.string.bangumi_retry_failures)) }
+                    Row {
+                        Button(onClick = { selectingBook = true }, enabled = !state.busy) { Text(stringResource(R.string.bangumi_add_binding)) }
+                        TextButton(onClick = { showRecords = true }) { Text(stringResource(R.string.bangumi_records)) }
                     }
                 }
                 if (state.bindings.isEmpty()) item { Text(stringResource(R.string.bangumi_no_bindings)) }
                 items(state.bindings, key = { it.bookId }) { entity ->
-                    BindingCard(entity, state.busy, onOpen = { onBook(entity.bookId) }, onRetry = { onRetry(entity.bookId) }, onUnlink = { unlink = entity.bookId })
+                    BindingCard(entity, state.busy, onOpen = { onBook(entity.bookId) }, onUnlink = { unlink = entity.bookId })
                 }
             } else if (state.preview != null) {
                 val preview = state.preview
@@ -97,7 +153,8 @@ fun BangumiScreen(
             } else {
                 state.book?.let { book -> item { Text(book.title, style = MaterialTheme.typography.titleLarge) } }
                 state.bindings.find { it.bookId == bookId }?.let { entity -> item {
-                    BindingCard(entity, state.busy, onOpen = { onChoose(entity.subjectId) }, onRetry = { onRetry(bookId) }, onUnlink = { unlink = bookId })
+                    Text(entity.binding().subjectTitle)
+                    TextButton(onClick = { onChoose(entity.subjectId) }, enabled = !state.busy) { Text(stringResource(R.string.bangumi_review_mapping)) }
                 } }
                 if (state.account.user == null) item {
                     Text(stringResource(R.string.bangumi_connect_before_binding))
@@ -143,7 +200,7 @@ fun BangumiScreen(
 }
 
 @Composable
-private fun BindingCard(entity: BangumiBindingEntity, busy: Boolean, onOpen: () -> Unit, onRetry: () -> Unit, onUnlink: () -> Unit) {
+private fun BindingCard(entity: BangumiBindingEntity, busy: Boolean, onOpen: () -> Unit, onUnlink: () -> Unit) {
     val value = remember(entity.data) { entity.binding() }
     OutlinedCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -154,11 +211,8 @@ private fun BindingCard(entity: BangumiBindingEntity, busy: Boolean, onOpen: () 
             value.lastSyncedAt?.let { Text(stringResource(R.string.bangumi_last_sync, DateFormat.getDateTimeInstance().format(Date(it))), style = MaterialTheme.typography.bodySmall) }
             Row {
                 TextButton(onClick = onOpen, enabled = !busy) { Text(stringResource(R.string.bangumi_review_mapping)) }
-                TextButton(onClick = onRetry, enabled = !busy && value.status in setOf(BangumiSyncStatus.READY,
-                    BangumiSyncStatus.SYNCED, BangumiSyncStatus.REMOTE_AHEAD, BangumiSyncStatus.PENDING,
-                    BangumiSyncStatus.OFFLINE, BangumiSyncStatus.REQUEST_REJECTED)) { Text(stringResource(R.string.bangumi_retry)) }
+                TextButton(onClick = onUnlink, enabled = !busy) { Text(stringResource(R.string.bangumi_unlink)) }
             }
-            TextButton(onClick = onUnlink, enabled = !busy) { Text(stringResource(R.string.bangumi_unlink)) }
         }
     }
 }

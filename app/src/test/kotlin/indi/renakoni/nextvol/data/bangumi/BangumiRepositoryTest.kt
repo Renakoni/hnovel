@@ -42,6 +42,7 @@ class BangumiRepositoryTest {
     private val book = BookIdentity.book("1213")
     @Volatile private var remote: BangumiCollection? = BangumiCollection(3, 0, 17, true)
     @Volatile private var nextFailure = 0
+    @Volatile private var nextResponse: MockResponse? = null
     @Volatile private var failReadAfterWrite = false
     @Volatile private var readGate: Pair<CountDownLatch, CountDownLatch>? = null
     private val writes = Collections.synchronizedList(mutableListOf<JsonObject>())
@@ -66,6 +67,7 @@ class BangumiRepositoryTest {
                 if (path == "/v0/subjects/10/subjects") return json("""[{"id":11,"type":1,"name":"Novel (1)","relation":"单行本"},{"id":12,"type":1,"name":"Novel (2)","relation":"单行本"}]""")
                 if (path == "/v0/users/17/collections/10") {
                     readGate?.let { (started, release) -> started.countDown(); release.await(5, TimeUnit.SECONDS) }
+                    nextResponse?.let { nextResponse = null; return it }
                     if (nextFailure != 0) return MockResponse().setResponseCode(nextFailure.also { nextFailure = 0 }).setHeader("Retry-After", "60")
                     return remote?.let { json(bangumiJson.encodeToString(it)) } ?: MockResponse().setResponseCode(404)
                 }
@@ -89,7 +91,7 @@ class BangumiRepositoryTest {
             }
         }
         server.start()
-        api = BangumiApi(OkHttpClient(), server.url("/"))
+        api = BangumiApi(OkHttpClient.Builder().retryOnConnectionFailure(false).build(), server.url("/"))
         repository = BangumiRepository(accounts, api, database)
     }
 
@@ -114,6 +116,13 @@ class BangumiRepositoryTest {
         assertEquals(1, writes.size)
         assertEquals(BangumiSyncStatus.SYNCED, binding().status)
         assertEquals(2, local.getUserReadingData(book.storageKey).maxChapterReadingProgressMap.size)
+        val records = database.bangumiBindingDao().getRecords(17)
+        assertEquals(1, records.size)
+        assertEquals(2, records.single().remote)
+        assertEquals(BangumiSyncStatus.SYNCED, records.single().status)
+        repository.unlink(book.storageKey)
+        assertEquals(records, database.bangumiBindingDao().getRecords(17))
+        assertTrue(database.bangumiBindingDao().getRecords(18).isEmpty())
     }
 
     @Test fun missingCollectionIsCreatedPrivatelyAndThenUpdated() = runBlocking {
@@ -163,6 +172,68 @@ class BangumiRepositoryTest {
         assertEquals(1, writes.size)
     }
 
+    @Test fun deletingReadingRecordsAndRereadingDoesNotResendAcknowledgedVolumes() = runBlocking {
+        read(1); bind(); repository.syncAll()
+        val acknowledged = binding().acknowledged
+        val count = server.requestCount
+        // The same DAO deletion used by BookManager's clear-reading-record action.
+        database.userReadingDataDao().deleteByIds(listOf(book.storageKey))
+        assertNull(database.userReadingDataDao().getEntity(book.storageKey))
+        assertTrue(repository.reconcile().isEmpty())
+        read(1)
+        val fresh = BangumiRepository(accounts, api, database)
+        assertFalse(fresh.syncAll())
+        assertEquals(count, server.requestCount)
+        assertEquals(acknowledged, binding().acknowledged)
+        database.userReadingDataDao().clear()
+        read(2); fresh.syncAll()
+        assertEquals(2, remote!!.volumes)
+        assertEquals(listOf(1, 2), writes.map { it["vol_status"]!!.jsonPrimitive.int })
+        assertEquals(2, binding().acknowledged.size)
+    }
+
+    @Test fun deletingUnsentReadingRecordsCancelsThePendingCount() = runBlocking {
+        bind(); repository.syncAll()
+        read(1); assertTrue(repository.reconcile().isNotEmpty())
+        database.userReadingDataDao().deleteByIds(listOf(book.storageKey))
+        val requests = server.requestCount
+        repository.syncAll()
+        assertEquals(requests, server.requestCount)
+        assertTrue(writes.isEmpty())
+        assertEquals(0, binding().target)
+        assertEquals(BangumiSyncStatus.READY, binding().status)
+    }
+
+    @Test fun deletingReadingRecordsDuringTheRemoteReadIsRecheckedBeforeWriting() = runBlocking {
+        bind(); repository.syncAll(); read(1)
+        val started = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        readGate = started to release
+        try {
+            val syncing = async(Dispatchers.IO) { repository.syncAll() }
+            assertTrue(withContext(Dispatchers.IO) { started.await(3, TimeUnit.SECONDS) })
+            database.userReadingDataDao().deleteByIds(listOf(book.storageKey))
+            release.countDown()
+            assertFalse(syncing.await())
+            assertTrue(writes.isEmpty())
+            assertEquals(0, binding().target)
+        } finally { readGate = null; release.countDown() }
+    }
+
+    @Test fun trimmingHistoryDoesNotForgetAcknowledgedPublications() = runBlocking {
+        read(1); bind(); repository.syncAll()
+        val dao = database.bangumiBindingDao()
+        val original = dao.getRecords(17).single()
+        repeat(101) { dao.insertRecord(original.copy(id = 0, timestamp = it.toLong())) }
+        dao.trimRecords(17)
+        assertEquals(100, dao.getRecords(17).size)
+        assertFalse(dao.getRecords(17).any { it.id == original.id })
+        database.userReadingDataDao().clear()
+        read(1); repository.syncAll()
+        assertEquals(1, writes.size)
+        assertEquals(setOf("subject:11"), binding().acknowledged)
+    }
+
     @Test fun remoteRegressionAndStatusChangesPauseInsteadOfBeingOverwritten() = runBlocking {
         read(1); bind(); repository.syncAll()
         remote = remote!!.copy(volumes = 0)
@@ -207,10 +278,49 @@ class BangumiRepositoryTest {
         val count = server.requestCount
         assertTrue(repository.syncAll())
         assertEquals(count, server.requestCount)
+        repository.retryFailures()
+        assertTrue(repository.syncAll())
+        assertEquals(count, server.requestCount)
         repository.retry(book.storageKey)
         nextFailure = 401
         assertFalse(repository.syncAll())
         assertEquals(BangumiSyncStatus.AUTH_REQUIRED, binding().status)
+        assertTrue(writes.isEmpty())
+        assertEquals(listOf(BangumiSyncStatus.AUTH_REQUIRED, BangumiSyncStatus.OFFLINE),
+            database.bangumiBindingDao().getRecords(17).map { it.status })
+        assertEquals(listOf(401, 429), database.bangumiBindingDao().getRecords(17).map { it.httpStatus })
+    }
+
+    @Test fun rejectedOrMissingCollectionsPauseWithTheHttpCodeAndNoRepeatedRequests() = runBlocking {
+        for (code in listOf(400, 403, 404, 415)) {
+            bind(); repository.syncAll(); read(1)
+            nextFailure = code
+            assertFalse(repository.syncAll())
+            val record = database.bangumiBindingDao().getRecords(17).first()
+            assertEquals(code, record.httpStatus)
+            assertEquals(if (code == 404) BangumiSyncStatus.REMOTE_MISSING else BangumiSyncStatus.REQUEST_REJECTED, record.status)
+            val requests = server.requestCount
+            repository.syncAll()
+            assertEquals(requests, server.requestCount)
+            assertTrue(writes.isEmpty())
+            read()
+        }
+    }
+
+    @Test fun interruptedAndMalformedResponsesHaveNoInventedHttpFailureCode() = runBlocking {
+        bind(); repository.syncAll(); read(1)
+        nextResponse = json("private response that must not be retained").setSocketPolicy(SocketPolicy.DISCONNECT_DURING_RESPONSE_BODY)
+        assertTrue(repository.syncAll())
+        var record = database.bangumiBindingDao().getRecords(17).first()
+        assertEquals(BangumiSyncStatus.OFFLINE, record.status)
+        assertNull(record.httpStatus)
+        repository.retryFailures()
+        nextResponse = json("{\"private-response\":")
+        assertFalse(repository.syncAll())
+        record = database.bangumiBindingDao().getRecords(17).first()
+        assertEquals(BangumiSyncStatus.REQUEST_REJECTED, record.status)
+        assertNull(record.httpStatus)
+        assertFalse(record.toString().contains("private-response"))
         assertTrue(writes.isEmpty())
     }
 
@@ -238,7 +348,10 @@ class BangumiRepositoryTest {
         assertTrue(repository.syncAll())
         assertEquals(1, remote!!.volumes)
         assertEquals(setOf("subject:11"), binding().pendingEditions)
-        read()
+        val failure = database.bangumiBindingDao().getRecords(17).first()
+        assertEquals(503, failure.httpStatus)
+        assertTrue(failure.pendingConfirmation)
+        database.userReadingDataDao().deleteByIds(listOf(book.storageKey))
         assertTrue(repository.reconcile().isNotEmpty())
         repository.retry(book.storageKey)
         val fresh = BangumiRepository(accounts, api, database)
@@ -246,6 +359,19 @@ class BangumiRepositoryTest {
         assertEquals(setOf("subject:11"), binding().acknowledged)
         assertTrue(binding().pendingEditions.isEmpty())
         read(2); fresh.syncAll()
+        assertEquals(2, remote!!.volumes)
+        assertEquals(2, writes.size)
+    }
+
+    @Test fun reviewingAnAmbiguousWriteRetainsItsPublicationIdentity() = runBlocking {
+        bind(); repository.syncAll(); read(1)
+        failReadAfterWrite = true
+        assertTrue(repository.syncAll())
+        database.userReadingDataDao().clear()
+        bind()
+        repository.syncAll()
+        assertEquals(setOf("subject:11"), binding().acknowledged)
+        read(2); repository.syncAll()
         assertEquals(2, remote!!.volumes)
         assertEquals(2, writes.size)
     }
@@ -292,13 +418,18 @@ class BangumiRepositoryTest {
             bind()
             BangumiSyncScheduler(repository, database, manager).start(scope)
             val first = withTimeout(10_000) { manager.getWorkInfosForUniqueWorkFlow("bangumi-progress").first { it.isNotEmpty() }.single() }
+            val beforeDelay = server.requestCount
             driver.setAllConstraintsMet(first.id)
+            delay(100)
+            assertEquals(beforeDelay, server.requestCount)
+            driver.setInitialDelayMet(first.id)
             withTimeout(10_000) { manager.getWorkInfoByIdFlow(first.id).first { it?.state?.isFinished == true } }
             assertTrue(writes.isEmpty())
             nextFailure = 429
             read(1)
             val second = withTimeout(10_000) { manager.getWorkInfosForUniqueWorkFlow("bangumi-progress").first { list -> list.any { it.id != first.id } }.first { it.id != first.id } }
             driver.setAllConstraintsMet(second.id)
+            driver.setInitialDelayMet(second.id)
             withTimeout(10_000) { manager.getWorkInfoByIdFlow(second.id).first { it?.runAttemptCount == 1 && it.state == WorkInfo.State.ENQUEUED } }
             val count = server.requestCount
             // Cover two sampling ticks after the worker's own database updates.

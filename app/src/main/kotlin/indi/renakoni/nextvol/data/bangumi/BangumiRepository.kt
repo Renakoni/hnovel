@@ -4,6 +4,7 @@ import androidx.room.withTransaction
 import indi.renakoni.nextvol.data.book.BookIdentity
 import indi.renakoni.nextvol.data.local.room.NextVolDatabase
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.IOException
@@ -19,6 +20,8 @@ class BangumiRepository @Inject constructor(
 ) {
     private val dao get() = database.bangumiBindingDao()
     val bindings = dao.observeAll()
+    val records = dao.observeRecords()
+    val localBooks = dao.observeLocalBooks().map { books -> books.filter { BangumiMatching.supports(BookIdentity.book(it.id)) } }
     private val mutex = Mutex()
     @Volatile private var activeSync: Pair<String, Job>? = null
 
@@ -99,9 +102,9 @@ class BangumiRepository @Inject constructor(
             require(dao.getAll(session.user.id).none { it.subjectId == preview.subject.id && it.bookId != preview.book.id })
             val old = dao.get(session.user.id, preview.book.id)?.takeIf { it.subjectId == preview.subject.id }?.binding()
             // A remap cannot silently forget editions this client already published.
-            require(old?.acknowledged.orEmpty().all { it in keys || it in baseline })
+            require((old?.acknowledged.orEmpty() + old?.pendingEditions.orEmpty()).all { it in keys || it in baseline })
             val value = BangumiBinding(preview.book.title, preview.subject.title, UUID.randomUUID().toString(), mapping,
-                baseline, old?.acknowledged.orEmpty(), remote = preview.remote?.volumes ?: 0,
+                baseline, old?.acknowledged.orEmpty(), pendingEditions = old?.pendingEditions.orEmpty(), remote = preview.remote?.volumes ?: 0,
                 privateCollection = preview.remote?.private ?: private)
             session.checkActive()
             dao.save(BangumiBindingEntity(session.user.id, preview.book.id, preview.subject.id, bangumiJson.encodeToString(value)))
@@ -150,6 +153,18 @@ class BangumiRepository @Inject constructor(
             forceSync = true, revision = UUID.randomUUID().toString())))
     }
 
+    suspend fun retryFailures() = mutex.withLock {
+        val session = accounts.session() ?: return@withLock
+        for (entity in dao.getAll(session.user.id)) {
+            session.checkActive()
+            val value = entity.binding()
+            if (value.status in setOf(BangumiSyncStatus.OFFLINE, BangumiSyncStatus.REQUEST_REJECTED)) {
+                dao.save(entity.withBinding(value.copy(status = BangumiSyncStatus.PENDING,
+                    forceSync = true, revision = UUID.randomUUID().toString())))
+            }
+        }
+    }
+
     /** Returns true only when a transport/rate-limit failure needs WorkManager backoff. */
     suspend fun syncAll(): Boolean {
         val session = accounts.session() ?: return false
@@ -181,6 +196,14 @@ class BangumiRepository @Inject constructor(
             entity = entity.withBinding(next)
             dao.save(entity)
         }
+        suspend fun finish(next: BangumiBinding, httpStatus: Int? = null) = database.withTransaction {
+            save(next)
+            dao.insertRecord(BangumiSyncRecord(accountId = entity.accountId, bookId = entity.bookId,
+                bookTitle = next.bookTitle, target = next.target, remote = next.remote,
+                status = next.status, timestamp = System.currentTimeMillis(), httpStatus = httpStatus,
+                pendingConfirmation = next.pendingEditions.isNotEmpty()))
+            dao.trimRecords(entity.accountId)
+        }
         try {
             if (snapshot(entity, value) == null) {
                 val volumes = database.bookVolumesDao().getBookVolumes(entity.bookId)?.volumes.orEmpty()
@@ -189,32 +212,40 @@ class BangumiRepository @Inject constructor(
                     val subject = api.subject(entity.subjectId)
                     if (subject.isNovel && subject.series) refreshed = BangumiMatching.refresh(value.mapping, volumes, api.related(entity.subjectId))
                 }
-                if (refreshed == null) { save(value.copy(status = BangumiSyncStatus.MAPPING_CHANGED)); return false }
+                if (refreshed == null) { finish(value.copy(status = BangumiSyncStatus.MAPPING_CHANGED)); return false }
                 save(value.copy(mapping = refreshed))
             }
             val knownCompleted = snapshot(entity, value)
             if (knownCompleted != null && knownCompleted.size <= value.remote && !value.initializeCollection &&
-                !value.forceSync && value.pendingEditions.isEmpty()) return false
+                !value.forceSync && value.pendingEditions.isEmpty()) {
+                val next = value.copy(target = knownCompleted.size, retryAt = 0,
+                    status = if (value.remote > knownCompleted.size) BangumiSyncStatus.REMOTE_AHEAD
+                        else if (knownCompleted.isEmpty()) BangumiSyncStatus.READY else BangumiSyncStatus.SYNCED)
+                if (value != next) save(next)
+                return false
+            }
+            if (knownCompleted != null && knownCompleted.size != value.target) save(value.copy(target = knownCompleted.size))
             var remote = api.collection(session, entity.subjectId)
             if (value.initializeCollection) {
                 // Any unexpected progress change since the confirmation must be reviewed first.
                 if ((remote?.volumes ?: 0) != value.remote) {
-                    save(value.copy(status = BangumiSyncStatus.REMOTE_CHANGED)); return false
+                    finish(value.copy(status = BangumiSyncStatus.REMOTE_CHANGED)); return false
                 }
                 if (remote == null) api.createCollection(session, entity.subjectId, value.privateCollection)
                 else if (remote.type != 3) api.resumeCollection(session, entity.subjectId)
                 remote = api.collection(session, entity.subjectId)
                 save(value.copy(initializeCollection = false))
             }
-            if (remote == null) { save(value.copy(status = BangumiSyncStatus.REMOTE_MISSING)); return false }
-            if (remote.type != 3) { save(value.copy(status = BangumiSyncStatus.REMOTE_STATE)); return false }
-            if (remote.volumes < value.remote) { save(value.copy(status = BangumiSyncStatus.REMOTE_CHANGED)); return false }
+            if (remote == null) { finish(value.copy(status = BangumiSyncStatus.REMOTE_MISSING), 404); return false }
+            if (remote.type != 3) { finish(value.copy(status = BangumiSyncStatus.REMOTE_STATE)); return false }
+            if (remote.volumes < value.remote) { finish(value.copy(status = BangumiSyncStatus.REMOTE_CHANGED)); return false }
+            if (remote.volumes != value.remote) save(value.copy(remote = remote.volumes))
             if (value.pendingEditions.isNotEmpty() && remote.volumes >= value.pendingEditions.size) {
                 save(value.copy(acknowledged = value.acknowledged + value.pendingEditions, pendingEditions = emptySet()))
             }
             // Re-read committed progress immediately before a write, including any unread reset.
             val completed = snapshot(entity, value)
-            if (completed == null) { save(value.copy(status = BangumiSyncStatus.MAPPING_CHANGED)); return false }
+            if (completed == null) { finish(value.copy(status = BangumiSyncStatus.MAPPING_CHANGED)); return false }
             val target = completed.size
             if (target > remote.volumes) {
                 session.checkActive()
@@ -223,10 +254,10 @@ class BangumiRepository @Inject constructor(
                 api.updateVolumes(session, entity.subjectId, target)
                 remote = api.collection(session, entity.subjectId)
                 if (remote == null || remote.type != 3 || remote.volumes < target) {
-                    save(value.copy(status = BangumiSyncStatus.REMOTE_CHANGED)); return false
+                    finish(value.copy(status = BangumiSyncStatus.REMOTE_CHANGED), if (remote == null) 404 else null); return false
                 }
             }
-            save(value.copy(acknowledged = completed, pendingEditions = emptySet(), target = target, remote = remote.volumes,
+            finish(value.copy(acknowledged = completed, pendingEditions = emptySet(), target = target, remote = remote.volumes,
                 lastSyncedAt = System.currentTimeMillis(), retryAt = 0, forceSync = false,
                 status = if (remote.volumes > target) BangumiSyncStatus.REMOTE_AHEAD
                     else if (target == 0) BangumiSyncStatus.READY else BangumiSyncStatus.SYNCED))
@@ -234,17 +265,17 @@ class BangumiRepository @Inject constructor(
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (failure: BangumiApiException) {
             val retry = failure.status == 429 || failure.status >= 500
-            save(value.copy(status = when {
+            finish(value.copy(status = when {
                 failure.status == 401 -> BangumiSyncStatus.AUTH_REQUIRED
                 retry -> BangumiSyncStatus.OFFLINE
                 else -> BangumiSyncStatus.REQUEST_REJECTED
-            }, retryAt = if (retry) System.currentTimeMillis() + failure.retryAfterSeconds.coerceAtMost(86400) * 1000 else 0))
+            }, retryAt = if (retry) System.currentTimeMillis() + failure.retryAfterSeconds.coerceAtMost(86400) * 1000 else 0), failure.status)
             return retry
         } catch (_: BangumiResponseException) {
-            save(value.copy(status = BangumiSyncStatus.REQUEST_REJECTED))
+            finish(value.copy(status = BangumiSyncStatus.REQUEST_REJECTED))
             return false
         } catch (_: IOException) {
-            save(value.copy(status = BangumiSyncStatus.OFFLINE)); return true
+            finish(value.copy(status = BangumiSyncStatus.OFFLINE)); return true
         }
     }
 

@@ -20,7 +20,14 @@ class BangumiSyncWork @AssistedInject constructor(
     @Assisted parameters: WorkerParameters,
     private val repository: BangumiRepository,
 ) : CoroutineWorker(context, parameters) {
-    override suspend fun doWork(): Result = if (repository.syncAll()) Result.retry() else Result.success()
+    override suspend fun doWork(): Result {
+        if ("bangumi-recovery" in tags) {
+            // Periodic recovery must also go through the 30-second batch, never write directly.
+            if (repository.reconcile().isNotEmpty()) BangumiSyncScheduler.enqueue(WorkManager.getInstance(applicationContext))
+            return Result.success()
+        }
+        return if (repository.syncAll()) Result.retry() else Result.success()
+    }
 }
 
 @Singleton
@@ -42,6 +49,8 @@ class BangumiSyncScheduler @Inject constructor(
                         // Recover process death between a reading commit and enqueue, only while connected.
                         if (hasAccount) workManager.enqueueUniquePeriodicWork("bangumi-recovery", ExistingPeriodicWorkPolicy.KEEP,
                             PeriodicWorkRequestBuilder<BangumiSyncWork>(15, TimeUnit.MINUTES)
+                                .addTag("bangumi-recovery")
+                                .setInitialDelay(15, TimeUnit.MINUTES)
                                 .setConstraints(networkConstraint).build())
                         else {
                             workManager.cancelUniqueWork("bangumi-recovery")
@@ -50,7 +59,7 @@ class BangumiSyncScheduler @Inject constructor(
                         connected = hasAccount
                     }
                     val pending = repository.reconcile()
-                    if ((pending - previous).isNotEmpty()) enqueue()
+                    if ((pending - previous).isNotEmpty()) enqueue(workManager)
                     previous = pending
                 } catch (cancelled: CancellationException) {
                     currentCoroutineContext().ensureActive()
@@ -58,12 +67,6 @@ class BangumiSyncScheduler @Inject constructor(
                 }
             }
         }
-    }
-
-    private fun enqueue() {
-        workManager.enqueueUniqueWork("bangumi-progress", ExistingWorkPolicy.APPEND_OR_REPLACE,
-            OneTimeWorkRequestBuilder<BangumiSyncWork>().setConstraints(networkConstraint)
-                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS).build())
     }
 
     private fun changes(): Flow<Unit> = callbackFlow {
@@ -77,5 +80,11 @@ class BangumiSyncScheduler @Inject constructor(
 
     companion object {
         private val networkConstraint = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
+        internal fun enqueue(workManager: WorkManager) {
+            workManager.enqueueUniqueWork("bangumi-progress", ExistingWorkPolicy.APPEND_OR_REPLACE,
+                OneTimeWorkRequestBuilder<BangumiSyncWork>().setConstraints(networkConstraint)
+                    .setInitialDelay(30, TimeUnit.SECONDS)
+                    .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS).build())
+        }
     }
 }

@@ -1,6 +1,7 @@
 package indi.renakoni.nextvol.ui.bangumi
 
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraphBuilder
@@ -17,12 +18,13 @@ fun NavGraphBuilder.bangumiDestination() {
         val nav = LocalNavController.current
         val viewModel = hiltViewModel<BangumiViewModel>()
         val state by viewModel.state.collectAsStateWithLifecycle()
+        LaunchedEffect(state.confirmed) { if (state.confirmed) nav.popBackStackIfResumed() }
         BangumiScreen(state, viewModel.bookId, nav::popBackStackIfResumed,
             onAccount = { nav.navigate(BangumiRoute()) { launchSingleTop = true } },
             onBook = { id -> nav.navigate(BangumiRoute(id)) { launchSingleTop = true } },
             onConnect = viewModel::connect, onDisconnect = viewModel::disconnect,
             onQuery = viewModel::query, onSearch = { viewModel.search() }, onMore = { viewModel.search(true) },
-            onChoose = viewModel::choose, onUnlink = viewModel::unlink, onRetry = viewModel::retry,
+            onChoose = viewModel::choose, onUnlink = viewModel::unlink, onRetryFailures = viewModel::retryFailures,
             onMapping = viewModel::mapping, onComplete = viewModel::complete, onBaseline = viewModel::baseline,
             onPrivate = viewModel::privateCollection, onConfirm = viewModel::confirm, onDismiss = viewModel::dismissPreview)
     }

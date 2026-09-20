@@ -53,6 +53,7 @@ class BangumiScreenTest {
         val state = BangumiUiState(account = BangumiAccountState(BangumiUser(1, "test"), loaded = true))
         activity.get().setContent { MaterialTheme { screen(state, null,
             connect = { submitted = it }, disconnect = { disconnected = true }) } }
+        compose.onNodeWithText(text(R.string.bangumi_change_token)).performClick()
         compose.onNode(hasSetTextAction()).performTextInput("test-only-token")
         compose.onNodeWithText(text(R.string.bangumi_connect)).performClick()
         assertEquals("test-only-token", submitted)
@@ -84,9 +85,34 @@ class BangumiScreenTest {
         assertFalse(confirmed)
     }
 
+    @Test fun settingsCentralizeBookSelectionErrorsAndPersistedHistory() {
+        val binding = BangumiBinding("Linked book", "Series", "revision", emptyList(), status = BangumiSyncStatus.OFFLINE)
+        val state = BangumiUiState(account = BangumiAccountState(BangumiUser(1, "test"), true),
+            localBooks = listOf(BangumiLocalBook("one", "Available book"), BangumiLocalBook("two", "Linked book")),
+            bindings = listOf(BangumiBindingEntity(1, "two", 10, bangumiJson.encodeToString(binding))),
+            records = listOf(BangumiSyncRecord(1, 1, "old", "Previous book", 2, 1, BangumiSyncStatus.OFFLINE, 123, 503, true)))
+        var opened: String? = null
+        var retried = false
+        activity.get().setContent { MaterialTheme { screen(state, null, openBook = { opened = it }, retryFailures = { retried = true }) } }
+        compose.onNodeWithText(activity.get().getString(R.string.bangumi_sync_overview, 1, 1)).assertExists()
+        compose.onNodeWithText(text(R.string.bangumi_retry_failures)).performClick()
+        assertTrue(retried)
+        compose.onNodeWithText(text(R.string.bangumi_records)).performClick()
+        compose.onNodeWithText("Previous book").assertExists()
+        compose.onNodeWithText(text(R.string.bangumi_status_offline)).assertExists()
+        compose.onNodeWithText(activity.get().getString(R.string.bangumi_http_failure, 503, text(R.string.bangumi_error_server))).assertExists()
+        compose.onNodeWithText(text(R.string.bangumi_pending_confirmation)).assertExists()
+        compose.onNodeWithContentDescription(text(R.string.sources_back)).performClick()
+        compose.onNodeWithText(text(R.string.bangumi_add_binding)).performClick()
+        compose.onNodeWithText("Linked book").assertDoesNotExist()
+        compose.onNodeWithText("Available book").performClick()
+        assertEquals("one", opened)
+    }
+
     @Composable private fun screen(state: BangumiUiState, bookId: String?, connect: (String) -> Unit = {},
-        disconnect: () -> Unit = {}, complete: (String, Boolean) -> Unit = { _, _ -> }, confirm: () -> Unit = {}) {
-        BangumiScreen(state, bookId, {}, {}, {}, connect, disconnect, {}, {}, {}, {}, {}, {},
+        disconnect: () -> Unit = {}, complete: (String, Boolean) -> Unit = { _, _ -> }, confirm: () -> Unit = {},
+        openBook: (String) -> Unit = {}, retryFailures: () -> Unit = {}) {
+        BangumiScreen(state, bookId, {}, {}, openBook, connect, disconnect, {}, {}, {}, {}, {}, retryFailures,
             { _, _ -> }, complete, { _, _ -> }, {}, confirm, {})
     }
 }

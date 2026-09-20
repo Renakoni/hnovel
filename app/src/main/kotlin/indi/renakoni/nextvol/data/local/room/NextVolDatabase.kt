@@ -60,7 +60,8 @@ import io.nightfish.lightnovelreader.api.content.builder.simpleText
         BookDownloadEntity::class,
         DownloadedChapterEntity::class,
         ImportedBookEntity::class,
-        indi.renakoni.nextvol.data.bangumi.BangumiBindingEntity::class
+        indi.renakoni.nextvol.data.bangumi.BangumiBindingEntity::class,
+        indi.renakoni.nextvol.data.bangumi.BangumiSyncRecord::class
     ],
     version = 20,
     exportSchema = false
@@ -921,6 +922,11 @@ abstract class NextVolDatabase : RoomDatabase() {
                     "bookId TEXT NOT NULL, subjectId INTEGER NOT NULL, data TEXT NOT NULL, PRIMARY KEY(accountId, bookId))")
                 db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_bangumi_binding_accountId_subjectId " +
                     "ON bangumi_binding (accountId, subjectId)")
+                db.execSQL("CREATE TABLE IF NOT EXISTS bangumi_sync_record (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                    "accountId INTEGER NOT NULL, bookId TEXT NOT NULL, bookTitle TEXT NOT NULL, target INTEGER NOT NULL, " +
+                    "remote INTEGER NOT NULL, status TEXT NOT NULL, timestamp INTEGER NOT NULL, " +
+                    "httpStatus INTEGER, pendingConfirmation INTEGER NOT NULL)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_bangumi_sync_record_accountId ON bangumi_sync_record (accountId)")
             }
         }
 

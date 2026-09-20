@@ -15,6 +15,8 @@ import javax.inject.Inject
 data class BangumiUiState(
     val account: BangumiAccountState = BangumiAccountState(),
     val bindings: List<BangumiBindingEntity> = emptyList(),
+    val records: List<BangumiSyncRecord> = emptyList(),
+    val localBooks: List<BangumiLocalBook> = emptyList(),
     val book: BookInformation? = null,
     val query: String = "",
     val candidates: List<BangumiCandidate> = emptyList(),
@@ -26,6 +28,7 @@ data class BangumiUiState(
     val mapping: List<BangumiVolumeMapping> = emptyList(),
     val baseline: Set<String> = emptySet(),
     val privateCollection: Boolean = true,
+    val confirmed: Boolean = false,
     val error: Int? = null,
 )
 
@@ -41,12 +44,11 @@ class BangumiViewModel @Inject constructor(private val repository: BangumiReposi
     init {
         viewModelScope.launch {
             repository.accounts.load()
-            combine(repository.accounts.state, repository.bindings) { account, bindings ->
-                account to bindings.filter { it.accountId == account.user?.id }
-            }.collect { (account, bindings) ->
-                mutableState.update { old -> old.copy(account = account, bindings = bindings,
+            combine(repository.accounts.state, repository.bindings, repository.records, repository.localBooks) { account, bindings, records, books ->
+                mutableState.update { old -> old.copy(account = account, bindings = bindings.filter { it.accountId == account.user?.id },
+                    records = records.filter { it.accountId == account.user?.id }, localBooks = books,
                     preview = old.preview.takeIf { account.user?.id == it?.accountId }) }
-            }
+            }.collect()
         }
         if (bookId != null) work {
             val book = repository.localBook(bookId)
@@ -58,7 +60,7 @@ class BangumiViewModel @Inject constructor(private val repository: BangumiReposi
     fun connect(token: String) = work { repository.connect(token.trim()) }
     fun disconnect() = work { repository.accounts.disconnect() }
     fun unlink(id: String) = work { repository.unlink(id) }
-    fun retry(id: String) = work { repository.retry(id) }
+    fun retryFailures() = work { repository.retryFailures() }
 
     fun query(value: String) {
         searchJob?.cancel()
@@ -118,7 +120,7 @@ class BangumiViewModel @Inject constructor(private val repository: BangumiReposi
         val current = state.value
         val preview = current.preview ?: return@work
         repository.bind(preview, current.mapping, current.baseline, current.privateCollection)
-        mutableState.update { it.copy(preview = null) }
+        mutableState.update { it.copy(preview = null, confirmed = true) }
     }
 
     private fun work(action: suspend () -> Unit) {
@@ -133,8 +135,18 @@ class BangumiViewModel @Inject constructor(private val repository: BangumiReposi
     }
 
     private fun error(failure: Exception) = when {
-        failure is BangumiApiException && failure.status == 401 -> R.string.bangumi_error_auth
+        failure is BangumiApiException -> bangumiHttpError(failure.status)
+        failure is BangumiResponseException -> R.string.bangumi_invalid_response
         failure is java.io.IOException -> R.string.bangumi_error_network
         else -> R.string.bangumi_error_operation
     }
+}
+
+internal fun bangumiHttpError(status: Int): Int = when (status) {
+    401 -> R.string.bangumi_error_auth
+    403 -> R.string.bangumi_error_forbidden
+    404 -> R.string.bangumi_status_missing
+    429 -> R.string.bangumi_error_rate_limit
+    in 500..599 -> R.string.bangumi_error_server
+    else -> R.string.bangumi_status_rejected
 }
