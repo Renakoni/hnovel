@@ -1,6 +1,8 @@
 package indi.renakoni.nextvol.ui.book.reader
 
 import android.app.Application
+import android.net.Uri
+import androidx.compose.ui.graphics.Color
 import indi.renakoni.nextvol.data.local.room.dao.UserDataDao
 import indi.renakoni.nextvol.data.local.room.entity.UserDataEntity
 import indi.renakoni.nextvol.data.userdata.UserDataRepository
@@ -65,6 +67,42 @@ class ReaderSettingsBoundaryTest {
         assertEquals(0.25f, state.volumeKeyScrollFraction)
         assertEquals("reader.isUsingVolumeKeyFlip", state.isUsingVolumeKeyFlipUserData.path)
         assertEquals("reader.volumeKeyScrollFraction", state.volumeKeyScrollFractionUserData.path)
+    }
+
+    @Test
+    fun paperChoicePersistsWithoutReplacingCustomAppearanceOrLayout() = runBlocking {
+        val dao = InMemoryUserDataDao()
+        val first = SettingState(UserDataRepository(dao), scope)
+        assertEquals("default", first.paperId)
+        first.fontSizeUserData.set(21f)
+        first.fontLineHeightUserData.set(9f)
+        first.textColorUserData.set(Color.Blue)
+        first.backgroundColorUserData.set(Color.Yellow)
+        first.enableBackgroundImageUserData.set(true)
+        val image = Uri.parse("file:///saved-reader-background.png")
+        first.backgroundImageUriUserData.set(image)
+        first.paperIdUserData.set("sage")
+        val restored = SettingState(UserDataRepository(dao), scope)
+        withTimeout(5_000) {
+            while (restored.paperId != "sage" || restored.backgroundImageUri != image ||
+                restored.fontSize != 21f || restored.fontLineHeight != 9f ||
+                restored.textColor != Color.Blue || restored.backgroundColor != Color.Yellow ||
+                !restored.enableBackgroundImage) delay(1)
+        }
+        assertEquals("sage", dao.get("reader.paperId"))
+        assertEquals(21f, restored.fontSize)
+        assertEquals(9f, restored.fontLineHeight)
+        assertEquals(Color.Blue, restored.textColor)
+        assertEquals(Color.Yellow, restored.backgroundColor)
+        assertEquals(false, restored.usesBackgroundImage)
+        assertEquals(true, restored.enableBackgroundImage)
+        assertEquals("FollowSystem", restored.darkModeKey)
+        first.paperIdUserData.set("default")
+        withTimeout(5_000) { while (restored.paperId != "default") delay(1) }
+        assertEquals(true, restored.usesBackgroundImage)
+        assertEquals(image, restored.backgroundImageUri)
+        assertEquals(Color.Blue, restored.textColor)
+        assertEquals(Color.Yellow, restored.backgroundColor)
     }
 
     @Test

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="reader_paper_default">Default</string>
+    <string name="reader_paper_clear">Clear</string>
+    <string name="reader_paper_warm">Warm</string>
+    <string name="reader_paper_sage">Sage</string>
+    <string name="reader_paper_night">Night</string>
+    <string name="reader_paper_mist">Mist</string>
+    <string name="reader_paper_black">Black</string>
+    <string name="reader_paper_ink">Ink</string>
+    <string name="reader_paper_sample">Aa</string>
+</resources>

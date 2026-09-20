@@ -18,6 +18,8 @@ class SettingState(
     userDataRepository: UserDataRepository,
     coroutineScope: CoroutineScope
 ) : AbstractSettingState(coroutineScope), ReaderSettingsEditor, ThemeSettingsEditor {
+    override val paperIdUserData = userDataRepository.stringUserData(UserDataPath.Reader.PaperId.path)
+    override val paperId by paperIdUserData.safeAsState(ReaderPaper.Default.id)
     override val fontSizeUserData = userDataRepository.floatUserData(UserDataPath.Reader.FontSize.path)
     override val fontLineHeightUserData = userDataRepository.floatUserData(UserDataPath.Reader.FontLineHeight.path)
     override val paragraphSpacingUserData = userDataRepository.floatUserData(UserDataPath.Reader.ParagraphSpacing.path)

@@ -66,6 +66,7 @@ import indi.renakoni.nextvol.ui.home.settings.data.MenuOptions
 import indi.renakoni.nextvol.utils.LocalSnackbarHost
 import indi.renakoni.nextvol.utils.readerTextColor
 import indi.renakoni.nextvol.utils.rememberReaderBackgroundPainter
+import indi.renakoni.nextvol.ui.book.reader.usesBackgroundImage
 import indi.renakoni.nextvol.utils.rememberReaderFontFamily
 import indi.renakoni.nextvol.utils.showSnackbar
 import kotlinx.coroutines.flow.first
@@ -209,7 +210,7 @@ fun ScrollContentTextComponent(
             }
     }
 
-    if (settingState.enableBackgroundImage && settingState.backgroundImageDisplayMode == MenuOptions.ReaderBgImageDisplayModeOptions.Loop) {
+    if (settingState.usesBackgroundImage && settingState.backgroundImageDisplayMode == MenuOptions.ReaderBgImageDisplayModeOptions.Loop) {
         Image(
             modifier = Modifier
                 .fillMaxWidth()
