@@ -71,4 +71,6 @@
     <string name="bangumi_link_help">Ссылки bgm.tv, bangumi.tv или ID произведения</string>
     <string name="bangumi_paste_link">Вставить ссылку</string>
     <string name="bangumi_invalid_link">Введите корректную ссылку на книгу в Bangumi.</string>
+    <string name="bangumi_record_details">Подробности синхронизации</string>
+    <string name="bangumi_record_count">Записей: %1$d</string>
 </resources>

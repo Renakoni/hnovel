@@ -71,4 +71,6 @@
     <string name="bangumi_link_help">Supports bgm.tv, bangumi.tv links or subject IDs</string>
     <string name="bangumi_paste_link">Paste link</string>
     <string name="bangumi_invalid_link">Enter a valid Bangumi book subject link.</string>
+    <string name="bangumi_record_details">Sync details</string>
+    <string name="bangumi_record_count">Records: %1$d</string>
 </resources>

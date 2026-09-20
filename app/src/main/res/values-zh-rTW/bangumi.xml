@@ -71,4 +71,6 @@
     <string name="bangumi_link_help">支援 bgm.tv、bangumi.tv 連結或條目 ID</string>
     <string name="bangumi_paste_link">貼上連結</string>
     <string name="bangumi_invalid_link">請輸入有效的 Bangumi 書籍條目連結。</string>
+    <string name="bangumi_record_details">同步詳情</string>
+    <string name="bangumi_record_count">%1$d 筆紀錄</string>
 </resources>

@@ -123,6 +123,75 @@ class BangumiScreenTest {
         compose.onNodeWithText(activity.get().getString(R.string.bangumi_http_failure, 503, text(R.string.bangumi_error_server))).assertExists()
         compose.onNodeWithText(text(R.string.bangumi_correct_match)).performClick()
         assertEquals("one", opened)
+        compose.onNodeWithText(text(R.string.bangumi_record_details)).assertDoesNotExist()
+    }
+
+    @Test fun historyGroupsBooksByLatestResultAndShowsBothSuccessAndFailureInDetails() {
+        val olderFailure = BangumiSyncRecord(9, 1, "a", "Book A", 2, 1, BangumiSyncStatus.OFFLINE, 100, 503)
+        val success = olderFailure.copy(id = 10, status = BangumiSyncStatus.SYNCED, timestamp = 200, remote = 2, httpStatus = null)
+        val another = success.copy(id = 1, bookId = "b", bookTitle = "Book B", timestamp = 300)
+        var state by mutableStateOf(BangumiUiState(account = BangumiAccountState(BangumiUser(1, "test"), true),
+            records = listOf(olderFailure, another, success)))
+        activity.get().setContent { MaterialTheme { screen(state, null) } }
+        compose.onNodeWithText(text(R.string.bangumi_records)).performClick()
+        compose.onAllNodesWithText("Book A").assertCountEquals(1)
+        compose.onNodeWithText(activity.get().getString(R.string.bangumi_record_count, 2)).assertExists()
+        assertTrue(compose.onNodeWithText("Book B").fetchSemanticsNode().boundsInRoot.top <
+            compose.onNodeWithText("Book A").fetchSemanticsNode().boundsInRoot.top)
+        compose.onNodeWithText(text(R.string.bangumi_records_error)).performClick()
+        compose.onNodeWithText("Book A").assertDoesNotExist()
+        compose.onNodeWithText(text(R.string.bangumi_no_records)).assertExists()
+        compose.onNodeWithText(text(R.string.bangumi_records_success)).performClick()
+        compose.onNodeWithText("Book A").performClick()
+        compose.onNodeWithText(text(R.string.bangumi_record_details)).assertExists()
+        compose.onNodeWithText("Book B").assertDoesNotExist()
+        compose.onNodeWithText(activity.get().getString(R.string.bangumi_http_failure, 503, text(R.string.bangumi_error_server))).assertExists()
+        compose.onNodeWithText(activity.get().getString(R.string.bangumi_progress, 2, 2)).assertExists()
+        compose.onNodeWithContentDescription(text(R.string.sources_back)).performClick()
+        compose.runOnIdle { state = state.copy(records = state.records + success.copy(id = 11, timestamp = 400)) }
+        assertTrue(compose.onNodeWithText("Book A").fetchSemanticsNode().boundsInRoot.top <
+            compose.onNodeWithText("Book B").fetchSemanticsNode().boundsInRoot.top)
+        compose.onNodeWithText(activity.get().getString(R.string.bangumi_record_count, 3)).assertExists()
+        compose.runOnIdle { state = state.copy(records = state.records + olderFailure.copy(id = 12, timestamp = 500)) }
+        compose.onNodeWithText("Book A").assertDoesNotExist()
+        compose.onNodeWithText(text(R.string.bangumi_records_error)).performClick()
+        compose.onNodeWithText("Book A").assertExists()
+        compose.onNodeWithText(activity.get().getString(R.string.bangumi_record_count, 4)).assertExists()
+    }
+
+    @Test fun sameTitlesStaySeparateAndAccountChangesLeaveThePreviousHistory() {
+        val record = BangumiSyncRecord(1, 1, "one", "Same title", 1, 1, BangumiSyncStatus.SYNCED, 100)
+        var state by mutableStateOf(BangumiUiState(account = BangumiAccountState(BangumiUser(1, "first"), true),
+            records = listOf(record, record.copy(id = 2, bookId = "two"))))
+        activity.get().setContent { MaterialTheme { screen(state, null) } }
+        compose.onNodeWithText(text(R.string.bangumi_records)).performClick()
+        compose.onAllNodesWithText("Same title").assertCountEquals(2)
+        compose.runOnIdle { state = state.copy(account = BangumiAccountState(BangumiUser(2, "second"), true), records = emptyList()) }
+        compose.onNodeWithText("Same title").assertDoesNotExist()
+        compose.onNodeWithText("second").assertExists()
+        compose.onNodeWithText(text(R.string.bangumi_sync)).assertExists()
+    }
+
+    @Test fun historyDetailsSurviveRecreationAndBackReturnsToTheirCategory() {
+        val record = BangumiSyncRecord(1, 1, "one", "Failed book", 2, 1, BangumiSyncStatus.OFFLINE, 100, 503)
+        val state = BangumiUiState(account = BangumiAccountState(BangumiUser(1, "test"), true), records = listOf(record))
+        fun show() { activity.get().setContent { MaterialTheme { screen(state, null) } } }
+        show()
+        compose.onNodeWithText(text(R.string.bangumi_records)).performClick()
+        compose.onNodeWithText(text(R.string.bangumi_records_error)).performClick()
+        compose.onNodeWithText("Failed book").performClick()
+        compose.runOnIdle {
+            activity.recreate()
+            activity.get().setTheme(android.R.style.Theme_Material_Light_NoActionBar)
+        }
+        show()
+        compose.onNodeWithText(text(R.string.bangumi_record_details)).assertExists()
+        compose.onNodeWithText("Failed book").assertExists()
+        compose.onNodeWithContentDescription(text(R.string.sources_back)).performClick()
+        compose.onNodeWithText(text(R.string.bangumi_records_error)).assertIsSelected()
+        compose.onNodeWithText("Failed book").assertExists()
+        compose.onNodeWithContentDescription(text(R.string.sources_back)).performClick()
+        compose.onNodeWithText(text(R.string.bangumi_sync)).assertExists()
     }
 
     @Test fun reenablingAVolumePreservesItsConfirmedPublicationIdentity() {

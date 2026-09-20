@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -27,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import coil3.compose.SubcomposeAsyncImage
 import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.data.bangumi.*
+import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
 
@@ -42,29 +44,44 @@ fun BangumiScreen(
 ) {
     var token by remember { mutableStateOf("") }
     var disconnect by remember { mutableStateOf(false) }
-    var showRecords by remember { mutableStateOf(false) }
-    var errorRecords by remember { mutableStateOf(false) }
+    var showRecords by rememberSaveable { mutableStateOf(false) }
+    var errorRecords by rememberSaveable { mutableStateOf(false) }
+    var recordBookId by rememberSaveable { mutableStateOf<String?>(null) }
+    var historyAccountId by rememberSaveable { mutableStateOf(state.account.user?.id) }
     var changeToken by remember { mutableStateOf(false) }
     var accountMenu by remember { mutableStateOf(false) }
     val uri = LocalUriHandler.current
     val clipboard = LocalClipboardManager.current
     val listState = rememberLazyListState()
-    LaunchedEffect(bookId, state.preview?.subject?.id, showRecords, errorRecords) { listState.scrollToItem(0) }
-    LaunchedEffect(state.account.user?.id) {
+    val recordsListState = rememberLazyListState()
+    val recordDetailsState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+    val recordGroups = remember(state.records) {
+        state.records.sortedWith(compareByDescending<BangumiSyncRecord> { it.timestamp }.thenByDescending { it.id })
+            .groupBy { it.bookId }.values.toList()
+    }
+    val bookRecords = recordGroups.find { it.first().bookId == recordBookId }.orEmpty()
+    val backFromRecords = { if (recordBookId != null) recordBookId = null else showRecords = false }
+    LaunchedEffect(bookId, state.preview?.subject?.id) { listState.scrollToItem(0) }
+    LaunchedEffect(state.account.loaded, state.account.user?.id) {
         token = ""; changeToken = false; accountMenu = false
-        showRecords = false; errorRecords = false
+        if (state.account.loaded && historyAccountId != state.account.user?.id) {
+            showRecords = false; errorRecords = false; recordBookId = null
+            historyAccountId = state.account.user?.id
+        }
     }
     LaunchedEffect(state.busy, state.error) { if (!state.busy && state.error == null) changeToken = false }
     BackHandler(state.preview != null && !state.busy, onDismiss)
-    BackHandler(showRecords) { showRecords = false }
+    BackHandler(showRecords, backFromRecords)
     Scaffold(topBar = { TopAppBar(title = { Text(stringResource(when {
+        showRecords && recordBookId != null -> R.string.bangumi_record_details
         showRecords -> R.string.bangumi_records
         bookId != null -> R.string.bangumi_correct_match
         else -> R.string.bangumi_title
     })) }, navigationIcon = {
         IconButton(onClick = {
             when {
-                showRecords -> showRecords = false
+                showRecords -> backFromRecords()
                 state.preview != null -> onDismiss()
                 else -> onBack()
             }
@@ -72,42 +89,55 @@ fun BangumiScreen(
             Icon(painterResource(R.drawable.arrow_back_24px), stringResource(R.string.sources_back))
         }
     }) }) { padding ->
-        LazyColumn(Modifier.fillMaxSize().padding(padding), state = listState, contentPadding = PaddingValues(16.dp),
+        LazyColumn(Modifier.fillMaxSize().padding(padding), state = when {
+            showRecords && recordBookId != null -> recordDetailsState
+            showRecords -> recordsListState
+            else -> listState
+        }, contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (state.busy || !state.account.loaded) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
             state.error?.let { error -> item { Text(stringResource(error), color = MaterialTheme.colorScheme.error) } }
-            if (bookId == null && showRecords) {
+            if (bookId == null && showRecords && recordBookId != null) {
+                bookRecords.firstOrNull()?.let { latest -> item {
+                    Text(latest.bookTitle, style = MaterialTheme.typography.titleLarge)
+                    Text(stringResource(R.string.bangumi_record_count, bookRecords.size),
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } }
+                if (bookRecords.isEmpty()) item { Text(stringResource(R.string.bangumi_no_records)) }
+                items(bookRecords, key = { it.id }) { record ->
+                    OutlinedCard(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { RecordSummary(record) }
+                    }
+                }
+            } else if (bookId == null && showRecords) {
                 item {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(selected = !errorRecords, onClick = { errorRecords = false },
+                        FilterChip(selected = !errorRecords, onClick = { errorRecords = false; scope.launch { recordsListState.scrollToItem(0) } },
                             label = { Text(stringResource(R.string.bangumi_records_success)) })
-                        FilterChip(selected = errorRecords, onClick = { errorRecords = true },
+                        FilterChip(selected = errorRecords, onClick = { errorRecords = true; scope.launch { recordsListState.scrollToItem(0) } },
                             label = { Text(stringResource(R.string.bangumi_records_error)) })
                     }
                 }
                 item { Text(stringResource(R.string.bangumi_records_help), style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                val records = state.records.filter { it.status.successful != errorRecords }
-                if (records.isEmpty()) item { Text(stringResource(R.string.bangumi_no_records)) }
-                items(records, key = { it.id }) { record ->
-                    OutlinedCard(Modifier.fillMaxWidth()) {
+                val groups = recordGroups.filter { it.first().status.successful != errorRecords }
+                if (groups.isEmpty()) item { Text(stringResource(R.string.bangumi_no_records)) }
+                items(groups, key = { it.first().bookId }) { records ->
+                    val record = records.first()
+                    OutlinedCard(onClick = { recordBookId = record.bookId; scope.launch { recordDetailsState.scrollToItem(0) } },
+                        modifier = Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text(record.bookTitle, style = MaterialTheme.typography.titleMedium)
-                            if (record.httpStatus != null) Text(stringResource(R.string.bangumi_http_failure, record.httpStatus,
-                                stringResource(bangumiHttpError(record.httpStatus))), color = MaterialTheme.colorScheme.error)
-                            else Text(stringResource(when {
-                                record.status.successful -> R.string.bangumi_status_synced
-                                record.status == BangumiSyncStatus.OFFLINE -> R.string.bangumi_no_response
-                                record.status == BangumiSyncStatus.REQUEST_REJECTED -> R.string.bangumi_invalid_response
-                                else -> statusText(record.status)
-                            }))
-                            if (record.pendingConfirmation) Text(stringResource(R.string.bangumi_pending_confirmation), style = MaterialTheme.typography.bodySmall)
-                            Text(stringResource(R.string.bangumi_progress, record.target, record.remote))
-                            Text(DateFormat.getDateTimeInstance().format(Date(record.timestamp)), style = MaterialTheme.typography.bodySmall,
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(record.bookTitle, modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+                                Icon(painterResource(R.drawable.arrow_forward_ios_24px), stringResource(R.string.bangumi_record_details),
+                                    modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            RecordSummary(record)
+                            Text(stringResource(R.string.bangumi_record_count, records.size), style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
                             if (state.bindings.any { it.bookId == record.bookId }) {
                                 if (record.status == BangumiSyncStatus.AUTH_REQUIRED)
-                                    TextButton(onClick = { showRecords = false; changeToken = true }) { Text(stringResource(R.string.bangumi_change_token)) }
+                                    TextButton(onClick = { showRecords = false; recordBookId = null; changeToken = true }) { Text(stringResource(R.string.bangumi_change_token)) }
                                 else TextButton(onClick = { onBook(record.bookId) }, enabled = !state.busy) { Text(stringResource(R.string.bangumi_correct_match)) }
                             }
                         }
@@ -273,6 +303,22 @@ fun BangumiScreen(
             disconnect = false
         }) { Text(stringResource(R.string.confirm)) } },
         dismissButton = { TextButton(onClick = { disconnect = false }) { Text(stringResource(R.string.cancel)) } })
+}
+
+@Composable
+private fun RecordSummary(record: BangumiSyncRecord) {
+    if (record.httpStatus != null) Text(stringResource(R.string.bangumi_http_failure, record.httpStatus,
+        stringResource(bangumiHttpError(record.httpStatus))), color = MaterialTheme.colorScheme.error)
+    else Text(stringResource(when {
+        record.status.successful -> R.string.bangumi_status_synced
+        record.status == BangumiSyncStatus.OFFLINE -> R.string.bangumi_no_response
+        record.status == BangumiSyncStatus.REQUEST_REJECTED -> R.string.bangumi_invalid_response
+        else -> statusText(record.status)
+    }))
+    if (record.pendingConfirmation) Text(stringResource(R.string.bangumi_pending_confirmation), style = MaterialTheme.typography.bodySmall)
+    Text(stringResource(R.string.bangumi_progress, record.target, record.remote))
+    Text(DateFormat.getDateTimeInstance().format(Date(record.timestamp)), style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 @Composable
