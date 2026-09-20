@@ -6,6 +6,7 @@ import androidx.compose.runtime.remember
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
@@ -22,10 +23,13 @@ fun NavGraphBuilder.settingsLogcatDestination() {
             if (!viewModel.uiState.isFileMode) viewModel.startLogging()
         }
         val logEntries by remember { derivedStateOf { viewModel.displayedLogEntries } }
+        val logLevelKey by viewModel.logLevelUserData.getFlow().collectAsStateWithLifecycle("none")
         LogcatScreen(
             uiState = viewModel.uiState,
             logFiles = viewModel.logFilenameList,
             logEntries = logEntries,
+            logLevelKey = logLevelKey ?: "none",
+            onLogLevelChange = viewModel.logLevelUserData::asynchronousSet,
             onClickBack = navController::popBackStackIfResumed,
             onClickClearLogs = viewModel::clearLogs,
             onClickShareLogs = viewModel::shareLogs,

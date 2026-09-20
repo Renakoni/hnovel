@@ -15,7 +15,9 @@ fun NavGraphBuilder.storageManager() {
         val viewModel = hiltViewModel<StorageManagerViewModel>()
         StorageManagerScreen(
             onClickBack = navController::popBackStackIfResumed,
-            uiState = viewModel.uiState
+            uiState = viewModel.uiState,
+            clearReadingCache = viewModel::clearReadingCache,
+            clearDownloads = viewModel::clearDownloads,
         )
     }
 }

@@ -128,6 +128,12 @@ object Route {
             /** 日志查看界面路由 */
             @Serializable
             object Logcat
+            /** 应用更新设置界面路由 */
+            @Serializable
+            object Updates
+            /** 关于应用界面路由 */
+            @Serializable
+            object About
             /** 文本格式化设置界面路由组 */
             @Serializable
             object TextFormatting {

@@ -53,6 +53,11 @@ import androidx.compose.ui.unit.sp
 import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.data.logging.LogEntry
 import indi.renakoni.nextvol.data.logging.LogLevel
+import indi.renakoni.nextvol.ui.components.SettingsMenuEntry
+import indi.renakoni.nextvol.ui.home.settings.SettingsCategory
+import indi.renakoni.nextvol.ui.home.settings.data.MenuOptions
+import indi.renakoni.nextvol.utils.LocalSnackbarHost
+import indi.renakoni.nextvol.utils.showSnackbar
 import indi.renakoni.nextvol.ui.components.AnimatedTextLine
 import kotlinx.coroutines.launch
 import java.time.LocalDateTime
@@ -64,6 +69,8 @@ fun LogcatScreen(
     uiState: LogcatUiState,
     logFiles: List<String>,
     logEntries: List<LogEntry>,
+    logLevelKey: String,
+    onLogLevelChange: (String) -> Unit,
     onClickBack: () -> Unit,
     onClickClearLogs: () -> Unit,
     onClickShareLogs: () -> Unit,
@@ -72,6 +79,8 @@ fun LogcatScreen(
 ) {
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
+    val snackbarHostState = LocalSnackbarHost.current
+    val restartToApplyText = stringResource(R.string.restart_to_apply_changes)
     var unwrapLogsText by remember { mutableStateOf(false) }
     var autoScrollEnabled by remember { mutableStateOf(true) }
 
@@ -91,6 +100,21 @@ fun LogcatScreen(
             onClickClearLogs = onClickClearLogs,
             onClickShareLogs = onClickShareLogs
         )
+
+        SettingsCategory {
+            SettingsMenuEntry(
+                modifier = Modifier.background(MaterialTheme.colorScheme.surfaceContainer),
+                painter = painterResource(R.drawable.bug_report_24px),
+                title = stringResource(R.string.settings_app_log_level),
+                description = stringResource(R.string.settings_app_log_level_desc),
+                options = MenuOptions.LogLevelOptions,
+                selectedOptionKey = logLevelKey,
+                onOptionChange = { option ->
+                    onLogLevelChange(option)
+                    showSnackbar(coroutineScope, snackbarHostState, restartToApplyText) { }
+                }
+            )
+        }
 
         Box(modifier = Modifier.weight(1f)) {
             if (logEntries.isEmpty()) EmptyLogListContent()

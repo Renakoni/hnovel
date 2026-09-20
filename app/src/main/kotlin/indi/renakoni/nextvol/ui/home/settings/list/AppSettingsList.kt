@@ -3,26 +3,18 @@ package indi.renakoni.nextvol.ui.home.settings.list
 import androidx.compose.foundation.background
 import androidx.compose.material3.MaterialTheme.colorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.ui.components.SettingsClickableEntry
-import indi.renakoni.nextvol.ui.components.SettingsMenuEntry
-import indi.renakoni.nextvol.ui.home.settings.SettingState
-import indi.renakoni.nextvol.ui.home.settings.data.MenuOptions
-import indi.renakoni.nextvol.utils.LocalSnackbarHost
-import indi.renakoni.nextvol.utils.showSnackbar
 
 @Composable
 fun AppSettingsList(
-    settingState: SettingState,
     onClickLogcat: () -> Unit,
+    onClickUpdates: () -> Unit,
+    onClickAbout: () -> Unit,
 ) {
-    val coroutineScope = rememberCoroutineScope()
-    val snackbarHostState = LocalSnackbarHost.current
-
     SettingsClickableEntry(
         modifier = Modifier.background(colorScheme.surfaceContainer),
         painter = painterResource(R.drawable.bug_report_24px),
@@ -30,21 +22,16 @@ fun AppSettingsList(
         description = stringResource(R.string.settings_app_logs_desc),
         onClick = onClickLogcat
     )
-    val restartToApplyText = stringResource(R.string.restart_to_apply_changes)
-    SettingsMenuEntry(
+    SettingsClickableEntry(
         modifier = Modifier.background(colorScheme.surfaceContainer),
-        painter = painterResource(R.drawable.bug_report_24px),
-        title = stringResource(R.string.settings_app_log_level),
-        description = stringResource(R.string.settings_app_log_level_desc),
-        options = MenuOptions.LogLevelOptions,
-        selectedOptionKey = settingState.logLevelKey,
-        onOptionChange = { option ->
-            settingState.logLevelKeyUserData.asynchronousSet(option)
-            showSnackbar(
-                coroutineScope = coroutineScope,
-                hostState = snackbarHostState,
-                message = restartToApplyText
-            ) { }
-        }
+        painter = painterResource(R.drawable.deployed_code_update_24px),
+        title = stringResource(R.string.app_updates),
+        onClick = onClickUpdates
+    )
+    SettingsClickableEntry(
+        modifier = Modifier.background(colorScheme.surfaceContainer),
+        painter = painterResource(R.drawable.info_24px),
+        title = stringResource(R.string.about_settings),
+        onClick = onClickAbout
     )
 }

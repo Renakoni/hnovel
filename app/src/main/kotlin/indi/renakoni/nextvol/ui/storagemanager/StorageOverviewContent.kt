@@ -38,40 +38,46 @@ import indi.renakoni.nextvol.ui.components.SectionHeader
 import indi.renakoni.nextvol.ui.home.reading.stats.predefinedColors
 import indi.renakoni.nextvol.utils.FileSizeUnit
 import indi.renakoni.nextvol.utils.formatSize
+import indi.renakoni.nextvol.utils.navigationBarSpacer
 import kotlin.text.format
 
 @Composable
 fun StorageOverviewContent(
     modifier: Modifier,
-    uiState: StorageManagerUiState
+    uiState: StorageManagerUiState,
+    clearReadingCache: suspend () -> Unit,
+    clearDownloads: suspend () -> Unit,
 ) {
     val expandedSection = uiState.sections.firstOrNull { it.title == uiState.expandedTitle } ?: uiState.sections.firstOrNull()
-    if (uiState.isLoading && uiState.sections.isEmpty()) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(top = 48.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            CircularProgressIndicator()
-        }
-        return
-    }
-    if (!uiState.isLoading && uiState.totalSize <= 0L) {
-        EmptyPage(
-            modifier = Modifier.navigationBarsPadding(),
-            icon = painterResource(id = R.drawable.menu_book_24px),
-            title = stringResource(R.string.storage_manager_title),
-            description = stringResource(R.string.storage_manager_empty_description)
-        )
-        return
-    }
     LazyColumn(
         modifier = modifier.padding(horizontal = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
+            StorageCleanupSettings(clearReadingCache, clearDownloads)
+        }
+        item {
+            if (uiState.isLoading && uiState.sections.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(top = 48.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator()
+                }
+                return@item
+            }
+            if (!uiState.isLoading && uiState.totalSize <= 0L) {
+                EmptyPage(
+                    modifier = Modifier.navigationBarsPadding(),
+                    icon = painterResource(id = R.drawable.menu_book_24px),
+                    title = stringResource(R.string.storage_manager_title),
+                    description = stringResource(R.string.storage_manager_empty_description)
+                )
+                return@item
+            }
             SectionHeader(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                 text = stringResource(R.string.overview)
@@ -204,7 +210,7 @@ fun StorageOverviewContent(
                 }
             }
         }
-
+        navigationBarSpacer()
     }
 }
 

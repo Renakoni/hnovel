@@ -5,12 +5,16 @@ import androidx.lifecycle.ViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import indi.renakoni.nextvol.data.logging.LogEntry
 import indi.renakoni.nextvol.data.logging.LoggerRepository
+import indi.renakoni.nextvol.data.userdata.UserDataRepository
+import io.nightfish.lightnovelreader.api.userdata.UserDataPath
 import javax.inject.Inject
 
 @HiltViewModel
 class LogcatViewModel @Inject constructor (
-    private val loggerRepository: LoggerRepository
+    private val loggerRepository: LoggerRepository,
+    userDataRepository: UserDataRepository,
 ): ViewModel() {
+    val logLevelUserData = userDataRepository.stringUserData(UserDataPath.Settings.Data.LogLevel.path)
 
     private val _uiState = MutableLogcatUiState()
     val uiState: LogcatUiState = _uiState

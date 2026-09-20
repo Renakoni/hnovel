@@ -220,8 +220,8 @@
     <string name="settings_snap_data_desc">將應用程式內的使用者資料匯出為 .lnr 檔案</string>
     <string name="settings_import_data">匯入資料</string>
     <string name="settings_import_data_desc">從選定的 .lnr 檔案匯入使用者資料</string>
-    <string name="settings_storage_manager">儲存空間統計</string>
-    <string name="settings_storage_manager_desc">查看應用程式、快取、外掛以及其他檔案如何使用儲存空間。</string>
+    <string name="settings_storage_manager">儲存與清理</string>
+    <string name="settings_storage_manager_desc">查看儲存空間用量，清理閱讀快取或下載內容</string>
     <string name="settings_plugins">擴充外掛</string>
     <string name="settings_plugins_desc">安裝與管理擴充外掛</string>
     <string name="settings_app_logs">應用程式日誌</string>
@@ -243,7 +243,7 @@
     <string name="book_manager_clear_orphaned_content">要刪除已無法連結到本地書本的章節資料嗎？</string>
     <string name="book_manager_group_index_only">未快取內容的書本（%1$d）</string>
     <string name="book_manager_cleared_items">刪除了 %1$d 個內容</string>
-    <string name="storage_manager_title">儲存空間統計</string>
+    <string name="storage_manager_title">儲存與清理</string>
     <string name="storage_manager_empty_description">無可分析的快取。</string>
     <string name="storage_manager_used">已使用</string>
     <string name="storage_manager_section_app_title">應用程式</string>

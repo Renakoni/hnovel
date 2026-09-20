@@ -1,6 +1,7 @@
 package indi.renakoni.nextvol.ui.home.settings
 
 import android.net.Uri
+import androidx.annotation.StringRes
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -31,42 +32,36 @@ import indi.renakoni.nextvol.BuildConfig
 import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.ui.components.SectionHeader
 import indi.renakoni.nextvol.ui.components.SettingsClickableEntry
-import indi.renakoni.nextvol.ui.home.settings.list.AboutSettingsList
 import indi.renakoni.nextvol.ui.home.settings.list.AppSettingsList
 import indi.renakoni.nextvol.ui.home.settings.list.DataSettingsList
 import indi.renakoni.nextvol.ui.home.settings.list.DisplaySettingsList
 import indi.renakoni.nextvol.ui.home.settings.list.ExtensionsSettingsList
 import indi.renakoni.nextvol.ui.home.settings.list.ReadingSettingsList
-import indi.renakoni.nextvol.ui.home.settings.list.UpdatesSettingsList
 import indi.renakoni.nextvol.utils.navigationBarSpacer
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
 @Composable
 fun SettingsScreen(
     settingState: SettingState,
-    updatePhase: String,
-    checkUpdate: () -> Unit,
     importData: (Uri, Boolean) -> OneTimeWorkRequest,
     onClickLogcat: () -> Unit,
     onClickChangeSource: () -> Unit,
     onClickExportUserData: () -> Unit,
     onClickDebugMode: () -> Unit,
-    onClickLicenses: () -> Unit,
+    onClickUpdates: () -> Unit,
+    onClickAbout: () -> Unit,
     onClickThemeSettings: () -> Unit,
     onClickPluginManager: () -> Unit,
     onClickTextFormatting: () -> Unit,
     onClickReadAloud: () -> Unit,
     onClickStorageManager: () -> Unit,
-    clearReadingCache: suspend () -> Unit,
-    clearDownloads: suspend () -> Unit,
-    onOptOut: () -> Unit,
     onBack: () -> Unit,
 ) {
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
     val listState = rememberLazyListState()
 
     Column {
-        SettingsTopBar(scrollBehavior, onBack)
+        SettingsTopBar(scrollBehavior, onBack = onBack)
         LazyColumn(
             Modifier.fillMaxSize(), listState
         ) {
@@ -101,25 +96,12 @@ fun SettingsScreen(
             }
             item {
                 SettingsCategory(
-                    title = stringResource(R.string.app_updates)
-                ) {
-                    UpdatesSettingsList(
-                        updatePhase = updatePhase,
-                        settingState = settingState,
-                        checkUpdate = checkUpdate,
-                    )
-                }
-            }
-            item {
-                SettingsCategory(
                     title = stringResource(R.string.data_settings),
                 ) {
                     DataSettingsList(
                         onClickExportUserData = onClickExportUserData,
                         importData = importData,
                         onClickStorageManager = onClickStorageManager,
-                        clearReadingCache = clearReadingCache,
-                        clearDownloads = clearDownloads,
                     )
                 }
             }
@@ -128,19 +110,9 @@ fun SettingsScreen(
                     title = stringResource(R.string.app_settings),
                 ) {
                     AppSettingsList(
-                        settingState = settingState,
                         onClickLogcat = onClickLogcat,
-                    )
-                }
-            }
-            item {
-                SettingsCategory(
-                    title = stringResource(R.string.about_settings),
-                ) {
-                    AboutSettingsList(
-                        settingState = settingState,
-                        onClickLicenses = onClickLicenses,
-                        onOptOut = onOptOut
+                        onClickUpdates = onClickUpdates,
+                        onClickAbout = onClickAbout,
                     )
                 }
             }
@@ -169,12 +141,13 @@ fun SettingsScreen(
 @Composable
 internal fun SettingsTopBar(
     scrollBehavior: TopAppBarScrollBehavior,
+    @StringRes title: Int = R.string.nav_settings,
     onBack: () -> Unit,
 ) {
     TopAppBar(
         title = {
             Text(
-                text = stringResource(R.string.nav_settings), style = typography.displayLarge
+                text = stringResource(title), style = typography.displayLarge
             )
         },
         navigationIcon = {

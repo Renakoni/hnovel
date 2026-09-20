@@ -1,7 +1,12 @@
-package indi.renakoni.nextvol.ui.home.settings.list
+package indi.renakoni.nextvol.ui.home.settings.updates
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme.colorScheme
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
@@ -12,9 +17,33 @@ import indi.renakoni.nextvol.ui.home.settings.SettingState
 import indi.renakoni.nextvol.ui.components.SettingsClickableEntry
 import indi.renakoni.nextvol.ui.components.SettingsSwitchEntry
 import indi.renakoni.nextvol.ui.home.settings.data.MenuOptions
+import indi.renakoni.nextvol.ui.home.settings.SettingsCategory
+import indi.renakoni.nextvol.ui.home.settings.SettingsTopBar
+import indi.renakoni.nextvol.utils.navigationBarSpacer
 
 @Composable
-fun UpdatesSettingsList(
+@OptIn(ExperimentalMaterial3Api::class)
+fun UpdatesSettingsScreen(
+    updatePhase: String,
+    settingState: SettingState,
+    checkUpdate: () -> Unit,
+    onBack: () -> Unit,
+) {
+    Column {
+        SettingsTopBar(TopAppBarDefaults.pinnedScrollBehavior(), R.string.app_updates, onBack)
+        LazyColumn(Modifier.fillMaxSize()) {
+            item {
+                SettingsCategory {
+                    UpdatesSettingsList(updatePhase, settingState, checkUpdate)
+                }
+            }
+            navigationBarSpacer()
+        }
+    }
+}
+
+@Composable
+private fun UpdatesSettingsList(
     updatePhase: String,
     settingState: SettingState,
     checkUpdate: () -> Unit,

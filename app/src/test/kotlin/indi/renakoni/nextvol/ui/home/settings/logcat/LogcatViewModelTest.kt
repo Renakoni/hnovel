@@ -11,7 +11,7 @@ import org.junit.Test
 class LogcatViewModelTest {
     @Test fun selectingLiveLogsDoesNotTreatTheOptionAsAFile() {
         val repository = mockk<LoggerRepository>(relaxed = true)
-        val model = LogcatViewModel(repository)
+        val model = LogcatViewModel(repository, mockk(relaxed = true))
         val archive = "lnr_export_20260919_100000.log"
         model.onSelectLogFile(archive)
         assertTrue(model.uiState.isFileMode)
@@ -26,7 +26,7 @@ class LogcatViewModelTest {
 
     @Test fun deletingAnArchiveReturnsToLiveLogsAndSharesTheLiveStream() {
         val repository = mockk<LoggerRepository>(relaxed = true)
-        val model = LogcatViewModel(repository)
+        val model = LogcatViewModel(repository, mockk(relaxed = true))
         val archive = "lnr_panic_20260919_100000.log"
         model.onSelectLogFile(archive)
         model.deleteLogFile(archive)

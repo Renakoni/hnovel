@@ -1,9 +1,14 @@
 @file:Suppress("AssignedValueIsNeverRead")
 
-package indi.renakoni.nextvol.ui.home.settings.list
+package indi.renakoni.nextvol.ui.home.settings.about
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme.colorScheme
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -19,13 +24,37 @@ import indi.renakoni.nextvol.ui.components.SettingsClickableEntry
 import indi.renakoni.nextvol.ui.components.SettingsDisableStatsDialog
 import indi.renakoni.nextvol.ui.components.SettingsPrivacyPolicyDialog
 import indi.renakoni.nextvol.ui.home.settings.SettingState
+import indi.renakoni.nextvol.ui.home.settings.SettingsCategory
+import indi.renakoni.nextvol.ui.home.settings.SettingsTopBar
+import indi.renakoni.nextvol.utils.navigationBarSpacer
 import io.nightfish.lightnovelreader.api.ui.components.SettingsSwitchEntry
 
 @Composable
-fun AboutSettingsList(
+@OptIn(ExperimentalMaterial3Api::class)
+fun AboutSettingsScreen(
     settingState: SettingState,
     onClickLicenses: () -> Unit,
-    onOptOut: () -> Unit = {}
+    onOptOut: () -> Unit,
+    onBack: () -> Unit,
+) {
+    Column {
+        SettingsTopBar(TopAppBarDefaults.pinnedScrollBehavior(), R.string.about_settings, onBack)
+        LazyColumn(Modifier.fillMaxSize()) {
+            item {
+                SettingsCategory {
+                    AboutSettingsList(settingState, onClickLicenses, onOptOut)
+                }
+            }
+            navigationBarSpacer()
+        }
+    }
+}
+
+@Composable
+private fun AboutSettingsList(
+    settingState: SettingState,
+    onClickLicenses: () -> Unit,
+    onOptOut: () -> Unit
 ) {
     val appInfo: String = buildString {
         appendLine(BuildConfig.APPLICATION_ID)
