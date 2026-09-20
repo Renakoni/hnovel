@@ -96,13 +96,13 @@ class ScrollModeContractTest {
     }
 
     @Test
-    fun displayPrecedesSuspendedPersistenceAndProgressRestorationWaitsForTheTransform() {
+    fun displayWaitsForStoredProgressBeforePublishingTheBody() {
         env.records.data = env.records.data.copy(currentChapterReadingProgressMap = mapOf("requested" to 0.4f))
         open()
         val gate = CompletableDeferred<Unit>()
         env.records.writeGate = gate
         env.emit("requested", Ok(env.chapter("requested", next = "next")))
-        assertNotNull(mode.uiState.readingChapterContent)
+        assertNull(mode.uiState.readingChapterContent)
         assertEquals(0f, mode.uiState.readingProgress)
         assertTrue(env.chapters.preloads.isEmpty())
         gate.complete(Unit)
@@ -221,6 +221,7 @@ class ScrollModeContractTest {
         mode.uiState.setLazyColumnSize(IntSize(100, 200))
         viewport.items.value = listOf(item("next", 0, 200, readable = false))
         env.runCurrent()
+        assertNotNull(mode.uiState.readingChapterContent)
         assertEquals("current", mode.uiState.readingChapterId)
         assertEquals("current", env.records.data.lastReadChapterId)
 
@@ -306,6 +307,7 @@ class ScrollModeContractTest {
         mode.uiState.setLazyColumnSize(IntSize(100, 100))
         val viewport = Viewport()
         mode.uiState.lazyListState = viewport.state
+        mode.uiState.onProgressRestored(viewport.state)
         env.runCurrent()
         viewport.items.value = listOf(item("requested", -20, 400))
         viewport.scrolling.value = true

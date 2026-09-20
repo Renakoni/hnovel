@@ -93,7 +93,7 @@ class ScrollChapterWindowTest {
         mode.changeChapter("4")
         env.runCurrent()
         env.emit("4", Ok(env.chapter("4", "3", "5")))
-        assertEquals("4", mode.uiState.contentList[1]!!.first)
+        assertNull(mode.uiState.contentList[1])
         gate.complete(Unit)
         env.runCurrent()
         assertEquals("4", mode.requestedChapterId)
