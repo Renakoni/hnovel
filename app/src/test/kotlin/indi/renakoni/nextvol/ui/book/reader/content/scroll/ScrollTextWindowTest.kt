@@ -139,6 +139,15 @@ class ScrollTextWindowTest {
         compose.onNodeWithText("PARAGRAPH_180", useUnmergedTree = true).assertIsDisplayed()
     }
 
+    @Test fun speechEntryPassesACachedPreviousChapterWhileCurrentTextIsBeingLaidOut() {
+        every { settings.isUsingContinuousScrolling } returns true
+        speech = position(100)
+        mount(0f, previousText = "Previous short chapter")
+        awaitBody()
+        compose.onNodeWithText("PARAGRAPH_100", useUnmergedTree = true).assertIsDisplayed()
+        assertFalse(state.isRestoringProgress)
+    }
+
     private fun position(paragraph: Int): SpeechPosition {
         val start = chapterText.indexOf("PARAGRAPH_%03d".format(paragraph))
         return SpeechPosition("book", "chapter", SpeechChapter("book", "chapter", "", "", chapterText).fingerprint, start, start + 13)
@@ -235,13 +244,18 @@ class ScrollTextWindowTest {
         compose.waitForIdle()
     }
 
-    private fun mount(progress: Float, text: String = chapterText) {
+    private fun mount(progress: Float, text: String = chapterText, previousText: String? = null) {
         val component = SimpleTextComponent(SimpleTextComponentData(text), mockk(relaxed = true), activity.get())
         state.bookId = "book"
         state.readingChapterId = "chapter"
         state.readingProgress = progress
         state.isRestoringProgress = true
-        state.contentList[1] = "chapter" to Ok(ChapterContentUiState("chapter", "Chapter", listOf(component), null, null))
+        if (previousText != null) {
+            val previous = SimpleTextComponent(SimpleTextComponentData(previousText), mockk(relaxed = true), activity.get())
+            state.contentList[0] = "previous" to Ok(ChapterContentUiState("previous", "Previous", listOf(previous), null, "chapter"))
+        }
+        state.contentList[1] = "chapter" to Ok(ChapterContentUiState("chapter", "Chapter", listOf(component),
+            if (previousText == null) null else "previous", null))
         compose.runOnUiThread {
             activity.get().setContent {
                 MaterialTheme {

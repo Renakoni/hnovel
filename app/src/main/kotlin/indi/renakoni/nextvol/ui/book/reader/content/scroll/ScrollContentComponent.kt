@@ -157,10 +157,14 @@ fun ScrollContentTextComponent(
     LaunchedEffect(listState) {
         snapshotFlow {
             uiState.readingChapterContent?.isOk == true && lazyColumnSize.height > 0 &&
+                latestPrepared.getOrNull(1)?.content?.id == uiState.readingChapterId &&
                 listState.layoutInfo.visibleItemsInfo.isNotEmpty()
         }.first { it }
         val restoredProgress = uiState.readingProgress
-        // A cached previous chapter can initially occupy the whole viewport.
+        // Let the prepared current item replace its loading layout before positioning it.
+        // Otherwise a cached previous chapter can pin the viewport while we wait for the
+        // current chapter's geometry, which cannot be placed outside the lazy window.
+        withFrameNanos { }
         listState.scrollToItem(1)
         val item = snapshotFlow {
             listState.layoutInfo.visibleItemsInfo.firstOrNull {
