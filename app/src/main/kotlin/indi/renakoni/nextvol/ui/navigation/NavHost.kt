@@ -30,6 +30,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.currentBackStackEntryAsState
 import indi.renakoni.nextvol.ui.LocalBottomBarController
 import indi.renakoni.nextvol.ui.book.bookNavigation
+import indi.renakoni.nextvol.ui.bangumi.bangumiDestination
 import indi.renakoni.nextvol.ui.bookmanager.bookManager
 import indi.renakoni.nextvol.ui.components.LnrNavigationBar
 import indi.renakoni.nextvol.ui.components.LnrSnackbar
@@ -109,6 +110,7 @@ fun NextVolNavHost(
                     ) {
                         homeNavigation(this@SharedTransitionLayout)
                         bookNavigation(onReaderActiveChanged)
+                        bangumiDestination()
                         updatesAvailableDialog()
                         addBookToBookshelfDialog()
                         bookManager()

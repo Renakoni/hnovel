@@ -86,6 +86,9 @@ fun NavGraphBuilder.bookDetailDestination() {
             uiState = viewModel.uiState,
             onRetry = viewModel::retryInformation,
             onMarkChaptersUnread = viewModel::markChaptersUnread,
+            onClickBangumi = if (indi.renakoni.nextvol.data.bangumi.BangumiMatching.supports(BookIdentity.book(bookId))) {
+                { navController.navigate(indi.renakoni.nextvol.ui.bangumi.BangumiRoute(bookId)) { launchSingleTop = true } }
+            } else null,
             onClickExportToEpub = { settings ->
                 viewModel.exportSettings = settings
 

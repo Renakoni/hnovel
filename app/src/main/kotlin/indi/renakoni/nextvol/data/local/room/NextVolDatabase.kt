@@ -59,12 +59,14 @@ import io.nightfish.lightnovelreader.api.content.builder.simpleText
         FormattingRuleEntity::class,
         BookDownloadEntity::class,
         DownloadedChapterEntity::class,
-        ImportedBookEntity::class
+        ImportedBookEntity::class,
+        indi.renakoni.nextvol.data.bangumi.BangumiBindingEntity::class
     ],
-    version = 19,
+    version = 20,
     exportSchema = false
 )
 abstract class NextVolDatabase : RoomDatabase() {
+    abstract fun bangumiBindingDao(): indi.renakoni.nextvol.data.bangumi.BangumiBindingDao
     abstract fun bookInformationDao(): BookInformationDao
     abstract fun bookVolumesDao(): BookVolumesDao
     abstract fun chapterContentDao(): ChapterContentDao
@@ -106,7 +108,8 @@ abstract class NextVolDatabase : RoomDatabase() {
                             MIGRATION_15_16,
                             MIGRATION_16_17,
                             MIGRATION_17_18,
-                            MIGRATION_18_19
+                            MIGRATION_18_19,
+                            MIGRATION_19_20
                         )
                         .allowMainThreadQueries()
                         .build()
@@ -909,6 +912,15 @@ abstract class NextVolDatabase : RoomDatabase() {
                 db.execSQL("CREATE TABLE IF NOT EXISTS downloaded_chapter (id TEXT NOT NULL PRIMARY KEY, " +
                     "bookId TEXT NOT NULL, signature TEXT NOT NULL, images TEXT NOT NULL)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_downloaded_chapter_bookId ON downloaded_chapter (bookId)")
+            }
+        }
+
+        internal val MIGRATION_19_20 = object : Migration(19, 20) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS bangumi_binding (accountId INTEGER NOT NULL, " +
+                    "bookId TEXT NOT NULL, subjectId INTEGER NOT NULL, data TEXT NOT NULL, PRIMARY KEY(accountId, bookId))")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_bangumi_binding_accountId_subjectId " +
+                    "ON bangumi_binding (accountId, subjectId)")
             }
         }
 

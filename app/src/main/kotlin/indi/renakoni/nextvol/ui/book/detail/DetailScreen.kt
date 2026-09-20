@@ -150,6 +150,7 @@ fun DetailScreen(
     onClickMarkAsRead: () -> Unit,
     onRetry: () -> Unit = {},
     onMarkChaptersUnread: suspend (Set<String>) -> Unit = {},
+    onClickBangumi: (() -> Unit)? = null,
 ) {
     val navController = LocalNavController.current
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
@@ -315,6 +316,7 @@ fun DetailScreen(
                     }
                 },
                 onClickMarkAsRead = onClickMarkAsRead,
+                onClickBangumi = onClickBangumi,
                 onClickMarkAsUnread = {
                     selectedChapterIds = emptyList()
                     selectingChapters = true
@@ -692,6 +694,7 @@ private fun TopBar(
     onClickExport: () -> Unit,
     onClickTextFormatting: () -> Unit,
     onClickMarkAsRead: () -> Unit,
+    onClickBangumi: (() -> Unit)?,
     onClickMarkAsUnread: () -> Unit,
     canMarkUnread: Boolean,
     scrollBehavior: TopAppBarScrollBehavior,
@@ -765,6 +768,7 @@ private fun TopBar(
                     onClickExport = onClickExport,
                     onClickTextFormatting = onClickTextFormatting,
                     onClickMarkAsRead = onClickMarkAsRead,
+                    onClickBangumi = onClickBangumi,
                     onClickMarkAsUnread = onClickMarkAsUnread,
                     canMarkUnread = canMarkUnread,
                 )
@@ -801,6 +805,7 @@ private fun TopBarActions(
     onClickExport: () -> Unit,
     onClickTextFormatting: () -> Unit,
     onClickMarkAsRead: () -> Unit,
+    onClickBangumi: (() -> Unit)?,
     onClickMarkAsUnread: () -> Unit,
     canMarkUnread: Boolean,
 ) {
@@ -817,6 +822,10 @@ private fun TopBarActions(
             Icon(painterResource(id = R.drawable.more_vert_24px), contentDescription = stringResource(R.string.action_more_options))
         }
         DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+            if (onClickBangumi != null) DropdownMenuItem(
+                text = { Text(stringResource(R.string.bangumi_title)) },
+                onClick = { menuExpanded = false; onClickBangumi() },
+            )
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.mark_as_unread), style = typography.bodyLarge) },
                 enabled = canMarkUnread,

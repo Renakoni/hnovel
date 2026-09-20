@@ -27,6 +27,7 @@ class NextVolApplication : Application(), Configuration.Provider, coil3.Singleto
     @Inject lateinit var importedRuleSources: indi.renakoni.nextvol.data.web.rules.ImportedRuleSources
     @Inject lateinit var zLibrarySources: indi.renakoni.nextvol.data.web.zlibrary.ZLibrarySources
     @Inject lateinit var localBooks: indi.renakoni.nextvol.data.localbook.LocalBookStore
+    @Inject lateinit var bangumiSync: javax.inject.Provider<indi.renakoni.nextvol.data.bangumi.BangumiSyncScheduler>
 
     override fun newImageLoader(context: Context): coil3.ImageLoader = coil3.ImageLoader.Builder(context)
         .components { add(sourceImageInterceptor); add(indi.renakoni.nextvol.data.image.SourceImageFetcher.Factory()) }
@@ -78,6 +79,7 @@ class NextVolApplication : Application(), Configuration.Provider, coil3.Singleto
             runCatching { localBooks.restoreMetadata() }
                 .onFailure { android.util.Log.e("LocalBookStore", "Cannot restore local library metadata", it) }
         }
+        bangumiSync.get().start(coroutineScope)
         coroutineScope.launch(Dispatchers.IO) {
             matomoAnalytics.initialize()
             matomoAnalytics.trackAppLaunch()
