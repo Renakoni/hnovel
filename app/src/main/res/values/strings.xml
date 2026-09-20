@@ -194,10 +194,6 @@
     <string name="settings_theme_dynamic_colors">Dynamic Colors</string>
     <string name="settings_theme_dynamic_colors_desc_unavailable">Apply system-generated dynamic colors</string>
     <string name="settings_theme_dynamic_colors_desc">Apply system-generated dynamic colors (Android 12+ required)</string>
-    <string name="settings_theme_m3e" translatable="false">Material 3 Expressive</string>
-    <string name="settings_theme_m3e_description">
-        Enables the Material 3 Expressive design. This feature is experimental and still in beta
-    </string>
 
     <string name="settings_formats">Formats</string>
     <string name="settings_formats_desc">Set date or text format</string>

@@ -187,9 +187,6 @@
     <string name="settings_theme_dynamic_colors">Динамичные цвета</string>
     <string name="settings_theme_dynamic_colors_desc_unavailable">Применять системные динамические цвета</string>
     <string name="settings_theme_dynamic_colors_desc">Применять системные динамические цвета (требуется Android 12+)</string>
-    <string name="settings_theme_m3e_description">
-        Enables the Material 3 Expressive design. This feature is experimental and still in beta
-    </string>
     <string name="settings_formats">Formats</string>
     <string name="settings_formats_desc">Set date or text format</string>
     <string name="date_time_formats_settings">Date &amp; Time</string>

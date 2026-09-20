@@ -3,7 +3,9 @@ package indi.renakoni.nextvol.ui.home.settings.theme
 import android.content.Context
 import android.net.Uri
 import android.os.Build
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -22,6 +24,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.GenericShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -49,6 +52,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -68,7 +72,8 @@ import indi.renakoni.nextvol.ui.LocalDarkColorScheme
 import indi.renakoni.nextvol.ui.LocalLightColorScheme
 import indi.renakoni.nextvol.ui.book.reader.ReaderSettingsEditor
 import indi.renakoni.nextvol.ui.book.reader.ReaderPaper
-import indi.renakoni.nextvol.ui.book.reader.ReaderPaperSelector
+import indi.renakoni.nextvol.ui.book.reader.ReaderPaperEntry
+import indi.renakoni.nextvol.ui.book.reader.ReaderPaperPage
 import indi.renakoni.nextvol.ui.book.reader.ReaderMotionSwitch
 import indi.renakoni.nextvol.ui.book.reader.ReaderFontEntry
 import indi.renakoni.nextvol.ui.book.reader.ReaderLayoutPreview
@@ -97,12 +102,19 @@ fun ThemeScreen(
     onClickChangeTextColor: () -> Unit,
     onClickChangeBackgroundColor: () -> Unit
 ) {
+    val listState = rememberLazyListState()
+    var showPaper by rememberSaveable { mutableStateOf(false) }
+    BackHandler(showPaper) { showPaper = false }
+    if (showPaper) {
+        ReaderPaperPage(readerSettingState, onBack = { showPaper = false })
+        return
+    }
     val context = LocalContext.current
     Column(
         modifier = Modifier.fillMaxSize()
     ) {
         TopBar(onClickBack)
-        LazyColumn {
+        LazyColumn(state = listState, modifier = Modifier.testTag("theme-settings-list")) {
             item {
                 DarkModeSettings(themeSettingState)
             }
@@ -110,7 +122,7 @@ fun ThemeScreen(
                 ThemeSettingsList(themeSettingState)
             }
             item {
-                ReaderThemeSettingsList(readerSettingState, onClickChangeBackgroundColor)
+                ReaderThemeSettingsList(readerSettingState, onClickChangeBackgroundColor, onClickPaper = { showPaper = true })
             }
             item {
                 BackgroundSettings(readerSettingState, context)
@@ -252,14 +264,6 @@ fun ThemeSettingsList(
             booleanUserData = settingState.dynamicColorsKeyUserData,
             disabled = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
         )
-        SettingsSwitchEntry(
-            modifier = Modifier.background(colorScheme.surfaceContainer),
-            painter = painterResource(R.drawable.experiment_24px),
-            title = stringResource(R.string.settings_theme_m3e),
-            description = stringResource(R.string.settings_theme_m3e_description),
-            checked = settingState.enableM3E,
-            booleanUserData = settingState.enableM3EUserData
-        )
         if (!settingState.dynamicColorsKey) {
             SettingsMenuEntry(
                 modifier = Modifier.background(colorScheme.surfaceContainer),
@@ -287,12 +291,13 @@ fun ThemeSettingsList(
 @Composable
 fun ReaderThemeSettingsList(
     settingState: ReaderSettingsEditor,
-    onClickChangeBackgroundColor: () -> Unit
+    onClickChangeBackgroundColor: () -> Unit,
+    onClickPaper: () -> Unit,
 ) {
     SettingsCategory(
         title = stringResource(R.string.paper_settings),
     ) {
-        ReaderPaperSelector(settingState)
+        ReaderPaperEntry(settingState, onClickPaper, Modifier.background(colorScheme.surfaceContainer))
         ReaderMotionSwitch(settingState, Modifier.background(colorScheme.surfaceContainer))
         if (ReaderPaper.fromId(settingState.paperId) != ReaderPaper.Default) return@SettingsCategory
         val context = LocalContext.current
@@ -424,7 +429,7 @@ fun ReaderTextSettings(settingState: ReaderSettingsEditor, onClickChangeTextColo
         override val fontLineHeight = draft.lineSpacing
         override val paragraphSpacing = draft.paragraphSpacing
     }
-    ReaderLayoutPreview(previewSettings, Modifier.fillMaxWidth().height(260.dp))
+    ReaderLayoutPreview(previewSettings, Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).height(160.dp))
     SettingsCategory {
         ReaderTypographyControls(settingState, draft) { draft = it }
     }

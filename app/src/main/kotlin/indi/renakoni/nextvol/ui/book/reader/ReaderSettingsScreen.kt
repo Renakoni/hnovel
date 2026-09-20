@@ -1,10 +1,11 @@
-
 package indi.renakoni.nextvol.ui.book.reader
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -35,10 +36,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -67,10 +70,12 @@ fun SettingsBottomSheet(
     settingState: ReaderSettingsEditor,
     onClickThemeSettings: () -> Unit
 ) {
+    var showPaper by rememberSaveable { mutableStateOf(false) }
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
         sheetState = sheetState,
         properties = ModalBottomSheetProperties(
+            shouldDismissOnBackPress = !showPaper,
             isAppearanceLightStatusBars = colorScheme.surface.luminance() > 0.5f,
             isAppearanceLightNavigationBars = colorScheme.surface.luminance() > 0.5f,
         ),
@@ -78,9 +83,11 @@ fun SettingsBottomSheet(
         containerColor = colorScheme.surfaceContainerHigh,
         tonalElevation = 16.dp
     ) {
-        var selectedTabIndex by remember { mutableIntStateOf(0) }
-
-        Column(
+        BackHandler(enabled = showPaper) { showPaper = false }
+        var selectedTabIndex by rememberSaveable { mutableIntStateOf(0) }
+        if (showPaper) {
+            ReaderPaperPage(settingState, onBack = { showPaper = false }, windowInsets = WindowInsets(0, 0, 0, 0))
+        } else Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .fillMaxHeight()
@@ -95,7 +102,8 @@ fun SettingsBottomSheet(
                 settingState = settingState,
                 selectedTabIndex = selectedTabIndex,
                 onTabSelected = { index -> selectedTabIndex = index },
-                onClickThemeSettings = onClickThemeSettings
+                onClickThemeSettings = onClickThemeSettings,
+                onClickPaper = { showPaper = true },
             )
         }
     }
@@ -108,7 +116,8 @@ fun ContentSettings(
     settingState: ReaderSettingsEditor,
     selectedTabIndex: Int,
     onTabSelected: (Int) -> Unit,
-    onClickThemeSettings: () -> Unit
+    onClickThemeSettings: () -> Unit,
+    onClickPaper: () -> Unit,
 ) {
     val tabs = listOf(
         TabItem(stringResource(R.string.appearance_settings), R.drawable.filled_menu_book_24px),
@@ -147,7 +156,7 @@ fun ContentSettings(
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 when (pageIndex) {
-                    0 -> AppearancePage(settingState, onClickThemeSettings)
+                    0 -> AppearancePage(settingState, onClickThemeSettings, onClickPaper)
                     1 -> ActionPage(settingState)
                 }
             }
@@ -206,12 +215,11 @@ fun TabsRow(
 
 fun LazyListScope.AppearancePage(
     settingState: ReaderSettingsEditor,
-    onClickThemeSettings: () -> Unit
+    onClickThemeSettings: () -> Unit,
+    onClickPaper: () -> Unit,
 ) {
     item {
-        Text(stringResource(R.string.paper_settings), style = typography.titleSmall,
-            modifier = Modifier.padding(start = 16.dp, top = 8.dp))
-        ReaderPaperSelector(settingState)
+        ReaderPaperEntry(settingState, onClickPaper, Modifier.background(colorScheme.surfaceContainerHigh))
     }
     item { ReaderMotionSwitch(settingState, Modifier.background(colorScheme.surfaceContainerHigh)) }
     item {

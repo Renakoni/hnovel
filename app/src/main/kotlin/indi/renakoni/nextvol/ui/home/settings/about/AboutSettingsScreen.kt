@@ -17,6 +17,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import indi.renakoni.nextvol.ui.book.reader.ReaderFontLicensesEntry
 import indi.renakoni.nextvol.BuildConfig
 import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.ui.components.SettingsAboutInfoDialog
@@ -136,6 +137,7 @@ private fun AboutSettingsList(
         },
         disabled = BuildConfig.DEBUG
     )
+    ReaderFontLicensesEntry()
     SettingsClickableEntry(
         modifier = Modifier.background(colorScheme.surfaceContainer),
         painter = painterResource(R.drawable.code_24px),

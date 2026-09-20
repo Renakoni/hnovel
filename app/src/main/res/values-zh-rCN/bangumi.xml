@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="bangumi_title">Bangumi</string>
-    <string name="bangumi_description">自动同步轻小说已读卷数。</string>
+    <string name="bangumi_description">自动同步轻小说已读卷数</string>
     <string name="bangumi_connected">已连接</string>
     <string name="bangumi_disconnect">断开连接</string>
     <string name="bangumi_open_token">打开官方令牌页面</string>
