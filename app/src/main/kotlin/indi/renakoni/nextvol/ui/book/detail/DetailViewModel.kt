@@ -14,8 +14,10 @@ import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.workDataOf
 import com.github.michaelbull.result.onOk
+import com.github.michaelbull.result.get
 import dagger.hilt.android.lifecycle.HiltViewModel
 import indi.renakoni.nextvol.data.book.BookRepository
+import indi.renakoni.nextvol.data.book.BookReadingDataRepository
 import indi.renakoni.nextvol.data.bookshelf.BookshelfRepository
 import indi.renakoni.nextvol.data.download.DownloadProgressRepository
 import indi.renakoni.nextvol.data.download.DownloadType
@@ -30,6 +32,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 @HiltViewModel
@@ -37,7 +40,8 @@ class DetailViewModel @Inject constructor(
     private val bookRepository: BookRepository,
     private val bookshelfRepository: BookshelfRepository,
     private val downloadProgressRepository: DownloadProgressRepository,
-    private val workManager: WorkManager
+    private val workManager: WorkManager,
+    private val readingDataRepository: BookReadingDataRepository,
 ) : ViewModel() {
     private val _uiState = MutableDetailUiState()
     var exportSettings = ExportSettings()
@@ -90,6 +94,16 @@ class DetailViewModel @Inject constructor(
     }
 
     fun retryInformation() { book?.let { loadInformation(it.storageKey) } }
+
+    suspend fun markChaptersUnread(chapterIds: Set<String>) {
+        val bookId = checkNotNull(book).storageKey
+        val volumes = checkNotNull(_uiState.bookVolumes?.get())
+        val catalogIds = volumes.volumes.flatMap { it.chapters }.mapTo(mutableSetOf()) { it.id }
+        withContext(Dispatchers.IO) {
+            readingDataRepository.markChaptersUnread(bookId, chapterIds, catalogIds)
+            _uiState.userReadingData = readingDataRepository.getUserReadingData(bookId)
+        }
+    }
 
     private fun loadInformation(bookId: String) {
         informationJob?.cancel()

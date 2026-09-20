@@ -13,6 +13,13 @@ internal class RepositoryReaderRecordStore(
     private val statsRepository: StatsRepository,
     userDataRepository: UserDataRepository,
 ) : ReaderRecordStore {
+    override fun progressRevision(): Long = readingData.progressRevision()
+
+    override suspend fun updateChapterProgress(
+        bookId: String, chapterId: String, revision: Long,
+        update: (UserReadingData) -> UserReadingData,
+    ): Boolean = readingData.updateChapterProgress(bookId, chapterId, revision, update)
+
     private val readingBooks = userDataRepository.stringListUserData(UserDataPath.ReadingBooks.path)
 
     override suspend fun updateRecentBooks(update: (List<String>) -> List<String>) =
