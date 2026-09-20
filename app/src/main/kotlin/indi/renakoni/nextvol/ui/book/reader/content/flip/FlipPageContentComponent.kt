@@ -283,7 +283,11 @@ private fun SimpleFlipPageTextComponent(
                 message = readerFirstPageText,
                 actionLabel = previousChapterText
             ) {
-                if (it == SnackbarResult.ActionPerformed) {
+                if (it == SnackbarResult.ActionPerformed &&
+                    uiState.readingChapterContent?.get() === chapterContent &&
+                    uiState.pagerState === pagerState && !pagerState.isScrollInProgress &&
+                    pagerState.currentPage == 0
+                ) {
                     onClickPrevChapter()
                 }
             }
@@ -317,7 +321,11 @@ private fun SimpleFlipPageTextComponent(
                 message = readerLastPageText,
                 actionLabel = nextPageText
             ) {
-                if (it == SnackbarResult.ActionPerformed) {
+                if (it == SnackbarResult.ActionPerformed &&
+                    uiState.readingChapterContent?.get() === chapterContent &&
+                    uiState.pagerState === pagerState && !pagerState.isScrollInProgress &&
+                    pagerState.currentPage == pagerState.pageCount - 1
+                ) {
                     onClickNextChapter()
                 }
             }

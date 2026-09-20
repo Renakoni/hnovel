@@ -151,6 +151,34 @@ class FlipBoundarySwipeTest {
         compose.onNodeWithText(activity.get().getString(R.string.reader_reached_end)).assertIsDisplayed()
     }
 
+    @Test fun oldBoundaryActionCannotSkipAChapterAfterDirectoryNavigation() {
+        mount(fast = false)
+        compose.onRoot().performTouchInput { swipeLeft() }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            state.readingChapterId = "8"
+            state.readingChapterContent = Ok(ChapterContentUiState("8", "Eighth", listOf(Page()), "7", "9"))
+        }
+        compose.waitForIdle()
+        compose.onNodeWithText(activity.get().getString(R.string.next_chapter)).performClick()
+        compose.waitForIdle()
+        assertEquals(0, next)
+    }
+
+    @Test fun oldBoundaryActionCannotSkipRemainingPagesAfterAnInwardSwipe() {
+        mount(fast = false, pages = 2)
+        compose.onRoot().performTouchInput { swipeLeft() }
+        compose.waitForIdle()
+        compose.onRoot().performTouchInput { swipeLeft() }
+        compose.waitForIdle()
+        compose.onRoot().performTouchInput { swipeRight() }
+        compose.waitForIdle()
+        assertEquals(0, state.pagerState.settledPage)
+        compose.onNodeWithText(activity.get().getString(R.string.next_chapter)).performClick()
+        compose.waitForIdle()
+        assertEquals(0, next)
+    }
+
     @Test fun reducedMotionStillTurnsOneChapterWithoutPagerDragging() {
         mount(reduced = true)
         compose.onRoot().performTouchInput { swipeLeft() }
