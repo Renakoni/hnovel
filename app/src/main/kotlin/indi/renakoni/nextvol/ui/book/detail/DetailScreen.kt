@@ -125,6 +125,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.nextUp
 import kotlin.time.Duration.Companion.seconds
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1228,9 +1229,12 @@ private fun ChapterItem(
                     contentDescription = stringResource(R.string.last_read)
                 )
             } else if (readingProgress > 0f) {
+                // Correct Float rounding at integer percentages without reporting completion early.
+                val percent = (readingProgress.coerceIn(0f, 1f) * 100).nextUp().toInt()
+                    .coerceAtMost(if (isRead) 100 else 99)
                 Text(
                     modifier = Modifier.padding(start = 22.dp),
-                    text = "${(readingProgress.coerceIn(0f, 1f) * 100).toInt()}%",
+                    text = "$percent%",
                     maxLines = 1,
                     style = typography.titleSmall,
                     fontWeight = FontWeight.Normal,
