@@ -35,6 +35,7 @@ class ScrollReaderController(
         },
         writeProgressRightNow = ::writeProgressRightNow,
         retryChapter = { chaptersWindow.retryChapter(it) },
+        onProgressRestored = { if (uiState.lazyListState === it) uiState.isRestoringProgress = false },
     )
 
     private val chaptersWindow = ScrollChapterWindow(

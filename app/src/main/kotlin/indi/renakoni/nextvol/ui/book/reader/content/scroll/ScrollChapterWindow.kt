@@ -61,6 +61,7 @@ internal class ScrollChapterWindow(
         uiState.bookId = id
         uiState.readingChapterId = null
         uiState.readingProgress = 0f
+        uiState.isRestoringProgress = false
         uiState.contentList.fill(null)
         uiState.lazyListState = LazyListState()
     }
@@ -73,6 +74,7 @@ internal class ScrollChapterWindow(
         uiState.contentList.fill(null)
         uiState.readingChapterId = id
         uiState.readingProgress = 0f
+        uiState.isRestoringProgress = true
         uiState.lazyListState = LazyListState()
         val observation = observationGeneration
         settingsJob = coroutineScope.launch {
@@ -159,10 +161,11 @@ internal class ScrollChapterWindow(
         observation: Long,
     ) {
         var restore = restoreProgress
-        collectChapter(1, expected.chapterId, expected) { content ->
+        collectChapter(1, expected.chapterId, expected, beforePublish = { content ->
+            // History must be ready before Compose can lay out and save this chapter.
             updateLastReadChapter(expected, content.title, restore)
-            if (!isCurrent(expected)) return@collectChapter
             restore = false
+        }) { content ->
             if (preload) content.nextChapter?.let {
                 withContext(ioDispatcher) { chapters.preload(it, expected.bookId) }
             }
@@ -189,6 +192,7 @@ internal class ScrollChapterWindow(
         chapterId: String,
         expected: Request,
         interactive: Boolean = index == 1,
+        beforePublish: suspend (ChapterContentUiState) -> Unit = {},
         onLoaded: suspend (ChapterContentUiState) -> Unit = {},
     ) {
         cancelSlot(index)
@@ -196,6 +200,8 @@ internal class ScrollChapterWindow(
         slotJobs[index] = coroutineScope.launch {
             chapters.load(chapterId, expected.bookId, interactive = interactive)
                 .flowOn(ioDispatcher).collect { result ->
+                    if (!isCurrent(expected) || generation != slotGenerations[index]) return@collect
+                    result.onOk { beforePublish(it) }
                     if (!isCurrent(expected) || generation != slotGenerations[index]) return@collect
                     uiState.contentList[index] = chapterId to result
                     result.onOk { onLoaded(it) }

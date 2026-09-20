@@ -27,10 +27,12 @@ class ScrollProgressTimingTest {
     private var now = 10_000L
     private val offset = mutableIntStateOf(0)
     private val scrolling = mutableStateOf(true)
+    private val readable = mutableStateOf(true)
     private val writes = mutableListOf<Pair<String, Float>>()
     private val item = mockk<LazyListItemInfo> {
         every { key } returns "chapter"
         every { size } returns 1000
+        every { contentType } answers { readable.value }
         every { offset } answers { -this@ScrollProgressTimingTest.offset.intValue }
     }
     private val layout = mockk<LazyListLayoutInfo> { every { visibleItemsInfo } returns listOf(item) }
@@ -90,5 +92,43 @@ class ScrollProgressTimingTest {
         now = time
         offset.intValue = pixels
         env.runCurrent()
+    }
+
+    @Test
+    fun successfulResponseMustNotSaveTheStillMeasuredErrorBlock() {
+        readable.value = false
+        uiState.readingProgress = 0.6f
+        progress.start()
+        env.runCurrent()
+        move(12_500, 900)
+        scrolling.value = false
+        env.runCurrent()
+        assertEquals(0.6f, uiState.readingProgress)
+        assertEquals(emptyList<Pair<String, Float>>(), writes)
+    }
+
+    @Test
+    fun firstBodyLayoutAtTheSameOffsetUpdatesProgressWithoutAnotherGesture() {
+        readable.value = false
+        scrolling.value = false
+        progress.start()
+        env.runCurrent()
+        writes.clear()
+        readable.value = true
+        env.runCurrent()
+        assertEquals(listOf("chapter" to 0.1f), writes)
+    }
+
+    @Test
+    fun stoppingTheReaderDuringRestorationDoesNotSaveTheTemporaryPosition() {
+        uiState.isRestoringProgress = true
+        scrolling.value = false
+        progress.start()
+        env.runCurrent()
+        progress.writeProgressRightNow()
+        assertEquals(emptyList<Pair<String, Float>>(), writes)
+        uiState.isRestoringProgress = false
+        env.runCurrent()
+        assertEquals(listOf("chapter" to 0.1f), writes)
     }
 }

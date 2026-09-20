@@ -127,17 +127,20 @@ fun ScrollContentTextComponent(
     val reachedEndMsg = stringResource(R.string.reader_reached_end)
 
     LaunchedEffect(listState) {
-        snapshotFlow { listState.layoutInfo.visibleItemsInfo }.first { it.isNotEmpty() }
-        withFrameNanos {  }
+        snapshotFlow {
+            uiState.readingChapterContent?.isOk == true && lazyColumnSize.height > 0 &&
+                listState.layoutInfo.visibleItemsInfo.any { it.key == uiState.readingChapterId && it.contentType == true }
+        }.first { it }
+        val restoredProgress = uiState.readingProgress
         listState.scrollToItem(1)
-        val item = uiState.lazyListState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == uiState.readingChapterId } ?: return@LaunchedEffect
-        snapshotFlow { lazyColumnSize }.first { lazyColumnSize.height > 0 }
-        val offset = if (uiState.readingProgress <= 0f) {
+        val item = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == uiState.readingChapterId && it.contentType == true } ?: return@LaunchedEffect
+        val offset = if (restoredProgress <= 0f) {
             0
         } else {
-            (item.size * uiState.readingProgress).toInt() - lazyColumnSize.height
+            ((item.size * restoredProgress).toInt() - lazyColumnSize.height).coerceAtLeast(0)
         }
         listState.scrollToItem(1, offset)
+        uiState.onProgressRestored(listState)
     }
     LaunchedEffect(listState) {
         var atTop = false
@@ -265,6 +268,7 @@ fun ScrollContentTextComponent(
                 .padding(paddingValues)
                 .readerVolumeKeys(
                     enabled = settingState.isUsingVolumeKeyFlip && !settingState.isUsingFlipPage &&
+                        !uiState.isRestoringProgress &&
                         uiState.readingChapterContent?.get() != null && lazyColumnSize.height > 0,
                     intervalSeconds = settingState.volumeKeyContinuousFlipInterval,
                 ) { direction ->
@@ -283,6 +287,7 @@ fun ScrollContentTextComponent(
                     }
                 },
             state = listState,
+            userScrollEnabled = !uiState.isRestoringProgress,
         ) {
             itemsIndexed(
                 items = uiState.contentList,
