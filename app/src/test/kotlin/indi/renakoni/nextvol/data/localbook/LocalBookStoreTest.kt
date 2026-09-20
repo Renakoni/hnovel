@@ -64,7 +64,7 @@ class LocalBookStoreTest {
 
     private fun openDatabase() {
         database = Room.databaseBuilder(context, NextVolDatabase::class.java, File(temporary.root, "library.db").path)
-            .addMigrations(NextVolDatabase.MIGRATION_18_19).allowMainThreadQueries().build()
+            .addMigrations(NextVolDatabase.MIGRATION_18_19, NextVolDatabase.MIGRATION_19_20).allowMainThreadQueries().build()
         store = LocalBookStore(context, database)
         local = LocalBookDataSource(database.bookInformationDao(), database.bookVolumesDao(), database.chapterContentDao(), database.userReadingDataDao())
         downloads = BookDownloadStore(context, database, ContentJsonDecoder(ContentComponentRegistry()))
@@ -234,10 +234,12 @@ class LocalBookStoreTest {
         val oldBook = SourceBookId(io.nightfish.lightnovelreader.api.identifier.Identifier("fixture", "online"), "legacy")
         database.bookInformationDao().insert(database.bookInformationDao().get(imported.storageKey)!!.copy(id = oldBook.storageKey))
         local.updateUserReadingData(oldBook.storageKey) { it.copy(totalReadTime = 91) }
-        database.openHelper.writableDatabase.apply { execSQL("DROP TABLE imported_book"); version = 18 }
+        database.openHelper.writableDatabase.apply {
+            execSQL("DROP TABLE imported_book"); execSQL("DROP TABLE bangumi_binding"); execSQL("DROP TABLE bangumi_sync_record"); version = 18
+        }
         database.close()
         openDatabase()
-        assertEquals(19, database.openHelper.writableDatabase.version)
+        assertEquals(20, database.openHelper.writableDatabase.version)
         assertEquals("Imported novel", database.bookInformationDao().get(oldBook.storageKey)!!.title)
         assertEquals(91, books.getUserReadingData(oldBook.storageKey).totalReadTime)
         assertNotNull(database.bookshelfDao().getBookshelf(7))
