@@ -102,7 +102,6 @@ interface ReaderSettingsEditor : ReaderSettings {
 interface ThemeSettings {
     val darkModeKey: String
     val dynamicColorsKey: Boolean
-    val enableM3E: Boolean
     val lightThemeName: String
     val darkThemeName: String
 }
@@ -110,7 +109,6 @@ interface ThemeSettings {
 interface ThemeSettingsEditor : ThemeSettings {
     val darkModeKeyUserData: StringUserData
     val dynamicColorsKeyUserData: BooleanUserData
-    val enableM3EUserData: BooleanUserData
     val lightThemeNameUserData: StringUserData
     val darkThemeNameUserData: StringUserData
 }

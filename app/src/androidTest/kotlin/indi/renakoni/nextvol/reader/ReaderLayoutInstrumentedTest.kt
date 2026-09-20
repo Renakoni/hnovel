@@ -3,10 +3,14 @@ package indi.renakoni.nextvol.reader
 import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
+import android.view.KeyEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.SheetValue
+import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.darkColorScheme
@@ -33,7 +37,9 @@ import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import indi.renakoni.nextvol.R
+import indi.renakoni.nextvol.theme.NextVolTheme
 import indi.renakoni.nextvol.theme.AppTheme
+import indi.renakoni.nextvol.ui.home.settings.theme.ThemeScreen
 import indi.renakoni.nextvol.ui.LocalAppTheme
 import indi.renakoni.nextvol.data.local.room.NextVolDatabase
 import indi.renakoni.nextvol.data.userdata.UserDataRepository
@@ -150,14 +156,19 @@ class ReaderLayoutInstrumentedTest {
                 }
             }
         }
-        compose.onNodeWithText(context.getString(R.string.reader_font_system)).performScrollTo().performClick()
-        compose.waitUntil(5_000) { settings.fontFamilyUri == Uri.EMPTY && !imported.exists() }
+        compose.onNodeWithTag("reader-font-list").performScrollTo()
+        compose.waitUntil(5_000) {
+            compose.onAllNodesWithTag("reader-font-${Uri.fromFile(imported)}").fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithTag("reader-font-list").performScrollToIndex(0)
+        compose.onNodeWithText(context.getString(R.string.reader_font_system)).performClick()
+        compose.waitUntil(5_000) { settings.fontFamilyUri == Uri.EMPTY && imported.exists() }
         val fontSlider = compose.onNodeWithContentDescription(context.getString(R.string.settings_reader_font_size))
         fontSlider.performScrollTo().performTouchInput { down(center); moveTo(centerRight) }
         val previewLayouts = mutableListOf<TextLayoutResult>()
         compose.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsActions.GetTextLayoutResult), useUnmergedTree = true)
             .fetchSemanticsNodes().forEach { node -> node.config[SemanticsActions.GetTextLayoutResult].action?.invoke(previewLayouts) }
-        assertTrue(previewLayouts.any { it.layoutInput.style.fontSize.value > 15f && it.layoutInput.text.text.length > 20 })
+        assertTrue(previewLayouts.any { it.layoutInput.style.fontSize.value > 15f && it.layoutInput.text.text == "Welcome to Nextvol" })
         assertEquals(15f, settings.fontSize)
         fontSlider.performTouchInput { up() }
         compose.waitUntil(5_000) { settings.fontSize > 15f }
@@ -170,7 +181,9 @@ class ReaderLayoutInstrumentedTest {
             settings.fontSizeUserData.set(18f)
         }
         compose.waitUntil(5_000) { settings.fontSize == 18f }
-        compose.onNodeWithText(context.getString(R.string.reader_font_wenkai)).performScrollTo().performClick()
+        compose.onNodeWithTag("reader-font-list").performScrollTo()
+            .performScrollToNode(hasText(context.getString(R.string.reader_font_wenkai)))
+        compose.onNodeWithText(context.getString(R.string.reader_font_wenkai)).performClick()
         compose.waitUntil(5_000) { settings.fontFamilyUri == ReaderFont.WenKai.uri }
         saveScreenshot("reader-layout-light.png")
         compose.runOnIdle { dark = true }
@@ -208,6 +221,91 @@ class ReaderLayoutInstrumentedTest {
         compose.waitUntil(5_000) { settings.bottomPadding == 23f }
         assertEquals(7f, settings.fontLineHeight)
         saveScreenshot("reader-layout-compact.png")
+    }
+
+    @OptIn(ExperimentalMaterial3Api::class)
+    @Test fun paperSubpageReturnsToReadingSettingsBeforeClosingTheSheet() {
+        var dismissed = false
+        compose.setContent {
+            NextVolTheme("Disabled", false, "light_default", "dark_default", "zh-CN") {
+                SettingsBottomSheet(
+                    rememberBottomSheetState(initialValue = SheetValue.Expanded),
+                    onDismissRequest = { dismissed = true }, settingState = settings, onClickThemeSettings = {},
+                )
+            }
+        }
+        compose.onNodeWithTag("reader-paper-sage").assertDoesNotExist()
+        compose.onNodeWithText(context.getString(R.string.paper_settings)).performClick()
+        compose.onNodeWithTag("reader-paper-sage").performScrollTo().performClick()
+        compose.waitUntil(5_000) { settings.paperId == "sage" }
+        InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+        compose.onNodeWithText(context.getString(R.string.reader_settings)).assertIsDisplayed()
+        assertFalse(dismissed)
+        compose.onNodeWithTag("reader-paper-sage").assertDoesNotExist()
+        compose.onNodeWithText(context.getString(R.string.paper_settings)).performClick()
+        compose.onNodeWithTag("reader-paper-sage").assertIsSelected()
+        compose.onNodeWithContentDescription(context.getString(R.string.sources_back)).performClick()
+        compose.onNodeWithText(context.getString(R.string.reader_settings)).assertIsDisplayed()
+    }
+
+    @Test fun externalPaperSubpagePreservesSelectionAndParentScrollPosition() {
+        var leftTheme = false
+        compose.setContent {
+            NextVolTheme("Disabled", false, "light_default", "dark_default", "zh-CN") {
+                ThemeScreen(settings, settings, onClickBack = { leftTheme = true },
+                    onClickChangeTextColor = {}, onClickChangeBackgroundColor = {})
+            }
+        }
+        compose.onNodeWithTag("reader-paper-sage").assertDoesNotExist()
+        val paperEntry = hasText(context.getString(R.string.paper_settings)) and hasClickAction()
+        compose.onNodeWithTag("theme-settings-list").performScrollToNode(paperEntry)
+        compose.onNode(paperEntry).performClick()
+        compose.onNodeWithTag("reader-paper-sage").performScrollTo().performClick()
+        compose.waitUntil(5_000) { settings.paperId == "sage" }
+        InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+        compose.onNode(paperEntry).assertIsDisplayed()
+        assertFalse(leftTheme)
+        compose.onNodeWithTag("reader-paper-sage").assertDoesNotExist()
+        compose.onNode(paperEntry).performClick()
+        compose.onNodeWithTag("reader-paper-sage").assertIsSelected()
+    }
+
+    @Test fun tenImportedFontsRemainSelectableAfterSwitchingAndReopening() = runBlocking {
+        val source = File(context.cacheDir, "appearance-font.otf")
+        val files = mutableListOf<File>()
+        try {
+            context.resources.openRawResource(R.font.source_han_serif_regular).use { input ->
+                source.outputStream().use { input.copyTo(it) }
+            }
+            repeat(10) {
+                importReaderFont(context, Uri.fromFile(source), settings)
+                files += File(requireNotNull(requireNotNull(settings.fontFamilyUriUserData.get()).path)).also(importedFiles::add)
+            }
+            val selected = Uri.fromFile(files.last())
+            compose.waitUntil(5_000) { settings.fontFamilyUri == selected }
+            var showing by mutableStateOf(true)
+            compose.setContent { MaterialTheme { if (showing) ReaderFontEntry(settings) } }
+            val last = files.last().path
+            compose.waitUntil(5_000) { compose.onAllNodesWithTag("reader-font-$selected").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithTag("reader-font-$selected").assertIsSelected().assertIsDisplayed()
+            compose.onNodeWithTag("reader-font-list").performScrollToIndex(0)
+            compose.onNodeWithText(context.getString(R.string.reader_font_system)).performClick()
+            compose.waitUntil(5_000) { settings.fontFamilyUri == Uri.EMPTY }
+            assertTrue(files.all { it.exists() })
+            compose.runOnIdle { showing = false }
+            compose.runOnIdle { showing = true }
+            compose.waitUntil(5_000) {
+                runCatching { compose.onNodeWithTag("reader-font-list").performScrollToKey(last) }.isSuccess
+            }
+            compose.onNodeWithTag("reader-font-$selected").performClick()
+            compose.waitUntil(5_000) { settings.fontFamilyUri == selected }
+            source.writeText("not a font")
+            assertTrue(runCatching { importReaderFont(context, Uri.fromFile(source), settings) }.isFailure)
+            assertEquals(selected, settings.fontFamilyUriUserData.get())
+            assertTrue(importedReaderFonts(context, selected).containsAll(files))
+        } finally {
+            source.delete()
+        }
     }
 
     private fun saveScreenshot(name: String) {

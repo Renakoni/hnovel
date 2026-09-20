@@ -187,7 +187,6 @@
     <string name="settings_theme_dynamic_colors">系统动态配色</string>
     <string name="settings_theme_dynamic_colors_desc_unavailable">从系统主题应用动态配色 (需要 Android 12+)</string>
     <string name="settings_theme_dynamic_colors_desc">从系统主题应用动态配色</string>
-    <string name="settings_theme_m3e_description">启用 Material 3 Expressive 设计。该功能为实验性内容，仍处于测试阶段</string>
     <string name="settings_formats">格式</string>
     <string name="settings_formats_desc">设置日期或文本格式</string>
     <string name="date_time_formats_settings">日期和时间</string>
