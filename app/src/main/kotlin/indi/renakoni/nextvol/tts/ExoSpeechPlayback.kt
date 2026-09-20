@@ -9,13 +9,18 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import indi.renakoni.nextvol.R
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 /** Playback completion and pauses come from ExoPlayer, not synthesis callbacks. */
 internal class ExoSpeechPlayback(private val player: ExoPlayer, private val context: Context) : SpeechPlayback {
     private var active: CompletableDeferred<Unit>? = null
     private var listener: Player.Listener? = null
 
-    override suspend fun play(clip: SpeechClip, playWhenReady: Boolean, onState: (SpeechPhase, Boolean) -> Unit) {
+    override suspend fun play(clip: SpeechClip, playWhenReady: Boolean, onRange: (SpeechTiming) -> Unit,
+        onState: (SpeechPhase, Boolean) -> Unit) = coroutineScope {
         stop()
         val completed = CompletableDeferred<Unit>()
         active = completed
@@ -47,7 +52,16 @@ internal class ExoSpeechPlayback(private val player: ExoPlayer, private val cont
                     .setSubtitle(context.getString(R.string.tts_passage, clip.index + 1, clip.count)).build()).build())
             player.playWhenReady = playWhenReady
             player.prepare()
-            completed.await()
+            val tracking = if (clip.timings.isEmpty()) null else launch {
+                var reported: SpeechTiming? = null
+                while (isActive && active === completed) {
+                    if (player.isPlaying) clip.timings.rangeAt(player.currentPosition)?.let { range ->
+                        if (range != reported) { reported = range; onRange(range) }
+                    }
+                    delay(50)
+                }
+            }
+            try { completed.await() } finally { tracking?.cancel() }
         } finally {
             player.removeListener(events)
             if (active === completed) { active = null; listener = null }

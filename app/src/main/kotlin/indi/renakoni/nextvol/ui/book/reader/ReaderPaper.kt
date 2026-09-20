@@ -10,13 +10,18 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.theme.AppTheme
 import indi.renakoni.nextvol.ui.LocalAppTheme
+import indi.renakoni.nextvol.utils.readerBackgroundColor
+import indi.renakoni.nextvol.utils.readerTextColor
 import io.nightfish.lightnovelreader.api.ui.LocalReaderStyle
 
 internal data class ReaderPaperColors(
@@ -67,6 +72,25 @@ internal enum class ReaderPaper(val id: String, @param:StringRes val label: Int,
 internal val ReaderSettings.usesBackgroundImage: Boolean
     get() = enableBackgroundImage && ReaderPaper.fromId(paperId) == ReaderPaper.Default
 
+internal val LocalReaderSpeechHighlight = compositionLocalOf { Color.Unspecified }
+
+/** Keep the paper's accent quiet while protecting the existing text contrast. */
+internal fun readerSpeechHighlight(background: Color, text: Color, accent: Color, image: Boolean = false): Color {
+    // An image has no single surface color. A translucent paper backing stabilizes the marked text.
+    val paper = if (!image) background else if (text.luminance() < 0.4f) Color(0xFFFAF9F6) else Color(0xFF202322)
+    fun contrast(surface: Color): Float {
+        val a = text.luminance()
+        val b = surface.luminance()
+        return (maxOf(a, b) + 0.05f) / (minOf(a, b) + 0.05f)
+    }
+    val tint = lerp(accent, text, 0.15f)
+    val minimum = minOf(4.5f, contrast(paper))
+    var alpha = if (paper.luminance() < 0.18f) 0.20f else 0.14f
+    while (alpha > 0.01f && contrast(tint.copy(alpha = alpha).compositeOver(paper)) < minimum) alpha *= 0.75f
+    val mark = tint.copy(alpha = if (alpha > 0.01f) alpha else 0f)
+    return if (image) mark.compositeOver(paper).copy(alpha = 0.9f) else mark
+}
+
 /** Keep the same composition when switching papers so reader position and open controls survive. */
 @Composable
 internal fun ReaderPaperTheme(
@@ -83,6 +107,12 @@ internal fun ReaderPaperTheme(
     val style = LocalReaderStyle.current
     val readerStyle = remember(colors, style) {
         if (colors == null) style else style.copy(textColor = colors.text, textDarkColor = colors.text)
+    }
+    val background = readerBackgroundColor(settings)
+    val text = readerTextColor(settings)
+    val image = settings.usesBackgroundImage
+    val speechHighlight = remember(background, text, scheme.primary, image) {
+        readerSpeechHighlight(background, text, scheme.primary, image)
     }
     if (manageSystemBars) {
         val view = LocalView.current
@@ -102,6 +132,7 @@ internal fun ReaderPaperTheme(
         }
     }
     MaterialTheme(colorScheme = scheme) {
-        CompositionLocalProvider(LocalAppTheme provides theme, LocalReaderStyle provides readerStyle, content = content)
+        CompositionLocalProvider(LocalAppTheme provides theme, LocalReaderStyle provides readerStyle,
+            LocalReaderSpeechHighlight provides speechHighlight, content = content)
     }
 }

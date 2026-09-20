@@ -21,6 +21,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsActions
@@ -120,6 +122,7 @@ class BuiltInContentRenderingTest {
         }
         var readerIdentity: Any? = null
         var readerDark = false
+        var speechHighlight = Color.Unspecified
         val light = lightColorScheme(onSurface = Color.Green)
         val night = darkColorScheme(onSurface = Color.Cyan)
         val style = ReaderStyle(18f, 4f, 600f, Color.Magenta, Color.Red)
@@ -132,7 +135,8 @@ class BuiltInContentRenderingTest {
                         ReaderPaperTheme(settings) {
                             val identity = remember { Any() }
                             val paperDark = LocalAppTheme.current.isDark
-                            SideEffect { readerIdentity = identity; readerDark = paperDark }
+                            val highlight = LocalReaderSpeechHighlight.current
+                            SideEffect { readerIdentity = identity; readerDark = paperDark; speechHighlight = highlight }
                             Column {
                                 Text("Paper menu", color = MaterialTheme.colorScheme.onSurface)
                                 component.Content(Modifier.testTag("paper-body"))
@@ -156,6 +160,13 @@ class BuiltInContentRenderingTest {
             assertEquals(Color.Green, textColor("Library"))
             assertSame(initialIdentity, readerIdentity)
             assertEquals(paper.colors?.isDark ?: false, readerDark)
+            paper.colors?.let { colors ->
+                val body = textColor("Paper body").luminance()
+                val markedPaper = speechHighlight.compositeOver(colors.background).luminance()
+                assertTrue("${paper.id}: live paper highlight", speechHighlight.alpha in 0.01f..0.3f)
+                assertTrue("${paper.id}: live highlighted body",
+                    (maxOf(body, markedPaper) + 0.05f) / (minOf(body, markedPaper) + 0.05f) >= 7f)
+            }
         }
         compose.runOnIdle { choice = ReaderPaper.Sepia.id; dark = true }
         assertEquals(ReaderPaper.Sepia.colors!!.text, textColor("Paper body"))

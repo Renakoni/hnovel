@@ -11,6 +11,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -37,6 +38,10 @@ fun ContentComponent(
     chapterTitle: (String) -> String? = { null },
 ) {
     val selectionState = remember { ReaderSelectionState() }
+    val speech = LocalReaderSpeechFollow.current
+    LaunchedEffect(selectionState.hasSelection, speech.position?.bookId) {
+        if (selectionState.hasSelection) speech.onManualNavigation()
+    }
     CompositionLocalProvider(LocalReaderSelectionState provides selectionState) {
         uiState.let { contentUiState ->
             when(contentUiState) {

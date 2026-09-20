@@ -19,6 +19,7 @@ import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -27,6 +28,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
@@ -54,6 +56,9 @@ import indi.renakoni.nextvol.ui.book.reader.content.readerPageSwipe
 import indi.renakoni.nextvol.ui.book.reader.content.readerBoundarySwipe
 import indi.renakoni.nextvol.ui.book.reader.content.ReaderVolumeDirection
 import indi.renakoni.nextvol.ui.book.reader.content.readerVolumeKeys
+import indi.renakoni.nextvol.ui.book.reader.content.LocalReaderSpeechFollow
+import indi.renakoni.nextvol.ui.book.reader.content.LocalReaderSpeechRanges
+import indi.renakoni.nextvol.ui.book.reader.content.readerSpeechManualScroll
 import indi.renakoni.nextvol.ui.home.settings.data.MenuOptions
 import indi.renakoni.nextvol.utils.LocalSnackbarHost
 import indi.renakoni.nextvol.utils.rememberReaderBackgroundPainter
@@ -112,6 +117,8 @@ private fun SimpleFlipPageTextComponent(
     onClickNextChapter: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
+    val speech by rememberUpdatedState(LocalReaderSpeechFollow.current)
+    val speechRanges = speech.ranges(chapterContent)
     val density = LocalDensity.current
     val layoutDirection = LocalLayoutDirection.current
     var preparedChapter by remember { mutableStateOf<PreparedFlipChapter?>(null) }
@@ -196,16 +203,33 @@ private fun SimpleFlipPageTextComponent(
         pagination.submit(paginationInput, chapterContent.content, height, width) { result ->
             if (uiState.readingChapterContent?.get() !== chapterContent) return@submit
             slippedContentComponentList = result
-            val anchor = readingAnchor
+            val speechAnchor = speech.anchor(chapterContent)
+            val anchor = speechAnchor ?: readingAnchor
             val target = if (anchor == null) -1 else result.indexOfFirst { (it as? ReaderPage)?.contains(anchor) == true }
             if (target >= 0) {
                 anchoredPage = result[target] as ReaderPage
-                uiState.updateAnchoredPageState(PagerState(currentPage = target) { result.size })
+                val pager = PagerState(currentPage = target) { result.size }
+                if (speechAnchor != null) uiState.updateSpeechPageState(pager)
+                else uiState.updateAnchoredPageState(pager)
             } else {
                 readingAnchor = null
                 anchoredPage = null
                 uiState.updatePageState(PagerState { result.size })
             }
+        }
+    }
+    val speechPage = speech.takeIf { it.active }?.anchor(chapterContent)?.let { anchor ->
+        slippedContentComponentList.indexOfFirst { (it as? ReaderPage)?.contains(anchor) == true }
+    } ?: -1
+    LaunchedEffect(speechPage, uiState.pagerState) {
+        val target = speechPage
+        if (target < 0) return@LaunchedEffect
+        val pager = uiState.pagerState
+        uiState.updateSpeechPageState(pager)
+        if (target != pager.currentPage) {
+            if (settingState.animatePageTurns && (target - pager.currentPage).absoluteValue == 1)
+                pager.animateScrollToPage(target)
+            else pager.scrollToPage(target)
         }
     }
     val snackbarHostState = LocalSnackbarHost.current
@@ -262,6 +286,7 @@ private fun SimpleFlipPageTextComponent(
     val previousChapterText = stringResource(R.string.previous_chapter)
     val reachedStartText = stringResource(R.string.reader_reached_start)
     suspend fun lastPage(pagerState: PagerState) {
+        speech.onManualNavigation()
         if (pagerState.pageCount == 0 || slippedContentComponentList.isEmpty()) return
         if (uiState.pendingChapter?.entry == ChapterEntry.Start) uiState.cancelPendingChapter()
         if (pagerState.currentPage != 0) {
@@ -300,6 +325,7 @@ private fun SimpleFlipPageTextComponent(
     val reachedEndText = stringResource(R.string.reader_reached_end)
 
     suspend fun nextPage(pagerState: PagerState) {
+        speech.onManualNavigation()
         if (pagerState.pageCount == 0 || slippedContentComponentList.isEmpty()) return
         if (uiState.pendingChapter?.entry == ChapterEntry.End) uiState.cancelPendingChapter()
         if (pagerState.currentPage + 1 < pagerState.pageCount) {
@@ -352,6 +378,7 @@ private fun SimpleFlipPageTextComponent(
                 key = { it },
                 userScrollEnabled = settingState.animatePageTurns,
                 modifier = modifier
+                    .readerSpeechManualScroll()
                     .readerBoundarySwipe(uiState.pagerState, enabled = settingState.animatePageTurns &&
                         slippedContentComponentList.isNotEmpty()) { forward ->
                         scope.launch {
@@ -405,11 +432,13 @@ private fun SimpleFlipPageTextComponent(
                             contentScale = ContentScale.Crop
                         )
                     }
-                    slippedContentComponentList.getOrNull(it)?.Content(
-                        modifier
-                            .fillMaxSize()
-                            .padding(paddingValues)
-                    )
+                    CompositionLocalProvider(LocalReaderSpeechRanges provides speechRanges) {
+                        slippedContentComponentList.getOrNull(it)?.Content(
+                            modifier
+                                .fillMaxSize()
+                                .padding(paddingValues)
+                        )
+                    }
                 }
             }
         }

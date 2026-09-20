@@ -7,7 +7,7 @@ import java.io.RandomAccessFile
 interface SpeechSynthesizer : AutoCloseable {
     suspend fun open(settings: SpeechSettings): String
     /** Returns only after a complete, validated file is committed to [output]. */
-    suspend fun synthesize(text: String, output: File)
+    suspend fun synthesize(text: String, output: File): List<SpeechTiming>
     fun cancel()
 }
 

@@ -19,11 +19,13 @@ import kotlinx.coroutines.withTimeout
 import java.io.File
 import java.util.UUID
 
-data class SpeechClip(val chapter: SpeechChapter, val segment: SpeechSegment, val index: Int, val count: Int, val file: File)
+data class SpeechClip(val chapter: SpeechChapter, val segment: SpeechSegment, val index: Int, val count: Int, val file: File,
+    val timings: List<SpeechTiming> = emptyList())
 
 interface SpeechPlayback {
     /** Completes when this audio has actually ended, never when synthesis or buffering finishes. */
-    suspend fun play(clip: SpeechClip, playWhenReady: Boolean, onState: (SpeechPhase, Boolean) -> Unit)
+    suspend fun play(clip: SpeechClip, playWhenReady: Boolean, onRange: (SpeechTiming) -> Unit,
+        onState: (SpeechPhase, Boolean) -> Unit)
     fun pause()
     fun resume()
     fun stop()
@@ -118,7 +120,7 @@ class ReadAloudSession(
         playback.stop()
         currentClip = null
         wantsPlay = false
-        mutableState.value = state.value.copy(phase = SpeechPhase.Stopped, error = null)
+        mutableState.value = state.value.copy(phase = SpeechPhase.Stopped, error = null, position = null)
     }
 
     fun changeChapter(next: Boolean) {
@@ -179,9 +181,9 @@ class ReadAloudSession(
                         val file = File(directory, UUID.randomUUID().toString() + ".wav")
                         var delivered = false
                         try {
-                            provider.synthesize(segment.text, file)
+                            val timings = provider.synthesize(segment.text, file)
                             currentCoroutineContext().ensureActive()
-                            queue.send(Step.Ready(SpeechClip(chapter, segment, index, segments.size, file)))
+                            queue.send(Step.Ready(SpeechClip(chapter, segment, index, segments.size, file, timings)))
                             delivered = true
                         } finally { if (!delivered) file.delete() }
                     }
@@ -225,11 +227,29 @@ class ReadAloudSession(
                             phase = if (wantsPlay) SpeechPhase.Buffering else SpeechPhase.Paused, error = null,
                         ) }
                         if (!request.isPreview) save(clip.bookmark(clip.segment.start))
+                        val sentences = if (clip.timings.isEmpty()) emptyList() else speechSentences(clip.segment.text)
+                        var audibleStart = clip.segment.start + (sentences.firstOrNull()?.start ?: 0)
+                        var audibleEnd = clip.segment.start + (sentences.firstOrNull()?.end ?: clip.segment.text.length)
+                        var audibleAnchor = audibleStart
                         try {
-                            playback.play(clip, wantsPlay) { phase, playing ->
-                                if (token == generation) {
+                            playback.play(clip, wantsPlay, onRange = { range ->
+                                if (token == generation && currentClip === clip && !request.isPreview) {
+                                    val sentence = sentences.firstOrNull { range.start in it.start until it.end }
+                                    audibleStart = clip.segment.start + (sentence?.start ?: range.start)
+                                    audibleEnd = clip.segment.start + maxOf(sentence?.end ?: range.end, range.end)
+                                    audibleAnchor = clip.segment.start + range.start
+                                    publish(token) { it.copy(position = SpeechPosition(clip.chapter.bookId, clip.chapter.id,
+                                        clip.chapter.fingerprint, audibleStart, audibleEnd, audibleAnchor)) }
+                                }
+                            }) { phase, playing ->
+                                if (token == generation && currentClip === clip) {
                                     wantsPlay = playing
-                                    publish(token) { it.copy(phase = phase) }
+                                    publish(token) { it.copy(phase = phase,
+                                        position = if (!request.isPreview && phase in setOf(SpeechPhase.Playing, SpeechPhase.Paused))
+                                            SpeechPosition(clip.chapter.bookId, clip.chapter.id, clip.chapter.fingerprint,
+                                                audibleStart, audibleEnd, audibleAnchor)
+                                        else it.position,
+                                    ) }
                                 }
                             }
                         } catch (cancelled: CancellationException) { throw cancelled }
@@ -247,7 +267,7 @@ class ReadAloudSession(
             if (!request.isPreview) {
                 progress.load(request.bookId)?.let { save(it.copy(completed = true)) }
             }
-            publish(token) { it.copy(phase = SpeechPhase.Completed) }
+            publish(token) { it.copy(phase = SpeechPhase.Completed, position = null) }
         } finally { queue.cancel() }
     }
 

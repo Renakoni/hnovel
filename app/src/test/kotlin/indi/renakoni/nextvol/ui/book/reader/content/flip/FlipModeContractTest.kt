@@ -39,6 +39,23 @@ class FlipModeContractTest {
         env.runCurrent()
     }
 
+    @Test fun speechAnchorOverridesEvenALateHistoryRecovery() {
+        val gate = CompletableDeferred<Unit>()
+        env.records.readGates += gate
+        env.records.data = env.records.data.copy(currentChapterReadingProgressMap = mapOf("requested" to 0.9f))
+        open()
+        val targets = mutableListOf<Int>()
+        val page = mutableIntStateOf(2)
+        val pager = pager(10, page, targets)
+        mode.uiState.updateSpeechPageState(pager)
+        env.runCurrent()
+        gate.complete(Unit)
+        env.runCurrent()
+        assertTrue("Old recovery must not move the speech page: $targets", targets.isEmpty())
+        assertEquals(2, pager.currentPage)
+        assertEquals(0.3f, mode.uiState.readingProgress)
+    }
+
     @Test
     fun successMapsThePayloadButPersistsTheRequestedIdBeforePreloading() {
         open()

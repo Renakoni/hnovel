@@ -18,6 +18,30 @@ import java.util.UUID
 class ReadAloudSessionTest {
     @get:Rule val files = TemporaryFolder()
 
+    @Test fun highlightingUsesActualPlaybackAndKeepsTheLastRangeWhileBuffering() = runTest {
+        val env = Environment(this)
+        env.player.startBuffered = true
+        env.session.start(SpeechRequest("book", "one"))
+        runCurrent()
+        assertNull(env.session.state.value.position)
+        assertTrue(env.synthesized.size > 1)
+        env.player.resume()
+        val first = env.player.started.single()
+        val position = SpeechPosition("book", "one", first.chapter.fingerprint, first.segment.start, first.segment.end)
+        assertEquals(position, env.session.state.value.position)
+        env.session.pause()
+        assertEquals(position, env.session.state.value.position)
+        env.player.resume()
+        env.player.finish()
+        runCurrent()
+        assertEquals(SpeechPhase.Buffering, env.session.state.value.phase)
+        assertEquals(position, env.session.state.value.position)
+        env.player.resume()
+        assertEquals(env.player.started.last().segment.start, env.session.state.value.position?.start)
+        env.stop()
+        assertNull(env.session.state.value.position)
+    }
+
     @Test fun prefetchIsBoundedAndCannotAdvanceTheListeningPosition() = runTest {
         val env = Environment(this)
         env.session.start(SpeechRequest("book", "one"))
@@ -158,6 +182,7 @@ class ReadAloudSessionTest {
         env.session.start(SpeechRequest("book", "one"))
         runCurrent()
         assertEquals("one", env.session.state.value.request?.chapterId)
+        assertEquals("one", env.session.state.value.position?.chapterId)
         env.player.finish()
         runCurrent()
         assertEquals("two", env.session.state.value.request?.chapterId)
@@ -167,9 +192,11 @@ class ReadAloudSessionTest {
         env.session.resume()
         runCurrent()
         assertEquals("two", env.player.started.last().chapter.id)
+        assertEquals("two", env.session.state.value.position?.chapterId)
         env.player.finish()
         runCurrent()
         assertEquals(SpeechPhase.Completed, env.session.state.value.phase)
+        assertNull(env.session.state.value.position)
         assertTrue(env.progress.saved.getValue("book").completed)
         env.stop()
     }
@@ -184,6 +211,7 @@ class ReadAloudSessionTest {
         val saved = env.progress.saved.getValue("book")
         env.session.start(SpeechRequest("", "", "Voice preview."))
         runCurrent()
+        assertNull(env.session.state.value.position)
         env.player.finish()
         runCurrent()
         assertEquals(saved, env.progress.saved.getValue("book"))
@@ -326,10 +354,41 @@ class ReadAloudSessionTest {
         } finally { gate.complete(Unit); env.stop() }
     }
 
+    @Test fun realPlaybackBoundariesHighlightASentenceAndKeepItsMovingAnchorAcrossPause() = runTest {
+        val env = Environment(this)
+        env.load = { book, chapter -> SpeechChapter(book, chapter, "Book", "Chapter", "甲乙丙。丁戊己。\n庚辛壬。") }
+        env.timings = listOf(SpeechTiming(0, 0, 1))
+        try {
+            env.session.start(SpeechRequest("book", "chapter"))
+            runCurrent()
+            val firstBoundary = env.player.rangeCallback!!
+            firstBoundary(SpeechTiming(1000, 4, 5))
+            val position = env.session.state.value.position!!
+            assertEquals(4, position.start)
+            assertEquals(8, position.end)
+            firstBoundary(SpeechTiming(1400, 6, 7))
+            assertEquals(position.copy(anchor = 6), env.session.state.value.position)
+            assertEquals(0, env.progress.saved.getValue("book").offset)
+            env.session.pause()
+            assertEquals(position.copy(anchor = 6), env.session.state.value.position)
+            env.session.resume()
+            env.player.finish()
+            runCurrent()
+            val next = env.session.state.value.position
+            assertEquals(9, next?.start)
+            firstBoundary(SpeechTiming(1800, 7, 8))
+            assertEquals(next, env.session.state.value.position)
+            env.stop()
+            firstBoundary(SpeechTiming(1900, 7, 8))
+            assertNull(env.session.state.value.position)
+        } finally { env.stop() }
+    }
+
     private inner class Environment(val scope: TestScope) {
         val text = "这是正常的小说内容，保留顺序并且持续朗读。".repeat(100)
         var load: suspend (String, String) -> SpeechChapter = { book, chapter -> SpeechChapter(book, chapter, "Book", "Chapter", text) }
         var beforeSynthesis: suspend () -> Unit = {}
+        var timings = emptyList<SpeechTiming>()
         var configuration = SpeechSettings()
         val synthesized = mutableListOf<String>()
         val opened = mutableListOf<SpeechSettings>()
@@ -340,10 +399,11 @@ class ReadAloudSessionTest {
             { configuration }, progress, {
                 object : SpeechSynthesizer {
                     override suspend fun open(settings: SpeechSettings): String { opened += settings; return "Test voice" }
-                    override suspend fun synthesize(text: String, output: File) {
+                    override suspend fun synthesize(text: String, output: File): List<SpeechTiming> {
                         synthesized += text
                         beforeSynthesis()
                         output.writeText(text)
+                        return timings
                     }
                     override fun cancel() = Unit
                     override fun close() = Unit
@@ -363,15 +423,23 @@ class ReadAloudSessionTest {
     private class FakePlayback : SpeechPlayback {
         val started = mutableListOf<SpeechClip>()
         var playing = false
+        var startBuffered = false
         private var pending: CompletableDeferred<Unit>? = null
         private var callback: ((SpeechPhase, Boolean) -> Unit)? = null
-        override suspend fun play(clip: SpeechClip, playWhenReady: Boolean, onState: (SpeechPhase, Boolean) -> Unit) {
+        var rangeCallback: ((SpeechTiming) -> Unit)? = null
+        override suspend fun play(clip: SpeechClip, playWhenReady: Boolean, onRange: (SpeechTiming) -> Unit,
+            onState: (SpeechPhase, Boolean) -> Unit) {
             val complete = CompletableDeferred<Unit>()
             pending = complete
             callback = onState
+            rangeCallback = onRange
             started += clip
-            playing = playWhenReady
-            onState(if (playing) SpeechPhase.Playing else SpeechPhase.Paused, playing)
+            playing = playWhenReady && !startBuffered
+            onState(when {
+                !playWhenReady -> SpeechPhase.Paused
+                playing -> SpeechPhase.Playing
+                else -> SpeechPhase.Buffering
+            }, playWhenReady)
             try { complete.await() } finally { if (pending === complete) { pending = null; callback = null } }
         }
         fun finish() { check(playing); pending!!.complete(Unit) }

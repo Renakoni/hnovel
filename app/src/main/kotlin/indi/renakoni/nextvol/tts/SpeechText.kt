@@ -1,6 +1,8 @@
 package indi.renakoni.nextvol.tts
 
 import java.security.MessageDigest
+import java.text.BreakIterator
+import java.util.Locale
 
 /** Offsets refer to the processed chapter text, before any speech-only transformations. */
 data class SpeechSegment(val start: Int, val end: Int, val text: String)
@@ -12,6 +14,8 @@ internal fun speechDigest(text: String): String = MessageDigest.getInstance("SHA
 fun speechSegments(text: String, maxLength: Int = 200, firstLength: Int = 80): List<SpeechSegment> {
     require(maxLength >= 2 && firstLength >= 2)
     val result = mutableListOf<SpeechSegment>()
+    val sentences = speechSentences(text)
+    var sentenceIndex = 0
     var start = 0
     while (start < text.length) {
         while (start < text.length && text[start].isWhitespace()) start++
@@ -19,13 +23,20 @@ fun speechSegments(text: String, maxLength: Int = 200, firstLength: Int = 80): L
         val limit = if (result.isEmpty()) minOf(firstLength, maxLength) else maxLength
         var end = minOf(text.length, start + limit)
         if (end < text.length && text[end - 1].isHighSurrogate() && text[end].isLowSurrogate()) end--
-        if (end < text.length) {
-            val sentence = (start until end).lastOrNull { index ->
-                text[index] in "。！？!?；;\n" || text[index] == '.' &&
-                    !(index > start && text[index - 1].isDigit() && text.getOrNull(index + 1)?.isDigit() == true)
+        val paragraphEnd = text.indexOf('\n', start).takeIf { it >= 0 && it < end }
+        if (paragraphEnd != null) end = paragraphEnd + 1
+        else {
+            // Group short sentences around 80 characters; a short paragraph stays together.
+            while (sentenceIndex < sentences.size && sentences[sentenceIndex].end <= start) sentenceIndex++
+            var sentence: Int? = null
+            var index = sentenceIndex
+            while (index < sentences.size && sentences[index].end <= end) {
+                sentence = sentences[index++].end
+                if (sentence - start >= minOf(80, limit)) break
             }
             val whitespace = (start until end).lastOrNull { text[it].isWhitespace() }
-            end = sentence?.plus(1) ?: whitespace?.takeIf { it > start } ?: end
+            if (sentence != null) end = sentence
+            else if (end < text.length) end = whitespace?.takeIf { it > start } ?: end
         }
         var spokenEnd = end
         while (spokenEnd > start && text[spokenEnd - 1].isWhitespace()) spokenEnd--
@@ -34,6 +45,30 @@ fun speechSegments(text: String, maxLength: Int = 200, firstLength: Int = 80): L
             result += SpeechSegment(start, spokenEnd, spoken)
         }
         start = end
+    }
+    return result
+}
+
+/** Platform sentence rules handle punctuation/closing quotes; newlines are hard paragraph edges. */
+internal fun speechSentences(text: String): List<SpeechSegment> {
+    val iterator = BreakIterator.getSentenceInstance(Locale.ROOT)
+    val result = mutableListOf<SpeechSegment>()
+    var paragraphStart = 0
+    while (paragraphStart < text.length) {
+        val paragraphEnd = text.indexOf('\n', paragraphStart).let { if (it < 0) text.length else it }
+        iterator.setText(text.substring(paragraphStart, paragraphEnd))
+        var start = iterator.first()
+        var end = iterator.next()
+        while (end != BreakIterator.DONE) {
+            var from = paragraphStart + start
+            var to = paragraphStart + end
+            while (from < to && text[from].isWhitespace()) from++
+            while (to > from && text[to - 1].isWhitespace()) to--
+            if (from < to) result += SpeechSegment(from, to, text.substring(from, to))
+            start = end
+            end = iterator.next()
+        }
+        paragraphStart = paragraphEnd + 1
     }
     return result
 }

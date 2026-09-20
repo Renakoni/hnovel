@@ -102,6 +102,7 @@ class ReadAloudService : MediaSessionService() {
                 }
             }).build().also(::addSession)
         scope.launch {
+            var notificationState: ReadAloudState? = null
             speech.state.collect {
                 // Keep the pending UI request until the service receives its first command.
                 if (!shuttingDown && it.request != null) {
@@ -113,7 +114,12 @@ class ReadAloudService : MediaSessionService() {
                     } else if (preparationWakeLock.isHeld) preparationWakeLock.release()
                     if (it.phase in setOf(SpeechPhase.Stopped, SpeechPhase.Completed, SpeechPhase.Failed)) sleepTimer.cancel()
                     controller.publish(it.copy(sleepTimerDeadline = sleepTimer.deadline))
-                    updateNotification()
+                    // Word boundaries update the reader, not the system notification/foreground service.
+                    val summary = it.copy(position = null)
+                    if (summary != notificationState) {
+                        notificationState = summary
+                        updateNotification()
+                    }
                     if (it.phase == SpeechPhase.Stopped) stopSelf()
                 }
             }

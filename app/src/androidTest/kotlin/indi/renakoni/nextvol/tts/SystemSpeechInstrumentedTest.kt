@@ -159,7 +159,7 @@ class SystemSpeechInstrumentedTest {
                 val chapter = SpeechChapter("", "", "", "Preview", text)
                 val clip = SpeechClip(chapter, SpeechSegment(0, text.length, text), 0, 1, audio)
                 val playing = launch(Dispatchers.Main) {
-                    playback.play(clip, true) { phase, _ -> if (phase == SpeechPhase.Playing) started.complete(Unit) }
+                    playback.play(clip, true, onRange = {}) { phase, _ -> if (phase == SpeechPhase.Playing) started.complete(Unit) }
                 }
                 started.await()
                 withContext(Dispatchers.Main) { playback.pause() }

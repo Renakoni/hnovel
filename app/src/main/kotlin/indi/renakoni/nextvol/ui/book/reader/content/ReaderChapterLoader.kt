@@ -31,7 +31,7 @@ class ReaderChapterLoader @Inject constructor(
                     content = contentRenderer.getContentDataFromJson(it.content).components,
                     prevChapter = it.prevChapter,
                     nextChapter = it.nextChapter,
-                )
+                ).also { chapter -> chapter.speechTextIndex }
             }
         }.flowOn(if (interactive) kotlin.coroutines.EmptyCoroutineContext
             else indi.renakoni.nextvol.data.web.ForegroundSourceRequest(allowsInteraction = false))

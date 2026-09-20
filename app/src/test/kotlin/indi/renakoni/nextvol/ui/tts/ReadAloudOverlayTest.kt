@@ -370,6 +370,16 @@ class ReadAloudOverlayTest {
         compose.onNodeWithContentDescription("Pause").assertIsDisplayed()
     }
 
+    @Test fun coverUsesTheAudibleChapterWhileTheNextChapterIsBuffering() {
+        show()
+        compose.runOnIdle {
+            state.value = state.value.copy(request = SpeechRequest("book", "next"), phase = SpeechPhase.Buffering,
+                position = indi.renakoni.nextvol.tts.SpeechPosition("book", "audible", "fingerprint", 12, 24))
+        }
+        compose.onNodeWithTag("read-aloud-cover").performClick()
+        assertEquals(listOf(SpeechRequest("book", "audible")), opened)
+    }
+
     @Test fun coverNavigatesFromDiscoveryAndReplacesAnAlreadyOpenReader() {
         lateinit var nav: NavHostController
         show(content = {

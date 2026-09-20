@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -26,6 +27,7 @@ import indi.renakoni.nextvol.ui.book.reader.content.componet.ReaderTextFragment
 import indi.renakoni.nextvol.ui.book.reader.content.componet.ReaderTextFragments
 import indi.renakoni.nextvol.ui.book.reader.content.componet.ReaderTextSource
 import indi.renakoni.nextvol.ui.book.reader.content.componet.layoutReaderText
+import indi.renakoni.nextvol.ui.book.reader.content.flip.ReaderContentAnchor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -42,6 +44,14 @@ internal class ScrollTextLayout(val fragments: List<ReaderTextFragment>, val sty
     }
     val height: Int get() = offsets.last()
 
+    fun offsetFor(anchor: ReaderContentAnchor): Int? {
+        val index = fragments.indexOfFirst { it.componentIndex == anchor.componentIndex && anchor.offset in it.start until it.end }
+        if (index < 0) return null
+        val fragment = fragments[index]
+        val line = fragment.lineStarts.indexOfLast { it <= anchor.offset }.coerceAtLeast(0)
+        return offsets[index] + fragment.spacingBefore + (fragment.lineTops.getOrNull(line) ?: 0)
+    }
+
     fun visibleRange(top: Int, bottom: Int): IntRange {
         if (bottom <= top || bottom <= 0 || top >= height || fragments.isEmpty()) return IntRange.EMPTY
         fun indexAt(y: Int): Int {
@@ -55,7 +65,14 @@ internal class ScrollTextLayout(val fragments: List<ReaderTextFragment>, val sty
 internal class PreparedScrollChapter(
     val content: ChapterContentUiState,
     val text: Map<Int, ScrollTextLayout>,
-)
+) {
+    // Positions inside the chapter include its title, images and component spacing.
+    val componentOffsets = mutableStateMapOf<Int, Int>()
+    fun offsetFor(anchor: ReaderContentAnchor): Int? {
+        val top = componentOffsets[anchor.componentIndex] ?: return null
+        return text[anchor.componentIndex]?.offsetFor(anchor)?.plus(top)
+    }
+}
 
 /** Each job has its own measurer/cache. Cancellation never publishes a previous chapter's layout. */
 @Composable
