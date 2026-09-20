@@ -14,6 +14,9 @@ import indi.renakoni.nextvol.utils.ImageUtils
 import indi.renakoni.nextvol.utils.DefaultBookCoverRenderer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.net.ConnectException
@@ -23,25 +26,33 @@ class ImageDownloader(
     private val context: Context,
     private val book: SourceBookId,
     private val tasks: List<Task>,
+    private val onDownloaded: suspend (Task) -> Unit = {},
+    private val onTask: (Task) -> Unit = {},
     val onProgress: (Int, Int) -> Unit,
 ) {
     var count = 0
         private set
 
     data class Task(val file: File, val uri: Uri, val cover: Boolean = false,
-        val defaultCover: DefaultBookCoverRenderer.Text? = null)
+        val defaultCover: DefaultBookCoverRenderer.Text? = null, val fresh: Boolean = false)
 
     suspend fun run(): ListenableWorker.Result = withContext(Dispatchers.IO) {
         Log.i("ImageDownloader", "total tasks: ${tasks.size}")
         tasks.forEach { task ->
+            currentCoroutineContext().ensureActive()
+            onTask(task)
             val result = downloadWithRetry(task, maxRetry = 3)
             result
                 .onOk { bitmap ->
                     try {
                         task.file.parentFile?.mkdirs()
                         task.file.outputStream().use {
-                            bitmap.compress(Bitmap.CompressFormat.JPEG, 100, it)
+                            check(bitmap.compress(Bitmap.CompressFormat.JPEG, 100, it)) { "Image encoding failed" }
                         }
+                        currentCoroutineContext().ensureActive()
+                        onDownloaded(task)
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
                     } catch (e: Exception) {
                         Log.e(
                             "ImageDownloader",
@@ -82,7 +93,8 @@ class ImageDownloader(
         var lastError: Throwable? = null
 
         repeat(maxRetry) { attempt ->
-            val result = ImageUtils.uriToBitmap(task.uri, context, book.storageKey, task.cover)
+            // Retaining offline bytes needs a disk/source read even if a decoded bitmap is still in memory.
+            val result = ImageUtils.uriToBitmap(task.uri, context, book.storageKey, task.cover, task.fresh, allowMemoryCache = false)
             var shouldRetry = false
 
             result
@@ -90,6 +102,7 @@ class ImageDownloader(
                     return result
                 }
                 .onErr { error ->
+                    if (error is CancellationException) throw error
                     lastError = error
                     if (error is SocketTimeoutException || error is ConnectException) {
                         shouldRetry = true

@@ -6,6 +6,8 @@ import androidx.compose.foundation.lazy.LazyListLayoutInfo
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import com.github.michaelbull.result.Ok
+import indi.renakoni.nextvol.ui.book.reader.content.ChapterContentUiState
 import indi.renakoni.nextvol.ui.book.reader.mode.ModeTestEnvironment
 import io.mockk.every
 import io.mockk.mockk
@@ -25,15 +27,18 @@ class ScrollProgressTimingTest {
     private var now = 10_000L
     private val offset = mutableIntStateOf(0)
     private val scrolling = mutableStateOf(true)
+    private val readable = mutableStateOf(true)
     private val writes = mutableListOf<Pair<String, Float>>()
     private val item = mockk<LazyListItemInfo> {
         every { key } returns "chapter"
         every { size } returns 1000
+        every { contentType } answers { readable.value }
         every { offset } answers { -this@ScrollProgressTimingTest.offset.intValue }
     }
     private val layout = mockk<LazyListLayoutInfo> { every { visibleItemsInfo } returns listOf(item) }
     private val uiState = MutableScrollContentUiSate({}, {}, {}, {}, {}).apply {
         readingChapterId = "chapter"
+        contentList[1] = "chapter" to Ok(ChapterContentUiState("chapter", "Chapter", emptyList(), null, null))
         lazyListState = mockk<LazyListState> {
             every { firstVisibleItemScrollOffset } answers { offset.intValue }
             every { isScrollInProgress } answers { scrolling.value }
@@ -41,7 +46,7 @@ class ScrollProgressTimingTest {
         }
     }
     private val progress = ScrollReadingProgress(
-        uiState, env.scope, { id, value -> writes += id to value }, { 100 }, env.dispatcher, env.dispatcher, { now },
+        uiState, env.scope, { id, value -> writes += id to value }, { 100 }, env.dispatcher, { now },
     )
 
     @After fun tearDown() = env.close()
@@ -87,5 +92,43 @@ class ScrollProgressTimingTest {
         now = time
         offset.intValue = pixels
         env.runCurrent()
+    }
+
+    @Test
+    fun successfulResponseMustNotSaveTheStillMeasuredErrorBlock() {
+        readable.value = false
+        uiState.readingProgress = 0.6f
+        progress.start()
+        env.runCurrent()
+        move(12_500, 900)
+        scrolling.value = false
+        env.runCurrent()
+        assertEquals(0.6f, uiState.readingProgress)
+        assertEquals(emptyList<Pair<String, Float>>(), writes)
+    }
+
+    @Test
+    fun firstBodyLayoutAtTheSameOffsetUpdatesProgressWithoutAnotherGesture() {
+        readable.value = false
+        scrolling.value = false
+        progress.start()
+        env.runCurrent()
+        writes.clear()
+        readable.value = true
+        env.runCurrent()
+        assertEquals(listOf("chapter" to 0.1f), writes)
+    }
+
+    @Test
+    fun stoppingTheReaderDuringRestorationDoesNotSaveTheTemporaryPosition() {
+        uiState.isRestoringProgress = true
+        scrolling.value = false
+        progress.start()
+        env.runCurrent()
+        progress.writeProgressRightNow()
+        assertEquals(emptyList<Pair<String, Float>>(), writes)
+        uiState.isRestoringProgress = false
+        env.runCurrent()
+        assertEquals(listOf("chapter" to 0.1f), writes)
     }
 }

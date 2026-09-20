@@ -1,6 +1,5 @@
 package indi.renakoni.nextvol.ui.book.detail
 
-import android.net.Uri
 import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -30,6 +29,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -128,15 +128,42 @@ class DetailViewModel @Inject constructor(
     suspend fun tagPage(tag: String) = book?.let { bookRepository.bookTagPage(it, tag) }
 
 
-    fun exportToEpub(uri: Uri, bookId: String, title: String): Flow<WorkInfo?> {
+    var exportResult by mutableStateOf<WorkInfo?>(null)
+        private set
+    var exportSubmissionFailed by mutableStateOf(false)
+        private set
+    private var exportObserver: Job? = null
+
+    fun startEpubExport(bookId: String, title: String) {
+        exportObserver?.cancel()
+        clearExportResult()
+        exportObserver = viewModelScope.launch {
+            try {
+                exportResult = exportToEpub(bookId, title).first { it?.state?.isFinished == true }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                exportSubmissionFailed = true
+            }
+        }
+    }
+
+    fun clearExportResult() {
+        exportResult = null
+        exportSubmissionFailed = false
+    }
+
+    fun exportToEpub(bookId: String, title: String): Flow<WorkInfo?> {
         if (!_uiState.readingAvailable) return flowOf(null)
         val key = indi.renakoni.nextvol.data.book.BookIdentity.bookKey(bookId)
+        val generation = bookRepository.downloadGeneration()
         val workRequest = OneTimeWorkRequestBuilder<ExportBookToEPUBWork>()
+            .addTag(indi.renakoni.nextvol.data.work.CacheBookWork.generationTag(generation))
             .setInputData(
                 workDataOf(
                     "bookId" to key,
-                    "uri" to uri.toString(),
                     "title" to title,
+                    "downloadGeneration" to generation,
                     "includeImages" to exportSettings.includeImages,
                     "exportType" to exportSettings.exportType.name,
                     "selectedVolume" to exportSettings.selectedVolumeIds.joinToString(",")

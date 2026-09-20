@@ -4,7 +4,6 @@ import android.app.Application
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
-import androidx.documentfile.provider.DocumentFile
 import androidx.work.ListenableWorker
 import androidx.work.workDataOf
 import com.github.michaelbull.result.Ok
@@ -31,7 +30,6 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
-import org.robolectric.Shadows
 import org.robolectric.annotation.Config
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -54,6 +52,7 @@ class EpubXhtmlWorkerTest {
         val context = RuntimeEnvironment.getApplication()
         val book = SourceBookId(Identifier("fixture", "epub"), "book")
         val repository = mockk<BookRepository>()
+        stubExportRepository(repository)
         val progress = mockk<DownloadProgressRepository>(relaxed = true)
         val registry = ContentComponentRegistry().apply {
             registrar.id(Identifier("fixture", "text")).component(NoArgFixtureComponent::class)
@@ -67,20 +66,8 @@ class EpubXhtmlWorkerTest {
         }.toByteArray()
         assertArrayEquals(byteArrayOf(0x89.toByte(), 0x50, 0x4e, 0x47), png.take(4).toByteArray())
         val output = File("build/epub-compliance/worker").apply { mkdirs() }
-        fun outputUri(name: String): Uri = Uri.parse("content://fixture/epub/${Uri.encode(name)}").also {
-            Shadows.shadowOf(context.contentResolver).registerOutputStream(it, output.resolve(name).outputStream())
-        }
-        val names = mutableListOf<String>()
-        val folder = mockk<DocumentFile> {
-            every { createFile(any(), capture(names)) } answers {
-                val outputUri = outputUri(secondArg())
-                mockk { every { uri } returns outputUri }
-            }
-        }
-        mockkStatic(DocumentFile::class)
         mockkObject(ImageUtils)
-        every { DocumentFile.fromTreeUri(context, any()) } returns folder
-        coEvery { ImageUtils.uriToBitmap(any(), context, book.storageKey) } answers {
+        coEvery { ImageUtils.uriToBitmap(any(), context, book.storageKey, allowMemoryCache = false) } answers {
             assertTrue(firstArg<Uri>().toString() in imageUrls)
             Ok(BitmapFactory.decodeByteArray(png, 0, png.size))
         }
@@ -120,21 +107,21 @@ class EpubXhtmlWorkerTest {
                         flowOf(Ok(ChapterContent(chapter.id, chapter.title, body)))
                 }
                 for (type in listOf("BOOK", "VOLUMES")) {
-                    names.clear()
                     val name = if (missingMetadata) "book-missing-metadata.epub" else "book-$volumeCount.epub"
                     val data = workDataOf("bookId" to book.storageKey, "exportType" to type,
-                        "selectedVolume" to volumes.volumes.joinToString(",") { it.volumeId },
-                        "uri" to (if (type == "BOOK") outputUri(name) else Uri.parse("content://fixture/tree/epub")).toString())
-                    assertEquals(ListenableWorker.Result.success(),
-                        ExportBookToEPUBWork(context, workerParameters(data), repository, progress, decoder).doWork())
-                    val files = if (type == "BOOK") listOf(name) else names.toList()
+                        "selectedVolume" to volumes.volumes.joinToString(",") { it.volumeId })
+                    val worker = ExportBookToEPUBWork(context, workerParameters(data), repository, progress, decoder, exportDownloads())
+                    assertTrue(worker.doWork() is ListenableWorker.Result.Success)
+                    val files = EpubShareFiles.files(context, worker.id)
                     assertEquals(if (type == "BOOK") 1 else volumeCount, files.size)
-                    files.forEach { verifyEpub(output.resolve(it), if (type == "BOOK") volumeCount * 2 else 2, missingMetadata) }
+                    files.forEachIndexed { index, file ->
+                        verifyEpub(file, if (type == "BOOK") volumeCount * 2 else 2, missingMetadata)
+                        file.copyTo(output.resolve("$type-$index-$name"), overwrite = true)
+                    }
                 }
             }
         } finally {
             unmockkObject(ImageUtils)
-            unmockkStatic(DocumentFile::class)
         }
     }
 

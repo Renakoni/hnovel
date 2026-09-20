@@ -10,6 +10,7 @@ import androidx.compose.ui.unit.IntSize
 import com.github.michaelbull.result.Err
 import com.github.michaelbull.result.Ok
 import com.github.michaelbull.result.get
+import indi.renakoni.nextvol.data.web.ForegroundSourceRequest
 import indi.renakoni.nextvol.ui.book.reader.mode.ModeTestEnvironment
 import io.mockk.every
 import io.mockk.mockk
@@ -27,7 +28,7 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [27], application = Application::class)
 class ScrollModeContractTest {
-    private val env = ModeTestEnvironment()
+    private val env = ModeTestEnvironment(ForegroundSourceRequest())
     private val continuous = MutableStateFlow(false)
     private val progress = mutableListOf<Pair<String, Float>>()
     private lateinit var mode: ScrollReaderController
@@ -95,13 +96,13 @@ class ScrollModeContractTest {
     }
 
     @Test
-    fun displayPrecedesSuspendedPersistenceAndProgressRestorationWaitsForTheTransform() {
+    fun displayWaitsForStoredProgressBeforePublishingTheBody() {
         env.records.data = env.records.data.copy(currentChapterReadingProgressMap = mapOf("requested" to 0.4f))
         open()
         val gate = CompletableDeferred<Unit>()
         env.records.writeGate = gate
         env.emit("requested", Ok(env.chapter("requested", next = "next")))
-        assertNotNull(mode.uiState.readingChapterContent)
+        assertNull(mode.uiState.readingChapterContent)
         assertEquals(0f, mode.uiState.readingProgress)
         assertTrue(env.chapters.preloads.isEmpty())
         gate.complete(Unit)
@@ -111,13 +112,13 @@ class ScrollModeContractTest {
     }
 
     @Test
-    fun laterSuccessRestoresStoredProgressAgainAndErrorReplacesContentWithoutWriting() {
+    fun refreshKeepsTheVisibleProgressAndErrorDoesNotWriteReadingData() {
         open()
         env.emit("requested", Ok(env.chapter("requested")))
         mode.uiState.readingProgress = 0.8f
         env.records.data = env.records.data.copy(currentChapterReadingProgressMap = mapOf("requested" to 0.2f))
         env.emit("requested", Ok(env.chapter("requested", title = "remote")))
-        assertEquals(0.2f, mode.uiState.readingProgress)
+        assertEquals(0.8f, mode.uiState.readingProgress)
         val error = Err(WebRequestError("offline", "failed"))
         env.emit("requested", error)
         assertEquals(error, mode.uiState.readingChapterContent)
@@ -188,7 +189,7 @@ class ScrollModeContractTest {
         assertEquals(listOf("current", "next"), env.chapters.active.map { it.chapterId })
         assertEquals("next", env.records.writes.last().lastReadChapterId)
         env.emit("next", Ok(env.chapter("next", "current", "later")))
-        assertEquals(listOf("current", "next", "later"), env.chapters.active.map { it.chapterId })
+        assertEquals(listOf("current", "later", "next"), env.chapters.active.map { it.chapterId }.sorted())
         assertEquals(listOf("next"), env.chapters.preloads.map { it.chapterId })
     }
 
@@ -208,6 +209,61 @@ class ScrollModeContractTest {
         env.runCurrent()
         assertEquals("prev", mode.uiState.readingChapterId)
         assertEquals(listOf("current", "prev"), env.chapters.active.map { it.chapterId })
+    }
+
+    @Test
+    fun visibleFailedNeighbourKeepsCurrentChapterAndRetryCanPromoteItsSuccessfulContent() {
+        open(continuousScrolling = true, id = "current")
+        env.emit("current", Ok(env.chapter("current", "prev", "next")))
+        env.emit("next", Err(WebRequestError("Offline", "Retry after connecting")))
+        val viewport = Viewport()
+        mode.uiState.lazyListState = viewport.state
+        mode.uiState.setLazyColumnSize(IntSize(100, 200))
+        viewport.items.value = listOf(item("next", 0, 200, readable = false))
+        env.runCurrent()
+        assertNotNull(mode.uiState.readingChapterContent)
+        assertEquals("current", mode.uiState.readingChapterId)
+        assertEquals("current", env.records.data.lastReadChapterId)
+
+        assertEquals("next" to false, env.chapters.interactions.last { it.first == "next" })
+
+        mode.uiState.retryChapter("next")
+        env.runCurrent()
+        assertEquals("next" to true, env.chapters.interactions.last { it.first == "next" })
+        assertEquals("current", mode.uiState.readingChapterId)
+        env.emit("next", Ok(env.chapter("next", "current", "later")))
+        env.runCurrent()
+        // The old error block is still the measured item until the next layout pass.
+        assertEquals("current", mode.uiState.readingChapterId)
+        assertEquals("current", env.records.data.lastReadChapterId)
+        viewport.items.value = listOf(item("next", 0, 500))
+        env.runCurrent()
+        assertEquals("next", mode.uiState.readingChapterId)
+        assertEquals("next", env.records.data.lastReadChapterId)
+        assertEquals(0.4f, mode.uiState.readingProgress)
+        assertEquals(2, mode.uiState.contentList.mapNotNull { it?.first }.toSet().size)
+    }
+
+    @Test
+    fun failedCurrentChapterDoesNotSaveErrorBlockProgressOnStop() {
+        open()
+        env.emit("requested", Err(WebRequestError("Offline", "Failed")))
+        mode.uiState.readingProgress = 0.8f
+        mode.uiState.writeProgressRightNow()
+        assertTrue(progress.isEmpty())
+        assertTrue(env.records.writes.isEmpty())
+    }
+
+    @Test
+    fun replacingAdjacentIdentitiesClearsBothOldSlotsBeforeTheirResponsesArrive() {
+        open(continuousScrolling = true)
+        env.emit("requested", Ok(env.chapter("requested", "prev", "next")))
+        env.emit("prev", Ok(env.chapter("prev")))
+        env.emit("next", Ok(env.chapter("next")))
+        env.emit("requested", Ok(env.chapter("requested", "next", "prev")))
+        assertEquals(listOf(null, "requested", null), mode.uiState.contentList.map { it?.first })
+        env.emit("next", Ok(env.chapter("next")))
+        assertEquals(listOf("next", "requested", null), mode.uiState.contentList.map { it?.first })
     }
 
     @Test
@@ -251,6 +307,7 @@ class ScrollModeContractTest {
         mode.uiState.setLazyColumnSize(IntSize(100, 100))
         val viewport = Viewport()
         mode.uiState.lazyListState = viewport.state
+        mode.uiState.onProgressRestored(viewport.state)
         env.runCurrent()
         viewport.items.value = listOf(item("requested", -20, 400))
         viewport.scrolling.value = true
@@ -283,9 +340,10 @@ class ScrollModeContractTest {
         }
     }
 
-    private fun item(chapterId: String, top: Int, height: Int): LazyListItemInfo = mockk {
+    private fun item(chapterId: String, top: Int, height: Int, readable: Boolean = true): LazyListItemInfo = mockk {
         every { key } returns chapterId
         every { offset } returns top
         every { size } returns height
+        every { contentType } returns readable
     }
 }

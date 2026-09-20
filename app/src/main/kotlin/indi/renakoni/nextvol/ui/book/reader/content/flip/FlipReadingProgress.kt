@@ -8,6 +8,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
 /** Owns pager observation and pending progress, using the reader's existing task lifetime. */
@@ -30,10 +31,10 @@ internal class FlipReadingProgress(
     @Volatile private var recoveryPending = false
 
     fun start() {
-        coroutineScope.launch(ioDispatcher) {
+        coroutineScope.launch {
             snapshotFlow { uiState.pagerState }.collect { pagerState ->
                 collectProgressJob?.cancel()
-                collectProgressJob = coroutineScope.launch(ioDispatcher) {
+                collectProgressJob = coroutineScope.launch {
                     snapshotFlow { pagerState.settledPage }.collect progress@{ page ->
                         // An empty pager is a layout transition, not a new reading position.
                         val pageCount = pagerState.pageCount
@@ -99,8 +100,8 @@ internal class FlipReadingProgress(
         val generation = ++recoveryGeneration
         recoveryPending = true
         progressPagerState = null
-        recoveryJob = coroutineScope.launch(ioDispatcher) {
-            readingData.getUserReadingData(bookId).let {
+        recoveryJob = coroutineScope.launch {
+            withContext(ioDispatcher) { readingData.getUserReadingData(bookId) }.let {
                 if (generation != recoveryGeneration) return@let
                 notRecoveredProgress = it.currentChapterReadingProgressMap[id] ?: 0f
                 recoveryPending = false

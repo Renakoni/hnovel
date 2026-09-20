@@ -14,12 +14,12 @@ class ChapterBuilder {
     }
 
     fun content(content: Document) {
-        if (chapters.isNotEmpty()) throw Error("You can only use either 'content' or 'chapters' method")
+        if (chapters.isNotEmpty()) throw IllegalArgumentException("You can only use either 'content' or 'chapters' method")
         this.content = content
     }
 
     fun content(builder: SimpleContentBuilder.() -> Unit) {
-        if (chapters.isNotEmpty()) throw Error("You can only use either 'content' or 'chapters' method")
+        if (chapters.isNotEmpty()) throw IllegalArgumentException("You can only use either 'content' or 'chapters' method")
         val content = SimpleContentBuilder().let {
             builder.invoke(it)
             _contentBuilders.add(it)
@@ -29,12 +29,12 @@ class ChapterBuilder {
     }
 
     fun chapter(chapter: Chapter) {
-        if (content != null) throw Error("You can only use either 'content' or 'chapters' method")
+        if (content != null) throw IllegalArgumentException("You can only use either 'content' or 'chapters' method")
         chapters.add(chapter)
     }
 
     fun chapter(builder: ChapterBuilder.() -> Unit) {
-        if (content != null) throw Error("You can only use either 'content' or 'chapters' method")
+        if (content != null) throw IllegalArgumentException("You can only use either 'content' or 'chapters' method")
         val chapter = ChapterBuilder().let {
             builder.invoke(it)
             val chapter = it.build()
@@ -46,7 +46,7 @@ class ChapterBuilder {
 
     fun build(): Chapter {
         val chapterTitle = title?.takeIf(String::isNotBlank) ?: "Untitled chapter"
-        if (content == null && chapters.isEmpty()) throw Error("Missing 'content' or 'chapters'")
+        if (content == null && chapters.isEmpty()) throw IllegalArgumentException("Missing 'content' or 'chapters'")
         _contentBuilders.forEach {
             if (it.headElement.elementText("title").isNullOrBlank()) it.title(chapterTitle)
         }

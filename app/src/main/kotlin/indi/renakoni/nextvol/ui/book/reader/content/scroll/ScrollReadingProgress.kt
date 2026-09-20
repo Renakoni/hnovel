@@ -1,10 +1,12 @@
 package indi.renakoni.nextvol.ui.book.reader.content.scroll
 
 import androidx.compose.runtime.snapshotFlow
+import com.github.michaelbull.result.get
 import indi.renakoni.nextvol.utils.throttleLatest
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 
 /** Owns scroll progress observation and write throttling. ON_STOP still uses the explicit callback. */
@@ -13,7 +15,6 @@ internal class ScrollReadingProgress(
     private val coroutineScope: CoroutineScope,
     private val updateReadingProgress: (String, Float) -> Unit,
     private val viewportHeight: () -> Int,
-    private val ioDispatcher: CoroutineDispatcher,
     private val mainDispatcher: CoroutineDispatcher,
     private val currentTimeMillis: () -> Long = System::currentTimeMillis,
 ) {
@@ -21,14 +22,12 @@ internal class ScrollReadingProgress(
 
     fun start() {
         coroutineScope.launch(mainDispatcher) {
-            snapshotFlow { uiState.lazyListState.firstVisibleItemScrollOffset }
+            snapshotFlow { measuredPosition() }
+                .filterNotNull()
                 .throttleLatest(120L, currentTimeMillis)
-                .collect {
-                    val layoutInfo = uiState.lazyListState.layoutInfo
-                    val chapterId = uiState.readingChapterId ?: return@collect
-                    val item = layoutInfo.visibleItemsInfo.firstOrNull { it.key == chapterId } ?: return@collect
-
-                    val newProgress = calculateReadingProgress(item.offset, item.size)
+                .collect { position ->
+                    val (chapterId, offset, size) = position
+                    val newProgress = calculateReadingProgress(offset, size)
                     if (newProgress == uiState.readingProgress) return@collect
                     uiState.readingProgress = newProgress
 
@@ -38,7 +37,7 @@ internal class ScrollReadingProgress(
                     if (scrolling && now - lastWriteReadingProgress < 2500 && newProgress < 1f) return@collect
                     lastWriteReadingProgress = now
 
-                    coroutineScope.launch(ioDispatcher) { updateReadingProgress(chapterId, newProgress) }
+                    updateReadingProgress(chapterId, newProgress)
                 }
         }
 
@@ -47,16 +46,13 @@ internal class ScrollReadingProgress(
                 .distinctUntilChanged()
                 .collect { scrolling ->
                     if (!scrolling) {
-                        val layoutInfo = uiState.lazyListState.layoutInfo
-                        val chapterId = uiState.readingChapterId ?: return@collect
-                        val item = layoutInfo.visibleItemsInfo.firstOrNull { it.key == chapterId } ?: return@collect
-
-                        val finalProgress = calculateReadingProgress(item.offset, item.size)
+                        val (chapterId, offset, size) = measuredPosition() ?: return@collect
+                        val finalProgress = calculateReadingProgress(offset, size)
 
                         if (uiState.readingProgress != finalProgress) {
                             uiState.readingProgress = finalProgress
                         }
-                        coroutineScope.launch(ioDispatcher) { updateReadingProgress(chapterId, uiState.readingProgress) }
+                        updateReadingProgress(chapterId, finalProgress)
                         lastWriteReadingProgress = currentTimeMillis()
                     }
                 }
@@ -64,7 +60,16 @@ internal class ScrollReadingProgress(
     }
 
     fun writeProgressRightNow() {
+        if (uiState.isRestoringProgress || uiState.readingChapterContent?.get() == null) return
         updateReadingProgress(uiState.readingChapterId ?: return, uiState.readingProgress)
+    }
+
+    private fun measuredPosition(): Triple<String, Int, Int>? {
+        val chapterId = uiState.readingChapterId ?: return null
+        if (uiState.isRestoringProgress || uiState.readingChapterContent?.get() == null || viewportHeight() <= 0) return null
+        val item = uiState.lazyListState.layoutInfo.visibleItemsInfo
+            .firstOrNull { it.key == chapterId && it.contentType == true } ?: return null
+        return Triple(chapterId, item.offset, item.size)
     }
 
     private fun calculateReadingProgress(itemOffset: Int, itemSize: Int): Float =

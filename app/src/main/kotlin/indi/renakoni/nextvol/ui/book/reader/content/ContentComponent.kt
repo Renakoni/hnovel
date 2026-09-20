@@ -1,10 +1,20 @@
 package indi.renakoni.nextvol.ui.book.reader.content
 
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.ui.book.reader.ReaderFontFamilySettings
 import indi.renakoni.nextvol.ui.book.reader.ReaderSettings
 import indi.renakoni.nextvol.ui.book.reader.content.flip.FlipPageContentComponent
@@ -23,7 +33,8 @@ fun ContentComponent(
     paddingValues: PaddingValues,
     changeIsImmersive: () -> Unit,
     onClickPrevChapter: () -> Unit,
-    onClickNextChapter: () -> Unit
+    onClickNextChapter: () -> Unit,
+    chapterTitle: (String) -> String? = { null },
 ) {
     val selectionState = remember { ReaderSelectionState() }
     CompositionLocalProvider(LocalReaderSelectionState provides selectionState) {
@@ -36,7 +47,8 @@ fun ContentComponent(
                 paddingValues,
                 changeIsImmersive,
                 onClickPrevChapter,
-                onClickNextChapter
+                onClickNextChapter,
+                chapterTitle,
             )
             is ScrollContentUiState -> ScrollContentComponent(
                 modifier,
@@ -47,6 +59,7 @@ fun ContentComponent(
                 changeIsImmersive,
                 onClickPrevChapter,
                 onClickNextChapter,
+                chapterTitle,
             )
             }
         }
@@ -60,7 +73,14 @@ fun ChapterContentLoading() {
 
 @Composable
 fun ChapterContentError(
-    error: WebRequestError
+    error: WebRequestError,
+    chapterTitle: String? = null,
+    onRetry: (() -> Unit)? = null,
 ) {
-    //TODO 错误显示
+    Column(Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        chapterTitle?.let { Text(it, style = MaterialTheme.typography.titleMedium) }
+        Text(error.title, style = MaterialTheme.typography.titleSmall)
+        Text(error.message)
+        if (onRetry != null) TextButton(onClick = onRetry) { Text(stringResource(R.string.action_retry)) }
+    }
 }

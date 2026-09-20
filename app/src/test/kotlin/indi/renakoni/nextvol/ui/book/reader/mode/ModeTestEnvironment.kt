@@ -4,6 +4,7 @@ import androidx.compose.runtime.snapshots.Snapshot
 import com.github.michaelbull.result.Result
 import indi.renakoni.nextvol.data.book.BookReadingDataAccess
 import indi.renakoni.nextvol.data.book.ChapterSource
+import indi.renakoni.nextvol.data.web.ForegroundSourceRequest
 import indi.renakoni.nextvol.ui.book.reader.content.ContentRenderer
 import indi.renakoni.nextvol.ui.book.reader.content.ReaderChapterLoader
 import io.mockk.every
@@ -20,6 +21,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.flow
@@ -30,13 +32,15 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.EmptyCoroutineContext
 
 /** Common controlled I/O, with no dependency on either reading mode implementation. */
 @OptIn(ExperimentalCoroutinesApi::class)
-internal class ModeTestEnvironment {
+internal class ModeTestEnvironment(context: CoroutineContext = EmptyCoroutineContext) {
     val scheduler = TestCoroutineScheduler()
     val dispatcher = StandardTestDispatcher(scheduler)
-    val scope = CoroutineScope(SupervisorJob() + dispatcher)
+    val scope = CoroutineScope(SupervisorJob() + dispatcher + context)
     val events = mutableListOf<String>()
     val chapters = Chapters(events)
     val records = Records(events)
@@ -71,6 +75,7 @@ internal class ModeTestEnvironment {
         val requests = mutableListOf<Request>()
         val active = mutableListOf<Request>()
         val preloads = mutableListOf<Request>()
+        val interactions = mutableListOf<Pair<String, Boolean?>>()
         var preloadGate: CompletableDeferred<Unit>? = null
         private val streams = mutableMapOf<String, MutableSharedFlow<Result<ChapterContent, WebRequestError>>>()
         fun stream(id: String) = streams.getOrPut(id) { MutableSharedFlow(extraBufferCapacity = 16) }
@@ -82,6 +87,7 @@ internal class ModeTestEnvironment {
             val request = Request(chapterId, bookId, priority)
             requests += request
             return flow {
+                interactions += chapterId to currentCoroutineContext()[ForegroundSourceRequest]?.allowsInteraction
                 active += request
                 events += "subscribe/$chapterId"
                 try {

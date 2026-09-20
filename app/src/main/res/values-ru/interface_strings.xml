@@ -48,4 +48,7 @@
     <string name="plugin_delete_action">Удалить плагин</string>
     <string name="plugin_uninstall_action">Удалить приложение и плагин</string>
     <string name="stats_total">Всего</string>
+    <string name="reader_chapter">Глава</string>
+    <string name="reader_empty_chapter">В этой главе нет содержимого для чтения.</string>
+    <string name="reader_pagination_failed">Не удалось разбить главу на страницы. Повторите попытку.</string>
 </resources>

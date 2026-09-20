@@ -42,4 +42,7 @@
     <string name="plugin_delete_action">删除插件</string>
     <string name="plugin_uninstall_action">卸载并删除</string>
     <string name="stats_total">总计</string>
+    <string name="reader_chapter">章节</string>
+    <string name="reader_empty_chapter">本章没有可阅读的内容。</string>
+    <string name="reader_pagination_failed">本章排版失败，请重试。</string>
 </resources>

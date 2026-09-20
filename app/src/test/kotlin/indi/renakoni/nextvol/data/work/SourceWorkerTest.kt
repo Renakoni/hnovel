@@ -41,6 +41,8 @@ internal fun workerParameters(data: Data, workId: UUID = UUID.randomUUID()) = mo
     every { inputData } returns data
     every { id } returns workId
     every { tags } returns emptySet()
+    every { foregroundUpdater.setForegroundAsync(any(), any(), any()) } returns
+        com.google.common.util.concurrent.Futures.immediateVoidFuture()
 }
 
 @RunWith(RobolectricTestRunner::class)

@@ -63,7 +63,7 @@ class ContentJsonDecoder @Inject constructor(
             }
     }
 
-    // Export skips structurally invalid entries, uses exact IDs and propagates serializer errors.
+    // Legacy callers skip structurally invalid entries and use exact IDs. Export uses strict decoding below.
     fun getDataFromJsonObject(content: JsonObject, block: (AbstractContentComponentData) -> Unit) {
         (content["components"] as? JsonArray)
             ?.mapNotNull { it as? JsonObject }
@@ -76,5 +76,18 @@ class ContentJsonDecoder @Inject constructor(
                     ?: return@forEach
                 block(serializer.fromJsonElement(data))
             }
+    }
+
+    /** Export must account for every component; reader fallback/legacy decoding stays separate. */
+    fun decodeForExport(content: JsonObject, block: (AbstractContentComponentData) -> Unit) {
+        val components = requireNotNull(content["components"] as? JsonArray) { "Missing content components" }
+        components.forEachIndexed { index, element ->
+            val component = requireNotNull(element as? JsonObject) { "Invalid component ${index + 1}" }
+            val id = requireNotNull((component["id"] as? JsonPrimitive)?.content) { "Missing component type ${index + 1}" }
+                .let { if (it.contains(":")) it else "lightnovelreader:$it" }
+            val data = requireNotNull(component["data"] as? JsonObject) { "Missing component data ${index + 1}" }
+            val serializer = requireNotNull(registry.serializer(id)) { "Unsupported component ${index + 1}" }
+            block(serializer.fromJsonElement(data))
+        }
     }
 }

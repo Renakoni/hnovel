@@ -12,12 +12,12 @@ import kotlin.math.abs
 
 /** A completed swipe turns one page without moving the page under the finger. */
 @Composable
-internal fun Modifier.readerPageSwipe(enabled: Boolean, onTurn: (forward: Boolean) -> Unit): Modifier {
+internal fun Modifier.readerPageSwipe(enabled: Boolean, gestureKey: Any? = null, onTurn: (forward: Boolean) -> Unit): Modifier {
     val selection = LocalReaderSelectionState.current
     val onTurnNow by rememberUpdatedState(onTurn)
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     if (!enabled || selection.hasSelection) return this
-    return pointerInput(rtl) {
+    return pointerInput(rtl, gestureKey) {
         var distance = 0f
         detectHorizontalDragGestures(
             onDragStart = { distance = 0f },
