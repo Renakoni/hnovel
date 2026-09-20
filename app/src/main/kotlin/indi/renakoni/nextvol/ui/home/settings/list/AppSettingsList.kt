@@ -26,12 +26,14 @@ fun AppSettingsList(
         modifier = Modifier.background(colorScheme.surfaceContainer),
         painter = painterResource(R.drawable.deployed_code_update_24px),
         title = stringResource(R.string.app_updates),
+        description = stringResource(R.string.settings_updates_desc),
         onClick = onClickUpdates
     )
     SettingsClickableEntry(
         modifier = Modifier.background(colorScheme.surfaceContainer),
         painter = painterResource(R.drawable.info_24px),
         title = stringResource(R.string.about_settings),
+        description = stringResource(R.string.settings_about_desc),
         onClick = onClickAbout
     )
 }

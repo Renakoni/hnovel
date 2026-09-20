@@ -1,5 +1,6 @@
 package indi.renakoni.nextvol.data.logging
 
+import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.os.Process
@@ -7,6 +8,7 @@ import android.util.Log
 import androidx.compose.runtime.mutableStateListOf
 import androidx.core.content.FileProvider
 import dagger.hilt.android.qualifiers.ApplicationContext
+import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.utils.buildReportHeader
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -15,6 +17,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -34,6 +37,7 @@ class LoggerRepository @Inject constructor(
     val realTimeLogEntries = mutableStateListOf<LogEntry>()
 
     private var loggingJob: Job? = null
+    private var fileLoadJob: Job? = null
     private val currentPid = Process.myPid()
 
     fun startLogging() {
@@ -70,7 +74,7 @@ class LoggerRepository @Inject constructor(
         }
     }
 
-    private fun parseLine(line: String): LogEntry? {
+    private fun parseLine(line: String, filterByLevel: Boolean = true): LogEntry? {
         if (line.isBlank()) return null
 
         val logcatRegex = Regex("""\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}""")
@@ -87,7 +91,7 @@ class LoggerRepository @Inject constructor(
                 else -> return null
             }
 
-            if (priority.level > logLevel.level) return null
+            if (filterByLevel && priority.level > logLevel.level) return null
 
             LogEntry(text = line, logLevel = priority)
         } else {
@@ -95,12 +99,6 @@ class LoggerRepository @Inject constructor(
         }
     }
 
-
-    fun refreshLogs() {
-        stopLogging()
-        realTimeLogEntries.clear()
-        startLogging()
-    }
 
     fun shareLogs(fileName: String? = null) {
         val logFile = if (fileName != null) {
@@ -127,10 +125,10 @@ class LoggerRepository @Inject constructor(
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", logFile)
 
         val intent = Intent(Intent.ACTION_SEND).apply {
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            setType("*/*")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+            type = "text/plain"
             putExtra(Intent.EXTRA_STREAM, uri)
-            setFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            clipData = ClipData.newRawUri("log", uri)
         }
         context.startActivity(intent)
     }
@@ -144,22 +142,23 @@ class LoggerRepository @Inject constructor(
     fun getAvailableLogFiles(): List<String> {
         if (!logsDir.exists()) return emptyList()
         return logsDir.listFiles()
-            ?.filter { it.extension == "log" }
+            ?.filter { it.isFile && it.extension == "log" }
+            ?.sortedByDescending { it.lastModified() }
             ?.map { it.name }
-            ?.sorted()
             ?: emptyList()
     }
 
     fun loadLogFile(fileName: String) {
+        fileLoadJob?.cancel()
+        fileLogEntries.clear()
         val file = File(logsDir, fileName)
-        if (!file.exists()) return
 
-        coroutineScope.launch(Dispatchers.IO) {
-            val newEntries = file.readLines()
-                .mapNotNull { parseLine(it) }
-                .toMutableList()
-
-            newEntries += LogEntry("----- EOF", LogLevel.SYSTEM)
+        fileLoadJob = coroutineScope.launch(Dispatchers.IO) {
+            val newEntries = try {
+                file.readLines().mapNotNull { parseLine(it, filterByLevel = false) }
+            } catch (_: IOException) {
+                listOf(LogEntry(context.getString(R.string.log_read_failed), LogLevel.ERROR))
+            }
 
             withContext(Dispatchers.Main.immediate) {
                 fileLogEntries.clear()
@@ -168,15 +167,11 @@ class LoggerRepository @Inject constructor(
         }
     }
 
-    fun deleteLogFile(fileName: String) {
-        if (fileName == ":all") {
-            logsDir.listFiles()?.forEach { it.delete() }
-            return
-        }
-
-        val file = File(logsDir, fileName)
-        if (file.exists()) {
-            file.delete()
-        }
+    fun deleteLogs(): Boolean {
+        fileLoadJob?.cancel()
+        fileLogEntries.clear()
+        realTimeLogEntries.clear()
+        val files = getAvailableLogFiles().map { File(logsDir, it) }
+        return files.map { !it.exists() || it.delete() }.all { it }
     }
 }

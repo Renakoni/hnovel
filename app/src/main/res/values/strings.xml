@@ -244,7 +244,7 @@
     <string name="settings_plugins">Plugins</string>
     <string name="settings_plugins_desc">Install and manage Plugins</string>
     <string name="settings_app_logs">App Logs</string>
-    <string name="settings_app_logs_desc">View and share application logs for debug purpose</string>
+    <string name="settings_app_logs_desc">View and share application logs</string>
     <string name="settings_app_log_level">Log Level</string>
     <string name="settings_app_log_level_desc">Set log filtering level (requires app restart)</string>
     <string name="book_manager_title">Book Manager</string>
@@ -401,13 +401,10 @@
     <string name="select_chapter">Select Chapter</string>
     <string name="logs_title">Logs</string>
     <string name="log_source">Log Source</string>
-    <string name="log_clear">Clear Temporary Logs</string>
-    <string name="log_clear_desc">These logs will also be removed when clearing app cache</string>
-    <string name="auto_scroll">Auto-scroll</string>
-    <string name="word_wrap">Word Wrap</string>
+    <string name="log_clear">Clear all logs</string>
     <string name="log_shared">Shared Logs</string>
     <string name="log_crash">App Crash</string>
-    <string name="log_empty_list">Empty log list</string>
+    <string name="log_empty_list">No logs yet</string>
     <string name="detail_info_title">Title</string>
     <string name="detail_info_id">ID</string>
     <string name="detail_info_author">Author</string>
@@ -753,4 +750,14 @@
     <string name="local_book_stored_files">Imported original and parsed files</string>
     <string name="local_book_delete_title">Delete local books?</string>
     <string name="local_book_delete_originals">Selected imports will be removed from every bookshelf, and their original files and parsed content in this app will be permanently deleted. Other imported copies and files outside this app are kept. For online books, only the selected local cache is removed.</string>
+    <string name="settings_updates_desc">Check for new versions and set update preferences</string>
+    <string name="settings_about_desc">App information and open-source licenses</string>
+    <string name="log_clear_all_confirm">Delete saved logs and clear logs from this run?</string>
+    <string name="log_deleted">Logs cleared</string>
+    <string name="log_delete_failed">Some logs could not be deleted. Try again.</string>
+    <string name="log_read_failed">Could not read this log. Please select it again.</string>
+    <string name="log_recording_off">Log recording is off</string>
+    <string name="log_recording_off_desc">Choose a log level and restart the app to record logs.</string>
+    <string name="log_empty_file_desc">This file has no log entries.</string>
+    <string name="log_empty_current_desc">New logs appear here. Restart after changing the log level.</string>
 </resources>

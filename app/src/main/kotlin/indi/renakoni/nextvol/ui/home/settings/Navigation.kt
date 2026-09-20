@@ -29,7 +29,6 @@ import indi.renakoni.nextvol.ui.components.MutableExportContext
 import indi.renakoni.nextvol.ui.components.SliderValueDialog
 import indi.renakoni.nextvol.ui.dialog.SliderValueDialogViewModel
 import indi.renakoni.nextvol.ui.home.settings.about.settingsAboutDestination
-import indi.renakoni.nextvol.ui.home.settings.debug.navigateToSettingsDebugDestination
 import indi.renakoni.nextvol.ui.home.settings.debug.settingsDebugDestination
 import indi.renakoni.nextvol.ui.home.settings.formats.settingsFormatsDestination
 import indi.renakoni.nextvol.ui.home.settings.licenses.settingsLicensesDestination
@@ -67,7 +66,6 @@ fun NavGraphBuilder.settingsDestination() {
         SettingsScreen(
             settingState = settingsViewModel.settingState,
             importData = settingsViewModel::importFromFile,
-            onClickDebugMode = navController::navigateToSettingsDebugDestination,
             onClickUpdates = { if (navController.isResumed()) navController.navigate(Route.Main.Settings.Updates) },
             onClickAbout = { if (navController.isResumed()) navController.navigate(Route.Main.Settings.About) },
             onClickChangeSource = { navController.navigate(Route.Main.Settings.Sources) },

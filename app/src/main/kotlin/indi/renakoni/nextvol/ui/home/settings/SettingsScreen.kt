@@ -3,7 +3,6 @@ package indi.renakoni.nextvol.ui.home.settings
 import android.net.Uri
 import androidx.annotation.StringRes
 import androidx.compose.animation.ExperimentalSharedTransitionApi
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -15,7 +14,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme.colorScheme
 import androidx.compose.material3.MaterialTheme.typography
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -28,10 +26,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.work.OneTimeWorkRequest
-import indi.renakoni.nextvol.BuildConfig
 import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.ui.components.SectionHeader
-import indi.renakoni.nextvol.ui.components.SettingsClickableEntry
 import indi.renakoni.nextvol.ui.home.settings.list.AppSettingsList
 import indi.renakoni.nextvol.ui.home.settings.list.DataSettingsList
 import indi.renakoni.nextvol.ui.home.settings.list.DisplaySettingsList
@@ -47,7 +43,6 @@ fun SettingsScreen(
     onClickLogcat: () -> Unit,
     onClickChangeSource: () -> Unit,
     onClickExportUserData: () -> Unit,
-    onClickDebugMode: () -> Unit,
     onClickUpdates: () -> Unit,
     onClickAbout: () -> Unit,
     onClickThemeSettings: () -> Unit,
@@ -116,21 +111,6 @@ fun SettingsScreen(
                         onClickUpdates = onClickUpdates,
                         onClickAbout = onClickAbout,
                     )
-                }
-            }
-            if (BuildConfig.DEBUG) {
-                item {
-                    SettingsCategory(
-                        title = stringResource(R.string.debug_settings)
-                    ) {
-                        SettingsClickableEntry(
-                            modifier = Modifier.background(colorScheme.surfaceContainer),
-                            painter = painterResource(R.drawable.adb_24px),
-                            title = stringResource(R.string.settings_debug_tools),
-                            description = stringResource(R.string.settings_debug_tools_desc),
-                            onClick = onClickDebugMode
-                        )
-                    }
                 }
             }
             navigationBarSpacer()

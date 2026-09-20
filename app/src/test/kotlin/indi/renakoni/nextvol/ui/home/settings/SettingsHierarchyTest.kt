@@ -95,7 +95,7 @@ class SettingsHierarchyTest {
                 settingState = state,
                 importData = { _, _ -> error("Import was not requested") },
                 onClickLogcat = { opened += "logs" },
-                onClickChangeSource = {}, onClickExportUserData = {}, onClickDebugMode = {},
+                onClickChangeSource = {}, onClickExportUserData = {},
                 onClickUpdates = { opened += "updates" }, onClickAbout = { opened += "about" },
                 onClickThemeSettings = {}, onClickPluginManager = {}, onClickTextFormatting = {},
                 onClickReadAloud = {}, onClickStorageManager = { opened += "storage" }, onBack = {},
@@ -105,8 +105,13 @@ class SettingsHierarchyTest {
         compose.onNodeWithText(label(R.string.settings_clear_reading_cache)).assertDoesNotExist()
         compose.onNodeWithText(label(R.string.settings_clear_downloads)).assertDoesNotExist()
         entry(R.string.settings_app_logs).assertIsDisplayed().performClick()
+        compose.onNodeWithText(label(R.string.settings_app_logs_desc)).assertIsDisplayed()
         entry(R.string.app_updates).assertIsDisplayed().performClick()
+        compose.onNodeWithText(label(R.string.settings_updates_desc)).assertIsDisplayed()
         entry(R.string.about_settings).assertIsDisplayed().performClick()
+        compose.onNodeWithText(label(R.string.settings_about_desc)).assertIsDisplayed()
+        compose.onNodeWithText(label(R.string.debug_settings)).assertDoesNotExist()
+        compose.onNodeWithText(label(R.string.settings_debug_tools)).assertDoesNotExist()
         for (id in listOf(R.string.settings_app_log_level, R.string.settings_auto_check_updates,
             R.string.settings_update_channel, R.string.settings_distribution_platform, R.string.settings_get_updates,
             R.string.settings_communication, R.string.settings_github_repo, R.string.settings_support_author,
@@ -123,8 +128,8 @@ class SettingsHierarchyTest {
             LogcatScreen(
                 uiState = MutableLogcatUiState(), logFiles = listOf(""), logEntries = emptyList(),
                 logLevelKey = level ?: "none", onLogLevelChange = preference::asynchronousSet,
-                onClickBack = {}, onClickClearLogs = {}, onClickShareLogs = {},
-                onClickDeleteLogFile = {}, onSelectLogFile = {},
+                onClickBack = {}, onClickShareLogs = {},
+                onClickClearLogs = { true }, onSelectLogFile = {},
             )
         }
         compose.onNodeWithText(label(R.string.settings_app_log_level)).assertIsDisplayed().performClick()
@@ -135,6 +140,57 @@ class SettingsHierarchyTest {
         assertEquals("warning", runBlocking {
             UserDataRepository(database.userDataDao()).stringUserData(UserDataPath.Settings.Data.LogLevel.path).get()
         })
+    }
+
+    @Test fun emptyLogPageExplainsDisabledRecordingWithoutASourcePicker() {
+        show {
+            LogcatScreen(
+                uiState = MutableLogcatUiState(), logFiles = listOf(""), logEntries = emptyList(),
+                logLevelKey = "none", onLogLevelChange = {}, onClickBack = {}, onClickShareLogs = {},
+                onClickClearLogs = { error("There are no logs to delete") }, onSelectLogFile = {},
+            )
+        }
+        compose.onNodeWithText(label(R.string.log_recording_off)).assertIsDisplayed()
+        compose.onNodeWithText(label(R.string.log_recording_off_desc)).assertIsDisplayed()
+        compose.onNodeWithContentDescription(label(R.string.log_source)).assertDoesNotExist()
+    }
+
+    @Test fun anEmptyArchiveCanBeDeletedAfterConfirmationAndCancelKeepsIt() {
+        val archive = "lnr_panic_20260920_120000.log"
+        val state = MutableLogcatUiState().apply { isFileMode = true; selectedLogFile = archive }
+        var deletions = 0
+        show {
+            LogcatScreen(
+                uiState = state, logFiles = listOf(archive, ""), logEntries = emptyList(),
+                logLevelKey = "none", onLogLevelChange = {}, onClickBack = {}, onClickShareLogs = {},
+                onClickClearLogs = { deletions++; true }, onSelectLogFile = {},
+            )
+        }
+        compose.onNodeWithContentDescription(label(R.string.log_clear)).assertIsDisplayed().performClick()
+        compose.onNodeWithText(label(R.string.cancel)).performClick()
+        assertEquals(0, deletions)
+        compose.onNodeWithContentDescription(label(R.string.log_clear)).performClick()
+        compose.onNodeWithText(label(R.string.confirm)).performClick()
+        assertEquals(1, deletions)
+    }
+
+    @Test fun clearAllIsAvailableFromTheToolbarAndRequiresConfirmation() {
+        val archive = "lnr_export_20260920_120000.log"
+        var deletions = 0
+        show {
+            LogcatScreen(
+                uiState = MutableLogcatUiState(), logFiles = listOf(archive, ""), logEntries = emptyList(),
+                logLevelKey = "none", onLogLevelChange = {}, onClickBack = {}, onClickShareLogs = {},
+                onClickClearLogs = { deletions++; true }, onSelectLogFile = {},
+            )
+        }
+        compose.onNodeWithContentDescription(label(R.string.action_more_options)).assertDoesNotExist()
+        compose.onNodeWithContentDescription(label(R.string.export_and_share)).assertIsDisplayed()
+        compose.onNodeWithContentDescription(label(R.string.log_clear)).performClick()
+        assertEquals(0, deletions)
+        compose.onNodeWithText(label(R.string.log_clear_all_confirm)).assertIsDisplayed()
+        compose.onNodeWithText(label(R.string.confirm)).performClick()
+        assertEquals(1, deletions)
     }
 
     @Test fun updatesPageKeepsPreferencesAndExplicitCheckAction() {
