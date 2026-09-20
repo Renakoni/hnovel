@@ -29,6 +29,8 @@ jobs:
           cache-read-only: true
       - name: Make Gradle wrapper executable
         run: chmod +x ./gradlew
+      - name: Check emulator preparation and failure handling
+        run: python3 .github/scripts/test_emulator_tests.py
       - name: Run JVM unit tests
         run: ./gradlew :app:testDebugUnitTest :epub:test :source-rules:test :source-network:test :source-import:test :source-execution:test :source-compatibility:test :source-rhino:test :source-content:test :source-speech:test --console=plain --stacktrace --max-workers=2
       - name: Upload test reports

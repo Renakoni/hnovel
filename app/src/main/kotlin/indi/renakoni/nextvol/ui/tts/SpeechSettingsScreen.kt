@@ -107,23 +107,21 @@ fun SpeechSettingsScreen(
             item(key = "voice") {
                 Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
                     Column {
-                        if (state.settings.httpSource != null) {
-                            val name = state.httpSources.find { it.definition.id == state.settings.httpSource }?.definition?.name
-                                ?: stringResource(R.string.tts_voice_unavailable)
-                            SpeechSetting(stringResource(R.string.tts_online_sources), name, onClick = onHttpSources)
-                        } else {
-                        val name = if (state.settings.engine.isEmpty()) stringResource(R.string.tts_system_default)
-                            else state.engines.find { it.packageName == state.settings.engine }?.name ?: state.settings.engine
-                        SpeechSetting(stringResource(R.string.tts_engine), name) { choice = "engine" }
-                        HorizontalDivider(
-                            Modifier.padding(horizontal = 20.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-                        )
-                        val voice = if (state.settings.voice.isEmpty()) stringResource(R.string.tts_engine_default)
-                            else state.voices.find { it.id == state.settings.voice }?.let {
-                                Locale.forLanguageTag(it.locale).getDisplayName(locale) + " · " + it.id
-                            } ?: stringResource(R.string.tts_voice_unavailable)
-                        SpeechSetting(stringResource(R.string.tts_voice), voice, enabled = !state.loading) { choice = "voice" }
+                        val selectedSource = state.httpSources.find { it.definition.id == state.settings.httpSource }
+                        SpeechSetting(stringResource(R.string.tts_online_sources),
+                            if (state.settings.httpSource == null) stringResource(R.string.tts_system_speech)
+                            else selectedSource?.definition?.name ?: stringResource(R.string.tts_voice_unavailable),
+                            onClick = onHttpSources)
+                        if (state.settings.httpSource == null) {
+                            HorizontalDivider(Modifier.padding(horizontal = 20.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                            val name = if (state.settings.engine.isEmpty()) stringResource(R.string.tts_system_default)
+                                else state.engines.find { it.packageName == state.settings.engine }?.name ?: state.settings.engine
+                            SpeechSetting(stringResource(R.string.tts_engine), name) { choice = "engine" }
+                            val voice = if (state.settings.voice.isEmpty()) stringResource(R.string.tts_engine_default)
+                                else state.voices.find { it.id == state.settings.voice }?.let {
+                                    Locale.forLanguageTag(it.locale).getDisplayName(locale) + " · " + it.id
+                                } ?: stringResource(R.string.tts_voice_unavailable)
+                            SpeechSetting(stringResource(R.string.tts_voice), voice, enabled = !state.loading) { choice = "voice" }
                         }
                     }
                 }
@@ -145,7 +143,7 @@ fun SpeechSettingsScreen(
                 FilledTonalButton(
                     onClick = onPreview,
                     enabled = !state.loading && (if (state.settings.httpSource == null) state.engines.isNotEmpty()
-                        else state.httpSources.any { it.definition.id == state.settings.httpSource }),
+                        else state.httpSources.any { it.definition.id == state.settings.httpSource && it.isConfigured }),
                     modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("speech-preview"),
                     shape = RoundedCornerShape(16.dp),
                     contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
@@ -156,9 +154,6 @@ fun SpeechSettingsScreen(
             }
             if (state.settings.httpSource == null) item(key = "system") {
                 SpeechSetting(stringResource(R.string.tts_system_settings), onClick = onSystemSettings)
-            }
-            if (state.settings.httpSource == null) item(key = "online") {
-                SpeechSetting(stringResource(R.string.tts_online_sources), onClick = onHttpSources)
             }
         }
     }

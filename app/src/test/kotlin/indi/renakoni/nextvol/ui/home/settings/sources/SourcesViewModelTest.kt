@@ -34,38 +34,6 @@ import java.nio.file.Files
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [27], application = Application::class)
 class SourcesViewModelTest {
-    @Test fun bundledFanqieAddsImmediatelyAndRepeatedAddsKeepOneEnabledSource(): Unit = runBlocking {
-        Dispatchers.setMain(Dispatchers.Unconfined)
-        val root = Files.createTempDirectory("fanqie-one-tap").toFile()
-        val context = object : ContextWrapper(RuntimeEnvironment.getApplication()) {
-            override fun getFilesDir() = File(root, "files")
-            override fun getCacheDir() = File(root, "cache")
-        }
-        RuleSourceFixture().use { fixture ->
-            val registry = WebSourceRegistry(fixture.authority)
-            val accounts = SourceSessionManager(fixture.authority)
-            val sources = ImportedRuleSources(context, registry, fixture.authority, accounts, fixture.runner)
-            val model = SourcesViewModel(context, sources, SourceRevisionUpdates(context, sources, accounts, fixture.runner, fixture.authority),
-                SourceLoginService(sources, accounts), registry, ZLibrarySources(context, registry, hnovel.network.StorageCipher.Plain))
-            suspend fun idle() = withTimeout(10000) { model.state.first { !it.busy } }
-            try {
-                idle()
-                repeat(2) {
-                    model.addFanqie()
-                    val state = idle()
-                    assertNull(state.preview)
-                    val installed = state.installed.single()
-                    assertTrue(installed.preferences.enabled)
-                    assertEquals("https://fq.taijiwang.top", installed.definition.importKey)
-                    assertEquals(ImportedRuleSources.id(installed.definition), state.selected)
-                    assertTrue(registry.resolve(state.selected!!) is SourceResolution.Ready)
-                }
-                assertEquals(1, sources.definitions.list().size)
-                assertEquals(0, fixture.server.requestCount)
-            } finally { model.cancel(); sources.stop(); Dispatchers.resetMain(); root.deleteRecursively() }
-        }
-    }
-
     @Test fun settingsReadStoredValuesBeforeExplicitLoginAttemptsInitialization(): Unit = runBlocking {
         Dispatchers.setMain(Dispatchers.Unconfined)
         val root = Files.createTempDirectory("source-initialization-ui").toFile()

@@ -72,6 +72,7 @@ fun NavGraphBuilder.speechSettingsDestination() {
         HttpSpeechSourcesScreen(state, nav::popBackStackIfResumed,
             onImport = { picker.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) },
             onSelect = viewModel::select, onDelete = viewModel::delete, onSites = viewModel::sites,
-            onConfirmImport = viewModel::confirmImport, onDismissImport = viewModel::dismissPreview, onEdit = viewModel::edit)
+            onConfirmImport = viewModel::confirmImport, onDismissImport = viewModel::dismissPreview, onEdit = viewModel::edit,
+            onConfigure = viewModel::configure)
     }
 }

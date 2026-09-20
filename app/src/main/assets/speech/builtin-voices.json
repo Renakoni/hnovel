@@ -1,0 +1,1336 @@
+[
+  {
+    "group": "豆包",
+    "definition": {
+      "id": "nextvol:builtin:1788300000001",
+      "name": "豆包 · 通用女声",
+      "url": "@js:\nlet opt = {\"method\":\"post\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":JSON.stringify({\"text\":speakText,\"speaker\":\"tts.other.BV001_streaming\"})};\nlet res = String(java.ajax(\"https://translate.volcengine.com/crx/tts/v1/,\" + JSON.stringify(opt)));\nlet j = JSON.parse(res);\nif (j.base_resp.status_code !== 0) { throw j.base_resp.status_message || (\"status_code=\" + j.base_resp.status_code); }\n\"data:audio/mpeg;base64,\" + j.audio.data",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://translate.volcengine.com:443"
+    ]
+  },
+  {
+    "group": "豆包",
+    "definition": {
+      "id": "nextvol:builtin:1788300000002",
+      "name": "豆包 · 通用男声",
+      "url": "@js:\nlet opt = {\"method\":\"post\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":JSON.stringify({\"text\":speakText,\"speaker\":\"tts.other.BV002_streaming\"})};\nlet res = String(java.ajax(\"https://translate.volcengine.com/crx/tts/v1/,\" + JSON.stringify(opt)));\nlet j = JSON.parse(res);\nif (j.base_resp.status_code !== 0) { throw j.base_resp.status_message || (\"status_code=\" + j.base_resp.status_code); }\n\"data:audio/mpeg;base64,\" + j.audio.data",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://translate.volcengine.com:443"
+    ]
+  },
+  {
+    "group": "豆包",
+    "definition": {
+      "id": "nextvol:builtin:1788300000003",
+      "name": "豆包 · 男中年-雅各布",
+      "url": "@js:\nlet opt = {\"method\":\"post\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":JSON.stringify({\"text\":speakText,\"speaker\":\"tts.other.BV003_streaming\"})};\nlet res = String(java.ajax(\"https://translate.volcengine.com/crx/tts/v1/,\" + JSON.stringify(opt)));\nlet j = JSON.parse(res);\nif (j.base_resp.status_code !== 0) { throw j.base_resp.status_message || (\"status_code=\" + j.base_resp.status_code); }\n\"data:audio/mpeg;base64,\" + j.audio.data",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://translate.volcengine.com:443"
+    ]
+  },
+  {
+    "group": "豆包",
+    "definition": {
+      "id": "nextvol:builtin:1788300000004",
+      "name": "豆包 · 活泼女声",
+      "url": "@js:\nlet opt = {\"method\":\"post\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":JSON.stringify({\"text\":speakText,\"speaker\":\"tts.other.BV005_streaming\"})};\nlet res = String(java.ajax(\"https://translate.volcengine.com/crx/tts/v1/,\" + JSON.stringify(opt)));\nlet j = JSON.parse(res);\nif (j.base_resp.status_code !== 0) { throw j.base_resp.status_message || (\"status_code=\" + j.base_resp.status_code); }\n\"data:audio/mpeg;base64,\" + j.audio.data",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://translate.volcengine.com:443"
+    ]
+  },
+  {
+    "group": "豆包",
+    "definition": {
+      "id": "nextvol:builtin:1788300000005",
+      "name": "豆包 · 磁性男声",
+      "url": "@js:\nlet opt = {\"method\":\"post\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":JSON.stringify({\"text\":speakText,\"speaker\":\"tts.other.BV006_streaming\"})};\nlet res = String(java.ajax(\"https://translate.volcengine.com/crx/tts/v1/,\" + JSON.stringify(opt)));\nlet j = JSON.parse(res);\nif (j.base_resp.status_code !== 0) { throw j.base_resp.status_message || (\"status_code=\" + j.base_resp.status_code); }\n\"data:audio/mpeg;base64,\" + j.audio.data",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://translate.volcengine.com:443"
+    ]
+  },
+  {
+    "group": "豆包",
+    "definition": {
+      "id": "nextvol:builtin:1788300000006",
+      "name": "豆包 · 亲切女声",
+      "url": "@js:\nlet opt = {\"method\":\"post\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":JSON.stringify({\"text\":speakText,\"speaker\":\"tts.other.BV007_streaming\"})};\nlet res = String(java.ajax(\"https://translate.volcengine.com/crx/tts/v1/,\" + JSON.stringify(opt)));\nlet j = JSON.parse(res);\nif (j.base_resp.status_code !== 0) { throw j.base_resp.status_message || (\"status_code=\" + j.base_resp.status_code); }\n\"data:audio/mpeg;base64,\" + j.audio.data",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://translate.volcengine.com:443"
+    ]
+  },
+  {
+    "group": "豆包",
+    "definition": {
+      "id": "nextvol:builtin:1788300000007",
+      "name": "豆包 · 亲切男声",
+      "url": "@js:\nlet opt = {\"method\":\"post\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":JSON.stringify({\"text\":speakText,\"speaker\":\"tts.other.BV008_streaming\"})};\nlet res = String(java.ajax(\"https://translate.volcengine.com/crx/tts/v1/,\" + JSON.stringify(opt)));\nlet j = JSON.parse(res);\nif (j.base_resp.status_code !== 0) { throw j.base_resp.status_message || (\"status_code=\" + j.base_resp.status_code); }\n\"data:audio/mpeg;base64,\" + j.audio.data",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://translate.volcengine.com:443"
+    ]
+  },
+  {
+    "group": "豆包",
+    "definition": {
+      "id": "nextvol:builtin:1788300000009",
+      "name": "豆包 · 新闻女声",
+      "url": "@js:\nlet opt = {\"method\":\"post\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":JSON.stringify({\"text\":speakText,\"speaker\":\"tts.other.BV011_streaming\"})};\nlet res = String(java.ajax(\"https://translate.volcengine.com/crx/tts/v1/,\" + JSON.stringify(opt)));\nlet j = JSON.parse(res);\nif (j.base_resp.status_code !== 0) { throw j.base_resp.status_message || (\"status_code=\" + j.base_resp.status_code); }\n\"data:audio/mpeg;base64,\" + j.audio.data",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://translate.volcengine.com:443"
+    ]
+  },
+  {
+    "group": "豆包",
+    "definition": {
+      "id": "nextvol:builtin:1788300000010",
+      "name": "豆包 · 新闻男声",
+      "url": "@js:\nlet opt = {\"method\":\"post\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":JSON.stringify({\"text\":speakText,\"speaker\":\"tts.other.BV012_streaming\"})};\nlet res = String(java.ajax(\"https://translate.volcengine.com/crx/tts/v1/,\" + JSON.stringify(opt)));\nlet j = JSON.parse(res);\nif (j.base_resp.status_code !== 0) { throw j.base_resp.status_message || (\"status_code=\" + j.base_resp.status_code); }\n\"data:audio/mpeg;base64,\" + j.audio.data",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://translate.volcengine.com:443"
+    ]
+  },
+  {
+    "group": "豆包",
+    "definition": {
+      "id": "nextvol:builtin:1788300000011",
+      "name": "豆包 · 东北丫头",
+      "url": "@js:\nlet opt = {\"method\":\"post\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":JSON.stringify({\"text\":speakText,\"speaker\":\"tts.other.BV020_streaming\"})};\nlet res = String(java.ajax(\"https://translate.volcengine.com/crx/tts/v1/,\" + JSON.stringify(opt)));\nlet j = JSON.parse(res);\nif (j.base_resp.status_code !== 0) { throw j.base_resp.status_message || (\"status_code=\" + j.base_resp.status_code); }\n\"data:audio/mpeg;base64,\" + j.audio.data",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://translate.volcengine.com:443"
+    ]
+  },
+  {
+    "group": "豆包",
+    "definition": {
+      "id": "nextvol:builtin:1788300000012",
+      "name": "豆包 · 东北老铁",
+      "url": "@js:\nlet opt = {\"method\":\"post\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":JSON.stringify({\"text\":speakText,\"speaker\":\"tts.other.BV021_streaming\"})};\nlet res = String(java.ajax(\"https://translate.volcengine.com/crx/tts/v1/,\" + JSON.stringify(opt)));\nlet j = JSON.parse(res);\nif (j.base_resp.status_code !== 0) { throw j.base_resp.status_message || (\"status_code=\" + j.base_resp.status_code); }\n\"data:audio/mpeg;base64,\" + j.audio.data",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://translate.volcengine.com:443"
+    ]
+  },
+  {
+    "group": "豆包",
+    "definition": {
+      "id": "nextvol:builtin:1788300000013",
+      "name": "豆包 · 甜美台妹",
+      "url": "@js:\nlet opt = {\"method\":\"post\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":JSON.stringify({\"text\":speakText,\"speaker\":\"tts.other.BV025_streaming\"})};\nlet res = String(java.ajax(\"https://translate.volcengine.com/crx/tts/v1/,\" + JSON.stringify(opt)));\nlet j = JSON.parse(res);\nif (j.base_resp.status_code !== 0) { throw j.base_resp.status_message || (\"status_code=\" + j.base_resp.status_code); }\n\"data:audio/mpeg;base64,\" + j.audio.data",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://translate.volcengine.com:443"
+    ]
+  },
+  {
+    "group": "豆包",
+    "definition": {
+      "id": "nextvol:builtin:1788300000014",
+      "name": "豆包 · 港剧男神",
+      "url": "@js:\nlet opt = {\"method\":\"post\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":JSON.stringify({\"text\":speakText,\"speaker\":\"tts.other.BV026_streaming\"})};\nlet res = String(java.ajax(\"https://translate.volcengine.com/crx/tts/v1/,\" + JSON.stringify(opt)));\nlet j = JSON.parse(res);\nif (j.base_resp.status_code !== 0) { throw j.base_resp.status_message || (\"status_code=\" + j.base_resp.status_code); }\n\"data:audio/mpeg;base64,\" + j.audio.data",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://translate.volcengine.com:443"
+    ]
+  },
+  {
+    "group": "豆包",
+    "definition": {
+      "id": "nextvol:builtin:1788300000015",
+      "name": "豆包 · 奶气萌娃",
+      "url": "@js:\nlet opt = {\"method\":\"post\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":JSON.stringify({\"text\":speakText,\"speaker\":\"tts.other.BV051_streaming\"})};\nlet res = String(java.ajax(\"https://translate.volcengine.com/crx/tts/v1/,\" + JSON.stringify(opt)));\nlet j = JSON.parse(res);\nif (j.base_resp.status_code !== 0) { throw j.base_resp.status_message || (\"status_code=\" + j.base_resp.status_code); }\n\"data:audio/mpeg;base64,\" + j.audio.data",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://translate.volcengine.com:443"
+    ]
+  },
+  {
+    "group": "豆包",
+    "definition": {
+      "id": "nextvol:builtin:1788300000016",
+      "name": "豆包 · 阳光男声",
+      "url": "@js:\nlet opt = {\"method\":\"post\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":JSON.stringify({\"text\":speakText,\"speaker\":\"tts.other.BV056_streaming\"})};\nlet res = String(java.ajax(\"https://translate.volcengine.com/crx/tts/v1/,\" + JSON.stringify(opt)));\nlet j = JSON.parse(res);\nif (j.base_resp.status_code !== 0) { throw j.base_resp.status_message || (\"status_code=\" + j.base_resp.status_code); }\n\"data:audio/mpeg;base64,\" + j.audio.data",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://translate.volcengine.com:443"
+    ]
+  },
+  {
+    "group": "豆包",
+    "definition": {
+      "id": "nextvol:builtin:1788300000017",
+      "name": "豆包 · 天才童声",
+      "url": "@js:\nlet opt = {\"method\":\"post\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":JSON.stringify({\"text\":speakText,\"speaker\":\"tts.other.BV061_streaming\"})};\nlet res = String(java.ajax(\"https://translate.volcengine.com/crx/tts/v1/,\" + JSON.stringify(opt)));\nlet j = JSON.parse(res);\nif (j.base_resp.status_code !== 0) { throw j.base_resp.status_message || (\"status_code=\" + j.base_resp.status_code); }\n\"data:audio/mpeg;base64,\" + j.audio.data",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://translate.volcengine.com:443"
+    ]
+  },
+  {
+    "group": "豆包",
+    "definition": {
+      "id": "nextvol:builtin:1788300000018",
+      "name": "豆包 · 小萝莉",
+      "url": "@js:\nlet opt = {\"method\":\"post\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":JSON.stringify({\"text\":speakText,\"speaker\":\"tts.other.BV064_streaming\"})};\nlet res = String(java.ajax(\"https://translate.volcengine.com/crx/tts/v1/,\" + JSON.stringify(opt)));\nlet j = JSON.parse(res);\nif (j.base_resp.status_code !== 0) { throw j.base_resp.status_message || (\"status_code=\" + j.base_resp.status_code); }\n\"data:audio/mpeg;base64,\" + j.audio.data",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://translate.volcengine.com:443"
+    ]
+  },
+  {
+    "group": "豆包",
+    "definition": {
+      "id": "nextvol:builtin:1788300000019",
+      "name": "豆包 · 质朴青年",
+      "url": "@js:\nlet opt = {\"method\":\"post\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":JSON.stringify({\"text\":speakText,\"speaker\":\"tts.other.BV100_streaming\"})};\nlet res = String(java.ajax(\"https://translate.volcengine.com/crx/tts/v1/,\" + JSON.stringify(opt)));\nlet j = JSON.parse(res);\nif (j.base_resp.status_code !== 0) { throw j.base_resp.status_message || (\"status_code=\" + j.base_resp.status_code); }\n\"data:audio/mpeg;base64,\" + j.audio.data",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://translate.volcengine.com:443"
+    ]
+  },
+  {
+    "group": "豆包",
+    "definition": {
+      "id": "nextvol:builtin:1788300000020",
+      "name": "豆包 · 儒雅青年",
+      "url": "@js:\nlet opt = {\"method\":\"post\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":JSON.stringify({\"text\":speakText,\"speaker\":\"tts.other.BV102_streaming\"})};\nlet res = String(java.ajax(\"https://translate.volcengine.com/crx/tts/v1/,\" + JSON.stringify(opt)));\nlet j = JSON.parse(res);\nif (j.base_resp.status_code !== 0) { throw j.base_resp.status_message || (\"status_code=\" + j.base_resp.status_code); }\n\"data:audio/mpeg;base64,\" + j.audio.data",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://translate.volcengine.com:443"
+    ]
+  },
+  {
+    "group": "豆包",
+    "definition": {
+      "id": "nextvol:builtin:1788300000021",
+      "name": "豆包 · 温柔淑女",
+      "url": "@js:\nlet opt = {\"method\":\"post\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":JSON.stringify({\"text\":speakText,\"speaker\":\"tts.other.BV104_streaming\"})};\nlet res = String(java.ajax(\"https://translate.volcengine.com/crx/tts/v1/,\" + JSON.stringify(opt)));\nlet j = JSON.parse(res);\nif (j.base_resp.status_code !== 0) { throw j.base_resp.status_message || (\"status_code=\" + j.base_resp.status_code); }\n\"data:audio/mpeg;base64,\" + j.audio.data",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://translate.volcengine.com:443"
+    ]
+  },
+  {
+    "group": "豆包",
+    "definition": {
+      "id": "nextvol:builtin:1788300000022",
+      "name": "豆包 · 霸气青叔",
+      "url": "@js:\nlet opt = {\"method\":\"post\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":JSON.stringify({\"text\":speakText,\"speaker\":\"tts.other.BV107_streaming\"})};\nlet res = String(java.ajax(\"https://translate.volcengine.com/crx/tts/v1/,\" + JSON.stringify(opt)));\nlet j = JSON.parse(res);\nif (j.base_resp.status_code !== 0) { throw j.base_resp.status_message || (\"status_code=\" + j.base_resp.status_code); }\n\"data:audio/mpeg;base64,\" + j.audio.data",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://translate.volcengine.com:443"
+    ]
+  },
+  {
+    "group": "豆包",
+    "definition": {
+      "id": "nextvol:builtin:1788300000023",
+      "name": "豆包 · 甜宠少御",
+      "url": "@js:\nlet opt = {\"method\":\"post\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":JSON.stringify({\"text\":speakText,\"speaker\":\"tts.other.BV113_streaming\"})};\nlet res = String(java.ajax(\"https://translate.volcengine.com/crx/tts/v1/,\" + JSON.stringify(opt)));\nlet j = JSON.parse(res);\nif (j.base_resp.status_code !== 0) { throw j.base_resp.status_message || (\"status_code=\" + j.base_resp.status_code); }\n\"data:audio/mpeg;base64,\" + j.audio.data",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://translate.volcengine.com:443"
+    ]
+  },
+  {
+    "group": "豆包",
+    "definition": {
+      "id": "nextvol:builtin:1788300000024",
+      "name": "豆包 · 古风少御",
+      "url": "@js:\nlet opt = {\"method\":\"post\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":JSON.stringify({\"text\":speakText,\"speaker\":\"tts.other.BV115_streaming\"})};\nlet res = String(java.ajax(\"https://translate.volcengine.com/crx/tts/v1/,\" + JSON.stringify(opt)));\nlet j = JSON.parse(res);\nif (j.base_resp.status_code !== 0) { throw j.base_resp.status_message || (\"status_code=\" + j.base_resp.status_code); }\n\"data:audio/mpeg;base64,\" + j.audio.data",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://translate.volcengine.com:443"
+    ]
+  },
+  {
+    "group": "豆包",
+    "definition": {
+      "id": "nextvol:builtin:1788300000025",
+      "name": "豆包 · 通用赘婿",
+      "url": "@js:\nlet opt = {\"method\":\"post\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":JSON.stringify({\"text\":speakText,\"speaker\":\"tts.other.BV119_streaming\"})};\nlet res = String(java.ajax(\"https://translate.volcengine.com/crx/tts/v1/,\" + JSON.stringify(opt)));\nlet j = JSON.parse(res);\nif (j.base_resp.status_code !== 0) { throw j.base_resp.status_message || (\"status_code=\" + j.base_resp.status_code); }\n\"data:audio/mpeg;base64,\" + j.audio.data",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://translate.volcengine.com:443"
+    ]
+  },
+  {
+    "group": "豆包",
+    "definition": {
+      "id": "nextvol:builtin:1788300000026",
+      "name": "豆包 · 反卷青年",
+      "url": "@js:\nlet opt = {\"method\":\"post\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":JSON.stringify({\"text\":speakText,\"speaker\":\"tts.other.BV120_streaming\"})};\nlet res = String(java.ajax(\"https://translate.volcengine.com/crx/tts/v1/,\" + JSON.stringify(opt)));\nlet j = JSON.parse(res);\nif (j.base_resp.status_code !== 0) { throw j.base_resp.status_message || (\"status_code=\" + j.base_resp.status_code); }\n\"data:audio/mpeg;base64,\" + j.audio.data",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://translate.volcengine.com:443"
+    ]
+  },
+  {
+    "group": "豆包",
+    "definition": {
+      "id": "nextvol:builtin:1788300000027",
+      "name": "豆包 · 阳光青年",
+      "url": "@js:\nlet opt = {\"method\":\"post\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":JSON.stringify({\"text\":speakText,\"speaker\":\"tts.other.BV123_streaming\"})};\nlet res = String(java.ajax(\"https://translate.volcengine.com/crx/tts/v1/,\" + JSON.stringify(opt)));\nlet j = JSON.parse(res);\nif (j.base_resp.status_code !== 0) { throw j.base_resp.status_message || (\"status_code=\" + j.base_resp.status_code); }\n\"data:audio/mpeg;base64,\" + j.audio.data",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://translate.volcengine.com:443"
+    ]
+  },
+  {
+    "group": "豆包",
+    "definition": {
+      "id": "nextvol:builtin:1788300000028",
+      "name": "豆包 · 沉稳解说男",
+      "url": "@js:\nlet opt = {\"method\":\"post\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":JSON.stringify({\"text\":speakText,\"speaker\":\"tts.other.BV142_streaming\"})};\nlet res = String(java.ajax(\"https://translate.volcengine.com/crx/tts/v1/,\" + JSON.stringify(opt)));\nlet j = JSON.parse(res);\nif (j.base_resp.status_code !== 0) { throw j.base_resp.status_message || (\"status_code=\" + j.base_resp.status_code); }\n\"data:audio/mpeg;base64,\" + j.audio.data",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://translate.volcengine.com:443"
+    ]
+  },
+  {
+    "group": "豆包",
+    "definition": {
+      "id": "nextvol:builtin:1788300000029",
+      "name": "豆包 · 潇洒青年",
+      "url": "@js:\nlet opt = {\"method\":\"post\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":JSON.stringify({\"text\":speakText,\"speaker\":\"tts.other.BV143_streaming\"})};\nlet res = String(java.ajax(\"https://translate.volcengine.com/crx/tts/v1/,\" + JSON.stringify(opt)));\nlet j = JSON.parse(res);\nif (j.base_resp.status_code !== 0) { throw j.base_resp.status_message || (\"status_code=\" + j.base_resp.status_code); }\n\"data:audio/mpeg;base64,\" + j.audio.data",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://translate.volcengine.com:443"
+    ]
+  },
+  {
+    "group": "豆包",
+    "definition": {
+      "id": "nextvol:builtin:1788300000030",
+      "name": "豆包 · 慈爱姥姥",
+      "url": "@js:\nlet opt = {\"method\":\"post\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":JSON.stringify({\"text\":speakText,\"speaker\":\"tts.other.BV157_streaming\"})};\nlet res = String(java.ajax(\"https://translate.volcengine.com/crx/tts/v1/,\" + JSON.stringify(opt)));\nlet j = JSON.parse(res);\nif (j.base_resp.status_code !== 0) { throw j.base_resp.status_message || (\"status_code=\" + j.base_resp.status_code); }\n\"data:audio/mpeg;base64,\" + j.audio.data",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://translate.volcengine.com:443"
+    ]
+  },
+  {
+    "group": "豆包",
+    "definition": {
+      "id": "nextvol:builtin:1788300000031",
+      "name": "豆包 · 智慧老者",
+      "url": "@js:\nlet opt = {\"method\":\"post\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":JSON.stringify({\"text\":speakText,\"speaker\":\"tts.other.BV158_streaming\"})};\nlet res = String(java.ajax(\"https://translate.volcengine.com/crx/tts/v1/,\" + JSON.stringify(opt)));\nlet j = JSON.parse(res);\nif (j.base_resp.status_code !== 0) { throw j.base_resp.status_message || (\"status_code=\" + j.base_resp.status_code); }\n\"data:audio/mpeg;base64,\" + j.audio.data",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://translate.volcengine.com:443"
+    ]
+  },
+  {
+    "group": "豆包",
+    "definition": {
+      "id": "nextvol:builtin:1788300000032",
+      "name": "豆包 · 活力解说男",
+      "url": "@js:\nlet opt = {\"method\":\"post\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":JSON.stringify({\"text\":speakText,\"speaker\":\"tts.other.BV410_streaming\"})};\nlet res = String(java.ajax(\"https://translate.volcengine.com/crx/tts/v1/,\" + JSON.stringify(opt)));\nlet j = JSON.parse(res);\nif (j.base_resp.status_code !== 0) { throw j.base_resp.status_message || (\"status_code=\" + j.base_resp.status_code); }\n\"data:audio/mpeg;base64,\" + j.audio.data",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://translate.volcengine.com:443"
+    ]
+  },
+  {
+    "group": "豆包",
+    "definition": {
+      "id": "nextvol:builtin:1788300000033",
+      "name": "豆包 · 影视解说小帅",
+      "url": "@js:\nlet opt = {\"method\":\"post\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":JSON.stringify({\"text\":speakText,\"speaker\":\"tts.other.BV411_streaming\"})};\nlet res = String(java.ajax(\"https://translate.volcengine.com/crx/tts/v1/,\" + JSON.stringify(opt)));\nlet j = JSON.parse(res);\nif (j.base_resp.status_code !== 0) { throw j.base_resp.status_message || (\"status_code=\" + j.base_resp.status_code); }\n\"data:audio/mpeg;base64,\" + j.audio.data",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://translate.volcengine.com:443"
+    ]
+  },
+  {
+    "group": "豆包",
+    "definition": {
+      "id": "nextvol:builtin:1788300000034",
+      "name": "豆包 · 影视解说小美",
+      "url": "@js:\nlet opt = {\"method\":\"post\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":JSON.stringify({\"text\":speakText,\"speaker\":\"tts.other.BV412_streaming\"})};\nlet res = String(java.ajax(\"https://translate.volcengine.com/crx/tts/v1/,\" + JSON.stringify(opt)));\nlet j = JSON.parse(res);\nif (j.base_resp.status_code !== 0) { throw j.base_resp.status_message || (\"status_code=\" + j.base_resp.status_code); }\n\"data:audio/mpeg;base64,\" + j.audio.data",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://translate.volcengine.com:443"
+    ]
+  },
+  {
+    "group": "豆包",
+    "definition": {
+      "id": "nextvol:builtin:1788300000035",
+      "name": "豆包 · 童童",
+      "url": "@js:\nlet opt = {\"method\":\"post\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":JSON.stringify({\"text\":speakText,\"speaker\":\"tts.other.BV415_streaming\"})};\nlet res = String(java.ajax(\"https://translate.volcengine.com/crx/tts/v1/,\" + JSON.stringify(opt)));\nlet j = JSON.parse(res);\nif (j.base_resp.status_code !== 0) { throw j.base_resp.status_message || (\"status_code=\" + j.base_resp.status_code); }\n\"data:audio/mpeg;base64,\" + j.audio.data",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://translate.volcengine.com:443"
+    ]
+  },
+  {
+    "group": "豆包",
+    "definition": {
+      "id": "nextvol:builtin:1788300000036",
+      "name": "豆包 · 诚诚",
+      "url": "@js:\nlet opt = {\"method\":\"post\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":JSON.stringify({\"text\":speakText,\"speaker\":\"tts.other.BV419_streaming\"})};\nlet res = String(java.ajax(\"https://translate.volcengine.com/crx/tts/v1/,\" + JSON.stringify(opt)));\nlet j = JSON.parse(res);\nif (j.base_resp.status_code !== 0) { throw j.base_resp.status_message || (\"status_code=\" + j.base_resp.status_code); }\n\"data:audio/mpeg;base64,\" + j.audio.data",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://translate.volcengine.com:443"
+    ]
+  },
+  {
+    "group": "豆包",
+    "definition": {
+      "id": "nextvol:builtin:1788300000037",
+      "name": "豆包 · 懒小羊",
+      "url": "@js:\nlet opt = {\"method\":\"post\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":JSON.stringify({\"text\":speakText,\"speaker\":\"tts.other.BV426_streaming\"})};\nlet res = String(java.ajax(\"https://translate.volcengine.com/crx/tts/v1/,\" + JSON.stringify(opt)));\nlet j = JSON.parse(res);\nif (j.base_resp.status_code !== 0) { throw j.base_resp.status_message || (\"status_code=\" + j.base_resp.status_code); }\n\"data:audio/mpeg;base64,\" + j.audio.data",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://translate.volcengine.com:443"
+    ]
+  },
+  {
+    "group": "豆包",
+    "definition": {
+      "id": "nextvol:builtin:1788300000039",
+      "name": "豆包 · 男主播",
+      "url": "@js:\nlet opt = {\"method\":\"post\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":JSON.stringify({\"text\":speakText,\"speaker\":\"zh_male_zhubo\"})};\nlet res = String(java.ajax(\"https://translate.volcengine.com/crx/tts/v1/,\" + JSON.stringify(opt)));\nlet j = JSON.parse(res);\nif (j.base_resp.status_code !== 0) { throw j.base_resp.status_message || (\"status_code=\" + j.base_resp.status_code); }\n\"data:audio/mpeg;base64,\" + j.audio.data",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://translate.volcengine.com:443"
+    ]
+  },
+  {
+    "group": "豆包",
+    "definition": {
+      "id": "nextvol:builtin:1788300000040",
+      "name": "豆包 · 女主播",
+      "url": "@js:\nlet opt = {\"method\":\"post\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":JSON.stringify({\"text\":speakText,\"speaker\":\"zh_female_zhubo\"})};\nlet res = String(java.ajax(\"https://translate.volcengine.com/crx/tts/v1/,\" + JSON.stringify(opt)));\nlet j = JSON.parse(res);\nif (j.base_resp.status_code !== 0) { throw j.base_resp.status_message || (\"status_code=\" + j.base_resp.status_code); }\n\"data:audio/mpeg;base64,\" + j.audio.data",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://translate.volcengine.com:443"
+    ]
+  },
+  {
+    "group": "豆包",
+    "definition": {
+      "id": "nextvol:builtin:1788300000041",
+      "name": "豆包 · 电影旁白",
+      "url": "@js:\nlet opt = {\"method\":\"post\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":JSON.stringify({\"text\":speakText,\"speaker\":\"zh_male_narration\"})};\nlet res = String(java.ajax(\"https://translate.volcengine.com/crx/tts/v1/,\" + JSON.stringify(opt)));\nlet j = JSON.parse(res);\nif (j.base_resp.status_code !== 0) { throw j.base_resp.status_message || (\"status_code=\" + j.base_resp.status_code); }\n\"data:audio/mpeg;base64,\" + j.audio.data",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://translate.volcengine.com:443"
+    ]
+  },
+  {
+    "group": "豆包",
+    "definition": {
+      "id": "nextvol:builtin:1788300000043",
+      "name": "豆包 · 醇厚男声",
+      "url": "@js:\nlet opt = {\"method\":\"post\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":JSON.stringify({\"text\":speakText,\"speaker\":\"zh_male_chunhou\"})};\nlet res = String(java.ajax(\"https://translate.volcengine.com/crx/tts/v1/,\" + JSON.stringify(opt)));\nlet j = JSON.parse(res);\nif (j.base_resp.status_code !== 0) { throw j.base_resp.status_message || (\"status_code=\" + j.base_resp.status_code); }\n\"data:audio/mpeg;base64,\" + j.audio.data",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://translate.volcengine.com:443"
+    ]
+  },
+  {
+    "group": "豆包",
+    "definition": {
+      "id": "nextvol:builtin:1788300000044",
+      "name": "豆包 · 甜美女声",
+      "url": "@js:\nlet opt = {\"method\":\"post\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":JSON.stringify({\"text\":speakText,\"speaker\":\"zh_female_tianmei\"})};\nlet res = String(java.ajax(\"https://translate.volcengine.com/crx/tts/v1/,\" + JSON.stringify(opt)));\nlet j = JSON.parse(res);\nif (j.base_resp.status_code !== 0) { throw j.base_resp.status_message || (\"status_code=\" + j.base_resp.status_code); }\n\"data:audio/mpeg;base64,\" + j.audio.data",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://translate.volcengine.com:443"
+    ]
+  },
+  {
+    "group": "豆包",
+    "definition": {
+      "id": "nextvol:builtin:1788300000045",
+      "name": "豆包 · 清新女声",
+      "url": "@js:\nlet opt = {\"method\":\"post\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":JSON.stringify({\"text\":speakText,\"speaker\":\"zh_female_qingxin\"})};\nlet res = String(java.ajax(\"https://translate.volcengine.com/crx/tts/v1/,\" + JSON.stringify(opt)));\nlet j = JSON.parse(res);\nif (j.base_resp.status_code !== 0) { throw j.base_resp.status_message || (\"status_code=\" + j.base_resp.status_code); }\n\"data:audio/mpeg;base64,\" + j.audio.data",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://translate.volcengine.com:443"
+    ]
+  },
+  {
+    "group": "豆包",
+    "definition": {
+      "id": "nextvol:builtin:1788300000046",
+      "name": "豆包 · 少儿故事",
+      "url": "@js:\nlet opt = {\"method\":\"post\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":JSON.stringify({\"text\":speakText,\"speaker\":\"zh_female_story\"})};\nlet res = String(java.ajax(\"https://translate.volcengine.com/crx/tts/v1/,\" + JSON.stringify(opt)));\nlet j = JSON.parse(res);\nif (j.base_resp.status_code !== 0) { throw j.base_resp.status_message || (\"status_code=\" + j.base_resp.status_code); }\n\"data:audio/mpeg;base64,\" + j.audio.data",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://translate.volcengine.com:443"
+    ]
+  },
+  {
+    "group": "豆包",
+    "definition": {
+      "id": "nextvol:builtin:1788300000047",
+      "name": "豆包 · 影视配音",
+      "url": "@js:\nlet opt = {\"method\":\"post\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":JSON.stringify({\"text\":speakText,\"speaker\":\"zh_male_xiaoming\"})};\nlet res = String(java.ajax(\"https://translate.volcengine.com/crx/tts/v1/,\" + JSON.stringify(opt)));\nlet j = JSON.parse(res);\nif (j.base_resp.status_code !== 0) { throw j.base_resp.status_message || (\"status_code=\" + j.base_resp.status_code); }\n\"data:audio/mpeg;base64,\" + j.audio.data",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://translate.volcengine.com:443"
+    ]
+  },
+  {
+    "group": "豆包",
+    "definition": {
+      "id": "nextvol:builtin:1788300000048",
+      "name": "豆包 · 四川女声",
+      "url": "@js:\nlet opt = {\"method\":\"post\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":JSON.stringify({\"text\":speakText,\"speaker\":\"zh_female_sichuan\"})};\nlet res = String(java.ajax(\"https://translate.volcengine.com/crx/tts/v1/,\" + JSON.stringify(opt)));\nlet j = JSON.parse(res);\nif (j.base_resp.status_code !== 0) { throw j.base_resp.status_message || (\"status_code=\" + j.base_resp.status_code); }\n\"data:audio/mpeg;base64,\" + j.audio.data",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://translate.volcengine.com:443"
+    ]
+  },
+  {
+    "group": "豆包",
+    "definition": {
+      "id": "nextvol:builtin:1788300000049",
+      "name": "豆包 · 嘻哈歌手",
+      "url": "@js:\nlet opt = {\"method\":\"post\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":JSON.stringify({\"text\":speakText,\"speaker\":\"zh_male_rap\"})};\nlet res = String(java.ajax(\"https://translate.volcengine.com/crx/tts/v1/,\" + JSON.stringify(opt)));\nlet j = JSON.parse(res);\nif (j.base_resp.status_code !== 0) { throw j.base_resp.status_message || (\"status_code=\" + j.base_resp.status_code); }\n\"data:audio/mpeg;base64,\" + j.audio.data",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://translate.volcengine.com:443"
+    ]
+  },
+  {
+    "group": "豆包",
+    "definition": {
+      "id": "nextvol:builtin:1788300000099",
+      "name": "豆包 · BV110",
+      "url": "@js:\nlet bv = \"110\";\ntry { let h = JSON.parse(source.getHeader() || \"{}\"); if (h.bv) bv = String(h.bv); } catch (e) {}\nlet spk = bv.indexOf(\"BV\") === 0 ? (\"tts.other.\" + bv) : (\"tts.other.BV\" + bv + \"_streaming\");\nlet opt = {\"method\":\"post\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":JSON.stringify({\"text\":speakText,\"speaker\":spk})};\nlet res = String(java.ajax(\"https://translate.volcengine.com/crx/tts/v1/,\" + JSON.stringify(opt)));\nlet j = JSON.parse(res);\nif (j.base_resp.status_code !== 0) { throw j.base_resp.status_message || (\"status_code=\" + j.base_resp.status_code); }\n\"data:audio/mpeg;base64,\" + j.audio.data",
+      "header": "{\"bv\":\"110\"}",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://translate.volcengine.com:443"
+    ]
+  },
+  {
+    "group": "Microsoft",
+    "definition": {
+      "id": "nextvol:builtin:1788310000001",
+      "name": "微软 · 晓晓",
+      "url": "@js:\n(function () {\n  let voiceName = 'zh-CN-XiaoxiaoNeural', lang = 'zh-CN';\n  let rate = Math.max(-50, Math.min(50, Math.round((speakSpeed - 50) * 2)));\n  let tok = null;\n  try { tok = JSON.parse(cache.get('msDragonTtsToken') || 'null'); } catch (e) {}\n  if (!tok || !tok.t || (Date.now() - (tok.ts || 0)) > 480000) {\n    let g = String(Packages.java.net.URLEncoder.encode('dev.microsofttranslator.com/apps/endpoint?api-version=1.0', 'UTF-8'));\n    let days = ['sun','mon','tue','wed','thu','fri','sat'], mon = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];\n    let D = new Date(), p = n => ('0' + n).slice(-2);\n    let date = (days[D.getUTCDay()] + ', ' + p(D.getUTCDate()) + ' ' + mon[D.getUTCMonth()] + ' ' + D.getUTCFullYear() + ' ' + p(D.getUTCHours()) + ':' + p(D.getUTCMinutes()) + ':' + p(D.getUTCSeconds())).toLowerCase() + 'GMT';\n    let uid = ''; for (let i = 0; i < 32; i++) uid += '0123456789abcdef'[Math.floor(Math.random() * 16)];\n    let mac = new Packages.cn.hutool.crypto.digest.HMac(Packages.cn.hutool.crypto.digest.HmacAlgorithm.HmacSHA256, java.base64DecodeToByteArray('oik6PdDdMnOXemTbwvMn9de/h9lFnfBaCWbGMMZqqoSaQaqUOqjVGm5NqsmjcBI1x+sS9ugjB55HEJWRiFXYFw=='));\n    let sig = String(Packages.cn.hutool.core.codec.Base64.encode(mac.digest(('MSTranslatorAndroidApp' + g + date + uid).toLowerCase())));\n    let res = String(java.ajax('https://dev.microsofttranslator.com/apps/endpoint?api-version=1.0,' + JSON.stringify({'method':'post','headers':{'Accept-Language':'zh-Hans','X-ClientVersion':'4.0.530a 5fe1dc6c','X-UserId':'nextvol','X-HomeGeographicRegion':'zh-Hans-CN','X-ClientTraceId':'00000000-0000-4000-8000-000000000000','X-MT-Signature':sig,'User-Agent':'okhttp/4.5.0'}})));\n    tok = JSON.parse(res);\n    tok.ts = Date.now();\n    cache.put('msDragonTtsToken', JSON.stringify(tok), 600);\n  }\n  let esc = String(speakText).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n  let inner = rate ? '<prosody rate=\"' + rate + '%\">' + esc + '</prosody>' : esc;\n  let ssml = '<speak xmlns=\"http://www.w3.org/2001/10/synthesis\" version=\"1.0\" xml:lang=\"' + lang + '\"><voice name=\"' + voiceName + '\">' + inner + '</voice></speak>';\n  let audio = java.ajaxBytes('https://' + tok.r + '.tts.speech.microsoft.com/cognitiveservices/v1,' + JSON.stringify({'method':'post','headers':{'Authorization':tok.t,'Content-Type':'application/ssml+xml','X-Microsoft-OutputFormat':'audio-24khz-160kbitrate-mono-mp3'},'body':ssml}));\n  'data:audio/mpeg;base64,' + Packages.cn.hutool.core.codec.Base64.encode(audio)\n})()",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://dev.microsofttranslator.com:443"
+    ]
+  },
+  {
+    "group": "Microsoft",
+    "definition": {
+      "id": "nextvol:builtin:1788310000002",
+      "name": "微软 · 晓伊",
+      "url": "@js:\n(function () {\n  let voiceName = 'zh-CN-XiaoyiNeural', lang = 'zh-CN';\n  let rate = Math.max(-50, Math.min(50, Math.round((speakSpeed - 50) * 2)));\n  let tok = null;\n  try { tok = JSON.parse(cache.get('msDragonTtsToken') || 'null'); } catch (e) {}\n  if (!tok || !tok.t || (Date.now() - (tok.ts || 0)) > 480000) {\n    let g = String(Packages.java.net.URLEncoder.encode('dev.microsofttranslator.com/apps/endpoint?api-version=1.0', 'UTF-8'));\n    let days = ['sun','mon','tue','wed','thu','fri','sat'], mon = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];\n    let D = new Date(), p = n => ('0' + n).slice(-2);\n    let date = (days[D.getUTCDay()] + ', ' + p(D.getUTCDate()) + ' ' + mon[D.getUTCMonth()] + ' ' + D.getUTCFullYear() + ' ' + p(D.getUTCHours()) + ':' + p(D.getUTCMinutes()) + ':' + p(D.getUTCSeconds())).toLowerCase() + 'GMT';\n    let uid = ''; for (let i = 0; i < 32; i++) uid += '0123456789abcdef'[Math.floor(Math.random() * 16)];\n    let mac = new Packages.cn.hutool.crypto.digest.HMac(Packages.cn.hutool.crypto.digest.HmacAlgorithm.HmacSHA256, java.base64DecodeToByteArray('oik6PdDdMnOXemTbwvMn9de/h9lFnfBaCWbGMMZqqoSaQaqUOqjVGm5NqsmjcBI1x+sS9ugjB55HEJWRiFXYFw=='));\n    let sig = String(Packages.cn.hutool.core.codec.Base64.encode(mac.digest(('MSTranslatorAndroidApp' + g + date + uid).toLowerCase())));\n    let res = String(java.ajax('https://dev.microsofttranslator.com/apps/endpoint?api-version=1.0,' + JSON.stringify({'method':'post','headers':{'Accept-Language':'zh-Hans','X-ClientVersion':'4.0.530a 5fe1dc6c','X-UserId':'nextvol','X-HomeGeographicRegion':'zh-Hans-CN','X-ClientTraceId':'00000000-0000-4000-8000-000000000000','X-MT-Signature':sig,'User-Agent':'okhttp/4.5.0'}})));\n    tok = JSON.parse(res);\n    tok.ts = Date.now();\n    cache.put('msDragonTtsToken', JSON.stringify(tok), 600);\n  }\n  let esc = String(speakText).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n  let inner = rate ? '<prosody rate=\"' + rate + '%\">' + esc + '</prosody>' : esc;\n  let ssml = '<speak xmlns=\"http://www.w3.org/2001/10/synthesis\" version=\"1.0\" xml:lang=\"' + lang + '\"><voice name=\"' + voiceName + '\">' + inner + '</voice></speak>';\n  let audio = java.ajaxBytes('https://' + tok.r + '.tts.speech.microsoft.com/cognitiveservices/v1,' + JSON.stringify({'method':'post','headers':{'Authorization':tok.t,'Content-Type':'application/ssml+xml','X-Microsoft-OutputFormat':'audio-24khz-160kbitrate-mono-mp3'},'body':ssml}));\n  'data:audio/mpeg;base64,' + Packages.cn.hutool.core.codec.Base64.encode(audio)\n})()",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://dev.microsofttranslator.com:443"
+    ]
+  },
+  {
+    "group": "Microsoft",
+    "definition": {
+      "id": "nextvol:builtin:1788310000003",
+      "name": "微软 · 云健",
+      "url": "@js:\n(function () {\n  let voiceName = 'zh-CN-YunjianNeural', lang = 'zh-CN';\n  let rate = Math.max(-50, Math.min(50, Math.round((speakSpeed - 50) * 2)));\n  let tok = null;\n  try { tok = JSON.parse(cache.get('msDragonTtsToken') || 'null'); } catch (e) {}\n  if (!tok || !tok.t || (Date.now() - (tok.ts || 0)) > 480000) {\n    let g = String(Packages.java.net.URLEncoder.encode('dev.microsofttranslator.com/apps/endpoint?api-version=1.0', 'UTF-8'));\n    let days = ['sun','mon','tue','wed','thu','fri','sat'], mon = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];\n    let D = new Date(), p = n => ('0' + n).slice(-2);\n    let date = (days[D.getUTCDay()] + ', ' + p(D.getUTCDate()) + ' ' + mon[D.getUTCMonth()] + ' ' + D.getUTCFullYear() + ' ' + p(D.getUTCHours()) + ':' + p(D.getUTCMinutes()) + ':' + p(D.getUTCSeconds())).toLowerCase() + 'GMT';\n    let uid = ''; for (let i = 0; i < 32; i++) uid += '0123456789abcdef'[Math.floor(Math.random() * 16)];\n    let mac = new Packages.cn.hutool.crypto.digest.HMac(Packages.cn.hutool.crypto.digest.HmacAlgorithm.HmacSHA256, java.base64DecodeToByteArray('oik6PdDdMnOXemTbwvMn9de/h9lFnfBaCWbGMMZqqoSaQaqUOqjVGm5NqsmjcBI1x+sS9ugjB55HEJWRiFXYFw=='));\n    let sig = String(Packages.cn.hutool.core.codec.Base64.encode(mac.digest(('MSTranslatorAndroidApp' + g + date + uid).toLowerCase())));\n    let res = String(java.ajax('https://dev.microsofttranslator.com/apps/endpoint?api-version=1.0,' + JSON.stringify({'method':'post','headers':{'Accept-Language':'zh-Hans','X-ClientVersion':'4.0.530a 5fe1dc6c','X-UserId':'nextvol','X-HomeGeographicRegion':'zh-Hans-CN','X-ClientTraceId':'00000000-0000-4000-8000-000000000000','X-MT-Signature':sig,'User-Agent':'okhttp/4.5.0'}})));\n    tok = JSON.parse(res);\n    tok.ts = Date.now();\n    cache.put('msDragonTtsToken', JSON.stringify(tok), 600);\n  }\n  let esc = String(speakText).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n  let inner = rate ? '<prosody rate=\"' + rate + '%\">' + esc + '</prosody>' : esc;\n  let ssml = '<speak xmlns=\"http://www.w3.org/2001/10/synthesis\" version=\"1.0\" xml:lang=\"' + lang + '\"><voice name=\"' + voiceName + '\">' + inner + '</voice></speak>';\n  let audio = java.ajaxBytes('https://' + tok.r + '.tts.speech.microsoft.com/cognitiveservices/v1,' + JSON.stringify({'method':'post','headers':{'Authorization':tok.t,'Content-Type':'application/ssml+xml','X-Microsoft-OutputFormat':'audio-24khz-160kbitrate-mono-mp3'},'body':ssml}));\n  'data:audio/mpeg;base64,' + Packages.cn.hutool.core.codec.Base64.encode(audio)\n})()",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://dev.microsofttranslator.com:443"
+    ]
+  },
+  {
+    "group": "Microsoft",
+    "definition": {
+      "id": "nextvol:builtin:1788310000004",
+      "name": "微软 · 云希",
+      "url": "@js:\n(function () {\n  let voiceName = 'zh-CN-YunxiNeural', lang = 'zh-CN';\n  let rate = Math.max(-50, Math.min(50, Math.round((speakSpeed - 50) * 2)));\n  let tok = null;\n  try { tok = JSON.parse(cache.get('msDragonTtsToken') || 'null'); } catch (e) {}\n  if (!tok || !tok.t || (Date.now() - (tok.ts || 0)) > 480000) {\n    let g = String(Packages.java.net.URLEncoder.encode('dev.microsofttranslator.com/apps/endpoint?api-version=1.0', 'UTF-8'));\n    let days = ['sun','mon','tue','wed','thu','fri','sat'], mon = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];\n    let D = new Date(), p = n => ('0' + n).slice(-2);\n    let date = (days[D.getUTCDay()] + ', ' + p(D.getUTCDate()) + ' ' + mon[D.getUTCMonth()] + ' ' + D.getUTCFullYear() + ' ' + p(D.getUTCHours()) + ':' + p(D.getUTCMinutes()) + ':' + p(D.getUTCSeconds())).toLowerCase() + 'GMT';\n    let uid = ''; for (let i = 0; i < 32; i++) uid += '0123456789abcdef'[Math.floor(Math.random() * 16)];\n    let mac = new Packages.cn.hutool.crypto.digest.HMac(Packages.cn.hutool.crypto.digest.HmacAlgorithm.HmacSHA256, java.base64DecodeToByteArray('oik6PdDdMnOXemTbwvMn9de/h9lFnfBaCWbGMMZqqoSaQaqUOqjVGm5NqsmjcBI1x+sS9ugjB55HEJWRiFXYFw=='));\n    let sig = String(Packages.cn.hutool.core.codec.Base64.encode(mac.digest(('MSTranslatorAndroidApp' + g + date + uid).toLowerCase())));\n    let res = String(java.ajax('https://dev.microsofttranslator.com/apps/endpoint?api-version=1.0,' + JSON.stringify({'method':'post','headers':{'Accept-Language':'zh-Hans','X-ClientVersion':'4.0.530a 5fe1dc6c','X-UserId':'nextvol','X-HomeGeographicRegion':'zh-Hans-CN','X-ClientTraceId':'00000000-0000-4000-8000-000000000000','X-MT-Signature':sig,'User-Agent':'okhttp/4.5.0'}})));\n    tok = JSON.parse(res);\n    tok.ts = Date.now();\n    cache.put('msDragonTtsToken', JSON.stringify(tok), 600);\n  }\n  let esc = String(speakText).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n  let inner = rate ? '<prosody rate=\"' + rate + '%\">' + esc + '</prosody>' : esc;\n  let ssml = '<speak xmlns=\"http://www.w3.org/2001/10/synthesis\" version=\"1.0\" xml:lang=\"' + lang + '\"><voice name=\"' + voiceName + '\">' + inner + '</voice></speak>';\n  let audio = java.ajaxBytes('https://' + tok.r + '.tts.speech.microsoft.com/cognitiveservices/v1,' + JSON.stringify({'method':'post','headers':{'Authorization':tok.t,'Content-Type':'application/ssml+xml','X-Microsoft-OutputFormat':'audio-24khz-160kbitrate-mono-mp3'},'body':ssml}));\n  'data:audio/mpeg;base64,' + Packages.cn.hutool.core.codec.Base64.encode(audio)\n})()",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://dev.microsofttranslator.com:443"
+    ]
+  },
+  {
+    "group": "Microsoft",
+    "definition": {
+      "id": "nextvol:builtin:1788310000005",
+      "name": "微软 · 云夏",
+      "url": "@js:\n(function () {\n  let voiceName = 'zh-CN-YunxiaNeural', lang = 'zh-CN';\n  let rate = Math.max(-50, Math.min(50, Math.round((speakSpeed - 50) * 2)));\n  let tok = null;\n  try { tok = JSON.parse(cache.get('msDragonTtsToken') || 'null'); } catch (e) {}\n  if (!tok || !tok.t || (Date.now() - (tok.ts || 0)) > 480000) {\n    let g = String(Packages.java.net.URLEncoder.encode('dev.microsofttranslator.com/apps/endpoint?api-version=1.0', 'UTF-8'));\n    let days = ['sun','mon','tue','wed','thu','fri','sat'], mon = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];\n    let D = new Date(), p = n => ('0' + n).slice(-2);\n    let date = (days[D.getUTCDay()] + ', ' + p(D.getUTCDate()) + ' ' + mon[D.getUTCMonth()] + ' ' + D.getUTCFullYear() + ' ' + p(D.getUTCHours()) + ':' + p(D.getUTCMinutes()) + ':' + p(D.getUTCSeconds())).toLowerCase() + 'GMT';\n    let uid = ''; for (let i = 0; i < 32; i++) uid += '0123456789abcdef'[Math.floor(Math.random() * 16)];\n    let mac = new Packages.cn.hutool.crypto.digest.HMac(Packages.cn.hutool.crypto.digest.HmacAlgorithm.HmacSHA256, java.base64DecodeToByteArray('oik6PdDdMnOXemTbwvMn9de/h9lFnfBaCWbGMMZqqoSaQaqUOqjVGm5NqsmjcBI1x+sS9ugjB55HEJWRiFXYFw=='));\n    let sig = String(Packages.cn.hutool.core.codec.Base64.encode(mac.digest(('MSTranslatorAndroidApp' + g + date + uid).toLowerCase())));\n    let res = String(java.ajax('https://dev.microsofttranslator.com/apps/endpoint?api-version=1.0,' + JSON.stringify({'method':'post','headers':{'Accept-Language':'zh-Hans','X-ClientVersion':'4.0.530a 5fe1dc6c','X-UserId':'nextvol','X-HomeGeographicRegion':'zh-Hans-CN','X-ClientTraceId':'00000000-0000-4000-8000-000000000000','X-MT-Signature':sig,'User-Agent':'okhttp/4.5.0'}})));\n    tok = JSON.parse(res);\n    tok.ts = Date.now();\n    cache.put('msDragonTtsToken', JSON.stringify(tok), 600);\n  }\n  let esc = String(speakText).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n  let inner = rate ? '<prosody rate=\"' + rate + '%\">' + esc + '</prosody>' : esc;\n  let ssml = '<speak xmlns=\"http://www.w3.org/2001/10/synthesis\" version=\"1.0\" xml:lang=\"' + lang + '\"><voice name=\"' + voiceName + '\">' + inner + '</voice></speak>';\n  let audio = java.ajaxBytes('https://' + tok.r + '.tts.speech.microsoft.com/cognitiveservices/v1,' + JSON.stringify({'method':'post','headers':{'Authorization':tok.t,'Content-Type':'application/ssml+xml','X-Microsoft-OutputFormat':'audio-24khz-160kbitrate-mono-mp3'},'body':ssml}));\n  'data:audio/mpeg;base64,' + Packages.cn.hutool.core.codec.Base64.encode(audio)\n})()",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://dev.microsofttranslator.com:443"
+    ]
+  },
+  {
+    "group": "Microsoft",
+    "definition": {
+      "id": "nextvol:builtin:1788310000006",
+      "name": "微软 · 云扬",
+      "url": "@js:\n(function () {\n  let voiceName = 'zh-CN-YunyangNeural', lang = 'zh-CN';\n  let rate = Math.max(-50, Math.min(50, Math.round((speakSpeed - 50) * 2)));\n  let tok = null;\n  try { tok = JSON.parse(cache.get('msDragonTtsToken') || 'null'); } catch (e) {}\n  if (!tok || !tok.t || (Date.now() - (tok.ts || 0)) > 480000) {\n    let g = String(Packages.java.net.URLEncoder.encode('dev.microsofttranslator.com/apps/endpoint?api-version=1.0', 'UTF-8'));\n    let days = ['sun','mon','tue','wed','thu','fri','sat'], mon = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];\n    let D = new Date(), p = n => ('0' + n).slice(-2);\n    let date = (days[D.getUTCDay()] + ', ' + p(D.getUTCDate()) + ' ' + mon[D.getUTCMonth()] + ' ' + D.getUTCFullYear() + ' ' + p(D.getUTCHours()) + ':' + p(D.getUTCMinutes()) + ':' + p(D.getUTCSeconds())).toLowerCase() + 'GMT';\n    let uid = ''; for (let i = 0; i < 32; i++) uid += '0123456789abcdef'[Math.floor(Math.random() * 16)];\n    let mac = new Packages.cn.hutool.crypto.digest.HMac(Packages.cn.hutool.crypto.digest.HmacAlgorithm.HmacSHA256, java.base64DecodeToByteArray('oik6PdDdMnOXemTbwvMn9de/h9lFnfBaCWbGMMZqqoSaQaqUOqjVGm5NqsmjcBI1x+sS9ugjB55HEJWRiFXYFw=='));\n    let sig = String(Packages.cn.hutool.core.codec.Base64.encode(mac.digest(('MSTranslatorAndroidApp' + g + date + uid).toLowerCase())));\n    let res = String(java.ajax('https://dev.microsofttranslator.com/apps/endpoint?api-version=1.0,' + JSON.stringify({'method':'post','headers':{'Accept-Language':'zh-Hans','X-ClientVersion':'4.0.530a 5fe1dc6c','X-UserId':'nextvol','X-HomeGeographicRegion':'zh-Hans-CN','X-ClientTraceId':'00000000-0000-4000-8000-000000000000','X-MT-Signature':sig,'User-Agent':'okhttp/4.5.0'}})));\n    tok = JSON.parse(res);\n    tok.ts = Date.now();\n    cache.put('msDragonTtsToken', JSON.stringify(tok), 600);\n  }\n  let esc = String(speakText).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n  let inner = rate ? '<prosody rate=\"' + rate + '%\">' + esc + '</prosody>' : esc;\n  let ssml = '<speak xmlns=\"http://www.w3.org/2001/10/synthesis\" version=\"1.0\" xml:lang=\"' + lang + '\"><voice name=\"' + voiceName + '\">' + inner + '</voice></speak>';\n  let audio = java.ajaxBytes('https://' + tok.r + '.tts.speech.microsoft.com/cognitiveservices/v1,' + JSON.stringify({'method':'post','headers':{'Authorization':tok.t,'Content-Type':'application/ssml+xml','X-Microsoft-OutputFormat':'audio-24khz-160kbitrate-mono-mp3'},'body':ssml}));\n  'data:audio/mpeg;base64,' + Packages.cn.hutool.core.codec.Base64.encode(audio)\n})()",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://dev.microsofttranslator.com:443"
+    ]
+  },
+  {
+    "group": "Microsoft",
+    "definition": {
+      "id": "nextvol:builtin:1788310000007",
+      "name": "微软 · 晓辰",
+      "url": "@js:\n(function () {\n  let voiceName = 'zh-CN-XiaochenNeural', lang = 'zh-CN';\n  let rate = Math.max(-50, Math.min(50, Math.round((speakSpeed - 50) * 2)));\n  let tok = null;\n  try { tok = JSON.parse(cache.get('msDragonTtsToken') || 'null'); } catch (e) {}\n  if (!tok || !tok.t || (Date.now() - (tok.ts || 0)) > 480000) {\n    let g = String(Packages.java.net.URLEncoder.encode('dev.microsofttranslator.com/apps/endpoint?api-version=1.0', 'UTF-8'));\n    let days = ['sun','mon','tue','wed','thu','fri','sat'], mon = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];\n    let D = new Date(), p = n => ('0' + n).slice(-2);\n    let date = (days[D.getUTCDay()] + ', ' + p(D.getUTCDate()) + ' ' + mon[D.getUTCMonth()] + ' ' + D.getUTCFullYear() + ' ' + p(D.getUTCHours()) + ':' + p(D.getUTCMinutes()) + ':' + p(D.getUTCSeconds())).toLowerCase() + 'GMT';\n    let uid = ''; for (let i = 0; i < 32; i++) uid += '0123456789abcdef'[Math.floor(Math.random() * 16)];\n    let mac = new Packages.cn.hutool.crypto.digest.HMac(Packages.cn.hutool.crypto.digest.HmacAlgorithm.HmacSHA256, java.base64DecodeToByteArray('oik6PdDdMnOXemTbwvMn9de/h9lFnfBaCWbGMMZqqoSaQaqUOqjVGm5NqsmjcBI1x+sS9ugjB55HEJWRiFXYFw=='));\n    let sig = String(Packages.cn.hutool.core.codec.Base64.encode(mac.digest(('MSTranslatorAndroidApp' + g + date + uid).toLowerCase())));\n    let res = String(java.ajax('https://dev.microsofttranslator.com/apps/endpoint?api-version=1.0,' + JSON.stringify({'method':'post','headers':{'Accept-Language':'zh-Hans','X-ClientVersion':'4.0.530a 5fe1dc6c','X-UserId':'nextvol','X-HomeGeographicRegion':'zh-Hans-CN','X-ClientTraceId':'00000000-0000-4000-8000-000000000000','X-MT-Signature':sig,'User-Agent':'okhttp/4.5.0'}})));\n    tok = JSON.parse(res);\n    tok.ts = Date.now();\n    cache.put('msDragonTtsToken', JSON.stringify(tok), 600);\n  }\n  let esc = String(speakText).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n  let inner = rate ? '<prosody rate=\"' + rate + '%\">' + esc + '</prosody>' : esc;\n  let ssml = '<speak xmlns=\"http://www.w3.org/2001/10/synthesis\" version=\"1.0\" xml:lang=\"' + lang + '\"><voice name=\"' + voiceName + '\">' + inner + '</voice></speak>';\n  let audio = java.ajaxBytes('https://' + tok.r + '.tts.speech.microsoft.com/cognitiveservices/v1,' + JSON.stringify({'method':'post','headers':{'Authorization':tok.t,'Content-Type':'application/ssml+xml','X-Microsoft-OutputFormat':'audio-24khz-160kbitrate-mono-mp3'},'body':ssml}));\n  'data:audio/mpeg;base64,' + Packages.cn.hutool.core.codec.Base64.encode(audio)\n})()",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://dev.microsofttranslator.com:443"
+    ]
+  },
+  {
+    "group": "Microsoft",
+    "definition": {
+      "id": "nextvol:builtin:1788310000008",
+      "name": "微软 · 晓涵",
+      "url": "@js:\n(function () {\n  let voiceName = 'zh-CN-XiaohanNeural', lang = 'zh-CN';\n  let rate = Math.max(-50, Math.min(50, Math.round((speakSpeed - 50) * 2)));\n  let tok = null;\n  try { tok = JSON.parse(cache.get('msDragonTtsToken') || 'null'); } catch (e) {}\n  if (!tok || !tok.t || (Date.now() - (tok.ts || 0)) > 480000) {\n    let g = String(Packages.java.net.URLEncoder.encode('dev.microsofttranslator.com/apps/endpoint?api-version=1.0', 'UTF-8'));\n    let days = ['sun','mon','tue','wed','thu','fri','sat'], mon = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];\n    let D = new Date(), p = n => ('0' + n).slice(-2);\n    let date = (days[D.getUTCDay()] + ', ' + p(D.getUTCDate()) + ' ' + mon[D.getUTCMonth()] + ' ' + D.getUTCFullYear() + ' ' + p(D.getUTCHours()) + ':' + p(D.getUTCMinutes()) + ':' + p(D.getUTCSeconds())).toLowerCase() + 'GMT';\n    let uid = ''; for (let i = 0; i < 32; i++) uid += '0123456789abcdef'[Math.floor(Math.random() * 16)];\n    let mac = new Packages.cn.hutool.crypto.digest.HMac(Packages.cn.hutool.crypto.digest.HmacAlgorithm.HmacSHA256, java.base64DecodeToByteArray('oik6PdDdMnOXemTbwvMn9de/h9lFnfBaCWbGMMZqqoSaQaqUOqjVGm5NqsmjcBI1x+sS9ugjB55HEJWRiFXYFw=='));\n    let sig = String(Packages.cn.hutool.core.codec.Base64.encode(mac.digest(('MSTranslatorAndroidApp' + g + date + uid).toLowerCase())));\n    let res = String(java.ajax('https://dev.microsofttranslator.com/apps/endpoint?api-version=1.0,' + JSON.stringify({'method':'post','headers':{'Accept-Language':'zh-Hans','X-ClientVersion':'4.0.530a 5fe1dc6c','X-UserId':'nextvol','X-HomeGeographicRegion':'zh-Hans-CN','X-ClientTraceId':'00000000-0000-4000-8000-000000000000','X-MT-Signature':sig,'User-Agent':'okhttp/4.5.0'}})));\n    tok = JSON.parse(res);\n    tok.ts = Date.now();\n    cache.put('msDragonTtsToken', JSON.stringify(tok), 600);\n  }\n  let esc = String(speakText).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n  let inner = rate ? '<prosody rate=\"' + rate + '%\">' + esc + '</prosody>' : esc;\n  let ssml = '<speak xmlns=\"http://www.w3.org/2001/10/synthesis\" version=\"1.0\" xml:lang=\"' + lang + '\"><voice name=\"' + voiceName + '\">' + inner + '</voice></speak>';\n  let audio = java.ajaxBytes('https://' + tok.r + '.tts.speech.microsoft.com/cognitiveservices/v1,' + JSON.stringify({'method':'post','headers':{'Authorization':tok.t,'Content-Type':'application/ssml+xml','X-Microsoft-OutputFormat':'audio-24khz-160kbitrate-mono-mp3'},'body':ssml}));\n  'data:audio/mpeg;base64,' + Packages.cn.hutool.core.codec.Base64.encode(audio)\n})()",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://dev.microsofttranslator.com:443"
+    ]
+  },
+  {
+    "group": "Microsoft",
+    "definition": {
+      "id": "nextvol:builtin:1788310000009",
+      "name": "微软 · 晓墨",
+      "url": "@js:\n(function () {\n  let voiceName = 'zh-CN-XiaomoNeural', lang = 'zh-CN';\n  let rate = Math.max(-50, Math.min(50, Math.round((speakSpeed - 50) * 2)));\n  let tok = null;\n  try { tok = JSON.parse(cache.get('msDragonTtsToken') || 'null'); } catch (e) {}\n  if (!tok || !tok.t || (Date.now() - (tok.ts || 0)) > 480000) {\n    let g = String(Packages.java.net.URLEncoder.encode('dev.microsofttranslator.com/apps/endpoint?api-version=1.0', 'UTF-8'));\n    let days = ['sun','mon','tue','wed','thu','fri','sat'], mon = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];\n    let D = new Date(), p = n => ('0' + n).slice(-2);\n    let date = (days[D.getUTCDay()] + ', ' + p(D.getUTCDate()) + ' ' + mon[D.getUTCMonth()] + ' ' + D.getUTCFullYear() + ' ' + p(D.getUTCHours()) + ':' + p(D.getUTCMinutes()) + ':' + p(D.getUTCSeconds())).toLowerCase() + 'GMT';\n    let uid = ''; for (let i = 0; i < 32; i++) uid += '0123456789abcdef'[Math.floor(Math.random() * 16)];\n    let mac = new Packages.cn.hutool.crypto.digest.HMac(Packages.cn.hutool.crypto.digest.HmacAlgorithm.HmacSHA256, java.base64DecodeToByteArray('oik6PdDdMnOXemTbwvMn9de/h9lFnfBaCWbGMMZqqoSaQaqUOqjVGm5NqsmjcBI1x+sS9ugjB55HEJWRiFXYFw=='));\n    let sig = String(Packages.cn.hutool.core.codec.Base64.encode(mac.digest(('MSTranslatorAndroidApp' + g + date + uid).toLowerCase())));\n    let res = String(java.ajax('https://dev.microsofttranslator.com/apps/endpoint?api-version=1.0,' + JSON.stringify({'method':'post','headers':{'Accept-Language':'zh-Hans','X-ClientVersion':'4.0.530a 5fe1dc6c','X-UserId':'nextvol','X-HomeGeographicRegion':'zh-Hans-CN','X-ClientTraceId':'00000000-0000-4000-8000-000000000000','X-MT-Signature':sig,'User-Agent':'okhttp/4.5.0'}})));\n    tok = JSON.parse(res);\n    tok.ts = Date.now();\n    cache.put('msDragonTtsToken', JSON.stringify(tok), 600);\n  }\n  let esc = String(speakText).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n  let inner = rate ? '<prosody rate=\"' + rate + '%\">' + esc + '</prosody>' : esc;\n  let ssml = '<speak xmlns=\"http://www.w3.org/2001/10/synthesis\" version=\"1.0\" xml:lang=\"' + lang + '\"><voice name=\"' + voiceName + '\">' + inner + '</voice></speak>';\n  let audio = java.ajaxBytes('https://' + tok.r + '.tts.speech.microsoft.com/cognitiveservices/v1,' + JSON.stringify({'method':'post','headers':{'Authorization':tok.t,'Content-Type':'application/ssml+xml','X-Microsoft-OutputFormat':'audio-24khz-160kbitrate-mono-mp3'},'body':ssml}));\n  'data:audio/mpeg;base64,' + Packages.cn.hutool.core.codec.Base64.encode(audio)\n})()",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://dev.microsofttranslator.com:443"
+    ]
+  },
+  {
+    "group": "Microsoft",
+    "definition": {
+      "id": "nextvol:builtin:1788310000010",
+      "name": "微软 · 晓秋",
+      "url": "@js:\n(function () {\n  let voiceName = 'zh-CN-XiaoqiuNeural', lang = 'zh-CN';\n  let rate = Math.max(-50, Math.min(50, Math.round((speakSpeed - 50) * 2)));\n  let tok = null;\n  try { tok = JSON.parse(cache.get('msDragonTtsToken') || 'null'); } catch (e) {}\n  if (!tok || !tok.t || (Date.now() - (tok.ts || 0)) > 480000) {\n    let g = String(Packages.java.net.URLEncoder.encode('dev.microsofttranslator.com/apps/endpoint?api-version=1.0', 'UTF-8'));\n    let days = ['sun','mon','tue','wed','thu','fri','sat'], mon = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];\n    let D = new Date(), p = n => ('0' + n).slice(-2);\n    let date = (days[D.getUTCDay()] + ', ' + p(D.getUTCDate()) + ' ' + mon[D.getUTCMonth()] + ' ' + D.getUTCFullYear() + ' ' + p(D.getUTCHours()) + ':' + p(D.getUTCMinutes()) + ':' + p(D.getUTCSeconds())).toLowerCase() + 'GMT';\n    let uid = ''; for (let i = 0; i < 32; i++) uid += '0123456789abcdef'[Math.floor(Math.random() * 16)];\n    let mac = new Packages.cn.hutool.crypto.digest.HMac(Packages.cn.hutool.crypto.digest.HmacAlgorithm.HmacSHA256, java.base64DecodeToByteArray('oik6PdDdMnOXemTbwvMn9de/h9lFnfBaCWbGMMZqqoSaQaqUOqjVGm5NqsmjcBI1x+sS9ugjB55HEJWRiFXYFw=='));\n    let sig = String(Packages.cn.hutool.core.codec.Base64.encode(mac.digest(('MSTranslatorAndroidApp' + g + date + uid).toLowerCase())));\n    let res = String(java.ajax('https://dev.microsofttranslator.com/apps/endpoint?api-version=1.0,' + JSON.stringify({'method':'post','headers':{'Accept-Language':'zh-Hans','X-ClientVersion':'4.0.530a 5fe1dc6c','X-UserId':'nextvol','X-HomeGeographicRegion':'zh-Hans-CN','X-ClientTraceId':'00000000-0000-4000-8000-000000000000','X-MT-Signature':sig,'User-Agent':'okhttp/4.5.0'}})));\n    tok = JSON.parse(res);\n    tok.ts = Date.now();\n    cache.put('msDragonTtsToken', JSON.stringify(tok), 600);\n  }\n  let esc = String(speakText).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n  let inner = rate ? '<prosody rate=\"' + rate + '%\">' + esc + '</prosody>' : esc;\n  let ssml = '<speak xmlns=\"http://www.w3.org/2001/10/synthesis\" version=\"1.0\" xml:lang=\"' + lang + '\"><voice name=\"' + voiceName + '\">' + inner + '</voice></speak>';\n  let audio = java.ajaxBytes('https://' + tok.r + '.tts.speech.microsoft.com/cognitiveservices/v1,' + JSON.stringify({'method':'post','headers':{'Authorization':tok.t,'Content-Type':'application/ssml+xml','X-Microsoft-OutputFormat':'audio-24khz-160kbitrate-mono-mp3'},'body':ssml}));\n  'data:audio/mpeg;base64,' + Packages.cn.hutool.core.codec.Base64.encode(audio)\n})()",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://dev.microsofttranslator.com:443"
+    ]
+  },
+  {
+    "group": "Microsoft",
+    "definition": {
+      "id": "nextvol:builtin:1788310000011",
+      "name": "微软 · 晓睿",
+      "url": "@js:\n(function () {\n  let voiceName = 'zh-CN-XiaoruiNeural', lang = 'zh-CN';\n  let rate = Math.max(-50, Math.min(50, Math.round((speakSpeed - 50) * 2)));\n  let tok = null;\n  try { tok = JSON.parse(cache.get('msDragonTtsToken') || 'null'); } catch (e) {}\n  if (!tok || !tok.t || (Date.now() - (tok.ts || 0)) > 480000) {\n    let g = String(Packages.java.net.URLEncoder.encode('dev.microsofttranslator.com/apps/endpoint?api-version=1.0', 'UTF-8'));\n    let days = ['sun','mon','tue','wed','thu','fri','sat'], mon = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];\n    let D = new Date(), p = n => ('0' + n).slice(-2);\n    let date = (days[D.getUTCDay()] + ', ' + p(D.getUTCDate()) + ' ' + mon[D.getUTCMonth()] + ' ' + D.getUTCFullYear() + ' ' + p(D.getUTCHours()) + ':' + p(D.getUTCMinutes()) + ':' + p(D.getUTCSeconds())).toLowerCase() + 'GMT';\n    let uid = ''; for (let i = 0; i < 32; i++) uid += '0123456789abcdef'[Math.floor(Math.random() * 16)];\n    let mac = new Packages.cn.hutool.crypto.digest.HMac(Packages.cn.hutool.crypto.digest.HmacAlgorithm.HmacSHA256, java.base64DecodeToByteArray('oik6PdDdMnOXemTbwvMn9de/h9lFnfBaCWbGMMZqqoSaQaqUOqjVGm5NqsmjcBI1x+sS9ugjB55HEJWRiFXYFw=='));\n    let sig = String(Packages.cn.hutool.core.codec.Base64.encode(mac.digest(('MSTranslatorAndroidApp' + g + date + uid).toLowerCase())));\n    let res = String(java.ajax('https://dev.microsofttranslator.com/apps/endpoint?api-version=1.0,' + JSON.stringify({'method':'post','headers':{'Accept-Language':'zh-Hans','X-ClientVersion':'4.0.530a 5fe1dc6c','X-UserId':'nextvol','X-HomeGeographicRegion':'zh-Hans-CN','X-ClientTraceId':'00000000-0000-4000-8000-000000000000','X-MT-Signature':sig,'User-Agent':'okhttp/4.5.0'}})));\n    tok = JSON.parse(res);\n    tok.ts = Date.now();\n    cache.put('msDragonTtsToken', JSON.stringify(tok), 600);\n  }\n  let esc = String(speakText).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n  let inner = rate ? '<prosody rate=\"' + rate + '%\">' + esc + '</prosody>' : esc;\n  let ssml = '<speak xmlns=\"http://www.w3.org/2001/10/synthesis\" version=\"1.0\" xml:lang=\"' + lang + '\"><voice name=\"' + voiceName + '\">' + inner + '</voice></speak>';\n  let audio = java.ajaxBytes('https://' + tok.r + '.tts.speech.microsoft.com/cognitiveservices/v1,' + JSON.stringify({'method':'post','headers':{'Authorization':tok.t,'Content-Type':'application/ssml+xml','X-Microsoft-OutputFormat':'audio-24khz-160kbitrate-mono-mp3'},'body':ssml}));\n  'data:audio/mpeg;base64,' + Packages.cn.hutool.core.codec.Base64.encode(audio)\n})()",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://dev.microsofttranslator.com:443"
+    ]
+  },
+  {
+    "group": "Microsoft",
+    "definition": {
+      "id": "nextvol:builtin:1788310000012",
+      "name": "微软 · 晓双(童)",
+      "url": "@js:\n(function () {\n  let voiceName = 'zh-CN-XiaoshuangNeural', lang = 'zh-CN';\n  let rate = Math.max(-50, Math.min(50, Math.round((speakSpeed - 50) * 2)));\n  let tok = null;\n  try { tok = JSON.parse(cache.get('msDragonTtsToken') || 'null'); } catch (e) {}\n  if (!tok || !tok.t || (Date.now() - (tok.ts || 0)) > 480000) {\n    let g = String(Packages.java.net.URLEncoder.encode('dev.microsofttranslator.com/apps/endpoint?api-version=1.0', 'UTF-8'));\n    let days = ['sun','mon','tue','wed','thu','fri','sat'], mon = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];\n    let D = new Date(), p = n => ('0' + n).slice(-2);\n    let date = (days[D.getUTCDay()] + ', ' + p(D.getUTCDate()) + ' ' + mon[D.getUTCMonth()] + ' ' + D.getUTCFullYear() + ' ' + p(D.getUTCHours()) + ':' + p(D.getUTCMinutes()) + ':' + p(D.getUTCSeconds())).toLowerCase() + 'GMT';\n    let uid = ''; for (let i = 0; i < 32; i++) uid += '0123456789abcdef'[Math.floor(Math.random() * 16)];\n    let mac = new Packages.cn.hutool.crypto.digest.HMac(Packages.cn.hutool.crypto.digest.HmacAlgorithm.HmacSHA256, java.base64DecodeToByteArray('oik6PdDdMnOXemTbwvMn9de/h9lFnfBaCWbGMMZqqoSaQaqUOqjVGm5NqsmjcBI1x+sS9ugjB55HEJWRiFXYFw=='));\n    let sig = String(Packages.cn.hutool.core.codec.Base64.encode(mac.digest(('MSTranslatorAndroidApp' + g + date + uid).toLowerCase())));\n    let res = String(java.ajax('https://dev.microsofttranslator.com/apps/endpoint?api-version=1.0,' + JSON.stringify({'method':'post','headers':{'Accept-Language':'zh-Hans','X-ClientVersion':'4.0.530a 5fe1dc6c','X-UserId':'nextvol','X-HomeGeographicRegion':'zh-Hans-CN','X-ClientTraceId':'00000000-0000-4000-8000-000000000000','X-MT-Signature':sig,'User-Agent':'okhttp/4.5.0'}})));\n    tok = JSON.parse(res);\n    tok.ts = Date.now();\n    cache.put('msDragonTtsToken', JSON.stringify(tok), 600);\n  }\n  let esc = String(speakText).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n  let inner = rate ? '<prosody rate=\"' + rate + '%\">' + esc + '</prosody>' : esc;\n  let ssml = '<speak xmlns=\"http://www.w3.org/2001/10/synthesis\" version=\"1.0\" xml:lang=\"' + lang + '\"><voice name=\"' + voiceName + '\">' + inner + '</voice></speak>';\n  let audio = java.ajaxBytes('https://' + tok.r + '.tts.speech.microsoft.com/cognitiveservices/v1,' + JSON.stringify({'method':'post','headers':{'Authorization':tok.t,'Content-Type':'application/ssml+xml','X-Microsoft-OutputFormat':'audio-24khz-160kbitrate-mono-mp3'},'body':ssml}));\n  'data:audio/mpeg;base64,' + Packages.cn.hutool.core.codec.Base64.encode(audio)\n})()",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://dev.microsofttranslator.com:443"
+    ]
+  },
+  {
+    "group": "Microsoft",
+    "definition": {
+      "id": "nextvol:builtin:1788310000013",
+      "name": "微软 · 晓萱",
+      "url": "@js:\n(function () {\n  let voiceName = 'zh-CN-XiaoxuanNeural', lang = 'zh-CN';\n  let rate = Math.max(-50, Math.min(50, Math.round((speakSpeed - 50) * 2)));\n  let tok = null;\n  try { tok = JSON.parse(cache.get('msDragonTtsToken') || 'null'); } catch (e) {}\n  if (!tok || !tok.t || (Date.now() - (tok.ts || 0)) > 480000) {\n    let g = String(Packages.java.net.URLEncoder.encode('dev.microsofttranslator.com/apps/endpoint?api-version=1.0', 'UTF-8'));\n    let days = ['sun','mon','tue','wed','thu','fri','sat'], mon = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];\n    let D = new Date(), p = n => ('0' + n).slice(-2);\n    let date = (days[D.getUTCDay()] + ', ' + p(D.getUTCDate()) + ' ' + mon[D.getUTCMonth()] + ' ' + D.getUTCFullYear() + ' ' + p(D.getUTCHours()) + ':' + p(D.getUTCMinutes()) + ':' + p(D.getUTCSeconds())).toLowerCase() + 'GMT';\n    let uid = ''; for (let i = 0; i < 32; i++) uid += '0123456789abcdef'[Math.floor(Math.random() * 16)];\n    let mac = new Packages.cn.hutool.crypto.digest.HMac(Packages.cn.hutool.crypto.digest.HmacAlgorithm.HmacSHA256, java.base64DecodeToByteArray('oik6PdDdMnOXemTbwvMn9de/h9lFnfBaCWbGMMZqqoSaQaqUOqjVGm5NqsmjcBI1x+sS9ugjB55HEJWRiFXYFw=='));\n    let sig = String(Packages.cn.hutool.core.codec.Base64.encode(mac.digest(('MSTranslatorAndroidApp' + g + date + uid).toLowerCase())));\n    let res = String(java.ajax('https://dev.microsofttranslator.com/apps/endpoint?api-version=1.0,' + JSON.stringify({'method':'post','headers':{'Accept-Language':'zh-Hans','X-ClientVersion':'4.0.530a 5fe1dc6c','X-UserId':'nextvol','X-HomeGeographicRegion':'zh-Hans-CN','X-ClientTraceId':'00000000-0000-4000-8000-000000000000','X-MT-Signature':sig,'User-Agent':'okhttp/4.5.0'}})));\n    tok = JSON.parse(res);\n    tok.ts = Date.now();\n    cache.put('msDragonTtsToken', JSON.stringify(tok), 600);\n  }\n  let esc = String(speakText).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n  let inner = rate ? '<prosody rate=\"' + rate + '%\">' + esc + '</prosody>' : esc;\n  let ssml = '<speak xmlns=\"http://www.w3.org/2001/10/synthesis\" version=\"1.0\" xml:lang=\"' + lang + '\"><voice name=\"' + voiceName + '\">' + inner + '</voice></speak>';\n  let audio = java.ajaxBytes('https://' + tok.r + '.tts.speech.microsoft.com/cognitiveservices/v1,' + JSON.stringify({'method':'post','headers':{'Authorization':tok.t,'Content-Type':'application/ssml+xml','X-Microsoft-OutputFormat':'audio-24khz-160kbitrate-mono-mp3'},'body':ssml}));\n  'data:audio/mpeg;base64,' + Packages.cn.hutool.core.codec.Base64.encode(audio)\n})()",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://dev.microsofttranslator.com:443"
+    ]
+  },
+  {
+    "group": "Microsoft",
+    "definition": {
+      "id": "nextvol:builtin:1788310000014",
+      "name": "微软 · 晓颜",
+      "url": "@js:\n(function () {\n  let voiceName = 'zh-CN-XiaoyanNeural', lang = 'zh-CN';\n  let rate = Math.max(-50, Math.min(50, Math.round((speakSpeed - 50) * 2)));\n  let tok = null;\n  try { tok = JSON.parse(cache.get('msDragonTtsToken') || 'null'); } catch (e) {}\n  if (!tok || !tok.t || (Date.now() - (tok.ts || 0)) > 480000) {\n    let g = String(Packages.java.net.URLEncoder.encode('dev.microsofttranslator.com/apps/endpoint?api-version=1.0', 'UTF-8'));\n    let days = ['sun','mon','tue','wed','thu','fri','sat'], mon = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];\n    let D = new Date(), p = n => ('0' + n).slice(-2);\n    let date = (days[D.getUTCDay()] + ', ' + p(D.getUTCDate()) + ' ' + mon[D.getUTCMonth()] + ' ' + D.getUTCFullYear() + ' ' + p(D.getUTCHours()) + ':' + p(D.getUTCMinutes()) + ':' + p(D.getUTCSeconds())).toLowerCase() + 'GMT';\n    let uid = ''; for (let i = 0; i < 32; i++) uid += '0123456789abcdef'[Math.floor(Math.random() * 16)];\n    let mac = new Packages.cn.hutool.crypto.digest.HMac(Packages.cn.hutool.crypto.digest.HmacAlgorithm.HmacSHA256, java.base64DecodeToByteArray('oik6PdDdMnOXemTbwvMn9de/h9lFnfBaCWbGMMZqqoSaQaqUOqjVGm5NqsmjcBI1x+sS9ugjB55HEJWRiFXYFw=='));\n    let sig = String(Packages.cn.hutool.core.codec.Base64.encode(mac.digest(('MSTranslatorAndroidApp' + g + date + uid).toLowerCase())));\n    let res = String(java.ajax('https://dev.microsofttranslator.com/apps/endpoint?api-version=1.0,' + JSON.stringify({'method':'post','headers':{'Accept-Language':'zh-Hans','X-ClientVersion':'4.0.530a 5fe1dc6c','X-UserId':'nextvol','X-HomeGeographicRegion':'zh-Hans-CN','X-ClientTraceId':'00000000-0000-4000-8000-000000000000','X-MT-Signature':sig,'User-Agent':'okhttp/4.5.0'}})));\n    tok = JSON.parse(res);\n    tok.ts = Date.now();\n    cache.put('msDragonTtsToken', JSON.stringify(tok), 600);\n  }\n  let esc = String(speakText).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n  let inner = rate ? '<prosody rate=\"' + rate + '%\">' + esc + '</prosody>' : esc;\n  let ssml = '<speak xmlns=\"http://www.w3.org/2001/10/synthesis\" version=\"1.0\" xml:lang=\"' + lang + '\"><voice name=\"' + voiceName + '\">' + inner + '</voice></speak>';\n  let audio = java.ajaxBytes('https://' + tok.r + '.tts.speech.microsoft.com/cognitiveservices/v1,' + JSON.stringify({'method':'post','headers':{'Authorization':tok.t,'Content-Type':'application/ssml+xml','X-Microsoft-OutputFormat':'audio-24khz-160kbitrate-mono-mp3'},'body':ssml}));\n  'data:audio/mpeg;base64,' + Packages.cn.hutool.core.codec.Base64.encode(audio)\n})()",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://dev.microsofttranslator.com:443"
+    ]
+  },
+  {
+    "group": "Microsoft",
+    "definition": {
+      "id": "nextvol:builtin:1788310000015",
+      "name": "微软 · 晓悠(童)",
+      "url": "@js:\n(function () {\n  let voiceName = 'zh-CN-XiaoyouNeural', lang = 'zh-CN';\n  let rate = Math.max(-50, Math.min(50, Math.round((speakSpeed - 50) * 2)));\n  let tok = null;\n  try { tok = JSON.parse(cache.get('msDragonTtsToken') || 'null'); } catch (e) {}\n  if (!tok || !tok.t || (Date.now() - (tok.ts || 0)) > 480000) {\n    let g = String(Packages.java.net.URLEncoder.encode('dev.microsofttranslator.com/apps/endpoint?api-version=1.0', 'UTF-8'));\n    let days = ['sun','mon','tue','wed','thu','fri','sat'], mon = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];\n    let D = new Date(), p = n => ('0' + n).slice(-2);\n    let date = (days[D.getUTCDay()] + ', ' + p(D.getUTCDate()) + ' ' + mon[D.getUTCMonth()] + ' ' + D.getUTCFullYear() + ' ' + p(D.getUTCHours()) + ':' + p(D.getUTCMinutes()) + ':' + p(D.getUTCSeconds())).toLowerCase() + 'GMT';\n    let uid = ''; for (let i = 0; i < 32; i++) uid += '0123456789abcdef'[Math.floor(Math.random() * 16)];\n    let mac = new Packages.cn.hutool.crypto.digest.HMac(Packages.cn.hutool.crypto.digest.HmacAlgorithm.HmacSHA256, java.base64DecodeToByteArray('oik6PdDdMnOXemTbwvMn9de/h9lFnfBaCWbGMMZqqoSaQaqUOqjVGm5NqsmjcBI1x+sS9ugjB55HEJWRiFXYFw=='));\n    let sig = String(Packages.cn.hutool.core.codec.Base64.encode(mac.digest(('MSTranslatorAndroidApp' + g + date + uid).toLowerCase())));\n    let res = String(java.ajax('https://dev.microsofttranslator.com/apps/endpoint?api-version=1.0,' + JSON.stringify({'method':'post','headers':{'Accept-Language':'zh-Hans','X-ClientVersion':'4.0.530a 5fe1dc6c','X-UserId':'nextvol','X-HomeGeographicRegion':'zh-Hans-CN','X-ClientTraceId':'00000000-0000-4000-8000-000000000000','X-MT-Signature':sig,'User-Agent':'okhttp/4.5.0'}})));\n    tok = JSON.parse(res);\n    tok.ts = Date.now();\n    cache.put('msDragonTtsToken', JSON.stringify(tok), 600);\n  }\n  let esc = String(speakText).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n  let inner = rate ? '<prosody rate=\"' + rate + '%\">' + esc + '</prosody>' : esc;\n  let ssml = '<speak xmlns=\"http://www.w3.org/2001/10/synthesis\" version=\"1.0\" xml:lang=\"' + lang + '\"><voice name=\"' + voiceName + '\">' + inner + '</voice></speak>';\n  let audio = java.ajaxBytes('https://' + tok.r + '.tts.speech.microsoft.com/cognitiveservices/v1,' + JSON.stringify({'method':'post','headers':{'Authorization':tok.t,'Content-Type':'application/ssml+xml','X-Microsoft-OutputFormat':'audio-24khz-160kbitrate-mono-mp3'},'body':ssml}));\n  'data:audio/mpeg;base64,' + Packages.cn.hutool.core.codec.Base64.encode(audio)\n})()",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://dev.microsofttranslator.com:443"
+    ]
+  },
+  {
+    "group": "Microsoft",
+    "definition": {
+      "id": "nextvol:builtin:1788310000016",
+      "name": "微软 · 晓甄",
+      "url": "@js:\n(function () {\n  let voiceName = 'zh-CN-XiaozhenNeural', lang = 'zh-CN';\n  let rate = Math.max(-50, Math.min(50, Math.round((speakSpeed - 50) * 2)));\n  let tok = null;\n  try { tok = JSON.parse(cache.get('msDragonTtsToken') || 'null'); } catch (e) {}\n  if (!tok || !tok.t || (Date.now() - (tok.ts || 0)) > 480000) {\n    let g = String(Packages.java.net.URLEncoder.encode('dev.microsofttranslator.com/apps/endpoint?api-version=1.0', 'UTF-8'));\n    let days = ['sun','mon','tue','wed','thu','fri','sat'], mon = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];\n    let D = new Date(), p = n => ('0' + n).slice(-2);\n    let date = (days[D.getUTCDay()] + ', ' + p(D.getUTCDate()) + ' ' + mon[D.getUTCMonth()] + ' ' + D.getUTCFullYear() + ' ' + p(D.getUTCHours()) + ':' + p(D.getUTCMinutes()) + ':' + p(D.getUTCSeconds())).toLowerCase() + 'GMT';\n    let uid = ''; for (let i = 0; i < 32; i++) uid += '0123456789abcdef'[Math.floor(Math.random() * 16)];\n    let mac = new Packages.cn.hutool.crypto.digest.HMac(Packages.cn.hutool.crypto.digest.HmacAlgorithm.HmacSHA256, java.base64DecodeToByteArray('oik6PdDdMnOXemTbwvMn9de/h9lFnfBaCWbGMMZqqoSaQaqUOqjVGm5NqsmjcBI1x+sS9ugjB55HEJWRiFXYFw=='));\n    let sig = String(Packages.cn.hutool.core.codec.Base64.encode(mac.digest(('MSTranslatorAndroidApp' + g + date + uid).toLowerCase())));\n    let res = String(java.ajax('https://dev.microsofttranslator.com/apps/endpoint?api-version=1.0,' + JSON.stringify({'method':'post','headers':{'Accept-Language':'zh-Hans','X-ClientVersion':'4.0.530a 5fe1dc6c','X-UserId':'nextvol','X-HomeGeographicRegion':'zh-Hans-CN','X-ClientTraceId':'00000000-0000-4000-8000-000000000000','X-MT-Signature':sig,'User-Agent':'okhttp/4.5.0'}})));\n    tok = JSON.parse(res);\n    tok.ts = Date.now();\n    cache.put('msDragonTtsToken', JSON.stringify(tok), 600);\n  }\n  let esc = String(speakText).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n  let inner = rate ? '<prosody rate=\"' + rate + '%\">' + esc + '</prosody>' : esc;\n  let ssml = '<speak xmlns=\"http://www.w3.org/2001/10/synthesis\" version=\"1.0\" xml:lang=\"' + lang + '\"><voice name=\"' + voiceName + '\">' + inner + '</voice></speak>';\n  let audio = java.ajaxBytes('https://' + tok.r + '.tts.speech.microsoft.com/cognitiveservices/v1,' + JSON.stringify({'method':'post','headers':{'Authorization':tok.t,'Content-Type':'application/ssml+xml','X-Microsoft-OutputFormat':'audio-24khz-160kbitrate-mono-mp3'},'body':ssml}));\n  'data:audio/mpeg;base64,' + Packages.cn.hutool.core.codec.Base64.encode(audio)\n})()",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://dev.microsofttranslator.com:443"
+    ]
+  },
+  {
+    "group": "Microsoft",
+    "definition": {
+      "id": "nextvol:builtin:1788310000017",
+      "name": "微软 · 云枫",
+      "url": "@js:\n(function () {\n  let voiceName = 'zh-CN-YunfengNeural', lang = 'zh-CN';\n  let rate = Math.max(-50, Math.min(50, Math.round((speakSpeed - 50) * 2)));\n  let tok = null;\n  try { tok = JSON.parse(cache.get('msDragonTtsToken') || 'null'); } catch (e) {}\n  if (!tok || !tok.t || (Date.now() - (tok.ts || 0)) > 480000) {\n    let g = String(Packages.java.net.URLEncoder.encode('dev.microsofttranslator.com/apps/endpoint?api-version=1.0', 'UTF-8'));\n    let days = ['sun','mon','tue','wed','thu','fri','sat'], mon = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];\n    let D = new Date(), p = n => ('0' + n).slice(-2);\n    let date = (days[D.getUTCDay()] + ', ' + p(D.getUTCDate()) + ' ' + mon[D.getUTCMonth()] + ' ' + D.getUTCFullYear() + ' ' + p(D.getUTCHours()) + ':' + p(D.getUTCMinutes()) + ':' + p(D.getUTCSeconds())).toLowerCase() + 'GMT';\n    let uid = ''; for (let i = 0; i < 32; i++) uid += '0123456789abcdef'[Math.floor(Math.random() * 16)];\n    let mac = new Packages.cn.hutool.crypto.digest.HMac(Packages.cn.hutool.crypto.digest.HmacAlgorithm.HmacSHA256, java.base64DecodeToByteArray('oik6PdDdMnOXemTbwvMn9de/h9lFnfBaCWbGMMZqqoSaQaqUOqjVGm5NqsmjcBI1x+sS9ugjB55HEJWRiFXYFw=='));\n    let sig = String(Packages.cn.hutool.core.codec.Base64.encode(mac.digest(('MSTranslatorAndroidApp' + g + date + uid).toLowerCase())));\n    let res = String(java.ajax('https://dev.microsofttranslator.com/apps/endpoint?api-version=1.0,' + JSON.stringify({'method':'post','headers':{'Accept-Language':'zh-Hans','X-ClientVersion':'4.0.530a 5fe1dc6c','X-UserId':'nextvol','X-HomeGeographicRegion':'zh-Hans-CN','X-ClientTraceId':'00000000-0000-4000-8000-000000000000','X-MT-Signature':sig,'User-Agent':'okhttp/4.5.0'}})));\n    tok = JSON.parse(res);\n    tok.ts = Date.now();\n    cache.put('msDragonTtsToken', JSON.stringify(tok), 600);\n  }\n  let esc = String(speakText).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n  let inner = rate ? '<prosody rate=\"' + rate + '%\">' + esc + '</prosody>' : esc;\n  let ssml = '<speak xmlns=\"http://www.w3.org/2001/10/synthesis\" version=\"1.0\" xml:lang=\"' + lang + '\"><voice name=\"' + voiceName + '\">' + inner + '</voice></speak>';\n  let audio = java.ajaxBytes('https://' + tok.r + '.tts.speech.microsoft.com/cognitiveservices/v1,' + JSON.stringify({'method':'post','headers':{'Authorization':tok.t,'Content-Type':'application/ssml+xml','X-Microsoft-OutputFormat':'audio-24khz-160kbitrate-mono-mp3'},'body':ssml}));\n  'data:audio/mpeg;base64,' + Packages.cn.hutool.core.codec.Base64.encode(audio)\n})()",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://dev.microsofttranslator.com:443"
+    ]
+  },
+  {
+    "group": "Microsoft",
+    "definition": {
+      "id": "nextvol:builtin:1788310000018",
+      "name": "微软 · 云皓",
+      "url": "@js:\n(function () {\n  let voiceName = 'zh-CN-YunhaoNeural', lang = 'zh-CN';\n  let rate = Math.max(-50, Math.min(50, Math.round((speakSpeed - 50) * 2)));\n  let tok = null;\n  try { tok = JSON.parse(cache.get('msDragonTtsToken') || 'null'); } catch (e) {}\n  if (!tok || !tok.t || (Date.now() - (tok.ts || 0)) > 480000) {\n    let g = String(Packages.java.net.URLEncoder.encode('dev.microsofttranslator.com/apps/endpoint?api-version=1.0', 'UTF-8'));\n    let days = ['sun','mon','tue','wed','thu','fri','sat'], mon = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];\n    let D = new Date(), p = n => ('0' + n).slice(-2);\n    let date = (days[D.getUTCDay()] + ', ' + p(D.getUTCDate()) + ' ' + mon[D.getUTCMonth()] + ' ' + D.getUTCFullYear() + ' ' + p(D.getUTCHours()) + ':' + p(D.getUTCMinutes()) + ':' + p(D.getUTCSeconds())).toLowerCase() + 'GMT';\n    let uid = ''; for (let i = 0; i < 32; i++) uid += '0123456789abcdef'[Math.floor(Math.random() * 16)];\n    let mac = new Packages.cn.hutool.crypto.digest.HMac(Packages.cn.hutool.crypto.digest.HmacAlgorithm.HmacSHA256, java.base64DecodeToByteArray('oik6PdDdMnOXemTbwvMn9de/h9lFnfBaCWbGMMZqqoSaQaqUOqjVGm5NqsmjcBI1x+sS9ugjB55HEJWRiFXYFw=='));\n    let sig = String(Packages.cn.hutool.core.codec.Base64.encode(mac.digest(('MSTranslatorAndroidApp' + g + date + uid).toLowerCase())));\n    let res = String(java.ajax('https://dev.microsofttranslator.com/apps/endpoint?api-version=1.0,' + JSON.stringify({'method':'post','headers':{'Accept-Language':'zh-Hans','X-ClientVersion':'4.0.530a 5fe1dc6c','X-UserId':'nextvol','X-HomeGeographicRegion':'zh-Hans-CN','X-ClientTraceId':'00000000-0000-4000-8000-000000000000','X-MT-Signature':sig,'User-Agent':'okhttp/4.5.0'}})));\n    tok = JSON.parse(res);\n    tok.ts = Date.now();\n    cache.put('msDragonTtsToken', JSON.stringify(tok), 600);\n  }\n  let esc = String(speakText).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n  let inner = rate ? '<prosody rate=\"' + rate + '%\">' + esc + '</prosody>' : esc;\n  let ssml = '<speak xmlns=\"http://www.w3.org/2001/10/synthesis\" version=\"1.0\" xml:lang=\"' + lang + '\"><voice name=\"' + voiceName + '\">' + inner + '</voice></speak>';\n  let audio = java.ajaxBytes('https://' + tok.r + '.tts.speech.microsoft.com/cognitiveservices/v1,' + JSON.stringify({'method':'post','headers':{'Authorization':tok.t,'Content-Type':'application/ssml+xml','X-Microsoft-OutputFormat':'audio-24khz-160kbitrate-mono-mp3'},'body':ssml}));\n  'data:audio/mpeg;base64,' + Packages.cn.hutool.core.codec.Base64.encode(audio)\n})()",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://dev.microsofttranslator.com:443"
+    ]
+  },
+  {
+    "group": "Microsoft",
+    "definition": {
+      "id": "nextvol:builtin:1788310000019",
+      "name": "微软 · 云泽",
+      "url": "@js:\n(function () {\n  let voiceName = 'zh-CN-YunzeNeural', lang = 'zh-CN';\n  let rate = Math.max(-50, Math.min(50, Math.round((speakSpeed - 50) * 2)));\n  let tok = null;\n  try { tok = JSON.parse(cache.get('msDragonTtsToken') || 'null'); } catch (e) {}\n  if (!tok || !tok.t || (Date.now() - (tok.ts || 0)) > 480000) {\n    let g = String(Packages.java.net.URLEncoder.encode('dev.microsofttranslator.com/apps/endpoint?api-version=1.0', 'UTF-8'));\n    let days = ['sun','mon','tue','wed','thu','fri','sat'], mon = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];\n    let D = new Date(), p = n => ('0' + n).slice(-2);\n    let date = (days[D.getUTCDay()] + ', ' + p(D.getUTCDate()) + ' ' + mon[D.getUTCMonth()] + ' ' + D.getUTCFullYear() + ' ' + p(D.getUTCHours()) + ':' + p(D.getUTCMinutes()) + ':' + p(D.getUTCSeconds())).toLowerCase() + 'GMT';\n    let uid = ''; for (let i = 0; i < 32; i++) uid += '0123456789abcdef'[Math.floor(Math.random() * 16)];\n    let mac = new Packages.cn.hutool.crypto.digest.HMac(Packages.cn.hutool.crypto.digest.HmacAlgorithm.HmacSHA256, java.base64DecodeToByteArray('oik6PdDdMnOXemTbwvMn9de/h9lFnfBaCWbGMMZqqoSaQaqUOqjVGm5NqsmjcBI1x+sS9ugjB55HEJWRiFXYFw=='));\n    let sig = String(Packages.cn.hutool.core.codec.Base64.encode(mac.digest(('MSTranslatorAndroidApp' + g + date + uid).toLowerCase())));\n    let res = String(java.ajax('https://dev.microsofttranslator.com/apps/endpoint?api-version=1.0,' + JSON.stringify({'method':'post','headers':{'Accept-Language':'zh-Hans','X-ClientVersion':'4.0.530a 5fe1dc6c','X-UserId':'nextvol','X-HomeGeographicRegion':'zh-Hans-CN','X-ClientTraceId':'00000000-0000-4000-8000-000000000000','X-MT-Signature':sig,'User-Agent':'okhttp/4.5.0'}})));\n    tok = JSON.parse(res);\n    tok.ts = Date.now();\n    cache.put('msDragonTtsToken', JSON.stringify(tok), 600);\n  }\n  let esc = String(speakText).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n  let inner = rate ? '<prosody rate=\"' + rate + '%\">' + esc + '</prosody>' : esc;\n  let ssml = '<speak xmlns=\"http://www.w3.org/2001/10/synthesis\" version=\"1.0\" xml:lang=\"' + lang + '\"><voice name=\"' + voiceName + '\">' + inner + '</voice></speak>';\n  let audio = java.ajaxBytes('https://' + tok.r + '.tts.speech.microsoft.com/cognitiveservices/v1,' + JSON.stringify({'method':'post','headers':{'Authorization':tok.t,'Content-Type':'application/ssml+xml','X-Microsoft-OutputFormat':'audio-24khz-160kbitrate-mono-mp3'},'body':ssml}));\n  'data:audio/mpeg;base64,' + Packages.cn.hutool.core.codec.Base64.encode(audio)\n})()",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://dev.microsofttranslator.com:443"
+    ]
+  },
+  {
+    "group": "Microsoft",
+    "definition": {
+      "id": "nextvol:builtin:1788310000020",
+      "name": "微软 · 辽宁晓北",
+      "url": "@js:\n(function () {\n  let voiceName = 'zh-CN-liaoning-XiaobeiNeural', lang = 'zh-CN';\n  let rate = Math.max(-50, Math.min(50, Math.round((speakSpeed - 50) * 2)));\n  let tok = null;\n  try { tok = JSON.parse(cache.get('msDragonTtsToken') || 'null'); } catch (e) {}\n  if (!tok || !tok.t || (Date.now() - (tok.ts || 0)) > 480000) {\n    let g = String(Packages.java.net.URLEncoder.encode('dev.microsofttranslator.com/apps/endpoint?api-version=1.0', 'UTF-8'));\n    let days = ['sun','mon','tue','wed','thu','fri','sat'], mon = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];\n    let D = new Date(), p = n => ('0' + n).slice(-2);\n    let date = (days[D.getUTCDay()] + ', ' + p(D.getUTCDate()) + ' ' + mon[D.getUTCMonth()] + ' ' + D.getUTCFullYear() + ' ' + p(D.getUTCHours()) + ':' + p(D.getUTCMinutes()) + ':' + p(D.getUTCSeconds())).toLowerCase() + 'GMT';\n    let uid = ''; for (let i = 0; i < 32; i++) uid += '0123456789abcdef'[Math.floor(Math.random() * 16)];\n    let mac = new Packages.cn.hutool.crypto.digest.HMac(Packages.cn.hutool.crypto.digest.HmacAlgorithm.HmacSHA256, java.base64DecodeToByteArray('oik6PdDdMnOXemTbwvMn9de/h9lFnfBaCWbGMMZqqoSaQaqUOqjVGm5NqsmjcBI1x+sS9ugjB55HEJWRiFXYFw=='));\n    let sig = String(Packages.cn.hutool.core.codec.Base64.encode(mac.digest(('MSTranslatorAndroidApp' + g + date + uid).toLowerCase())));\n    let res = String(java.ajax('https://dev.microsofttranslator.com/apps/endpoint?api-version=1.0,' + JSON.stringify({'method':'post','headers':{'Accept-Language':'zh-Hans','X-ClientVersion':'4.0.530a 5fe1dc6c','X-UserId':'nextvol','X-HomeGeographicRegion':'zh-Hans-CN','X-ClientTraceId':'00000000-0000-4000-8000-000000000000','X-MT-Signature':sig,'User-Agent':'okhttp/4.5.0'}})));\n    tok = JSON.parse(res);\n    tok.ts = Date.now();\n    cache.put('msDragonTtsToken', JSON.stringify(tok), 600);\n  }\n  let esc = String(speakText).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n  let inner = rate ? '<prosody rate=\"' + rate + '%\">' + esc + '</prosody>' : esc;\n  let ssml = '<speak xmlns=\"http://www.w3.org/2001/10/synthesis\" version=\"1.0\" xml:lang=\"' + lang + '\"><voice name=\"' + voiceName + '\">' + inner + '</voice></speak>';\n  let audio = java.ajaxBytes('https://' + tok.r + '.tts.speech.microsoft.com/cognitiveservices/v1,' + JSON.stringify({'method':'post','headers':{'Authorization':tok.t,'Content-Type':'application/ssml+xml','X-Microsoft-OutputFormat':'audio-24khz-160kbitrate-mono-mp3'},'body':ssml}));\n  'data:audio/mpeg;base64,' + Packages.cn.hutool.core.codec.Base64.encode(audio)\n})()",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://dev.microsofttranslator.com:443"
+    ]
+  },
+  {
+    "group": "Microsoft",
+    "definition": {
+      "id": "nextvol:builtin:1788310000021",
+      "name": "微软 · 陕西晓妮",
+      "url": "@js:\n(function () {\n  let voiceName = 'zh-CN-shaanxi-XiaoniNeural', lang = 'zh-CN';\n  let rate = Math.max(-50, Math.min(50, Math.round((speakSpeed - 50) * 2)));\n  let tok = null;\n  try { tok = JSON.parse(cache.get('msDragonTtsToken') || 'null'); } catch (e) {}\n  if (!tok || !tok.t || (Date.now() - (tok.ts || 0)) > 480000) {\n    let g = String(Packages.java.net.URLEncoder.encode('dev.microsofttranslator.com/apps/endpoint?api-version=1.0', 'UTF-8'));\n    let days = ['sun','mon','tue','wed','thu','fri','sat'], mon = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];\n    let D = new Date(), p = n => ('0' + n).slice(-2);\n    let date = (days[D.getUTCDay()] + ', ' + p(D.getUTCDate()) + ' ' + mon[D.getUTCMonth()] + ' ' + D.getUTCFullYear() + ' ' + p(D.getUTCHours()) + ':' + p(D.getUTCMinutes()) + ':' + p(D.getUTCSeconds())).toLowerCase() + 'GMT';\n    let uid = ''; for (let i = 0; i < 32; i++) uid += '0123456789abcdef'[Math.floor(Math.random() * 16)];\n    let mac = new Packages.cn.hutool.crypto.digest.HMac(Packages.cn.hutool.crypto.digest.HmacAlgorithm.HmacSHA256, java.base64DecodeToByteArray('oik6PdDdMnOXemTbwvMn9de/h9lFnfBaCWbGMMZqqoSaQaqUOqjVGm5NqsmjcBI1x+sS9ugjB55HEJWRiFXYFw=='));\n    let sig = String(Packages.cn.hutool.core.codec.Base64.encode(mac.digest(('MSTranslatorAndroidApp' + g + date + uid).toLowerCase())));\n    let res = String(java.ajax('https://dev.microsofttranslator.com/apps/endpoint?api-version=1.0,' + JSON.stringify({'method':'post','headers':{'Accept-Language':'zh-Hans','X-ClientVersion':'4.0.530a 5fe1dc6c','X-UserId':'nextvol','X-HomeGeographicRegion':'zh-Hans-CN','X-ClientTraceId':'00000000-0000-4000-8000-000000000000','X-MT-Signature':sig,'User-Agent':'okhttp/4.5.0'}})));\n    tok = JSON.parse(res);\n    tok.ts = Date.now();\n    cache.put('msDragonTtsToken', JSON.stringify(tok), 600);\n  }\n  let esc = String(speakText).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n  let inner = rate ? '<prosody rate=\"' + rate + '%\">' + esc + '</prosody>' : esc;\n  let ssml = '<speak xmlns=\"http://www.w3.org/2001/10/synthesis\" version=\"1.0\" xml:lang=\"' + lang + '\"><voice name=\"' + voiceName + '\">' + inner + '</voice></speak>';\n  let audio = java.ajaxBytes('https://' + tok.r + '.tts.speech.microsoft.com/cognitiveservices/v1,' + JSON.stringify({'method':'post','headers':{'Authorization':tok.t,'Content-Type':'application/ssml+xml','X-Microsoft-OutputFormat':'audio-24khz-160kbitrate-mono-mp3'},'body':ssml}));\n  'data:audio/mpeg;base64,' + Packages.cn.hutool.core.codec.Base64.encode(audio)\n})()",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://dev.microsofttranslator.com:443"
+    ]
+  },
+  {
+    "group": "Microsoft",
+    "definition": {
+      "id": "nextvol:builtin:1788310000022",
+      "name": "微软 · 粤-晓曼",
+      "url": "@js:\n(function () {\n  let voiceName = 'zh-HK-HiuMaanNeural', lang = 'zh-HK';\n  let rate = Math.max(-50, Math.min(50, Math.round((speakSpeed - 50) * 2)));\n  let tok = null;\n  try { tok = JSON.parse(cache.get('msDragonTtsToken') || 'null'); } catch (e) {}\n  if (!tok || !tok.t || (Date.now() - (tok.ts || 0)) > 480000) {\n    let g = String(Packages.java.net.URLEncoder.encode('dev.microsofttranslator.com/apps/endpoint?api-version=1.0', 'UTF-8'));\n    let days = ['sun','mon','tue','wed','thu','fri','sat'], mon = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];\n    let D = new Date(), p = n => ('0' + n).slice(-2);\n    let date = (days[D.getUTCDay()] + ', ' + p(D.getUTCDate()) + ' ' + mon[D.getUTCMonth()] + ' ' + D.getUTCFullYear() + ' ' + p(D.getUTCHours()) + ':' + p(D.getUTCMinutes()) + ':' + p(D.getUTCSeconds())).toLowerCase() + 'GMT';\n    let uid = ''; for (let i = 0; i < 32; i++) uid += '0123456789abcdef'[Math.floor(Math.random() * 16)];\n    let mac = new Packages.cn.hutool.crypto.digest.HMac(Packages.cn.hutool.crypto.digest.HmacAlgorithm.HmacSHA256, java.base64DecodeToByteArray('oik6PdDdMnOXemTbwvMn9de/h9lFnfBaCWbGMMZqqoSaQaqUOqjVGm5NqsmjcBI1x+sS9ugjB55HEJWRiFXYFw=='));\n    let sig = String(Packages.cn.hutool.core.codec.Base64.encode(mac.digest(('MSTranslatorAndroidApp' + g + date + uid).toLowerCase())));\n    let res = String(java.ajax('https://dev.microsofttranslator.com/apps/endpoint?api-version=1.0,' + JSON.stringify({'method':'post','headers':{'Accept-Language':'zh-Hans','X-ClientVersion':'4.0.530a 5fe1dc6c','X-UserId':'nextvol','X-HomeGeographicRegion':'zh-Hans-CN','X-ClientTraceId':'00000000-0000-4000-8000-000000000000','X-MT-Signature':sig,'User-Agent':'okhttp/4.5.0'}})));\n    tok = JSON.parse(res);\n    tok.ts = Date.now();\n    cache.put('msDragonTtsToken', JSON.stringify(tok), 600);\n  }\n  let esc = String(speakText).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n  let inner = rate ? '<prosody rate=\"' + rate + '%\">' + esc + '</prosody>' : esc;\n  let ssml = '<speak xmlns=\"http://www.w3.org/2001/10/synthesis\" version=\"1.0\" xml:lang=\"' + lang + '\"><voice name=\"' + voiceName + '\">' + inner + '</voice></speak>';\n  let audio = java.ajaxBytes('https://' + tok.r + '.tts.speech.microsoft.com/cognitiveservices/v1,' + JSON.stringify({'method':'post','headers':{'Authorization':tok.t,'Content-Type':'application/ssml+xml','X-Microsoft-OutputFormat':'audio-24khz-160kbitrate-mono-mp3'},'body':ssml}));\n  'data:audio/mpeg;base64,' + Packages.cn.hutool.core.codec.Base64.encode(audio)\n})()",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://dev.microsofttranslator.com:443"
+    ]
+  },
+  {
+    "group": "Microsoft",
+    "definition": {
+      "id": "nextvol:builtin:1788310000023",
+      "name": "微软 · 粤-云龍",
+      "url": "@js:\n(function () {\n  let voiceName = 'zh-HK-WanLungNeural', lang = 'zh-HK';\n  let rate = Math.max(-50, Math.min(50, Math.round((speakSpeed - 50) * 2)));\n  let tok = null;\n  try { tok = JSON.parse(cache.get('msDragonTtsToken') || 'null'); } catch (e) {}\n  if (!tok || !tok.t || (Date.now() - (tok.ts || 0)) > 480000) {\n    let g = String(Packages.java.net.URLEncoder.encode('dev.microsofttranslator.com/apps/endpoint?api-version=1.0', 'UTF-8'));\n    let days = ['sun','mon','tue','wed','thu','fri','sat'], mon = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];\n    let D = new Date(), p = n => ('0' + n).slice(-2);\n    let date = (days[D.getUTCDay()] + ', ' + p(D.getUTCDate()) + ' ' + mon[D.getUTCMonth()] + ' ' + D.getUTCFullYear() + ' ' + p(D.getUTCHours()) + ':' + p(D.getUTCMinutes()) + ':' + p(D.getUTCSeconds())).toLowerCase() + 'GMT';\n    let uid = ''; for (let i = 0; i < 32; i++) uid += '0123456789abcdef'[Math.floor(Math.random() * 16)];\n    let mac = new Packages.cn.hutool.crypto.digest.HMac(Packages.cn.hutool.crypto.digest.HmacAlgorithm.HmacSHA256, java.base64DecodeToByteArray('oik6PdDdMnOXemTbwvMn9de/h9lFnfBaCWbGMMZqqoSaQaqUOqjVGm5NqsmjcBI1x+sS9ugjB55HEJWRiFXYFw=='));\n    let sig = String(Packages.cn.hutool.core.codec.Base64.encode(mac.digest(('MSTranslatorAndroidApp' + g + date + uid).toLowerCase())));\n    let res = String(java.ajax('https://dev.microsofttranslator.com/apps/endpoint?api-version=1.0,' + JSON.stringify({'method':'post','headers':{'Accept-Language':'zh-Hans','X-ClientVersion':'4.0.530a 5fe1dc6c','X-UserId':'nextvol','X-HomeGeographicRegion':'zh-Hans-CN','X-ClientTraceId':'00000000-0000-4000-8000-000000000000','X-MT-Signature':sig,'User-Agent':'okhttp/4.5.0'}})));\n    tok = JSON.parse(res);\n    tok.ts = Date.now();\n    cache.put('msDragonTtsToken', JSON.stringify(tok), 600);\n  }\n  let esc = String(speakText).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n  let inner = rate ? '<prosody rate=\"' + rate + '%\">' + esc + '</prosody>' : esc;\n  let ssml = '<speak xmlns=\"http://www.w3.org/2001/10/synthesis\" version=\"1.0\" xml:lang=\"' + lang + '\"><voice name=\"' + voiceName + '\">' + inner + '</voice></speak>';\n  let audio = java.ajaxBytes('https://' + tok.r + '.tts.speech.microsoft.com/cognitiveservices/v1,' + JSON.stringify({'method':'post','headers':{'Authorization':tok.t,'Content-Type':'application/ssml+xml','X-Microsoft-OutputFormat':'audio-24khz-160kbitrate-mono-mp3'},'body':ssml}));\n  'data:audio/mpeg;base64,' + Packages.cn.hutool.core.codec.Base64.encode(audio)\n})()",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://dev.microsofttranslator.com:443"
+    ]
+  },
+  {
+    "group": "Microsoft",
+    "definition": {
+      "id": "nextvol:builtin:1788310000024",
+      "name": "微软 · 台-曉臻",
+      "url": "@js:\n(function () {\n  let voiceName = 'zh-TW-HsiaoChenNeural', lang = 'zh-TW';\n  let rate = Math.max(-50, Math.min(50, Math.round((speakSpeed - 50) * 2)));\n  let tok = null;\n  try { tok = JSON.parse(cache.get('msDragonTtsToken') || 'null'); } catch (e) {}\n  if (!tok || !tok.t || (Date.now() - (tok.ts || 0)) > 480000) {\n    let g = String(Packages.java.net.URLEncoder.encode('dev.microsofttranslator.com/apps/endpoint?api-version=1.0', 'UTF-8'));\n    let days = ['sun','mon','tue','wed','thu','fri','sat'], mon = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];\n    let D = new Date(), p = n => ('0' + n).slice(-2);\n    let date = (days[D.getUTCDay()] + ', ' + p(D.getUTCDate()) + ' ' + mon[D.getUTCMonth()] + ' ' + D.getUTCFullYear() + ' ' + p(D.getUTCHours()) + ':' + p(D.getUTCMinutes()) + ':' + p(D.getUTCSeconds())).toLowerCase() + 'GMT';\n    let uid = ''; for (let i = 0; i < 32; i++) uid += '0123456789abcdef'[Math.floor(Math.random() * 16)];\n    let mac = new Packages.cn.hutool.crypto.digest.HMac(Packages.cn.hutool.crypto.digest.HmacAlgorithm.HmacSHA256, java.base64DecodeToByteArray('oik6PdDdMnOXemTbwvMn9de/h9lFnfBaCWbGMMZqqoSaQaqUOqjVGm5NqsmjcBI1x+sS9ugjB55HEJWRiFXYFw=='));\n    let sig = String(Packages.cn.hutool.core.codec.Base64.encode(mac.digest(('MSTranslatorAndroidApp' + g + date + uid).toLowerCase())));\n    let res = String(java.ajax('https://dev.microsofttranslator.com/apps/endpoint?api-version=1.0,' + JSON.stringify({'method':'post','headers':{'Accept-Language':'zh-Hans','X-ClientVersion':'4.0.530a 5fe1dc6c','X-UserId':'nextvol','X-HomeGeographicRegion':'zh-Hans-CN','X-ClientTraceId':'00000000-0000-4000-8000-000000000000','X-MT-Signature':sig,'User-Agent':'okhttp/4.5.0'}})));\n    tok = JSON.parse(res);\n    tok.ts = Date.now();\n    cache.put('msDragonTtsToken', JSON.stringify(tok), 600);\n  }\n  let esc = String(speakText).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n  let inner = rate ? '<prosody rate=\"' + rate + '%\">' + esc + '</prosody>' : esc;\n  let ssml = '<speak xmlns=\"http://www.w3.org/2001/10/synthesis\" version=\"1.0\" xml:lang=\"' + lang + '\"><voice name=\"' + voiceName + '\">' + inner + '</voice></speak>';\n  let audio = java.ajaxBytes('https://' + tok.r + '.tts.speech.microsoft.com/cognitiveservices/v1,' + JSON.stringify({'method':'post','headers':{'Authorization':tok.t,'Content-Type':'application/ssml+xml','X-Microsoft-OutputFormat':'audio-24khz-160kbitrate-mono-mp3'},'body':ssml}));\n  'data:audio/mpeg;base64,' + Packages.cn.hutool.core.codec.Base64.encode(audio)\n})()",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://dev.microsofttranslator.com:443"
+    ]
+  },
+  {
+    "group": "Microsoft",
+    "definition": {
+      "id": "nextvol:builtin:1788310000025",
+      "name": "微软 · 台-雲哲",
+      "url": "@js:\n(function () {\n  let voiceName = 'zh-TW-YunJheNeural', lang = 'zh-TW';\n  let rate = Math.max(-50, Math.min(50, Math.round((speakSpeed - 50) * 2)));\n  let tok = null;\n  try { tok = JSON.parse(cache.get('msDragonTtsToken') || 'null'); } catch (e) {}\n  if (!tok || !tok.t || (Date.now() - (tok.ts || 0)) > 480000) {\n    let g = String(Packages.java.net.URLEncoder.encode('dev.microsofttranslator.com/apps/endpoint?api-version=1.0', 'UTF-8'));\n    let days = ['sun','mon','tue','wed','thu','fri','sat'], mon = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];\n    let D = new Date(), p = n => ('0' + n).slice(-2);\n    let date = (days[D.getUTCDay()] + ', ' + p(D.getUTCDate()) + ' ' + mon[D.getUTCMonth()] + ' ' + D.getUTCFullYear() + ' ' + p(D.getUTCHours()) + ':' + p(D.getUTCMinutes()) + ':' + p(D.getUTCSeconds())).toLowerCase() + 'GMT';\n    let uid = ''; for (let i = 0; i < 32; i++) uid += '0123456789abcdef'[Math.floor(Math.random() * 16)];\n    let mac = new Packages.cn.hutool.crypto.digest.HMac(Packages.cn.hutool.crypto.digest.HmacAlgorithm.HmacSHA256, java.base64DecodeToByteArray('oik6PdDdMnOXemTbwvMn9de/h9lFnfBaCWbGMMZqqoSaQaqUOqjVGm5NqsmjcBI1x+sS9ugjB55HEJWRiFXYFw=='));\n    let sig = String(Packages.cn.hutool.core.codec.Base64.encode(mac.digest(('MSTranslatorAndroidApp' + g + date + uid).toLowerCase())));\n    let res = String(java.ajax('https://dev.microsofttranslator.com/apps/endpoint?api-version=1.0,' + JSON.stringify({'method':'post','headers':{'Accept-Language':'zh-Hans','X-ClientVersion':'4.0.530a 5fe1dc6c','X-UserId':'nextvol','X-HomeGeographicRegion':'zh-Hans-CN','X-ClientTraceId':'00000000-0000-4000-8000-000000000000','X-MT-Signature':sig,'User-Agent':'okhttp/4.5.0'}})));\n    tok = JSON.parse(res);\n    tok.ts = Date.now();\n    cache.put('msDragonTtsToken', JSON.stringify(tok), 600);\n  }\n  let esc = String(speakText).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n  let inner = rate ? '<prosody rate=\"' + rate + '%\">' + esc + '</prosody>' : esc;\n  let ssml = '<speak xmlns=\"http://www.w3.org/2001/10/synthesis\" version=\"1.0\" xml:lang=\"' + lang + '\"><voice name=\"' + voiceName + '\">' + inner + '</voice></speak>';\n  let audio = java.ajaxBytes('https://' + tok.r + '.tts.speech.microsoft.com/cognitiveservices/v1,' + JSON.stringify({'method':'post','headers':{'Authorization':tok.t,'Content-Type':'application/ssml+xml','X-Microsoft-OutputFormat':'audio-24khz-160kbitrate-mono-mp3'},'body':ssml}));\n  'data:audio/mpeg;base64,' + Packages.cn.hutool.core.codec.Base64.encode(audio)\n})()",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://dev.microsofttranslator.com:443"
+    ]
+  },
+  {
+    "group": "Microsoft",
+    "definition": {
+      "id": "nextvol:builtin:1788310000099",
+      "name": "微软 · 晓辰（默认配置）",
+      "url": "@js:\n(function () {\n  let voiceName = 'zh-CN-XiaochenNeural';\n  try { let h = JSON.parse(source.getHeader() || '{}'); if (h.voice) voiceName = String(h.voice); } catch (e) {}\n  let lang = voiceName.substring(0, 5);\n  let rate = Math.max(-50, Math.min(50, Math.round((speakSpeed - 50) * 2)));\n  let tok = null;\n  try { tok = JSON.parse(cache.get('msDragonTtsToken') || 'null'); } catch (e) {}\n  if (!tok || !tok.t || (Date.now() - (tok.ts || 0)) > 480000) {\n    let g = String(Packages.java.net.URLEncoder.encode('dev.microsofttranslator.com/apps/endpoint?api-version=1.0', 'UTF-8'));\n    let days = ['sun','mon','tue','wed','thu','fri','sat'], mon = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];\n    let D = new Date(), p = n => ('0' + n).slice(-2);\n    let date = (days[D.getUTCDay()] + ', ' + p(D.getUTCDate()) + ' ' + mon[D.getUTCMonth()] + ' ' + D.getUTCFullYear() + ' ' + p(D.getUTCHours()) + ':' + p(D.getUTCMinutes()) + ':' + p(D.getUTCSeconds())).toLowerCase() + 'GMT';\n    let uid = ''; for (let i = 0; i < 32; i++) uid += '0123456789abcdef'[Math.floor(Math.random() * 16)];\n    let mac = new Packages.cn.hutool.crypto.digest.HMac(Packages.cn.hutool.crypto.digest.HmacAlgorithm.HmacSHA256, java.base64DecodeToByteArray('oik6PdDdMnOXemTbwvMn9de/h9lFnfBaCWbGMMZqqoSaQaqUOqjVGm5NqsmjcBI1x+sS9ugjB55HEJWRiFXYFw=='));\n    let sig = String(Packages.cn.hutool.core.codec.Base64.encode(mac.digest(('MSTranslatorAndroidApp' + g + date + uid).toLowerCase())));\n    let res = String(java.ajax('https://dev.microsofttranslator.com/apps/endpoint?api-version=1.0,' + JSON.stringify({'method':'post','headers':{'Accept-Language':'zh-Hans','X-ClientVersion':'4.0.530a 5fe1dc6c','X-UserId':'nextvol','X-HomeGeographicRegion':'zh-Hans-CN','X-ClientTraceId':'00000000-0000-4000-8000-000000000000','X-MT-Signature':sig,'User-Agent':'okhttp/4.5.0'}})));\n    tok = JSON.parse(res);\n    tok.ts = Date.now();\n    cache.put('msDragonTtsToken', JSON.stringify(tok), 600);\n  }\n  let esc = String(speakText).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n  let inner = rate ? '<prosody rate=\"' + rate + '%\">' + esc + '</prosody>' : esc;\n  let ssml = '<speak xmlns=\"http://www.w3.org/2001/10/synthesis\" version=\"1.0\" xml:lang=\"' + lang + '\"><voice name=\"' + voiceName + '\">' + inner + '</voice></speak>';\n  let audio = java.ajaxBytes('https://' + tok.r + '.tts.speech.microsoft.com/cognitiveservices/v1,' + JSON.stringify({'method':'post','headers':{'Authorization':tok.t,'Content-Type':'application/ssml+xml','X-Microsoft-OutputFormat':'audio-24khz-160kbitrate-mono-mp3'},'body':ssml}));\n  'data:audio/mpeg;base64,' + Packages.cn.hutool.core.codec.Base64.encode(audio)\n})()",
+      "header": "{\"voice\":\"zh-CN-XiaochenNeural\"}",
+      "concurrentRate": "0",
+      "enabledCookieJar": false
+    },
+    "origins": [
+      "https://dev.microsofttranslator.com:443"
+    ]
+  },
+  {
+    "group": "百度",
+    "definition": {
+      "concurrentRate": "0",
+      "enabledCookieJar": false,
+      "id": "nextvol:builtin:24",
+      "name": "百度 · 度博文 106",
+      "url": "http://tts.baidu.com/text2audio,{\n    \"method\": \"POST\",\n    \"body\": \"tex={{java.encodeURI(java.encodeURI(speakText))}}&spd={{(speakSpeed + 5) / 10 + 4}}&per=106&cuid=baidu_speech_demo&idx=1&cod=2&lan=zh&ctp=1&pdt=301&vol=5&aue=6&pit=5&_res_tag_=audio\"\n}"
+    },
+    "origins": [
+      "http://tts.baidu.com:80"
+    ]
+  },
+  {
+    "group": "百度",
+    "definition": {
+      "concurrentRate": "0",
+      "enabledCookieJar": false,
+      "id": "nextvol:builtin:25",
+      "name": "百度 · 度博文 4106",
+      "url": "http://tts.baidu.com/text2audio,{\n    \"method\": \"POST\",\n    \"body\": \"tex={{java.encodeURI(java.encodeURI(speakText))}}&spd={{(speakSpeed + 5) / 10 + 4}}&per=4106&cuid=baidu_speech_demo&idx=1&cod=2&lan=zh&ctp=1&pdt=301&vol=5&aue=6&pit=5&_res_tag_=audio\"\n}"
+    },
+    "origins": [
+      "http://tts.baidu.com:80"
+    ]
+  },
+  {
+    "group": "百度",
+    "definition": {
+      "concurrentRate": "0",
+      "contentType": "",
+      "enabledCookieJar": false,
+      "header": "",
+      "id": "nextvol:builtin:72",
+      "name": "度博文",
+      "url": "http://tts.baidu.com/text2audio,{\n    \"method\": \"POST\",\n    \"body\": \"tex={{java.encodeURI(java.encodeURI(speakText))}}&spd={{(speakSpeed + 5) / 10 + 5}}&per=4106&cuid=baidu_speech_demo&idx=1&cod=2&lan=zh&ctp=1&pdt=301&vol=15&aue=6&pit=11&_res_tag_=audio\"\n}"
+    },
+    "origins": [
+      "http://tts.baidu.com:80"
+    ]
+  },
+  {
+    "group": "百度",
+    "definition": {
+      "concurrentRate": "0",
+      "enabledCookieJar": false,
+      "id": "nextvol:builtin:73",
+      "name": "度逍遥",
+      "url": "http://tts.baidu.com/text2audio,{\n\"method\": \"POST\",\n\"body\": \"tex={{java.encodeURI(java.encodeURI(speakText))}}&spd={{(speakSpeed + 5) / 10 + 4}}&per=3&cuid=baidu_speech_demo&idx=1&cod=2&lan=zh&ctp=1&pdt=505&vol=5&aue=6&pit=5&_res_tag_=audio\"\n}"
+    },
+    "origins": [
+      "http://tts.baidu.com:80"
+    ]
+  },
+  {
+    "group": "百度",
+    "definition": {
+      "concurrentRate": "0",
+      "contentType": "",
+      "header": "",
+      "id": "nextvol:builtin:101",
+      "name": "丫丫呀",
+      "url": "http://tts.baidu.com/text2audio ,{\n\"method\": \"POST\",\n\"body\": \"tex={{java.encodeURI(java.encodeURI(speakText))}}&spd={{(speakSpeed + 5) / 10 + 4}}&per=4&cuid=baidu_speech_demo&idx=1&cod=2&lan=zh&ctp=1&pdt=505&vol=5&aue=6&pit=5&_res_tag_=audio\"\n}\n"
+    },
+    "origins": [
+      "http://tts.baidu.com:80"
+    ]
+  },
+  {
+    "group": "百度",
+    "definition": {
+      "concurrentRate": "0",
+      "contentType": "",
+      "header": "",
+      "id": "nextvol:builtin:104",
+      "name": "宇小",
+      "url": "http://tts.baidu.com/text2audio ,{\n\"method\": \"POST\",\n\"body\": \"tex={{java.encodeURI(java.encodeURI(speakText))}}&spd={{(speakSpeed + 5) / 10 + 4}}&per=1&cuid=baidu_speech_demo&idx=1&cod=2&lan=zh&ctp=1&pdt=505&vol=5&aue=6&pit=5&_res_tag_=audio\"\n}\n"
+    },
+    "origins": [
+      "http://tts.baidu.com:80"
+    ]
+  },
+  {
+    "group": "百度",
+    "definition": {
+      "concurrentRate": "0",
+      "contentType": "",
+      "header": "",
+      "id": "nextvol:builtin:154",
+      "name": "美小",
+      "url": "http://tts.baidu.com/text2audio ,{\n\"method\": \"POST\",\n\"body\": \"tex={{java.encodeURI(java.encodeURI(speakText))}}&spd={{(speakSpeed + 5) / 10 + 4}}&per=0&cuid=baidu_speech_demo&idx=1&cod=2&lan=zh&ctp=1&pdt=505&vol=5&aue=6&pit=5&_res_tag_=audio\"\n}\n"
+    },
+    "origins": [
+      "http://tts.baidu.com:80"
+    ]
+  },
+  {
+    "group": "百度",
+    "definition": {
+      "concurrentRate": "0",
+      "contentType": "",
+      "header": "",
+      "id": "nextvol:builtin:160",
+      "name": "遥逍遥",
+      "url": "http://tts.baidu.com/text2audio ,{\n\"method\": \"POST\",\n\"body\": \"tex={{java.encodeURI(java.encodeURI(speakText))}}&spd={{(speakSpeed + 5) / 10 + 4}}&per=3&cuid=baidu_speech_demo&idx=1&cod=2&lan=zh&ctp=1&pdt=505&vol=5&aue=6&pit=5&_res_tag_=audio\"\n}\n"
+    },
+    "origins": [
+      "http://tts.baidu.com:80"
+    ]
+  },
+  {
+    "group": "思必驰",
+    "definition": {
+      "concurrentRate": "0",
+      "enabledCookieJar": false,
+      "id": "nextvol:builtin:74",
+      "name": "思必驰 季老师",
+      "url": "https://dds.dui.ai/runtime/v1/synthesize?voiceId=jlshimp&text={{java.encodeURI(java.encodeURI(speakText))}}&speed=6&volume=100&audioType=wav"
+    },
+    "origins": [
+      "https://dds.dui.ai:443"
+    ]
+  },
+  {
+    "group": "思必驰",
+    "definition": {
+      "concurrentRate": "0",
+      "enabledCookieJar": false,
+      "id": "nextvol:builtin:75",
+      "name": "思必驰 晶晶",
+      "url": "https://dds.dui.ai/runtime/v1/synthesize?voiceId=jjingfp&text={{java.encodeURI(java.encodeURI(speakText))}}&speed=6&volume=100&audioType=wav\n\n"
+    },
+    "origins": [
+      "https://dds.dui.ai:443"
+    ]
+  },
+  {
+    "group": "思必驰",
+    "definition": {
+      "concurrentRate": "0",
+      "contentType": "",
+      "enabledCookieJar": false,
+      "header": "",
+      "id": "nextvol:builtin:76",
+      "name": "思必驰 考拉",
+      "url": "https://dds.dui.ai/runtime/v1/synthesize?voiceId=kaolam_diantai&text={{java.encodeURI(java.encodeURI(speakText))}}&speed=6&volume=100&audioType=wav\n\n"
+    },
+    "origins": [
+      "https://dds.dui.ai:443"
+    ]
+  },
+  {
+    "group": "思必驰",
+    "definition": {
+      "concurrentRate": "0",
+      "enabledCookieJar": false,
+      "id": "nextvol:builtin:77",
+      "name": "思必驰-温柔",
+      "url": "https://dds.dui.ai/runtime/v1/synthesize?voiceId=madoufp_wenrou&text={{java.encodeURI(java.encodeURI(speakText))}}&speed=6&volume=100&audioType=wav"
+    },
+    "origins": [
+      "https://dds.dui.ai:443"
+    ]
+  },
+  {
+    "group": "思必驰",
+    "definition": {
+      "concurrentRate": "0",
+      "contentType": "",
+      "enabledCookieJar": false,
+      "header": "",
+      "id": "nextvol:builtin:78",
+      "name": "思必驰优雅",
+      "url": "https://dds.dui.ai/runtime/v1/synthesize?voiceId=zhilingfp&text={{java.encodeURI(java.encodeURI(speakText))}}&speed=6&volume=100&audioType=wav\n\n"
+    },
+    "origins": [
+      "https://dds.dui.ai:443"
+    ]
+  },
+  {
+    "group": "思必驰",
+    "definition": {
+      "concurrentRate": "0",
+      "contentType": "",
+      "enabledCookieJar": false,
+      "header": "",
+      "id": "nextvol:builtin:79",
+      "name": "思必驰俞老师",
+      "url": "https://dds.dui.ai/runtime/v1/synthesize?voiceId=yukaimp&text={{java.encodeURI(java.encodeURI(speakText))}}&speed=1&volume=100&audioType=wav"
+    },
+    "origins": [
+      "https://dds.dui.ai:443"
+    ]
+  },
+  {
+    "group": "思必驰",
+    "definition": {
+      "concurrentRate": "0",
+      "contentType": "",
+      "enabledCookieJar": false,
+      "header": "",
+      "id": "nextvol:builtin:80",
+      "name": "思必驰季老师",
+      "url": "https://dds.dui.ai/runtime/v1/synthesize?voiceId=jlshimp&text={{java.encodeURI(java.encodeURI(speakText))}}&speed=6&volume=100&audioType=wav"
+    },
+    "origins": [
+      "https://dds.dui.ai:443"
+    ]
+  },
+  {
+    "group": "思必驰",
+    "definition": {
+      "concurrentRate": "0",
+      "contentType": "",
+      "enabledCookieJar": false,
+      "header": "",
+      "id": "nextvol:builtin:81",
+      "name": "思必驰客服女声",
+      "url": "https://dds.dui.ai/runtime/v1/synthesize?voiceId=gdfanfp&text={{java.encodeURI(java.encodeURI(speakText))}}&speed=6&volume=100&audioType=wav\n\n"
+    },
+    "origins": [
+      "https://dds.dui.ai:443"
+    ]
+  },
+  {
+    "group": "思必驰",
+    "definition": {
+      "concurrentRate": "0",
+      "contentType": "",
+      "enabledCookieJar": false,
+      "header": "",
+      "id": "nextvol:builtin:82",
+      "name": "思必驰小军",
+      "url": "https://dds.dui.ai/runtime/v1/synthesize?voiceId=xijunma&text={{java.encodeURI(java.encodeURI(speakText))}}&speed=1&volume=100&audioType=wav"
+    },
+    "origins": [
+      "https://dds.dui.ai:443"
+    ]
+  },
+  {
+    "group": "思必驰",
+    "definition": {
+      "concurrentRate": "0",
+      "contentType": "",
+      "enabledCookieJar": false,
+      "header": "",
+      "id": "nextvol:builtin:83",
+      "name": "思必驰小江",
+      "url": "https://dds.dui.ai/runtime/v1/synthesize?voiceId=wjianm_xsheng&text={{java.encodeURI(java.encodeURI(speakText))}}&speed=1&volume=100&audioType=wav"
+    },
+    "origins": [
+      "https://dds.dui.ai:443"
+    ]
+  },
+  {
+    "group": "思必驰",
+    "definition": {
+      "concurrentRate": "0",
+      "contentType": "",
+      "enabledCookieJar": false,
+      "header": "",
+      "id": "nextvol:builtin:84",
+      "name": "思必驰川话",
+      "url": "https://dds.dui.ai/runtime/v1/synthesize?voiceId=ppangf_csn&text={{java.encodeURI(java.encodeURI(speakText))}}&speed=1&volume=100&audioType=wav"
+    },
+    "origins": [
+      "https://dds.dui.ai:443"
+    ]
+  },
+  {
+    "group": "思必驰",
+    "definition": {
+      "concurrentRate": "0",
+      "contentType": "",
+      "enabledCookieJar": false,
+      "header": "",
+      "id": "nextvol:builtin:85",
+      "name": "思必驰欢快",
+      "url": "https://dds.dui.ai/runtime/v1/synthesize?voiceId=zhilingfp_huankuai&text={{java.encodeURI(java.encodeURI(speakText))}}&speed=1&volume=100&audioType=wav"
+    },
+    "origins": [
+      "https://dds.dui.ai:443"
+    ]
+  },
+  {
+    "group": "思必驰",
+    "definition": {
+      "concurrentRate": "0",
+      "contentType": "",
+      "enabledCookieJar": false,
+      "header": "",
+      "id": "nextvol:builtin:86",
+      "name": "思必驰温柔",
+      "url": "https://dds.dui.ai/runtime/v1/synthesize?voiceId=gqlanfp&text={{java.encodeURI(java.encodeURI(speakText))}}&speed=1&volume=100&audioType=wav"
+    },
+    "origins": [
+      "https://dds.dui.ai:443"
+    ]
+  },
+  {
+    "group": "遇知",
+    "definition": {
+      "concurrentRate": "2000",
+      "contentType": "",
+      "enabledCookieJar": false,
+      "header": "",
+      "id": "nextvol:builtin:87",
+      "name": "指尖-遇知",
+      "url": "@js:\nPublicKey = \"MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCHhUM2vlHEINGlqySUEjY+VR9IG8nGtFJHLr8/9w9PCahi211CDVH7+0wk6nred0qj4ljtw6IbJS8kDMF57z7sfCnbfk8WNih2z6i01sCL0A8LoUVLvlHWDFpTAUK6qBwUOZzpNVp7syiELt6UtzZQsjU+d9QUWLuVPigzw3YsBwIDAQAB\";\n\nPrivateKey = \"MIICdgIBADANBgkqhkiG9w0BAQEFAASCAmAwggJcAgEAAoGBALPJXXVGr56SP9mzL9V9eWWwW++k+GwYvo4kOZaTo6ckhX+mpZzx4eoqUGQR+8LZzhd4B23nZNKnxthYsGhIY6QgMjvQw+oMG8HQNHfjOVrlvQc1RFTeHn37kG2wLPdGrZjmPGxdWjXTVSjGtRv+P4BDxfcmBDmyQJBsXRrGL1H/AgMBAAECgYAwVBPkX6D73lJ9odZc7ELC3BqKm+0PmcM3kHNOj9dxKbcdLl3ch4T0HnXHwLHNmiD1XBWbLJWErwcbxxN8pODrnBU6HHyOB2BQME4d46wDx77vVkMBykEPfemlhX7mivuR5yz8ZTepzUDna5xjhYC9WVm7qo8AKILdepAb7jeBoQJBAPfS1rYWBk4u201KBvFsHASO+PLi2ishbZRWucDkLbAdCE8J0AWZBc154lFbLw5I2giL9zouak94uxJxtrEt7LECQQC5t9+5eAsQnmS8oVD2xdtqYArmUbn6zhK6iDH+IRoBt75AhPdsOoKXc3tnRenyCaTg7VihnRGrtqST3LxxYBWvAkEAsUrXqlplVmd1Inz0LKEABk7WUMTz+WknwLiumQ1klhqfCBRoCqknmpE41KUcK+b4fKbNToVILuSbSJ2ramQFcQJAG1rG/DV/Q7pg0hvcpgxsjhWJZXVCNHvn7EulOW48u2YKAszS+MEBfTdIROTaWYksHOk4tc1Bzg3/3buUkgp6BwJADVT4CmjebhpVmg0zxlcYErdBjsf7Z2RCFgzRyfXCZJGtw3fj2ZtYbw31tMPGs2rm01zmTGlOA7VWrNR/vnjLCg==\";\n\nfunction RSAencrypt(encrypt) {\r\n    var key = java.base64DecodeToByteArray(PublicKey);\r\n    var data = java.createAsymmetricCrypto(\"RSA/ECB/PKCS1Padding\").setPublicKey(key).encryptBase64(encrypt);                \n    return data;\r\n}\n\nfunction RSAdecrypt(encrypt) {\r\n    var key = java.base64DecodeToByteArray(PrivateKey);\n    var data = java.createAsymmetricCrypto(\"RSA\").setPrivateKey(key).decryptStr(encrypt, false);\r\n    return data;\r\n}\n\nfunction bodyAESencrypt(params, key) {\n  re = java.createSymmetricCrypto(\"AES/ECB/PKCS5Padding\", key).encryptBase64(params);\n    return re;\n}\n\nfunction conAESdecrypt(params, key) {\n  con = java.createSymmetricCrypto(\"AES/ECB/PKCS5Padding\", key).decryptStr(params);\n    return con;\n}\n\nfunction randomKey() {\n   for (i = 0, char = \"\"; i < 16; i++) {\tx=\"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789\";\nr = parseInt(Math.random() * x.length , 10);\n\tchar += x.charAt(r).toString();\n}\n  return char;\n}  \n\n   let timeoffset = 2 * 60 * 60 * 1000;\n    nowTime = Date.now();\n\t   t = java.timeFormatUTC(nowTime,\"yyyyMMddHHmmss\", timeoffset).toString();    \n\t   \nMap = source.getLoginHeaderMap()??{\"zbid\":\"a0e21652e632971e\",\"samplerate\":\"24K\"};\n\nparams = `{\"ver\":\"030101\",\"emotiondegree\":\"50\",\"speed\":\"5\",\"volume\":\"90\",\"uid\":\"\",\"emotion\":\"\",\"qd\":\"114510\",\"t\":\"${t}\",\"audiotype\":\"0\",\"isurl\":\"2\",\"text\":\"${speakText}\",\"zbid\":\"${Map.zbid}\",\"pitch\":\"0\",\"bimei\":\"7cac598e4a779025\",\"simei\":\"\",\"did\":\"075f71f828430710\",\"samplerate\":\"${Map.samplerate}\"}`;\neK = randomKey();\nr = bodyAESencrypt(params, eK);\nr2 = RSAencrypt(eK);\nb = `req=${encodeURIComponent(r)}&sec=${encodeURIComponent(r2)}`;\n\nurl = \"http://pysq.shipook.com/v2app/peiyin/synctts,\"+JSON.stringify({\n  \"body\": b,\n  \"method\": \"POST\"\n});\n\ndata = decodeURIComponent(java.ajax(url));  \n   x = data.match(/resp=(.*)&sec=(.*)/);\n   k = RSAdecrypt(x[2]).toString().slice(-16);\n   c = conAESdecrypt(x[1], k);\n   audiourl = JSON.parse(c).model.audiourl;"
+    },
+    "origins": [
+      "http://pysq.shipook.com:80",
+      "https://pysq.shipook.com:443"
+    ]
+  },
+  {
+    "group": "讯飞",
+    "definition": {
+      "concurrentRate": "0",
+      "contentType": "",
+      "header": "",
+      "id": "nextvol:builtin:156",
+      "name": "讯飞.小琳台普",
+      "url": "http://120.24.87.124/cgi-bin/ekho2.pl?cmd=SPEAK&voice=iflytekXiaolin&speedDelta=0&pitchDelta=0&volumeDelta=0&text={{java.encodeURI(java.encodeURI(speakText))}}"
+    },
+    "origins": [
+      "http://120.24.87.124:80"
+    ]
+  },
+  {
+    "group": "起点",
+    "definition": {
+      "concurrentRate": "0",
+      "contentType": "audio/mpeg",
+      "header": "",
+      "id": "nextvol:builtin:1788290245785",
+      "name": "起点 · 说书先生",
+      "url": "@js:'https://shenmobook.top/tts/legado?token=' + encodeURIComponent(nextvolCredentials.Token) + '&v=6001&t=' + encodeURIComponent(speakText)"
+    },
+    "origins": [
+      "https://shenmobook.top:443",
+      "https://qd-tts-mnm.yuewen.com:443"
+    ],
+    "credentials": [
+      "Token"
+    ]
+  },
+  {
+    "group": "起点",
+    "definition": {
+      "concurrentRate": "0",
+      "contentType": "audio/mpeg",
+      "header": "",
+      "id": "nextvol:builtin:1788290245793",
+      "name": "起点 · 狐狸小姐",
+      "url": "@js:'https://shenmobook.top/tts/legado?token=' + encodeURIComponent(nextvolCredentials.Token) + '&v=6002&t=' + encodeURIComponent(speakText)"
+    },
+    "origins": [
+      "https://shenmobook.top:443",
+      "https://qd-tts-mnm.yuewen.com:443"
+    ],
+    "credentials": [
+      "Token"
+    ]
+  },
+  {
+    "group": "阿里云",
+    "definition": {
+      "id": "nextvol:builtin:2",
+      "name": "阿里云 · 小云",
+      "url": "@js:\n(function () {\n  function encode(value) { return encodeURIComponent(value).replace(/[!'()*]/g, function (c) { return '%' + c.charCodeAt(0).toString(16).toUpperCase(); }); }\n  var token = null;\n  try { token = JSON.parse(cache.get('aliyunToken') || 'null'); } catch (e) {}\n  if (!token || token.ExpireTime * 1000 <= Date.now() + 60000) {\n    var params = {AccessKeyId:nextvolCredentials.AccessKeyId, Action:'CreateToken', Format:'JSON', RegionId:'cn-shanghai', SignatureMethod:'HMAC-SHA1', SignatureNonce:java.randomUUID(), SignatureVersion:'1.0', Timestamp:java.timeFormatUTC(Date.now(), \"yyyy-MM-dd'T'HH:mm:ss'Z'\", 0), Version:'2019-02-28'};\n    var query = Object.keys(params).sort().map(function (key) { return encode(key) + '=' + encode(params[key]); }).join('&');\n    var signature = java.HMacBase64('GET&%2F&' + encode(query), 'HmacSHA1', nextvolCredentials.AccessKeySecret + '&');\n    var result = JSON.parse(java.ajax('https://nls-meta.cn-shanghai.aliyuncs.com/?Signature=' + encode(signature) + '&' + query));\n    token = result.Token;\n    if (!token || !token.Id || !(token.ExpireTime * 1000 > Date.now() + 60000)) throw new Error('Authentication failed');\n    cache.put('aliyunToken', JSON.stringify(token), 300);\n  }\n  return 'https://nls-gateway.cn-shanghai.aliyuncs.com/stream/v1/tts,' + JSON.stringify({method:'POST', headers:{'X-NLS-Token':token.Id}, body:{appkey:nextvolCredentials.AppKey, text:speakText, format:'mp3', voice:'xiaoyun', volume:100, speech_rate:Math.max(-500, Math.min(500, Math.round((speakSpeed / 10 - 1) * 500)))}});\n})()",
+      "contentType": "audio/mpeg"
+    },
+    "origins": [
+      "https://nls-meta.cn-shanghai.aliyuncs.com:443",
+      "https://nls-gateway.cn-shanghai.aliyuncs.com:443"
+    ],
+    "credentials": [
+      "AppKey",
+      "AccessKeyId",
+      "AccessKeySecret"
+    ]
+  }
+]

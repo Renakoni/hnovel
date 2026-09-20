@@ -44,7 +44,6 @@
     <string name="sources_url">Source file URL</string>
     <string name="sources_preview_url">Download and preview</string>
     <string name="sources_file">Choose local file</string>
-    <string name="sources_paste">Paste source JSON</string>
     <string name="sources_preview">Preview sources</string>
     <string name="sources_empty">No added sources yet. Add one to read from more sites.</string>
     <string name="sources_builtin">Built in</string>

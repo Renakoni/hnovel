@@ -6,4 +6,10 @@
     <string name="tts_timer_off">Выключить</string>
     <string name="tts_timer_minutes">%1$d мин</string>
     <string name="tts_timer_remaining">Осталось %1$s</string>
+    <string name="tts_online_sources">Источники речи</string>
+    <string name="tts_library_actions">Параметры каталога</string>
+    <string name="tts_needs_key">Настроить ключ</string>
+    <string name="tts_configure_service">Настроить %1$s</string>
+    <string name="tts_clear_credentials">Удалить данные</string>
+    <plurals name="tts_voice_count"><item quantity="one">Голосов: %1$d</item><item quantity="other">Голосов: %1$d</item></plurals>
 </resources>

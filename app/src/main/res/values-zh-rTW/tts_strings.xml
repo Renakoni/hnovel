@@ -9,7 +9,7 @@
     <string name="tts_title">聽書</string>
     <string name="tts_start">聽這本書</string>
     <string name="tts_settings">聽書設定</string>
-    <string name="tts_settings_description">語音引擎、音色和朗讀語速</string>
+    <string name="tts_settings_description">音源、音色與朗讀語速</string>
     <string name="tts_engine">語音引擎</string>
     <string name="tts_voice">音色</string>
     <string name="tts_system_default">跟隨系統</string>
@@ -57,17 +57,17 @@
     <string name="tts_error_content">本章包含暫不支援朗讀的內容類型。</string>
     <string name="tts_error_playback">這一段暫時無法播放，已保留聽書位置，可以重試繼續。</string>
     <string name="tts_error_service">無法啟動背景播放，請回到應用程式後重試。</string>
-    <string name="tts_online_sources">線上音源</string>
+    <string name="tts_online_sources">音源</string>
     <string name="tts_system_speech">系統朗讀</string>
     <string name="tts_import_sources">匯入音源</string>
     <plurals name="tts_import_count"><item quantity="other">匯入 %1$d 個音源</item></plurals>
     <plurals name="tts_import_invalid"><item quantity="other">%1$d 條設定無法匯入。</item></plurals>
     <string name="tts_import_failed">無法匯入此檔案。</string>
-    <string name="tts_online_empty">匯入音源後即可選擇。</string>
+    <string name="tts_online_empty">暫無可用音源</string>
     <string name="tts_online_privacy">正文將傳送至所選朗讀服務。</string>
     <string name="tts_source_sites">服務網站</string>
     <string name="tts_remove_source">移除音源</string>
-    <string name="tts_error_http_source">此線上音源無法使用，請重新匯入或選擇其他音源。</string>
+    <string name="tts_error_http_source">此音源暫時無法使用，請選擇其他音源。</string>
     <string name="tts_error_http_permission">此音源需要連接其他網站，請檢查服務網站設定。</string>
     <string name="tts_error_http_unsupported">此音源使用了尚未支援的功能，請選擇其他音源。</string>
     <string name="tts_error_http_login">此音源需要帳號資訊。</string>
@@ -81,4 +81,9 @@
     <string name="tts_allow_source_site">允許 %1$s</string>
     <string name="tts_source_actions">音源選項</string>
     <string name="tts_source_default">音源預設</string>
+    <string name="tts_library_actions">音源庫選項</string>
+    <string name="tts_needs_key">待設定 Key</string>
+    <string name="tts_configure_service">設定%1$s</string>
+    <string name="tts_clear_credentials">清除憑證</string>
+    <plurals name="tts_voice_count"><item quantity="one">%1$d 種音色</item><item quantity="other">%1$d 種音色</item></plurals>
 </resources>

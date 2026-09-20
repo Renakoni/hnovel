@@ -85,7 +85,7 @@ class HttpSpeechInstrumentedTest {
             HttpSpeechRepository(isolated, AndroidSourceStorageCipher(), authority).save(listOf(SavedHttpSpeechSource(source, listOf("https://example.org:443"))))
             assertFalse(File(directory, "http-speech.enc").readBytes().toString(Charsets.UTF_8).contains("private-test-token"))
             val reopened = HttpSpeechRepository(isolated, AndroidSourceStorageCipher(), authority)
-            assertEquals(source.raw, reopened.sources().single().definition.raw)
+            assertEquals(source.raw, reopened.sources().single { it.definition.id == source.id }.definition.raw)
             val oldTicket = reopened.withSource(source.id) { _, runtime ->
                 runtime.mkdirs()
                 File(runtime, "test-cache").writeText("old state")
@@ -93,13 +93,37 @@ class HttpSpeechInstrumentedTest {
             }!!
             reopened.recordDeniedOrigins(source.id, listOf("https://audio.example.org:443", "https://audio.example.org/private?token=secret"))
             assertEquals(listOf("https://audio.example.org:443"), reopened.deniedOrigins.value[source.id])
-            reopened.save(listOf(reopened.sources().single().copy(origins = listOf("https://example.org:443", "https://audio.example.org:443"))))
+            reopened.save(listOf(reopened.sources().single { it.definition.id == source.id }.copy(origins = listOf("https://example.org:443", "https://audio.example.org:443"))))
             assertFalse(authority.accepts(oldTicket))
             reopened.withSource(source.id) { _, runtime -> assertFalse(runtime.exists()) }
             assertTrue(reopened.deniedOrigins.value[source.id].isNullOrEmpty())
             reopened.delete(source.id)
-            assertTrue(reopened.sources().isEmpty())
+            assertEquals(99, reopened.sources().size)
+            assertTrue(reopened.sources().all { it.isBuiltIn })
             assertNull(reopened.withSource(source.id) { _, _ -> error("Deleted source cannot reopen") })
+        } finally { directory.deleteRecursively() }
+    }
+
+    @Test fun builtInCredentialsUseTheProductionCipherWithoutSavingTheWholeCatalog() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val directory = File(context.cacheDir, "builtin-speech-store-${UUID.randomUUID()}").apply { mkdirs() }
+        val isolated = object : ContextWrapper(context) { override fun getFilesDir() = directory }
+        try {
+            val authority = ExecutionAuthority()
+            val repository = HttpSpeechRepository(isolated, AndroidSourceStorageCipher(), authority)
+            assertEquals(99, repository.sources().size)
+            assertFalse(File(directory, "http-speech.enc").exists())
+            val source = repository.sources().first { it.group == "起点" }
+            repository.configure(source.definition.id, mapOf("Token" to "synthetic-private-token"))
+            val bytes = File(directory, "http-speech.enc").readBytes()
+            assertFalse(bytes.toString(Charsets.UTF_8).contains("synthetic-private-token"))
+            assertTrue(bytes.size < 4096)
+            val reopened = HttpSpeechRepository(isolated, AndroidSourceStorageCipher(), authority)
+            assertEquals(99, reopened.sources().size)
+            assertTrue(reopened.sources().filter { it.group == source.group }.all { it.credentials["Token"] == "synthetic-private-token" })
+            reopened.configure(source.definition.id, emptyMap())
+            assertTrue(reopened.sources().filter { it.group == source.group }.all { !it.isConfigured })
+            assertEquals(99, reopened.sources().size)
         } finally { directory.deleteRecursively() }
     }
 
