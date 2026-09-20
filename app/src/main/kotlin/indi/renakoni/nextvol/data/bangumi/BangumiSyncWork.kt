@@ -65,7 +65,7 @@ class BangumiSyncScheduler @Inject constructor(
                         }
                         connected = hasAccount
                     }
-                    val pending = repository.reconcile()
+                    val pending = repository.reconcile(reuseCatalog = true)
                     if ((pending - previous).isNotEmpty()) enqueue(workManager)
                     previous = pending
                 } catch (cancelled: CancellationException) {

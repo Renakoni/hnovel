@@ -2,8 +2,21 @@ package indi.renakoni.nextvol.data.bangumi
 
 import androidx.room.*
 import kotlinx.coroutines.flow.Flow
+import indi.renakoni.nextvol.data.local.room.converter.ChapterReadingProgressMapConverter
 
 data class BangumiLocalBook(val id: String, val title: String)
+
+@TypeConverters(ChapterReadingProgressMapConverter::class)
+data class BangumiReadingInput(
+    val id: String,
+    @ColumnInfo(name = "last_read_chapter_id") val lastChapter: String,
+    @ColumnInfo(name = "total_read_time") val seconds: Int,
+    @ColumnInfo(name = "max_chapter_reading_progress_map") val progress: Map<String, Float>,
+) {
+    val hasReading: Boolean get() = lastChapter.isNotBlank() || seconds > 0 || progress.values.any { it.isFinite() && it > 0f }
+    val completed: Set<String> get() = progress.asSequence()
+        .filter { it.value.isFinite() && it.value >= 1f }.map { it.key }.toSet()
+}
 
 /** Bounded local audit history; no token, response body or private collection metadata. */
 @Entity(tableName = "bangumi_sync_record", indices = [Index("accountId")])
@@ -29,6 +42,11 @@ data class BangumiBindingEntity(val accountId: Int, val bookId: String, val subj
 
 @Dao
 interface BangumiBindingDao {
+    // Current location, titles and timestamps do not affect completed volumes. Read only the
+    // maximum map once, rather than decoding both maps for each book and each binding.
+    @Query("SELECT id, last_read_chapter_id, total_read_time, max_chapter_reading_progress_map FROM user_reading_data")
+    suspend fun getReadingInputs(): List<BangumiReadingInput>
+
     @Query("SELECT id, title FROM book_information WHERE EXISTS (SELECT 1 FROM user_reading_data WHERE user_reading_data.id = book_information.id) AND EXISTS (SELECT 1 FROM volume WHERE volume.book_id = book_information.id) ORDER BY title")
     suspend fun getReadingBooks(): List<BangumiLocalBook>
 

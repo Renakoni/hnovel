@@ -4,6 +4,8 @@ import android.app.Application
 import android.content.Context
 import android.net.Uri
 import androidx.room.Room
+import androidx.room.RoomDatabase
+import androidx.room.InvalidationTracker
 import androidx.work.*
 import androidx.work.testing.WorkManagerTestInitHelper
 import hnovel.network.StorageCipher
@@ -29,6 +31,8 @@ import java.time.LocalDateTime
 import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.Executor
+import java.util.concurrent.ConcurrentLinkedQueue
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [30], application = Application::class)
@@ -46,6 +50,7 @@ class BangumiRepositoryTest {
     @Volatile private var failReadAfterWrite = false
     @Volatile private var readGate: Pair<CountDownLatch, CountDownLatch>? = null
     private val writes = Collections.synchronizedList(mutableListOf<JsonObject>())
+    private val queries = ConcurrentLinkedQueue<String>()
     private var volumeCount = 2
     private var ambiguousSearch = false
     private val volumes get() = (1..volumeCount).map { number -> Volume(BookIdentity.volumeKey(book, "$number"), "第${number}卷",
@@ -54,7 +59,8 @@ class BangumiRepositoryTest {
 
     @Before fun setup() = runBlocking {
         val context = RuntimeEnvironment.getApplication()
-        database = Room.inMemoryDatabaseBuilder(context, NextVolDatabase::class.java).build()
+        database = Room.inMemoryDatabaseBuilder(context, NextVolDatabase::class.java)
+            .setQueryCallback(RoomDatabase.QueryCallback { sql, _ -> queries += sql }, Executor { it.run() }).build()
         local = LocalBookDataSource(database.bookInformationDao(), database.bookVolumesDao(), database.chapterContentDao(), database.userReadingDataDao())
         accounts = BangumiAccountStore(context, StorageCipher.Plain)
         accounts.disconnect()
@@ -129,6 +135,67 @@ class BangumiRepositoryTest {
         database.bangumiBindingDao().delete(17, book.storageKey)
         assertEquals(records, database.bangumiBindingDao().getRecords(17))
         assertTrue(database.bangumiBindingDao().getRecords(18).isEmpty())
+    }
+
+    @Test fun positionOnlyUpdatesReuseCatalogsButCompletionAndResetStillChangeTheTarget() = runBlocking {
+        bind(); repository.syncAll()
+        local.updateUserReadingData(book.storageKey) { it.copyWithUpdatedChapterReadingProgress(chapter(1), 0.1f) }
+        repository.reconcile(reuseCatalog = true)
+        queries.clear()
+        repository.reconcile()
+        assertEquals(3, queries.count { it.contains("select * from volume", ignoreCase = true) ||
+            it.contains("select * from chapter_information", ignoreCase = true) })
+        val requests = server.requestCount
+        repeat(20) { index ->
+            local.updateUserReadingData(book.storageKey) {
+                it.copyWithUpdatedChapterReadingProgress(chapter(1), 0.2f + index / 100f)
+            }
+            // Exclude the reader's own read-modify-write queries from this comparison.
+            queries.clear()
+            assertTrue(repository.reconcile(reuseCatalog = true).isEmpty())
+            assertFalse(queries.any { it.contains("select * from volume", ignoreCase = true) ||
+                it.contains("select * from chapter_information", ignoreCase = true) })
+            assertFalse(queries.any { it.contains("select * from user_reading_data", ignoreCase = true) })
+        }
+        assertEquals(requests, server.requestCount)
+        read(1)
+        assertTrue(repository.reconcile(reuseCatalog = true).isNotEmpty())
+        assertEquals(1, binding().target)
+        database.userReadingDataDao().deleteByIds(listOf(book.storageKey))
+        assertTrue(repository.reconcile(reuseCatalog = true).isEmpty())
+        assertEquals(0, binding().target)
+        assertTrue(writes.isEmpty())
+    }
+
+    @Test fun catalogInvalidationAndExplicitReconcileCannotReuseAnOutdatedMapping() = runBlocking {
+        bind(); repository.syncAll()
+        read()
+        repository.reconcile(reuseCatalog = true)
+        val invalidated = CompletableDeferred<Unit>()
+        val observer = object : InvalidationTracker.Observer("volume", "chapter_information") {
+            override fun onInvalidated(tables: Set<String>) { invalidated.complete(Unit) }
+        }
+        database.invalidationTracker.addObserver(observer)
+        try {
+            local.updateBookVolumes(BookVolumes(book.storageKey, volumes.map { it.copy(volumeTitle = "Renamed ${it.volumeTitle}") }))
+            withTimeout(5_000) { invalidated.await() }
+            assertTrue(repository.reconcile(reuseCatalog = true).isNotEmpty())
+            assertEquals(BangumiSyncStatus.PENDING, binding().status)
+            queries.clear()
+            repository.reconcile()
+            assertTrue(queries.any { it.contains("select * from volume", ignoreCase = true) })
+        } finally { database.invalidationTracker.removeObserver(observer) }
+    }
+
+    @Test fun cachedReadingReconcileStillCreatesAndRemovesTheFirstAutomaticBinding() = runBlocking {
+        assertTrue(repository.reconcile(reuseCatalog = true).isEmpty())
+        local.updateUserReadingData(book.storageKey) { it.copyWithUpdatedChapterReadingProgress(chapter(1), 0.1f) }
+        assertTrue(repository.reconcile(reuseCatalog = true).isNotEmpty())
+        assertTrue(binding().automatic)
+        database.userReadingDataDao().deleteByIds(listOf(book.storageKey))
+        assertTrue(repository.reconcile(reuseCatalog = true).isEmpty())
+        assertNull(database.bangumiBindingDao().get(17, book.storageKey))
+        assertEquals(0, server.requestCount)
     }
 
     @Test fun missingCollectionIsCreatedPrivatelyAndThenUpdated() = runBlocking {
