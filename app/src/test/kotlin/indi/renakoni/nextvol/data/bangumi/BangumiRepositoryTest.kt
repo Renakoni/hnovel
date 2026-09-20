@@ -46,7 +46,8 @@ class BangumiRepositoryTest {
     @Volatile private var failReadAfterWrite = false
     @Volatile private var readGate: Pair<CountDownLatch, CountDownLatch>? = null
     private val writes = Collections.synchronizedList(mutableListOf<JsonObject>())
-    private val volumes get() = (1..2).map { number -> Volume(BookIdentity.volumeKey(book, "$number"), "第${number}卷",
+    private var volumeCount = 2
+    private val volumes get() = (1..volumeCount).map { number -> Volume(BookIdentity.volumeKey(book, "$number"), "第${number}卷",
         listOf(ChapterInformation(chapter(number), "正文"))) }
     private fun chapter(number: Int) = SourceChapterId(book, "$number").storageKey
 
@@ -63,8 +64,10 @@ class BangumiRepositoryTest {
             override fun dispatch(request: RecordedRequest): MockResponse {
                 val path = request.path.orEmpty()
                 if (path == "/v0/me") return json("""{"id":17,"username":"test"}""")
-                if (path == "/v0/subjects/10") return json("""{"id":10,"type":1,"name":"Novel","platform":"小说","series":true,"volumes":2}""")
-                if (path == "/v0/subjects/10/subjects") return json("""[{"id":11,"type":1,"name":"Novel (1)","relation":"单行本"},{"id":12,"type":1,"name":"Novel (2)","relation":"单行本"}]""")
+                if (path == "/v0/subjects/10") return json("""{"id":10,"type":1,"name":"Novel","platform":"小说","series":true,"volumes":$volumeCount}""")
+                if (path == "/v0/subjects/10/subjects") return json(bangumiJson.encodeToString((1..volumeCount).map {
+                    BangumiRelatedSubject(10 + it, 1, "Novel ($it)", relation = "单行本")
+                }))
                 if (path == "/v0/users/17/collections/10") {
                     readGate?.let { (started, release) -> started.countDown(); release.await(5, TimeUnit.SECONDS) }
                     nextResponse?.let { nextResponse = null; return it }
@@ -159,6 +162,38 @@ class BangumiRepositoryTest {
         assertTrue(writes.isEmpty())
         assertEquals(5, remote!!.volumes)
         assertEquals(BangumiSyncStatus.REMOTE_AHEAD, binding().status)
+    }
+
+    @Test fun fourPreviouslyReadRemoteVolumesAreNotAddedAgainWhenRereadLocally() = runBlocking {
+        volumeCount = 16
+        local.updateBookVolumes(BookVolumes(book.storageKey, volumes))
+        remote = BangumiCollection(3, 4, 17, true)
+        val preview = repository.preview(book.storageKey, 10)
+        assertEquals(16, preview.subject.volumes)
+        // The reader confirms that Bangumi's four previously read editions are volumes 1–4.
+        val baseline = setOf("subject:11", "subject:12", "subject:13", "subject:14")
+        repository.bind(preview, preview.mapping, baseline, true)
+        repository.syncAll()
+        assertTrue(writes.isEmpty())
+        assertNull(database.userReadingDataDao().getEntity(book.storageKey))
+        val requests = server.requestCount
+        for (number in 1..4) {
+            read(number)
+            assertTrue(repository.reconcile().isEmpty())
+            repository.syncAll()
+            assertEquals(BangumiCollection(3, 4, 17, true), remote)
+            assertEquals(requests, server.requestCount)
+        }
+        database.userReadingDataDao().deleteByIds(listOf(book.storageKey))
+        val fresh = BangumiRepository(accounts, api, database)
+        read(1); fresh.syncAll()
+        assertEquals(requests, server.requestCount)
+        assertEquals(baseline, binding().baseline)
+        read(5)
+        assertTrue(fresh.reconcile().isNotEmpty())
+        fresh.syncAll()
+        assertEquals(BangumiCollection(3, 5, 17, true), remote)
+        assertEquals(listOf(buildJsonObject { put("vol_status", 5) }), writes)
     }
 
     @Test fun unreadResetBeforeSendDropsThePendingTargetButNotAnAcknowledgedVolume() = runBlocking {
