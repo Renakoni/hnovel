@@ -1,6 +1,7 @@
 package indi.renakoni.nextvol.ui.book.reader.content.scroll
 
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.foundation.lazy.LazyListState
 import com.github.michaelbull.result.get
 import indi.renakoni.nextvol.utils.throttleLatest
 import kotlinx.coroutines.CoroutineDispatcher
@@ -18,6 +19,8 @@ internal class ScrollReadingProgress(
     private val currentTimeMillis: () -> Long = System::currentTimeMillis,
 ) {
     private var lastWriteReadingProgress = 0L
+    private var lastSavedPosition: Triple<String, String, Float>? = null
+    private var lastSavedList: LazyListState? = null
 
     fun start() {
         coroutineScope.launch(mainDispatcher) {
@@ -32,9 +35,7 @@ internal class ScrollReadingProgress(
 
                     val now = currentTimeMillis()
                     if (now - lastWriteReadingProgress < 2500 && newProgress < 1f) return@collect
-                    lastWriteReadingProgress = now
-
-                    updateReadingProgress(chapterId, newProgress)
+                    savePosition(chapterId, newProgress)
                 }
         }
 
@@ -48,8 +49,7 @@ internal class ScrollReadingProgress(
                     if (uiState.readingProgress != finalProgress) {
                         uiState.readingProgress = finalProgress
                     }
-                    updateReadingProgress(chapterId, finalProgress)
-                    lastWriteReadingProgress = currentTimeMillis()
+                    savePosition(chapterId, finalProgress)
                 }
         }
     }
@@ -58,7 +58,16 @@ internal class ScrollReadingProgress(
         val (chapterId, offset, size) = measuredPosition() ?: return
         val finalProgress = calculateReadingProgress(offset, size)
         uiState.readingProgress = finalProgress
-        updateReadingProgress(chapterId, finalProgress)
+        savePosition(chapterId, finalProgress, force = true)
+    }
+
+    private fun savePosition(chapterId: String, progress: Float, force: Boolean = false) {
+        val position = Triple(uiState.bookId, chapterId, progress)
+        if (!force && position == lastSavedPosition && lastSavedList === uiState.lazyListState) return
+        updateReadingProgress(chapterId, progress)
+        lastSavedPosition = position
+        lastSavedList = uiState.lazyListState
+        lastWriteReadingProgress = currentTimeMillis()
     }
 
     private fun measuredPosition(): Triple<String, Int, Int>? {

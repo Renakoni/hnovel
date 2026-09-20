@@ -69,7 +69,7 @@ class ScrollProgressTimingTest {
         assertEquals(3, writes.size)
         scrolling.value = false
         env.runCurrent()
-        assertEquals(4, writes.size)
+        assertEquals(3, writes.size)
         assertEquals("chapter" to 1f, writes.last())
     }
 
@@ -143,6 +143,28 @@ class ScrollProgressTimingTest {
         readable.value = true
         env.runCurrent()
         assertEquals(listOf("chapter" to 0.1f), writes)
+    }
+
+    @Test
+    fun repeatedIdleNotificationsAreDeduplicatedButExplicitStopStillSaves() {
+        scrolling.value = false
+        progress.start()
+        env.runCurrent()
+        repeat(20) {
+            scrolling.value = true
+            env.runCurrent()
+            scrolling.value = false
+            env.runCurrent()
+        }
+        assertEquals(listOf("chapter" to 0.1f), writes)
+        progress.writeProgressRightNow()
+        assertEquals(listOf("chapter" to 0.1f, "chapter" to 0.1f), writes)
+        writes.clear()
+        offset.intValue = 500
+        progress.writeProgressRightNow()
+        offset.intValue = 200
+        progress.writeProgressRightNow()
+        assertEquals(listOf("chapter" to 0.6f, "chapter" to 0.3f), writes)
     }
 
     @Test
