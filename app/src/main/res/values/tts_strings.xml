@@ -1,4 +1,7 @@
 <resources>
+    <string name="tts_expand_player">Expand listening player</string>
+    <string name="tts_return_to_book">Return to %1$s</string>
+    <string name="tts_close_player">Stop listening and close</string>
     <string name="tts_sleep_timer">Sleep timer</string>
     <string name="tts_timer_off">Off</string>
     <string name="tts_timer_minutes">%1$d min</string>

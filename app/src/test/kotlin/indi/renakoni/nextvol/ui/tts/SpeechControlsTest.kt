@@ -133,6 +133,18 @@ class SpeechControlsTest {
         compose.onNodeWithText("Stop").assertIsDisplayed()
     }
 
+    @Test fun pausedControlsOfferResumeWithoutRepeatingTheStatusAsText() {
+        val actions = mutableListOf<SpeechAction>()
+        activity.get().setContent {
+            MaterialTheme {
+                ReadAloudControls(ReadAloudState(SpeechRequest("book", "chapter"), SpeechPhase.Paused), { actions += it })
+            }
+        }
+        compose.onNodeWithText("Paused").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Resume").assertIsDisplayed().performClick()
+        assertEquals(listOf(SpeechAction.Resume), actions)
+    }
+
     @Test fun loadingCanBePausedAndFailedPlaybackCanRetry() {
         val actions = mutableListOf<SpeechAction>()
         val state = androidx.compose.runtime.mutableStateOf(ReadAloudState(SpeechRequest("book", "chapter"), SpeechPhase.Preparing))

@@ -45,6 +45,7 @@ data class ReadAloudState(
     val nextChapterId: String? = null,
     val error: SpeechError? = null,
     val sleepTimerDeadline: Long? = null,
+    val showFloatingPlayer: Boolean = false,
 ) {
     val isActive get() = phase in setOf(SpeechPhase.Preparing, SpeechPhase.Playing, SpeechPhase.Buffering)
 }

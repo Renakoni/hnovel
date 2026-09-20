@@ -1,4 +1,7 @@
 <resources>
+    <string name="tts_expand_player">Развернуть плеер озвучивания</string>
+    <string name="tts_return_to_book">Вернуться к книге «%1$s»</string>
+    <string name="tts_close_player">Остановить озвучивание и закрыть</string>
     <string name="tts_sleep_timer">Таймер сна</string>
     <string name="tts_timer_off">Выключить</string>
     <string name="tts_timer_minutes">%1$d мин</string>

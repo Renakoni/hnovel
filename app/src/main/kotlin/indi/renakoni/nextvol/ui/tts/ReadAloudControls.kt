@@ -65,6 +65,7 @@ fun ReadAloudSheet(
     onDismiss: () -> Unit,
     onSleepTimer: ((Int?) -> Unit)? = null,
 ) {
+    HideReadAloudOverlay()
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberBottomSheetState(
@@ -127,7 +128,7 @@ fun ReadAloudControls(
                     Icon(painterResource(R.drawable.outline_settings_24px), stringResource(R.string.tts_settings))
                 }
             }
-            if (state.phase != SpeechPhase.Playing && state.phase != SpeechPhase.Stopped) {
+            if (state.phase !in setOf(SpeechPhase.Playing, SpeechPhase.Stopped, SpeechPhase.Paused)) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
