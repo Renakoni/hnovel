@@ -70,6 +70,28 @@ class ReaderSettingsBoundaryTest {
     }
 
     @Test
+    fun reducedMotionRestoresWithoutRewritingPaperLayoutOrOriginalAnimation() = runBlocking {
+        val dao = InMemoryUserDataDao()
+        val first = SettingState(UserDataRepository(dao), scope)
+        assertEquals(false, first.reduceMotion)
+        first.flipAnimeUserData.set("scroll")
+        first.paperIdUserData.set("sage")
+        first.fontSizeUserData.set(21f)
+        first.reduceMotionUserData.set(true)
+        val restored = SettingState(UserDataRepository(dao), scope)
+        withTimeout(5_000) {
+            while (!restored.reduceMotion || restored.paperId != "sage" || restored.fontSize != 21f) delay(1)
+        }
+        assertEquals(false, restored.animatePageTurns)
+        assertEquals("scroll", restored.flipAnime)
+        first.reduceMotionUserData.set(false)
+        withTimeout(5_000) { while (restored.reduceMotion) delay(1) }
+        assertEquals(true, restored.animatePageTurns)
+        assertEquals("sage", restored.paperId)
+        assertEquals(21f, restored.fontSize)
+    }
+
+    @Test
     fun paperChoicePersistsWithoutReplacingCustomAppearanceOrLayout() = runBlocking {
         val dao = InMemoryUserDataDao()
         val first = SettingState(UserDataRepository(dao), scope)

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="reader_reduce_motion">Reduce reading motion</string>
+    <string name="reader_reduce_motion_description">Reduce page, chapter, and reader panel transitions</string>
+</resources>

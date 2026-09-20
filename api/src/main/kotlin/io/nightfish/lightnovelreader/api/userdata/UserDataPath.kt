@@ -39,6 +39,7 @@ sealed class UserDataPath(
     /** 阅读界面相关用户数据路径组 @since Api 2 */
     data object Reader : UserDataPath("reader") {
         data object PaperId : UserDataPath("paperId", Reader)
+        data object ReduceMotion : UserDataPath("reduceMotion", Reader)
         /** 阅读字体大小 @since Api 2 */
         data object FontSize : UserDataPath("fontSize",Reader)
         /** 阅读字体行高 @since Api 2 */

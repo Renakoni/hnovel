@@ -1,6 +1,10 @@
 package indi.renakoni.nextvol.ui.components
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -52,7 +56,8 @@ fun AnimatedText(
     maxLines: Int = Int.MAX_VALUE,
     minLines: Int = 1,
     onTextLayout: ((TextLayoutResult) -> Unit)? = null,
-    style: TextStyle = LocalTextStyle.current
+    style: TextStyle = LocalTextStyle.current,
+    animationEnabled: Boolean = true,
 ) {
     Row(
         modifier = modifier,
@@ -64,7 +69,9 @@ fun AnimatedText(
                 AnimatedContent(
                     targetState = char,
                     transitionSpec = {
-                        (slideInVertically(initialOffsetY = { it })).togetherWith(
+                        if (!animationEnabled) (EnterTransition.None togetherWith ExitTransition.None)
+                            .using(SizeTransform { _, _ -> snap() })
+                        else (slideInVertically(initialOffsetY = { it })).togetherWith(
                             slideOutVertically(targetOffsetY = { -it })
                         )
                     },
@@ -115,11 +122,14 @@ fun AnimatedTextLine(
     style: TextStyle = LocalTextStyle.current,
     durationMillis: Int = 220,
     easing: Easing = FastOutSlowInEasing,
+    animationEnabled: Boolean = true,
 ) {
     AnimatedContent(
         targetState = text,
         transitionSpec = {
-            slideInVertically(
+            if (!animationEnabled) (EnterTransition.None togetherWith ExitTransition.None)
+                .using(SizeTransform { _, _ -> snap() })
+            else slideInVertically(
                 animationSpec = tween(durationMillis, easing = easing)
             ) { fullHeight -> fullHeight } +
                     fadeIn(animationSpec = tween(durationMillis / 2)) togetherWith

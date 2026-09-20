@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyItemScope
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -212,9 +213,10 @@ fun LazyListScope.AppearancePage(
             modifier = Modifier.padding(start = 16.dp, top = 8.dp))
         ReaderPaperSelector(settingState)
     }
+    item { ReaderMotionSwitch(settingState, Modifier.background(colorScheme.surfaceContainerHigh)) }
     item {
         SettingsClickableEntry(
-            modifier = Modifier.background(colorScheme.surfaceContainerHigh).animateItem(),
+            modifier = Modifier.background(colorScheme.surfaceContainerHigh).then(readerSettingsItemMotion(settingState.reduceMotion)),
             painter = painterResource(R.drawable.format_paint_24px),
             title = stringResource(R.string.settings_theme_settings),
             description = stringResource(R.string.settings_theme_settings_desc),
@@ -223,7 +225,7 @@ fun LazyListScope.AppearancePage(
     }
     item {
         SettingsSwitchEntry(
-            modifier = Modifier.background(colorScheme.surfaceContainerHigh).animateItem(),
+            modifier = Modifier.background(colorScheme.surfaceContainerHigh).then(readerSettingsItemMotion(settingState.reduceMotion)),
             painter = painterResource(R.drawable.lightbulb_24px),
             title = stringResource(R.string.settings_reader_keep_screen_on),
             description = stringResource(R.string.settings_reader_keep_screen_on_desc),
@@ -233,7 +235,7 @@ fun LazyListScope.AppearancePage(
     }
     item {
         SettingsSwitchEntry(
-            modifier = Modifier.background(colorScheme.surfaceContainerHigh).animateItem(),
+            modifier = Modifier.background(colorScheme.surfaceContainerHigh).then(readerSettingsItemMotion(settingState.reduceMotion)),
             painter = painterResource(R.drawable.toolbar_24px),
             title = stringResource(R.string.settings_hide_status_bar),
             description = stringResource(R.string.settings_hide_status_bar_desc),
@@ -243,7 +245,7 @@ fun LazyListScope.AppearancePage(
     }
     item {
         SettingsMenuEntry(
-            modifier = Modifier.background(colorScheme.surfaceContainerHigh).animateItem(),
+            modifier = Modifier.background(colorScheme.surfaceContainerHigh).then(readerSettingsItemMotion(settingState.reduceMotion)),
             painter = painterResource(R.drawable.battery_android_full_24px),
             title = stringResource(R.string.settings_reader_battery_indicator),
             description = stringResource(R.string.settings_reader_battery_indicator_desc),
@@ -254,7 +256,7 @@ fun LazyListScope.AppearancePage(
     }
     item {
         SettingsSwitchEntry(
-            modifier = Modifier.background(colorScheme.surfaceContainerHigh).animateItem(),
+            modifier = Modifier.background(colorScheme.surfaceContainerHigh).then(readerSettingsItemMotion(settingState.reduceMotion)),
             painter = painterResource(R.drawable.outline_schedule_24px),
             title = stringResource(R.string.settings_reader_time_indicator),
             description = stringResource(R.string.settings_reader_time_indicator_desc),
@@ -264,7 +266,7 @@ fun LazyListScope.AppearancePage(
     }
     item {
         SettingsSwitchEntry(
-            modifier = Modifier.background(colorScheme.surfaceContainerHigh).animateItem(),
+            modifier = Modifier.background(colorScheme.surfaceContainerHigh).then(readerSettingsItemMotion(settingState.reduceMotion)),
             painter = painterResource(R.drawable.contract_24px),
             title = stringResource(R.string.settings_reader_chapter_indicator),
             description = stringResource(R.string.settings_reader_chapter_indicator_desc),
@@ -274,7 +276,7 @@ fun LazyListScope.AppearancePage(
     }
     item {
         SettingsSwitchEntry(
-            modifier = Modifier.background(colorScheme.surfaceContainerHigh).animateItem(),
+            modifier = Modifier.background(colorScheme.surfaceContainerHigh).then(readerSettingsItemMotion(settingState.reduceMotion)),
             painter = painterResource(R.drawable.clock_loader_40_24px),
             title = stringResource(R.string.settings_reader_progress_indicator),
             description = stringResource(R.string.settings_reader_progress_indicator_desc),
@@ -287,7 +289,7 @@ fun LazyListScope.AppearancePage(
 fun LazyListScope.ActionPage(settingState: ReaderSettingsEditor) {
     item {
         SettingsSwitchEntry(
-            modifier = Modifier.background(colorScheme.surfaceContainerHigh).animateItem(),
+            modifier = Modifier.background(colorScheme.surfaceContainerHigh).then(readerSettingsItemMotion(settingState.reduceMotion)),
             painter = painterResource(R.drawable.menu_book_24px),
             title = stringResource(R.string.settings_reader_page_mode),
             description = stringResource(R.string.settings_reader_page_mode_desc),
@@ -297,7 +299,7 @@ fun LazyListScope.ActionPage(settingState: ReaderSettingsEditor) {
     }
     item {
         SettingsMenuEntry(
-            modifier = Modifier.background(colorScheme.surfaceContainerHigh).animateItem(),
+            modifier = Modifier.background(colorScheme.surfaceContainerHigh).then(readerSettingsItemMotion(settingState.reduceMotion)),
             painter = painterResource(R.drawable.block_24px),
             title = stringResource(R.string.settings_reader_back_block_mode),
             description = stringResource(R.string.settings_reader_back_block_mode_desc),
@@ -308,7 +310,7 @@ fun LazyListScope.ActionPage(settingState: ReaderSettingsEditor) {
     }
     item {
         SettingsSwitchEntry(
-            modifier = Modifier.background(colorScheme.surfaceContainerHigh).animateItem(),
+            modifier = Modifier.background(colorScheme.surfaceContainerHigh).then(readerSettingsItemMotion(settingState.reduceMotion)),
             painter = painterResource(R.drawable.auto_stories_24px),
             title = stringResource(if (settingState.isUsingFlipPage)
                 R.string.settings_reader_volume_key_control else R.string.reader_volume_scroll_title),
@@ -325,7 +327,7 @@ fun LazyListScope.ActionPage(settingState: ReaderSettingsEditor) {
         item {
             val steps = listOf(-1f, 0.1f, 0.2f, 0.3f, 0.5f, 0.8f, 1.0f, 2.0f, 4.0f)
             SettingsSliderEntry(
-                modifier = Modifier.background(colorScheme.surfaceContainerHigh).animateItem(),
+                modifier = Modifier.background(colorScheme.surfaceContainerHigh).then(readerSettingsItemMotion(settingState.reduceMotion)),
                 painter = painterResource(R.drawable.timer_24px),
                 title = stringResource(if (settingState.isUsingFlipPage)
                     R.string.settings_reader_volume_key_interval else R.string.reader_volume_scroll_interval),
@@ -340,7 +342,7 @@ fun LazyListScope.ActionPage(settingState: ReaderSettingsEditor) {
     if (!settingState.isUsingFlipPage) {
         item {
             SettingsSwitchEntry(
-                modifier = Modifier.background(colorScheme.surfaceContainerHigh).animateItem(),
+                modifier = Modifier.background(colorScheme.surfaceContainerHigh).then(readerSettingsItemMotion(settingState.reduceMotion)),
                 painter = painterResource(R.drawable.unfold_more_double_24px),
                 title = stringResource(R.string.settings_continous_scrolling),
                 description = stringResource(R.string.settings_continous_scrolling_desc),
@@ -352,7 +354,7 @@ fun LazyListScope.ActionPage(settingState: ReaderSettingsEditor) {
     if (settingState.isUsingFlipPage) {
         item {
             SettingsSwitchEntry(
-                modifier = Modifier.background(colorScheme.surfaceContainerHigh).animateItem(),
+                modifier = Modifier.background(colorScheme.surfaceContainerHigh).then(readerSettingsItemMotion(settingState.reduceMotion)),
                 painter = painterResource(R.drawable.touch_app_24px),
                 title = stringResource(R.string.settings_reader_t2tp),
                 description = stringResource(R.string.settings_reader_t2tp_desc),
@@ -364,11 +366,12 @@ fun LazyListScope.ActionPage(settingState: ReaderSettingsEditor) {
     if (settingState.isUsingFlipPage) {
         item {
             SettingsMenuEntry(
-                modifier = Modifier.background(colorScheme.surfaceContainerHigh).animateItem(),
+                modifier = Modifier.background(colorScheme.surfaceContainerHigh).then(readerSettingsItemMotion(settingState.reduceMotion)),
                 painter = painterResource(R.drawable.transition_chop_24px),
                 title = stringResource(R.string.settings_reader_page_turn_anim),
                 description = stringResource(R.string.settings_reader_page_turn_anim_desc),
                 options = MenuOptions.FlipAnimationOptions,
+                disabled = settingState.reduceMotion,
                 selectedOptionKey = settingState.flipAnime,
                 stringUserData = settingState.flipAnimeUserData
             )
@@ -377,7 +380,7 @@ fun LazyListScope.ActionPage(settingState: ReaderSettingsEditor) {
     if (settingState.isUsingFlipPage) {
         item {
             SettingsSwitchEntry(
-                modifier = Modifier.background(colorScheme.surfaceContainerHigh).animateItem(),
+                modifier = Modifier.background(colorScheme.surfaceContainerHigh).then(readerSettingsItemMotion(settingState.reduceMotion)),
                 painter = painterResource(R.drawable.quick_reorder_24px),
                 title = stringResource(R.string.settings_reader_quick_chapter_switch),
                 description = stringResource(R.string.settings_reader_quick_chapter_switch_desc),
@@ -410,3 +413,6 @@ private fun VolumeScrollFractionEntry(settingState: ReaderSettingsEditor) {
         )
     }
 }
+
+private fun LazyItemScope.readerSettingsItemMotion(reduced: Boolean): Modifier =
+    if (reduced) Modifier else Modifier.animateItem()
