@@ -1,8 +1,7 @@
 package indi.renakoni.nextvol.ui.tts
 
-import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.withInfiniteAnimationFrameNanos
 import androidx.compose.foundation.BorderStroke
@@ -16,10 +15,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.absoluteOffset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.requiredWidth
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -35,6 +35,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -63,6 +64,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.currentStateAsState
@@ -71,7 +73,10 @@ import indi.renakoni.nextvol.tts.ReadAloudState
 import indi.renakoni.nextvol.tts.SpeechAction
 import indi.renakoni.nextvol.tts.SpeechPhase
 import indi.renakoni.nextvol.tts.SpeechRequest
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 private val LocalHideReadAloudOverlay = staticCompositionLocalOf<(Boolean) -> Unit> { {} }
@@ -95,24 +100,11 @@ internal fun ReadAloudOverlayHost(
     content: @Composable () -> Unit,
 ) {
     val bookId = state.request?.takeUnless { it.isPreview }?.bookId
-    var played by rememberSaveable(bookId) { mutableStateOf(false) }
-    var closed by rememberSaveable(bookId) { mutableStateOf(false) }
-    var collapsed by rememberSaveable { mutableStateOf(false) }
+    var collapsed by rememberSaveable(bookId, state.showFloatingPlayer) { mutableStateOf(false) }
     var hiddenOwners by remember { mutableIntStateOf(0) }
     val hide: (Boolean) -> Unit = remember { { hiddenOwners += if (it) 1 else -1 } }
-    LaunchedEffect(bookId, state.phase) {
-        when (state.phase) {
-            SpeechPhase.Playing -> if (!closed) played = true
-            SpeechPhase.Stopped, SpeechPhase.Completed -> {
-                played = false
-                closed = false
-                collapsed = false
-            }
-            else -> Unit
-        }
-    }
     val lifecycle by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
-    val visible = bookId != null && played && !closed && hiddenOwners == 0 &&
+    val visible = bookId != null && state.showFloatingPlayer && hiddenOwners == 0 &&
         state.phase !in setOf(SpeechPhase.Stopped, SpeechPhase.Completed) &&
         lifecycle.isAtLeast(Lifecycle.State.RESUMED)
     var playerBounds by remember { mutableStateOf(Rect.Zero) }
@@ -129,10 +121,7 @@ internal fun ReadAloudOverlayHost(
             content()
             // Keep placement across hidden panels, backgrounding and window size changes.
             ReadAloudFloatingPlayer(state, visible, collapsed, { collapsed = it }, cover,
-                onCommand = {
-                    if (it == SpeechAction.Stop) { closed = true; played = false }
-                    onCommand(it)
-                },
+                onCommand = onCommand,
                 onOpenBook = { state.request?.let(onOpenBook) },
                 onBounds = { playerBounds = it })
         }
@@ -152,6 +141,17 @@ private fun ReadAloudFloatingPlayer(
 ) {
     var dockLeft by rememberSaveable { mutableStateOf(false) }
     var heightFraction by rememberSaveable { mutableFloatStateOf(0.22f) }
+    var rotation by rememberSaveable(state.request?.bookId) { mutableFloatStateOf(0f) }
+    LaunchedEffect(visible, collapsed, state.phase, state.request?.bookId) {
+        var previousFrame = 0L
+        while (visible && !collapsed && state.phase == SpeechPhase.Playing && isActive) {
+            withInfiniteAnimationFrameNanos { frame ->
+                if (previousFrame != 0L) rotation =
+                    (rotation + (frame - previousFrame) / 16_000_000_000f * 360f) % 360f
+                previousFrame = frame
+            }
+        }
+    }
     if (!visible) return
     // Docking and the cover/play/close order refer to physical screen edges.
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
@@ -162,22 +162,32 @@ private fun ReadAloudFloatingPlayer(
             val margin = with(density) { 12.dp.toPx() }
             val playerHeight = with(density) { 48.dp.toPx() }
             val maxY = (heightPx - playerHeight - margin).coerceAtLeast(margin)
-            val width by animateDpAsState(if (collapsed) 40.dp else 128.dp, tween(220), label = "playerWidth")
+            // Width, edge inset and content opacity share one clock; the edge cannot chase the width.
+            val expansion by animateFloatAsState(if (collapsed) 0f else 1f, tween(220), label = "playerExpansion")
+            val width = (40 + 88 * expansion).dp
             val playerWidth = with(density) { width.toPx() }
             var dragging by remember { mutableStateOf(false) }
             var dragX by remember { mutableFloatStateOf(0f) }
             var dragY by remember { mutableFloatStateOf(0f) }
-            val dockMargin = if (collapsed) 0f else margin
+            val scope = rememberCoroutineScope()
+            val docking = remember { Animatable(1f) }
+            var dockJob by remember { mutableStateOf<Job?>(null) }
+            val dockMargin = margin * expansion
             val dockX = if (dockLeft) dockMargin else (widthPx - playerWidth - dockMargin).coerceAtLeast(0f)
-            val snappedX by animateFloatAsState(if (dragging) dragX else dockX,
-                if (dragging) snap() else tween(240), label = "playerDock")
-            val x = if (dragging) dragX else snappedX
+            val x = (if (dragging) dragX else dragX + (dockX - dragX) * docking.value)
+                .coerceIn(0f, (widthPx - playerWidth).coerceAtLeast(0f))
             val y = if (dragging) dragY else (heightFraction * heightPx).coerceIn(margin, maxY)
             val settle = {
                 dockLeft = dragX + playerWidth / 2 < widthPx / 2
                 heightFraction = dragY.coerceIn(margin, maxY) / heightPx.coerceAtLeast(1f)
                 if (dragX <= 0f || dragX + playerWidth >= widthPx) onCollapsed(true)
-                dragging = false
+                dockJob?.cancel()
+                dockJob = scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                    // Seed from the released position before switching away from direct finger tracking.
+                    docking.snapTo(0f)
+                    dragging = false
+                    docking.animateTo(1f, tween(240))
+                }
             }
             val currentPosition by rememberUpdatedState(Offset(x, y))
             val currentWidth by rememberUpdatedState(playerWidth)
@@ -194,7 +204,10 @@ private fun ReadAloudFloatingPlayer(
                 }
                 .pointerInput(widthPx, heightPx) {
                     detectDragGestures(
-                        onDragStart = { dragX = currentPosition.x; dragY = currentPosition.y; dragging = true },
+                        onDragStart = {
+                            dockJob?.cancel()
+                            dragX = currentPosition.x; dragY = currentPosition.y; dragging = true
+                        },
                         onDragEnd = { currentSettle() },
                         onDragCancel = { currentSettle() },
                     ) { change, delta ->
@@ -203,10 +216,12 @@ private fun ReadAloudFloatingPlayer(
                         dragY = (dragY + delta.y).coerceIn(margin, maxY)
                     }
                 }, contentAlignment = if (dockLeft) Alignment.CenterStart else Alignment.CenterEnd) {
-                if (collapsed) {
+                if (expansion < 1f) {
                     Surface(
                         onClick = { onCollapsed(false) },
-                        modifier = Modifier.size(40.dp, 48.dp).testTag("read-aloud-expand"),
+                        enabled = collapsed,
+                        modifier = Modifier.size(40.dp, 48.dp).zIndex(1f).graphicsLayer { alpha = 1f - expansion }
+                            .testTag("read-aloud-expand"),
                         color = androidx.compose.ui.graphics.Color.Transparent,
                     ) {
                         Box(contentAlignment = if (dockLeft) Alignment.CenterStart else Alignment.CenterEnd) {
@@ -229,28 +244,21 @@ private fun ReadAloudFloatingPlayer(
                             }
                         }
                     }
-                } else {
+                }
+                if (expansion > 0f) {
                     Surface(
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier.wrapContentSize(
+                            align = if (dockLeft) Alignment.CenterStart else Alignment.CenterEnd, unbounded = true)
+                            .requiredSize(128.dp, 48.dp).graphicsLayer { alpha = expansion },
                         shape = CircleShape,
                         color = MaterialTheme.colorScheme.secondaryContainer,
                         contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                         shadowElevation = 3.dp,
                     ) {
-                        Row(Modifier.requiredWidth(128.dp).padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                            var rotation by remember { mutableFloatStateOf(0f) }
-                            LaunchedEffect(state.phase) {
-                                var previousFrame = 0L
-                                while (state.phase == SpeechPhase.Playing && isActive) {
-                                    withInfiniteAnimationFrameNanos { frame ->
-                                        if (previousFrame != 0L) rotation =
-                                            (rotation + (frame - previousFrame) / 16_000_000_000f * 360f) % 360f
-                                        previousFrame = frame
-                                    }
-                                }
-                            }
+                        Row(Modifier.padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
                             val openLabel = stringResource(R.string.tts_return_to_book, state.bookTitle)
-                            IconButton(onClick = onOpenBook, modifier = Modifier.size(40.dp).testTag("read-aloud-cover")) {
+                            IconButton(onClick = onOpenBook, enabled = !collapsed && expansion == 1f,
+                                modifier = Modifier.size(40.dp).testTag("read-aloud-cover")) {
                                 Box(Modifier.size(40.dp).clip(CircleShape)
                                     .clearAndSetSemantics { contentDescription = openLabel }
                                     .graphicsLayer { rotationZ = rotation }) { cover() }
@@ -258,7 +266,7 @@ private fun ReadAloudFloatingPlayer(
                             Spacer(Modifier.width(4.dp))
                             IconButton(onClick = {
                                 onCommand(if (state.isActive) SpeechAction.Pause else SpeechAction.Resume)
-                            }, modifier = Modifier.size(40.dp)) {
+                            }, enabled = !collapsed && expansion == 1f, modifier = Modifier.size(40.dp)) {
                                 Surface(shape = CircleShape, color = androidx.compose.ui.graphics.Color.Transparent,
                                     border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.5f))) {
                                     Box(Modifier.size(26.dp), contentAlignment = Alignment.Center) {
@@ -267,7 +275,8 @@ private fun ReadAloudFloatingPlayer(
                                     }
                                 }
                             }
-                            IconButton(onClick = { onCommand(SpeechAction.Stop) }, modifier = Modifier.size(36.dp, 40.dp)) {
+                            IconButton(onClick = { onCommand(SpeechAction.Stop) }, enabled = !collapsed && expansion == 1f,
+                                modifier = Modifier.size(36.dp, 40.dp)) {
                                 Icon(painterResource(R.drawable.close_24px), stringResource(R.string.tts_close_player), Modifier.size(18.dp),
                                     tint = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.75f))
                             }

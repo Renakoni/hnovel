@@ -20,6 +20,7 @@ import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.tts.SpeechRequest
 import io.nightfish.lightnovelreader.api.Route
 import indi.renakoni.nextvol.utils.popBackStackIfResumed
+import indi.renakoni.nextvol.utils.isResumed
 import io.nightfish.lightnovelreader.api.ui.LocalNavController
 import kotlinx.serialization.Serializable
 
@@ -32,7 +33,7 @@ object HttpSpeechSourcesRoute
 fun NavController.navigateToSpeechSettings() = navigate(SpeechSettingsRoute) { launchSingleTop = true }
 
 internal fun NavController.navigateToReadAloudBook(request: SpeechRequest) {
-    if (request.isPreview) return
+    if (request.isPreview || !isResumed()) return
     navigate(Route.Book.Reader(request.bookId, request.chapterId)) {
         // A reader entry can have advanced beyond its original route's chapter.
         // Replace that entry so the listening chapter is actually opened again.

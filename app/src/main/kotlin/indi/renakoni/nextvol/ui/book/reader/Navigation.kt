@@ -22,6 +22,7 @@ import androidx.core.net.toUri
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
+import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.dialog
@@ -46,11 +47,14 @@ import kotlinx.coroutines.withContext
 
 fun NavGraphBuilder.bookReaderDestination(onReaderActiveChanged: (Boolean) -> Unit) {
     composable<Route.Book.Reader> { navBackStackEntry ->
+        val navController = LocalNavController.current
         DisposableEffect(Unit) {
             onReaderActiveChanged(true)
-            onDispose { onReaderActiveChanged(false) }
+            onDispose {
+                // Replacing a reader from the floating player overlaps both entries during the transition.
+                if (navController.currentDestination?.hasRoute<Route.Book.Reader>() != true) onReaderActiveChanged(false)
+            }
         }
-        val navController = LocalNavController.current
         val parentEntry = remember(navBackStackEntry) { navController.getBackStackEntry<Route.Book>() }
         // Keep the existing Book-graph lifetime for queued recording writes, while each
         // restored reader entry owns a separate session during navigation transitions.

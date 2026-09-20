@@ -18,6 +18,7 @@ enum class SpeechAction { Start, Pause, Resume, Stop, Previous, Next, PreviousCh
 class ReadAloudController @Inject constructor(@ApplicationContext private val context: Context) {
     private val mutableState = MutableStateFlow(ReadAloudState())
     val state = mutableState.asStateFlow()
+    private var closingPlayer = false
 
     fun start(bookId: String, chapterId: String) {
         val book = BookIdentity.book(bookId)
@@ -33,16 +34,33 @@ class ReadAloudController @Inject constructor(@ApplicationContext private val co
     fun preview(text: String) = start(SpeechRequest("", "", text))
 
     private fun start(request: SpeechRequest) {
+        closingPlayer = false
         mutableState.value = ReadAloudState(request, SpeechPhase.Preparing)
         send(SpeechAction.Start, request)
     }
 
-    fun command(action: SpeechAction) = send(action, state.value.request)
+    fun command(action: SpeechAction) {
+        if (action == SpeechAction.Resume) closingPlayer = false
+        if (action == SpeechAction.Stop) {
+            closingPlayer = true
+            mutableState.value = state.value.copy(showFloatingPlayer = false)
+        }
+        send(action, state.value.request)
+    }
     fun setSleepTimer(minutes: Int?) {
         require(minutes == null || minutes in 1..60)
         send(SpeechAction.SleepTimer, state.value.request, minutes)
     }
-    internal fun publish(state: ReadAloudState) { mutableState.value = state }
+    internal fun publish(state: ReadAloudState) {
+        val terminal = state.phase in setOf(SpeechPhase.Stopped, SpeechPhase.Completed)
+        if (terminal) closingPlayer = false
+        val previous = mutableState.value
+        // Track eligibility where playback is published, even while the Activity is not collecting.
+        val showPlayer = !terminal && !closingPlayer && state.request?.isPreview == false &&
+            (state.phase == SpeechPhase.Playing ||
+                previous.request?.bookId == state.request.bookId && previous.showFloatingPlayer)
+        mutableState.value = state.copy(showFloatingPlayer = showPlayer)
+    }
 
     private fun send(action: SpeechAction, request: SpeechRequest?, timerMinutes: Int? = null) {
         if (request == null) return

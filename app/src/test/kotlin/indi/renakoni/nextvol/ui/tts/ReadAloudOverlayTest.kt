@@ -5,6 +5,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -23,6 +26,7 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.*
 import androidx.navigation.toRoute
@@ -47,7 +51,7 @@ class ReadAloudOverlayTest {
     @get:Rule val compose = createEmptyComposeRule()
     private lateinit var activity: ActivityController<ComponentActivity>
     private val state = mutableStateOf(ReadAloudState(SpeechRequest("book", "chapter"),
-        SpeechPhase.Playing, bookTitle = "Listening book"))
+        SpeechPhase.Playing, bookTitle = "Listening book", showFloatingPlayer = true))
     private val hidePanel = mutableStateOf(false)
     private val hideSettings = mutableStateOf(false)
     private val direction = mutableStateOf(LayoutDirection.Ltr)
@@ -65,12 +69,14 @@ class ReadAloudOverlayTest {
 
     @After fun destroy() { activity.pause().stop().destroy() }
 
-    private fun show(content: (@Composable () -> Unit)? = null, open: (SpeechRequest) -> Unit = { opened += it }) {
+    private fun show(content: (@Composable () -> Unit)? = null, open: (SpeechRequest) -> Unit = { opened += it },
+        controller: ReadAloudController? = null) {
         activity.get().setContent {
             MaterialTheme {
                 CompositionLocalProvider(LocalLayoutDirection provides direction.value) {
                     Box(Modifier.width(windowWidth.value).fillMaxHeight().testTag("window")) {
-                        ReadAloudOverlayHost(state.value, { actions += it }, open,
+                        val playback = controller?.state?.collectAsStateWithLifecycle()?.value ?: state.value
+                        ReadAloudOverlayHost(playback, { actions += it; controller?.command(it) }, open,
                             cover = { Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.primary)) }) {
                             if (hidePanel.value) HideReadAloudOverlay()
                             if (hideSettings.value) HideReadAloudOverlay()
@@ -93,7 +99,11 @@ class ReadAloudOverlayTest {
 
     private fun player() = compose.onNodeWithTag("read-aloud-floating-player")
     private fun expand() = compose.onNodeWithTag("read-aloud-expand")
-    private fun phase(phase: SpeechPhase) = compose.runOnIdle { state.value = state.value.copy(phase = phase) }
+    private fun phase(phase: SpeechPhase) = compose.runOnIdle {
+        state.value = state.value.copy(phase = phase, showFloatingPlayer =
+            phase !in setOf(SpeechPhase.Stopped, SpeechPhase.Completed) &&
+                (state.value.showFloatingPlayer || phase == SpeechPhase.Playing))
+    }
     private fun drag(dx: Float, dy: Float = 0f) {
         player().performTouchInput {
             down(center)
@@ -104,7 +114,7 @@ class ReadAloudOverlayTest {
     }
 
     @Test fun startsOnlyAfterBookPlaybackAndNeverForPreview() {
-        state.value = state.value.copy(phase = SpeechPhase.Preparing)
+        state.value = state.value.copy(phase = SpeechPhase.Preparing, showFloatingPlayer = false)
         show()
         player().assertDoesNotExist()
         phase(SpeechPhase.Paused)
@@ -116,7 +126,12 @@ class ReadAloudOverlayTest {
     }
 
     @Test fun pauseResumeAndCloseControlTheSameSessionAndCloseImmediately() {
-        show()
+        val controller = ReadAloudController(activity.get())
+        controller.publish(state.value)
+        show(controller = controller)
+        fun phase(phase: SpeechPhase) = compose.runOnIdle {
+            controller.publish(controller.state.value.copy(phase = phase))
+        }
         compose.onNodeWithContentDescription("Pause").performClick()
         phase(SpeechPhase.Paused)
         player().assertIsDisplayed()
@@ -148,6 +163,47 @@ class ReadAloudOverlayTest {
         compose.onNodeWithTag("book-list").performTouchInput { swipeUp() }
         expand().assertIsDisplayed()
         compose.runOnIdle { assertTrue(list.firstVisibleItemIndex > 0) }
+    }
+
+    @Test fun rightEdgeStaysAnchoredThroughoutCollapseAndExpansion() {
+        show()
+        val right = compose.onNodeWithTag("window").fetchSemanticsNode().boundsInRoot.right
+        compose.mainClock.autoAdvance = false
+        compose.onNodeWithTag("page-action").performTouchInput { click() }
+        repeat(20) {
+            compose.mainClock.advanceTimeByFrame()
+            val edge = player().fetchSemanticsNode().boundsInRoot.right
+            assertTrue("Collapse frame $it drifted to $edge", edge in (right - 13f)..(right + 1f))
+        }
+        expand().performClick()
+        repeat(20) {
+            compose.mainClock.advanceTimeByFrame()
+            val edge = player().fetchSemanticsNode().boundsInRoot.right
+            assertTrue("Expansion frame $it drifted to $edge", edge in (right - 13f)..(right + 1f))
+        }
+    }
+
+    @Test fun collapsingKeepsTheCoverUntilItsExitAnimationFinishes() {
+        show()
+        compose.mainClock.autoAdvance = false
+        compose.onNodeWithTag("page-action").performTouchInput { click() }
+        compose.mainClock.advanceTimeBy(64)
+        compose.onNodeWithTag("read-aloud-cover").assertExists().assertIsNotEnabled()
+        compose.mainClock.advanceTimeBy(300)
+        compose.onNodeWithTag("read-aloud-cover").assertDoesNotExist()
+    }
+
+    @Test fun touchingHandleDuringCollapseReversesTheTransitionWithoutActivatingControls() {
+        show()
+        compose.mainClock.autoAdvance = false
+        compose.onNodeWithTag("page-action").performTouchInput { click() }
+        compose.mainClock.advanceTimeBy(64)
+        expand().performTouchInput { click() }
+        compose.mainClock.advanceTimeBy(320)
+        expand().assertDoesNotExist()
+        compose.onNodeWithContentDescription("Pause").assertIsEnabled()
+        assertEquals(128f, player().fetchSemanticsNode().boundsInRoot.width, 1f)
+        assertTrue(actions.isEmpty())
     }
 
     @Test fun middleReleaseSnapsToNearestSideAndEdgeDragCollapsesWithoutClicking() {
@@ -210,6 +266,86 @@ class ReadAloudOverlayTest {
         assertTrue(actions.isEmpty())
     }
 
+    @Test fun playbackStartingAndPausingInBackgroundStillOffersControlsOnReturn() {
+        val controller = ReadAloudController(activity.get())
+        controller.publish(state.value.copy(phase = SpeechPhase.Preparing))
+        show(controller = controller)
+        player().assertDoesNotExist()
+        compose.runOnIdle { activity.pause().stop() }
+        compose.runOnIdle {
+            controller.publish(state.value)
+            controller.publish(state.value.copy(phase = SpeechPhase.Paused))
+        }
+        compose.runOnIdle { activity.start().resume() }
+        compose.onNodeWithContentDescription("Resume").assertIsDisplayed()
+    }
+
+    @Test fun sameBookCanRestartEvenIfUiMissesTheStoppedState() {
+        val controller = ReadAloudController(activity.get())
+        controller.publish(state.value)
+        show(controller = controller)
+        compose.onNodeWithContentDescription("Stop listening and close").performClick()
+        player().assertDoesNotExist()
+        compose.runOnIdle {
+            controller.publish(state.value.copy(phase = SpeechPhase.Stopped))
+            controller.publish(state.value.copy(phase = SpeechPhase.Preparing))
+            controller.publish(state.value)
+        }
+        player().assertIsDisplayed()
+    }
+
+    @Test fun playbackEligibilityResetsForAnotherBookAndPreview() {
+        val controller = ReadAloudController(activity.get())
+        controller.publish(state.value)
+        show(controller = controller)
+        player().assertIsDisplayed()
+        compose.runOnIdle {
+            controller.publish(ReadAloudState(SpeechRequest("another-book", "chapter"), SpeechPhase.Preparing))
+        }
+        player().assertDoesNotExist()
+        compose.runOnIdle { controller.publish(controller.state.value.copy(phase = SpeechPhase.Playing)) }
+        player().assertIsDisplayed()
+        compose.runOnIdle { controller.publish(ReadAloudState(SpeechRequest("", "", "Preview"), SpeechPhase.Playing)) }
+        player().assertDoesNotExist()
+    }
+
+    @Test fun explicitResumeAfterAServiceFailureCanShowThePlayerAgain() {
+        val controller = ReadAloudController(activity.get())
+        controller.publish(state.value)
+        show(controller = controller)
+        compose.onNodeWithContentDescription("Stop listening and close").performClick()
+        compose.runOnIdle {
+            controller.publish(state.value.copy(phase = SpeechPhase.Failed, error = SpeechError.ServiceUnavailable))
+            controller.command(SpeechAction.Resume)
+            controller.publish(state.value)
+        }
+        player().assertIsDisplayed()
+    }
+
+    @Test fun releasingAndInterruptingDockingContinueFromTheFingerPosition() {
+        show()
+        compose.mainClock.autoAdvance = false
+        player().performTouchInput { down(center); moveBy(Offset(-140f, 0f)) }
+        compose.mainClock.advanceTimeBy(32)
+        val released = player().fetchSemanticsNode().boundsInRoot.left
+        player().performTouchInput { up() }
+        compose.mainClock.advanceTimeByFrame()
+        val first = player().fetchSemanticsNode().boundsInRoot.left
+        assertTrue("Release jumped from $released to $first", first in 12f..(released + 1f))
+        compose.mainClock.advanceTimeBy(64)
+        val beforeDrag = player().fetchSemanticsNode().boundsInRoot.left
+        player().performTouchInput { down(center); moveBy(Offset(80f, 0f)) }
+        compose.mainClock.advanceTimeBy(32)
+        val interrupted = player().fetchSemanticsNode().boundsInRoot.left
+        assertTrue(interrupted > beforeDrag + 40f)
+        player().performTouchInput { up() }
+        compose.mainClock.advanceTimeByFrame()
+        assertEquals(interrupted, player().fetchSemanticsNode().boundsInRoot.left, 2f)
+        compose.mainClock.autoAdvance = true
+        compose.waitForIdle()
+        assertTrue(actions.isEmpty())
+    }
+
     @Test fun completionAndStopRemovePlayerButBufferingAndFailureKeepControls() {
         show()
         phase(SpeechPhase.Buffering)
@@ -252,6 +388,28 @@ class ReadAloudOverlayTest {
         compose.onNodeWithTag("read-aloud-cover").performClick()
         compose.onNodeWithText("next-chapter").assertIsDisplayed()
         assertNotEquals(firstEntry, nav.currentBackStackEntry!!.id)
+        compose.runOnIdle { nav.popBackStack() }
+        compose.onNodeWithText("Discover books").assertIsDisplayed()
+    }
+
+    @Test fun repeatedCoverTapDuringNavigationDoesNotReplaceTheIncomingReader() {
+        lateinit var nav: NavHostController
+        show(content = {
+            nav = rememberNavController()
+            NavHost(nav, startDestination = Route.Main.Explore.Home,
+                enterTransition = { fadeIn(tween(300)) }, exitTransition = { fadeOut(tween(300)) }) {
+                composable<Route.Main.Explore.Home> { Text("Discover books") }
+                composable<Route.Book.Reader> { Text(it.toRoute<Route.Book.Reader>().chapterId) }
+            }
+        }, open = { nav.navigateToReadAloudBook(it) })
+        compose.mainClock.autoAdvance = false
+        compose.onNodeWithTag("read-aloud-cover").performClick()
+        compose.mainClock.advanceTimeBy(32)
+        val entry = nav.currentBackStackEntry!!.id
+        compose.onNodeWithTag("read-aloud-cover").performClick()
+        assertEquals(entry, nav.currentBackStackEntry!!.id)
+        compose.mainClock.autoAdvance = true
+        compose.waitForIdle()
         compose.runOnIdle { nav.popBackStack() }
         compose.onNodeWithText("Discover books").assertIsDisplayed()
     }
