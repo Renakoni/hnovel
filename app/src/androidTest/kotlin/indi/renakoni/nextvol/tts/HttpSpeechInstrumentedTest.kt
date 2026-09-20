@@ -59,7 +59,7 @@ class HttpSpeechInstrumentedTest {
                                 var playing = false
                                 val playback = ExoSpeechPlayback(player, context)
                                 withTimeout(10_000) {
-                                    playback.play(SpeechClip(SpeechChapter("", "", "", "", text), SpeechSegment(0, text.length, text), 0, 1, file), true) { phase, _ ->
+                                    playback.play(SpeechClip(SpeechChapter("", "", "", "", text), SpeechSegment(0, text.length, text), 0, 1, file), true, onRange = {}) { phase, _ ->
                                         if (phase == SpeechPhase.Playing) playing = true
                                     }
                                 }

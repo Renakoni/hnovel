@@ -10,6 +10,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.key
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
@@ -18,6 +23,9 @@ import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Constraints
 import indi.renakoni.nextvol.ui.book.reader.content.LocalReaderSelectionState
+import indi.renakoni.nextvol.ui.book.reader.content.LocalReaderSpeechRanges
+import indi.renakoni.nextvol.ui.book.reader.LocalReaderSpeechHighlight
+import androidx.compose.ui.graphics.isSpecified
 import kotlin.math.ceil
 
 internal data class ReaderTextSource(val componentIndex: Int, val text: String)
@@ -29,6 +37,8 @@ internal data class ReaderTextFragment(
     val text: String,
     val spacingBefore: Int,
     val height: Int,
+    val lineStarts: List<Int> = emptyList(),
+    val lineTops: List<Int> = emptyList(),
 )
 
 /** Legacy simple_text uses LF/CRLF as paragraph boundaries; U+2028 remains a soft break.
@@ -87,6 +97,8 @@ internal fun layoutReaderText(
                     paragraph.substring(start, end).let {
                         if (lastLine < measured.lineCount - 1) it.removeSuffix("\u2028") else it
                     }, spacing, fragmentHeight,
+                    (firstLine..lastLine).map { paragraphStart + measured.getLineStart(it) },
+                    (firstLine..lastLine).map { (measured.getLineTop(it) - top).toInt() },
                 )
                 usedHeight += spacing + fragmentHeight
                 firstLine = lastLine + 1
@@ -113,6 +125,9 @@ internal fun ReaderTextFragments(
     val readerSelection = LocalReaderSelectionState.current
     val selectionState = rememberSelectionState()
     val density = LocalDensity.current
+    val speechRanges = LocalReaderSpeechRanges.current
+    val paperHighlight = LocalReaderSpeechHighlight.current
+    val highlight = if (paperHighlight.isSpecified) paperHighlight else color.copy(alpha = 0.13f)
     DisposableEffect(readerSelection, selectionState) {
         readerSelection.register(selectionState)
         onDispose { readerSelection.unregister(selectionState) }
@@ -121,10 +136,19 @@ internal fun ReaderTextFragments(
         Column(modifier) {
             fragments.forEach { fragment ->
                 key(fragment.componentIndex, fragment.start) {
+                    var measured by remember { mutableStateOf<TextLayoutResult?>(null) }
+                    val range = speechRanges.firstOrNull { it.componentIndex == fragment.componentIndex }
+                    val start = ((range?.start ?: fragment.end) - fragment.start).coerceIn(0, fragment.text.length)
+                    val end = ((range?.end ?: fragment.start) - fragment.start).coerceIn(0, fragment.text.length)
                     if (fragment.spacingBefore > 0) Spacer(Modifier.height(with(density) { fragment.spacingBefore.toDp() }))
                     Text(
                         text = fragment.text, style = style, color = color,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().drawBehind {
+                            if (start < end && !readerSelection.hasSelection) measured?.let {
+                                drawPath(it.getPathForRange(start, end), highlight)
+                            }
+                        },
+                        onTextLayout = { measured = it },
                     )
                 }
             }

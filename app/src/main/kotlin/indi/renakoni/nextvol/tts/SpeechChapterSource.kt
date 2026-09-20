@@ -49,18 +49,19 @@ class RepositorySpeechChapterSource @Inject constructor(
 internal fun speechText(content: JsonObject, registry: ComponentDataRegistry): String {
     val array = content["components"] as? JsonArray ?: throw SpeechException(SpeechError.UnsupportedContent)
     val serializers = registry.serializeMap
-    val text = array.mapNotNull { element ->
+    val parts = array.mapIndexedNotNull { index, element ->
         val component = element as? JsonObject ?: throw SpeechException(SpeechError.UnsupportedContent)
         val rawId = (component["id"] as? JsonPrimitive)?.content ?: throw SpeechException(SpeechError.UnsupportedContent)
         val id = if (':' in rawId) rawId else "lightnovelreader:$rawId"
         val data = component["data"] as? JsonObject ?: throw SpeechException(SpeechError.UnsupportedContent)
         val serializer = serializers[id] ?: throw SpeechException(SpeechError.UnsupportedContent)
         when (val decoded = serializer.fromJsonElement(data)) {
-            is SimpleTextComponentData -> decoded.text
+            is SimpleTextComponentData -> index to decoded.text
             is ImageComponentData -> null
             else -> throw SpeechException(SpeechError.UnsupportedContent)
         }
-    }.joinToString("\n")
+    }
+    val text = SpeechTextIndex(parts).text
     if (text.isBlank()) throw SpeechException(SpeechError.EmptyText)
     return text
 }

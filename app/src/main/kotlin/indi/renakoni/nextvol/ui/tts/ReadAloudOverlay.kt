@@ -122,7 +122,10 @@ internal fun ReadAloudOverlayHost(
             // Keep placement across hidden panels, backgrounding and window size changes.
             ReadAloudFloatingPlayer(state, visible, collapsed, { collapsed = it }, cover,
                 onCommand = onCommand,
-                onOpenBook = { state.request?.let(onOpenBook) },
+                onOpenBook = { state.request?.let { request ->
+                    val position = state.position?.takeIf { it.bookId == request.bookId }
+                    onOpenBook(if (position == null) request else request.copy(chapterId = position.chapterId))
+                } },
                 onBounds = { playerBounds = it })
         }
     }

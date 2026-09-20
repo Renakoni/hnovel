@@ -60,6 +60,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -75,6 +76,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
 import coil3.compose.AsyncImagePainter
 import com.github.michaelbull.result.get
 import com.github.michaelbull.result.map
@@ -83,8 +86,11 @@ import com.github.michaelbull.result.onOk
 import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.tts.ReadAloudState
 import indi.renakoni.nextvol.tts.SpeechAction
+import indi.renakoni.nextvol.tts.SpeechPhase
 import indi.renakoni.nextvol.ui.book.reader.content.ContentComponent
 import indi.renakoni.nextvol.ui.book.reader.content.LocalReaderVolumeKeysEnabled
+import indi.renakoni.nextvol.ui.book.reader.content.LocalReaderSpeechFollow
+import indi.renakoni.nextvol.ui.book.reader.content.ReaderSpeechFollow
 import indi.renakoni.nextvol.ui.components.AnimatedText
 import indi.renakoni.nextvol.ui.components.AnimatedTextLine
 import indi.renakoni.nextvol.ui.components.LnrSnackbar
@@ -131,6 +137,25 @@ fun ReaderScreen(
     var showChapterSelectionBottomSheet by remember { mutableStateOf(false) }
     var showReadAloud by remember { mutableStateOf(false) }
     var selectedVolumeId by remember { mutableStateOf("") }
+    var followSpeech by rememberSaveable(readingScreenUiState.bookId, speechState.request?.bookId) { mutableStateOf(true) }
+    val lifecycle by LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsStateWithLifecycle()
+    val speechPosition = speechState.position?.takeIf { it.bookId == readingScreenUiState.bookId }
+    val speechFollow = ReaderSpeechFollow(speechPosition, followSpeech,
+        onManualNavigation = {
+            if (speechPosition != null || speechState.request?.let {
+                    !it.isPreview && it.bookId == readingScreenUiState.bookId &&
+                        (speechState.isActive || speechState.phase == SpeechPhase.Paused)
+                } == true) followSpeech = false
+        },
+        active = lifecycle == Lifecycle.State.RESUMED &&
+            !showSettingsBottomSheet && !showChapterSelectionBottomSheet && !showReadAloud)
+    val previousChapter = { speechFollow.onManualNavigation(); onClickPrevChapter() }
+    val nextChapter = { speechFollow.onManualNavigation(); onClickNextChapter() }
+    LaunchedEffect(speechPosition?.chapterId, speechFollow.following, speechFollow.active, readingScreenUiState.contentUiState) {
+        val mode = readingScreenUiState.contentUiState
+        if (speechFollow.following && speechFollow.active && speechPosition != null && mode != null &&
+            mode.readingChapterId != speechPosition.chapterId) onChangeChapter(speechPosition.chapterId)
+    }
 
     val coroutineScope = rememberCoroutineScope()
     val settingsBottomSheetState = rememberBottomSheetState(initialValue = SheetValue.Hidden)
@@ -218,16 +243,18 @@ fun ReaderScreen(
             accumulateReadTime = accumulateReadTime,
         )
 
-        Content(
-            isImmersive = isImmersive,
-            volumeKeysEnabled = !showSettingsBottomSheet && !showChapterSelectionBottomSheet && !showReadAloud,
-            readingScreenUiState = readingScreenUiState,
-            settingState = settingState,
-            fontFamilySettings = fontFamilySettings,
-            onClickPrevChapter = onClickPrevChapter,
-            onClickNextChapter = onClickNextChapter,
-            onChangeIsImmersive = { isImmersive = !isImmersive }
-        )
+        CompositionLocalProvider(LocalReaderSpeechFollow provides speechFollow) {
+            Content(
+                isImmersive = isImmersive,
+                volumeKeysEnabled = !showSettingsBottomSheet && !showChapterSelectionBottomSheet && !showReadAloud,
+                readingScreenUiState = readingScreenUiState,
+                settingState = settingState,
+                fontFamilySettings = fontFamilySettings,
+                onClickPrevChapter = previousChapter,
+                onClickNextChapter = nextChapter,
+                onChangeIsImmersive = { isImmersive = !isImmersive }
+            )
+        }
 
         if (!isImmersive) {
             Box(Modifier.align(Alignment.TopCenter).readerProbeLayout("top-bar")) {
@@ -250,8 +277,8 @@ fun ReaderScreen(
                 hasPrevChapter = readingScreenUiState.contentUiState?.readingChapterContent
                     ?.get()
                     ?.hasPrevChapter() ?: false,
-                onClickPrevChapter = onClickPrevChapter,
-                onClickNextChapter = onClickNextChapter,
+                onClickPrevChapter = previousChapter,
+                onClickNextChapter = nextChapter,
                 onClickSettings = { showSettingsBottomSheet = true },
                 onClickChapterSelector = { showChapterSelectionBottomSheet = true },
             )
@@ -314,7 +341,7 @@ fun ReaderScreen(
                                     }
                                 }?.volumeId ?: ""
                         },
-                        onClickChapter = onChangeChapter,
+                        onClickChapter = { speechFollow.onManualNavigation(); onChangeChapter(it) },
                         onChangeSelectedVolumeId = {
                             selectedVolumeId = it
                         }
@@ -355,6 +382,7 @@ fun Content(
     volumeKeysEnabled: Boolean = true,
 ) {
     val textLayout = rememberReaderTextLayout(settingState)
+    val speechFollow = LocalReaderSpeechFollow.current
     Box(modifier = Modifier.fillMaxSize().readerProbeLayout("content-root")) {
         val isEnableIndicator =
             settingState.enableTimeIndicator ||
@@ -368,7 +396,9 @@ fun Content(
                 label = "ContentAnimate"
             ) { contentUiState ->
                 // Controls cover the reading viewport; outgoing animated modes must release input.
-                CompositionLocalProvider(LocalReaderTextLayout provides textLayout, LocalReaderVolumeKeysEnabled provides (
+                CompositionLocalProvider(LocalReaderTextLayout provides textLayout,
+                    LocalReaderSpeechFollow provides if (contentUiState === readingScreenUiState.contentUiState)
+                        speechFollow else ReaderSpeechFollow(), LocalReaderVolumeKeysEnabled provides (
                     volumeKeysEnabled && isImmersive && contentUiState === readingScreenUiState.contentUiState
                 )) {
                     ContentComponent(

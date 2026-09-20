@@ -9,19 +9,36 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import indi.renakoni.nextvol.R
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 /** Playback completion and pauses come from ExoPlayer, not synthesis callbacks. */
 internal class ExoSpeechPlayback(private val player: ExoPlayer, private val context: Context) : SpeechPlayback {
     private var active: CompletableDeferred<Unit>? = null
     private var listener: Player.Listener? = null
 
-    override suspend fun play(clip: SpeechClip, playWhenReady: Boolean, onState: (SpeechPhase, Boolean) -> Unit) {
+    override suspend fun play(clip: SpeechClip, playWhenReady: Boolean, onRange: (SpeechTiming) -> Unit,
+        onEstimatedAnchor: (Int) -> Unit,
+        onState: (SpeechPhase, Boolean) -> Unit) = coroutineScope {
         stop()
         val completed = CompletableDeferred<Unit>()
         active = completed
+        var seekPending = false
+        val playbackChanges = Channel<Unit>(Channel.CONFLATED)
         val events = object : Player.Listener {
+            override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
+                if (active === completed && reason == Player.DISCONTINUITY_REASON_SEEK) {
+                    seekPending = true
+                    playbackChanges.trySend(Unit)
+                }
+            }
+
             override fun onEvents(player: Player, events: Player.Events) {
                 if (active !== completed) return
+                playbackChanges.trySend(Unit)
                 if (player.playbackState == Player.STATE_ENDED) {
                     completed.complete(Unit)
                     return
@@ -47,7 +64,30 @@ internal class ExoSpeechPlayback(private val player: ExoPlayer, private val cont
                     .setSubtitle(context.getString(R.string.tts_passage, clip.index + 1, clip.count)).build()).build())
             player.playWhenReady = playWhenReady
             player.prepare()
-            completed.await()
+            val estimate = if (clip.timings.isEmpty()) SpeechFollowEstimate(clip.segment.text) else null
+            val tracking = launch {
+                var reported: SpeechTiming? = null
+                var reportedAnchor: Int? = null
+                while (isActive && active === completed) {
+                    if (player.isPlaying || seekPending && player.playbackState == Player.STATE_READY) {
+                        val wasSeek = seekPending
+                        seekPending = false
+                        val position = player.currentPosition
+                        if (estimate != null) {
+                            val anchor = estimate.anchorAt(position, player.duration)
+                            if (anchor == null) seekPending = wasSeek
+                            else {
+                                if (anchor != reportedAnchor) { reportedAnchor = anchor; onEstimatedAnchor(anchor) }
+                            }
+                        } else (clip.timings.rangeAt(position) ?: clip.timings.firstOrNull()?.takeIf { wasSeek })?.let { range ->
+                            if (range != reported) { reported = range; onRange(range) }
+                        }
+                    }
+                    // No polling while paused/buffering. Resume, readiness and explicit seek wake the tracker.
+                    if (player.isPlaying) delay(50) else playbackChanges.receive()
+                }
+            }
+            try { completed.await() } finally { tracking.cancel() }
         } finally {
             player.removeListener(events)
             if (active === completed) { active = null; listener = null }

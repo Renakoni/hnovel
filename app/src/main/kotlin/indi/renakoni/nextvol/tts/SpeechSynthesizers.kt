@@ -57,7 +57,7 @@ class SpeechSynthesizers @Inject constructor(
             } ?: throw SpeechException(SpeechError.HttpSourceUnavailable)
         }
 
-        override suspend fun synthesize(text: String, output: File) {
+        override suspend fun synthesize(text: String, output: File): List<SpeechTiming> {
             val active = client ?: throw SpeechException(SpeechError.HttpSourceUnavailable)
             val partial = File(output.parentFile, output.name + ".part")
             try {
@@ -84,6 +84,7 @@ class SpeechSynthesizers @Inject constructor(
             catch (failure: SpeechException) { throw failure }
             catch (_: java.io.IOException) { throw SpeechException(SpeechError.Storage) }
             finally { partial.delete() }
+            return emptyList()
         }
 
         override fun cancel() { client?.close(); owner?.close() }

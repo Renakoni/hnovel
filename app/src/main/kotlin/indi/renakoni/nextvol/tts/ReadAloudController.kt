@@ -43,7 +43,7 @@ class ReadAloudController @Inject constructor(@ApplicationContext private val co
         if (action == SpeechAction.Resume) closingPlayer = false
         if (action == SpeechAction.Stop) {
             closingPlayer = true
-            mutableState.value = state.value.copy(showFloatingPlayer = false)
+            mutableState.value = state.value.copy(showFloatingPlayer = false, position = null)
         }
         send(action, state.value.request)
     }
@@ -59,7 +59,8 @@ class ReadAloudController @Inject constructor(@ApplicationContext private val co
         val showPlayer = !terminal && !closingPlayer && state.request?.isPreview == false &&
             (state.phase == SpeechPhase.Playing ||
                 previous.request?.bookId == state.request.bookId && previous.showFloatingPlayer)
-        mutableState.value = state.copy(showFloatingPlayer = showPlayer)
+        mutableState.value = state.copy(showFloatingPlayer = showPlayer,
+            position = if (terminal || closingPlayer || state.request?.isPreview != false) null else state.position)
     }
 
     private fun send(action: SpeechAction, request: SpeechRequest?, timerMinutes: Int? = null) {

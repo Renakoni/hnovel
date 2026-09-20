@@ -67,6 +67,14 @@ internal class FlipReadingProgress(
         } else if (!recoveryPending) restorePendingProgress(allowCurrentProgress = true)
     }
 
+    fun updateSpeechPageState(pagerState: PagerState) {
+        recoveryGeneration++
+        recoveryJob?.cancel()
+        recoveryJob = null
+        recoveryPending = false
+        updatePagerState(pagerState, anchored = true)
+    }
+
     fun resetForChapter() {
         restorationJob?.cancel()
         restorationJob = null

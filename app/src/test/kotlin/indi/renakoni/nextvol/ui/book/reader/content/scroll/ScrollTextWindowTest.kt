@@ -12,11 +12,18 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.unit.dp
 import com.github.michaelbull.result.Ok
 import indi.renakoni.nextvol.data.content.component.SimpleTextComponent
@@ -26,6 +33,10 @@ import indi.renakoni.nextvol.ui.book.reader.LocalReaderTextLayout
 import indi.renakoni.nextvol.ui.book.reader.ReaderSettings
 import indi.renakoni.nextvol.ui.book.reader.rememberReaderTextLayout
 import indi.renakoni.nextvol.ui.book.reader.content.ChapterContentUiState
+import indi.renakoni.nextvol.ui.book.reader.content.ReaderSpeechFollow
+import indi.renakoni.nextvol.ui.book.reader.content.LocalReaderSpeechFollow
+import indi.renakoni.nextvol.tts.SpeechPosition
+import indi.renakoni.nextvol.tts.SpeechChapter
 import io.mockk.every
 import io.mockk.mockk
 import io.nightfish.lightnovelreader.api.content.component.SimpleTextComponentData
@@ -51,9 +62,14 @@ class ScrollTextWindowTest {
     @get:Rule val compose = createEmptyComposeRule()
     private lateinit var activity: ActivityController<ComponentActivity>
     private lateinit var scope: CoroutineScope
+    private var speech by mutableStateOf<SpeechPosition?>(null)
+    private var following by mutableStateOf(true)
+    private var active by mutableStateOf(true)
+    private var fontSize by mutableStateOf(15f)
+    private val chapterText = (1..200).joinToString("\n") { "PARAGRAPH_%03d".format(it) }
     private val settings = mockk<ReaderSettings>(relaxed = true) {
         every { fontFamilyUri } returns Uri.EMPTY
-        every { fontSize } returns 15f
+        every { fontSize } answers { this@ScrollTextWindowTest.fontSize }
         every { fontLineHeight } returns 7f
         every { fontWeigh } returns 500f
         every { paragraphSpacing } returns 4f
@@ -64,6 +80,78 @@ class ScrollTextWindowTest {
 
     @Before fun open() { activity = Robolectric.buildActivity(ComponentActivity::class.java).setup() }
     @After fun close() { activity.pause().stop().destroy() }
+
+    @Test fun speechWinsInitialRestoreAndManualScrollStaysDetachedUntilExplicitReturn() {
+        every { settings.isUsingContinuousScrolling } returns true
+        speech = position(100)
+        mount(0.9f)
+        awaitBody()
+        compose.onNodeWithText("PARAGRAPH_100", useUnmergedTree = true).assertIsDisplayed()
+        assertTrue(following)
+        assertBoundedText()
+        val height = state.lazyListState.layoutInfo.visibleItemsInfo.single { it.key == "chapter" }.size
+
+        compose.onRoot().performTouchInput { swipeUp() }
+        compose.waitForIdle()
+        assertFalse(following)
+        val manualOffset = state.lazyListState.firstVisibleItemScrollOffset
+        compose.runOnIdle { speech = position(180) }
+        compose.waitForIdle()
+        assertEquals(manualOffset, state.lazyListState.firstVisibleItemScrollOffset)
+
+        compose.runOnIdle { following = true }
+        compose.waitForIdle()
+        compose.onNodeWithText("PARAGRAPH_180", useUnmergedTree = true).assertIsDisplayed()
+        assertEquals(height, state.lazyListState.layoutInfo.visibleItemsInfo.single { it.key == "chapter" }.size)
+        assertBoundedText()
+    }
+
+    @Test fun reflowKeepsSpeechVisibleWithoutChangingTheSourceAnchor() {
+        speech = position(100)
+        mount(0f)
+        awaitBody()
+        val oldHeight = state.lazyListState.layoutInfo.visibleItemsInfo.single { it.key == "chapter" }.size
+        compose.runOnIdle { fontSize = 24f }
+        compose.waitUntil(10_000) {
+            compose.waitForIdle()
+            val node = compose.onAllNodes(hasText("PARAGRAPH_100"), useUnmergedTree = true).fetchSemanticsNodes().firstOrNull()
+            val newHeight = state.lazyListState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == "chapter" }?.size ?: 0
+            newHeight > oldHeight && node != null && node.boundsInRoot.top >= 0 &&
+                node.boundsInRoot.bottom <= 320 * activity.get().resources.displayMetrics.density
+        }
+        compose.onNodeWithText("PARAGRAPH_100", useUnmergedTree = true).assertIsDisplayed()
+        assertTrue(following)
+        assertBoundedText()
+    }
+
+    @Test fun entryUsesSpeechBeforeResumeButBackgroundDoesNotKeepScrolling() {
+        active = false
+        speech = position(100)
+        mount(0.9f)
+        awaitBody()
+        compose.onNodeWithText("PARAGRAPH_100", useUnmergedTree = true).assertIsDisplayed()
+        val initialOffset = state.lazyListState.firstVisibleItemScrollOffset
+        compose.runOnIdle { speech = position(180) }
+        compose.waitForIdle()
+        assertEquals(initialOffset, state.lazyListState.firstVisibleItemScrollOffset)
+        compose.runOnIdle { active = true }
+        compose.waitForIdle()
+        compose.onNodeWithText("PARAGRAPH_180", useUnmergedTree = true).assertIsDisplayed()
+    }
+
+    @Test fun speechEntryPassesACachedPreviousChapterWhileCurrentTextIsBeingLaidOut() {
+        every { settings.isUsingContinuousScrolling } returns true
+        speech = position(100)
+        mount(0f, previousText = "Previous short chapter")
+        awaitBody()
+        compose.onNodeWithText("PARAGRAPH_100", useUnmergedTree = true).assertIsDisplayed()
+        assertFalse(state.isRestoringProgress)
+    }
+
+    private fun position(paragraph: Int): SpeechPosition {
+        val start = chapterText.indexOf("PARAGRAPH_%03d".format(paragraph))
+        return SpeechPosition("book", "chapter", SpeechChapter("book", "chapter", "", "", chapterText).fingerprint, start, start + 13)
+    }
 
     @Test fun restoredLongChapterOnlyComposesNearbyTextAndKeepsItsFullGeometry() {
         mount(0.5f)
@@ -156,18 +244,24 @@ class ScrollTextWindowTest {
         compose.waitForIdle()
     }
 
-    private fun mount(progress: Float, text: String = (1..200).joinToString("\n") { "PARAGRAPH_%03d".format(it) }) {
+    private fun mount(progress: Float, text: String = chapterText, previousText: String? = null) {
         val component = SimpleTextComponent(SimpleTextComponentData(text), mockk(relaxed = true), activity.get())
         state.bookId = "book"
         state.readingChapterId = "chapter"
         state.readingProgress = progress
         state.isRestoringProgress = true
-        state.contentList[1] = "chapter" to Ok(ChapterContentUiState("chapter", "Chapter", listOf(component), null, null))
+        if (previousText != null) {
+            val previous = SimpleTextComponent(SimpleTextComponentData(previousText), mockk(relaxed = true), activity.get())
+            state.contentList[0] = "previous" to Ok(ChapterContentUiState("previous", "Previous", listOf(previous), null, "chapter"))
+        }
+        state.contentList[1] = "chapter" to Ok(ChapterContentUiState("chapter", "Chapter", listOf(component),
+            if (previousText == null) null else "previous", null))
         compose.runOnUiThread {
             activity.get().setContent {
                 MaterialTheme {
                     scope = rememberCoroutineScope()
                     CompositionLocalProvider(LocalAppTheme provides AppTheme(false, MaterialTheme.colorScheme),
+                        LocalReaderSpeechFollow provides ReaderSpeechFollow(speech, following, { following = false }, active),
                         LocalReaderTextLayout provides rememberReaderTextLayout(settings)) {
                         Box(Modifier.width(320.dp).height(320.dp)) {
                             ScrollContentComponent(Modifier, state, settings,

@@ -95,7 +95,8 @@ internal data class SystemSpeechClient(val tts: TextToSpeech, val engine: Speech
 private class SystemSpeechSynthesizer(private val engines: SystemSpeechEngines) : SpeechSynthesizer {
     private val client = AtomicReference<SystemSpeechClient?>()
     private val mutex = Mutex()
-    private val pending = AtomicReference<Pair<String, CompletableDeferred<Unit>>?>()
+    private class Synthesis(val id: String, val complete: CompletableDeferred<Unit>, val timing: SpeechTimingCollector)
+    private val pending = AtomicReference<Synthesis?>()
 
     override suspend fun open(settings: SpeechSettings): String = mutex.withLock {
         close()
@@ -120,7 +121,13 @@ private class SystemSpeechSynthesizer(private val engines: SystemSpeechEngines) 
             }
             tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) = Unit
-                override fun onDone(utteranceId: String?) { operation(utteranceId)?.complete(Unit) }
+                override fun onDone(utteranceId: String?) { operation(utteranceId)?.complete?.complete(Unit) }
+                override fun onBeginSynthesis(utteranceId: String?, sampleRateInHz: Int, audioFormat: Int, channelCount: Int) {
+                    operation(utteranceId)?.timing?.begin(sampleRateInHz)
+                }
+                override fun onRangeStart(utteranceId: String?, start: Int, end: Int, frame: Int) {
+                    operation(utteranceId)?.timing?.range(frame, start, end)
+                }
                 @Deprecated("Deprecated in Java")
                 override fun onError(utteranceId: String?) = onError(utteranceId, TextToSpeech.ERROR)
                 override fun onError(utteranceId: String?, errorCode: Int) {
@@ -130,23 +137,23 @@ private class SystemSpeechSynthesizer(private val engines: SystemSpeechEngines) 
                         TextToSpeech.ERROR_OUTPUT -> SpeechError.InvalidAudio
                         else -> SpeechError.SynthesisFailed
                     }
-                    operation(utteranceId)?.completeExceptionally(SpeechException(error))
+                    operation(utteranceId)?.complete?.completeExceptionally(SpeechException(error))
                 }
                 override fun onStop(utteranceId: String?, interrupted: Boolean) {
-                    operation(utteranceId)?.completeExceptionally(SpeechException(SpeechError.SynthesisFailed))
+                    operation(utteranceId)?.complete?.completeExceptionally(SpeechException(SpeechError.SynthesisFailed))
                 }
-                private fun operation(id: String?) = pending.get()?.takeIf { it.first == id }?.second
+                private fun operation(id: String?) = pending.get()?.takeIf { it.id == id }
             })
             listOfNotNull(active.engine.name, tts.voice?.locale?.getDisplayName()).joinToString(" · ")
         }
     }
 
-    override suspend fun synthesize(text: String, output: File): Unit = mutex.withLock {
+    override suspend fun synthesize(text: String, output: File): List<SpeechTiming> = mutex.withLock {
         val active = client.get() ?: throw SpeechException(SpeechError.EngineUnavailable)
         if (text.length > TextToSpeech.getMaxSpeechInputLength()) throw SpeechException(SpeechError.SynthesisFailed)
         val id = UUID.randomUUID().toString()
         val complete = CompletableDeferred<Unit>()
-        val operation = id to complete
+        val operation = Synthesis(id, complete, SpeechTimingCollector(text))
         pending.set(operation)
         val partial = File(output.parentFile, output.name + ".part")
         try {
@@ -161,6 +168,7 @@ private class SystemSpeechSynthesizer(private val engines: SystemSpeechEngines) 
                 validateSpeechWav(partial)
                 if (!partial.renameTo(output)) throw SpeechException(SpeechError.Storage)
             }
+            operation.timing.finish()
         } catch (_: IOException) {
             throw SpeechException(SpeechError.Storage)
         } finally {
@@ -171,7 +179,7 @@ private class SystemSpeechSynthesizer(private val engines: SystemSpeechEngines) 
     }
 
     override fun cancel() {
-        pending.getAndSet(null)?.second?.cancel()
+        pending.getAndSet(null)?.complete?.cancel()
         client.get()?.tts?.stop()
     }
 

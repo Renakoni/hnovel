@@ -38,6 +38,7 @@ class FlipReaderController(
         changeChapter = ::changeChapter,
         updatePageState = ::updatePagerState,
         updateAnchoredPageState = { progress.updatePagerState(it, anchored = true) },
+        updateSpeechPageState = { progress.updateSpeechPageState(it) },
         commitPendingChapter = ::commitPendingChapter,
         failPendingChapter = ::failPendingChapter,
         retryPendingChapter = {

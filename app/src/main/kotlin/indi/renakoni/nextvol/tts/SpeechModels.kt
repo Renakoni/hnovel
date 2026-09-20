@@ -31,6 +31,17 @@ enum class SpeechError {
 
 class SpeechException(val error: SpeechError) : Exception(error.name)
 
+/** UTF-16 range in the processed chapter, independent of reader pagination and audio prefetch. */
+data class SpeechPosition(
+    val bookId: String,
+    val chapterId: String,
+    val fingerprint: String,
+    val start: Int,
+    val end: Int,
+    /** May be proportional for audio-only sources; start/end remain the reliable highlight range. */
+    val anchor: Int = start,
+)
+
 @Stable
 data class ReadAloudState(
     val request: SpeechRequest? = null,
@@ -46,6 +57,7 @@ data class ReadAloudState(
     val error: SpeechError? = null,
     val sleepTimerDeadline: Long? = null,
     val showFloatingPlayer: Boolean = false,
+    val position: SpeechPosition? = null,
 ) {
     val isActive get() = phase in setOf(SpeechPhase.Preparing, SpeechPhase.Playing, SpeechPhase.Buffering)
 }

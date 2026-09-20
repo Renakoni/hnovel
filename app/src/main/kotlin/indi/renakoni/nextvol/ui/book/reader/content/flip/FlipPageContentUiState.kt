@@ -22,6 +22,7 @@ class FlipChapterTransition(
 interface FlipPageContentUiState: ContentUiState {
     val updatePageState: (PagerState) -> Unit
     val updateAnchoredPageState: (PagerState) -> Unit get() = updatePageState
+    val updateSpeechPageState: (PagerState) -> Unit get() = updateAnchoredPageState
     val pagerState: PagerState
     val pendingChapter: FlipChapterTransition? get() = null
     val commitPendingChapter: (FlipChapterTransition, PagerState) -> Boolean get() = { _, _ -> false }
@@ -36,6 +37,7 @@ class MutableFlipPageContentUiState(
     override val changeChapter: (String) -> Unit,
     override val updatePageState: (PagerState) -> Unit,
     override val updateAnchoredPageState: (PagerState) -> Unit = updatePageState,
+    override val updateSpeechPageState: (PagerState) -> Unit = updateAnchoredPageState,
     override val commitPendingChapter: (FlipChapterTransition, PagerState) -> Boolean = { _, _ -> false },
     override val failPendingChapter: (FlipChapterTransition, WebRequestError) -> Unit = { _, _ -> },
     override val retryPendingChapter: () -> Unit = {},
