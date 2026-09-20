@@ -22,6 +22,7 @@ import indi.renakoni.nextvol.data.content.component.SimpleTextComponent
 import indi.renakoni.nextvol.theme.AppTheme
 import indi.renakoni.nextvol.tts.SpeechChapter
 import indi.renakoni.nextvol.tts.SpeechPosition
+import indi.renakoni.nextvol.tts.SpeechFollowEstimate
 import indi.renakoni.nextvol.ui.LocalAppTheme
 import indi.renakoni.nextvol.ui.book.reader.LocalReaderTextLayout
 import indi.renakoni.nextvol.ui.book.reader.ReaderSettings
@@ -102,10 +103,11 @@ class FlipSpeechFollowTest {
 
     @Test fun entryUsesSpeechBeforeResumeAndContinuousFollowingRequiresTheForeground() {
         active = false
+        speech = speech.copy(end = position(70).end)
         mount()
         awaitText("PARAGRAPH_040")
         val initialPage = state.pagerState.currentPage
-        compose.runOnIdle { speech = position(70) }
+        compose.runOnIdle { speech = speech.copy(anchor = position(70).start) }
         compose.waitForIdle()
         assertEquals(initialPage, state.pagerState.currentPage)
         compose.runOnIdle { active = true }
@@ -113,7 +115,17 @@ class FlipSpeechFollowTest {
     }
 
     @Test fun oneSentenceAcrossPagesTurnsAtTheAudibleCharacterWithoutRepagination() {
+        assertSentenceAcrossPages(estimated = false)
+    }
+
+    @Test fun audioOnlySentenceAlsoFollowsAcrossPagesWithoutChangingItsHighlightRange() {
+        assertSentenceAcrossPages(estimated = true)
+    }
+
+    private fun assertSentenceAcrossPages(estimated: Boolean) {
         text = (1..24).joinToString(" ") { "word%03d".format(it) } + "."
+        val estimate = SpeechFollowEstimate(text)
+        fun anchor(offset: Int) = if (estimated) estimate.anchorAt(offset * 100L + 1, text.length * 100L)!! else offset
         speech = SpeechPosition("book", "chapter", SpeechChapter("book", "chapter", "", "", text).fingerprint,
             0, text.length)
         height = 70.dp
@@ -127,10 +139,10 @@ class FlipSpeechFollowTest {
         assertTrue(firstText.length < text.length)
         val pageBoundary = firstText.length
 
-        compose.runOnIdle { speech = speech.copy(anchor = pageBoundary - 1) }
+        compose.runOnIdle { speech = speech.copy(anchor = anchor(pageBoundary - 1)) }
         compose.waitForIdle()
         assertEquals("The rest of the highlighted sentence must not turn the page early", 0, pager.currentPage)
-        compose.runOnIdle { speech = speech.copy(anchor = pageBoundary) }
+        compose.runOnIdle { speech = speech.copy(anchor = anchor(pageBoundary)) }
         compose.waitUntil(10_000) { compose.waitForIdle(); pager.settledPage == 1 }
         compose.onNodeWithText(text.substring(pageBoundary).trimStart().take(7), substring = true,
             useUnmergedTree = true).assertIsDisplayed()

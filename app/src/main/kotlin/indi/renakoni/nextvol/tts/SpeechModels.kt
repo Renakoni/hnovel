@@ -38,6 +38,7 @@ data class SpeechPosition(
     val fingerprint: String,
     val start: Int,
     val end: Int,
+    /** May be proportional for audio-only sources; start/end remain the reliable highlight range. */
     val anchor: Int = start,
 )
 

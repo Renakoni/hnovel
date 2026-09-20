@@ -211,6 +211,7 @@ class ReadAloudSessionTest {
         val saved = env.progress.saved.getValue("book")
         env.session.start(SpeechRequest("", "", "Voice preview."))
         runCurrent()
+        env.player.estimatedAnchorCallback!!(4)
         assertNull(env.session.state.value.position)
         env.player.finish()
         runCurrent()
@@ -384,6 +385,34 @@ class ReadAloudSessionTest {
         } finally { env.stop() }
     }
 
+    @Test fun estimatedFollowingKeepsTheClipHighlightAndNeverChangesDurableProgress() = runTest {
+        val env = Environment(this)
+        env.load = { book, chapter -> SpeechChapter(book, chapter, "Book", "Chapter", "甲乙丙丁戊己庚辛。\n下一段还有正文。") }
+        try {
+            env.session.start(SpeechRequest("book", "chapter"))
+            runCurrent()
+            val first = env.session.state.value.position!!
+            val firstCallback = env.player.estimatedAnchorCallback!!
+            firstCallback(6)
+            assertEquals(first.copy(anchor = 6), env.session.state.value.position)
+            assertEquals(0, env.progress.saved.getValue("book").offset)
+            env.session.pause()
+            assertEquals(first.copy(anchor = 6), env.session.state.value.position)
+            env.session.resume()
+            env.player.finish()
+            runCurrent()
+            val next = env.session.state.value.position!!
+            firstCallback(7)
+            assertEquals(next, env.session.state.value.position)
+            env.player.estimatedAnchorCallback!!(3)
+            assertEquals(next.copy(anchor = next.start + 3), env.session.state.value.position)
+            assertEquals(next.start, env.progress.saved.getValue("book").offset)
+            env.stop()
+            firstCallback(8)
+            assertNull(env.session.state.value.position)
+        } finally { env.stop() }
+    }
+
     private inner class Environment(val scope: TestScope) {
         val text = "这是正常的小说内容，保留顺序并且持续朗读。".repeat(100)
         var load: suspend (String, String) -> SpeechChapter = { book, chapter -> SpeechChapter(book, chapter, "Book", "Chapter", text) }
@@ -427,12 +456,15 @@ class ReadAloudSessionTest {
         private var pending: CompletableDeferred<Unit>? = null
         private var callback: ((SpeechPhase, Boolean) -> Unit)? = null
         var rangeCallback: ((SpeechTiming) -> Unit)? = null
+        var estimatedAnchorCallback: ((Int) -> Unit)? = null
         override suspend fun play(clip: SpeechClip, playWhenReady: Boolean, onRange: (SpeechTiming) -> Unit,
+            onEstimatedAnchor: (Int) -> Unit,
             onState: (SpeechPhase, Boolean) -> Unit) {
             val complete = CompletableDeferred<Unit>()
             pending = complete
             callback = onState
             rangeCallback = onRange
+            estimatedAnchorCallback = onEstimatedAnchor
             started += clip
             playing = playWhenReady && !startBuffered
             onState(when {

@@ -20,11 +20,17 @@ internal class ExoSpeechPlayback(private val player: ExoPlayer, private val cont
     private var listener: Player.Listener? = null
 
     override suspend fun play(clip: SpeechClip, playWhenReady: Boolean, onRange: (SpeechTiming) -> Unit,
+        onEstimatedAnchor: (Int) -> Unit,
         onState: (SpeechPhase, Boolean) -> Unit) = coroutineScope {
         stop()
         val completed = CompletableDeferred<Unit>()
         active = completed
+        var seekPending = false
         val events = object : Player.Listener {
+            override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
+                if (active === completed && reason == Player.DISCONTINUITY_REASON_SEEK) seekPending = true
+            }
+
             override fun onEvents(player: Player, events: Player.Events) {
                 if (active !== completed) return
                 if (player.playbackState == Player.STATE_ENDED) {
@@ -52,16 +58,27 @@ internal class ExoSpeechPlayback(private val player: ExoPlayer, private val cont
                     .setSubtitle(context.getString(R.string.tts_passage, clip.index + 1, clip.count)).build()).build())
             player.playWhenReady = playWhenReady
             player.prepare()
-            val tracking = if (clip.timings.isEmpty()) null else launch {
+            val estimate = if (clip.timings.isEmpty()) SpeechFollowEstimate(clip.segment.text) else null
+            val tracking = launch {
                 var reported: SpeechTiming? = null
+                var reportedAnchor: Int? = null
                 while (isActive && active === completed) {
-                    if (player.isPlaying) clip.timings.rangeAt(player.currentPosition)?.let { range ->
-                        if (range != reported) { reported = range; onRange(range) }
+                    if (player.isPlaying || seekPending && player.playbackState == Player.STATE_READY) {
+                        val wasSeek = seekPending
+                        seekPending = false
+                        val position = player.currentPosition
+                        if (estimate != null) {
+                            estimate.anchorAt(position, player.duration)?.let { anchor ->
+                                if (anchor != reportedAnchor) { reportedAnchor = anchor; onEstimatedAnchor(anchor) }
+                            }
+                        } else (clip.timings.rangeAt(position) ?: clip.timings.firstOrNull()?.takeIf { wasSeek })?.let { range ->
+                            if (range != reported) { reported = range; onRange(range) }
+                        }
                     }
                     delay(50)
                 }
             }
-            try { completed.await() } finally { tracking?.cancel() }
+            try { completed.await() } finally { tracking.cancel() }
         } finally {
             player.removeListener(events)
             if (active === completed) { active = null; listener = null }

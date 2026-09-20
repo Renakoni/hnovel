@@ -25,6 +25,7 @@ data class SpeechClip(val chapter: SpeechChapter, val segment: SpeechSegment, va
 interface SpeechPlayback {
     /** Completes when this audio has actually ended, never when synthesis or buffering finishes. */
     suspend fun play(clip: SpeechClip, playWhenReady: Boolean, onRange: (SpeechTiming) -> Unit,
+        onEstimatedAnchor: (Int) -> Unit = {},
         onState: (SpeechPhase, Boolean) -> Unit)
     fun pause()
     fun resume()
@@ -238,6 +239,13 @@ class ReadAloudSession(
                                     audibleStart = clip.segment.start + (sentence?.start ?: range.start)
                                     audibleEnd = clip.segment.start + maxOf(sentence?.end ?: range.end, range.end)
                                     audibleAnchor = clip.segment.start + range.start
+                                    publish(token) { it.copy(position = SpeechPosition(clip.chapter.bookId, clip.chapter.id,
+                                        clip.chapter.fingerprint, audibleStart, audibleEnd, audibleAnchor)) }
+                                }
+                            }, onEstimatedAnchor = { anchor ->
+                                if (token == generation && currentClip === clip && !request.isPreview && clip.timings.isEmpty()) {
+                                    // Keep the reliably audible clip highlighted; only viewport following is estimated.
+                                    audibleAnchor = clip.segment.start + anchor
                                     publish(token) { it.copy(position = SpeechPosition(clip.chapter.bookId, clip.chapter.id,
                                         clip.chapter.fingerprint, audibleStart, audibleEnd, audibleAnchor)) }
                                 }
