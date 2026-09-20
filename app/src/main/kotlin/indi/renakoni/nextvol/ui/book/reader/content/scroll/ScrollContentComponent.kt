@@ -72,6 +72,7 @@ import indi.renakoni.nextvol.ui.book.reader.usesBackgroundImage
 import indi.renakoni.nextvol.utils.rememberReaderFontFamily
 import indi.renakoni.nextvol.utils.showSnackbar
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 
 @Composable
@@ -129,11 +130,16 @@ fun ScrollContentTextComponent(
     LaunchedEffect(listState) {
         snapshotFlow {
             uiState.readingChapterContent?.isOk == true && lazyColumnSize.height > 0 &&
-                listState.layoutInfo.visibleItemsInfo.any { it.key == uiState.readingChapterId && it.contentType == true }
+                listState.layoutInfo.visibleItemsInfo.isNotEmpty()
         }.first { it }
         val restoredProgress = uiState.readingProgress
+        // A cached previous chapter can initially occupy the whole viewport.
         listState.scrollToItem(1)
-        val item = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == uiState.readingChapterId && it.contentType == true } ?: return@LaunchedEffect
+        val item = snapshotFlow {
+            listState.layoutInfo.visibleItemsInfo.firstOrNull {
+                it.key == uiState.readingChapterId && it.contentType == true
+            }
+        }.filterNotNull().first()
         val offset = if (restoredProgress <= 0f) {
             0
         } else {
