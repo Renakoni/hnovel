@@ -67,7 +67,7 @@ class ReadAloudService : MediaSessionService() {
             setHandleAudioBecomingNoisy(true)
         }
         speech = ReadAloudSession(scope, chapters, settings::get, progress, synthesizers::synthesizer,
-            ExoSpeechPlayback(player, this), File(cacheDir, "read-aloud"))
+            ExoSpeechPlayback(player, this) { speech.pause() }, File(cacheDir, "read-aloud"))
         sleepTimer = SpeechSleepTimer(scope, SystemClock::elapsedRealtime,
             onChanged = { deadline ->
                 if (!shuttingDown && speech.state.value.request != null)

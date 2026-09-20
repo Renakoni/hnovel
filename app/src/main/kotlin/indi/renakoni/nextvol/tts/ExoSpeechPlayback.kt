@@ -16,9 +16,21 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /** Playback completion and pauses come from ExoPlayer, not synthesis callbacks. */
-internal class ExoSpeechPlayback(private val player: ExoPlayer, private val context: Context) : SpeechPlayback {
+internal class ExoSpeechPlayback(private val player: ExoPlayer, private val context: Context,
+    onInterrupted: () -> Unit = {}) : SpeechPlayback {
     private var active: CompletableDeferred<Unit>? = null
     private var listener: Player.Listener? = null
+
+    init {
+        // A system interruption can arrive before synthesis finishes or between audio files.
+        // Keep this listener until the service releases its player, independently of each clip.
+        player.addListener(object : Player.Listener {
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                if (!playWhenReady && (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY ||
+                        reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS)) onInterrupted()
+            }
+        })
+    }
 
     override suspend fun play(clip: SpeechClip, playWhenReady: Boolean, onRange: (SpeechTiming) -> Unit,
         onEstimatedAnchor: (Int) -> Unit,
