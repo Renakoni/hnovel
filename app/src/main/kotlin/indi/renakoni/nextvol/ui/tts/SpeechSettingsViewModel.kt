@@ -69,7 +69,9 @@ class SpeechSettingsViewModel @Inject constructor(
                 if (selected != null) {
                     val sources = http.sources()
                     mutableState.update { it.copy(httpSources = sources) }
-                    if (sources.none { it.definition.id == selected }) throw indi.renakoni.nextvol.tts.SpeechException(SpeechError.HttpSourceUnavailable)
+                    val source = sources.find { it.definition.id == selected }
+                        ?: throw indi.renakoni.nextvol.tts.SpeechException(SpeechError.HttpSourceUnavailable)
+                    if (!source.isConfigured) throw indi.renakoni.nextvol.tts.SpeechException(SpeechError.HttpLogin)
                     return@launch
                 }
                 val installed = engines.installed()

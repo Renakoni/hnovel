@@ -18,7 +18,7 @@ class MicrosoftSpeechTest {
 
     private fun definition(custom: Boolean = false, header: String = "", transform: (String) -> String = { it }): HttpSpeechDefinition {
         val fixture = if (custom) "header-voice.js" else "fixed-voice.js"
-        val script = javaClass.getResource("/microsoft/$fixture")!!.readText()
+        val script = javaClass.getResource("/microsoft/$fixture")!!.readText().replace("\r\n", "\n")
         return previewHttpSpeech(buildJsonObject {
             put("name", "Imported Microsoft voice"); put("url", transform(script)); put("header", header)
         }.toString()).sources.single()

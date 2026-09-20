@@ -28,6 +28,7 @@ data class HttpSpeechSourcesState(
     val busy: Boolean = false,
     val pending: List<SavedHttpSpeechSource>? = null,
     val invalid: Int = 0,
+    val configurationSaved: Long = 0,
     val error: Int? = null,
     val deniedOrigins: Map<String, List<String>> = emptyMap(),
 )
@@ -48,7 +49,17 @@ class HttpSpeechSourcesViewModel @Inject constructor(
         viewModelScope.launch { repository.deniedOrigins.collect { value -> mutableState.update { it.copy(deniedOrigins = value) } } }
     }
 
-    fun select(id: String?) = work { settings.update { it.copy(httpSource = id) } }
+    fun select(id: String?) = work {
+        require(id == null || repository.sources().any { it.definition.id == id && it.isConfigured })
+        settings.update { it.copy(httpSource = id) }
+    }
+
+    fun configure(source: SavedHttpSpeechSource, credentials: Map<String, String>) = work {
+        if (state.value.sources.any { it.definition.id == state.value.selected && it.group == source.group }) controller.command(SpeechAction.Stop)
+        repository.configure(source.definition.id, credentials)
+        refreshSources()
+        mutableState.update { it.copy(configurationSaved = it.configurationSaved + 1) }
+    }
 
     fun preview(uri: Uri) = work(R.string.tts_import_failed) {
         val preview = withContext(Dispatchers.IO) {

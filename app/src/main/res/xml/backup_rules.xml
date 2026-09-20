@@ -7,6 +7,11 @@
    See https://developer.android.com/about/versions/12/backup-restore
 -->
 <full-backup-content>
+    <!-- Speech credentials and runtime tokens are tied to this device's Keystore. -->
+    <exclude domain="file" path="http-speech.enc" />
+    <exclude domain="file" path="http-speech.enc.bak" />
+    <exclude domain="file" path="http-speech.enc.new" />
+    <exclude domain="file" path="speech-runtime/" />
     <exclude domain="file" path="rule-sources/runtime/" />
     <exclude domain="root" path="app_webview_source_native/" />
     <!--

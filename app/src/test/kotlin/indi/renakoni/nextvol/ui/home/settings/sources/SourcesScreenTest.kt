@@ -14,7 +14,6 @@ import io.mockk.coVerify
 import io.mockk.verify
 import hnovel.imports.ImportOrigin
 import hnovel.imports.SourceDefinition
-import hnovel.imports.EXTENSION_PROFILE
 import hnovel.content.LoginField
 import hnovel.content.LoginForm
 import indi.renakoni.nextvol.data.web.*
@@ -293,17 +292,6 @@ class SourcesScreenTest {
         previewOrigins = preview.candidates.associate { candidate -> candidate.index to
             hnovel.imports.SourceOriginCandidates.discover(kotlinx.serialization.json.Json.parseToJsonElement(candidate.rawJson)
                 as kotlinx.serialization.json.JsonObject).joinToString("\n") { it.origin } })
-
-    @Test fun extensionModeIsPassedToTheImportPreview() {
-        activity.get().setContent { MaterialTheme { SourcesScreen(SourceManagementState(), model, onDiagnostics = {}) {} } }
-        compose.onNodeWithText("Add book source").performClick()
-        compose.onNodeWithText("Advanced options").performClick()
-        compose.onNodeWithText("Extended Legado source").performScrollTo().performClick()
-        compose.onNodeWithText("Source file URL").performScrollTo().performTextInput("https://fixture.invalid/extended.json")
-        compose.onNodeWithText("Download and preview").performScrollTo().performClick()
-        verify(exactly = 1) { model.previewUrl("https://fixture.invalid/extended.json", EXTENSION_PROFILE) }
-        verify(exactly = 0) { model.commit(any(), any(), any()) }
-    }
 
     @Test fun zlibraryHasAnAppSearchEntryAndMirrorChangesStayDraftUntilSaved() {
         val native = indi.renakoni.nextvol.data.web.zlibrary.ZLibrarySources

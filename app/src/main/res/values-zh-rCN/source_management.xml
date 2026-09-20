@@ -44,7 +44,6 @@
     <string name="sources_url">书源文件 URL</string>
     <string name="sources_preview_url">下载并预览</string>
     <string name="sources_file">选择本地文件</string>
-    <string name="sources_paste">粘贴书源 JSON</string>
     <string name="sources_preview">预览书源</string>
     <string name="sources_empty">尚未添加书源。添加后可阅读更多站点的书籍。</string>
     <string name="sources_builtin">内置书源</string>

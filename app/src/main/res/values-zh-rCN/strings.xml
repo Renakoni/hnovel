@@ -670,9 +670,6 @@
     <string name="bookshelf_remove_selected">从当前书架移除</string>
     <string name="bookshelf_collect_selected">添加到书架</string>
     <string name="sources_profile_standard">标准阅读书源</string>
-    <string name="sources_profile_auto">自动识别</string>
-    <string name="sources_collections">导入书源合集</string>
-    <string name="sources_fanqie">番茄小说（太极服务）</string>
     <string name="sources_non_text_skipped">已忽略 %1$d 个漫画、音频等非文字来源。</string>
     <string name="sources_profile_extension">扩展阅读书源</string>
     <string name="sources_profile_help">按书源作者的说明选择。扩展模式支持动态登录表单和扩展控件。</string>
