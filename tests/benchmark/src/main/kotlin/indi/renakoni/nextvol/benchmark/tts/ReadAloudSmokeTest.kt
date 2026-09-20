@@ -89,9 +89,11 @@ class ReadAloudSmokeTest : UiAutomatorTest() {
     }
 
     private fun scrollSpeechListTo(text: String) {
-        // scrollIntoView searches from the start in one direction, including long voice libraries.
-        assertTrue("Speech list did not contain: $text",
-            UiScrollable(UiSelector().scrollable(true)).scrollTextIntoView(text))
+        // Compact settings may fit on screen and expose no scrollable container.
+        if (!device.hasObject(By.text(text))) {
+            assertTrue("Speech list did not contain: $text",
+                UiScrollable(UiSelector().scrollable(true)).scrollTextIntoView(text))
+        }
         assertText(text)
     }
 
