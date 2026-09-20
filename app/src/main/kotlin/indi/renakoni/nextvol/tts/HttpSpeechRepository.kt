@@ -21,7 +21,26 @@ import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 
-data class SavedHttpSpeechSource(val definition: HttpSpeechDefinition, val origins: List<String>)
+data class SavedHttpSpeechSource(
+    val definition: HttpSpeechDefinition,
+    val origins: List<String>,
+    val group: String? = null,
+    val credentialKeys: List<String> = emptyList(),
+    val credentials: Map<String, String> = emptyMap(),
+) {
+    val isBuiltIn: Boolean get() = group != null
+    val isConfigured: Boolean get() = credentialKeys.all { !credentials[it].isNullOrBlank() }
+
+    override fun toString() = "SavedHttpSpeechSource(id=${definition.id}, builtIn=$isBuiltIn, configured=$isConfigured)"
+
+    internal fun playbackDefinition(): HttpSpeechDefinition {
+        if (!isConfigured) throw SpeechException(SpeechError.HttpLogin)
+        if (credentialKeys.isEmpty()) return definition
+        val values = JsonObject(credentials.mapValues { JsonPrimitive(it.value) })
+        val raw = JsonObject(definition.raw + ("jsLib" to JsonPrimitive("var nextvolCredentials = $values;")))
+        return previewHttpSpeech(raw.toString()).sources.single()
+    }
+}
 
 /** User-imported definitions can contain credentials. Persist them with the existing Keystore cipher. */
 @Singleton
@@ -29,6 +48,16 @@ class HttpSpeechRepository @Inject constructor(@ApplicationContext context: Cont
     private val authority: ExecutionAuthority) {
     private val file = AtomicFile(File(context.filesDir, "http-speech.enc"))
     private val runtimeRoot = File(context.filesDir, "speech-runtime")
+    private val builtIns by lazy {
+        val entries = context.assets.open("speech/builtin-voices.json").bufferedReader().use { Json.parseToJsonElement(it.readText()).jsonArray }
+        entries.map { entry ->
+            val value = entry.jsonObject
+            val definition = previewHttpSpeech(value.getValue("definition").toString()).sources.single()
+            SavedHttpSpeechSource(definition, value.getValue("origins").jsonArray.map { it.jsonPrimitive.content },
+                value.getValue("group").jsonPrimitive.content,
+                value["credentials"]?.jsonArray?.map { it.jsonPrimitive.content }.orEmpty())
+        }.also { sources -> require(sources.map { it.definition.id }.distinct().size == sources.size) }
+    }
     private val mutex = Mutex()
     private val mutableDeniedOrigins = MutableStateFlow<Map<String, List<String>>>(emptyMap())
     val deniedOrigins = mutableDeniedOrigins.asStateFlow()
@@ -48,20 +77,36 @@ class HttpSpeechRepository @Inject constructor(@ApplicationContext context: Cont
     private fun runtimeDirectory(id: String) = File(runtimeRoot, speechDigest(id))
 
     suspend fun save(sources: List<SavedHttpSpeechSource>) = change { current ->
+        require(sources.none { it.definition.id.startsWith(BUILT_IN_PREFIX) })
         val incoming = sources.associateBy { it.definition.id }
         current.map { incoming[it.definition.id] ?: it } + sources.filter { item -> current.none { it.definition.id == item.definition.id } }
     }
 
     suspend fun delete(id: String) = change { it.filterNot { source -> source.definition.id == id } }
 
+    suspend fun configure(id: String, credentials: Map<String, String>) = change { current ->
+        val source = builtIns.first { it.definition.id == id }
+        require(source.credentialKeys.isNotEmpty() && credentials.keys.all { it in source.credentialKeys })
+        require(credentials.values.all { it.length <= 4096 && it.none(Char::isISOControl) })
+        val values = credentials.mapValues { it.value.trim() }.filterValues { it.isNotEmpty() }
+        require(values.isEmpty() || source.credentialKeys.all { it in values })
+        val related = builtIns.filter { it.group == source.group && it.credentialKeys == source.credentialKeys }
+        val ids = related.map { it.definition.id }.toSet()
+        current.filterNot { it.definition.id in ids } + if (values.isEmpty()) emptyList() else related.map { it.copy(credentials = values) }
+    }
+
     private suspend fun change(update: (List<SavedHttpSpeechSource>) -> List<SavedHttpSpeechSource>) = withContext(Dispatchers.IO) {
         mutex.withLock {
-            val previous = read()
-            val sources = update(previous)
-            require(sources.size <= 512 && sources.map { it.definition.id }.distinct().size == sources.size)
-            val raw = JsonArray(sources.map { source ->
+            val stored = readStored()
+            val previous = combined(stored)
+            val updated = update(stored)
+            require(updated.size <= 512 && updated.map { it.definition.id }.distinct().size == updated.size)
+            val raw = JsonArray(updated.map { source ->
                 require(source.origins.size <= 32 && source.origins.all { sourceOrigin(it) == it })
-                buildJsonObject { put("definition", source.definition.raw); put("origins", JsonArray(source.origins.map(::JsonPrimitive))) }
+                buildJsonObject {
+                    put("definition", source.definition.raw); put("origins", JsonArray(source.origins.map(::JsonPrimitive)))
+                    if (source.credentials.isNotEmpty()) put("credentials", JsonObject(source.credentials.mapValues { JsonPrimitive(it.value) }))
+                }
             }).toString().toByteArray(Charsets.UTF_8)
             require(raw.size <= MAX_BYTES)
             BridgeWire.validate(raw, MAX_BYTES)
@@ -69,8 +114,9 @@ class HttpSpeechRepository @Inject constructor(@ApplicationContext context: Cont
             val output = file.startWrite()
             try { output.write(encrypted); file.finishWrite(output) }
             catch (failure: Throwable) { file.failWrite(output); throw failure }
+            val sources = combined(updated)
             previous.filter { old -> sources.none { it.definition.id == old.definition.id &&
-                it.definition.revision == old.definition.revision && it.origins == old.origins } }.forEach { old ->
+                it.definition.revision == old.definition.revision && it.origins == old.origins && it.credentials == old.credentials } }.forEach { old ->
                 authority.revokeSource(old.definition.id, "speech")
                 val runtime = runtimeDirectory(old.definition.id)
                 if (runtime.exists() && !runtime.deleteRecursively()) throw java.io.IOException("Speech runtime cleanup failed")
@@ -81,7 +127,15 @@ class HttpSpeechRepository @Inject constructor(@ApplicationContext context: Cont
         }
     }
 
-    private fun read(): List<SavedHttpSpeechSource> {
+    private fun read() = combined(readStored())
+
+    private fun combined(stored: List<SavedHttpSpeechSource>): List<SavedHttpSpeechSource> {
+        val credentials = stored.associate { it.definition.id to it.credentials }
+        return builtIns.map { it.copy(credentials = credentials[it.definition.id].orEmpty()) } +
+            stored.filterNot { it.definition.id.startsWith(BUILT_IN_PREFIX) }
+    }
+
+    private fun readStored(): List<SavedHttpSpeechSource> {
         if (!file.baseFile.exists() && !File(file.baseFile.path + ".bak").exists()) return emptyList()
         val encrypted = file.openRead().use { input ->
             val bytes = java.io.ByteArrayOutputStream()
@@ -102,9 +156,14 @@ class HttpSpeechRepository @Inject constructor(@ApplicationContext context: Cont
         return preview.sources.zip(entries) { source, entry ->
             val origins = entry.jsonObject.getValue("origins").jsonArray.map { it.jsonPrimitive.content }
             require(origins.size <= 32 && origins.all { sourceOrigin(it) == it })
-            SavedHttpSpeechSource(source, origins)
+            val credentials = entry.jsonObject["credentials"]?.jsonObject?.mapValues { it.value.jsonPrimitive.content }.orEmpty()
+            SavedHttpSpeechSource(source, origins, credentials = credentials)
         }
     }
 
-    companion object { private const val MAX_BYTES = 4 * 1024 * 1024; private const val IDENTITY = "http-speech-definitions-v1" }
+    companion object {
+        private const val MAX_BYTES = 4 * 1024 * 1024
+        private const val IDENTITY = "http-speech-definitions-v1"
+        private const val BUILT_IN_PREFIX = "nextvol:builtin:"
+    }
 }

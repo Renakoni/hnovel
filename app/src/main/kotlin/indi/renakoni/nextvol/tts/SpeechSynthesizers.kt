@@ -48,10 +48,11 @@ class SpeechSynthesizers @Inject constructor(
             close()
             rate = settings.rate
             return repository.withSource(requireNotNull(settings.httpSource)) { source, runtime ->
+                val definition = source.playbackDefinition()
                 sourceId = source.definition.id
                 val broker = SourceBroker(runtime.toPath(), cipher = cipher)
                 owner = broker
-                client = HttpSpeechClient(source.definition, broker, source.origins.map { NetworkGrant(it) }, authority, runner::execute)
+                client = HttpSpeechClient(definition, broker, source.origins.map { NetworkGrant(it) }, authority, runner::execute)
                 source.definition.name
             } ?: throw SpeechException(SpeechError.HttpSourceUnavailable)
         }
