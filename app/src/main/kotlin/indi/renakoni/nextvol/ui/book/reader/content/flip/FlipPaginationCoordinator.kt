@@ -8,6 +8,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import indi.renakoni.nextvol.ui.book.reader.ReaderTextLayoutInput
 import io.nightfish.lightnovelreader.api.content.component.AbstractContentComponent
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -58,16 +59,24 @@ internal class FlipPaginationCoordinator(
         components: List<AbstractContentComponent<*>>,
         height: Int,
         width: Int,
+        onError: (Exception) -> Unit = { throw it },
         onComplete: (List<AbstractContentComponent<*>>) -> Unit,
     ) {
         syncInput(input)
         val request = ++requestId
         paginationJob?.cancel()
         paginationJob = scope.launch {
-            val result = withContext(ioDispatcher) {
-                val layout = (input as? FlipPaginationInput)?.textLayout
-                if (layout != null) paginateReaderComponents(components, height, width, layout)
-                else paginate(components, height, width)
+            val result = try {
+                withContext(ioDispatcher) {
+                    val layout = (input as? FlipPaginationInput)?.textLayout
+                    if (layout != null) paginateReaderComponents(components, height, width, layout)
+                    else paginate(components, height, width)
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                if (request == requestId && latestInput == input) onError(error)
+                return@launch
             }
             if (request == requestId && latestInput == input) onComplete(result)
         }

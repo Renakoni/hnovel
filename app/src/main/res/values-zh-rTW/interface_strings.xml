@@ -43,4 +43,6 @@
     <string name="plugin_uninstall_action">解除安裝並刪除</string>
     <string name="stats_total">總計</string>
     <string name="reader_chapter">章節</string>
+    <string name="reader_empty_chapter">本章沒有可閱讀的內容。</string>
+    <string name="reader_pagination_failed">本章排版失敗，請重試。</string>
 </resources>
