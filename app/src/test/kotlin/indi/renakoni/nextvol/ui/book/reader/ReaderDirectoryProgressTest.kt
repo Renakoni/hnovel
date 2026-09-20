@@ -86,6 +86,8 @@ class ReaderDirectoryProgressTest {
         coEvery { readingData.getUserReadingData("book") } answers { data.get() }
         val saveProgress = slot<(String, Float) -> Unit>()
         val contentState = object : ContentUiState by mockk(relaxed = true) {
+            override val bookId = "book"
+            override val readingChapterId = "chapter"
             override val readingChapterContent: Result<ChapterContentUiState, WebRequestError>? =
                 Ok(ChapterContentUiState("chapter", "Title", emptyList(), null, null))
         }
