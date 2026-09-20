@@ -59,9 +59,9 @@ class FlipChapterTransitionTest {
         assertTrue(saved.all { it == "4" to 0.1f })
     }
 
-    @Test fun previousUsesLastPageDespiteOldTwentyPercent() {
+    @Test fun backwardBoundaryUsesLastPageDespiteOldTwentyPercent() {
         openThird()
-        mode.loadPrevChapter()
+        mode.uiState.loadPrevChapter()
         env.runCurrent()
         env.emit("2", Ok(env.chapter("2", "1", "3")))
         val pending = mode.uiState.pendingChapter!!
@@ -71,6 +71,28 @@ class FlipChapterTransitionTest {
         assertEquals(9, mode.uiState.pagerState.currentPage)
         assertEquals(1f, mode.uiState.readingProgress)
         assertEquals("2", env.records.data.lastReadChapterId)
+    }
+
+    @Test fun manualPreviousUsesFirstPageDespiteOldProgress() {
+        openThird()
+        mode.loadPrevChapter()
+        env.runCurrent()
+        env.emit("2", Ok(env.chapter("2", "1", "3")))
+        val pending = mode.uiState.pendingChapter!!
+        assertEquals(ChapterEntry.Start, pending.entry)
+        assertTrue(mode.uiState.commitPendingChapter(pending, PagerState { 10 }))
+        env.runCurrent()
+        assertEquals(0, mode.uiState.pagerState.currentPage)
+        assertEquals(0.1f, mode.uiState.readingProgress)
+    }
+
+    @Test fun manualPreviousReplacesABoundaryRequestForTheSameChapter() {
+        openThird()
+        mode.uiState.loadPrevChapter()
+        mode.loadPrevChapter()
+        env.runCurrent()
+        env.emit("2", Ok(env.chapter("2", "1", "3")))
+        assertEquals(ChapterEntry.Start, mode.uiState.pendingChapter!!.entry)
     }
 
     @Test fun failedBoundaryRequestKeepsReadableChapterAndCanBeRetried() {

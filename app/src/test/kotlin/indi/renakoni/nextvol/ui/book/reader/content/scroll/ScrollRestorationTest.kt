@@ -14,6 +14,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.unit.dp
 import com.github.michaelbull.result.Ok
 import indi.renakoni.nextvol.ui.book.reader.ReaderSettings
@@ -55,7 +58,11 @@ class ScrollRestorationTest {
         object : ContinuousScrollSettings {
             override fun getFlow() = flowOf(continuous)
             override suspend fun isEnabled() = continuous
-        }, { id, progress -> saved += id to progress }, env.dispatcher, env.dispatcher,
+        }, { id, progress ->
+            saved += id to progress
+            env.records.data = env.records.data.copyWithUpdatedChapterReadingProgress(id, progress)
+                .copy(lastReadChapterId = id)
+        }, env.dispatcher, env.dispatcher,
     )
     private val settings = mockk<ReaderSettings>(relaxed = true) {
         every { fontFamilyUri } returns Uri.EMPTY
@@ -99,13 +106,58 @@ class ScrollRestorationTest {
         assertTrue(saved.all { it.first == "3" })
     }
 
+    @Test fun reopeningAfterContinuousScrollingRestoresTheLastMeasuredPosition() {
+        continuous = true
+        env.records.data = env.records.data.copy(currentChapterReadingProgressMap = mapOf("3" to 0.5f))
+        mount()
+        awaitRestoration("3", 0.5f)
+        compose.onRoot().performTouchInput { swipeUp() }
+        compose.waitForIdle()
+        env.runCurrent()
+        val progress = env.records.data.currentChapterReadingProgressMap.getValue("3")
+        assertTrue("The swipe must persist a position beyond halfway: $progress", progress > 0.5f && progress < 1f)
+        val oldList = mode.uiState.lazyListState
+        mode.changeChapter(env.records.data.lastReadChapterId!!)
+        env.runCurrent()
+        env.emit("3", Ok(env.chapter("3", prev = "2")))
+        env.emit("2", Ok(env.chapter("2", next = "3")))
+        awaitRestoration("3", progress)
+        assertNotSame(oldList, mode.uiState.lazyListState)
+    }
+
+    @Test fun manualPreviousChapterStartsAtTheTopWithContinuousScrolling() {
+        continuous = true
+        assertManualPreviousStartsAtTop()
+    }
+
+    @Test fun manualPreviousChapterStartsAtTheTopWithoutContinuousScrolling() {
+        assertManualPreviousStartsAtTop()
+    }
+
+    private fun assertManualPreviousStartsAtTop() {
+        env.records.data = env.records.data.copy(currentChapterReadingProgressMap = mapOf("3" to 0.5f, "2" to 1f))
+        mount()
+        awaitRestoration("3", 0.5f)
+        mode.loadPrevChapter()
+        env.runCurrent()
+        env.emit("2", Ok(env.chapter("2", next = "3")))
+        compose.waitUntil(10_000) {
+            compose.mainClock.advanceTimeByFrame()
+            env.runCurrent()
+            !mode.uiState.isRestoringProgress
+        }
+        val item = mode.uiState.lazyListState.layoutInfo.visibleItemsInfo.first { it.key == "2" }
+        assertEquals("2", mode.uiState.readingChapterId)
+        assertEquals("Manual previous chapter must enter at its beginning", 0, item.offset)
+    }
+
     private fun mount() {
         every { env.renderer.getContentDataFromJson(any()) } returns ContentData(listOf(Body()))
         env.runCurrent()
         mode.changeBookId("book")
         mode.changeChapter("3")
         env.runCurrent()
-        env.emit("3", Ok(env.chapter("3", prev = if (continuous) "2" else null)))
+        env.emit("3", Ok(env.chapter("3", prev = "2")))
         if (continuous) env.emit("2", Ok(env.chapter("2", next = "3")))
         compose.runOnUiThread {
             activity.get().setContent {

@@ -27,6 +27,8 @@ internal class ReaderReadingRecords(
     // Capture once per reader entry, including callbacks first delivered after a reset.
     private val progressRevision = store.progressRevision()
     private val totalReadingTimeMutex = Mutex()
+    private val progressLock = Any()
+    private var progressJob: Job? = null
     private val accumulatedReadingTimeLock = Any()
     private var accumulatedReadingTimeJob: Job? = null
 
@@ -49,40 +51,45 @@ internal class ReaderReadingRecords(
         val bookId = currentBookId()
         if (progress.isNaN() || progress <= 0f || bookId.isBlank()) return
         val title = currentChapterTitle() ?: return
-        scope.launch(ioDispatcher) {
-            val currentTime = now()
-            // Resolve the count after the event has been queued and bind it to the
-            // captured book. The UI's current-book state may have changed by now.
-            val total = try {
-                chapterCount(bookId)
-            } catch (error: CancellationException) {
-                throw error
-            } catch (_: Exception) {
-                0
-            }
-
-            val saved = store.updateChapterProgress(bookId, chapterId, progressRevision) { userReadingData ->
-                Log.v("ReaderViewModel", "$bookId/$chapterId Saving progress $progress. ($title)")
-                val updatedData = userReadingData.copyWithUpdatedChapterReadingProgress(chapterId, progress)
-                val readingProgress = if (total > 0) {
-                    (updatedData.maxChapterReadingProgressMap.values.sum() / total).coerceIn(0f, 1f)
-                } else {
-                    userReadingData.readingProgress
+        synchronized(progressLock) {
+            val previous = progressJob
+            progressJob = scope.launch(ioDispatcher) {
+                // Bind the order at the event source, before Dispatchers.IO can reorder launches.
+                previous?.join()
+                val currentTime = now()
+                // Resolve the count after the event has been queued and bind it to the
+                // captured book. The UI's current-book state may have changed by now.
+                val total = try {
+                    chapterCount(bookId)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: Exception) {
+                    0
                 }
-                // A queued save may still update its chapter's history after navigation,
-                // but must not replace the newer resume chapter and title.
-                val current = isCurrentChapter()
-                updatedData.copy(
-                    lastReadTime = if (current) currentTime else userReadingData.lastReadTime,
-                    lastReadChapterId = if (current) chapterId else userReadingData.lastReadChapterId,
-                    lastReadChapterTitle = if (current) title else userReadingData.lastReadChapterTitle,
-                    readingProgress = readingProgress,
-                )
-            }
-            if (!saved) return@launch
-            val readingData = store.getUserReadingData(bookId)
-            if (readingData.readingProgress >= 1f) {
-                store.markBookFinished(bookId)
+
+                val saved = store.updateChapterProgress(bookId, chapterId, progressRevision) { userReadingData ->
+                    Log.v("ReaderViewModel", "$bookId/$chapterId Saving progress $progress. ($title)")
+                    val updatedData = userReadingData.copyWithUpdatedChapterReadingProgress(chapterId, progress)
+                    val readingProgress = if (total > 0) {
+                        (updatedData.maxChapterReadingProgressMap.values.sum() / total).coerceIn(0f, 1f)
+                    } else {
+                        userReadingData.readingProgress
+                    }
+                    // A queued save may still update its chapter's history after navigation,
+                    // but must not replace the newer resume chapter and title.
+                    val current = isCurrentChapter()
+                    updatedData.copy(
+                        lastReadTime = if (current) currentTime else userReadingData.lastReadTime,
+                        lastReadChapterId = if (current) chapterId else userReadingData.lastReadChapterId,
+                        lastReadChapterTitle = if (current) title else userReadingData.lastReadChapterTitle,
+                        readingProgress = readingProgress,
+                    )
+                }
+                if (!saved) return@launch
+                val readingData = store.getUserReadingData(bookId)
+                if (readingData.readingProgress >= 1f) {
+                    store.markBookFinished(bookId)
+                }
             }
         }
     }

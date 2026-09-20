@@ -30,7 +30,7 @@ internal class ScrollChapterWindow(
     private val ioDispatcher: CoroutineDispatcher,
 ) {
     // Identity, rather than chapter equality, also distinguishes retries of the same chapter.
-    private class Request(val bookId: String, val chapterId: String)
+    private class Request(val bookId: String, val chapterId: String, val restoreProgress: Boolean = true)
     @Volatile private var request: Request? = null
     private var settingsJob: Job? = null
     private var observationJob: Job? = null
@@ -66,10 +66,10 @@ internal class ScrollChapterWindow(
         uiState.lazyListState = LazyListState()
     }
 
-    fun changeChapter(id: String) {
+    fun changeChapter(id: String, restoreProgress: Boolean = true) {
         if (id.isBlank()) return
         invalidateRequest()
-        val expected = Request(uiState.bookId, id).also { request = it }
+        val expected = Request(uiState.bookId, id, restoreProgress).also { request = it }
         // Keep the fixed-size window addressable throughout reset.
         uiState.contentList.fill(null)
         uiState.readingChapterId = id
@@ -80,7 +80,7 @@ internal class ScrollChapterWindow(
         settingsJob = coroutineScope.launch {
             val enabled = withContext(ioDispatcher) { settings.isEnabled() }
             if (!isCurrent(expected)) return@launch
-            collectCurrent(expected, restoreProgress = true, preload = true,
+            collectCurrent(expected, restoreProgress = restoreProgress, preload = true,
                 observeAdjacent = enabled, observation = observation)
         }
     }
@@ -88,7 +88,8 @@ internal class ScrollChapterWindow(
     fun retryChapter(id: String) {
         val expected = request ?: return
         if (id == expected.chapterId) {
-            changeChapter(id)
+            // Keep a manual chapter-start request until its position has actually been restored.
+            changeChapter(id, restoreProgress = expected.restoreProgress || !uiState.isRestoringProgress)
             return
         }
         val content = uiState.readingChapterContent?.get() ?: return
@@ -108,8 +109,10 @@ internal class ScrollChapterWindow(
         observationJob?.cancel()
         observationJob = coroutineScope.launch {
             snapshotFlow {
-                uiState.lazyListState.layoutInfo.visibleItemsInfo.firstOrNull() to uiState.contentList.toList()
-            }.collect { (item, _) ->
+                if (uiState.isRestoringProgress) null else
+                    uiState.lazyListState.layoutInfo.visibleItemsInfo.firstOrNull() to uiState.contentList.toList()
+            }.collect { position ->
+                val (item, _) = position ?: return@collect
                 if (!continuous || observation != observationGeneration) return@collect
                 val content = uiState.readingChapterContent?.get() ?: return@collect
                 val index = when {
