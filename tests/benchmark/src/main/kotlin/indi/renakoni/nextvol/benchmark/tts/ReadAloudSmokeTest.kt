@@ -4,6 +4,8 @@ import android.os.SystemClock
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
+import androidx.test.uiautomator.UiScrollable
+import androidx.test.uiautomator.UiSelector
 import androidx.test.uiautomator.Until
 import indi.renakoni.nextvol.benchmark.ui.UiAutomatorTest
 import org.junit.Assert.assertFalse
@@ -64,21 +66,33 @@ class ReadAloudSmokeTest : UiAutomatorTest() {
         configureEngine("invalid.nextvol.speech.engine")
         launchApp()
         shell("am start -W -n $TARGET_PACKAGE/.MainActivity -a indi.renakoni.nextvol.OPEN_READ_ALOUD")
-        clickScrolledText("Voices")
-        clickScrolledText("Imported test voice")
+        // The entry is now the first setting. Await navigation before any scrolling.
+        clickText("Voices")
+        assertDescription("Library options")
+        scrollSpeechListTo("Imported test voice")
+        clickText("Imported test voice")
         device.pressBack()
         assertText("Imported test voice")
         clickScrolledText("Preview voice")
         assertText("Finished")
         clickDescription("Stop")
         assertServiceStopped()
-        clickScrolledText("Voices")
-        scrollToText("Imported test voice")
+        scrollSpeechListTo("Voices")
+        clickText("Voices")
+        assertDescription("Library options")
+        scrollSpeechListTo("Imported test voice")
         clickDescription("Voice options")
         clickText("Remove voice")
         assertTrue(device.wait(Until.gone(By.text("Imported test voice")), TIMEOUT))
         device.pressBack()
         assertText("System speech")
+    }
+
+    private fun scrollSpeechListTo(text: String) {
+        // scrollIntoView searches from the start in one direction, including long voice libraries.
+        assertTrue("Speech list did not contain: $text",
+            UiScrollable(UiSelector().scrollable(true)).scrollTextIntoView(text))
+        assertText(text)
     }
 
     private fun assertServiceStopped() {
