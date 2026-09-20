@@ -1,8 +1,6 @@
 package indi.renakoni.nextvol.data.work
 
 import android.app.Application
-import android.net.Uri
-import androidx.documentfile.provider.DocumentFile
 import androidx.work.ListenableWorker
 import androidx.work.workDataOf
 import com.github.michaelbull.result.Ok
@@ -40,60 +38,41 @@ class SourceExportWorkerTest {
         stubExportRepository(repository)
         val items = mutableListOf<DownloadItem>()
         val progress = mockk<DownloadProgressRepository> { every { addExportItem(capture(items)) } just Runs }
-        val output = context.filesDir.resolve("exports-${UUID.randomUUID()}").apply { mkdirs() }
-        fun outputUri(name: String): Uri = Uri.parse("content://fixture/exports/${Uri.encode(name)}").also {
-            org.robolectric.Shadows.shadowOf(context.contentResolver).registerOutputStream(it, output.resolve(name).outputStream())
-        }
-        val tree = Uri.parse("content://fixture/tree/exports")
-        val names = mutableListOf<String>()
-        val folder = mockk<DocumentFile> {
-            every { createFile(any(), capture(names)) } answers {
-                val fileUri = outputUri(secondArg<String>())
-                mockk { every { uri } returns fileUri }
+        val files = mutableListOf<java.io.File>()
+        for (book in listOf(a, b)) {
+            val volumes = book.bind(BookVolumes("same", listOf("v1", "v2").map {
+                Volume(it, "Same volume", listOf(ChapterInformation("c-$it", "Chapter")))
+            }))
+            val info = book.bind(BookInformation("same", "Same title", author = "Same author",
+                description = "", publishingHouse = "", wordCount = WordCount(1),
+                lastUpdated = LocalDateTime.of(2026, 9, 9, 0, 0), isComplete = false))
+            every { repository.getBookInformationFlow(book.storageKey, any()) } returns flowOf(Ok(info))
+            every { repository.getBookVolumesFlow(book.storageKey, any()) } returns flowOf(Ok(volumes))
+            for (chapter in volumes.volumes.flatMap { it.chapters }) {
+                every { repository.getChapterContentFlow(chapter.id, book.storageKey, any()) } returns
+                    flowOf(Ok(ChapterContent(chapter.id, "Chapter", buildJsonObject { put("components", JsonArray(emptyList())) })))
             }
-        }
-        mockkStatic(DocumentFile::class)
-        every { DocumentFile.fromTreeUri(context, tree) } returns folder
-        try {
-            for (book in listOf(a, b)) {
-                val volumes = book.bind(BookVolumes("same", listOf("v1", "v2").map {
-                    Volume(it, "Same volume", listOf(ChapterInformation("c-$it", "Chapter")))
-                }))
-                val info = book.bind(BookInformation("same", "Same title", author = "Same author",
-                    description = "", publishingHouse = "", wordCount = WordCount(1),
-                    lastUpdated = LocalDateTime.of(2026, 9, 9, 0, 0), isComplete = false))
-                every { repository.getBookInformationFlow(book.storageKey, any()) } returns flowOf(Ok(info))
-                every { repository.getBookVolumesFlow(book.storageKey, any()) } returns flowOf(Ok(volumes))
-                for (chapter in volumes.volumes.flatMap { it.chapters }) {
-                    every { repository.getChapterContentFlow(chapter.id, book.storageKey, any()) } returns
-                        flowOf(Ok(ChapterContent(chapter.id, "Chapter", buildJsonObject { put("components", JsonArray(emptyList())) })))
+            coEvery { repository.volumeCover(book, any(), any(), any()) } returns Ok(null)
+            for (type in listOf("BOOK", "VOLUMES")) {
+                val workId = UUID.randomUUID()
+                val data = workDataOf("bookId" to book.storageKey, "exportType" to type,
+                    "selectedVolume" to volumes.volumes.joinToString(",") { it.volumeId })
+                val otherWork = context.cacheDir.resolve("epub/${book.fileKey}/other-work/keep").apply {
+                    parentFile!!.mkdirs(); writeText("keep")
                 }
-                coEvery { repository.volumeCover(book, any(), any(), any()) } returns Ok(null)
-                for (type in listOf("BOOK", "VOLUMES")) {
-                    val workId = UUID.randomUUID()
-                    val data = workDataOf("bookId" to book.storageKey, "exportType" to type,
-                        "selectedVolume" to volumes.volumes.joinToString(",") { it.volumeId },
-                        "uri" to (if (type == "BOOK") outputUri("${book.fileKey}.epub") else tree).toString())
-                    val otherWork = context.cacheDir.resolve("epub/${book.fileKey}/other-work/keep").apply {
-                        parentFile!!.mkdirs(); writeText("keep")
-                    }
-                    val worker = ExportBookToEPUBWork(context, workerParameters(data, workId), repository, progress, ContentJsonDecoder(ContentComponentRegistry()), exportDownloads())
-                    assertTrue(org.robolectric.shadows.ShadowLog.getLogsForTag("ExportEPUB").toString(),
-                        worker.doWork() is ListenableWorker.Result.Success)
-                    assertFalse(context.cacheDir.resolve("epub/${book.fileKey}/$workId").exists())
-                    assertTrue(otherWork.exists())
-                }
-                coVerify(exactly = 1) { repository.volumeCover(book, match { it.volumeId == volumes.volumes[1].volumeId }, any(), any()) }
+                val worker = ExportBookToEPUBWork(context, workerParameters(data, workId), repository, progress, ContentJsonDecoder(ContentComponentRegistry()), exportDownloads())
+                assertTrue(org.robolectric.shadows.ShadowLog.getLogsForTag("ExportEPUB").toString(),
+                    worker.doWork() is ListenableWorker.Result.Success)
+                assertFalse(context.cacheDir.resolve("epub/${book.fileKey}/$workId").exists())
+                assertTrue(otherWork.exists())
+                files += EpubShareFiles.files(context, workId)
             }
-            assertEquals(4, names.distinct().size)
-            assertEquals(6, output.listFiles()!!.size)
-            for (file in output.listFiles()!!) ZipFile(file).use { assertTrue(it.size() > 0) }
-            assertTrue(items.all { it.progress == 1f })
-            assertEquals(listOf(a.storageKey, a.storageKey, b.storageKey, b.storageKey), items.map { it.bookId })
-        } finally {
-            unmockkStatic(DocumentFile::class)
-            output.deleteRecursively()
+            coVerify(exactly = 1) { repository.volumeCover(book, match { it.volumeId == volumes.volumes[1].volumeId }, any(), any()) }
         }
+        assertEquals(6, files.distinct().size)
+        for (file in files) ZipFile(file).use { assertTrue(it.size() > 0) }
+        assertTrue(items.all { it.progress == 1f })
+        assertEquals(listOf(a.storageKey, a.storageKey, b.storageKey, b.storageKey), items.map { it.bookId })
     }
 
     @Test fun selectedVolumeFromAnotherSourceIsRejectedBeforeRepositoryAccess() = runTest {

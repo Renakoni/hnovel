@@ -69,6 +69,7 @@
         <data android:scheme="legado" android:host="import" android:path="/bookSource"/>
       </intent-filter>
     </activity>
+    <activity android:name=".ui.book.detail.EpubShareActivity" android:exported="false" />
     <activity-alias
         android:name=".PluginInstallAlias"
         android:exported="true"

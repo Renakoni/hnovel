@@ -349,35 +349,18 @@ class BookDownloadTest {
 
     private suspend fun export(images: Boolean = true, selected: List<String>? = null,
                                beforeWrite: () -> Unit = {}): ListenableWorker.Result {
-        val tree = Uri.parse("content://fixture/tree/export")
-        fun destination(): Uri {
-            val file = directory.root.resolve("${java.util.UUID.randomUUID()}.epub")
-            val uri = Uri.parse("content://fixture/export/${file.name}")
-            org.robolectric.Shadows.shadowOf(context.contentResolver).registerOutputStream(uri,
-                object : java.io.FilterOutputStream(file.outputStream()) {
-                    override fun write(bytes: ByteArray, offset: Int, length: Int) {
-                        beforeWrite(); out.write(bytes, offset, length)
-                    }
-                })
-            return uri
-        }
-        if (selected != null) {
-            io.mockk.mockkStatic(androidx.documentfile.provider.DocumentFile::class)
-            every { androidx.documentfile.provider.DocumentFile.fromTreeUri(context, tree) } returns mockk {
-                every { createFile(any(), any()) } answers {
-                    val output = destination()
-                    mockk { every { uri } returns output }
-                }
-            }
+        io.mockk.mockkObject(indi.renakoni.nextvol.data.work.EpubShareFiles)
+        every { indi.renakoni.nextvol.data.work.EpubShareFiles.publish(context, any(), any(), any()) } answers {
+            beforeWrite()
+            callOriginal()
         }
         try {
             return indi.renakoni.nextvol.data.work.ExportBookToEPUBWork(context,
                 workerParameters(workDataOf("bookId" to a.storageKey, "exportType" to if (selected == null) "BOOK" else "VOLUMES",
                     "selectedVolume" to selected?.joinToString(",").orEmpty(), "includeImages" to images,
-                    "uri" to (if (selected == null) destination() else tree).toString(),
                     "downloadGeneration" to downloads.generation())), books, progress, decoder, downloads).doWork()
         } finally {
-            if (selected != null) io.mockk.unmockkStatic(androidx.documentfile.provider.DocumentFile::class)
+            io.mockk.unmockkObject(indi.renakoni.nextvol.data.work.EpubShareFiles)
         }
     }
 
@@ -445,10 +428,10 @@ class BookDownloadTest {
         assertEquals(1, source.imageCalls)
     }
 
-    @Test fun failedDestinationKeepsCompletedOfflineDownload() = runBlocking {
+    @Test fun failedSharePublicationKeepsCompletedOfflineDownload() = runBlocking {
         register(a).withImages = true
         val result = export(beforeWrite = { throw java.io.IOException("destination full") }) as ListenableWorker.Result.Failure
-        assertEquals("save_failed", result.outputData.getString("reason"))
+        assertEquals("share_failed", result.outputData.getString("reason"))
         assertEquals(BookDownloadPhase.Complete, state().phase)
         downloads.clearReadingCache()
         registry.unregister(a.sourceId)
@@ -476,6 +459,34 @@ class BookDownloadTest {
         register(a, revision = "2", source = source)
         assertTrue(export() is ListenableWorker.Result.Success)
         assertEquals(mapOf("1" to 2, "2" to 2, "3" to 2), source.chapterCalls)
+        assertEquals(2, source.imageCalls)
+        assertEquals(BookDownloadPhase.Complete, state().phase)
+    }
+
+    @Test fun failedRevisionImageRefreshIsRetriedEvenAfterTargetVersionWasWritten() = runBlocking {
+        val source = register(a).apply { withImages = true }
+        assertTrue(export() is ListenableWorker.Result.Success)
+        registry.unregister(a.sourceId)
+        register(a, revision = "2", source = source)
+        source.imageFailed = true
+        assertTrue(export() is ListenableWorker.Result.Failure)
+        assertArrayEquals(png, downloads.image(SourceImage(a, IMAGE))!!.readBytes())
+        val callsAfterFailure = source.imageCalls
+        source.imageFailed = false
+        assertTrue(export() is ListenableWorker.Result.Success)
+        assertEquals(callsAfterFailure + 1, source.imageCalls)
+        assertEquals(BookDownloadPhase.Complete, state().phase)
+    }
+
+    @Test fun textOnlyRevisionUpdateLeavesOldImagesPendingForLaterExport() = runBlocking {
+        val source = register(a).apply { withImages = true }
+        assertTrue(export() is ListenableWorker.Result.Success)
+        registry.unregister(a.sourceId)
+        register(a, revision = "2", source = source)
+        assertTrue(export(images = false) is ListenableWorker.Result.Success)
+        assertEquals(1, source.imageCalls)
+        assertEquals(BookDownloadPhase.Partial, state().phase)
+        assertTrue(export() is ListenableWorker.Result.Success)
         assertEquals(2, source.imageCalls)
         assertEquals(BookDownloadPhase.Complete, state().phase)
     }

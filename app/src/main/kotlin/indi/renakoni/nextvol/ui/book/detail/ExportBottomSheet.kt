@@ -42,7 +42,7 @@ fun ExportBottomSheet(
     onDismissRequest: () -> Unit,
     onClickExport: (ExportSettings) -> Unit
 ) {
-    val isSplitEnabled = settings.selectedVolumeIds.isNotEmpty()
+    val isSplitEnabled = settings.exportType == ExportType.VOLUMES
     val allVolumeIds = bookVolumes.volumes.map { it.volumeId }.toSet()
 
     val selectedVolumeIds = if (isSplitEnabled) {
@@ -69,7 +69,7 @@ fun ExportBottomSheet(
                     style = typography.displayMedium
                 )
                 Spacer(Modifier.width(16.dp))
-                Button(onClick = {
+                Button(enabled = selectedVolumeIds.isNotEmpty(), onClick = {
                     if (isSplitEnabled) {
                         onClickExport(settings.copy(selectedVolumeIds = selectedVolumeIds, exportType = ExportType.VOLUMES))
                     } else {
@@ -105,7 +105,8 @@ fun ExportBottomSheet(
                         onClick = {
                             onSettingsChange(
                                 settings.copy(
-                                    selectedVolumeIds = if (isSplitEnabled) emptySet() else allVolumeIds
+                                    selectedVolumeIds = if (isSplitEnabled) emptySet() else allVolumeIds,
+                                    exportType = if (isSplitEnabled) ExportType.BOOK else ExportType.VOLUMES
                                 )
                             )
                         }

@@ -4,7 +4,6 @@ import android.app.Application
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.net.Uri
-import androidx.documentfile.provider.DocumentFile
 import androidx.work.ListenableWorker
 import androidx.work.workDataOf
 import com.github.michaelbull.result.Err
@@ -32,11 +31,9 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
-import org.robolectric.Shadows
 import org.robolectric.annotation.Config
 import java.io.File
 import java.io.IOException
-import java.io.OutputStream
 import java.time.LocalDateTime
 import java.util.zip.ZipFile
 
@@ -53,28 +50,13 @@ class EpubExportRegressionTest {
     private var volumes = book.bind(BookVolumes("book", (1..2).map {
         Volume("v$it", "Same volume", listOf(ChapterInformation("c$it", "Chapter $it")))
     }))
-    private val files = mutableListOf<File>()
+    private var lastWorker: ExportBookToEPUBWork? = null
+    private val files get() = lastWorker?.let { EpubShareFiles.files(context, it.id) }.orEmpty()
     private lateinit var output: File
-    private var streamFactory: (File, Int) -> OutputStream = { file, _ -> file.outputStream() }
 
     @Before fun prepare() {
         stubExportRepository(repository)
-        mockkStatic(android.provider.DocumentsContract::class)
-        every { android.provider.DocumentsContract.deleteDocument(context.contentResolver, any()) } answers {
-            File(secondArg<Uri>().lastPathSegment!!).delete()
-        }
-        mockkStatic(DocumentFile::class)
         mockkObject(ImageUtils)
-        val folder = mockk<DocumentFile> {
-            every { createFile(any(), any()) } answers {
-                val file = output.resolve(secondArg<String>())
-                files.add(file)
-                val outputUri = Uri.parse("content://fixture/epub71/${Uri.encode(file.absolutePath)}")
-                Shadows.shadowOf(context.contentResolver).registerOutputStream(outputUri, streamFactory(file, files.size))
-                mockk { every { uri } returns outputUri }
-            }
-        }
-        every { DocumentFile.fromTreeUri(context, any()) } returns folder
         every { repository.getBookInformationFlow(book.storageKey, any()) } returns flowOf(Ok(book.bind(
             BookInformation("book", "Probe book", author = "Author", description = "", publishingHouse = "", wordCount = WordCount(2),
                 lastUpdated = LocalDateTime.of(2026, 9, 19, 0, 0), isComplete = false)
@@ -88,8 +70,8 @@ class EpubExportRegressionTest {
 
     @After fun finish() {
         unmockkObject(ImageUtils)
-        unmockkStatic(DocumentFile::class)
-        unmockkStatic(android.provider.DocumentsContract::class)
+        files.forEach { it.copyTo(output.resolve(it.name), overwrite = true) }
+        unmockkObject(EpubShareFiles)
     }
 
     private fun startCase(name: String) {
@@ -115,26 +97,12 @@ class EpubExportRegressionTest {
         }
     }
 
-    private fun worker(type: String = "VOLUMES", images: Boolean = true, created: Boolean = false,
-                       selected: String = volumes.volumes.joinToString(",") { it.volumeId }): ExportBookToEPUBWork {
-        val uri = if (type == "VOLUMES") Uri.parse("content://fixture/tree/epub71") else {
-            val file = output.resolve("book.epub").also(files::add)
-            Uri.parse("content://fixture/epub71/${Uri.encode(file.absolutePath)}").also {
-                file.createNewFile() // The picker creates a document; the provider opens it only when copying starts.
-                Shadows.shadowOf(context.contentResolver).registerOutputStream(it, object : OutputStream() {
-                    private var target: OutputStream? = null
-                    private fun stream() = target ?: streamFactory(file, files.size).also { target = it }
-                    override fun write(value: Int) = stream().write(value)
-                    override fun write(bytes: ByteArray, offset: Int, length: Int) = stream().write(bytes, offset, length)
-                    override fun close() { target?.close() }
-                })
-            }
-        }
-        return ExportBookToEPUBWork(context, workerParameters(workDataOf(
+    private fun worker(type: String = "VOLUMES", images: Boolean = true,
+                       selected: String = volumes.volumes.joinToString(",") { it.volumeId }): ExportBookToEPUBWork =
+        ExportBookToEPUBWork(context, workerParameters(workDataOf(
             "bookId" to book.storageKey, "title" to "Probe book", "exportType" to type,
-            "selectedVolume" to selected, "includeImages" to images, "uri" to uri.toString(), "createdDocument" to created
-        )), repository, progress, decoder, exportDownloads())
-    }
+            "selectedVolume" to selected, "includeImages" to images
+        )), repository, progress, decoder, exportDownloads()).also { lastWorker = it }
 
     private fun bodies(file: File): List<String> = ZipFile(file).use { zip ->
         val opf = DocumentHelper.parseText(zip.getInputStream(zip.getEntry("EPUB/content.opf")).reader().readText())
@@ -215,56 +183,12 @@ class EpubExportRegressionTest {
         assertEquals(-1f, items.single().progress)
     }
 
-    @Test fun failedSecondProviderCopyKeepsCompletedFileAndRemovesPartialFile() = runTest {
-        startCase("provider-copy-failure")
-        streamFactory = { file, index ->
-            assertTrue("No output is final until every destination closes", items.single().progress < 1f)
-            val target = file.outputStream()
-            if (index == 1) target else object : OutputStream() {
-                override fun write(value: Int) { throw IOException("disk full") }
-                override fun write(bytes: ByteArray, offset: Int, length: Int) {
-                    target.write(bytes, offset, minOf(length, 80)); target.flush(); throw IOException("disk full")
-                }
-                override fun close() = target.close()
-            }
-        }
-        val result = worker().doWork() as ListenableWorker.Result.Failure
-        assertEquals("save_failed", result.outputData.getString("reason"))
-        assertEquals(1, result.outputData.getInt("completedVolumes", -1))
-        assertEquals(2, result.outputData.getInt("totalVolumes", -1))
-        assertFalse(result.outputData.getBoolean("cleanupFailed", true))
-        assertEquals(2, files.size)
-        assertEquals(listOf("Retained text"), bodies(files.first()))
-        assertFalse(files[1].exists())
-    }
-
     @Test fun emptyVolumeInSplitModeFailsBeforeCreatingFiles() = runTest {
         startCase("empty-split-volume")
         volumes = book.bind(BookVolumes("book", listOf(Volume("empty", "Empty volume", emptyList()))))
         val result = worker().doWork() as ListenableWorker.Result.Failure
         assertEquals("empty_volume", result.outputData.getString("reason"))
         assertTrue(files.isEmpty())
-    }
-
-    @Test fun cancellationDuringCopyStopsDeliveryAndRemovesIncompleteFile() = runTest {
-        startCase("cancel-during-copy")
-        lateinit var job: Job
-        streamFactory = { file, _ ->
-            val target = file.outputStream()
-            object : OutputStream() {
-                override fun write(value: Int) { target.write(value); job.cancel() }
-                override fun write(bytes: ByteArray, offset: Int, length: Int) {
-                    target.write(bytes, offset, length); job.cancel()
-                }
-                override fun close() = target.close()
-            }
-        }
-        job = launch(start = CoroutineStart.LAZY) { worker().doWork() }
-        job.start(); job.join()
-        assertTrue(job.isCancelled)
-        assertEquals(1, files.size)
-        assertFalse(files.single().exists())
-        assertEquals(-1f, items.single().progress)
     }
 
     @Test fun collidingVolumeCoverUrlsRemainDistinct() = runTest {
@@ -287,18 +211,6 @@ class EpubExportRegressionTest {
         assertEquals(2, covers.size); assertFalse(covers[0].contentEquals(covers[1]))
     }
 
-    @Test fun closeFailureNeverRecordsCompletedExport() = runTest {
-        startCase("close-failure")
-        streamFactory = { file, _ -> object : java.io.FilterOutputStream(file.outputStream()) {
-            override fun close() { super.close(); throw IOException("provider close failed") }
-        } }
-        val result = worker().doWork() as ListenableWorker.Result.Failure
-        assertEquals(0, result.outputData.getInt("completedVolumes", -1))
-        assertEquals(-1f, items.single().progress)
-        assertEquals(1, files.size)
-        assertFalse(files.single().exists())
-    }
-
     @Test fun optionalVolumeCoverLookupFailureUsesDefaultCover() = runTest {
         startCase("cover-lookup-failure")
         coEvery { repository.volumeCover(book, any(), any(), any()) } throws IOException("cover unavailable")
@@ -314,17 +226,56 @@ class EpubExportRegressionTest {
         assertTrue(files.isEmpty())
     }
 
-    @Test fun pickerCreatedBookIsRemovedAfterFailureAndCleanupFailureIsReported() = runTest {
-        startCase("book-cleanup")
-        setBody(JsonObject(emptyMap()))
-        val first = worker("BOOK", created = true).doWork() as ListenableWorker.Result.Failure
-        assertFalse(files.single().exists())
-        assertFalse(first.outputData.getBoolean("cleanupFailed", true))
-        every { android.provider.DocumentsContract.deleteDocument(context.contentResolver, any()) } returns false
-        val second = worker("BOOK", created = true).doWork() as ListenableWorker.Result.Failure
-        assertTrue(second.outputData.getBoolean("cleanupFailed", false))
-        assertTrue(second.outputData.getString("message")!!.contains(context.getString(
-            indi.renakoni.nextvol.R.string.epub_export_cleanup_failed)))
+    @Test fun emptySelectionNeverFallsBackToWholeBook() = runTest {
+        startCase("empty-selection")
+        val result = worker(selected = "").doWork() as ListenableWorker.Result.Failure
+        assertEquals("missing_volume", result.outputData.getString("reason"))
+        assertTrue(files.isEmpty())
+        verify(exactly = 0) { repository.getChapterContentFlow(any(), any(), any()) }
+    }
+
+    @Test fun publishFailureDoesNotExposeAnyArchives() = runTest {
+        startCase("publish-failure")
+        mockkObject(EpubShareFiles)
+        every { EpubShareFiles.publish(context, any(), any(), any()) } throws IOException("disk full")
+        val result = worker().doWork() as ListenableWorker.Result.Failure
+        assertEquals("share_failed", result.outputData.getString("reason"))
+        assertTrue(files.isEmpty())
+        assertEquals(-1f, items.single().progress)
+    }
+
+    @Test fun restartingAnAlreadyPublishedRequestKeepsTheOriginalRecipientFiles() = runTest {
+        startCase("restart-after-publication")
+        val first = worker()
+        assertTrue(first.doWork() is ListenableWorker.Result.Success)
+        val original = files.map { it.readBytes().toList() }
+        val interrupted = context.cacheDir.resolve("epub/${book.fileKey}/${first.id}/outputs/partial.epub")
+        interrupted.parentFile!!.mkdirs()
+        interrupted.writeText("interrupted")
+        val retry = ExportBookToEPUBWork(context, workerParameters(first.inputData, first.id),
+            repository, progress, decoder, exportDownloads())
+        assertTrue(retry.doWork() is ListenableWorker.Result.Success)
+        assertEquals(original, files.map { it.readBytes().toList() })
+        assertFalse(interrupted.exists())
+        assertEquals(1, items.size)
+        val manager = context.getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+        val notification = org.robolectric.Shadows.shadowOf(manager).getNotification(ExportBookToEPUBWork.ofId(book.storageKey), 0)
+        val intent = org.robolectric.Shadows.shadowOf(notification.contentIntent).savedIntent
+        assertEquals(indi.renakoni.nextvol.ui.book.detail.EpubShareActivity::class.java.name, intent.component!!.className)
+        assertEquals(first.id.toString(), intent.data!!.schemeSpecificPart)
+    }
+
+    @Test fun cancellationAtPublicationRemovesAllShareFiles() = runTest {
+        startCase("cancel-publication")
+        lateinit var job: Job
+        mockkObject(EpubShareFiles)
+        every { EpubShareFiles.publish(context, any(), any(), any()) } answers { callOriginal(); job.cancel() }
+        job = launch(start = CoroutineStart.LAZY) { worker().doWork() }
+        job.start(); job.join()
+        assertTrue(job.isCancelled)
+        assertTrue(files.isEmpty())
+        assertEquals(-1f, items.single().progress)
+        assertFalse(context.cacheDir.resolve("epub/${book.fileKey}/${lastWorker!!.id}").exists())
     }
 
     @Test fun longUnicodeVolumeNamesKeepDistinctSuffixAndExtension() = runTest {

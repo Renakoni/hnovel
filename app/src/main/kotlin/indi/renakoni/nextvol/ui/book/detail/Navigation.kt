@@ -1,13 +1,7 @@
 package indi.renakoni.nextvol.ui.book.detail
 
 import android.annotation.SuppressLint
-import android.content.Context
-import android.content.Intent
-import android.os.Build
-import android.provider.DocumentsContract
 import android.widget.Toast
-import androidx.activity.compose.ManagedActivityResultLauncher
-import androidx.activity.result.ActivityResult
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
@@ -16,6 +10,9 @@ import androidx.navigation.NavController
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
 import androidx.navigation.toRoute
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.work.WorkInfo
 import com.github.michaelbull.result.map
 import com.github.michaelbull.result.onErr
@@ -30,12 +27,9 @@ import indi.renakoni.nextvol.utils.LocalSnackbarHost
 import indi.renakoni.nextvol.utils.isResumed
 import indi.renakoni.nextvol.utils.popBackStackIfResumed
 import indi.renakoni.nextvol.utils.showSnackbar
-import indi.renakoni.nextvol.utils.uriLauncher
 import io.nightfish.lightnovelreader.api.Route
 import io.nightfish.lightnovelreader.api.error.WebRequestErrorKind
 import io.nightfish.lightnovelreader.api.ui.LocalNavController
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 @SuppressLint("LocalContextGetResourceValueCall")
@@ -53,30 +47,20 @@ fun NavGraphBuilder.bookDetailDestination() {
         }
         val context = LocalContext.current
         val coroutineScope = rememberCoroutineScope()
-        val exportBookToEPUBLauncher = uriLauncher(persistPermission = true) { uri ->
-            CoroutineScope(Dispatchers.Main).launch {
-                viewModel.uiState.bookInformation
-                    ?.map { it.title }
-                    ?.onOk { title ->
-                        Toast.makeText(context, context.getString(R.string.export_book_started, title), Toast.LENGTH_SHORT).show()
-                        viewModel.exportToEpub(uri, bookId, title).collect {
-                            if (it != null)
-                                when (it.state) {
-                                    WorkInfo.State.SUCCEEDED -> {
-                                        Toast.makeText(context, context.getString(R.string.export_book_success, title), Toast.LENGTH_SHORT).show()
-                                    }
-                                    WorkInfo.State.FAILED -> {
-                                        Toast.makeText(context, it.outputData.getString("message")
-                                            ?: context.getString(R.string.export_book_failed, title), Toast.LENGTH_LONG).show()
-                                    }
-                                    else -> {}
-                                }
-                        }
-                    }?.onErr {
-                        Toast.makeText(context, it.message, Toast.LENGTH_SHORT).show()
-                    }
+        val lifecycleOwner = LocalLifecycleOwner.current
+        val exportResult = viewModel.exportResult
+        val submissionFailed = viewModel.exportSubmissionFailed
+        LaunchedEffect(exportResult, submissionFailed, lifecycleOwner) {
+            if (exportResult == null && !submissionFailed) return@LaunchedEffect
+            lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                viewModel.clearExportResult()
+                if (exportResult?.state == WorkInfo.State.SUCCEEDED) {
+                    context.startActivity(EpubShareActivity.intent(context, exportResult.id, automatic = true))
+                } else {
+                    Toast.makeText(context, exportResult?.outputData?.getString("message")
+                        ?: context.getString(R.string.epub_export_notification_failed), Toast.LENGTH_LONG).show()
+                }
             }
-            navController.popBackStack()
         }
         val snackbarHostState = LocalSnackbarHost.current
 
@@ -93,10 +77,8 @@ fun NavGraphBuilder.bookDetailDestination() {
                 viewModel.uiState.bookInformation
                     ?.map { it.title }
                     ?.onOk { title ->
-                        when (settings.exportType) {
-                            ExportType.BOOK -> createDataFile(context, title, exportBookToEPUBLauncher)
-                            ExportType.VOLUMES -> selectDirectory(context, exportBookToEPUBLauncher)
-                        }
+                        viewModel.startEpubExport(bookId, title)
+                        Toast.makeText(context, context.getString(R.string.export_book_started, title), Toast.LENGTH_SHORT).show()
                     }?.onErr {
                         Toast.makeText(context, it.message, Toast.LENGTH_SHORT).show()
                     }
@@ -197,31 +179,5 @@ fun NavGraphBuilder.bookDetailDestination() {
 fun NavController.navigateToBookDetailDestination(bookId: String) {
     if (!this.isResumed()) return
     navigate(Route.Book.Detail(BookIdentity.bookKey(bookId)))
-}
-
-@Suppress("DuplicatedCode")
-fun createDataFile(
-    context: Context,
-    fileName: String,
-    launcher: ManagedActivityResultLauncher<Intent, ActivityResult>
-) {
-    val initUri = DocumentsContract.buildDocumentUri("com.android.externalstorage.documents", "primary:Documents")
-    val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
-        addCategory(Intent.CATEGORY_OPENABLE)
-        type = "application/epub+zip"
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-            putExtra(DocumentsContract.EXTRA_INITIAL_URI, initUri)
-        putExtra(Intent.EXTRA_TITLE, fileName)
-    }
-    launcher.launch(Intent.createChooser(intent, context.getString(R.string.select_location)))
-}
-
-@Suppress("DuplicatedCode")
-fun selectDirectory(context: Context, launcher: ManagedActivityResultLauncher<Intent, ActivityResult>) {
-    val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-            putExtra(DocumentsContract.EXTRA_INITIAL_URI, Intent.ACTION_OPEN_DOCUMENT)
-    }
-    launcher.launch(Intent.createChooser(intent, context.getString(R.string.select_location)))
 }
 

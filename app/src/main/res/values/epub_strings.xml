@@ -3,9 +3,10 @@
     <string name="epub_export_error_empty">No readable chapters in the selected content.</string>
     <string name="epub_export_error_content">Chapter content is missing or unsupported.</string>
     <string name="epub_export_error_image">An illustration could not be prepared. Try exporting without illustrations.</string>
-    <string name="epub_export_error_save">Could not save the EPUB. Check available storage and folder access.</string>
     <string name="epub_export_error_cancelled">Export cancelled.</string>
-    <string name="epub_export_failure_detail">%1$s\n%2$s\nSaved %3$d of %4$d files.</string>
+    <string name="epub_export_failure_detail">%1$s\n%2$s\nPrepared %3$d of %4$d files.</string>
     <string name="epub_export_error_cache">Could not save the offline content. Check available storage.</string>
-    <string name="epub_export_cleanup_failed">The incomplete file could not be removed. Please delete it from the destination folder.</string>
+    <string name="epub_export_share">Share EPUB</string>
+    <string name="epub_export_share_ready">EPUB ready. Tap to share.</string>
+    <string name="epub_export_share_failed">Could not share the EPUB. Try exporting again and check available storage.</string>
 </resources>

@@ -74,7 +74,7 @@ class CacheBookWork @AssistedInject constructor(
                     val images = downloads.chapterImages(content)
                     for (uri in images) {
                         if (uri !in fetchedImages && (saved == null || !downloads.hasImage(active, uri))) {
-                            cacheImage(active, SourceImage(book, uri), force = saved == null)
+                            cacheImage(active, SourceImage(book, uri), force = saved == null || downloads.isImageStale(active, uri, false))
                             fetchedImages += uri
                         }
                     }
@@ -82,7 +82,7 @@ class CacheBookWork @AssistedInject constructor(
                     item.progress = (index + 1f) / (chapters.size + 1)
                 }
                 if (cover.isNotEmpty() && (!unchanged || !downloads.hasImage(active, cover, true)))
-                    cacheImage(active, SourceImage(book, cover, cover = true), force = !unchanged)
+                    cacheImage(active, SourceImage(book, cover, cover = true), force = !unchanged || downloads.isImageStale(active, cover, true))
                 check(bookRepository.sourceRevision(book) == revision) { "Source changed during download" }
             }
             if (result.isErr) {

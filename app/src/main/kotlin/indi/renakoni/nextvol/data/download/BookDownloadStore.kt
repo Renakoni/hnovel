@@ -100,6 +100,12 @@ class BookDownloadStore @Inject constructor(@ApplicationContext private val cont
         require(volumes.bookId == attempt.book.storageKey)
         val hash = downloadDirectoryHash(volumes)
         val unchanged = it.directoryHash == hash && it.revision == revision && it.coverUri == coverUri
+        if (it.revision != revision) {
+            // Keep old bytes readable, but a failed/text-only update must not label them current.
+            val directory = imageFile(attempt.book, attempt.generation, "", false).parentFile!!
+            directory.listFiles()?.filter { file -> file.isFile && file.name.matches(Regex("[0-9a-f]{64}")) }
+                ?.forEach { file -> check(staleMarker(file).isFile || staleMarker(file).createNewFile()) }
+        }
         dao.put(it.copy(directoryHash = hash, revision = revision, coverUri = coverUri))
         unchanged
     }
@@ -118,7 +124,14 @@ class BookDownloadStore @Inject constructor(@ApplicationContext private val cont
     }
 
     suspend fun hasImage(attempt: Attempt, uri: String, cover: Boolean = false): Boolean = current(attempt) {
-        imageFile(attempt.book, attempt.generation, uri, cover).isFile
+        val file = imageFile(attempt.book, attempt.generation, uri, cover)
+        file.isFile && !staleMarker(file).exists()
+    }
+
+    private fun staleMarker(file: File) = File(file.parentFile, "${file.name}.stale")
+
+    suspend fun isImageStale(attempt: Attempt, uri: String, cover: Boolean): Boolean = current(attempt) {
+        staleMarker(imageFile(attempt.book, attempt.generation, uri, cover)).exists()
     }
 
     suspend fun saveImage(attempt: Attempt, uri: String, cover: Boolean, bytes: ByteArray) = current(attempt) {
@@ -143,6 +156,8 @@ class BookDownloadStore @Inject constructor(@ApplicationContext private val cont
         // File mtime participates in Coil's key; two same-sized updates in one tick must differ.
         if (target.lastModified() <= previousTime)
             check(target.setLastModified(previousTime + 1)) { "Could not update downloaded image version" }
+        val stale = staleMarker(target)
+        check(!stale.exists() || stale.delete()) { "Could not commit downloaded image version" }
     }
 
     suspend fun saveChapter(attempt: Attempt, chapter: ChapterContent, signature: String, images: List<String>,
@@ -151,7 +166,10 @@ class BookDownloadStore @Inject constructor(@ApplicationContext private val cont
         listOfNotNull(chapter.prevChapter, chapter.nextChapter).forEach {
             require(SourceChapterId.fromStorageKey(it).book == attempt.book)
         }
-        if (requireImages) check(images.all { uri -> imageFile(attempt.book, attempt.generation, uri, false).isFile })
+        if (requireImages) check(images.all { uri ->
+            val file = imageFile(attempt.book, attempt.generation, uri, false)
+            file.isFile && !staleMarker(file).exists()
+        })
         database.withTransaction {
             database.chapterContentDao().update(chapter)
             dao.put(DownloadedChapterEntity(chapter.id, attempt.book.storageKey, signature, Json.encodeToString(images)))
@@ -175,9 +193,13 @@ class BookDownloadStore @Inject constructor(@ApplicationContext private val cont
             val count = chapters.count { chapter ->
                 val saved = records[chapter.id]
                 saved != null && chapter.id in savedIds &&
-                    Json.decodeFromString<List<String>>(saved.images).all { imageFile(book, owner.generation, it, false).isFile }
+                    Json.decodeFromString<List<String>>(saved.images).all {
+                        val file = imageFile(book, owner.generation, it, false)
+                        file.isFile && !staleMarker(file).exists()
+                    }
             }
-            val coverSaved = owner.coverUri.isEmpty() || imageFile(book, owner.generation, owner.coverUri, true).isFile
+            val coverFile = imageFile(book, owner.generation, owner.coverUri, true)
+            val coverSaved = owner.coverUri.isEmpty() || coverFile.isFile && !staleMarker(coverFile).exists()
             val signaturesCurrent = chapters.withIndex().all { (index, chapter) ->
                 val signature = records[chapter.id]?.signature
                 signature == downloadChapterSignature(chapters, index, owner.revision) ||
