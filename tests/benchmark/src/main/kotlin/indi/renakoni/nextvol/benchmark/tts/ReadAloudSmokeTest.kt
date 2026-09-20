@@ -77,7 +77,7 @@ class ReadAloudSmokeTest : UiAutomatorTest() {
         clickDescription("Voice options")
         clickText("Remove voice")
         assertTrue(device.wait(Until.gone(By.text("Imported test voice")), TIMEOUT))
-        scrollToText("System speech")
+        device.pressBack()
         assertText("System speech")
     }
 
