@@ -42,7 +42,9 @@ class Epub(
      *
      * @param target target file
      */
-    fun save(target: File) {
+    @JvmOverloads
+    fun save(target: File, checkActive: () -> Unit = {}) {
+        checkActive()
         target.parentFile.mkdirs()
         if (!target.exists()) {
             target.createNewFile()
@@ -64,12 +66,20 @@ class Epub(
             nav.writeToZip(out)
             tocNcx.writeToZip(out)
             res.forEach { entry ->
+                checkActive()
                 out.putNextEntry(ZipEntry("EPUB/" + entry.key))
                 FileInputStream(entry.value).use {
-                    out.write(it.readBytes())
+                    val buffer = ByteArray(64 * 1024)
+                    while (true) {
+                        checkActive()
+                        val size = it.read(buffer)
+                        if (size < 0) break
+                        out.write(buffer, 0, size)
+                    }
                 }
             }
             documents.forEach { entry ->
+                checkActive()
                 out.putNextEntry(ZipEntry("EPUB/" + entry.key))
                 out.write(entry.value.asFormatedXml().toByteArray(Charsets.UTF_8))
             }

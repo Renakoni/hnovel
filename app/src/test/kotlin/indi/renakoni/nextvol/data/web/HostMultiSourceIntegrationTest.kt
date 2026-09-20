@@ -87,7 +87,7 @@ class HostMultiSourceIntegrationTest {
             override fun createWorker(appContext: Context, workerClassName: String, workerParameters: WorkerParameters): ListenableWorker? =
                 when (workerClassName) {
                     CacheBookWork::class.java.name -> CacheBookWork(appContext, workerParameters, progress, books, downloads)
-                    ExportBookToEPUBWork::class.java.name -> ExportBookToEPUBWork(appContext, workerParameters, books, progress, decoder)
+                    ExportBookToEPUBWork::class.java.name -> ExportBookToEPUBWork(appContext, workerParameters, books, progress, decoder, downloads)
                     CheckUpdateWork::class.java.name -> CheckUpdateWork(appContext, workerParameters, books, shelves)
                     else -> null
                 }
@@ -180,15 +180,12 @@ class HostMultiSourceIntegrationTest {
         assertNotEquals(CacheBookWork.ofId(a.storageKey), CacheBookWork.ofId(b.storageKey))
         assertLocalLibrary()
         for (book in listOf(a, b)) {
-            val file = directory.root.resolve("${book.fileKey}.epub")
-            val uri = Uri.parse("content://fixture/exports/${book.fileKey}.epub")
-            org.robolectric.Shadows.shadowOf(context.contentResolver).registerOutputStream(uri, file.outputStream())
             val request = OneTimeWorkRequestBuilder<ExportBookToEPUBWork>().setInputData(workDataOf(
-                "bookId" to book.storageKey, "exportType" to "BOOK", "uri" to uri.toString())).build()
+                "bookId" to book.storageKey, "exportType" to "BOOK")).build()
             val exportedWork = awaitWork(request)
             assertEquals("${exportedWork.outputData}: ${org.robolectric.shadows.ShadowLog.getLogsForTag("ExportEPUB")}",
                 WorkInfo.State.SUCCEEDED, exportedWork.state)
-            ZipFile(file).use { zip ->
+            ZipFile(indi.renakoni.nextvol.data.work.EpubShareFiles.files(context, exportedWork.id).single()).use { zip ->
                 val text = zip.entries().asSequence().filter { it.name.endsWith(".xhtml") }
                     .joinToString { zip.getInputStream(it).bufferedReader().use { reader -> reader.readText() } }
                 assertTrue(text.contains("${book.sourceId.id}:body:1"))

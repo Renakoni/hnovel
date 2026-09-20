@@ -118,7 +118,7 @@ class MixedSourceAcceptanceTest {
             val factory = object : WorkerFactory() {
                 override fun createWorker(appContext: Context, name: String, params: WorkerParameters): ListenableWorker? = when (name) {
                     CacheBookWork::class.java.name -> CacheBookWork(appContext, params, progress, books, downloads)
-                    ExportBookToEPUBWork::class.java.name -> ExportBookToEPUBWork(appContext, params, books, progress, decoder)
+                    ExportBookToEPUBWork::class.java.name -> ExportBookToEPUBWork(appContext, params, books, progress, decoder, downloads)
                     CheckUpdateWork::class.java.name -> CheckUpdateWork(appContext, params, books, shelves)
                     else -> null
                 }
@@ -201,13 +201,10 @@ class MixedSourceAcceptanceTest {
                     val chapter = local.getBookVolumes(book.storageKey)!!.volumes.single().chapters.first()
                     books.updateUserReadingData(book.storageKey) { it.copyWithUpdatedChapterReadingProgress(chapter.id, (index + 1) / 4f).copy(lastReadChapterId = chapter.id) }
                     stats.updateReadingStatistics(ReadingStatsUpdate(book.storageKey, secondDelta = (index + 1) * 60, readEventDelta = 1, localTime = LocalTime.NOON))
-                    val output = File(directory.root, "${book.fileKey}.epub")
-                    val uri = Uri.parse("content://fixture/${book.fileKey}.epub")
-                    org.robolectric.Shadows.shadowOf(context.contentResolver).registerOutputStream(uri, output.outputStream())
                     val exported = awaitWork(OneTimeWorkRequestBuilder<ExportBookToEPUBWork>().setInputData(workDataOf(
-                        "bookId" to book.storageKey, "exportType" to "BOOK", "uri" to uri.toString())).build())
+                        "bookId" to book.storageKey, "exportType" to "BOOK")).build())
                     assertEquals(exported.outputData.toString(), WorkInfo.State.SUCCEEDED, exported.state)
-                    ZipFile(output).use { zip ->
+                    ZipFile(indi.renakoni.nextvol.data.work.EpubShareFiles.files(context.applicationContext, exported.id).single()).use { zip ->
                         val text = zip.entries().asSequence().filter { it.name.endsWith(".xhtml") }
                             .joinToString { zip.getInputStream(it).bufferedReader().use { reader -> reader.readText() } }
                         assertTrue(text.contains(listOf("Wenku8 first", "A first", "B first")[index]))

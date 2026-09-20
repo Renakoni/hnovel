@@ -109,6 +109,29 @@ class ContentDecodingContractTest {
         assertEquals(listOf("body"), decoded)
     }
 
+    @Test fun strictExportAcceptsLegacyIdsAndEmptyChapters() {
+        val values = mutableListOf<AbstractContentComponentData>()
+        host.decoder.decodeForExport(json("""{"components":[{"id":"simple_text","data":{"text":"body"}}]}"""), values::add)
+        assertEquals(listOf(SimpleTextComponentData("body")), values)
+        host.decoder.decodeForExport(json("""{"components":[]}""")) { fail("Empty chapter has no components") }
+    }
+
+    @Test fun strictExportRejectsEveryMalformedOrUnregisteredComponent() {
+        for (input in listOf("{}", """{"components":{}}""", """{"components":[1]}""",
+            """{"components":[{}]}""", """{"components":[{"id":"simple_text"}]}""",
+            """{"components":[{"id":"missing:text","data":{}}]}""")) {
+            assertThrows(IllegalArgumentException::class.java) { host.decoder.decodeForExport(json(input)) {} }
+        }
+    }
+
+    @Test fun strictExportPreservesSerializerCancellation() {
+        val cancellation = CancellationException("fixture")
+        register(serializer = FixtureSerializer { throw cancellation })
+        assertSame(cancellation, assertThrows(CancellationException::class.java) {
+            host.decoder.decodeForExport(json("""{"components":[${entry("body")}]}""")) {}
+        })
+    }
+
     @Test
     fun dataOnlyDecodingNeedsNoInjectorAndSkipsMissingEntriesWithoutConstructing() {
         register(component = ThrowingFixtureComponent::class)

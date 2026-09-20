@@ -1,7 +1,6 @@
 package indi.renakoni.nextvol.ui.book.detail
 
 import android.app.Application
-import android.net.Uri
 import androidx.compose.runtime.mutableStateListOf
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewModelScope
@@ -59,7 +58,7 @@ class DetailCapabilitiesTest {
             assertFalse(model.uiState.readingAvailable)
             assertNull(model.uiState.bookVolumes)
             assertNull(model.cacheBook(key).first())
-            assertNull(model.exportToEpub(Uri.EMPTY, key, "Metadata book").first())
+            assertNull(model.exportToEpub(key, "Metadata book").first())
             verify(exactly = 0) { repository.getBookVolumesFlow(any<String>(), any()) }
             verify(exactly = 0) { repository.cacheBook(any()) }
             verify(exactly = 0) { work.enqueueUniqueWork(any<String>(), any<ExistingWorkPolicy>(), any<OneTimeWorkRequest>()) }

@@ -132,7 +132,7 @@ class BookRepositoryOperationsTest {
                 DetailViewModel(env.repository(), mockk(), mockk(), env.workManager, mockk())
                     // This test starts at an enabled export action; capability gating has its own tests.
                     .apply { (uiState as indi.renakoni.nextvol.ui.book.detail.MutableDetailUiState).readingAvailable = true }
-                    .exportToEpub(Uri.parse("content://exports/new.epub"), book.storageKey, "Title")
+                    .exportToEpub(book.storageKey, "Title")
             } else env.repository().cacheBook(book.storageKey)
             val first = async { observed.first() }
             runCurrent()

@@ -34,7 +34,7 @@ class ImageDownloaderCoverTest {
         val cancelled = File(dir, "cancelled.jpg")
         val uri = Uri.parse("https://fixture.invalid/image")
         mockkObject(ImageUtils)
-        coEvery { ImageUtils.uriToBitmap(any(), any(), any(), any()) } returns Err(IOException("fixture"))
+        coEvery { ImageUtils.uriToBitmap(any(), any(), any(), any(), any(), false) } returns Err(IOException("fixture"))
         val fallback = DefaultBookCoverRenderer.Text(book.storageKey, "A book", "An author")
         assertEquals(ListenableWorker.Result.success(), ImageDownloader(context, book,
             listOf(ImageDownloader.Task(cover, uri, true, fallback))) { _, _ -> }.run())
@@ -42,7 +42,12 @@ class ImageDownloaderCoverTest {
         assertEquals(ListenableWorker.Result.failure(), ImageDownloader(context, book,
             listOf(ImageDownloader.Task(body, uri))) { _, _ -> }.run())
         assertFalse(body.exists())
-        coEvery { ImageUtils.uriToBitmap(any(), any(), any(), any()) } throws CancellationException("cancel")
+        coEvery { ImageUtils.uriToBitmap(any(), any(), any(), any(), any(), false) } returns Err(CancellationException("cancelled result"))
+        try {
+            ImageDownloader(context, book, listOf(ImageDownloader.Task(cancelled, uri, true, fallback))) { _, _ -> }.run()
+            fail("A cancelled result must not turn into a fallback cover")
+        } catch (_: CancellationException) { assertFalse(cancelled.exists()) }
+        coEvery { ImageUtils.uriToBitmap(any(), any(), any(), any(), any(), false) } throws CancellationException("cancel")
         try {
             ImageDownloader(context, book, listOf(ImageDownloader.Task(cancelled, uri, true, fallback))) { _, _ -> }.run()
             fail("Cancellation must propagate")

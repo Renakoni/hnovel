@@ -347,11 +347,172 @@ class BookDownloadTest {
         assertEquals(BookDownloadState(BookDownloadPhase.Partial, 1, 3), state())
     }
 
+    private suspend fun export(images: Boolean = true, selected: List<String>? = null,
+                               beforeWrite: () -> Unit = {}): ListenableWorker.Result {
+        io.mockk.mockkObject(indi.renakoni.nextvol.data.work.EpubShareFiles)
+        every { indi.renakoni.nextvol.data.work.EpubShareFiles.publish(context, any(), any(), any()) } answers {
+            beforeWrite()
+            callOriginal()
+        }
+        try {
+            return indi.renakoni.nextvol.data.work.ExportBookToEPUBWork(context,
+                workerParameters(workDataOf("bookId" to a.storageKey, "exportType" to if (selected == null) "BOOK" else "VOLUMES",
+                    "selectedVolume" to selected?.joinToString(",").orEmpty(), "includeImages" to images,
+                    "downloadGeneration" to downloads.generation())), books, progress, decoder, downloads).doWork()
+        } finally {
+            io.mockk.unmockkObject(indi.renakoni.nextvol.data.work.EpubShareFiles)
+        }
+    }
+
+    @Test fun exportCachesBeforePublishingAndReusesOfflineContentAfterReopening() = runBlocking {
+        val source = register(a).apply { withImages = true }
+        var published = false
+        assertTrue(export(beforeWrite = {
+            runBlocking { assertEquals(BookDownloadPhase.Complete, state().phase) }
+            published = true
+        }) is ListenableWorker.Result.Success)
+        assertTrue(published)
+        assertEquals(mapOf("1" to 1, "2" to 1, "3" to 1), source.chapterCalls)
+        assertArrayEquals(png, downloads.image(SourceImage(a, IMAGE))!!.readBytes())
+        downloads.clearReadingCache()
+        registry.unregister(a.sourceId)
+        loader.shutdown(); db.close(); openLibrary(); openImages()
+        assertTrue(export() is ListenableWorker.Result.Success)
+        assertEquals(BookDownloadPhase.Complete, state().phase)
+        assertEquals(mapOf("1" to 1, "2" to 1, "3" to 1), source.chapterCalls)
+        assertEquals(1, source.imageCalls)
+    }
+
+    @Test fun unversionedLegacyDownloadStillExportsOffline() = runBlocking {
+        val source = register(a)
+        local.updateBookInformation(a.bind(source.information()))
+        local.updateBookVolumes(a.bind(source.directory()))
+        source.chapters.forEach { info ->
+            local.updateChapterContent(SourceChapterId(a, info.id).bind(source.body(info.id)))
+        }
+        db.userDataDao().insert(UserDataPath.CompletedDownloadBookList.path, "fixture", "CompletedDownloadItemList", "CACHE|${a.storageKey}")
+        downloads.prepare()
+        registry.unregister(a.sourceId)
+        assertTrue(export() is ListenableWorker.Result.Success)
+        assertTrue(source.chapterCalls.isEmpty())
+        assertEquals(BookDownloadPhase.Complete, state().phase)
+    }
+
+    @Test fun exportRetainsOriginalBytesWhenTheReadingDiskCacheWasEvicted() = runBlocking {
+        val source = register(a).apply { withImages = true }
+        val image = loader.execute(ImageRequest.Builder(context).data(SourceImage(a, IMAGE)).build()) as SuccessResult
+        assertNotNull(image.memoryCacheKey)
+        assertNotNull(loader.memoryCache!![image.memoryCacheKey!!])
+        cache.clear()
+        assertTrue(export() is ListenableWorker.Result.Success)
+        assertArrayEquals(png, downloads.image(SourceImage(a, IMAGE))!!.readBytes())
+        assertEquals(BookDownloadPhase.Complete, state().phase)
+        assertEquals(2, source.imageCalls)
+    }
+
+    @Test fun selectedExportPinsOnlySelectedChaptersAndTextOnlyDoesNotClaimImagesAreCached() = runBlocking {
+        val source = register(a).apply {
+            withImages = true
+            exportVolumes = listOf(Volume("first", "First", chapters.take(1)), Volume("rest", "Rest", chapters.drop(1)))
+        }
+        assertTrue(export(images = false, selected = listOf(BookIdentity.volumeKey(a, "rest"))) is ListenableWorker.Result.Success)
+        assertEquals(mapOf("2" to 1, "3" to 1), source.chapterCalls)
+        assertNull(chapter(a, "1"))
+        assertEquals(0, source.imageCalls)
+        assertEquals(BookDownloadPhase.Partial, state().phase)
+        downloads.clearReadingCache()
+        assertNotNull(chapter(a, "2"))
+        assertTrue(export() is ListenableWorker.Result.Success)
+        assertEquals(mapOf("1" to 1, "2" to 1, "3" to 1), source.chapterCalls)
+        assertEquals(BookDownloadPhase.Complete, state().phase)
+        assertEquals(1, source.imageCalls)
+    }
+
+    @Test fun failedSharePublicationKeepsCompletedOfflineDownload() = runBlocking {
+        register(a).withImages = true
+        val result = export(beforeWrite = { throw java.io.IOException("destination full") }) as ListenableWorker.Result.Failure
+        assertEquals("share_failed", result.outputData.getString("reason"))
+        assertEquals(BookDownloadPhase.Complete, state().phase)
+        downloads.clearReadingCache()
+        registry.unregister(a.sourceId)
+        assertTrue(export() is ListenableWorker.Result.Success)
+    }
+
+    @Test fun clearingDownloadsDuringExportRejectsLateChapterWrites() = runBlocking {
+        val source = register(a)
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        source.chapterPause = { entered.complete(Unit); release.await() }
+        val work = async { export() }
+        withTimeout(5000) { entered.await() }
+        downloads.clearDownloads()
+        release.complete(Unit)
+        assertTrue(withTimeout(5000) { work.await() } is ListenableWorker.Result.Failure)
+        assertNull(chapter(a, "1"))
+        assertEquals(BookDownloadPhase.None, state().phase)
+    }
+
+    @Test fun exportRefreshesDownloadedChaptersAfterSourceRevisionChanges() = runBlocking {
+        val source = register(a).apply { withImages = true }
+        assertTrue(export() is ListenableWorker.Result.Success)
+        registry.unregister(a.sourceId)
+        register(a, revision = "2", source = source)
+        assertTrue(export() is ListenableWorker.Result.Success)
+        assertEquals(mapOf("1" to 2, "2" to 2, "3" to 2), source.chapterCalls)
+        assertEquals(2, source.imageCalls)
+        assertEquals(BookDownloadPhase.Complete, state().phase)
+    }
+
+    @Test fun failedRevisionImageRefreshIsRetriedEvenAfterTargetVersionWasWritten() = runBlocking {
+        val source = register(a).apply { withImages = true }
+        assertTrue(export() is ListenableWorker.Result.Success)
+        registry.unregister(a.sourceId)
+        register(a, revision = "2", source = source)
+        source.imageFailed = true
+        assertTrue(export() is ListenableWorker.Result.Failure)
+        assertArrayEquals(png, downloads.image(SourceImage(a, IMAGE))!!.readBytes())
+        val callsAfterFailure = source.imageCalls
+        source.imageFailed = false
+        assertTrue(export() is ListenableWorker.Result.Success)
+        assertEquals(callsAfterFailure + 1, source.imageCalls)
+        assertEquals(BookDownloadPhase.Complete, state().phase)
+    }
+
+    @Test fun textOnlyRevisionUpdateLeavesOldImagesPendingForLaterExport() = runBlocking {
+        val source = register(a).apply { withImages = true }
+        assertTrue(export() is ListenableWorker.Result.Success)
+        registry.unregister(a.sourceId)
+        register(a, revision = "2", source = source)
+        assertTrue(export(images = false) is ListenableWorker.Result.Success)
+        assertEquals(1, source.imageCalls)
+        assertEquals(BookDownloadPhase.Partial, state().phase)
+        assertTrue(export() is ListenableWorker.Result.Success)
+        assertEquals(2, source.imageCalls)
+        assertEquals(BookDownloadPhase.Complete, state().phase)
+    }
+
+    @Test fun cacheAndExportOfSameBookDoNotReplaceEachOthersAttempt() = runBlocking {
+        val source = register(a)
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        source.chapterPause = { entered.complete(Unit); release.await() }
+        val caching = async { download() }
+        withTimeout(5000) { entered.await() }
+        val exporting = async { export() }
+        yield()
+        release.complete(Unit)
+        assertTrue(withTimeout(5000) { caching.await() } is ListenableWorker.Result.Success)
+        assertTrue(withTimeout(5000) { exporting.await() } is ListenableWorker.Result.Success)
+        assertEquals(mapOf("1" to 1, "2" to 1, "3" to 1), source.chapterCalls)
+        assertEquals(BookDownloadPhase.Complete, state().phase)
+    }
+
     private inner class Remote(private val book: SourceBookId) : WebBookDataSource by EmptyWebDataSource, SourceImageProvider {
         override val id = book.sourceId
         override val cache = Cache(timeout = 60_000)
         var chapters = (1..3).map { ChapterInformation(it.toString(), "Chapter $it") }
         var volumeId = "volume"
+        var exportVolumes: List<Volume>? = null
         var withImages = false
         var imageFailed = false
         var directoryFailed = false
@@ -360,7 +521,7 @@ class BookDownloadTest {
         var directoryCalls = 0
         var imageCalls = 0
         val chapterCalls = mutableMapOf<String, Int>()
-        fun directory() = BookVolumes(book.remoteId, listOf(Volume(volumeId, "Volume", chapters)))
+        fun directory() = BookVolumes(book.remoteId, exportVolumes ?: listOf(Volume(volumeId, "Volume", chapters)))
         fun information() = BookInformation(book.remoteId, "Book", author = "Author", description = "",
             publishingHouse = "", wordCount = WordCount(1), lastUpdated = LocalDateTime.of(2026, 9, 15, 0, 0), isComplete = false)
         fun body(id: String) = ChapterContent(id, chapters.single { it.id == id }.title,
