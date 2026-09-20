@@ -10,10 +10,24 @@ import indi.renakoni.nextvol.ui.book.reader.content.ChapterContentUiState
 import indi.renakoni.nextvol.ui.book.reader.content.ContentUiState
 import io.nightfish.lightnovelreader.api.error.WebRequestError
 
+enum class ChapterEntry { Restore, Start, End }
+
+/** A boundary request is separate from the chapter whose pages are still visible. */
+class FlipChapterTransition(
+    val chapterId: String,
+    val entry: ChapterEntry,
+    val result: Result<ChapterContentUiState, WebRequestError>? = null,
+)
+
 interface FlipPageContentUiState: ContentUiState {
     val updatePageState: (PagerState) -> Unit
     val updateAnchoredPageState: (PagerState) -> Unit get() = updatePageState
     val pagerState: PagerState
+    val pendingChapter: FlipChapterTransition? get() = null
+    val commitPendingChapter: (FlipChapterTransition, PagerState) -> Boolean get() = { _, _ -> false }
+    val failPendingChapter: (FlipChapterTransition, WebRequestError) -> Unit get() = { _, _ -> }
+    val retryPendingChapter: () -> Unit get() = {}
+    val cancelPendingChapter: () -> Unit get() = {}
 }
 
 class MutableFlipPageContentUiState(
@@ -22,7 +36,12 @@ class MutableFlipPageContentUiState(
     override val changeChapter: (String) -> Unit,
     override val updatePageState: (PagerState) -> Unit,
     override val updateAnchoredPageState: (PagerState) -> Unit = updatePageState,
+    override val commitPendingChapter: (FlipChapterTransition, PagerState) -> Boolean = { _, _ -> false },
+    override val failPendingChapter: (FlipChapterTransition, WebRequestError) -> Unit = { _, _ -> },
+    override val retryPendingChapter: () -> Unit = {},
+    override val cancelPendingChapter: () -> Unit = {},
 ): FlipPageContentUiState {
+    override var pendingChapter by mutableStateOf<FlipChapterTransition?>(null)
     override var pagerState by mutableStateOf(PagerState { 0 })
     override var bookId by mutableStateOf("")
     override var readingChapterId: String? by mutableStateOf(null)

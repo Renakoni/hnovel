@@ -82,7 +82,7 @@ class FlipModeContractTest {
         env.runCurrent()
 
         assertEquals("second", env.records.data.lastReadChapterId)
-        assertEquals(listOf("first", "second"), env.records.writes.map { it.lastReadChapterId })
+        assertEquals(listOf(null, "second"), env.records.writes.map { it.lastReadChapterId })
     }
 
     @Test

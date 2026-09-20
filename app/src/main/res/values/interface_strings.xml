@@ -45,4 +45,6 @@
     <string name="plugin_uninstall_action">Uninstall and delete</string>
     <string name="stats_total">Total</string>
     <string name="reader_chapter">Chapter</string>
+    <string name="reader_empty_chapter">This chapter has no readable content.</string>
+    <string name="reader_pagination_failed">Unable to lay out this chapter. Please retry.</string>
 </resources>
