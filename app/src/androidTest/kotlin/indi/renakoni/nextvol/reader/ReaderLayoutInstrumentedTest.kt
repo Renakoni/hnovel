@@ -286,7 +286,11 @@ class ReaderLayoutInstrumentedTest {
             var showing by mutableStateOf(true)
             compose.setContent { MaterialTheme { if (showing) ReaderFontEntry(settings) } }
             val last = files.last().path
-            compose.waitUntil(5_000) { compose.onAllNodesWithTag("reader-font-$selected").fetchSemanticsNodes().isNotEmpty() }
+            try {
+                compose.waitUntil(5_000) { compose.onAllNodesWithTag("reader-font-$selected").fetchSemanticsNodes().isNotEmpty() }
+            } catch (failure: ComposeTimeoutException) {
+                throw AssertionError("Selected=$selected observed=${settings.fontFamilyUri} fonts=${importedReaderFonts(context, selected)}\n${compose.onRoot().printToString()}", failure)
+            }
             compose.onNodeWithTag("reader-font-$selected").assertIsSelected().assertIsDisplayed()
             compose.onNodeWithTag("reader-font-list").performScrollToIndex(0)
             compose.onNodeWithText(context.getString(R.string.reader_font_system)).performClick()
