@@ -92,7 +92,10 @@ internal fun ReaderFontEntry(settings: ReaderSettingsEditor, modifier: Modifier 
         if (index >= 0 && listState.layoutInfo.visibleItemsInfo.none {
                 it.index == index && it.offset >= listState.layoutInfo.viewportStartOffset &&
                     it.offset + it.size <= listState.layoutInfo.viewportEndOffset
-            }) listState.scrollToItem(index)
+            }) {
+            // Apply the new font collection and its selected position in the same remeasure.
+            listState.requestScrollToItem(index)
+        }
     }
     val select: (Uri) -> Unit = { settings.fontFamilyUriUserData.asynchronousSet(it) }
     Column(modifier.padding(vertical = 8.dp)) {
