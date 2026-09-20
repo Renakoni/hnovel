@@ -1,6 +1,7 @@
 package indi.renakoni.nextvol.ui
 
 import android.content.Intent
+import android.net.Uri
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -8,12 +9,17 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.rememberNavController
+import androidx.compose.ui.unit.dp
 import indi.renakoni.nextvol.ui.dialog.UpdatesAvailableDialogViewModel
 import indi.renakoni.nextvol.ui.dialog.navigateToPluginInstallerDialog
 import indi.renakoni.nextvol.ui.dialog.navigateUpdatesAvailableDialog
 import indi.renakoni.nextvol.ui.navigation.NextVolNavHost
 import indi.renakoni.nextvol.tts.ReadAloudController
 import indi.renakoni.nextvol.ui.tts.navigateToSpeechSettings
+import indi.renakoni.nextvol.ui.tts.navigateToReadAloudBook
+import indi.renakoni.nextvol.ui.tts.ReadAloudOverlayHost
+import indi.renakoni.nextvol.ui.tts.ReadAloudOverlayViewModel
+import indi.renakoni.nextvol.ui.components.Cover
 import io.nightfish.lightnovelreader.api.ui.ReaderStyle
 import kotlinx.coroutines.flow.Flow
 import hnovel.imports.sourceImportUrl
@@ -27,6 +33,9 @@ fun NextVolApp(
     intentFlow: Flow<Intent>,
 ) {
     val navController = rememberNavController()
+    val speech = hiltViewModel<ReadAloudOverlayViewModel>()
+    val playback by speech.controller.state.collectAsStateWithLifecycle()
+    val playingBook by speech.book.collectAsStateWithLifecycle()
     val updatesAvailableDialogViewModel = hiltViewModel<UpdatesAvailableDialogViewModel>()
     val available by updatesAvailableDialogViewModel.availableFlow.collectAsStateWithLifecycle(false)
     LaunchedEffect(available) {
@@ -49,10 +58,19 @@ fun NextVolApp(
             }
         }
     }
-    NextVolNavHost(
-        navController = navController,
-        onBuildNavHost = onBuildNavHost,
-        onReaderActiveChanged = onReaderActiveChanged,
-        readerStyle = readerStyle
-    )
+    ReadAloudOverlayHost(playback, speech.controller::command, navController::navigateToReadAloudBook,
+        cover = {
+            playback.request?.let { request ->
+                val book = playingBook?.takeIf { it.id == request.bookId }
+                Cover(request.bookId, 40.dp, 40.dp, book?.coverUri ?: Uri.EMPTY,
+                    playback.bookTitle, rounded = 20.dp)
+            }
+        }) {
+        NextVolNavHost(
+            navController = navController,
+            onBuildNavHost = onBuildNavHost,
+            onReaderActiveChanged = onReaderActiveChanged,
+            readerStyle = readerStyle
+        )
+    }
 }

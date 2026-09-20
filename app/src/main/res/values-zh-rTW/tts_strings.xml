@@ -1,4 +1,7 @@
 <resources>
+    <string name="tts_expand_player">展開聽書懸浮窗</string>
+    <string name="tts_return_to_book">返回《%1$s》正文</string>
+    <string name="tts_close_player">停止聽書並關閉</string>
     <string name="tts_sleep_timer">定時停止</string>
     <string name="tts_timer_off">關閉定時</string>
     <string name="tts_timer_minutes">%1$d 分鐘</string>

@@ -13,9 +13,12 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
+import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
 import indi.renakoni.nextvol.R
+import indi.renakoni.nextvol.tts.SpeechRequest
+import io.nightfish.lightnovelreader.api.Route
 import indi.renakoni.nextvol.utils.popBackStackIfResumed
 import io.nightfish.lightnovelreader.api.ui.LocalNavController
 import kotlinx.serialization.Serializable
@@ -28,8 +31,21 @@ object HttpSpeechSourcesRoute
 
 fun NavController.navigateToSpeechSettings() = navigate(SpeechSettingsRoute) { launchSingleTop = true }
 
+internal fun NavController.navigateToReadAloudBook(request: SpeechRequest) {
+    if (request.isPreview) return
+    navigate(Route.Book.Reader(request.bookId, request.chapterId)) {
+        // A reader entry can have advanced beyond its original route's chapter.
+        // Replace that entry so the listening chapter is actually opened again.
+        if (currentDestination?.hasRoute<Route.Book.Reader>() == true) {
+            popUpTo<Route.Book.Reader> { inclusive = true }
+        }
+        launchSingleTop = true
+    }
+}
+
 fun NavGraphBuilder.speechSettingsDestination() {
     composable<SpeechSettingsRoute> {
+        HideReadAloudOverlay()
         val nav = LocalNavController.current
         val context = LocalContext.current
         val viewModel = hiltViewModel<SpeechSettingsViewModel>()
@@ -48,6 +64,7 @@ fun NavGraphBuilder.speechSettingsDestination() {
             onHttpSources = { nav.navigate(HttpSpeechSourcesRoute) { launchSingleTop = true } })
     }
     composable<HttpSpeechSourcesRoute> {
+        HideReadAloudOverlay()
         val nav = LocalNavController.current
         val viewModel = hiltViewModel<HttpSpeechSourcesViewModel>()
         val state by viewModel.state.collectAsStateWithLifecycle()
