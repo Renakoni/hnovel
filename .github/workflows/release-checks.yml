@@ -71,7 +71,7 @@ jobs:
           target: google_apis
           arch: x86_64
           disable-animations: true
-          script: ./gradlew :benchmark:connectedBenchmarkAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=indi.renakoni.nextvol.benchmark.explore.MinifiedSourceRuntimeTest,indi.renakoni.nextvol.benchmark.tts.ReadAloudSmokeTest --console=plain --stacktrace --max-workers=2
+          script: bash .github/scripts/emulator-tests.sh ./gradlew :benchmark:connectedBenchmarkAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=indi.renakoni.nextvol.benchmark.explore.MinifiedSourceRuntimeTest,indi.renakoni.nextvol.benchmark.tts.ReadAloudSmokeTest --console=plain --stacktrace --max-workers=2
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -81,4 +81,5 @@ jobs:
             tests/benchmark/build/outputs/androidTest-results/connected
             app/build/outputs/mapping/benchmark/usage.txt
             app/build/outputs/mapping/benchmark/missing_rules.txt
+            app/build/reports/emulator-diagnostics
           if-no-files-found: ignore

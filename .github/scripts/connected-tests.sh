@@ -1,19 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-diagnostics=app/build/reports/emulator-diagnostics
-mkdir -p "$diagnostics"
-# Capture before emulator-runner tears down the device, including failures before the first test.
-capture() {
-  status=$?
-  trap - EXIT
-  timeout 15s adb logcat -d -v threadtime > "$diagnostics/logcat.txt" 2>&1 || true
-  timeout 15s adb shell dumpsys package > "$diagnostics/packages.txt" 2>&1 || true
-  timeout 15s adb shell df -h /data > "$diagnostics/storage.txt" 2>&1 || true
-  exit "$status"
-}
-trap capture EXIT
-timeout 15s adb shell pm path android > "$diagnostics/package-manager-before.txt" 2>&1
 test_classes="indi.renakoni.nextvol.sourceexecution.IsolatedExecutionInstrumentedTest,indi.renakoni.nextvol.sourceexecution.SourceAccountInstrumentedTest,indi.renakoni.nextvol.sourceexecution.SourceBrowserInstrumentedTest,indi.renakoni.nextvol.sourceexecution.SourceVpnInstrumentedTest${1:-}"
 
 # API 24 can hang after UTP/ddmlib has streamed all APK bytes into install-write.
