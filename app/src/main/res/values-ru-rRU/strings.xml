@@ -233,7 +233,7 @@
     <string name="settings_plugins">Plugins</string>
     <string name="settings_plugins_desc">Install and manage Plugins</string>
     <string name="settings_app_logs">Логи приложения</string>
-    <string name="settings_app_logs_desc">Просмотр и отправка логов для отладки</string>
+    <string name="settings_app_logs_desc">Просмотр и отправка логов приложения</string>
     <string name="settings_app_log_level">Уровень логирования</string>
     <string name="settings_app_log_level_desc">Выберите уровень фильтрации логов (требуется перезагрузка приложения)</string>
     <string name="book_manager_title">Book Manager</string>
@@ -388,13 +388,10 @@
     <string name="select_chapter">Выбрать главу</string>
     <string name="logs_title">Логи</string>
     <string name="log_source">Источник лога</string>
-    <string name="log_clear">Очистить временные логи</string>
-    <string name="log_clear_desc">Логи также удалятся при очистке кэша приложения</string>
-    <string name="auto_scroll">Автопрокрутка</string>
-    <string name="word_wrap">Перенос слов</string>
+    <string name="log_clear">Очистить все логи</string>
     <string name="log_shared">Логи поделены</string>
     <string name="log_crash">Сбой приложения</string>
-    <string name="log_empty_list">Список логов пуст</string>
+    <string name="log_empty_list">Логов пока нет</string>
     <string name="detail_info_title">Название</string>
     <string name="detail_info_id">ID-книги</string>
     <string name="detail_info_author">Автор</string>
@@ -709,4 +706,14 @@
     <string name="local_book_stored_files">Исходный файл и обработанное содержимое</string>
     <string name="local_book_delete_title">Удалить локальные книги?</string>
     <string name="local_book_delete_originals">Выбранные импортированные книги будут удалены со всех полок вместе с исходными файлами и содержимым в приложении. Другие копии и файлы вне приложения сохранятся. У сетевых книг удаляется только выбранный локальный кэш.</string>
+    <string name="settings_updates_desc">Проверка версий и настройки обновлений</string>
+    <string name="settings_about_desc">Информация о приложении и лицензии</string>
+    <string name="log_clear_all_confirm">Удалить сохранённые логи и очистить текущий сеанс?</string>
+    <string name="log_deleted">Логи очищены</string>
+    <string name="log_delete_failed">Не все логи удалены. Повторите попытку.</string>
+    <string name="log_read_failed">Не удалось прочитать лог. Выберите его снова.</string>
+    <string name="log_recording_off">Запись логов отключена</string>
+    <string name="log_recording_off_desc">Выберите уровень логов и перезапустите приложение.</string>
+    <string name="log_empty_file_desc">В этом файле нет записей.</string>
+    <string name="log_empty_current_desc">Здесь появятся новые записи. После смены уровня нужен перезапуск.</string>
 </resources>

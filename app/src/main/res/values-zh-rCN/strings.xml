@@ -231,9 +231,9 @@
     <string name="settings_plugins">扩展插件</string>
     <string name="settings_plugins_desc">安装和管理扩展插件</string>
     <string name="settings_app_logs">应用日志</string>
-    <string name="settings_app_logs_desc">查看与分享应用日志（调试用途）</string>
+    <string name="settings_app_logs_desc">查看与分享应用日志</string>
     <string name="settings_app_log_level">日志等级</string>
-    <string name="settings_app_log_level_desc">设置日志过滤等级，重启应用后生效</string>
+    <string name="settings_app_log_level_desc">选择记录等级，重启后生效</string>
     <string name="book_manager_title">书籍管理</string>
     <string name="book_manager_tab_downloads">下载</string>
     <string name="book_manager_tab_local_books">本地</string>
@@ -386,13 +386,10 @@
     <string name="select_chapter">章节选择</string>
     <string name="logs_title">日志</string>
     <string name="log_source">日志来源</string>
-    <string name="log_clear">删除所有临时日志</string>
-    <string name="log_clear_desc">清除应用缓存时，这些临时日志也将被删除</string>
-    <string name="auto_scroll">自动滚动</string>
-    <string name="word_wrap">自动换行</string>
+    <string name="log_clear">清空全部日志</string>
     <string name="log_shared">分享的日志</string>
     <string name="log_crash">App 崩溃</string>
-    <string name="log_empty_list">空日志列表</string>
+    <string name="log_empty_list">暂无日志</string>
     <string name="detail_info_title">标题</string>
     <string name="detail_info_id">ID</string>
     <string name="detail_info_author">作者</string>
@@ -721,4 +718,14 @@
     <string name="local_book_stored_files">导入原文件与解析内容</string>
     <string name="local_book_delete_title">删除本地书籍？</string>
     <string name="local_book_delete_originals">选中的导入书籍将从所有书架移除，并永久删除本应用内对应的原文件和解析内容。其他导入副本及应用外的原文件会保留。在线书籍仅清除选中的本地缓存。</string>
+    <string name="settings_updates_desc">检查新版本，设置更新偏好</string>
+    <string name="settings_about_desc">了解应用信息与开源许可</string>
+    <string name="log_clear_all_confirm">删除已保存日志，并清空本次运行记录？</string>
+    <string name="log_deleted">日志已清除</string>
+    <string name="log_delete_failed">部分日志未能删除，请重试</string>
+    <string name="log_read_failed">无法读取这份日志，请重新选择</string>
+    <string name="log_recording_off">日志记录未开启</string>
+    <string name="log_recording_off_desc">选择日志等级，重启应用后开始记录</string>
+    <string name="log_empty_file_desc">这份文件没有日志内容</string>
+    <string name="log_empty_current_desc">新的日志会显示在这里，修改等级后需重启应用</string>
 </resources>

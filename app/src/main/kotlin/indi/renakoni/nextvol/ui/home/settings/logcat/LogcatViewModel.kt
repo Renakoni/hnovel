@@ -1,6 +1,8 @@
 package indi.renakoni.nextvol.ui.home.settings.logcat
 
-import android.util.Log
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import indi.renakoni.nextvol.data.logging.LogEntry
@@ -18,15 +20,19 @@ class LogcatViewModel @Inject constructor (
 
     private val _uiState = MutableLogcatUiState()
     val uiState: LogcatUiState = _uiState
+    var logFilenameList: List<String> by mutableStateOf(emptyList())
+        private set
+
+    init {
+        refreshLogFiles()
+        onSelectLogFile(logFilenameList.first())
+    }
 
     fun startLogging() {
         loggerRepository.startLogging()
-        _uiState.isFileMode = false
-        _uiState.displayedLogEntries = loggerRepository.realTimeLogEntries
-        Log.i("Logger", "----- history")
+        refreshLogFiles()
+        if (_uiState.selectedLogFile !in logFilenameList) onSelectLogFile(logFilenameList.first())
     }
-
-    fun clearLogs() = loggerRepository.refreshLogs()
 
     fun shareLogs() {
         if (_uiState.isFileMode) {
@@ -34,6 +40,7 @@ class LogcatViewModel @Inject constructor (
         } else {
             loggerRepository.shareLogs()
         }
+        refreshLogFiles()
     }
 
     val displayedLogEntries: List<LogEntry>
@@ -43,9 +50,13 @@ class LogcatViewModel @Inject constructor (
             loggerRepository.realTimeLogEntries
         }
 
-    fun deleteLogFile(fileName: String) {
-        loggerRepository.deleteLogFile(fileName)
-        onSelectLogFile(LIVE_LOG_OPTION)
+    fun deleteLogs(): Boolean {
+        val deleted = loggerRepository.deleteLogs()
+        refreshLogFiles()
+        val selection = _uiState.selectedLogFile.takeIf { it in logFilenameList }
+            ?: logFilenameList.first()
+        onSelectLogFile(selection)
+        return deleted
     }
 
     fun onSelectLogFile(fileName: String) {
@@ -54,6 +65,7 @@ class LogcatViewModel @Inject constructor (
         if (_uiState.isFileMode) loggerRepository.loadLogFile(fileName)
     }
 
-    val logFilenameList: List<String>
-        get() = loggerRepository.getAvailableLogFiles() + LIVE_LOG_OPTION
+    private fun refreshLogFiles() {
+        logFilenameList = loggerRepository.getAvailableLogFiles() + LIVE_LOG_OPTION
+    }
 }

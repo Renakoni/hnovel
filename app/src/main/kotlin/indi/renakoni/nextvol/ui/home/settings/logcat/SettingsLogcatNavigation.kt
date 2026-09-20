@@ -20,7 +20,7 @@ fun NavGraphBuilder.settingsLogcatDestination() {
         val navController = LocalNavController.current
         val viewModel = hiltViewModel<LogcatViewModel>()
         LifecycleEventEffect(Lifecycle.Event.ON_START) {
-            if (!viewModel.uiState.isFileMode) viewModel.startLogging()
+            viewModel.startLogging()
         }
         val logEntries by remember { derivedStateOf { viewModel.displayedLogEntries } }
         val logLevelKey by viewModel.logLevelUserData.getFlow().collectAsStateWithLifecycle("none")
@@ -31,9 +31,8 @@ fun NavGraphBuilder.settingsLogcatDestination() {
             logLevelKey = logLevelKey ?: "none",
             onLogLevelChange = viewModel.logLevelUserData::asynchronousSet,
             onClickBack = navController::popBackStackIfResumed,
-            onClickClearLogs = viewModel::clearLogs,
             onClickShareLogs = viewModel::shareLogs,
-            onClickDeleteLogFile = viewModel::deleteLogFile,
+            onClickClearLogs = viewModel::deleteLogs,
             onSelectLogFile = viewModel::onSelectLogFile
         )
     }
