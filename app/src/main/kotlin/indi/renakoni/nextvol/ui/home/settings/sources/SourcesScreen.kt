@@ -27,7 +27,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.toRoute
 import indi.renakoni.nextvol.R
 import hnovel.imports.EXTENSION_PROFILE
-import hnovel.imports.LEGADO_PROFILE
 import hnovel.imports.AUTO_PROFILE
 import indi.renakoni.nextvol.ui.components.SectionHeader
 import indi.renakoni.nextvol.data.web.SourceCapability
@@ -83,15 +82,12 @@ fun NavGraphBuilder.settingsSourcesDestination() {
 fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
     onDiagnostics: (Identifier) -> Unit, onSearch: (Identifier) -> Unit = {}, onBack: () -> Unit) {
     var adding by remember { mutableStateOf(false) }
-    var text by remember { mutableStateOf("") }
     var url by remember { mutableStateOf("") }
     var deleting by remember { mutableStateOf(false) }
     var rollback by remember { mutableStateOf(false) }
-    var profile by rememberSaveable { mutableStateOf(AUTO_PROFILE) }
-    var advancedImport by rememberSaveable { mutableStateOf(false) }
     val listState = remember(state.selected, adding) { LazyListState() }
     LaunchedEffect(state.message) { if (state.message == R.string.sources_saved) adding = false }
-    val file = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let { uri -> model.previewFile(uri, profile) } }
+    val file = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let { uri -> model.previewFile(uri, AUTO_PROFILE) } }
     val installed = state.installed.find { ImportedRuleSources.id(it.definition) == state.selected }
     val selectedEntry = state.registry.find { it.metadata.id == state.selected }
     fun back() {
@@ -214,33 +210,9 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                 item { Button(onClick = { adding = !adding }, enabled = !state.busy) { Text(stringResource(R.string.sources_add)) } }
                 if (adding) item {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { model.addFanqie() }, enabled = !state.busy) {
-                            Text(stringResource(R.string.sources_fanqie))
-                        }
-                        TextButton(onClick = { advancedImport = !advancedImport }) { Text(stringResource(R.string.sources_advanced)) }
-                        if (advancedImport) {
-                            for ((value, label) in listOf(AUTO_PROFILE to R.string.sources_profile_auto, LEGADO_PROFILE to R.string.sources_profile_standard, EXTENSION_PROFILE to R.string.sources_profile_extension)) {
-                                Row(Modifier.fillMaxWidth().clickable(enabled = !state.busy) { profile = value }) {
-                                    RadioButton(selected = profile == value, onClick = { profile = value }, enabled = !state.busy)
-                                    Text(stringResource(label), Modifier.padding(top = 12.dp))
-                                }
-                            }
-                        }
-                        Text(stringResource(R.string.sources_collections), style = MaterialTheme.typography.titleMedium)
-                        for ((label, address) in listOf(
-                            "XIU2" to "https://legado.aoaostar.com/sources/71e56d4f.json",
-                            "aoaostar" to "https://legado.aoaostar.com/sources/b778fe6b.json",
-                            "shidahuilang" to "https://raw.githubusercontent.com/shidahuilang/shuyuan-bak/main/good.json"
-                        )) {
-                            OutlinedButton(onClick = { model.previewUrl(address, profile) }, enabled = !state.busy) { Text(label) }
-                        }
                         OutlinedTextField(url, { url = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.sources_url)) }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
-                        Button(onClick = { model.previewUrl(url, profile) }, enabled = !state.busy && url.isNotBlank()) { Text(stringResource(R.string.sources_preview_url)) }
+                        Button(onClick = { model.previewUrl(url, AUTO_PROFILE) }, enabled = !state.busy && url.isNotBlank()) { Text(stringResource(R.string.sources_preview_url)) }
                         OutlinedButton(onClick = { file.launch(arrayOf("*/*")) }, enabled = !state.busy) { Text(stringResource(R.string.sources_file)) }
-                        if (advancedImport) {
-                            OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth().heightIn(min = 140.dp, max = 280.dp), label = { Text(stringResource(R.string.sources_paste)) })
-                            Button(onClick = { model.previewText(text, profile) }, enabled = !state.busy && text.isNotBlank()) { Text(stringResource(R.string.sources_preview)) }
-                        }
                     }
                 }
                 if (!adding) {
