@@ -11,18 +11,26 @@ This module imports HTTP TTS definitions and returns bounded audio bytes. Androi
 - Each synthesis has a 60-second deadline and a 2 MiB audio limit. Data-URI audio has its own bounded decoder, without increasing ordinary source URL limits. Container signatures reject obvious text/error payloads; Android inspects the audio track before committing a file. These checks do not replace complete decoding/playback acceptance.
 - `loginCheckJs` and interactive login/configuration UIs are not implemented here. Preserving a configuration does not claim that every dependency can execute. No arbitrary `Packages` or Java reflection is exposed.
 
-## Imported Microsoft Translator recipes
+## Microsoft Translator recipes
 
 Two audited script shapes (fixed voice and header-selected voice) use a host adapter. Recognition hashes the exact normalized script after replacing only voice/language, signing-key and client-ID literals. Modified code is not silently reinterpreted as this protocol. The test resources use a synthetic signing key and synthetic client IDs.
 
-The adapter obtains its signing material only from the imported configuration. It generates the complete `MSTranslatorAndroidApp::signature::date::id` envelope, holds the returned token in the current client for at most eight minutes, and refreshes once after HTTP 401. Rate limits and other service failures are not retried. SSML escapes book text and maps application 1.0x to 0%, 0.5x to -50%, and 2.0x to +100%.
+The adapter obtains its signing material from the selected definition. It generates the complete `MSTranslatorAndroidApp::signature::date::id` envelope, holds the returned token in the current client for at most eight minutes, and refreshes once after HTTP 401. Rate limits and other service failures are not retried. SSML escapes book text and maps application 1.0x to 0%, 0.5x to -50%, and 2.0x to +100%.
 
 Approving the Translator origin also approves this adapter's regional Microsoft speech service, as shown during import and website editing. The authentication response supplies a validated region label, never an arbitrary URL. Only a host-owned request receives the derived exact HTTPS origin; general source scripts do not receive that grant. Authentication and synthesis redirects are disabled.
 
-This compatibility path is distinct from Edge WebSocket and Azure subscription-key authentication. It is not a built-in account or a bundled third-party credential.
+This compatibility path is distinct from Edge WebSocket and Azure subscription-key authentication. Its fixed protocol signing constant is not an Azure subscription key or a user account.
 
 ## Verification
 
 JVM tests cover import boundaries, template/data separation, request cancellation, denied origins, signature vectors, SSML, token expiry and bounded refresh. Android tests cover actual isolated execution, media decoding/playback and Keystore persistence, including revocation and runtime cleanup when sources change. The minified UI smoke selects, previews and removes a deterministic imported voice; it makes no claim about public service availability.
 
-Public-service availability changes independently of the module. Imported configurations and credentials are supplied by the user; no credential-bearing source collection is bundled.
+## Bundled Android catalog
+
+Android loads `app/src/main/assets/speech/builtin-voices.json` on every repository instance. The 99 fixed entries remain available without an import file, after reopening, and after app-data reset. Namespaced IDs keep existing imported definitions and selections separate. Built-ins cannot be edited or removed through the import manager; updates ship with the app.
+
+The catalog covers the previously exercised Baidu, AISpeech, Volcengine, Microsoft Translator, Shipook and iFlytek-compatible recipes. The two Qidian proxy voices require a user Token, shared at service level; no sample proxy token is bundled. Aliyun requires the user's AppKey, AccessKeyId and AccessKeySecret and uses its HTTPS CreateToken flow. Account fields remain in the existing Keystore-encrypted store; that store and its runtime are excluded from Android backup because the Keystore key does not transfer. Clearing or changing them revokes execution tickets and removes cached runtime tokens. Private credentials are serialized as JSON before binding in the existing isolated executor; input values cannot add script or query parameters.
+
+Only exact audited service origins are granted. Microsoft regional grants remain confined to its existing adapter. Bundled client-protocol constants are distinct from user account keys. The original account-dependent login UI, broken dynamic endpoints and unsupported selectors are not bundled as working voices. Public-service availability remains independent of catalog persistence; bundled online voices still require a working network and service.
+
+Tests cover fresh/reset catalog loading, legacy imports, immutable built-in IDs, credential validation and revocation, Aliyun token requests, and the unified selection/configuration UI. A user's live Aliyun/Qidian account is not exercised by deterministic tests.

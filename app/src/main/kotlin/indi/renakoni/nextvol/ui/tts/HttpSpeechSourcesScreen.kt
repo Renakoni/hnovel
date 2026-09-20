@@ -1,6 +1,9 @@
 package indi.renakoni.nextvol.ui.tts
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.selectable
@@ -9,6 +12,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
@@ -16,6 +20,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.tts.SavedHttpSpeechSource
@@ -27,7 +35,11 @@ fun HttpSpeechSourcesScreen(
     onSelect: (String?) -> Unit, onDelete: (SavedHttpSpeechSource) -> Unit,
     onSites: (SavedHttpSpeechSource, String) -> Unit, onConfirmImport: () -> Unit, onDismissImport: () -> Unit,
     onEdit: (SavedHttpSpeechSource, String, String, String) -> Unit,
+    onConfigure: (SavedHttpSpeechSource, Map<String, String>) -> Unit = { _, _ -> },
 ) {
+    var configuring by remember { mutableStateOf<SavedHttpSpeechSource?>(null) }
+    var expanded by remember { mutableStateOf<String?>(null) }
+    var importMenu by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<SavedHttpSpeechSource?>(null) }
     var sites by remember { mutableStateOf("") }
     var definition by remember { mutableStateOf<SavedHttpSpeechSource?>(null) }
@@ -39,16 +51,53 @@ fun HttpSpeechSourcesScreen(
             IconButton(onClick = onBack) { Icon(painterResource(R.drawable.arrow_back_24px), stringResource(R.string.sources_back)) }
         }, actions = {
             if (state.busy) CircularProgressIndicator(Modifier.padding(horizontal = 16.dp).size(20.dp), strokeWidth = 2.dp)
-            else TextButton(onClick = onImport) { Text(stringResource(R.string.tts_import_sources)) }
+            else Box {
+                IconButton(onClick = { importMenu = true }) {
+                    Icon(painterResource(R.drawable.more_vert_24px), stringResource(R.string.tts_library_actions))
+                }
+                DropdownMenu(importMenu, onDismissRequest = { importMenu = false }) {
+                    DropdownMenuItem(text = { Text(stringResource(R.string.tts_import_sources)) }, onClick = { importMenu = false; onImport() })
+                }
+            }
         })
     }) { padding ->
-        LazyColumn(Modifier.fillMaxSize().padding(padding).selectableGroup(), contentPadding = PaddingValues(16.dp)) {
+        LazyColumn(Modifier.fillMaxSize().padding(padding).selectableGroup().testTag("speech-sources-list"),
+            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             state.error?.let { message -> item { Text(stringResource(message), color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp)) } }
             item {
-                SourceChoice(stringResource(R.string.tts_system_speech), state.selected == null, !state.busy, { onSelect(null) })
+                Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+                    SourceChoice(stringResource(R.string.tts_system_speech), state.selected == null, !state.busy, { onSelect(null) })
+                }
             }
             if (state.sources.isEmpty() && !state.busy) item { Text(stringResource(R.string.tts_online_empty), Modifier.padding(16.dp)) }
-            items(state.sources, key = { it.definition.id }) { source ->
+            state.sources.filter { it.isBuiltIn }.groupBy { it.group!! }.forEach { (group, sources) ->
+                item(key = "group:$group") {
+                    val account = sources.first()
+                    val current = sources.find { it.definition.id == state.selected }
+                    Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+                        Row(Modifier.fillMaxWidth().clickable(enabled = !state.busy) { expanded = if (expanded == group) null else group }
+                            .padding(start = 20.dp, end = 12.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(group, style = MaterialTheme.typography.titleMedium)
+                                Text(if (!account.isConfigured) stringResource(R.string.tts_needs_key)
+                                    else current?.definition?.name ?: pluralStringResource(R.plurals.tts_voice_count, sources.size, sources.size),
+                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                            if (account.credentialKeys.isNotEmpty()) IconButton(onClick = { configuring = account }, enabled = !state.busy) {
+                                Icon(painterResource(R.drawable.outline_settings_24px), stringResource(R.string.tts_configure_service, group))
+                            }
+                            Icon(painterResource(R.drawable.keyboard_arrow_up_24px), null, Modifier.rotate(if (expanded == group) 0f else 180f))
+                        }
+                    }
+                }
+                if (expanded == group) items(sources, key = { it.definition.id }) { source ->
+                    SourceChoice(source.definition.name, state.selected == source.definition.id, !state.busy, {
+                        if (source.isConfigured) onSelect(source.definition.id) else configuring = source
+                    })
+                }
+            }
+            items(state.sources.filterNot { it.isBuiltIn }, key = { it.definition.id }) { source ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     SourceChoice(source.definition.name, state.selected == source.definition.id, !state.busy,
                         { onSelect(source.definition.id) }, Modifier.weight(1f))
@@ -70,6 +119,14 @@ fun HttpSpeechSourcesScreen(
                     }
                 }
             }
+        }
+    }
+    configuring?.let { source ->
+        SpeechCredentialsDialog(source, state.busy, state.error,
+            onSave = { values -> onConfigure(source, values) }, onDismiss = { configuring = null })
+        val savedAtOpen = remember(source.definition.id) { state.configurationSaved }
+        LaunchedEffect(state.configurationSaved) {
+            if (state.configurationSaved != savedAtOpen) configuring = null
         }
     }
     state.pending?.let { pending ->
@@ -130,4 +187,29 @@ private fun SourceChoice(name: String, selected: Boolean, enabled: Boolean, onCl
         RadioButton(selected, onClick = null, enabled = enabled)
         Text(name, style = MaterialTheme.typography.bodyLarge, maxLines = 3, overflow = TextOverflow.Ellipsis)
     }
+}
+
+@Composable
+private fun SpeechCredentialsDialog(source: SavedHttpSpeechSource, busy: Boolean, error: Int?,
+    onSave: (Map<String, String>) -> Unit, onDismiss: () -> Unit) {
+    var values by remember(source.definition.id) { mutableStateOf(source.credentials) }
+    AlertDialog(onDismissRequest = { if (!busy) onDismiss() }, title = { Text(source.group.orEmpty()) },
+        text = {
+            Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                source.credentialKeys.forEach { key ->
+                    OutlinedTextField(values[key].orEmpty(), { values = values + (key to it) }, label = { Text(key) },
+                        modifier = Modifier.fillMaxWidth(), singleLine = true, enabled = !busy,
+                        visualTransformation = if (key == "AppKey" || key == "AccessKeyId") VisualTransformation.None else PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
+                }
+                error?.let { Text(stringResource(it), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+                if (source.credentials.isNotEmpty()) TextButton(onClick = { onSave(emptyMap()) }, enabled = !busy) {
+                    Text(stringResource(R.string.tts_clear_credentials))
+                }
+            }
+        }, confirmButton = {
+            TextButton(onClick = { onSave(values) }, enabled = !busy && source.credentialKeys.all { !values[it].isNullOrBlank() }) {
+                Text(stringResource(R.string.confirm))
+            }
+        }, dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text(stringResource(R.string.cancel)) } })
 }
