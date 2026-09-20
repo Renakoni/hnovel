@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -28,6 +29,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -60,6 +62,7 @@ import indi.renakoni.nextvol.ui.book.reader.ReaderFontFamilySettings
 import indi.renakoni.nextvol.ui.book.reader.content.ChapterContentError
 import indi.renakoni.nextvol.ui.book.reader.content.ChapterContentLoading
 import indi.renakoni.nextvol.ui.book.reader.content.ChapterContentUiState
+import indi.renakoni.nextvol.ui.book.reader.content.componet.readerTextColor as readerContentTextColor
 import indi.renakoni.nextvol.ui.book.reader.content.readerTapGestures
 import indi.renakoni.nextvol.ui.book.reader.content.readerVolumeKeys
 import indi.renakoni.nextvol.ui.book.reader.content.volumeKeyScrollDistance
@@ -74,6 +77,7 @@ import indi.renakoni.nextvol.utils.showSnackbar
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
+import io.nightfish.lightnovelreader.api.ui.LocalReaderStyle
 
 @Composable
 fun ScrollContentComponent(
@@ -118,6 +122,13 @@ fun ScrollContentTextComponent(
     val listState = uiState.lazyListState
     val scope = rememberCoroutineScope()
     var lazyColumnSize by remember { mutableStateOf(IntSize(0, 0)) }
+    val textLayout = LocalReaderTextLayout.current
+    val preparedChapters = uiState.contentList.mapIndexed { index, entry ->
+        key(listState, entry?.first ?: "placeholder-$index") {
+            rememberPreparedScrollChapter(entry?.second?.get(), textLayout,
+                lazyColumnSize.width, lazyColumnSize.height)
+        }
+    }
 
     val reachedTopMsg = stringResource(R.string.reader_reached_top)
     val prevChapterLabel = stringResource(R.string.previous_chapter)
@@ -271,6 +282,7 @@ fun ScrollContentTextComponent(
     ) {
         LazyColumn(
             modifier = modifier
+                .fillMaxSize()
                 .padding(paddingValues)
                 .readerVolumeKeys(
                     enabled = settingState.isUsingVolumeKeyFlip && !settingState.isUsingFlipPage &&
@@ -298,7 +310,7 @@ fun ScrollContentTextComponent(
             itemsIndexed(
                 items = uiState.contentList,
                 key = { index, pair -> pair?.first ?: "placeholder-$index" },
-                contentType = { _, pair -> pair?.second?.isOk == true },
+                contentType = { index, pair -> pair?.second?.isOk == true && preparedChapters[index] != null },
             ) { index, pair ->
                 pair?.second.let { result ->
                     uiState.contentList.getOrNull(index + 1)?.second?.get()?.let {
@@ -308,11 +320,13 @@ fun ScrollContentTextComponent(
                         if (!it.hasNextChapter()) return@itemsIndexed
                     }
                     result?.onOk {
-                        TextContent(
+                        val prepared = preparedChapters[index]
+                        if (prepared == null) ChapterContentLoading() else TextContent(
                             modifier = modifier,
                             settingState = settingState,
                             fontFamilySettings = fontFamilySettings,
-                            content = it
+                            content = prepared.content,
+                            preparedText = prepared.text,
                         )
                     }?.onErr {
                         ChapterContentError(it, pair?.first?.let(chapterTitle)) {
@@ -330,7 +344,8 @@ private fun TextContent(
     modifier: Modifier,
     settingState: ReaderSettings,
     fontFamilySettings: ReaderFontFamilySettings,
-    content: ChapterContentUiState
+    content: ChapterContentUiState,
+    preparedText: Map<Int, ScrollTextLayout>,
 ) {
     val density = LocalDensity.current
     val screenHeight = LocalResources.current.displayMetrics.heightPixels
@@ -401,13 +416,17 @@ private fun TextContent(
                 Spacer(Modifier.height(16.dp))
             }
         }
-        val components = content.content.filterNot { it is SimpleTextComponent && it.data.text.isEmpty() }
+        val components = content.content.withIndex().filterNot { (it.value as? SimpleTextComponent)?.data?.text?.isEmpty() == true }
         val paragraphSpacing = LocalReaderTextLayout.current?.paragraphSpacingPx ?: 0
-        components.forEachIndexed { index, component ->
-            if (component is SimpleTextComponent && components.getOrNull(index - 1) is SimpleTextComponent) {
+        val colors = LocalReaderStyle.current
+        components.forEachIndexed { index, (componentIndex, component) ->
+            if (component is SimpleTextComponent && components.getOrNull(index - 1)?.value is SimpleTextComponent) {
                 Spacer(Modifier.height(with(density) { paragraphSpacing.toDp() }))
             }
-            component.Content(modifier)
+            val prepared = preparedText[componentIndex]
+            if (prepared != null) {
+                ScrollTextContent(prepared, readerContentTextColor(colors.textColor, colors.textDarkColor), modifier)
+            } else component.Content(modifier)
         }
     }
 }

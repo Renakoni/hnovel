@@ -63,6 +63,15 @@ class ReaderTextLayoutTest {
         assertTrue(layout(listOf(ReaderTextSource(0, ""))).isEmpty())
     }
 
+    @Test fun scrollChunksKeepTheUnbrokenChapterHeightAndEveryParagraphGap() {
+        val sources = listOf(ReaderTextSource(0, "ABCDEFGHIJK\n\nXYZ\nEND"))
+        val original = layout(sources, width = 3, height = Int.MAX_VALUE, spacing = 7).flatten()
+        val chunks = layout(sources, width = 3, height = 25, spacing = 7, continuous = true).flatten()
+        assertEquals(original.sumOf { it.height + it.spacingBefore }, chunks.sumOf { it.height + it.spacingBefore })
+        assertEquals(sources.single().text, chunks.joinToString("") { sources.single().text.substring(it.start, it.end) })
+        assertTrue(chunks.all { it.height <= 25 })
+    }
+
     @Test fun numericInputsRejectNonFiniteValuesAndClampToExistingControlRanges() {
         for (value in listOf(Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY)) {
             assertEquals(15f, ReaderLayoutValues.fontSize(value))
@@ -78,8 +87,8 @@ class ReaderTextLayoutTest {
         assertEquals(128f, ReaderLayoutValues.margin(1000f, 12f))
     }
 
-    private fun layout(sources: List<ReaderTextSource>, width: Int = 100, height: Int = 100, spacing: Int = 0) =
-        layoutReaderText(sources, width, height, spacing) { text, columns ->
+    private fun layout(sources: List<ReaderTextSource>, width: Int = 100, height: Int = 100, spacing: Int = 0, continuous: Boolean = false) =
+        layoutReaderText(sources, width, height, spacing, continuous) { text, columns ->
             val count = max(1, (text.length + columns - 1) / columns)
             mockk<TextLayoutResult> {
                 every { lineCount } returns count
