@@ -50,8 +50,9 @@ class ReaderPaperTest {
         assertTrue(contrast(text, highlight.compositeOver(background)) >= contrast(text, background) - 0.01f)
     }
 
-    @Test fun imagePaperBackingProtectsBothLightAndDarkTextOverExtremePixels() {
-        for (text in listOf(Color(0xFF262521), Color(0xFFD8DDD6))) {
+    @Test fun imagePaperBackingProtectsCustomTextOverExtremePixels() {
+        for (text in listOf(Color(0xFF262521), Color(0xFFD8DDD6), Color(0xFF777777), Color(0xFF999999),
+            Color.Black, Color.White, Color.Red, Color.Green, Color.Blue)) {
             val highlight = readerSpeechHighlight(Color.White, text, Color(0xFF77562E), image = true)
             for (pixel in listOf(Color.Black, Color.White, Color(0xFF77562E))) {
                 assertTrue("text=$text pixel=$pixel", contrast(text, highlight.compositeOver(pixel)) >= 4.5f)

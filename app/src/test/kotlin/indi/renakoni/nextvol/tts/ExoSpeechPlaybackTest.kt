@@ -8,6 +8,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
+import io.mockk.clearMocks
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
@@ -51,6 +52,7 @@ class ExoSpeechPlaybackTest {
         assertTrue(delivered.isEmpty())
         playing = true
         position = 100
+        listener.captured.onEvents(player, mockk())
         advanceTimeBy(50)
         runCurrent()
         assertEquals(listOf(timing[0]), delivered)
@@ -64,6 +66,7 @@ class ExoSpeechPlaybackTest {
         runCurrent()
         assertEquals(listOf(timing[0]), delivered)
         playing = true
+        listener.captured.onEvents(player, mockk())
         advanceTimeBy(50)
         runCurrent()
         assertEquals(timing, delivered)
@@ -120,15 +123,24 @@ class ExoSpeechPlaybackTest {
         assertEquals(listOf(0, 5), anchors)
         playing = false
         position = 800
+        listener.captured.onEvents(player, mockk())
         advanceTimeBy(500)
         runCurrent()
         assertEquals(listOf(0, 5), anchors)
+        verify(exactly = 1) { player.setMediaItem(any<MediaItem>()) }
+        verify(exactly = 1) { player.prepare() }
+        clearMocks(player, answers = false, recordedCalls = true)
+        advanceTimeBy(5000)
+        runCurrent()
+        verify(exactly = 0) { player.currentPosition }
+        verify(exactly = 0) { player.isPlaying }
         state = Player.STATE_BUFFERING
         listener.captured.onPositionDiscontinuity(mockk(), mockk(), Player.DISCONTINUITY_REASON_SEEK)
         advanceTimeBy(50)
         runCurrent()
         assertEquals(listOf(0, 5), anchors)
         state = Player.STATE_READY
+        listener.captured.onEvents(player, mockk())
         advanceTimeBy(50)
         runCurrent()
         assertEquals(listOf(0, 5, 8), anchors)
@@ -137,14 +149,25 @@ class ExoSpeechPlaybackTest {
         advanceTimeBy(50)
         runCurrent()
         assertEquals(listOf(0, 5, 8, 1), anchors)
+        duration = -1
+        position = 200
+        listener.captured.onPositionDiscontinuity(mockk(), mockk(), Player.DISCONTINUITY_REASON_SEEK)
+        advanceTimeBy(50)
+        runCurrent()
+        assertEquals(1, anchors.last())
+        duration = 1000
+        listener.captured.onEvents(player, mockk())
+        runCurrent()
+        assertEquals("A paused seek must survive delayed duration metadata", 2, anchors.last())
         playing = true
         position = 1500
+        listener.captured.onEvents(player, mockk())
         advanceTimeBy(50)
         runCurrent()
         assertEquals(9, anchors.last())
         assertTrue("Estimated viewport anchors must not invent exact word ranges", ranges.isEmpty())
-        verify(exactly = 1) { player.setMediaItem(any<MediaItem>()) }
-        verify(exactly = 1) { player.prepare() }
+        verify(exactly = 0) { player.setMediaItem(any<MediaItem>()) }
+        verify(exactly = 0) { player.prepare() }
         playback.stop()
         runCurrent()
         assertTrue(job.isCancelled)

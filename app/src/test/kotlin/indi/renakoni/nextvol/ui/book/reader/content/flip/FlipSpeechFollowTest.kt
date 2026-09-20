@@ -122,7 +122,12 @@ class FlipSpeechFollowTest {
         assertSentenceAcrossPages(estimated = true)
     }
 
-    private fun assertSentenceAcrossPages(estimated: Boolean) {
+    @Test fun animatedFollowingFinishesDespiteMoreAnchorsOnTheSameTargetPage() {
+        every { settings.reduceMotion } returns false
+        assertSentenceAcrossPages(estimated = true, updateDuringAnimation = true)
+    }
+
+    private fun assertSentenceAcrossPages(estimated: Boolean, updateDuringAnimation: Boolean = false) {
         text = (1..24).joinToString(" ") { "word%03d".format(it) } + "."
         val estimate = SpeechFollowEstimate(text)
         fun anchor(offset: Int) = if (estimated) estimate.anchorAt(offset * 100L + 1, text.length * 100L)!! else offset
@@ -142,7 +147,14 @@ class FlipSpeechFollowTest {
         compose.runOnIdle { speech = speech.copy(anchor = anchor(pageBoundary - 1)) }
         compose.waitForIdle()
         assertEquals("The rest of the highlighted sentence must not turn the page early", 0, pager.currentPage)
+        if (updateDuringAnimation) compose.mainClock.autoAdvance = false
         compose.runOnIdle { speech = speech.copy(anchor = anchor(pageBoundary)) }
+        if (updateDuringAnimation) {
+            compose.mainClock.advanceTimeBy(32)
+            compose.runOnIdle { speech = speech.copy(anchor = anchor(pageBoundary + 1)) }
+            compose.mainClock.advanceTimeBy(1000)
+            compose.mainClock.autoAdvance = true
+        }
         compose.waitUntil(10_000) { compose.waitForIdle(); pager.settledPage == 1 }
         compose.onNodeWithText(text.substring(pageBoundary).trimStart().take(7), substring = true,
             useUnmergedTree = true).assertIsDisplayed()

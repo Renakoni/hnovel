@@ -9,6 +9,7 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import indi.renakoni.nextvol.R
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -26,13 +27,18 @@ internal class ExoSpeechPlayback(private val player: ExoPlayer, private val cont
         val completed = CompletableDeferred<Unit>()
         active = completed
         var seekPending = false
+        val playbackChanges = Channel<Unit>(Channel.CONFLATED)
         val events = object : Player.Listener {
             override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
-                if (active === completed && reason == Player.DISCONTINUITY_REASON_SEEK) seekPending = true
+                if (active === completed && reason == Player.DISCONTINUITY_REASON_SEEK) {
+                    seekPending = true
+                    playbackChanges.trySend(Unit)
+                }
             }
 
             override fun onEvents(player: Player, events: Player.Events) {
                 if (active !== completed) return
+                playbackChanges.trySend(Unit)
                 if (player.playbackState == Player.STATE_ENDED) {
                     completed.complete(Unit)
                     return
@@ -68,14 +74,17 @@ internal class ExoSpeechPlayback(private val player: ExoPlayer, private val cont
                         seekPending = false
                         val position = player.currentPosition
                         if (estimate != null) {
-                            estimate.anchorAt(position, player.duration)?.let { anchor ->
+                            val anchor = estimate.anchorAt(position, player.duration)
+                            if (anchor == null) seekPending = wasSeek
+                            else {
                                 if (anchor != reportedAnchor) { reportedAnchor = anchor; onEstimatedAnchor(anchor) }
                             }
                         } else (clip.timings.rangeAt(position) ?: clip.timings.firstOrNull()?.takeIf { wasSeek })?.let { range ->
                             if (range != reported) { reported = range; onRange(range) }
                         }
                     }
-                    delay(50)
+                    // No polling while paused/buffering. Resume, readiness and explicit seek wake the tracker.
+                    if (player.isPlaying) delay(50) else playbackChanges.receive()
                 }
             }
             try { completed.await() } finally { tracking.cancel() }

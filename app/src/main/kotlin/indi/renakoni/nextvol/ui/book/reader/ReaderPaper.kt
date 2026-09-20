@@ -77,18 +77,28 @@ internal val LocalReaderSpeechHighlight = compositionLocalOf { Color.Unspecified
 /** Keep the paper's accent quiet while protecting the existing text contrast. */
 internal fun readerSpeechHighlight(background: Color, text: Color, accent: Color, image: Boolean = false): Color {
     // An image has no single surface color. A translucent paper backing stabilizes the marked text.
-    val paper = if (!image) background else if (text.luminance() < 0.4f) Color(0xFFFAF9F6) else Color(0xFF202322)
     fun contrast(surface: Color): Float {
         val a = text.luminance()
         val b = surface.luminance()
         return (maxOf(a, b) + 0.05f) / (minOf(a, b) + 0.05f)
+    }
+    val paper = if (!image) background else {
+        val neutral = listOf(Color(0xFFFAF9F6), Color(0xFF202322)).maxBy(::contrast)
+        if (contrast(neutral) >= 4.5f) neutral else listOf(Color.White, Color.Black).maxBy(::contrast)
     }
     val tint = lerp(accent, text, 0.15f)
     val minimum = minOf(4.5f, contrast(paper))
     var alpha = if (paper.luminance() < 0.18f) 0.20f else 0.14f
     while (alpha > 0.01f && contrast(tint.copy(alpha = alpha).compositeOver(paper)) < minimum) alpha *= 0.75f
     val mark = tint.copy(alpha = if (alpha > 0.01f) alpha else 0f)
-    return if (image) mark.compositeOver(paper).copy(alpha = 0.9f) else mark
+    if (!image) return mark
+    val backing = mark.compositeOver(paper)
+    var opacity = 0.9f
+    while (opacity < 1f && minOf(contrast(backing.copy(alpha = opacity).compositeOver(Color.White)),
+            contrast(backing.copy(alpha = opacity).compositeOver(Color.Black))) < 4.5f) {
+        opacity = (opacity + 0.025f).coerceAtMost(1f)
+    }
+    return backing.copy(alpha = opacity)
 }
 
 /** Keep the same composition when switching papers so reader position and open controls survive. */
