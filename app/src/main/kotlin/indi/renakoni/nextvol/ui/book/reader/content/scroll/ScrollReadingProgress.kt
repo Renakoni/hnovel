@@ -1,6 +1,7 @@
 package indi.renakoni.nextvol.ui.book.reader.content.scroll
 
 import androidx.compose.runtime.snapshotFlow
+import com.github.michaelbull.result.get
 import indi.renakoni.nextvol.utils.throttleLatest
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -13,7 +14,6 @@ internal class ScrollReadingProgress(
     private val coroutineScope: CoroutineScope,
     private val updateReadingProgress: (String, Float) -> Unit,
     private val viewportHeight: () -> Int,
-    private val ioDispatcher: CoroutineDispatcher,
     private val mainDispatcher: CoroutineDispatcher,
     private val currentTimeMillis: () -> Long = System::currentTimeMillis,
 ) {
@@ -26,6 +26,7 @@ internal class ScrollReadingProgress(
                 .collect {
                     val layoutInfo = uiState.lazyListState.layoutInfo
                     val chapterId = uiState.readingChapterId ?: return@collect
+                    if (uiState.readingChapterContent?.get() == null) return@collect
                     val item = layoutInfo.visibleItemsInfo.firstOrNull { it.key == chapterId } ?: return@collect
 
                     val newProgress = calculateReadingProgress(item.offset, item.size)
@@ -38,7 +39,7 @@ internal class ScrollReadingProgress(
                     if (scrolling && now - lastWriteReadingProgress < 2500 && newProgress < 1f) return@collect
                     lastWriteReadingProgress = now
 
-                    coroutineScope.launch(ioDispatcher) { updateReadingProgress(chapterId, newProgress) }
+                    updateReadingProgress(chapterId, newProgress)
                 }
         }
 
@@ -49,6 +50,7 @@ internal class ScrollReadingProgress(
                     if (!scrolling) {
                         val layoutInfo = uiState.lazyListState.layoutInfo
                         val chapterId = uiState.readingChapterId ?: return@collect
+                        if (uiState.readingChapterContent?.get() == null) return@collect
                         val item = layoutInfo.visibleItemsInfo.firstOrNull { it.key == chapterId } ?: return@collect
 
                         val finalProgress = calculateReadingProgress(item.offset, item.size)
@@ -56,7 +58,7 @@ internal class ScrollReadingProgress(
                         if (uiState.readingProgress != finalProgress) {
                             uiState.readingProgress = finalProgress
                         }
-                        coroutineScope.launch(ioDispatcher) { updateReadingProgress(chapterId, uiState.readingProgress) }
+                        updateReadingProgress(chapterId, finalProgress)
                         lastWriteReadingProgress = currentTimeMillis()
                     }
                 }
@@ -64,6 +66,7 @@ internal class ScrollReadingProgress(
     }
 
     fun writeProgressRightNow() {
+        if (uiState.readingChapterContent?.get() == null) return
         updateReadingProgress(uiState.readingChapterId ?: return, uiState.readingProgress)
     }
 

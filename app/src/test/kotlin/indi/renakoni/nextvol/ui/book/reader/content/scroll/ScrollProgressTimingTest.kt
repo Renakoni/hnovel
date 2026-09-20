@@ -6,6 +6,8 @@ import androidx.compose.foundation.lazy.LazyListLayoutInfo
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import com.github.michaelbull.result.Ok
+import indi.renakoni.nextvol.ui.book.reader.content.ChapterContentUiState
 import indi.renakoni.nextvol.ui.book.reader.mode.ModeTestEnvironment
 import io.mockk.every
 import io.mockk.mockk
@@ -34,6 +36,7 @@ class ScrollProgressTimingTest {
     private val layout = mockk<LazyListLayoutInfo> { every { visibleItemsInfo } returns listOf(item) }
     private val uiState = MutableScrollContentUiSate({}, {}, {}, {}, {}).apply {
         readingChapterId = "chapter"
+        contentList[1] = "chapter" to Ok(ChapterContentUiState("chapter", "Chapter", emptyList(), null, null))
         lazyListState = mockk<LazyListState> {
             every { firstVisibleItemScrollOffset } answers { offset.intValue }
             every { isScrollInProgress } answers { scrolling.value }
@@ -41,7 +44,7 @@ class ScrollProgressTimingTest {
         }
     }
     private val progress = ScrollReadingProgress(
-        uiState, env.scope, { id, value -> writes += id to value }, { 100 }, env.dispatcher, env.dispatcher, { now },
+        uiState, env.scope, { id, value -> writes += id to value }, { 100 }, env.dispatcher, { now },
     )
 
     @After fun tearDown() = env.close()

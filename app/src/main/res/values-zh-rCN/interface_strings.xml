@@ -42,4 +42,5 @@
     <string name="plugin_delete_action">删除插件</string>
     <string name="plugin_uninstall_action">卸载并删除</string>
     <string name="stats_total">总计</string>
+    <string name="reader_chapter">章节</string>
 </resources>

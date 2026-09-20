@@ -33,14 +33,15 @@ class ScrollReaderController(
         setLazyColumnSize = {
             lazyColumnSize = it
         },
-        writeProgressRightNow = ::writeProgressRightNow
+        writeProgressRightNow = ::writeProgressRightNow,
+        retryChapter = { chaptersWindow.retryChapter(it) },
     )
 
     private val chaptersWindow = ScrollChapterWindow(
         uiState, chapters, readingData, settings, coroutineScope, { lazyColumnSize.height }, ioDispatcher,
     )
     private val progress = ScrollReadingProgress(
-        uiState, coroutineScope, updateReadingProgress, { lazyColumnSize.height }, ioDispatcher, mainDispatcher,
+        uiState, coroutineScope, updateReadingProgress, { lazyColumnSize.height }, mainDispatcher,
     )
 
     init {
@@ -69,28 +70,20 @@ class ScrollReaderController(
     }
 
     override fun changeBookId(id: String) {
-        uiState.bookId = id
+        chaptersWindow.changeBookId(id)
     }
 
     override fun loadNextChapter() {
         uiState.readingChapterContent?.onOk { readingChapterContent ->
             if (!readingChapterContent.hasNextChapter()) return
-            coroutineScope.launch {
-                changeChapter(
-                    id = readingChapterContent.nextChapter ?: return@launch
-                )
-            }
+            changeChapter(readingChapterContent.nextChapter ?: return)
         }
     }
 
     override fun loadPrevChapter() {
         uiState.readingChapterContent?.onOk { readingChapterContent ->
             if (!readingChapterContent.hasPrevChapter()) return
-            coroutineScope.launch {
-                changeChapter(
-                    id = readingChapterContent.prevChapter ?: return@launch
-                )
-            }
+            changeChapter(readingChapterContent.prevChapter ?: return)
         }
     }
 

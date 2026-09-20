@@ -83,7 +83,8 @@ fun ScrollContentComponent(
     paddingValues: PaddingValues,
     changeIsImmersive: () -> Unit,
     onClickPrevChapter: () -> Unit,
-    onClickNextChapter: () -> Unit
+    onClickNextChapter: () -> Unit,
+    chapterTitle: (String) -> String? = { null },
 ) {
     ScrollContentTextComponent(
         modifier = modifier,
@@ -93,7 +94,8 @@ fun ScrollContentComponent(
         paddingValues = paddingValues,
         changeIsImmersive = changeIsImmersive,
         onClickPrevChapter = onClickPrevChapter,
-        onClickNextChapter = onClickNextChapter
+        onClickNextChapter = onClickNextChapter,
+        chapterTitle = chapterTitle,
     )
 }
 
@@ -106,7 +108,8 @@ fun ScrollContentTextComponent(
     paddingValues: PaddingValues,
     changeIsImmersive: () -> Unit,
     onClickPrevChapter: () -> Unit,
-    onClickNextChapter: () -> Unit
+    onClickNextChapter: () -> Unit,
+    chapterTitle: (String) -> String? = { null },
 ) {
     val snackbarHostState = LocalSnackbarHost.current
     val density = LocalDensity.current
@@ -283,7 +286,8 @@ fun ScrollContentTextComponent(
         ) {
             itemsIndexed(
                 items = uiState.contentList,
-                key = { index, pair -> pair?.first ?: "placeholder-$index" }
+                key = { index, pair -> pair?.first ?: "placeholder-$index" },
+                contentType = { _, pair -> pair?.second?.isOk == true },
             ) { index, pair ->
                 pair?.second.let { result ->
                     uiState.contentList.getOrNull(index + 1)?.second?.get()?.let {
@@ -300,7 +304,9 @@ fun ScrollContentTextComponent(
                             content = it
                         )
                     }?.onErr {
-                        ChapterContentError(it)
+                        ChapterContentError(it, pair?.first?.let(chapterTitle)) {
+                            pair?.first?.let(uiState.retryChapter)
+                        }
                     } ?: ChapterContentLoading()
                 }
             }

@@ -45,7 +45,7 @@ internal class ReaderReadingRecords(
         }
     }
 
-    fun saveProgress(chapterId: String, progress: Float) {
+    fun saveProgress(chapterId: String, progress: Float, isCurrentChapter: () -> Boolean = { true }) {
         val bookId = currentBookId()
         if (progress.isNaN() || progress <= 0f || bookId.isBlank()) return
         val title = currentChapterTitle() ?: return
@@ -69,10 +69,13 @@ internal class ReaderReadingRecords(
                 } else {
                     userReadingData.readingProgress
                 }
+                // A queued save may still update its chapter's history after navigation,
+                // but must not replace the newer resume chapter and title.
+                val current = isCurrentChapter()
                 updatedData.copy(
-                    lastReadTime = currentTime,
-                    lastReadChapterId = chapterId,
-                    lastReadChapterTitle = title,
+                    lastReadTime = if (current) currentTime else userReadingData.lastReadTime,
+                    lastReadChapterId = if (current) chapterId else userReadingData.lastReadChapterId,
+                    lastReadChapterTitle = if (current) title else userReadingData.lastReadChapterTitle,
                     readingProgress = readingProgress,
                 )
             }

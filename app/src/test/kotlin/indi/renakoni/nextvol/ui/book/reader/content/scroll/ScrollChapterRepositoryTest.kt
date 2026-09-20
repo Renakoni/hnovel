@@ -1,0 +1,103 @@
+package indi.renakoni.nextvol.ui.book.reader.content.scroll
+
+import android.app.Application
+import com.github.michaelbull.result.Err
+import com.github.michaelbull.result.Ok
+import indi.renakoni.nextvol.data.book.BookIdentity
+import indi.renakoni.nextvol.data.book.BookRepositoryFixture
+import indi.renakoni.nextvol.data.book.SourceChapterId
+import indi.renakoni.nextvol.ui.book.reader.content.ReaderChapterLoader
+import indi.renakoni.nextvol.ui.book.reader.mode.ModeTestEnvironment
+import io.mockk.coEvery
+import io.mockk.every
+import io.nightfish.lightnovelreader.api.book.ChapterContent
+import io.nightfish.lightnovelreader.api.error.WebRequestError
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.flow.flowOf
+import org.junit.After
+import org.junit.Assert.*
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+
+/** Real finite ChapterRepository flows, controlling only network/storage I/O timing. */
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [27], application = Application::class)
+class ScrollChapterRepositoryTest {
+    private val env = ModeTestEnvironment()
+    private val fixture = BookRepositoryFixture()
+    private val cache = mutableMapOf<String, ChapterContent>()
+    private val settingsGates = ArrayDeque<CompletableDeferred<Unit>>()
+
+    @After fun close() = env.close()
+
+    private fun controller(): ScrollReaderController {
+        coEvery { fixture.local.getChapterContent(any()) } answers { cache[firstArg()] }
+        coEvery { fixture.local.updateChapterContent(any()) } answers {
+            val chapter = firstArg<ChapterContent>()
+            cache[chapter.id] = chapter
+        }
+        every { fixture.text.processChapterContent(any(), any()) } answers { secondArg<() -> ChapterContent>()() }
+        return ScrollReaderController(
+            ReaderChapterLoader(fixture.chapterRepository(), env.renderer), env.records, env.scope,
+            object : ContinuousScrollSettings {
+                override fun getFlow() = flowOf(true)
+                override suspend fun isEnabled(): Boolean { settingsGates.removeFirstOrNull()?.await(); return true }
+            }, { _, _ -> }, env.dispatcher, env.dispatcher,
+        ).also { env.runCurrent(); it.changeBookId("book") }
+    }
+
+    private fun key(id: String) = BookIdentity.chapter(id, BookIdentity.book("book")).storageKey
+    private fun remote(id: String) = env.chapter(id, next = if (id == "3") "4" else null)
+    private fun occupied(mode: ScrollReaderController) = mode.uiState.contentList.mapNotNull {
+        it?.first?.let { id -> SourceChapterId.fromStorageKey(id).remoteId }
+    }
+
+    @Test fun inFlightAdjacentFailureCannotCreateDuplicateKeysWithRealRepositoryFlow() {
+        val adjacentGate = CompletableDeferred<Unit>()
+        var fourthRequests = 0
+        coEvery { fixture.remote.getChapterContent("3", "book", any()) } returns Ok(remote("3"))
+        coEvery { fixture.remote.getChapterContent("4", "book", any()) } coAnswers {
+            fourthRequests++
+            // First request: preload; second: adjacent collector; third: explicit open.
+            if (fourthRequests == 2) adjacentGate.await()
+            Err(WebRequestError("offline", "network failed"))
+        }
+        val mode = controller()
+        mode.changeChapter(key("3")); env.runCurrent()
+        assertEquals(2, fourthRequests)
+        mode.changeChapter(key("4")); env.runCurrent()
+        assertEquals(listOf("4"), occupied(mode))
+        adjacentGate.complete(Unit); env.runCurrent()
+        assertEquals(3, fourthRequests)
+        assertEquals(listOf("4"), occupied(mode))
+    }
+
+    @Test fun alreadyCompletedAdjacentFailureDoesNotReappearAfterExplicitOpen() {
+        coEvery { fixture.remote.getChapterContent("3", "book", any()) } returns Ok(remote("3"))
+        coEvery { fixture.remote.getChapterContent("4", "book", any()) } returns Err(WebRequestError("offline", "network failed"))
+        val mode = controller()
+        mode.changeChapter(key("3")); env.runCurrent()
+        assertEquals(listOf("3", "4"), occupied(mode))
+        mode.changeChapter(key("4")); env.runCurrent()
+        assertEquals(listOf("4"), occupied(mode))
+    }
+
+    @Test fun realCachedThenRemoteRefreshCannotPublishDuringSettingsRead() {
+        val refreshGate = CompletableDeferred<Unit>()
+        val settingsGate = CompletableDeferred<Unit>()
+        cache[key("3")] = remote("3").copy(id = key("3"), nextChapter = key("4"))
+        coEvery { fixture.remote.getChapterContent("3", "book", any()) } coAnswers { refreshGate.await(); Ok(remote("3")) }
+        coEvery { fixture.remote.getChapterContent("4", "book", any()) } returns Err(WebRequestError("offline", "network failed"))
+        val mode = controller()
+        mode.changeChapter(key("3")); env.runCurrent()
+        settingsGates += settingsGate
+        mode.changeChapter(key("4")); env.runCurrent()
+        refreshGate.complete(Unit); env.runCurrent()
+        assertEquals(key("4"), mode.requestedChapterId)
+        assertNull(mode.uiState.contentList[1])
+        assertEquals(key("3"), env.records.data.lastReadChapterId)
+        settingsGate.complete(Unit); env.runCurrent()
+    }
+}

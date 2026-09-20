@@ -4,6 +4,7 @@ import androidx.annotation.MainThread
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.github.michaelbull.result.getOrElse
+import com.github.michaelbull.result.get
 import com.github.michaelbull.result.map
 import dagger.hilt.android.lifecycle.HiltViewModel
 import indi.renakoni.nextvol.data.book.BookReadingDataAccess
@@ -134,8 +135,16 @@ class ReaderViewModel @Inject constructor(
         return displayedChapterId ?: lastModeChapterId ?: chapterId
     }
 
-    private fun saveReadingProgress(chapterId: String, progress: Float) =
-        readingRecords.saveProgress(chapterId, progress)
+    private fun saveReadingProgress(chapterId: String, progress: Float) {
+        val content = _uiState.contentUiState ?: return
+        val chapter = content.readingChapterContent?.get() ?: return
+        if (content.readingChapterId != chapterId) return
+        val book = content.bookId
+        readingRecords.saveProgress(chapterId, progress) {
+            _uiState.contentUiState === content && content.bookId == book &&
+                content.readingChapterId == chapterId && content.readingChapterContent?.get() === chapter
+        }
+    }
 
     fun updateTotalReadingTime(bookId: String, totalReadingTime: Int) =
         readingRecords.updateTotalReadingTime(bookId, totalReadingTime)
