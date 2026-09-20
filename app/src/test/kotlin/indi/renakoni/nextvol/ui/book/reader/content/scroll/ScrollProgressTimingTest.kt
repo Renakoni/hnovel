@@ -28,9 +28,10 @@ class ScrollProgressTimingTest {
     private val offset = mutableIntStateOf(0)
     private val scrolling = mutableStateOf(true)
     private val readable = mutableStateOf(true)
+    private val chapterId = mutableStateOf("chapter")
     private val writes = mutableListOf<Pair<String, Float>>()
     private val item = mockk<LazyListItemInfo> {
-        every { key } returns "chapter"
+        every { key } answers { chapterId.value }
         every { size } returns 1000
         every { contentType } answers { readable.value }
         every { offset } answers { -this@ScrollProgressTimingTest.offset.intValue }
@@ -92,6 +93,31 @@ class ScrollProgressTimingTest {
         now = time
         offset.intValue = pixels
         env.runCurrent()
+    }
+
+    @Test
+    fun promotedChapterAtRestSavesEvenWhenItsProgressAlreadyMatchesTheDisplay() {
+        scrolling.value = false
+        progress.start()
+        env.runCurrent()
+        writes.clear()
+        now += 3_000
+        chapterId.value = "next"
+        offset.intValue = 400
+        uiState.contentList[1] = "next" to Ok(ChapterContentUiState("next", "Next", emptyList(), null, null))
+        uiState.readingChapterId = "next"
+        uiState.readingProgress = 0.5f
+        env.runCurrent()
+        assertEquals(listOf("next" to 0.5f), writes)
+    }
+
+    @Test
+    fun explicitStopSamplesTheViewportBeforeTheThrottledObserverRuns() {
+        progress.start()
+        env.runCurrent()
+        offset.intValue = 400
+        progress.writeProgressRightNow()
+        assertEquals("chapter" to 0.5f, writes.last())
     }
 
     @Test

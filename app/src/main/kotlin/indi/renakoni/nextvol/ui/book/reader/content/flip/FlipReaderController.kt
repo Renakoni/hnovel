@@ -33,7 +33,7 @@ class FlipReaderController(
     override val requestedChapterId: String? get() = latestRequestedChapterId
 
     override val uiState: MutableFlipPageContentUiState = MutableFlipPageContentUiState(
-        loadPrevChapter = ::loadPrevChapter,
+        loadPrevChapter = { loadAdjacent(previous = true, entry = ChapterEntry.End) },
         loadNextChapter = ::loadNextChapter,
         changeChapter = ::changeChapter,
         updatePageState = ::updatePagerState,
@@ -70,15 +70,15 @@ class FlipReaderController(
         uiState.pagerState = PagerState { 0 }
     }
 
-    override fun loadNextChapter() = loadAdjacent(ChapterEntry.Start)
-    override fun loadPrevChapter() = loadAdjacent(ChapterEntry.End)
+    override fun loadNextChapter() = loadAdjacent(previous = false, entry = ChapterEntry.Start)
+    override fun loadPrevChapter() = loadAdjacent(previous = true, entry = ChapterEntry.Start)
 
-    private fun loadAdjacent(entry: ChapterEntry) {
+    private fun loadAdjacent(previous: Boolean, entry: ChapterEntry) {
         val content = uiState.readingChapterContent?.get() ?: return
-        val id = (if (entry == ChapterEntry.Start) content.nextChapter else content.prevChapter) ?: return
+        val id = (if (previous) content.prevChapter else content.nextChapter) ?: return
         if (id == uiState.readingChapterId) return
         val pending = uiState.pendingChapter
-        if (pending?.chapterId == id && pending.result?.isErr != true) return
+        if (pending?.chapterId == id && pending.entry == entry && pending.result?.isErr != true) return
         loadChapter(id, entry)
     }
 

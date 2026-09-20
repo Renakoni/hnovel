@@ -5,7 +5,6 @@ import com.github.michaelbull.result.get
 import indi.renakoni.nextvol.utils.throttleLatest
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 
@@ -22,7 +21,7 @@ internal class ScrollReadingProgress(
 
     fun start() {
         coroutineScope.launch(mainDispatcher) {
-            snapshotFlow { measuredPosition() }
+            snapshotFlow { if (uiState.lazyListState.isScrollInProgress) measuredPosition() else null }
                 .filterNotNull()
                 .throttleLatest(120L, currentTimeMillis)
                 .collect { position ->
@@ -32,9 +31,7 @@ internal class ScrollReadingProgress(
                     uiState.readingProgress = newProgress
 
                     val now = currentTimeMillis()
-                    val scrolling = uiState.lazyListState.isScrollInProgress
-
-                    if (scrolling && now - lastWriteReadingProgress < 2500 && newProgress < 1f) return@collect
+                    if (now - lastWriteReadingProgress < 2500 && newProgress < 1f) return@collect
                     lastWriteReadingProgress = now
 
                     updateReadingProgress(chapterId, newProgress)
@@ -42,26 +39,26 @@ internal class ScrollReadingProgress(
         }
 
         coroutineScope.launch(mainDispatcher) {
-            snapshotFlow { uiState.lazyListState.isScrollInProgress }
-                .distinctUntilChanged()
-                .collect { scrolling ->
-                    if (!scrolling) {
-                        val (chapterId, offset, size) = measuredPosition() ?: return@collect
-                        val finalProgress = calculateReadingProgress(offset, size)
+            // A restored/promoted chapter can be measured after scrolling has already stopped.
+            snapshotFlow { if (uiState.lazyListState.isScrollInProgress) null else measuredPosition() }
+                .filterNotNull()
+                .collect { (chapterId, offset, size) ->
+                    val finalProgress = calculateReadingProgress(offset, size)
 
-                        if (uiState.readingProgress != finalProgress) {
-                            uiState.readingProgress = finalProgress
-                        }
-                        updateReadingProgress(chapterId, finalProgress)
-                        lastWriteReadingProgress = currentTimeMillis()
+                    if (uiState.readingProgress != finalProgress) {
+                        uiState.readingProgress = finalProgress
                     }
+                    updateReadingProgress(chapterId, finalProgress)
+                    lastWriteReadingProgress = currentTimeMillis()
                 }
         }
     }
 
     fun writeProgressRightNow() {
-        if (uiState.isRestoringProgress || uiState.readingChapterContent?.get() == null) return
-        updateReadingProgress(uiState.readingChapterId ?: return, uiState.readingProgress)
+        val (chapterId, offset, size) = measuredPosition() ?: return
+        val finalProgress = calculateReadingProgress(offset, size)
+        uiState.readingProgress = finalProgress
+        updateReadingProgress(chapterId, finalProgress)
     }
 
     private fun measuredPosition(): Triple<String, Int, Int>? {

@@ -465,6 +465,23 @@ class ReaderReadingRecordsTest {
     }
 
     @Test
+    fun progressPreservesEventOrderWhenTheIoDispatcherStartsTheNewerSaveFirst() {
+        val pending = ArrayDeque<Runnable>()
+        val reverseDispatcher = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) { pending.addLast(block) }
+        }
+        val reverseRecords = ReaderReadingRecords(
+            store, scope, statisticsScope, { bookId }, { title }, { chapters },
+            ioDispatcher = reverseDispatcher,
+        )
+        reverseRecords.saveProgress("chapter", 0.1f)
+        reverseRecords.saveProgress("chapter", 0.5f)
+        while (pending.isNotEmpty()) pending.removeLast().run()
+        assertEquals(0.5f, store.data.getValue("book").currentChapterReadingProgressMap["chapter"])
+        assertEquals(0.5f, store.data.getValue("book").maxChapterReadingProgressMap["chapter"])
+    }
+
+    @Test
     fun totalReadingTimeDeltasAreSerializedAroundReadModifyWrite() {
         val gate = CompletableDeferred<Unit>()
         store.updateGate = gate

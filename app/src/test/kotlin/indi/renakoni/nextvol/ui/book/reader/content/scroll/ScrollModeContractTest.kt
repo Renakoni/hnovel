@@ -179,6 +179,7 @@ class ScrollModeContractTest {
         val oldNext = mode.uiState.contentList[2]
         val viewport = Viewport()
         mode.uiState.lazyListState = viewport.state
+        mode.uiState.onProgressRestored(viewport.state)
         env.runCurrent()
         viewport.items.value = listOf(item("next", 0, 500))
         env.runCurrent()
@@ -201,6 +202,7 @@ class ScrollModeContractTest {
         mode.uiState.setLazyColumnSize(IntSize(100, 200))
         val viewport = Viewport()
         mode.uiState.lazyListState = viewport.state
+        mode.uiState.onProgressRestored(viewport.state)
         env.runCurrent()
         viewport.items.value = listOf(item("prev", -199, 500))
         env.runCurrent()
@@ -218,6 +220,7 @@ class ScrollModeContractTest {
         env.emit("next", Err(WebRequestError("Offline", "Retry after connecting")))
         val viewport = Viewport()
         mode.uiState.lazyListState = viewport.state
+        mode.uiState.onProgressRestored(viewport.state)
         mode.uiState.setLazyColumnSize(IntSize(100, 200))
         viewport.items.value = listOf(item("next", 0, 200, readable = false))
         env.runCurrent()
@@ -327,6 +330,73 @@ class ScrollModeContractTest {
         assertEquals(listOf("requested" to 1f), progress)
         env.close()
         assertEquals(listOf("requested" to 1f), progress)
+    }
+
+    @Test
+    fun adjacentLayoutCannotChangeTheResumeChapterWhileHistoryIsBeingRestored() {
+        env.records.data = env.records.data.copy(currentChapterReadingProgressMap = mapOf("current" to 0.5f))
+        open(continuousScrolling = true, id = "current")
+        env.emit("current", Ok(env.chapter("current", "prev", "next")))
+        env.emit("prev", Ok(env.chapter("prev", "earlier", "current")))
+        mode.uiState.setLazyColumnSize(IntSize(100, 200))
+        val viewport = Viewport()
+        mode.uiState.lazyListState = viewport.state
+        viewport.items.value = listOf(item("prev", -200, 1000))
+        env.runCurrent()
+        assertTrue(mode.uiState.isRestoringProgress)
+        assertEquals("current", mode.uiState.readingChapterId)
+        assertEquals(0.5f, mode.uiState.readingProgress)
+        assertEquals("current", env.records.data.lastReadChapterId)
+    }
+
+    @Test
+    fun aChapterPromotedAfterScrollingStopsStillReportsItsMeasuredPosition() {
+        open(continuousScrolling = true, id = "current")
+        env.emit("current", Ok(env.chapter("current", next = "next")))
+        mode.uiState.setLazyColumnSize(IntSize(100, 200))
+        val viewport = Viewport()
+        mode.uiState.lazyListState = viewport.state
+        mode.uiState.onProgressRestored(viewport.state)
+        viewport.items.value = listOf(item("next", -300, 1000))
+        env.runCurrent()
+        assertEquals("current", mode.uiState.readingChapterId)
+        env.emit("next", Ok(env.chapter("next", prev = "current")))
+        // Publish the promotion's snapshot, then deliver it to the progress observer.
+        env.runCurrent()
+        env.runCurrent()
+        assertEquals("next", mode.uiState.readingChapterId)
+        assertEquals("next" to 0.5f, progress.last())
+    }
+
+    @Test
+    fun retryingManualNextKeepsTheChapterStartInsteadOfItsOldHistory() {
+        env.records.data = env.records.data.copy(currentChapterReadingProgressMap = mapOf("next" to 0.8f))
+        open()
+        env.emit("requested", Ok(env.chapter("requested", next = "next")))
+        mode.loadNextChapter()
+        env.runCurrent()
+        env.emit("next", Err(WebRequestError("offline", "retry")))
+        mode.uiState.retryChapter("next")
+        env.runCurrent()
+        env.emit("next", Ok(env.chapter("next")))
+        assertEquals("next", mode.uiState.readingChapterId)
+        assertEquals(0f, mode.uiState.readingProgress)
+    }
+
+    @Test
+    fun retryAfterCachedBodyFailsBeforeLayoutStillEntersAtTheRequestedStart() {
+        env.records.data = env.records.data.copy(currentChapterReadingProgressMap = mapOf("prev" to 1f))
+        open()
+        env.emit("requested", Ok(env.chapter("requested", prev = "prev")))
+        mode.loadPrevChapter()
+        env.runCurrent()
+        env.emit("prev", Ok(env.chapter("prev")))
+        assertTrue(mode.uiState.isRestoringProgress)
+        env.emit("prev", Err(WebRequestError("offline", "refresh failed")))
+        mode.uiState.retryChapter("prev")
+        env.runCurrent()
+        env.emit("prev", Ok(env.chapter("prev")))
+        assertEquals(0f, mode.uiState.readingProgress)
     }
 
     private class Viewport {
