@@ -69,6 +69,7 @@ import indi.renakoni.nextvol.ui.LocalLightColorScheme
 import indi.renakoni.nextvol.ui.book.reader.ReaderSettingsEditor
 import indi.renakoni.nextvol.ui.book.reader.ReaderPaper
 import indi.renakoni.nextvol.ui.book.reader.ReaderPaperSelector
+import indi.renakoni.nextvol.ui.book.reader.ReaderMotionSwitch
 import indi.renakoni.nextvol.ui.book.reader.ReaderFontEntry
 import indi.renakoni.nextvol.ui.book.reader.ReaderLayoutPreview
 import indi.renakoni.nextvol.ui.book.reader.ReaderLayoutSettings
@@ -292,6 +293,7 @@ fun ReaderThemeSettingsList(
         title = stringResource(R.string.paper_settings),
     ) {
         ReaderPaperSelector(settingState)
+        ReaderMotionSwitch(settingState, Modifier.background(colorScheme.surfaceContainer))
         if (ReaderPaper.fromId(settingState.paperId) != ReaderPaper.Default) return@SettingsCategory
         val context = LocalContext.current
         val snackbarHostState = LocalSnackbarHost.current

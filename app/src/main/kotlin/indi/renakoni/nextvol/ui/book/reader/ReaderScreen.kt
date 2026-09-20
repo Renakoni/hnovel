@@ -7,7 +7,13 @@ import android.os.BatteryManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.expandIn
 import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
@@ -114,7 +120,8 @@ fun ReaderScreen(
     onSpeechCommand: (SpeechAction) -> Unit,
     onSpeechSettings: () -> Unit,
     onSleepTimer: (Int?) -> Unit,
-) = ReaderPaperTheme(settingState, manageSystemBars = true) {
+) = ReaderMotionTheme(settingState.reduceMotion) {
+    ReaderPaperTheme(settingState, manageSystemBars = true) {
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
     var isImmersive by remember { mutableStateOf(true) }
     val context = LocalContext.current
@@ -264,7 +271,10 @@ fun ReaderScreen(
             onSleepTimer = onSleepTimer,
         )
     }
-    AnimatedVisibility(visible = showSettingsBottomSheet) {
+    AnimatedVisibility(visible = showSettingsBottomSheet,
+        enter = if (settingState.reduceMotion) EnterTransition.None else fadeIn() + expandIn(),
+        exit = if (settingState.reduceMotion) ExitTransition.None else shrinkOut() + fadeOut(),
+    ) {
         SettingsBottomSheet(
             sheetState = settingsBottomSheetState,
             onDismissRequest = {
@@ -280,7 +290,10 @@ fun ReaderScreen(
         )
     }
 
-    AnimatedVisibility(visible = showChapterSelectionBottomSheet) {
+    AnimatedVisibility(visible = showChapterSelectionBottomSheet,
+        enter = if (settingState.reduceMotion) EnterTransition.None else fadeIn() + expandIn(),
+        exit = if (settingState.reduceMotion) ExitTransition.None else shrinkOut() + fadeOut(),
+    ) {
         readingScreenUiState.contentUiState?.let { contentUiState ->
             readingScreenUiState.bookVolumes?.onOk { bookVolumes ->
                 contentUiState.readingChapterId?.let { readingChapterId ->
@@ -329,6 +342,7 @@ fun ReaderScreen(
             }
         }
     }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -353,6 +367,7 @@ fun Content(
         Box(Modifier.fillMaxSize()) {
             AnimatedContent(
                 readingScreenUiState.contentUiState,
+                transitionSpec = { readerContentTransform(settingState.reduceMotion) },
                 label = "ContentAnimate"
             ) { contentUiState ->
                 // Controls cover the reading viewport; outgoing animated modes must release input.
@@ -374,8 +389,8 @@ fun Content(
             AnimatedVisibility(
                 modifier = Modifier.align(Alignment.BottomCenter),
                 visible = isEnableIndicator,
-                enter = expandVertically(),
-                exit = shrinkVertically()
+                enter = if (settingState.reduceMotion) EnterTransition.None else expandVertically(),
+                exit = if (settingState.reduceMotion) ExitTransition.None else shrinkVertically()
             ) {
                 Indicator(
                     Modifier
@@ -423,7 +438,8 @@ internal fun ReaderTopBar(
             }
         },
         title = {
-            AnimatedContent(title, label = "TitleAnimate") { text ->
+            val reducedMotion = LocalReduceReaderMotion.current
+            AnimatedContent(title, transitionSpec = { readerContentTransform(reducedMotion) }, label = "TitleAnimate") { text ->
                 Text(
                     text = text,
                     style = typography.displayLarge,
@@ -574,6 +590,7 @@ fun Indicator(
                 val batteryManager = LocalContext.current.getSystemService(BATTERY_SERVICE) as BatteryManager
                 val batLevel: Int = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
                 RollingNumber(
+                    animationEnabled = !LocalReduceReaderMotion.current,
                     modifier = Modifier.align(Alignment.CenterVertically),
                     number = batLevel,
                     style = typography.bodyLarge,
@@ -606,6 +623,7 @@ fun Indicator(
             }
             if (enableTimeIndicator) {
                 AnimatedText(
+                    animationEnabled = !LocalReduceReaderMotion.current,
                     modifier = Modifier.align(Alignment.CenterVertically),
                     text = String.format(Locale.US, "%d:%02d", LocalTime.now().hour, LocalTime.now().minute),
                     style = typography.bodyLarge.copy(
@@ -624,6 +642,7 @@ fun Indicator(
         ) {
             if (enableChapterTitle) {
                 AnimatedTextLine(
+                    animationEnabled = !LocalReduceReaderMotion.current,
                     modifier = Modifier.fillMaxWidth(),
                     text = chapterTitle,
                     textAlign = TextAlign.End,
@@ -640,6 +659,7 @@ fun Indicator(
         ) {
             if (enableReadingChapterProgressIndicator) {
                 RollingNumber(
+                    animationEnabled = !LocalReduceReaderMotion.current,
                     modifier = Modifier.align(Alignment.CenterVertically),
                     number = (readingChapterProgress * 100).toInt(),
                     style = typography.bodyLarge.copy(

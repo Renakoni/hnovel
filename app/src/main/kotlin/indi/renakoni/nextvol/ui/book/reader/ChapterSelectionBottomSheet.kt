@@ -145,7 +145,8 @@ fun ChapterSelectionBottomSheet(
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .animateContentSize(animationSpec = tween(durationMillis = 200))
+                                    .then(if (LocalReduceReaderMotion.current) Modifier
+                                        else Modifier.animateContentSize(animationSpec = tween(durationMillis = 200)))
                             ) {
                                 Box(
                                     modifier = Modifier

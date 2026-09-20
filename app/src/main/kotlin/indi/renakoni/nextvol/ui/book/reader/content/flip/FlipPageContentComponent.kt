@@ -37,11 +37,13 @@ import com.github.michaelbull.result.onErr
 import com.github.michaelbull.result.onOk
 import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.ui.book.reader.ReaderSettings
+import indi.renakoni.nextvol.ui.book.reader.animatePageTurns
 import indi.renakoni.nextvol.ui.book.reader.LocalReaderTextLayout
 import indi.renakoni.nextvol.ui.book.reader.content.ChapterContentError
 import indi.renakoni.nextvol.ui.book.reader.content.ChapterContentLoading
 import indi.renakoni.nextvol.ui.book.reader.content.ChapterContentUiState
 import indi.renakoni.nextvol.ui.book.reader.content.readerTapGestures
+import indi.renakoni.nextvol.ui.book.reader.content.readerPageSwipe
 import indi.renakoni.nextvol.ui.book.reader.content.ReaderVolumeDirection
 import indi.renakoni.nextvol.ui.book.reader.content.readerVolumeKeys
 import indi.renakoni.nextvol.ui.home.settings.data.MenuOptions
@@ -178,7 +180,7 @@ private fun SimpleFlipPageTextComponent(
     val previousChapterText = stringResource(R.string.previous_chapter)
     suspend fun lastPage(pagerState: PagerState) {
         if (pagerState.currentPage != 0) {
-            if (settingState.flipAnime != MenuOptions.FlipAnimationOptions.None) {
+            if (settingState.animatePageTurns) {
                 pagerState.animateScrollToPage(pagerState.currentPage - 1)
             } else {
                 pagerState.scrollToPage(pagerState.currentPage - 1)
@@ -206,7 +208,7 @@ private fun SimpleFlipPageTextComponent(
 
     suspend fun nextPage(pagerState: PagerState) {
         if (pagerState.currentPage + 1 < pagerState.pageCount) {
-            if (settingState.flipAnime != MenuOptions.FlipAnimationOptions.None) {
+            if (settingState.animatePageTurns) {
                 pagerState.animateScrollToPage(pagerState.currentPage + 1)
             } else {
                 pagerState.scrollToPage(pagerState.currentPage + 1)
@@ -244,7 +246,13 @@ private fun SimpleFlipPageTextComponent(
         HorizontalPager(
             state = uiState.pagerState,
             key = { it },
+            userScrollEnabled = settingState.animatePageTurns,
             modifier = modifier
+                .readerPageSwipe(enabled = !settingState.animatePageTurns) { forward ->
+                    scope.launch {
+                        if (forward) nextPage(uiState.pagerState) else lastPage(uiState.pagerState)
+                    }
+                }
                 .readerVolumeKeys(
                     enabled = settingState.isUsingVolumeKeyFlip && settingState.isUsingFlipPage &&
                         slippedContentComponentList.isNotEmpty(),

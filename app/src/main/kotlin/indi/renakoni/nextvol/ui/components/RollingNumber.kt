@@ -11,6 +11,9 @@
 package indi.renakoni.nextvol.ui.components
 
 import androidx.compose.animation.core.animateOffset
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.VisibilityThreshold
 import androidx.compose.animation.core.updateTransition
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -121,6 +124,7 @@ fun RollingNumber(
     style: TextStyle = LocalTextStyle.current,
     separator: Boolean = false,
     length: Int? = null,
+    animationEnabled: Boolean = true,
 ) {
     val isNegative = number < 0
     val textColor = color.takeOrElse { style.color.takeOrElse { LocalContentColor.current } }
@@ -140,7 +144,9 @@ fun RollingNumber(
     ) {
         val max = with(transition) { max(currentState.length, targetState.length) }
         items(max, key = { it }) { reversed ->
-            val rotate by transition.animateOffset { str ->
+            val rotate by transition.animateOffset(transitionSpec = {
+                if (animationEnabled) spring(visibilityThreshold = Offset.VisibilityThreshold) else snap()
+            }) { str ->
                 val len = str.length
                 val absent = max - len
                 val where = max - reversed - 1
@@ -156,7 +162,7 @@ fun RollingNumber(
                 )
             }
             Column(
-                modifier = Modifier.animateItem().offset {
+                modifier = Modifier.then(if (animationEnabled) Modifier.animateItem() else Modifier).offset {
                     val number = intermediateToNumberOffset(rotate)
                     numberOffsetToUIOffset(size.height.roundToPx(), number)
                 },
@@ -182,7 +188,7 @@ fun RollingNumber(
             item(key = -1) {
                 Text(
                     text = "-",
-                    modifier = Modifier.size(size).animateItem(),
+                    modifier = Modifier.size(size).then(if (animationEnabled) Modifier.animateItem() else Modifier),
                     style = styleNoSpacing,
                     textAlign = TextAlign.Center,
                 )

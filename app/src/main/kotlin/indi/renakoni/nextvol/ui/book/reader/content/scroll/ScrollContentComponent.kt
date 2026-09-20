@@ -3,6 +3,8 @@
 package indi.renakoni.nextvol.ui.book.reader.content.scroll
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
@@ -245,15 +247,15 @@ fun ScrollContentTextComponent(
     }
     AnimatedVisibility(
         uiState.contentList.getOrNull(1) == null,
-        enter = fadeIn(),
-        exit = fadeOut()
+        enter = if (settingState.reduceMotion) EnterTransition.None else fadeIn(),
+        exit = if (settingState.reduceMotion) ExitTransition.None else fadeOut()
     ) {
         Loading()
     }
     AnimatedVisibility(
         uiState.contentList.getOrNull(1) != null,
-        enter = fadeIn(),
-        exit = fadeOut()
+        enter = if (settingState.reduceMotion) EnterTransition.None else fadeIn(),
+        exit = if (settingState.reduceMotion) ExitTransition.None else fadeOut()
     ) {
         LazyColumn(
             modifier = modifier
