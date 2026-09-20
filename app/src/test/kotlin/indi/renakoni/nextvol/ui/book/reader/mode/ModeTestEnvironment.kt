@@ -102,6 +102,14 @@ internal class ModeTestEnvironment {
     }
 
     class Records(private val events: MutableList<String>) : BookReadingDataAccess {
+        override fun progressRevision(): Long = 0L
+        override suspend fun updateChapterProgress(
+            bookId: String, chapterId: String, revision: Long,
+            update: (UserReadingData) -> UserReadingData,
+        ): Boolean {
+            updateUserReadingData(bookId, update)
+            return true
+        }
         var data = UserReadingData("book")
         val writes = mutableListOf<UserReadingData>()
         var readGate: CompletableDeferred<Unit>? = null

@@ -3,6 +3,11 @@ package indi.renakoni.nextvol.data.book
 import indi.renakoni.nextvol.data.local.LocalBookDataSource
 import io.nightfish.lightnovelreader.api.book.UserReadingData
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -10,6 +15,50 @@ import javax.inject.Singleton
 class BookReadingDataRepository @Inject constructor(
     private val localBookDataSource: LocalBookDataSource,
 ) : BookReadingDataAccess {
+    private val progressMutex = Mutex()
+    private val revision = AtomicLong()
+    // Source-qualified chapter keys keep resets independent across books and sources.
+    private val chapterResetRevisions = mutableMapOf<String, Long>()
+
+    override fun progressRevision(): Long = revision.get()
+
+    override suspend fun updateChapterProgress(
+        bookId: String, chapterId: String, revision: Long,
+        update: (UserReadingData) -> UserReadingData,
+    ): Boolean = progressMutex.withLock {
+        val chapter = BookIdentity.chapter(chapterId, BookIdentity.book(bookId)).storageKey
+        if ((chapterResetRevisions[chapter] ?: 0L) > revision) return@withLock false
+        localBookDataSource.updateUserReadingData(bookId, update)
+        true
+    }
+
+    suspend fun markChaptersUnread(bookId: String, chapterIds: Set<String>, catalogIds: Set<String>) {
+        val book = BookIdentity.book(bookId)
+        val catalog = catalogIds.mapTo(mutableSetOf()) { BookIdentity.chapter(it, book).storageKey }
+        val selected = chapterIds.mapTo(mutableSetOf()) { BookIdentity.chapter(it, book).storageKey }
+            .intersect(catalog)
+        if (selected.isEmpty()) return
+        progressMutex.withLock {
+            // A page recreation must not interrupt publication after SQLite commits.
+            withContext(NonCancellable) {
+                localBookDataSource.updateUserReadingData(book.storageKey) { data ->
+                    val maximum = data.maxChapterReadingProgressMap - selected
+                    data.copy(
+                        currentChapterReadingProgressMap = data.currentChapterReadingProgressMap - selected,
+                        maxChapterReadingProgressMap = maximum,
+                        readingProgress = catalog.sumOf { id ->
+                            (maximum[id] ?: 0f).takeIf { it.isFinite() }?.coerceIn(0f, 1f)?.toDouble() ?: 0.0
+                        }.div(catalog.size).toFloat(),
+                    )
+                }
+                // Only selected chapters reject old queued saves; unrelated resume updates remain valid.
+                val nextRevision = revision.get() + 1
+                selected.forEach { chapterResetRevisions[it] = nextRevision }
+                revision.set(nextRevision)
+            }
+        }
+    }
+
     override suspend fun getUserReadingData(bookId: String): UserReadingData =
         localBookDataSource.getUserReadingData(bookId)
 

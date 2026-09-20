@@ -24,6 +24,8 @@ internal class ReaderReadingRecords(
     private val now: () -> LocalDateTime = LocalDateTime::now,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
+    // Capture once per reader entry, including callbacks first delivered after a reset.
+    private val progressRevision = store.progressRevision()
     private val totalReadingTimeMutex = Mutex()
     private val accumulatedReadingTimeLock = Any()
     private var accumulatedReadingTimeJob: Job? = null
@@ -59,7 +61,7 @@ internal class ReaderReadingRecords(
                 0
             }
 
-            store.updateUserReadingData(bookId) { userReadingData ->
+            val saved = store.updateChapterProgress(bookId, chapterId, progressRevision) { userReadingData ->
                 Log.v("ReaderViewModel", "$bookId/$chapterId Saving progress $progress. ($title)")
                 val updatedData = userReadingData.copyWithUpdatedChapterReadingProgress(chapterId, progress)
                 val readingProgress = if (total > 0) {
@@ -74,6 +76,7 @@ internal class ReaderReadingRecords(
                     readingProgress = readingProgress,
                 )
             }
+            if (!saved) return@launch
             val readingData = store.getUserReadingData(bookId)
             if (readingData.readingProgress >= 1f) {
                 store.markBookFinished(bookId)

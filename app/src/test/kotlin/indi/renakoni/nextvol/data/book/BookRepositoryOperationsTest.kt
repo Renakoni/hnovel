@@ -129,7 +129,7 @@ class BookRepositoryOperationsTest {
             val infos = MutableStateFlow(listOf(old))
             every { env.workManager.getWorkInfosForUniqueWorkFlow(name) } returns infos
             val observed = if (export) {
-                DetailViewModel(env.repository(), mockk(), mockk(), env.workManager)
+                DetailViewModel(env.repository(), mockk(), mockk(), env.workManager, mockk())
                     // This test starts at an enabled export action; capability gating has its own tests.
                     .apply { (uiState as indi.renakoni.nextvol.ui.book.detail.MutableDetailUiState).readingAvailable = true }
                     .exportToEpub(Uri.parse("content://exports/new.epub"), book.storageKey, "Title")

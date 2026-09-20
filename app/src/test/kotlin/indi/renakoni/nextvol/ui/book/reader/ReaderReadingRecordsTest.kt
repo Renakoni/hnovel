@@ -48,6 +48,17 @@ class ReaderReadingRecordsTest {
         ioDispatcher = dispatcher,
     )
 
+    @Test
+    fun lateProgressKeepsTheOriginalSessionRevisionAndDoesNotMarkARejectedSaveFinished() {
+        store.revision = 1L
+        store.rejectProgress = true
+        records.saveProgress("chapter", 1f)
+        scheduler.runCurrent()
+        assertEquals(listOf(0L), store.progressRevisions)
+        assertTrue(store.writes.isEmpty())
+        assertFalse(store.events.any { it.startsWith("finished:") })
+    }
+
     @After
     fun tearDown() {
         scope.cancel()
@@ -465,6 +476,19 @@ class ReaderReadingRecordsTest {
     }
 
     private class RecordingStore : ReaderRecordStore {
+        var revision = 0L
+        var rejectProgress = false
+        val progressRevisions = mutableListOf<Long>()
+        override fun progressRevision(): Long = revision
+        override suspend fun updateChapterProgress(
+            bookId: String, chapterId: String, revision: Long,
+            update: (UserReadingData) -> UserReadingData,
+        ): Boolean {
+            progressRevisions += revision
+            if (rejectProgress) return false
+            updateUserReadingData(bookId, update)
+            return true
+        }
         val data = mutableMapOf("book" to UserReadingData("book"))
         val events = mutableListOf<String>()
         val writes = mutableListOf<UserReadingData>()

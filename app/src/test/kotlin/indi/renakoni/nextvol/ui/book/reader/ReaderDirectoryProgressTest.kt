@@ -77,10 +77,11 @@ class ReaderDirectoryProgressTest {
         val data = AtomicReference(UserReadingData("book", readingProgress = 0.4f))
         val writes = Channel<UserReadingData>(Channel.UNLIMITED)
         val readingData = mockk<BookReadingDataAccess>(relaxed = true)
-        coEvery { readingData.updateUserReadingData("book", any()) } coAnswers {
-            val updated = secondArg<(UserReadingData) -> UserReadingData>()(data.get())
+        coEvery { readingData.updateChapterProgress("book", any(), any(), any()) } coAnswers {
+            val updated = arg<(UserReadingData) -> UserReadingData>(3)(data.get())
             data.set(updated)
             writes.send(updated)
+            true
         }
         coEvery { readingData.getUserReadingData("book") } answers { data.get() }
         val saveProgress = slot<(String, Float) -> Unit>()

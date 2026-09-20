@@ -41,6 +41,12 @@
     <string name="switch_and_restart">Сменить и перезапустить</string>
     <string name="hide_read">Скрыть прочитанное</string>
     <string name="mark_as_read">Отметить как прочитанное…</string>
+    <string name="mark_as_unread">Отметить как непрочитанное…</string>
+    <string name="mark_unread_action">Отметить непрочитанным</string>
+    <string name="chapters_selected">Выбрано: %1$d</string>
+    <string name="deselect_all">Снять выбор</string>
+    <string name="mark_unread_confirmation">Сбросить прогресс выбранных глав (%1$d)?</string>
+    <string name="mark_unread_failed">Не удалось обновить прогресс чтения. Повторите попытку.</string>
     <string name="export_epub">Export as Epub</string>
     <string name="export_include_images">Include images</string>
     <string name="export_split_volumes">Export by volumes</string>

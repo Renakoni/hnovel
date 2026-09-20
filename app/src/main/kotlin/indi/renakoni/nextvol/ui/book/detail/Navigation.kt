@@ -85,6 +85,7 @@ fun NavGraphBuilder.bookDetailDestination() {
         DetailScreen(
             uiState = viewModel.uiState,
             onRetry = viewModel::retryInformation,
+            onMarkChaptersUnread = viewModel::markChaptersUnread,
             onClickExportToEpub = { settings ->
                 viewModel.exportSettings = settings
 

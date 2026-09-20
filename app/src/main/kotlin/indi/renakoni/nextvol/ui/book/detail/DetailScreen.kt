@@ -2,6 +2,7 @@ package indi.renakoni.nextvol.ui.book.detail
 
 import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateContentSize
@@ -17,6 +18,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -43,6 +45,9 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.Surface
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -88,6 +93,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
@@ -122,6 +128,7 @@ import io.nightfish.lightnovelreader.api.book.ChapterInformation
 import io.nightfish.lightnovelreader.api.book.Volume
 import io.nightfish.lightnovelreader.api.ui.LocalNavController
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -141,7 +148,8 @@ fun DetailScreen(
     onClickTag: (String) -> Unit,
     onClickCover: (Uri) -> Unit,
     onClickMarkAsRead: () -> Unit,
-    onRetry: () -> Unit = {}
+    onRetry: () -> Unit = {},
+    onMarkChaptersUnread: suspend (Set<String>) -> Unit = {},
 ) {
     val navController = LocalNavController.current
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
@@ -156,6 +164,21 @@ fun DetailScreen(
     var exportSettings by remember { mutableStateOf(ExportSettings()) }
 
     val lazyListState = rememberLazyListState()
+    val selectionListState = rememberLazyListState()
+    var selectingChapters by rememberSaveable { mutableStateOf(false) }
+    var selectedChapterIds by rememberSaveable { mutableStateOf(emptyList<String>()) }
+    var confirmUnread by remember { mutableStateOf(false) }
+    var savingUnread by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
+    val catalogIds = uiState.bookVolumes?.get()?.volumes.orEmpty()
+        .flatMap { it.chapters }.mapTo(mutableSetOf()) { it.id }
+    val selectedIds = selectedChapterIds.toSet().intersect(catalogIds)
+    val exitSelection = {
+        selectingChapters = false
+        selectedChapterIds = emptyList()
+        confirmUnread = false
+    }
+    BackHandler(selectingChapters) { if (!savingUnread) exitSelection() }
     val volumesEmpty = uiState.bookVolumes == null
 
     val isCollapsed by remember {
@@ -237,7 +260,19 @@ fun DetailScreen(
                 }
 
                 Box(modifier = Modifier.align(Alignment.BottomEnd)) {
-                    fabContent(fabVisible, fabTextRes, onClickRead)
+                    fabContent(fabVisible && !selectingChapters, fabTextRes, onClickRead)
+                }
+            }
+        },
+        bottomBar = {
+            if (selectingChapters) Surface(color = colorScheme.surfaceContainerLow) {
+                Button(
+                    modifier = Modifier.fillMaxWidth().navigationBarsPadding()
+                        .padding(horizontal = 24.dp, vertical = 12.dp),
+                    enabled = selectedIds.isNotEmpty() && !savingUnread,
+                    onClick = { confirmUnread = true },
+                ) {
+                    Text(stringResource(if (savingUnread) R.string.processing else R.string.mark_unread_action))
                 }
             }
         },
@@ -248,7 +283,22 @@ fun DetailScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            TopBar(
+            if (selectingChapters) TopAppBar(
+                title = { Text(stringResource(R.string.chapters_selected, selectedIds.size),
+                    style = typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                navigationIcon = {
+                    IconButton(onClick = exitSelection, enabled = !savingUnread) {
+                        Icon(painterResource(R.drawable.close_24px), stringResource(R.string.cancel))
+                    }
+                },
+                actions = {
+                    TextButton(enabled = !savingUnread && catalogIds.isNotEmpty(), onClick = {
+                        selectedChapterIds = if (selectedIds == catalogIds) emptyList() else catalogIds.toList()
+                    }) {
+                        Text(stringResource(if (selectedIds == catalogIds) R.string.deselect_all else R.string.select_all))
+                    }
+                },
+            ) else TopBar(
                 title = uiState.bookInformation?.map { it.title }?.getOrElse { "" } ?: "",
                 readingProgress = uiState.userReadingData?.readingProgress ?: 0f,
                 volumesEmpty = volumesEmpty,
@@ -265,6 +315,11 @@ fun DetailScreen(
                     }
                 },
                 onClickMarkAsRead = onClickMarkAsRead,
+                onClickMarkAsUnread = {
+                    selectedChapterIds = emptyList()
+                    selectingChapters = true
+                },
+                canMarkUnread = catalogIds.isNotEmpty() && uiState.userReadingData != null,
                 scrollBehavior = scrollBehavior,
                 isCollapsed = isCollapsed
             )
@@ -281,8 +336,16 @@ fun DetailScreen(
                             .background(colorScheme.surface),
                         uiState = uiState,
                         bookInformation = it,
-                        onClickChapter = onClickChapter,
-                        lazyListState = lazyListState,
+                        onClickChapter = { id ->
+                            if (selectingChapters) {
+                                if (!savingUnread) selectedChapterIds =
+                                    if (id in selectedChapterIds) selectedChapterIds - id else selectedChapterIds + id
+                            } else onClickChapter(id)
+                        },
+                        lazyListState = if (selectingChapters) selectionListState else lazyListState,
+                        selectingChapters = selectingChapters,
+                        selectedChapterIds = selectedIds,
+                        selectionEnabled = !savingUnread,
                         cacheBook = cacheBook,
                         requestAddBookToBookshelf = requestAddBookToBookshelf,
                         onClickTag = onClickTag,
@@ -327,6 +390,37 @@ fun DetailScreen(
             }
         }
     }
+    if (confirmUnread) AlertDialog(
+        onDismissRequest = { if (!savingUnread) confirmUnread = false },
+        title = { Text(stringResource(R.string.mark_unread_action)) },
+        text = { Text(stringResource(R.string.mark_unread_confirmation, selectedIds.size)) },
+        confirmButton = {
+            TextButton(enabled = !savingUnread && selectedIds.isNotEmpty(), onClick = {
+                savingUnread = true
+                coroutineScope.launch {
+                    try {
+                        onMarkChaptersUnread(selectedIds)
+                        exitSelection()
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: Exception) {
+                        android.util.Log.e("DetailScreen", "Could not mark chapters unread", error)
+                        confirmUnread = false
+                        coroutineScope.launch {
+                            snackbarHostState.showSnackbar(context.getString(R.string.mark_unread_failed))
+                        }
+                    } finally {
+                        savingUnread = false
+                    }
+                }
+            }) { Text(stringResource(if (savingUnread) R.string.processing else R.string.confirm)) }
+        },
+        dismissButton = {
+            TextButton(enabled = !savingUnread, onClick = { confirmUnread = false }) {
+                Text(stringResource(R.string.cancel))
+            }
+        },
+    )
 }
 
 
@@ -459,7 +553,10 @@ private fun DetailContent(
     requestAddBookToBookshelf: (String) -> Unit,
     onClickTag: (String) -> Unit,
     onClickCover: (Uri) -> Unit,
-    onClickShowInfo: () -> Unit
+    onClickShowInfo: () -> Unit,
+    selectingChapters: Boolean,
+    selectedChapterIds: Set<String>,
+    selectionEnabled: Boolean,
 ) {
     var hideReadChapters by remember { mutableStateOf(false) }
     val deferred = 6
@@ -477,7 +574,7 @@ private fun DetailContent(
         state = lazyListState,
         modifier = modifier
     ) {
-        if (visible >= 1) item {
+        if (visible >= 1 && !selectingChapters) item {
             BookCardBlock(
                 bookInformation = bookInformation,
                 showReadingMetadata = uiState.readingAvailable,
@@ -491,7 +588,7 @@ private fun DetailContent(
             )
         }
 
-        if (visible >= 2) item {
+        if (visible >= 2 && !selectingChapters) item {
             TagsBlock(
                 modifier = Modifier.fadeInOnce("tags"),
                 bookInformation = bookInformation,
@@ -499,7 +596,7 @@ private fun DetailContent(
             )
         }
 
-        if (visible >= 3) item {
+        if (visible >= 3 && !selectingChapters) item {
             QuickOperationsBlock(
                 modifier = Modifier.fadeInOnce("op"),
                 isInBookshelf = uiState.isInBookshelf,
@@ -512,7 +609,7 @@ private fun DetailContent(
             )
         }
 
-        if (visible >= 4) item {
+        if (visible >= 4 && !selectingChapters) item {
             IntroBlock(
                 modifier = Modifier.fadeInOnce("intro"),
                 description = bookInformation.description
@@ -524,7 +621,7 @@ private fun DetailContent(
                 Modifier.padding(horizontal = itemHorizontalPadding, vertical = itemVerticalPadding),
                 style = typography.bodyMedium, color = colorScheme.onSurfaceVariant)
         }
-        if (visible >= 5 && uiState.readingAvailable) item {
+        if (visible >= 5 && uiState.readingAvailable && !selectingChapters) item {
             Row(
                 modifier = Modifier
                     .fadeInOnce("contents")
@@ -554,7 +651,10 @@ private fun DetailContent(
                     VolumeItem(
                         modifier = Modifier.fadeInOnce(volume.volumeId),
                         volume = volume,
-                        hideReadChapters = hideReadChapters,
+                        hideReadChapters = hideReadChapters && !selectingChapters,
+                        selectingChapters = selectingChapters,
+                        selectedChapterIds = selectedChapterIds,
+                        selectionEnabled = selectionEnabled,
                         chapterReadingProgress = uiState.userReadingData?.maxChapterReadingProgressMap ?: emptyMap(),
                         onClickChapter = onClickChapter,
                         volumesSize = bookVolumes.volumes.size,
@@ -592,6 +692,8 @@ private fun TopBar(
     onClickExport: () -> Unit,
     onClickTextFormatting: () -> Unit,
     onClickMarkAsRead: () -> Unit,
+    onClickMarkAsUnread: () -> Unit,
+    canMarkUnread: Boolean,
     scrollBehavior: TopAppBarScrollBehavior,
     isCollapsed: Boolean
 ) {
@@ -662,7 +764,9 @@ private fun TopBar(
                     volumesEmpty = volumesEmpty,
                     onClickExport = onClickExport,
                     onClickTextFormatting = onClickTextFormatting,
-                    onClickMarkAsRead = onClickMarkAsRead
+                    onClickMarkAsRead = onClickMarkAsRead,
+                    onClickMarkAsUnread = onClickMarkAsUnread,
+                    canMarkUnread = canMarkUnread,
                 )
             },
             scrollBehavior = scrollBehavior
@@ -696,7 +800,9 @@ private fun TopBarActions(
     volumesEmpty: Boolean,
     onClickExport: () -> Unit,
     onClickTextFormatting: () -> Unit,
-    onClickMarkAsRead: () -> Unit
+    onClickMarkAsRead: () -> Unit,
+    onClickMarkAsUnread: () -> Unit,
+    canMarkUnread: Boolean,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
 
@@ -711,6 +817,14 @@ private fun TopBarActions(
             Icon(painterResource(id = R.drawable.more_vert_24px), contentDescription = stringResource(R.string.action_more_options))
         }
         DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.mark_as_unread), style = typography.bodyLarge) },
+                enabled = canMarkUnread,
+                onClick = {
+                    menuExpanded = false
+                    onClickMarkAsUnread()
+                },
+            )
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.mark_as_read), style = typography.bodyLarge) },
                 onClick = {
@@ -1094,7 +1208,10 @@ private fun VolumeItem(
     chapterReadingProgress: Map<String, Float>,
     onClickChapter: (String) -> Unit,
     volumesSize: Int,
-    lastReadingChapterId: String?
+    lastReadingChapterId: String?,
+    selectingChapters: Boolean,
+    selectedChapterIds: Set<String>,
+    selectionEnabled: Boolean,
 ) {
     val readIds = remember(chapterReadingProgress) {
         chapterReadingProgress.filterValues { it >= 1f }.keys
@@ -1170,7 +1287,10 @@ private fun VolumeItem(
                             isRead = chapter.id in readIds,
                             isLastRead = chapter.id == lastReadingChapterId,
                             readingProgress = chapterReadingProgress[chapter.id] ?: 0f,
-                            onClick = { onClickChapter(chapter.id) }
+                            onClick = { onClickChapter(chapter.id) },
+                            selecting = selectingChapters,
+                            selected = chapter.id in selectedChapterIds,
+                            selectionEnabled = selectionEnabled,
                         )
                     }
                 }
@@ -1185,18 +1305,29 @@ private fun ChapterItem(
     isRead: Boolean,
     isLastRead: Boolean,
     readingProgress: Float,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    selecting: Boolean,
+    selected: Boolean,
+    selectionEnabled: Boolean,
 ) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .background(if (selected) colorScheme.secondaryContainer.copy(alpha = 0.5f) else Color.Transparent)
+            .then(if (selecting) Modifier.toggleable(
+                value = selected, enabled = selectionEnabled, role = Role.Checkbox,
+                onValueChange = { onClick() },
+            ) else Modifier.clickable(onClick = onClick))
             .padding(vertical = 12.dp)
             .padding(start = 32.dp, end = 27.dp)
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically
         ) {
+            if (selecting) Checkbox(
+                checked = selected, onCheckedChange = null, enabled = selectionEnabled,
+                modifier = Modifier.padding(end = 16.dp),
+            )
             Column(
                 modifier = Modifier.weight(1f)
             ) {
