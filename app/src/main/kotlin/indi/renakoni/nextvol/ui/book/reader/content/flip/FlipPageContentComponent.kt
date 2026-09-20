@@ -22,6 +22,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -336,69 +337,72 @@ private fun SimpleFlipPageTextComponent(
                 else Modifier
             )
     ) {
-        HorizontalPager(
-            state = uiState.pagerState,
-            key = { it },
-            userScrollEnabled = settingState.animatePageTurns,
-            modifier = modifier
-                .readerBoundarySwipe(uiState.pagerState, enabled = settingState.animatePageTurns &&
-                    slippedContentComponentList.isNotEmpty()) { forward ->
-                    scope.launch {
-                        if (forward) nextPage(uiState.pagerState) else lastPage(uiState.pagerState)
-                    }
-                }
-                .readerPageSwipe(enabled = !settingState.animatePageTurns, gestureKey = uiState.pagerState) { forward ->
-                    scope.launch {
-                        if (forward) nextPage(uiState.pagerState) else lastPage(uiState.pagerState)
-                    }
-                }
-                .readerVolumeKeys(
-                    enabled = settingState.isUsingVolumeKeyFlip && settingState.isUsingFlipPage &&
-                        slippedContentComponentList.isNotEmpty(),
-                    intervalSeconds = settingState.volumeKeyContinuousFlipInterval,
-                ) { direction ->
-                    when (direction) {
-                        ReaderVolumeDirection.Backward -> lastPage(uiState.pagerState)
-                        ReaderVolumeDirection.Forward -> nextPage(uiState.pagerState)
-                    }
-                }
-                .draggable(
-                    enabled = settingState.isUsingFlipPage,
-                    interactionSource = remember { MutableInteractionSource() },
-                    orientation = Orientation.Vertical,
-                    state = rememberDraggableState {},
-                    onDragStopped = {
-                        if (it.absoluteValue > 60) changeIsImmersive.invoke()
-                    }
-                )
-                .readerTapGestures { position ->
-                    if (settingState.isUsingFlipPage && settingState.isUsingClickFlipPage)
-                        when {
-                            position.x < pageWidthPx / 3f -> scope.launch {
-                                if (layoutDirection == LayoutDirection.Rtl) nextPage(uiState.pagerState) else lastPage(uiState.pagerState)
-                            }
-                            position.x > pageWidthPx * 2f / 3f -> scope.launch {
-                                if (layoutDirection == LayoutDirection.Rtl) lastPage(uiState.pagerState) else nextPage(uiState.pagerState)
-                            }
-                            else -> changeIsImmersive.invoke()
+        // A replaced pager must attach its own first-layout callback before restoring position.
+        key(uiState.pagerState) {
+            HorizontalPager(
+                state = uiState.pagerState,
+                key = { it },
+                userScrollEnabled = settingState.animatePageTurns,
+                modifier = modifier
+                    .readerBoundarySwipe(uiState.pagerState, enabled = settingState.animatePageTurns &&
+                        slippedContentComponentList.isNotEmpty()) { forward ->
+                        scope.launch {
+                            if (forward) nextPage(uiState.pagerState) else lastPage(uiState.pagerState)
                         }
-                    else changeIsImmersive.invoke()
-                },
-        ) {
-            Box(Modifier.fillMaxSize()) {
-                if (settingState.usesBackgroundImage && settingState.backgroundImageDisplayMode == MenuOptions.ReaderBgImageDisplayModeOptions.Loop) {
-                    Image(
-                        modifier = Modifier.fillMaxSize(),
-                        painter = rememberReaderBackgroundPainter(settingState),
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop
+                    }
+                    .readerPageSwipe(enabled = !settingState.animatePageTurns, gestureKey = uiState.pagerState) { forward ->
+                        scope.launch {
+                            if (forward) nextPage(uiState.pagerState) else lastPage(uiState.pagerState)
+                        }
+                    }
+                    .readerVolumeKeys(
+                        enabled = settingState.isUsingVolumeKeyFlip && settingState.isUsingFlipPage &&
+                            slippedContentComponentList.isNotEmpty(),
+                        intervalSeconds = settingState.volumeKeyContinuousFlipInterval,
+                    ) { direction ->
+                        when (direction) {
+                            ReaderVolumeDirection.Backward -> lastPage(uiState.pagerState)
+                            ReaderVolumeDirection.Forward -> nextPage(uiState.pagerState)
+                        }
+                    }
+                    .draggable(
+                        enabled = settingState.isUsingFlipPage,
+                        interactionSource = remember { MutableInteractionSource() },
+                        orientation = Orientation.Vertical,
+                        state = rememberDraggableState {},
+                        onDragStopped = {
+                            if (it.absoluteValue > 60) changeIsImmersive.invoke()
+                        }
+                    )
+                    .readerTapGestures { position ->
+                        if (settingState.isUsingFlipPage && settingState.isUsingClickFlipPage)
+                            when {
+                                position.x < pageWidthPx / 3f -> scope.launch {
+                                    if (layoutDirection == LayoutDirection.Rtl) nextPage(uiState.pagerState) else lastPage(uiState.pagerState)
+                                }
+                                position.x > pageWidthPx * 2f / 3f -> scope.launch {
+                                    if (layoutDirection == LayoutDirection.Rtl) lastPage(uiState.pagerState) else nextPage(uiState.pagerState)
+                                }
+                                else -> changeIsImmersive.invoke()
+                            }
+                        else changeIsImmersive.invoke()
+                    },
+            ) {
+                Box(Modifier.fillMaxSize()) {
+                    if (settingState.usesBackgroundImage && settingState.backgroundImageDisplayMode == MenuOptions.ReaderBgImageDisplayModeOptions.Loop) {
+                        Image(
+                            modifier = Modifier.fillMaxSize(),
+                            painter = rememberReaderBackgroundPainter(settingState),
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop
+                        )
+                    }
+                    slippedContentComponentList.getOrNull(it)?.Content(
+                        modifier
+                            .fillMaxSize()
+                            .padding(paddingValues)
                     )
                 }
-                slippedContentComponentList.getOrNull(it)?.Content(
-                    modifier
-                        .fillMaxSize()
-                        .padding(paddingValues)
-                )
             }
         }
         if (pending != null && pending.result?.isErr != true) {

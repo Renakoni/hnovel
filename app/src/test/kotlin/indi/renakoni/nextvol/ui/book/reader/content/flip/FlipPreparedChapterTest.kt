@@ -29,8 +29,11 @@ import io.nightfish.lightnovelreader.api.content.component.AbstractDivisibleCont
 import io.nightfish.lightnovelreader.api.error.WebRequestError
 import io.nightfish.lightnovelreader.api.identifier.Identifier
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.After
@@ -50,12 +53,17 @@ import java.util.concurrent.atomic.AtomicInteger
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], application = Application::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
+@OptIn(ExperimentalCoroutinesApi::class)
 class FlipPreparedChapterTest {
     @get:Rule val compose = createEmptyComposeRule()
     private lateinit var activity: ActivityController<ComponentActivity>
     private val env = ModeTestEnvironment()
     private val saved = mutableListOf<Pair<String, Float>>()
-    private val mode = FlipReaderController(env.loader, env.records, env.scope, { id, p -> saved += id to p }, env.dispatcher)
+    private var immediateProgress = false
+    private val mode by lazy {
+        val scope = if (immediateProgress) CoroutineScope(env.scope.coroutineContext + UnconfinedTestDispatcher(env.scheduler)) else env.scope
+        FlipReaderController(env.loader, env.records, scope, { id, p -> saved += id to p }, env.dispatcher)
+    }
     private val content = mutableMapOf<String, List<AbstractContentComponent<*>>>()
     private val gates = mutableListOf<CompletableDeferred<Unit>>()
     private var viewportHeight by mutableStateOf(320.dp)
@@ -103,6 +111,27 @@ class FlipPreparedChapterTest {
         compose.onNodeWithText("BODY_2_3").assertIsDisplayed()
         assertEquals(2, mode.uiState.pagerState.currentPage)
         assertEquals(1f, mode.uiState.readingProgress)
+    }
+
+    @Test fun refreshingAfterPreviousChapterCommitKeepsTheLastPageAndProgressObservation() {
+        immediateProgress = true
+        content["2"] = List(3) { Page("CACHED_2_${it + 1}") }
+        mount()
+        compose.onRoot().performTouchInput { swipeRight() }
+        env.runCurrent()
+        env.emit("2", Ok(env.chapter("2", "1", "3")))
+        await { mode.uiState.readingChapterId == "2" }
+        compose.onNodeWithText("CACHED_2_3").assertIsDisplayed()
+        val originalPager = mode.uiState.pagerState
+        content["2"] = List(3) { Page("FRESH_2_${it + 1}") }
+        env.emit("2", Ok(env.chapter("2", "1", "3")))
+        await { mode.uiState.pagerState !== originalPager && mode.uiState.pagerState.pageCount == 3 }
+        compose.onNodeWithText("FRESH_2_3").assertIsDisplayed()
+        compose.onRoot().performTouchInput { swipeRight() }
+        compose.waitForIdle()
+        env.runCurrent()
+        compose.onNodeWithText("FRESH_2_2").assertIsDisplayed()
+        assertEquals(2f / 3, mode.uiState.readingProgress)
     }
 
     @Test fun failedNextKeepsBodyAndRetryActionLoadsThenCommitsTheSameTarget() {
