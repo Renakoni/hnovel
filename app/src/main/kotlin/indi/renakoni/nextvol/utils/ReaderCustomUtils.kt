@@ -28,6 +28,7 @@ import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.ui.LocalAppTheme
 import indi.renakoni.nextvol.ui.book.reader.ReaderFontFamilySettings
 import indi.renakoni.nextvol.ui.book.reader.ReaderSettings
+import indi.renakoni.nextvol.ui.book.reader.ReaderPaper
 import indi.renakoni.nextvol.ui.book.reader.ReaderFont
 import io.nightfish.lightnovelreader.api.userdata.UriUserData
 import kotlinx.coroutines.CoroutineScope
@@ -196,6 +197,7 @@ fun rememberReaderBackgroundPainter(
 
 @Composable
 fun readerBackgroundColor(settingState: ReaderSettings): Color {
+    ReaderPaper.fromId(settingState.paperId).colors?.let { return it.background }
     val localTheme = LocalAppTheme.current
     val isDark = localTheme.isDark
     val background = localTheme.colorScheme.background
@@ -214,6 +216,7 @@ fun readerBackgroundColor(settingState: ReaderSettings): Color {
 
 @Composable
 fun readerTextColor(settingState: ReaderSettings): Color {
+    ReaderPaper.fromId(settingState.paperId).colors?.let { return it.text }
     val localTheme = LocalAppTheme.current
     val isDark = localTheme.isDark
     val onSurface = localTheme.colorScheme.onSurface

@@ -47,6 +47,7 @@ import indi.renakoni.nextvol.ui.book.reader.content.readerVolumeKeys
 import indi.renakoni.nextvol.ui.home.settings.data.MenuOptions
 import indi.renakoni.nextvol.utils.LocalSnackbarHost
 import indi.renakoni.nextvol.utils.rememberReaderBackgroundPainter
+import indi.renakoni.nextvol.ui.book.reader.usesBackgroundImage
 import indi.renakoni.nextvol.utils.showSnackbar
 import io.nightfish.lightnovelreader.api.content.component.AbstractContentComponent
 import io.nightfish.lightnovelreader.api.ui.LocalReaderStyle
@@ -165,7 +166,7 @@ private fun SimpleFlipPageTextComponent(
     // 仅在启用背景图时才创建 painter：rememberReaderBackgroundPainter 会发起图片加载副作用，
     // 无条件调用会导致未开启背景时也去联网加载内置牛皮纸，失败时误报「加载失败」(见 issue #444)。
     val bgPainter = if (
-        settingState.enableBackgroundImage &&
+        settingState.usesBackgroundImage &&
         settingState.backgroundImageDisplayMode == MenuOptions.ReaderBgImageDisplayModeOptions.Loop
     ) {
         rememberReaderBackgroundPainter(settingState)
@@ -274,7 +275,7 @@ private fun SimpleFlipPageTextComponent(
                 },
         ) {
             Box(Modifier.fillMaxSize()) {
-                if (settingState.enableBackgroundImage && settingState.backgroundImageDisplayMode == MenuOptions.ReaderBgImageDisplayModeOptions.Loop) {
+                if (settingState.usesBackgroundImage && settingState.backgroundImageDisplayMode == MenuOptions.ReaderBgImageDisplayModeOptions.Loop) {
                     Image(
                         modifier = Modifier.fillMaxSize(),
                         painter = rememberReaderBackgroundPainter(settingState),

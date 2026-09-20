@@ -137,7 +137,7 @@ private fun ReaderLayoutSlider(
 }
 
 @Composable
-internal fun ReaderLayoutPreview(settings: ReaderSettingsEditor, modifier: Modifier = Modifier) {
+internal fun ReaderLayoutPreview(settings: ReaderSettingsEditor, modifier: Modifier = Modifier) = ReaderPaperTheme(settings) {
     val window = LocalWindowInfo.current.containerSize
     val layout = rememberReaderTextLayout(settings)
     val indicators = settings.enableTimeIndicator || settings.enableReadingChapterProgressIndicator || settings.enableChapterTitleIndicator
@@ -146,7 +146,7 @@ internal fun ReaderLayoutPreview(settings: ReaderSettingsEditor, modifier: Modif
     // Measure a full-size reader viewport first; uniformly scale only its drawing into the preview.
     Layout(modifier = modifier.clipToBounds().padding(8.dp), content = {
         Box(Modifier.fillMaxSize().clipToBounds().background(readerBackgroundColor(settings))) {
-            if (settings.enableBackgroundImage) Image(
+            if (settings.usesBackgroundImage) Image(
                 painter = rememberReaderBackgroundPainter(settings), contentDescription = null,
                 modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop,
             )
