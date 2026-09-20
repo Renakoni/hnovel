@@ -1,0 +1,384 @@
+package indi.renakoni.nextvol.ui.bangumi
+
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import coil3.compose.SubcomposeAsyncImage
+import indi.renakoni.nextvol.R
+import indi.renakoni.nextvol.data.bangumi.*
+import kotlinx.coroutines.launch
+import java.text.DateFormat
+import java.util.Date
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun BangumiScreen(
+    state: BangumiUiState, bookId: String?, onBack: () -> Unit, onAccount: () -> Unit, onBook: (String) -> Unit,
+    onConnect: (String) -> Unit, onDisconnect: () -> Unit, onQuery: (String) -> Unit,
+    onSearch: () -> Unit, onMore: () -> Unit, onChoose: (Int) -> Unit,
+    onSync: () -> Unit,
+    onMapping: (String, String?) -> Unit, onComplete: (String, Boolean) -> Unit, onBaseline: (String, Boolean) -> Unit,
+    onPrivate: (Boolean) -> Unit, onConfirm: () -> Unit, onDismiss: () -> Unit,
+) {
+    var token by remember { mutableStateOf("") }
+    var disconnect by remember { mutableStateOf(false) }
+    var showRecords by rememberSaveable { mutableStateOf(false) }
+    var errorRecords by rememberSaveable { mutableStateOf(false) }
+    var recordBookId by rememberSaveable { mutableStateOf<String?>(null) }
+    var historyAccountId by rememberSaveable { mutableStateOf(state.account.user?.id) }
+    var changeToken by remember { mutableStateOf(false) }
+    var accountMenu by remember { mutableStateOf(false) }
+    val uri = LocalUriHandler.current
+    val clipboard = LocalClipboardManager.current
+    val listState = rememberLazyListState()
+    val recordsListState = rememberLazyListState()
+    val recordDetailsState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+    val recordGroups = remember(state.records) {
+        state.records.sortedWith(compareByDescending<BangumiSyncRecord> { it.timestamp }.thenByDescending { it.id })
+            .groupBy { it.bookId }.values.toList()
+    }
+    val bookRecords = recordGroups.find { it.first().bookId == recordBookId }.orEmpty()
+    val backFromRecords = { if (recordBookId != null) recordBookId = null else showRecords = false }
+    LaunchedEffect(bookId, state.preview?.subject?.id) { listState.scrollToItem(0) }
+    LaunchedEffect(state.account.loaded, state.account.user?.id) {
+        token = ""; changeToken = false; accountMenu = false
+        if (state.account.loaded && historyAccountId != state.account.user?.id) {
+            showRecords = false; errorRecords = false; recordBookId = null
+            historyAccountId = state.account.user?.id
+        }
+    }
+    LaunchedEffect(state.busy, state.error) { if (!state.busy && state.error == null) changeToken = false }
+    BackHandler(state.preview != null && !state.busy, onDismiss)
+    BackHandler(showRecords, backFromRecords)
+    Scaffold(topBar = { TopAppBar(title = { Text(stringResource(when {
+        showRecords && recordBookId != null -> R.string.bangumi_record_details
+        showRecords -> R.string.bangumi_records
+        bookId != null -> R.string.bangumi_correct_match
+        else -> R.string.bangumi_title
+    })) }, navigationIcon = {
+        IconButton(onClick = {
+            when {
+                showRecords -> backFromRecords()
+                state.preview != null -> onDismiss()
+                else -> onBack()
+            }
+        }) {
+            Icon(painterResource(R.drawable.arrow_back_24px), stringResource(R.string.sources_back))
+        }
+    }) }) { padding ->
+        LazyColumn(Modifier.fillMaxSize().padding(padding), state = when {
+            showRecords && recordBookId != null -> recordDetailsState
+            showRecords -> recordsListState
+            else -> listState
+        }, contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (state.busy || !state.account.loaded) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+            state.error?.let { error -> item { Text(stringResource(error), color = MaterialTheme.colorScheme.error) } }
+            if (bookId == null && showRecords && recordBookId != null) {
+                bookRecords.firstOrNull()?.let { latest -> item {
+                    Text(latest.bookTitle, style = MaterialTheme.typography.titleLarge)
+                    Text(stringResource(R.string.bangumi_record_count, bookRecords.size),
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } }
+                if (bookRecords.isEmpty()) item { Text(stringResource(R.string.bangumi_no_records)) }
+                items(bookRecords, key = { it.id }) { record ->
+                    OutlinedCard(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { RecordSummary(record) }
+                    }
+                }
+            } else if (bookId == null && showRecords) {
+                item {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(selected = !errorRecords, onClick = { errorRecords = false; scope.launch { recordsListState.scrollToItem(0) } },
+                            label = { Text(stringResource(R.string.bangumi_records_success)) })
+                        FilterChip(selected = errorRecords, onClick = { errorRecords = true; scope.launch { recordsListState.scrollToItem(0) } },
+                            label = { Text(stringResource(R.string.bangumi_records_error)) })
+                    }
+                }
+                item { Text(stringResource(R.string.bangumi_records_help), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                val groups = recordGroups.filter { it.first().status.successful != errorRecords }
+                if (groups.isEmpty()) item { Text(stringResource(R.string.bangumi_no_records)) }
+                items(groups, key = { it.first().bookId }) { records ->
+                    val record = records.first()
+                    OutlinedCard(onClick = { recordBookId = record.bookId; scope.launch { recordDetailsState.scrollToItem(0) } },
+                        modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(record.bookTitle, modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+                                Icon(painterResource(R.drawable.arrow_forward_ios_24px), stringResource(R.string.bangumi_record_details),
+                                    modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            RecordSummary(record)
+                            Text(stringResource(R.string.bangumi_record_count, records.size), style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            if (state.bindings.any { it.bookId == record.bookId }) {
+                                if (record.status == BangumiSyncStatus.AUTH_REQUIRED)
+                                    TextButton(onClick = { showRecords = false; recordBookId = null; changeToken = true }) { Text(stringResource(R.string.bangumi_change_token)) }
+                                else TextButton(onClick = { onBook(record.bookId) }, enabled = !state.busy) { Text(stringResource(R.string.bangumi_correct_match)) }
+                            }
+                        }
+                    }
+                }
+            } else if (bookId == null) {
+                item {
+                    Card(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large,
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            val user = state.account.user
+                            if (user != null) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Surface(shape = CircleShape, color = MaterialTheme.colorScheme.secondaryContainer) {
+                                    SubcomposeAsyncImage(model = user.avatar.url.takeIf { it.isNotBlank() }, contentDescription = null,
+                                        modifier = Modifier.size(48.dp).clip(CircleShape), contentScale = ContentScale.Crop,
+                                        loading = { Icon(painterResource(R.drawable.public_24px), null, Modifier.padding(12.dp)) },
+                                        error = { Icon(painterResource(R.drawable.public_24px), null, Modifier.padding(12.dp)) })
+                                }
+                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text(user.nickname.ifBlank { user.username }, style = MaterialTheme.typography.titleMedium,
+                                        maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    Text(stringResource(R.string.bangumi_connected), style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                Box {
+                                    IconButton(onClick = { accountMenu = true }, enabled = !state.busy) {
+                                        Icon(painterResource(R.drawable.more_vert_24px), stringResource(R.string.bangumi_account_actions))
+                                    }
+                                    DropdownMenu(accountMenu, { accountMenu = false }) {
+                                        DropdownMenuItem(text = { Text(stringResource(R.string.bangumi_change_token)) }, onClick = {
+                                            accountMenu = false; changeToken = true
+                                        })
+                                        DropdownMenuItem(text = { Text(stringResource(R.string.bangumi_disconnect)) }, onClick = {
+                                            accountMenu = false; disconnect = true
+                                        })
+                                    }
+                                }
+                            } else {
+                                Text(stringResource(R.string.bangumi_connect), style = MaterialTheme.typography.titleMedium)
+                                Text(stringResource(R.string.bangumi_description), style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            if (state.account.unreadable) Text(stringResource(R.string.bangumi_error_storage), color = MaterialTheme.colorScheme.error)
+                            if (user == null || changeToken) {
+                                OutlinedTextField(value = token, onValueChange = { token = it }, label = { Text(stringResource(R.string.bangumi_token)) },
+                                    visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false),
+                                    singleLine = true, modifier = Modifier.fillMaxWidth(), enabled = !state.busy && state.account.loaded)
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Button(onClick = { val value = token; token = ""; onConnect(value) }, enabled = token.isNotBlank() && !state.busy && state.account.loaded) {
+                                        Text(stringResource(R.string.bangumi_connect))
+                                    }
+                                    if (user != null) TextButton(onClick = { changeToken = false; token = "" }, enabled = !state.busy) { Text(stringResource(R.string.cancel)) }
+                                }
+                                TextButton(onClick = { uri.openUri("https://next.bgm.tv/demo/access-token") }) { Text(stringResource(R.string.bangumi_open_token)) }
+                            }
+                        }
+                    }
+                }
+                if (state.account.user != null) {
+                    item {
+                        val synced = state.bindings.count { it.binding().let { value -> value.status.successful && value.lastSyncedAt != null } }
+                        Card(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large,
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+                            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text(stringResource(R.string.bangumi_sync_state), style = MaterialTheme.typography.titleMedium)
+                                    TextButton(onClick = { showRecords = true }) { Text(stringResource(R.string.bangumi_records)) }
+                                }
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    SyncCount(synced, stringResource(R.string.bangumi_synced_count), Modifier.weight(1f))
+                                    VerticalDivider(Modifier.height(40.dp))
+                                    SyncCount(state.bindings.size - synced, stringResource(R.string.bangumi_unsynced_count), Modifier.weight(1f))
+                                }
+                            }
+                        }
+                    }
+                    item {
+                        Column(Modifier.fillMaxWidth().padding(vertical = 28.dp), horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                            if (state.bindings.isEmpty()) {
+                                Icon(painterResource(R.drawable.menu_book_24px), null, Modifier.size(36.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(stringResource(R.string.bangumi_no_reading_books), style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Button(onClick = onSync, enabled = !state.busy) { Text(stringResource(R.string.bangumi_sync)) }
+                        }
+                    }
+                }
+            } else if (state.preview != null) {
+                val preview = state.preview
+                val count = state.mapping.mapNotNull { it.editionKey }.distinct().size
+                item {
+                    Text(preview.subject.title, style = MaterialTheme.typography.titleLarge)
+                    Text(stringResource(R.string.bangumi_mapping_summary, count, preview.subject.volumes))
+                    if (!preview.subject.series) Text(stringResource(R.string.bangumi_single_help))
+                    Text(stringResource(R.string.bangumi_mapping_help), style = MaterialTheme.typography.bodySmall)
+                    Text(stringResource(R.string.bangumi_baseline_help, preview.remote?.volumes ?: 0))
+                    Text(stringResource(R.string.bangumi_baseline_count, state.baseline.size), style = MaterialTheme.typography.bodySmall)
+                    if (preview.remote != null && preview.remote.type != 3) Text(stringResource(R.string.bangumi_resume_warning))
+                }
+                items(state.mapping, key = { it.volumeId }) { row ->
+                    MappingCard(row, state.mapping, preview.mapping.first { it.volumeId == row.volumeId }.editionKey,
+                        row.editionKey in state.baseline, (preview.remote?.volumes ?: 0) > 0,
+                        !state.busy, onMapping, onComplete, onBaseline)
+                }
+                if (preview.remote == null) item { Choice(stringResource(R.string.bangumi_private), state.privateCollection, !state.busy, onPrivate) }
+                item {
+                    Button(onClick = onConfirm, enabled = !state.busy && count > 0 && (preview.subject.series || count == 1) &&
+                        state.baseline.size <= (preview.remote?.volumes ?: 0), modifier = Modifier.fillMaxWidth()) {
+                        Text(stringResource(R.string.bangumi_confirm))
+                    }
+                    TextButton(onClick = onDismiss, enabled = !state.busy) { Text(stringResource(R.string.cancel)) }
+                }
+            } else {
+                state.book?.let { book -> item { Text(book.title, style = MaterialTheme.typography.titleLarge) } }
+                state.bindings.find { it.bookId == bookId && it.subjectId != null }?.let { entity -> item {
+                    Text(entity.binding().subjectTitle)
+                    TextButton(onClick = { onChoose(requireNotNull(entity.subjectId)) }, enabled = !state.busy) { Text(stringResource(R.string.bangumi_review_mapping)) }
+                } }
+                if (state.account.user == null) item {
+                    Text(stringResource(R.string.bangumi_connect_before_binding))
+                    Button(onClick = onAccount) { Text(stringResource(R.string.bangumi_connect)) }
+                }
+                item(key = "search") {
+                    OutlinedTextField(state.query, onQuery, label = { Text(stringResource(R.string.bangumi_search_hint)) },
+                        singleLine = true, modifier = Modifier.fillMaxWidth(), enabled = !state.busy)
+                    Text(stringResource(R.string.bangumi_link_help), style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = onSearch, enabled = state.query.isNotBlank() && !state.busy && !state.searching) { Text(stringResource(R.string.bangumi_search)) }
+                        TextButton(onClick = { clipboard.getText()?.text?.let(onQuery) }, enabled = !state.busy) { Text(stringResource(R.string.bangumi_paste_link)) }
+                    }
+                }
+                if (state.searching) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+                if (state.searched && state.candidates.isEmpty() && !state.searching) item { Text(stringResource(R.string.bangumi_no_results)) }
+                items(state.candidates, key = { it.subject.id }) { candidate ->
+                    OutlinedCard(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(candidate.subject.title, style = MaterialTheme.typography.titleMedium)
+                            if (candidate.subject.name != candidate.subject.title) Text(candidate.subject.name, style = MaterialTheme.typography.bodySmall)
+                            Text(stringResource(if (candidate.subject.series && candidate.subject.isNovel) R.string.bangumi_series else R.string.bangumi_single,
+                                candidate.subject.volumes))
+                            Text(candidate.subject.values("作者").joinToString(" / "))
+                            if (candidate.titleMatches) Text(stringResource(R.string.bangumi_title_matches), style = MaterialTheme.typography.bodySmall)
+                            if (candidate.authorMatches) Text(stringResource(R.string.bangumi_author_matches), style = MaterialTheme.typography.bodySmall)
+                            if (candidate.publisherMatches) Text(stringResource(R.string.bangumi_publisher_matches), style = MaterialTheme.typography.bodySmall)
+                            if (candidate.authorConflicts) Text(stringResource(R.string.bangumi_author_check), color = MaterialTheme.colorScheme.error)
+                            TextButton(onClick = { onChoose(candidate.subject.id) }, enabled = state.account.user != null && !state.busy) {
+                                Text(stringResource(R.string.bangumi_review_mapping))
+                            }
+                        }
+                    }
+                }
+                if (state.hasMore) item { TextButton(onClick = onMore, enabled = !state.searching && !state.busy) { Text(stringResource(R.string.bangumi_more)) } }
+            }
+        }
+    }
+    if (disconnect) AlertDialog(onDismissRequest = { disconnect = false },
+        title = { Text(stringResource(R.string.bangumi_disconnect)) },
+        text = { Text(stringResource(R.string.bangumi_disconnect_help)) },
+        confirmButton = { TextButton(onClick = {
+            onDisconnect()
+            disconnect = false
+        }) { Text(stringResource(R.string.confirm)) } },
+        dismissButton = { TextButton(onClick = { disconnect = false }) { Text(stringResource(R.string.cancel)) } })
+}
+
+@Composable
+private fun RecordSummary(record: BangumiSyncRecord) {
+    if (record.httpStatus != null) Text(stringResource(R.string.bangumi_http_failure, record.httpStatus,
+        stringResource(bangumiHttpError(record.httpStatus))), color = MaterialTheme.colorScheme.error)
+    else Text(stringResource(when {
+        record.status.successful -> R.string.bangumi_status_synced
+        record.status == BangumiSyncStatus.OFFLINE -> R.string.bangumi_no_response
+        record.status == BangumiSyncStatus.REQUEST_REJECTED -> R.string.bangumi_invalid_response
+        else -> statusText(record.status)
+    }))
+    if (record.pendingConfirmation) Text(stringResource(R.string.bangumi_pending_confirmation), style = MaterialTheme.typography.bodySmall)
+    Text(stringResource(R.string.bangumi_progress, record.target, record.remote))
+    Text(DateFormat.getDateTimeInstance().format(Date(record.timestamp)), style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant)
+}
+
+@Composable
+private fun SyncCount(count: Int, label: String, modifier: Modifier) {
+    Column(modifier.semantics(mergeDescendants = true) { contentDescription = "$label $count" },
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(count.toString(), style = MaterialTheme.typography.displayMedium)
+        Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun MappingCard(row: BangumiVolumeMapping, all: List<BangumiVolumeMapping>, originalEditionKey: String?, baseline: Boolean, showBaseline: Boolean,
+    enabled: Boolean, onMapping: (String, String?) -> Unit, onComplete: (String, Boolean) -> Unit, onBaseline: (String, Boolean) -> Unit) {
+    var menu by remember { mutableStateOf(false) }
+    OutlinedCard(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp)) {
+            Choice(row.title, row.editionKey != null, enabled) { checked ->
+                onMapping(row.volumeId, if (checked) originalEditionKey ?: "local:${row.volumeId}" else null)
+            }
+            if (row.editionKey != null) {
+                Choice(stringResource(R.string.bangumi_complete_volume), row.complete, enabled) { onComplete(row.volumeId, it) }
+                if (showBaseline) Choice(stringResource(R.string.bangumi_already_read), baseline, enabled) { onBaseline(row.editionKey, it) }
+                Box {
+                    val first = all.first { it.editionKey == row.editionKey }
+                    TextButton(onClick = { menu = true }, enabled = enabled) { Text(stringResource(R.string.bangumi_count_as, first.title)) }
+                    DropdownMenu(menu, { menu = false }) {
+                        DropdownMenuItem(text = { Text(stringResource(R.string.bangumi_separate_volume)) }, onClick = {
+                            menu = false; onMapping(row.volumeId, "local:${row.volumeId}")
+                        })
+                        all.filter { it.editionKey != null && it.volumeId != row.volumeId }.distinctBy { it.editionKey }.forEach { other ->
+                            DropdownMenuItem(text = { Text(other.title) }, onClick = { menu = false; onMapping(row.volumeId, other.editionKey) })
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun Choice(label: String, checked: Boolean, enabled: Boolean, onChange: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth().clickable(enabled = enabled) { onChange(!checked) }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Checkbox(checked, onCheckedChange = null, enabled = enabled)
+        Spacer(Modifier.width(8.dp))
+        Text(label, modifier = Modifier.weight(1f))
+    }
+}
+
+private fun statusText(status: BangumiSyncStatus): Int = when (status) {
+    BangumiSyncStatus.READY -> R.string.bangumi_status_ready
+    BangumiSyncStatus.PENDING -> R.string.bangumi_status_pending
+    BangumiSyncStatus.SYNCED -> R.string.bangumi_status_synced
+    BangumiSyncStatus.REMOTE_AHEAD -> R.string.bangumi_status_ahead
+    BangumiSyncStatus.AUTH_REQUIRED -> R.string.bangumi_error_auth
+    BangumiSyncStatus.REMOTE_CHANGED -> R.string.bangumi_status_conflict
+    BangumiSyncStatus.MAPPING_CHANGED -> R.string.bangumi_status_mapping
+    BangumiSyncStatus.REMOTE_STATE -> R.string.bangumi_status_state
+    BangumiSyncStatus.REMOTE_MISSING -> R.string.bangumi_status_missing
+    BangumiSyncStatus.REQUEST_REJECTED -> R.string.bangumi_status_rejected
+    BangumiSyncStatus.OFFLINE -> R.string.bangumi_status_offline
+    BangumiSyncStatus.MATCH_REQUIRED -> R.string.bangumi_status_match
+}

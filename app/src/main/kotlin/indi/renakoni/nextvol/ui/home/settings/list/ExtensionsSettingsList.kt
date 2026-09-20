@@ -12,7 +12,8 @@ import indi.renakoni.nextvol.ui.components.SettingsClickableEntry
 @Composable
 fun ExtensionsSettingsList(
     onClickChangeSource: () -> Unit,
-    onClickPluginManager: () -> Unit
+    onClickPluginManager: () -> Unit,
+    onClickBangumi: () -> Unit = {},
 ) {
     SettingsClickableEntry(
         modifier = Modifier.background(colorScheme.surfaceContainer),
@@ -23,10 +24,16 @@ fun ExtensionsSettingsList(
     )
     SettingsClickableEntry(
         modifier = Modifier.background(colorScheme.surfaceContainer),
+        painter = painterResource(R.drawable.public_24px),
+        title = stringResource(R.string.bangumi_title),
+        description = stringResource(R.string.bangumi_description),
+        onClick = onClickBangumi,
+    )
+    SettingsClickableEntry(
+        modifier = Modifier.background(colorScheme.surfaceContainer),
         painter = painterResource(R.drawable.extension_24px),
-        title = stringResource(id = R.string.settings_plugins),
-        description = stringResource(id = R.string.settings_plugins_desc),
+        title = stringResource(R.string.plugin_install_plugin),
+        description = stringResource(R.string.settings_plugins_desc),
         onClick = onClickPluginManager,
-        option = stringResource(R.string.item_view_details)
     )
 }

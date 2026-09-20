@@ -76,6 +76,7 @@ fun NavGraphBuilder.settingsDestination() {
             onClickTextFormatting = navController::navigateToSettingsTextFormattingManagerDestination,
             onClickReadAloud = navController::navigateToSpeechSettings,
             onClickPluginManager = navController::navigateToSettingsPluginManagerHomeDestination,
+            onClickBangumi = { navController.navigate(indi.renakoni.nextvol.ui.bangumi.BangumiRoute()) { launchSingleTop = true } },
             onClickThemeSettings = navController::navigateToSettingsThemeDestination,
             onClickStorageManager = navController::navigateToStorageManager,
             onBack = { navController.popBackStackIfResumed() }

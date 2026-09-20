@@ -56,6 +56,7 @@ fun SettingsScreen(
     onClickReadAloud: () -> Unit,
     onClickStorageManager: () -> Unit,
     onBack: () -> Unit,
+    onClickBangumi: () -> Unit = {},
 ) {
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
     val listState = rememberLazyListState()
@@ -71,7 +72,8 @@ fun SettingsScreen(
                 ) {
                     ExtensionsSettingsList(
                         onClickChangeSource = onClickChangeSource,
-                        onClickPluginManager = onClickPluginManager
+                        onClickPluginManager = onClickPluginManager,
+                        onClickBangumi = onClickBangumi,
                     )
                 }
             }
