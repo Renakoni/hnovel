@@ -8,6 +8,28 @@ import java.text.Normalizer
 import java.util.Locale
 
 object BangumiMatching {
+    fun automaticSubject(candidates: List<BangumiCandidate>, hasMore: Boolean): BangumiSubject? =
+        if (hasMore) null else candidates.filter {
+            it.subject.isNovel && it.subject.series && it.titleMatches && it.authorMatches && !it.authorConflicts
+        }.singleOrNull()?.subject
+
+    /** Remote counts identify the first N main publications only when their numbering is unambiguous. */
+    fun automaticBaseline(preview: BangumiBookPreview): Set<String>? {
+        val count = preview.remote?.volumes ?: 0
+        if (count == 0) return emptySet()
+        if (count < 0 || count > preview.mapping.size) return null
+        // A counted special such as 6.5 makes "seven read volumes" ambiguous; do not assume 1..7.
+        if (preview.mapping.any { row -> row.editionKey != null && localNumber(row.title)?.let {
+            it.contains('.') && it.toBigDecimal() < count.toBigDecimal()
+        } == true }) return null
+        val baseline = linkedSetOf<String>()
+        for (number in 1..count) {
+            val keys = preview.mapping.filter { localNumber(it.title) == number.toString() }.mapNotNull { it.editionKey }.distinct()
+            if (keys.size != 1 || !baseline.add(keys.single())) return null
+        }
+        return baseline
+    }
+
     fun supports(book: SourceBookId) = book.sourceId == Identifier("lightnovelreader", "Wenku8")
 
     fun normalize(value: String): String = Normalizer.normalize(value, Normalizer.Form.NFKC)

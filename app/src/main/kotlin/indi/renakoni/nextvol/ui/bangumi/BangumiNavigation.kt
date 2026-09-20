@@ -20,11 +20,11 @@ fun NavGraphBuilder.bangumiDestination() {
         val state by viewModel.state.collectAsStateWithLifecycle()
         LaunchedEffect(state.confirmed) { if (state.confirmed) nav.popBackStackIfResumed() }
         BangumiScreen(state, viewModel.bookId, nav::popBackStackIfResumed,
-            onAccount = { nav.navigate(BangumiRoute()) { launchSingleTop = true } },
-            onBook = { id -> nav.navigate(BangumiRoute(id)) { launchSingleTop = true } },
+            onAccount = { nav.navigate(BangumiRoute()) },
+            onBook = { id -> nav.navigate(BangumiRoute(id)) },
             onConnect = viewModel::connect, onDisconnect = viewModel::disconnect,
             onQuery = viewModel::query, onSearch = { viewModel.search() }, onMore = { viewModel.search(true) },
-            onChoose = viewModel::choose, onUnlink = viewModel::unlink, onRetryFailures = viewModel::retryFailures,
+            onChoose = viewModel::choose, onSync = viewModel::sync,
             onMapping = viewModel::mapping, onComplete = viewModel::complete, onBaseline = viewModel::baseline,
             onPrivate = viewModel::privateCollection, onConfirm = viewModel::confirm, onDismiss = viewModel::dismissPreview)
     }

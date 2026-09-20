@@ -47,6 +47,7 @@ class BangumiRepositoryTest {
     @Volatile private var readGate: Pair<CountDownLatch, CountDownLatch>? = null
     private val writes = Collections.synchronizedList(mutableListOf<JsonObject>())
     private var volumeCount = 2
+    private var ambiguousSearch = false
     private val volumes get() = (1..volumeCount).map { number -> Volume(BookIdentity.volumeKey(book, "$number"), "第${number}卷",
         listOf(ChapterInformation(chapter(number), "正文"))) }
     private fun chapter(number: Int) = SourceChapterId(book, "$number").storageKey
@@ -64,7 +65,9 @@ class BangumiRepositoryTest {
             override fun dispatch(request: RecordedRequest): MockResponse {
                 val path = request.path.orEmpty()
                 if (path == "/v0/me") return json("""{"id":17,"username":"test"}""")
-                if (path == "/v0/subjects/10") return json("""{"id":10,"type":1,"name":"Novel","platform":"小说","series":true,"volumes":$volumeCount}""")
+                if (path.startsWith("/v0/search/subjects")) return json(bangumiJson.encodeToString(BangumiSearchPage(
+                    (if (ambiguousSearch) listOf(10, 20) else listOf(10)).map { BangumiSubject(it, name = "Novel") }, if (ambiguousSearch) 2 else 1)))
+                if (path == "/v0/subjects/10" || path == "/v0/subjects/20") return json("""{"id":${path.substringAfterLast('/')},"type":1,"name":"Novel","platform":"小说","series":true,"volumes":$volumeCount,"infobox":[{"key":"作者","value":"Author"},{"key":"书系","value":"Publisher"}]}""")
                 if (path == "/v0/subjects/10/subjects") return json(bangumiJson.encodeToString((1..volumeCount).map {
                     BangumiRelatedSubject(10 + it, 1, "Novel ($it)", relation = "单行本")
                 }))
@@ -123,7 +126,7 @@ class BangumiRepositoryTest {
         assertEquals(1, records.size)
         assertEquals(2, records.single().remote)
         assertEquals(BangumiSyncStatus.SYNCED, records.single().status)
-        repository.unlink(book.storageKey)
+        database.bangumiBindingDao().delete(17, book.storageKey)
         assertEquals(records, database.bangumiBindingDao().getRecords(17))
         assertTrue(database.bangumiBindingDao().getRecords(18).isEmpty())
     }
@@ -134,6 +137,109 @@ class BangumiRepositoryTest {
         assertEquals(2, writes.size)
         assertEquals(setOf("type", "private"), writes[0].keys)
         assertEquals(BangumiCollection(3, 1, 0, true), remote)
+    }
+
+    @Test fun readingAutomaticallyEntersSyncButBrowsingDoesNot() = runBlocking {
+        remote = null
+        assertTrue(repository.reconcile().isEmpty())
+        assertEquals(0, server.requestCount)
+        read(1)
+        assertEquals(1, repository.reconcile().size)
+        assertNull(database.bangumiBindingDao().get(17, book.storageKey)!!.subjectId)
+        repository.syncAll()
+        assertEquals(10, database.bangumiBindingDao().get(17, book.storageKey)!!.subjectId)
+        assertEquals(BangumiCollection(3, 1, 0, true), remote)
+        assertEquals(BangumiSyncStatus.SYNCED, binding().status)
+        val requests = server.requestCount
+        repository.requestSync(); repository.syncAll()
+        assertEquals(requests, server.requestCount)
+    }
+
+    @Test fun ambiguousMatchesPersistAsErrorsUntilGlobalSyncOrCorrection() = runBlocking {
+        ambiguousSearch = true
+        read(1); repository.requestSync(); repository.syncAll()
+        assertEquals(BangumiSyncStatus.MATCH_REQUIRED, binding().status)
+        assertEquals(BangumiSyncStatus.MATCH_REQUIRED, database.bangumiBindingDao().getRecords(17).single().status)
+        assertTrue(writes.isEmpty())
+        val requests = server.requestCount
+        repository.reconcile(); repository.syncAll()
+        assertEquals(requests, server.requestCount)
+        ambiguousSearch = false
+        repository.requestSync(); repository.syncAll()
+        assertEquals(BangumiSyncStatus.SYNCED, binding().status)
+        assertEquals(1, remote!!.volumes)
+    }
+
+    @Test fun automaticLinkUsesExistingRemoteBaselineAndKeepsRereadingIdempotent() = runBlocking {
+        volumeCount = 16
+        local.updateBookVolumes(BookVolumes(book.storageKey, volumes))
+        remote = remote!!.copy(volumes = 4)
+        read(1); repository.requestSync(); repository.syncAll()
+        assertEquals(4, binding().baseline.size)
+        assertTrue(writes.isEmpty())
+        database.userReadingDataDao().clear()
+        read(1, 2, 3, 4); repository.reconcile(); repository.syncAll()
+        assertTrue(writes.isEmpty())
+        read(5); repository.reconcile(); repository.syncAll()
+        assertEquals(5, remote!!.volumes)
+        assertEquals(1, writes.size)
+    }
+
+    @Test fun clearingReadingBeforeAutomaticMatchingDoesNotCreateACollection() = runBlocking {
+        remote = null
+        read(1); repository.reconcile()
+        database.userReadingDataDao().clear()
+        repository.syncAll()
+        assertNull(database.bangumiBindingDao().get(17, book.storageKey))
+        assertEquals(0, server.requestCount)
+    }
+
+    @Test fun aFinishedButUnconfirmedLatestCatalogAppearsAsAnActionableError() = runBlocking {
+        val info = database.bookInformationDao().get(book.storageKey)!!
+        local.updateBookInformation(info.copy(isComplete = false))
+        read(1); repository.requestSync(); repository.syncAll()
+        assertEquals(1, remote!!.volumes)
+        read(2)
+        assertTrue(repository.reconcile().isNotEmpty())
+        repository.syncAll()
+        assertEquals(BangumiSyncStatus.MAPPING_CHANGED, binding().status)
+        assertEquals(1, writes.size)
+        val preview = repository.preview(book.storageKey, 10)
+        repository.bind(preview, preview.mapping.map { it.copy(complete = true) }, emptySet(), true)
+        repository.syncAll()
+        assertEquals(2, remote!!.volumes)
+    }
+
+    @Test fun anExcludedNumberedSpecialIsReviewedWhenReadAndCanBeExplicitlyExcluded() = runBlocking {
+        val special = Volume(BookIdentity.volumeKey(book, "special"), "第1.5卷",
+            listOf(ChapterInformation(chapter(3), "正文")))
+        local.updateBookVolumes(BookVolumes(book.storageKey, volumes + special))
+        read(1); repository.requestSync(); repository.syncAll()
+        assertEquals(1, remote!!.volumes)
+        read(3)
+        assertTrue(repository.reconcile().isNotEmpty())
+        repository.syncAll()
+        assertEquals(BangumiSyncStatus.MAPPING_CHANGED, binding().status)
+        assertEquals(1, writes.size)
+        val preview = repository.preview(book.storageKey, 10)
+        assertNull(preview.mapping.last().editionKey)
+        repository.bind(preview, preview.mapping, emptySet(), true)
+        repository.syncAll()
+        assertEquals(BangumiSyncStatus.SYNCED, binding().status)
+        assertEquals(1, writes.size)
+    }
+
+    @Test fun automaticLinkPreservesAnExistingNonReadingCollectionUntilCorrection() = runBlocking {
+        remote = remote!!.copy(type = 2)
+        read(1); repository.requestSync(); repository.syncAll()
+        assertEquals(BangumiSyncStatus.REMOTE_STATE, binding().status)
+        repository.requestSync(); repository.syncAll()
+        assertTrue(writes.isEmpty())
+        assertEquals(2, remote!!.type)
+        val preview = repository.preview(book.storageKey, 10)
+        repository.bind(preview, preview.mapping, emptySet(), true)
+        repository.syncAll()
+        assertEquals(3, remote!!.type)
     }
 
     @Test fun aSingleBookSubjectCannotBeBoundToSeveralPublications() = runBlocking {
@@ -241,6 +347,7 @@ class BangumiRepositoryTest {
 
     @Test fun deletingReadingRecordsDuringTheRemoteReadIsRecheckedBeforeWriting() = runBlocking {
         bind(); repository.syncAll(); read(1)
+        val preview = repository.preview(book.storageKey, 10)
         val started = CountDownLatch(1)
         val release = CountDownLatch(1)
         readGate = started to release
@@ -313,7 +420,7 @@ class BangumiRepositoryTest {
         val count = server.requestCount
         assertTrue(repository.syncAll())
         assertEquals(count, server.requestCount)
-        repository.retryFailures()
+        repository.requestSync()
         assertTrue(repository.syncAll())
         assertEquals(count, server.requestCount)
         repository.retry(book.storageKey)
@@ -349,7 +456,7 @@ class BangumiRepositoryTest {
         var record = database.bangumiBindingDao().getRecords(17).first()
         assertEquals(BangumiSyncStatus.OFFLINE, record.status)
         assertNull(record.httpStatus)
-        repository.retryFailures()
+        repository.requestSync()
         nextResponse = json("{\"private-response\":")
         assertFalse(repository.syncAll())
         record = database.bangumiBindingDao().getRecords(17).first()
@@ -359,11 +466,8 @@ class BangumiRepositoryTest {
         assertTrue(writes.isEmpty())
     }
 
-    @Test fun disconnectAndUnlinkPreventLaterQueuedWritesWithoutDeletingRemoteCollection() = runBlocking {
-        read(1); bind(); repository.unlink(book.storageKey)
-        repository.syncAll()
-        assertTrue(writes.isEmpty())
-        bind(); accounts.disconnect(); repository.syncAll()
+    @Test fun disconnectPreventsLaterQueuedWritesWithoutDeletingRemoteCollection() = runBlocking {
+        read(1); bind(); accounts.disconnect(); repository.syncAll()
         assertTrue(writes.isEmpty())
         assertNotNull(remote)
     }
@@ -411,18 +515,19 @@ class BangumiRepositoryTest {
         assertEquals(2, writes.size)
     }
 
-    @Test fun unlinkCancelsTheInflightReadBeforeItCanPatch() = runBlocking {
+    @Test fun correctingAMatchCancelsTheInflightReadBeforeItCanPatch() = runBlocking {
         bind(); repository.syncAll(); read(1)
+        val preview = repository.preview(book.storageKey, 10)
         val started = CountDownLatch(1)
         val release = CountDownLatch(1)
         readGate = started to release
         try {
             val syncing = async(Dispatchers.IO) { repository.syncAll() }
             assertTrue(withContext(Dispatchers.IO) { started.await(3, TimeUnit.SECONDS) })
-            withTimeout(3000) { repository.unlink(book.storageKey) }
+            withTimeout(3000) { repository.bind(preview, preview.mapping, emptySet(), true) }
             release.countDown()
             syncing.await()
-            assertNull(database.bangumiBindingDao().get(17, book.storageKey))
+            assertEquals(BangumiSyncStatus.PENDING, binding().status)
             assertTrue(writes.isEmpty())
         } finally { readGate = null; release.countDown() }
     }

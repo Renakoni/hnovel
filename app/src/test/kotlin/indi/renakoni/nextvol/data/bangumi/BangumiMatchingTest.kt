@@ -25,6 +25,30 @@ class BangumiMatchingTest {
         assertFalse(BangumiMatching.supports(SourceBookId(Identifier("other", "Wenku8"), "1")))
     }
 
+    @Test fun automaticMatchNeedsAUniqueNovelSeriesWithMatchingTitleAndAuthor() {
+        val novel = BangumiCandidate(BangumiSubject(1, platform = "小说", series = true), true, true, false, true)
+        val manga = novel.copy(subject = novel.subject.copy(id = 2, platform = "漫画"))
+        assertEquals(1, BangumiMatching.automaticSubject(listOf(novel, manga), false)!!.id)
+        assertNull(BangumiMatching.automaticSubject(listOf(manga), false))
+        assertNull(BangumiMatching.automaticSubject(listOf(novel.copy(authorMatches = false)), false))
+        assertNull(BangumiMatching.automaticSubject(listOf(novel.copy(titleMatches = false)), false))
+        assertNull(BangumiMatching.automaticSubject(listOf(novel.copy(subject = novel.subject.copy(series = false))), false))
+        assertNull(BangumiMatching.automaticSubject(listOf(novel), true))
+        assertNull(BangumiMatching.automaticSubject(listOf(novel, novel.copy(subject = novel.subject.copy(id = 3))), false))
+    }
+
+    @Test fun automaticBaselineRejectsMissingOrAmbiguousPublicationNumbers() {
+        val one = BangumiVolumeMapping("one", "第一卷", "subject:11")
+        val two = BangumiVolumeMapping("two", "第二卷", "subject:12")
+        val preview = BangumiBookPreview(book(), BangumiSubject(1), listOf(two, one), BangumiCollection(3, 2), 17, "generation")
+        assertEquals(setOf("subject:11", "subject:12"), BangumiMatching.automaticBaseline(preview))
+        assertNull(BangumiMatching.automaticBaseline(preview.copy(mapping = listOf(one))))
+        assertNull(BangumiMatching.automaticBaseline(preview.copy(mapping = listOf(one, two.copy(editionKey = "subject:11")))))
+        assertNull(BangumiMatching.automaticBaseline(preview.copy(mapping = listOf(one, one.copy(volumeId = "duplicate", editionKey = "another")))))
+        assertNull(BangumiMatching.automaticBaseline(preview.copy(mapping = listOf(one,
+            BangumiVolumeMapping("special", "第1.5卷", "subject:15"), two))))
+    }
+
     @Test fun parsesVolumeLabelsWithoutBorrowingNumbersFromSpecials() {
         assertEquals("14", BangumiMatching.localNumber("第十四卷"))
         assertEquals("6.5", BangumiMatching.localNumber("第６.５卷"))
@@ -51,6 +75,25 @@ class BangumiMatchingTest {
         assertNull(result[0].editionKey)
         assertEquals("subject:9", result[1].editionKey)
         assertFalse(result[1].complete)
+    }
+
+    @Test fun oregairuSixPointFiveCountsAsOneBookWithoutRenumberingVolumeSeven() {
+        // Series 19441 lists 18=(14+4) books, including the four decimal-numbered publications.
+        val labels = (1..14).map { it.toString() } + listOf("6.5", "7.5", "10.5", "14.5")
+        val related = labels.mapIndexed { index, label ->
+            BangumiRelatedSubject(index + 1, 1, nameCn = "春物 $label", relation = "单行本")
+        }
+        val subject = BangumiSubject(19441, volumes = 18, series = true)
+        val mapping = BangumiMatching.propose(book().copy(isComplete = true),
+            labels.map { volume(it, "第${it}卷") }, subject, related)
+        val progress = (1..6).associate { "$it-main" to 1f }
+        val seven = BangumiMatching.completed(mapping, progress + ("6.5-main" to 1f))
+        assertEquals(7, seven.size)
+        assertTrue(mapping.single { it.volumeId == "6.5" }.editionKey in seven)
+        assertFalse(mapping.single { it.volumeId == "7" }.editionKey in seven)
+        assertEquals(8, BangumiMatching.completed(mapping, progress + mapOf("6.5-main" to 1f, "7-main" to 1f)).size)
+        assertNull(BangumiMatching.automaticBaseline(BangumiBookPreview(book(), subject, mapping,
+            BangumiCollection(3, 7), 17, "generation")))
     }
 
     @Test fun progressCountsDistinctCompletedPublicationsRatherThanHighestOrContiguousVolume() {

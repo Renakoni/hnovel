@@ -16,7 +16,6 @@ data class BangumiUiState(
     val account: BangumiAccountState = BangumiAccountState(),
     val bindings: List<BangumiBindingEntity> = emptyList(),
     val records: List<BangumiSyncRecord> = emptyList(),
-    val localBooks: List<BangumiLocalBook> = emptyList(),
     val book: BookInformation? = null,
     val query: String = "",
     val candidates: List<BangumiCandidate> = emptyList(),
@@ -33,7 +32,8 @@ data class BangumiUiState(
 )
 
 @HiltViewModel
-class BangumiViewModel @Inject constructor(private val repository: BangumiRepository, savedStateHandle: SavedStateHandle) : ViewModel() {
+class BangumiViewModel @Inject constructor(private val repository: BangumiRepository, private val scheduler: BangumiSyncScheduler,
+    savedStateHandle: SavedStateHandle) : ViewModel() {
     val bookId = savedStateHandle.toRoute<BangumiRoute>().bookId
     private val mutableState = MutableStateFlow(BangumiUiState())
     val state = mutableState.asStateFlow()
@@ -44,9 +44,14 @@ class BangumiViewModel @Inject constructor(private val repository: BangumiReposi
     init {
         viewModelScope.launch {
             repository.accounts.load()
-            combine(repository.accounts.state, repository.bindings, repository.records, repository.localBooks) { account, bindings, records, books ->
+            launch {
+                try { repository.refreshProfile() }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { /* A profile refresh must not block offline account and sync information. */ }
+            }
+            combine(repository.accounts.state, repository.bindings, repository.records) { account, bindings, records ->
                 mutableState.update { old -> old.copy(account = account, bindings = bindings.filter { it.accountId == account.user?.id },
-                    records = records.filter { it.accountId == account.user?.id }, localBooks = books,
+                    records = records.filter { it.accountId == account.user?.id },
                     preview = old.preview.takeIf { account.user?.id == it?.accountId }) }
             }.collect()
         }
@@ -59,8 +64,7 @@ class BangumiViewModel @Inject constructor(private val repository: BangumiReposi
 
     fun connect(token: String) = work { repository.connect(token.trim()) }
     fun disconnect() = work { repository.accounts.disconnect() }
-    fun unlink(id: String) = work { repository.unlink(id) }
-    fun retryFailures() = work { repository.retryFailures() }
+    fun sync() = work { repository.requestSync(); scheduler.syncNow() }
 
     fun query(value: String) {
         searchJob?.cancel()
@@ -135,6 +139,7 @@ class BangumiViewModel @Inject constructor(private val repository: BangumiReposi
     }
 
     private fun error(failure: Exception) = when {
+        failure is BangumiLinkException -> R.string.bangumi_invalid_link
         failure is BangumiApiException -> bangumiHttpError(failure.status)
         failure is BangumiResponseException -> R.string.bangumi_invalid_response
         failure is java.io.IOException -> R.string.bangumi_error_network

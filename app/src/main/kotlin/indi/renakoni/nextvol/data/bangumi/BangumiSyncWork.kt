@@ -36,6 +36,12 @@ class BangumiSyncScheduler @Inject constructor(
     private val database: NextVolDatabase,
     private val workManager: WorkManager,
 ) {
+    fun syncNow() {
+        workManager.enqueueUniqueWork("bangumi-manual", ExistingWorkPolicy.KEEP,
+            OneTimeWorkRequestBuilder<BangumiSyncWork>().setConstraints(networkConstraint)
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS).build())
+    }
+
     @OptIn(FlowPreview::class)
     fun start(scope: CoroutineScope) {
         scope.launch {
@@ -55,6 +61,7 @@ class BangumiSyncScheduler @Inject constructor(
                         else {
                             workManager.cancelUniqueWork("bangumi-recovery")
                             workManager.cancelUniqueWork("bangumi-progress")
+                            workManager.cancelUniqueWork("bangumi-manual")
                         }
                         connected = hasAccount
                     }
@@ -70,7 +77,7 @@ class BangumiSyncScheduler @Inject constructor(
     }
 
     private fun changes(): Flow<Unit> = callbackFlow {
-        val observer = object : InvalidationTracker.Observer("bangumi_binding", "user_reading_data", "volume", "chapter_information") {
+        val observer = object : InvalidationTracker.Observer("bangumi_binding", "user_reading_data", "book_information", "volume", "chapter_information") {
             override fun onInvalidated(tables: Set<String>) { trySend(Unit) }
         }
         database.invalidationTracker.addObserver(observer)

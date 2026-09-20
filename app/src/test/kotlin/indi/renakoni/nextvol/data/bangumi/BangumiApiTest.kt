@@ -56,11 +56,19 @@ class BangumiApiTest {
     }
 
     @Test fun onlyOfficialSubjectLinksSupplyIds() {
-        assertEquals(123, BangumiApi.subjectId("http://bangumi.tv/subject/123"))
-        assertEquals(123, BangumiApi.subjectId("https://bgm.tv/subject/123"))
+        for (host in listOf("bgm.tv", "bangumi.tv", "chii.in")) for (scheme in listOf("http", "https"))
+            assertEquals(123, BangumiApi.subjectId("$scheme://$host/subject/123"))
         assertNull(BangumiApi.subjectId("https://example.com/subject/123"))
         assertNull(BangumiApi.subjectId("https://bgm.tv@evil.example/subject/123"))
         assertNull(BangumiApi.subjectId("-1"))
+        assertNull(BangumiApi.subjectId("https://bangumi.tv/anime/list/123"))
+    }
+
+    @Test fun authenticatedProfileIncludesAvatarAndOlderSavedProfilesStillDecode() = runBlocking {
+        server.enqueue(MockResponse().setBody("""{"id":17,"username":"test","avatar":{"large":"https://lain.bgm.tv/large.jpg","medium":"https://lain.bgm.tv/medium.jpg","small":"https://lain.bgm.tv/small.jpg"}}"""))
+        assertEquals("https://lain.bgm.tv/medium.jpg", api.me(session).avatar.url)
+        assertEquals("Bearer test-only-token", server.takeRequest().getHeader("Authorization"))
+        assertEquals("", bangumiJson.decodeFromString<BangumiUser>("""{"id":17,"username":"test"}""").avatar.url)
     }
 
     @Test fun redirectsCannotForwardTheAccountCredential() = runBlocking {

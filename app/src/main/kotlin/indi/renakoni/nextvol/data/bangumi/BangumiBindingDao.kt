@@ -22,15 +22,15 @@ data class BangumiSyncRecord(
 
 @Entity(tableName = "bangumi_binding", primaryKeys = ["accountId", "bookId"],
     indices = [Index(value = ["accountId", "subjectId"], unique = true)])
-data class BangumiBindingEntity(val accountId: Int, val bookId: String, val subjectId: Int, val data: String) {
+data class BangumiBindingEntity(val accountId: Int, val bookId: String, val subjectId: Int?, val data: String) {
     fun binding(): BangumiBinding = bangumiJson.decodeFromString(data)
     fun withBinding(value: BangumiBinding) = copy(data = bangumiJson.encodeToString(value))
 }
 
 @Dao
 interface BangumiBindingDao {
-    @Query("SELECT id, title FROM book_information WHERE EXISTS (SELECT 1 FROM volume WHERE volume.book_id = book_information.id) ORDER BY title")
-    fun observeLocalBooks(): Flow<List<BangumiLocalBook>>
+    @Query("SELECT id, title FROM book_information WHERE EXISTS (SELECT 1 FROM user_reading_data WHERE user_reading_data.id = book_information.id) AND EXISTS (SELECT 1 FROM volume WHERE volume.book_id = book_information.id) ORDER BY title")
+    suspend fun getReadingBooks(): List<BangumiLocalBook>
 
     @Query("SELECT * FROM bangumi_sync_record ORDER BY id DESC")
     fun observeRecords(): Flow<List<BangumiSyncRecord>>

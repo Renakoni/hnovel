@@ -79,16 +79,33 @@ class BangumiAccountStore @Inject constructor(@ApplicationContext context: Conte
         validateToken(token)
         mutex.withLock {
             val saved = SavedAccount(user, UUID.randomUUID().toString(), token)
-            val bytes = cipher.seal(bangumiJson.encodeToString(saved).toByteArray(Charsets.UTF_8), IDENTITY)
-            val output = file.startWrite()
-            try { output.write(bytes); file.finishWrite(output) }
-            catch (failure: Throwable) { file.failWrite(output); throw failure }
+            write(saved)
             current?.revoke()
             BangumiSession(user, saved.generation, token).also {
                 current = it
                 mutableState.value = BangumiAccountState(user, loaded = true)
             }
         }
+    }
+
+    suspend fun updateProfile(session: BangumiSession, user: BangumiUser) = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            if (current !== session) return@withLock
+            session.checkActive()
+            require(user.id == session.user.id)
+            val saved = file.openRead().use { input ->
+                bangumiJson.decodeFromString<SavedAccount>(cipher.open(input.readBytes(), IDENTITY).toString(Charsets.UTF_8))
+            }
+            write(SavedAccount(user, saved.generation, saved.token))
+            mutableState.value = BangumiAccountState(user, loaded = true)
+        }
+    }
+
+    private fun write(saved: SavedAccount) {
+        val bytes = cipher.seal(bangumiJson.encodeToString(saved).toByteArray(Charsets.UTF_8), IDENTITY)
+        val output = file.startWrite()
+        try { output.write(bytes); file.finishWrite(output) }
+        catch (failure: Throwable) { file.failWrite(output); throw failure }
     }
 
     suspend fun disconnect() = withContext(Dispatchers.IO) {

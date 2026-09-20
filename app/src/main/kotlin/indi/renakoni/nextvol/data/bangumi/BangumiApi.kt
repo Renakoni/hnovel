@@ -25,6 +25,7 @@ import kotlin.coroutines.resumeWithException
 /** Only the HTTP status is retained; upstream error bodies can contain account information. */
 class BangumiApiException(val status: Int, val retryAfterSeconds: Long = 0) : IOException("Bangumi HTTP $status")
 class BangumiResponseException : IOException("Invalid Bangumi response")
+class BangumiLinkException : IllegalArgumentException("Invalid Bangumi subject link")
 
 @Singleton
 class BangumiApi internal constructor(private val client: OkHttpClient, private val baseUrl: HttpUrl) {
@@ -38,6 +39,8 @@ class BangumiApi internal constructor(private val client: OkHttpClient, private 
         return try { decode(request("GET", "v0/me", session = temporary)!!) }
         finally { temporary.revoke() }
     }
+
+    suspend fun me(session: BangumiSession): BangumiUser = decode(request("GET", "v0/me", session = session)!!)
 
     suspend fun search(query: String, offset: Int = 0): BangumiSearchPage {
         val body = buildJsonObject {

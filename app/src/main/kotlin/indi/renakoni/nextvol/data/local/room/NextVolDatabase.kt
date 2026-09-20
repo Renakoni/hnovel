@@ -63,7 +63,7 @@ import io.nightfish.lightnovelreader.api.content.builder.simpleText
         indi.renakoni.nextvol.data.bangumi.BangumiBindingEntity::class,
         indi.renakoni.nextvol.data.bangumi.BangumiSyncRecord::class
     ],
-    version = 20,
+    version = 21,
     exportSchema = false
 )
 abstract class NextVolDatabase : RoomDatabase() {
@@ -110,7 +110,8 @@ abstract class NextVolDatabase : RoomDatabase() {
                             MIGRATION_16_17,
                             MIGRATION_17_18,
                             MIGRATION_18_19,
-                            MIGRATION_19_20
+                            MIGRATION_19_20,
+                            MIGRATION_20_21
                         )
                         .allowMainThreadQueries()
                         .build()
@@ -913,6 +914,17 @@ abstract class NextVolDatabase : RoomDatabase() {
                 db.execSQL("CREATE TABLE IF NOT EXISTS downloaded_chapter (id TEXT NOT NULL PRIMARY KEY, " +
                     "bookId TEXT NOT NULL, signature TEXT NOT NULL, images TEXT NOT NULL)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_downloaded_chapter_bookId ON downloaded_chapter (bookId)")
+            }
+        }
+
+        internal val MIGRATION_20_21 = object : Migration(20, 21) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE bangumi_binding_new (accountId INTEGER NOT NULL, " +
+                    "bookId TEXT NOT NULL, subjectId INTEGER, data TEXT NOT NULL, PRIMARY KEY(accountId, bookId))")
+                db.execSQL("INSERT INTO bangumi_binding_new SELECT accountId, bookId, subjectId, data FROM bangumi_binding")
+                db.execSQL("DROP TABLE bangumi_binding")
+                db.execSQL("ALTER TABLE bangumi_binding_new RENAME TO bangumi_binding")
+                db.execSQL("CREATE UNIQUE INDEX index_bangumi_binding_accountId_subjectId ON bangumi_binding (accountId, subjectId)")
             }
         }
 

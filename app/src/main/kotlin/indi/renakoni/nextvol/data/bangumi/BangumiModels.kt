@@ -44,7 +44,12 @@ data class BangumiRelatedSubject(
 data class BangumiPerson(val id: Int, val name: String, val relation: String)
 
 @Serializable
-data class BangumiUser(val id: Int, val username: String, val nickname: String = "")
+data class BangumiAvatar(val large: String = "", val medium: String = "", val small: String = "") {
+    val url: String get() = medium.ifBlank { large.ifBlank { small } }
+}
+
+@Serializable
+data class BangumiUser(val id: Int, val username: String, val nickname: String = "", val avatar: BangumiAvatar = BangumiAvatar())
 
 @Serializable
 data class BangumiCollection(
@@ -78,7 +83,9 @@ data class BangumiVolumeMapping(
 @Serializable
 enum class BangumiSyncStatus {
     READY, PENDING, SYNCED, REMOTE_AHEAD, AUTH_REQUIRED, REMOTE_CHANGED, MAPPING_CHANGED,
-    REMOTE_STATE, REMOTE_MISSING, REQUEST_REJECTED, OFFLINE,
+    REMOTE_STATE, REMOTE_MISSING, REQUEST_REJECTED, OFFLINE, MATCH_REQUIRED;
+
+    val successful: Boolean get() = this in setOf(READY, SYNCED, REMOTE_AHEAD)
 }
 
 @Serializable
@@ -98,6 +105,7 @@ data class BangumiBinding(
     val forceSync: Boolean = false,
     val privateCollection: Boolean = true,
     val retryAt: Long = 0,
+    val automatic: Boolean = false,
 )
 
 data class BangumiBookPreview(

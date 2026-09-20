@@ -96,28 +96,32 @@ class BangumiScreenTest {
         assertFalse(confirmed)
     }
 
-    @Test fun settingsCentralizeBookSelectionErrorsAndPersistedHistory() {
-        val binding = BangumiBinding("Linked book", "Series", "revision", emptyList(), status = BangumiSyncStatus.OFFLINE)
+    @Test fun globalSyncAndHistorySeparateCompletedAndFailedBooks() {
+        val failed = BangumiBinding("Unmatched book", "", "revision", emptyList(), status = BangumiSyncStatus.MATCH_REQUIRED)
+        val complete = failed.copy(bookTitle = "Completed book", status = BangumiSyncStatus.SYNCED, lastSyncedAt = 123)
         val state = BangumiUiState(account = BangumiAccountState(BangumiUser(1, "test"), true),
-            localBooks = listOf(BangumiLocalBook("one", "Available book"), BangumiLocalBook("two", "Linked book")),
-            bindings = listOf(BangumiBindingEntity(1, "two", 10, bangumiJson.encodeToString(binding))),
-            records = listOf(BangumiSyncRecord(1, 1, "old", "Previous book", 2, 1, BangumiSyncStatus.OFFLINE, 123, 503, true)))
+            bindings = listOf(BangumiBindingEntity(1, "one", null, bangumiJson.encodeToString(failed)),
+                BangumiBindingEntity(1, "two", 10, bangumiJson.encodeToString(complete))),
+            records = listOf(
+                BangumiSyncRecord(1, 1, "one", "Unmatched book", 0, 0, BangumiSyncStatus.MATCH_REQUIRED, 123),
+                BangumiSyncRecord(2, 1, "two", "Completed book", 2, 2, BangumiSyncStatus.SYNCED, 123),
+                BangumiSyncRecord(3, 1, "old", "Previous book", 2, 1, BangumiSyncStatus.OFFLINE, 123, 503, true)))
         var opened: String? = null
-        var retried = false
-        activity.get().setContent { MaterialTheme { screen(state, null, openBook = { opened = it }, retryFailures = { retried = true }) } }
-        compose.onNodeWithContentDescription(text(R.string.bangumi_pending_count) + " 1").assertExists()
-        compose.onNodeWithContentDescription(text(R.string.bangumi_attention_count) + " 0").assertExists()
-        compose.onNodeWithText(text(R.string.bangumi_retry_failures)).performClick()
-        assertTrue(retried)
+        var synced = false
+        activity.get().setContent { MaterialTheme { screen(state, null, openBook = { opened = it }, sync = { synced = true }) } }
+        compose.onNodeWithContentDescription(text(R.string.bangumi_synced_count) + " 1").assertExists()
+        compose.onNodeWithContentDescription(text(R.string.bangumi_unsynced_count) + " 1").assertExists()
+        compose.onNodeWithText(text(R.string.bangumi_sync)).performClick()
+        assertTrue(synced)
         compose.onNodeWithText(text(R.string.bangumi_records)).performClick()
+        compose.onNodeWithText("Completed book").assertExists()
+        compose.onNodeWithText("Unmatched book").assertDoesNotExist()
+        compose.onNodeWithText(text(R.string.bangumi_records_error)).performClick()
+        compose.onNodeWithText("Completed book").assertDoesNotExist()
+        compose.onNodeWithText("Unmatched book").assertExists()
         compose.onNodeWithText("Previous book").assertExists()
-        compose.onNodeWithText(text(R.string.bangumi_status_offline)).assertDoesNotExist()
         compose.onNodeWithText(activity.get().getString(R.string.bangumi_http_failure, 503, text(R.string.bangumi_error_server))).assertExists()
-        compose.onNodeWithText(text(R.string.bangumi_pending_confirmation)).assertExists()
-        compose.onNodeWithContentDescription(text(R.string.sources_back)).performClick()
-        compose.onNodeWithText(text(R.string.bangumi_add_binding)).performClick()
-        compose.onNodeWithText("Linked book").assertDoesNotExist()
-        compose.onNodeWithText("Available book").performClick()
+        compose.onNodeWithText(text(R.string.bangumi_correct_match)).performClick()
         assertEquals("one", opened)
     }
 
@@ -137,27 +141,33 @@ class BangumiScreenTest {
         assertEquals("subject:11", state.mapping.single().editionKey)
     }
 
-    @Test fun bookMenuKeepsUnlinkBehindConfirmation() {
-        val binding = BangumiBinding("Linked book", "Series", "revision", emptyList(), status = BangumiSyncStatus.AUTH_REQUIRED)
-        val state = BangumiUiState(account = BangumiAccountState(BangumiUser(1, "test"), true),
-            bindings = listOf(BangumiBindingEntity(1, "book", 10, bangumiJson.encodeToString(binding))))
-        var unlinked: String? = null
-        activity.get().setContent { MaterialTheme { screen(state, null, unlink = { unlinked = it }) } }
-        compose.onNodeWithContentDescription(text(R.string.bangumi_attention_count) + " 1").assertExists()
-        compose.onNodeWithText(text(R.string.bangumi_unlink)).assertDoesNotExist()
-        compose.onNode(hasScrollAction()).performScrollToNode(hasContentDescription(activity.get().getString(R.string.bangumi_book_actions, "Linked book")))
-        compose.onNodeWithContentDescription(activity.get().getString(R.string.bangumi_book_actions, "Linked book")).performClick()
-        compose.onNodeWithText(text(R.string.bangumi_unlink)).performClick()
-        assertNull(unlinked)
-        compose.onNodeWithText(text(R.string.confirm)).performClick()
-        assertEquals("book", unlinked)
+    @Test fun correctionAcceptsAPastedBangumiLinkAndDisplaysSpecificLinkErrors() {
+        var state by mutableStateOf(BangumiUiState(account = BangumiAccountState(BangumiUser(1, "test"), true)))
+        var searched = false
+        activity.get().setContent { MaterialTheme {
+            BangumiScreen(state, "book", {}, {}, {}, {}, {}, { state = state.copy(query = it, error = null) }, { searched = true }, {}, {}, {},
+                { _, _ -> }, { _, _ -> }, { _, _ -> }, {}, {}, {})
+        } }
+        compose.onNodeWithText(text(R.string.bangumi_correct_match)).assertExists()
+        compose.onNodeWithText(text(R.string.bangumi_paste_link)).assertExists()
+        compose.onNode(hasSetTextAction()).performTextInput("http://bangumi.tv/subject/123")
+        compose.onNodeWithText(text(R.string.bangumi_search)).performClick()
+        assertTrue(searched)
+        assertEquals("http://bangumi.tv/subject/123", state.query)
+        compose.runOnIdle { state = state.copy(error = R.string.bangumi_invalid_link) }
+        compose.onNodeWithText(text(R.string.bangumi_invalid_link)).assertExists()
+        compose.onNode(hasSetTextAction()).performClick().performTextClearance()
+        compose.onNode(hasSetTextAction()).assertIsFocused()
+        compose.onNodeWithText(text(R.string.bangumi_invalid_link)).assertDoesNotExist()
+        compose.onNode(hasSetTextAction()).performTextInput("https://bgm.tv/subject/456")
+        assertEquals("https://bgm.tv/subject/456", state.query)
     }
 
     @Composable private fun screen(state: BangumiUiState, bookId: String?, connect: (String) -> Unit = {},
         disconnect: () -> Unit = {}, complete: (String, Boolean) -> Unit = { _, _ -> }, confirm: () -> Unit = {},
-        openBook: (String) -> Unit = {}, retryFailures: () -> Unit = {}, unlink: (String) -> Unit = {},
+        openBook: (String) -> Unit = {}, sync: () -> Unit = {},
         mapping: (String, String?) -> Unit = { _, _ -> }) {
-        BangumiScreen(state, bookId, {}, {}, openBook, connect, disconnect, {}, {}, {}, {}, unlink, retryFailures,
+        BangumiScreen(state, bookId, {}, {}, openBook, connect, disconnect, {}, {}, {}, {}, sync,
             mapping, complete, { _, _ -> }, {}, confirm, {})
     }
 }

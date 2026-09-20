@@ -53,6 +53,21 @@ class BangumiAccountStoreTest {
         assertFalse(File(context.noBackupFilesDir, "bangumi-account.enc").exists())
     }
 
+    // API 30 AtomicFile uses rename-over-existing, which Java File.renameTo cannot emulate on Windows.
+    @Config(sdk = [28])
+    @Test fun refreshingAvatarPreservesSessionAndCannotRestoreADisconnectedAccount() = runBlocking {
+        val session = store.connect(BangumiUser(17, "test"), "test-only-token")
+        val profile = BangumiUser(17, "test", "Name", BangumiAvatar(medium = "https://lain.bgm.tv/avatar.jpg"))
+        store.updateProfile(session, profile)
+        assertSame(session, store.session())
+        session.checkActive()
+        assertEquals(profile, BangumiAccountStore(context, cipher).session()!!.user)
+        store.disconnect()
+        store.updateProfile(session, profile)
+        assertNull(store.state.value.user)
+        assertFalse(File(context.noBackupFilesDir, "bangumi-account.enc").exists())
+    }
+
     @Test fun disconnectCancelsAnAlreadyRegisteredHttpCall() = runBlocking {
         val server = MockWebServer()
         server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE))
