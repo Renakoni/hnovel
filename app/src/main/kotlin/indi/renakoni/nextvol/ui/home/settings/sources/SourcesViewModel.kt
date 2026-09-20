@@ -146,18 +146,6 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
     }
 
     fun previewText(text: String, profile: String = AUTO_PROFILE) = launch { showPreview(sources.importer.preview(text, profile)) }
-    fun addFanqie() = launch {
-        val text = checkNotNull(SourceDefinitionImporter::class.java.getResourceAsStream("/known-sources/fanqie-taijiwang.json"))
-            .bufferedReader(Charsets.UTF_8).use { it.readText() }
-        val preview = sources.importer.preview(text, AUTO_PROFILE)
-        val index = preview.candidates.single().index
-        commitSelection(preview, setOf(index), candidateOrigins(preview), false)
-        state.value.installed.find { it.definition.importKey == "https://fq.taijiwang.top" }?.let {
-            val id = ImportedRuleSources.id(it.definition)
-            sources.setPreferences(id, enabled = true)
-            selectSource(id)
-        }
-    }
     fun openImportLink(url: String) {
         if (openedImportLink == url) return
         openedImportLink = url

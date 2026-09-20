@@ -705,9 +705,6 @@
     <string name="bookshelf_remove_selected">Remove from this bookshelf</string>
     <string name="bookshelf_collect_selected">Add to bookshelves</string>
     <string name="sources_profile_standard">Standard Legado source</string>
-    <string name="sources_profile_auto">Detect automatically</string>
-    <string name="sources_collections">Import a source collection</string>
-    <string name="sources_fanqie">Fanqie novels (Taiji service)</string>
     <string name="sources_non_text_skipped">Skipped %1$d sources for comics, audio or other media.</string>
     <string name="sources_profile_extension">Extended Legado source</string>
     <string name="sources_profile_help">Follow the source author’s instructions. Extended mode supports scripted login forms and additional controls.</string>
