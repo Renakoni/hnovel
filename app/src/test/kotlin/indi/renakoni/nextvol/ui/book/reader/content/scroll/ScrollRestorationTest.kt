@@ -49,11 +49,12 @@ class ScrollRestorationTest {
     private val env = ModeTestEnvironment()
     private val saved = mutableListOf<Pair<String, Float>>()
     private val gate = CompletableDeferred<Unit>()
+    private var continuous = false
     private val mode = ScrollReaderController(
         env.loader, env.records, env.scope,
         object : ContinuousScrollSettings {
-            override fun getFlow() = flowOf(false)
-            override suspend fun isEnabled() = false
+            override fun getFlow() = flowOf(continuous)
+            override suspend fun isEnabled() = continuous
         }, { id, progress -> saved += id to progress }, env.dispatcher, env.dispatcher,
     )
     private val settings = mockk<ReaderSettings>(relaxed = true) {
@@ -88,13 +89,24 @@ class ScrollRestorationTest {
         assertTrue("Must not save the new chapter before restoring it: $saved", saved.all { it.first == "4" && kotlin.math.abs(it.second - 0.4f) < 0.01f })
     }
 
+    @Test fun cachedPreviousChapterCannotBlockRestoringTheRequestedChapter() {
+        continuous = true
+        env.records.data = env.records.data.copy(currentChapterReadingProgressMap = mapOf("3" to 0.7f))
+        mount()
+        awaitRestoration("3", 0.7f)
+        assertFalse(mode.uiState.isRestoringProgress)
+        assertEquals("3", mode.uiState.readingChapterId)
+        assertTrue(saved.all { it.first == "3" })
+    }
+
     private fun mount() {
         every { env.renderer.getContentDataFromJson(any()) } returns ContentData(listOf(Body()))
         env.runCurrent()
         mode.changeBookId("book")
         mode.changeChapter("3")
         env.runCurrent()
-        env.emit("3", Ok(env.chapter("3")))
+        env.emit("3", Ok(env.chapter("3", prev = if (continuous) "2" else null)))
+        if (continuous) env.emit("2", Ok(env.chapter("2", next = "3")))
         compose.runOnUiThread {
             activity.get().setContent {
                 MaterialTheme {
