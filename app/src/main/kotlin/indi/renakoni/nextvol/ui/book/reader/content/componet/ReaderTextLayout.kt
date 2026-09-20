@@ -9,6 +9,7 @@ import androidx.compose.foundation.text.selection.rememberSelectionState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.key
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
@@ -38,6 +39,7 @@ internal fun layoutReaderText(
     width: Int,
     height: Int,
     paragraphSpacing: Int,
+    keepParagraphSpacingAtPageBreaks: Boolean = false,
     measure: (String, Int) -> TextLayoutResult,
 ): List<List<ReaderTextFragment>> {
     val pages = mutableListOf<List<ReaderTextFragment>>()
@@ -61,12 +63,13 @@ internal fun layoutReaderText(
             val measured = measure(paragraph, width.coerceAtLeast(1))
             var firstLine = 0
             while (firstLine < measured.lineCount) {
-                var spacing = if (firstLine == 0 && page.isNotEmpty()) paragraphSpacing else 0
+                var spacing = if (firstLine == 0 && (page.isNotEmpty() ||
+                    keepParagraphSpacingAtPageBreaks && pages.isNotEmpty())) paragraphSpacing else 0
                 val top = measured.getLineTop(firstLine)
                 fun lineHeight(lastLine: Int) = ceil(measured.getLineBottom(lastLine) - top).toInt().coerceAtLeast(1)
                 if (page.isNotEmpty() && lineHeight(firstLine) + spacing > safeHeight - usedHeight) {
                     nextPage()
-                    spacing = 0
+                    if (!keepParagraphSpacingAtPageBreaks) spacing = 0
                 }
                 var lastLine = firstLine
                 while (lastLine + 1 < measured.lineCount &&
@@ -117,11 +120,13 @@ internal fun ReaderTextFragments(
     SelectionContainer(state = selectionState) {
         Column(modifier) {
             fragments.forEach { fragment ->
-                if (fragment.spacingBefore > 0) Spacer(Modifier.height(with(density) { fragment.spacingBefore.toDp() }))
-                Text(
-                    text = fragment.text, style = style, color = color,
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                key(fragment.componentIndex, fragment.start) {
+                    if (fragment.spacingBefore > 0) Spacer(Modifier.height(with(density) { fragment.spacingBefore.toDp() }))
+                    Text(
+                        text = fragment.text, style = style, color = color,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
             }
         }
     }
