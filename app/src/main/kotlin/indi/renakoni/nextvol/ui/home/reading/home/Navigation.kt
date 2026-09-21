@@ -37,8 +37,7 @@ fun NavGraphBuilder.readingHomeDestination(sharedTransitionScope: SharedTransiti
             onClickDownloadManager = navController::navigateToDownloadManager,
             onClickBook = navController::navigateToBookDetailDestination,
             onClickContinueReading = { bookId, chapterId ->
-                navController.navigateToBookDetailDestination(bookId)
-                navController.navigateToBookReaderDestination(bookId, chapterId, context)
+                navController.navigateToBookReaderDestination(bookId, chapterId, context, includeDetail = true)
             },
             sharedTransitionScope = sharedTransitionScope,
             onClickStats = navController::navigateToReadingStatsDestination,
@@ -58,11 +57,11 @@ fun NavGraphBuilder.readingHomeDestination(sharedTransitionScope: SharedTransiti
                     readingChapterId = chapterSheetUi.readingChapterId,
                     onDismissRequest = viewModel::closeContents,
                     onClickChapter = { chapterId ->
-                        navController.navigateToBookDetailDestination(chapterSheetUi.bookId)
                         navController.navigateToBookReaderDestination(
                             chapterSheetUi.bookId,
                             chapterId,
-                            context
+                            context,
+                            includeDetail = true,
                         )
                         viewModel.closeContents()
                     },
