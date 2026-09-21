@@ -97,9 +97,18 @@ fun NavGraphBuilder.bookReaderDestination(onReaderActiveChanged: (Boolean) -> Un
     imageViewerDialog()
 }
 
-fun NavController.navigateToBookReaderDestination(bookId: String, chapterId: String, context: Context) {
+fun NavController.navigateToBookReaderDestination(
+    bookId: String,
+    chapterId: String,
+    context: Context,
+    includeDetail: Boolean = false,
+) {
+    if (!isResumed() || currentDestination?.hasRoute<Route.Book.Reader>() == true) return
     val book = BookIdentity.book(bookId)
-    navigate(Route.Book.Reader(book.storageKey, BookIdentity.chapter(chapterId, book).storageKey))
+    val reader = Route.Book.Reader(book.storageKey, BookIdentity.chapter(chapterId, book).storageKey)
+    // Check once before both hops: the intermediate detail entry is not resumed yet.
+    if (includeDetail) navigate(Route.Book.Detail(book.storageKey))
+    navigate(reader)
 }
 
 private fun NavGraphBuilder.colorPickerDialog() {
