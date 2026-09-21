@@ -7,6 +7,46 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class WorkerRuleTest {
+    @Test fun chapterElementScriptInputKeepsDomMethodsAcrossTheWorkerWire() {
+        val node = RuleValue.Node("<a href='/chapter/1'><i class='icon-lock'></i>One</a>", InputKind.Html, "li")
+        val task = ExecutionTask.Rule("@js:result.outerHtml().includes('icon-lock')", node, OutputKind.Text,
+            RuleLocation("ruleToc.isVip"), baseUrl = "https://fixture.invalid/toc")
+        assertEquals(RuleValue.Text("true"), value(run(task)).value)
+        assertEquals(RuleValue.Text("false"), value(run(task.copy(input = node.copy(content = "<a href='/chapter/2'>Two</a>")))).value)
+        assertEquals(RuleValue.Text("https://fixture.invalid/chapter/1|undefined"), value(run(task.copy(
+            rule = "@js:result.setBaseUri(baseUrl);result.absUrl('href')+'|'+typeof result.getClass"))).value)
+        assertEquals(RuleValue.Text("ONE"), value(run(task.copy(rule = "text@js:result.toUpperCase()"))).value)
+    }
+
+    @Test fun nestedRulesKeepElementScriptInputWithoutReplacingTheCallerResult() {
+        val task = ExecutionTask.Rule("""@js:java.getString('@js:result.text()')+'|'+result.outerHtml().includes('icon-lock')""",
+            RuleValue.Node("<a><i class='icon-lock'></i>One</a>", InputKind.Html), OutputKind.Text)
+        assertEquals(RuleValue.Text("One|true"), value(run(task)).value)
+    }
+
+    @Test fun chapterDomCanBePassedBackToTheJsoupTextParser() {
+        val task = ExecutionTask.Rule("""@js:org.jsoup.Jsoup.parse(result).select('a').first().attr('href')""",
+            RuleValue.Node("""<a href="/chapter/1"><span>One</span></a>""", InputKind.Html, "li"),
+            OutputKind.Url, RuleLocation("ruleToc.chapterUrl"), baseUrl = "https://fixture.invalid/toc")
+        assertEquals(RuleValue.Text("https://fixture.invalid/chapter/1"), value(run(task)).value)
+    }
+
+    @Test fun matchResultUsesTheJavaPutStringOverload() {
+        val task = ExecutionTask.Rule("""@js:var bid=baseUrl.match(/\d+/);java.put('bid',bid);java.get('bid')""",
+            RuleValue.Text("chapter"), OutputKind.Text, RuleLocation("ruleToc.chapterUrl"),
+            baseUrl = "https://fixture.invalid/book/12345/catalog/", bookId = "fixture-book")
+        val result = value(run(task))
+        assertEquals(RuleValue.Text("12345"), result.value)
+        assertEquals("12345", result.bookWrites["bid"])
+    }
+
+    @Test fun selectedHtmlListsRetainDomMethodsAndTableContext() {
+        val task = ExecutionTask.Rule("@@tr@js:result.get(0).child(0).text()+'|'+result.size()",
+            RuleValue.Text("<table><tr><td>One</td></tr><tr><td>Two</td></tr></table>"), OutputKind.Elements)
+        assertEquals(RuleValue.Text("One|2"), value(run(task)).value)
+        assertEquals(RuleValue.Text("|0"), value(run(task.copy(rule = "@@#missing@js:result.text()+'|'+result.size()"))).value)
+    }
+
     @Test fun jsonListsRemainStructuredAcrossScriptAndSelectorStages() {
         val input = RuleValue.Text("""{"chapterlist":[{"chapterid":1},{"chapterid":2}]}""")
         val task = ExecutionTask.Rule("""$.chapterlist[*]||$.[*]<js>result</js>$.[*]""",

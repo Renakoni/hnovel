@@ -82,15 +82,46 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
             restorationFailed = true
             emptyList()
         }
-        val classified = installed.map { entry ->
+        val classified = installed.map { original ->
+            val entry = repairBundledRevision(original)
             val preferences = entry.preferences()
-            val category = preferences.category ?: catalog.entry(entry.definition)?.category
+            val category = catalog.entry(entry.definition)?.category ?: preferences.category
             if (category == preferences.category) entry else entry.copy(preferences = preferences.copy(category = category))
         }
         if (classified != installed) save(classified)
         classified.forEach { entry -> active[id(entry.definition)] = restoreBinding(entry) }
         restored = true
     } }
+
+    private fun repairBundledRevision(installed: InstalledSource): InstalledSource {
+        val before = installed.definition
+        if (before.contentDigest in installed.bundledRepairs) return installed
+        val raw = catalog.replacement(before) ?: return installed
+        return try {
+            val preview = importer.preview(raw, before.profile)
+            val candidate = preview.candidates.singleOrNull()?.takeIf {
+                preview.issues.isEmpty() && it.importKey == before.importKey && it.profile == before.profile
+            } ?: return installed
+            val stored = definitions.list().singleOrNull { it.sourceId == before.sourceId } ?: return installed
+            if (stored.profile != before.profile || stored.importKey != before.importKey) return installed
+            // Preserve a pending custom import. A matching repair in the store also recovers
+            // interruption between the definition commit and the activation snapshot write.
+            if (stored.contentDigest != before.contentDigest && stored.rawJson != candidate.rawJson) return installed
+            val next = if (stored.rawJson == candidate.rawJson) stored else {
+                if (candidate.existing != stored.reference()) return installed
+                val result = importer.commit(preview, listOf(ImportSelection(candidate.index, ImportDecision.Replace(stored.reference()))))
+                val reference = result.items.singleOrNull()?.takeIf { result.error == null && it.error == null }?.reference
+                    ?: return installed
+                definitions.list().singleOrNull { it.reference() == reference } ?: return installed
+            }
+            installed.copy(definition = next.copy(origin = before.origin),
+                previous = SavedRevision(before, installed.origins),
+                bundledRepairs = installed.bundledRepairs + before.contentDigest)
+        } catch (_: Exception) {
+            android.util.Log.w("ImportedRuleSources", "Bundled source repair remains pending")
+            installed
+        }
+    }
 
     /** The caller explicitly approves origins after preview; pending revisions are not activated implicitly. */
     suspend fun activate(reference: DefinitionReference, approvedOrigins: List<NetworkGrant>): Identifier = withContext(Dispatchers.IO) {
@@ -180,7 +211,8 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
         check(old.installed.definition == expected) { "Installed revision changed" }
         require(next.sourceId == expected.sourceId && next.profile == expected.profile && origins.size <= 32)
         val installed = InstalledSource(next, origins.map { it.copy(headers = it.headers.toMap()) },
-            if (next == expected) old.installed.previous else SavedRevision(expected, old.installed.origins), old.installed.preferences())
+            if (next == expected) old.installed.previous else SavedRevision(expected, old.installed.origins), old.installed.preferences(),
+            old.installed.bundledRepairs)
         accounts.withCurrent(id) { account ->
             check(account.generation == generation) { "Account changed during validation" }
             replace(old, installed)
@@ -348,7 +380,8 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
 
     @Serializable private data class SavedRevision(val definition: SourceDefinition, val origins: List<NetworkGrant>)
     @Serializable private data class InstalledSource(val definition: SourceDefinition, val origins: List<NetworkGrant>,
-        val previous: SavedRevision? = null, val preferences: SourcePreferences? = null) {
+        val previous: SavedRevision? = null, val preferences: SourcePreferences? = null,
+        val bundledRepairs: Set<String> = emptySet()) {
         fun preferences() = preferences ?: SourcePreferences(definition.enabled, definition.enabledExplore)
     }
     private data class Binding(val installed: InstalledSource, val registration: SourceRegistration?, val broker: SourceBroker?,

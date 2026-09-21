@@ -72,7 +72,8 @@ data class SourceScope(val namespace: String, val sourceId: String, val profile:
     @Serializable data class Rejected(val code: FailureCode) : CompiledRequest
 }
 
-@Serializable enum class StorageArea { Config, Account, Cache }
+/** BookState is host-owned catalogue/reading state; no script bridge exposes this area. */
+@Serializable enum class StorageArea { Config, Account, Cache, BookState }
 @Serializable data class StorageRequest(val area: StorageArea, val key: String, val value: String? = null, val ttlMillis: Long? = null) {
     override fun toString() = "StorageRequest(area=$area)"
 }
@@ -85,9 +86,10 @@ data class BrokerLimits(val concurrency: Int = 4, val minIntervalMillis: Long = 
     val maxResponseBytes: Int = 4 * 1024 * 1024, val maxRequestBytes: Int = 1024 * 1024,
     val maxStorageBytes: Long = 2 * 1024 * 1024, val maxStorageEntries: Int = 1024,
     val maxCacheBytes: Int = 8 * 1024 * 1024, val cacheTtlMillis: Long = 60000,
-    val maxRedirects: Int = 10, val maxRetry: Int = 3, val maxTimeoutMillis: Long = 60000) {
+    val maxRedirects: Int = 10, val maxRetry: Int = 3, val maxTimeoutMillis: Long = 60000,
+    val maxBookStorageBytes: Long = 128 * 1024 * 1024) {
     init { require(concurrency > 0 && minIntervalMillis >= 0 && maxResponseBytes > 0 && maxRequestBytes > 0 &&
-        maxStorageBytes > 0 && maxStorageEntries > 0 && maxCacheBytes > 0 && cacheTtlMillis > 0 && maxRedirects >= 0 && maxRetry >= 0 && maxTimeoutMillis > 0) }
+        maxStorageBytes > 0 && maxStorageEntries > 0 && maxCacheBytes > 0 && cacheTtlMillis > 0 && maxRedirects >= 0 && maxRetry >= 0 && maxTimeoutMillis > 0 && maxBookStorageBytes > 0) }
 }
 
 /** A fresh instance for each rule invocation; it is never the session's persistent configuration. */

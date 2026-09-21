@@ -36,13 +36,78 @@ class NativeBrowserInstrumentedTest {
     }
     private fun session(broker: SourceBroker, server: MockWebServer, id: String = UUID.randomUUID().toString(), generation: Long = 0): SourceSession =
         broker.open(SourceScope("native-tests", id, "legado", generation), listOf(NetworkGrant(server.url("/").toString(), true)))
-            .apply { configureSource(server.url("/").toString(), true, browserRead = true); scopes += this }
+            .apply { configureSource(server.url("/").toString(), true, browserRead = true, defaultUserAgent = DESKTOP_USER_AGENT); scopes += this }
 
     private suspend fun render(session: SourceSession, url: String, script: String = "document.title", interactive: Boolean = false): BrokerResponse {
         val result = session.execute(BrokerRequest("render", url, timeoutMillis = 60000,
             browser = BrowserOptions(script = script, interactive = interactive)))
         assertTrue(result.toString(), result is BrokerResult.Success)
         return (result as BrokerResult.Success).response
+    }
+
+    @Test fun desktopUserAgentReachesNativeNavigationAndClientHints(): Unit = runBlocking { fixture { broker, server ->
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest) = MockResponse().setHeader("Content-Type", "text/html").setBody("""
+                <html><head><link rel="icon" href="data:,"></head><body><script>
+                window.answer=JSON.stringify({http:${JsonPrimitive(request.getHeader("User-Agent"))},
+                    dom:navigator.userAgent,hints:navigator.userAgentData ? navigator.userAgentData.toJSON() : null});
+                </script></body></html>
+            """.trimIndent())
+        }
+        val page = Json.parseToJsonElement(render(session(broker, server), server.url("/book").toString(), "window.answer").text()).jsonObject
+        val ua = page.getValue("http").jsonPrimitive.content
+        assertTrue(ua, ua.contains("Windows NT"))
+        assertEquals(ua, page.getValue("dom").jsonPrimitive.content)
+        if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.USER_AGENT_METADATA)) {
+            val hints = page.getValue("hints").jsonObject
+            assertEquals("Windows", hints.getValue("platform").jsonPrimitive.content)
+            assertFalse(hints.getValue("mobile").jsonPrimitive.boolean)
+            assertFalse(hints.getValue("brands").jsonArray.any { it.jsonObject.getValue("brand").jsonPrimitive.content == "Android WebView" })
+        }
+    } }
+
+    @Test fun headerOnlyCloudflareChallengeOffersVerificationInsteadOfANetworkError(): Unit = runBlocking { fixture { broker, server ->
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest) = MockResponse().setResponseCode(403)
+                .setHeader("Content-Type", "text/html").setHeader("cf-mitigated", "challenge")
+                .setBody("<html><head><title>Verification</title><link rel='icon' href='data:,'></head><body>Check</body></html>")
+        }
+        val result = session(broker, server).execute(BrokerRequest("challenge", server.url("/book").toString(), timeoutMillis = 30000))
+        assertTrue(result.toString(), result is BrokerResult.Failure)
+        val failure = result as BrokerResult.Failure
+        assertEquals(FailureCode.BrowserRequired, failure.code)
+        assertEquals(BrowserChallengeKind.Cloudflare, failure.challenge)
+        assertNotNull(failure.verificationRequest)
+    } }
+
+    @Test fun siteCaptchaRedirectResumesTheOriginalChapterWithItsVerifiedCookies(): Unit = runBlocking {
+        ActivityScenario.launch(BrowserTestHostActivity::class.java).use { fixture { broker, server ->
+            val accepted = java.util.concurrent.atomic.AtomicBoolean()
+            server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse = when (request.requestUrl!!.encodedPath) {
+                    "/chapter/1" -> if (request.getHeader("Cookie").orEmpty().contains("verified=fixture"))
+                        MockResponse().setHeader("Content-Type", "text/html").setBody("<title>free chapter</title><article>Readable</article>")
+                    else MockResponse().setResponseCode(307).setHeader("Location", "/signup/man_machine_verify")
+                    "/signup/man_machine_verify" -> MockResponse().setHeader("Content-Type", "text/html").setBody("""
+                        <html><title>验证码</title><form id='J_ManMachineVerify' action='/accepted'></form>
+                        ${if (accepted.get()) "<script>document.forms[0].submit()</script>" else ""}</html>
+                    """.trimIndent())
+                    "/accepted" -> MockResponse().setResponseCode(302).setHeader("Location", "/chapter/1")
+                        .addHeader("Set-Cookie", "verified=fixture; HttpOnly; Path=/")
+                    else -> MockResponse().setResponseCode(404)
+                }
+            }
+            val account = session(broker, server)
+            account.configureSource(server.url("/").toString(), false, browserRead = true,
+                defaultUserAgent = DESKTOP_USER_AGENT)
+            val target = server.url("/chapter/1").toString()
+            val blocked = account.execute(BrokerRequest("read", target)) as BrokerResult.Failure
+            assertEquals(BrowserChallengeKind.SiteVerification, blocked.challenge)
+            assertEquals(target, blocked.verificationRequest!!.url)
+            accepted.set(true)
+            assertEquals("free chapter", render(account, target, interactive = true).text())
+            assertEquals("Readable", render(account, target, "document.querySelector('article').textContent").text())
+        } }
     }
 
     @Test fun nativeIframeFetchCookiesAndFinalUrlArePreserved(): Unit = runBlocking { fixture { broker, server ->

@@ -47,8 +47,8 @@ class RuleEvaluator(private val unescapeHtml: Boolean = true, private val script
         for (step in plan.steps) {
             val at = location.copy(offset = location.offset + step.offset)
             val content = context.content ?: root
-            value = if (step.script) script(if (scriptTemplates) interpolate(step.text, value, content, context, at, budget, depth + 1,
-                captures = false) else step.text,
+            // AnalyzeRule.makeUpRule expands regex captures before JS as well as selectors.
+            value = if (step.script) script(if (scriptTemplates) interpolate(step.text, value, content, context, at, budget, depth + 1) else step.text,
                 value, context, at, budget)
                 else select(step.text, value, content, context, output, at, budget, depth + 1)
             budget.checkValue(value, budget.limits.maxOutputChars)

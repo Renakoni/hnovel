@@ -80,7 +80,7 @@ class SourceBrowserService : Service() {
         webView = view
         view.settings.apply {
             javaScriptEnabled = true; domStorageEnabled = true
-            job.request.headers.entries.firstOrNull { it.key.equals("User-Agent", true) }?.let { userAgentString = it.value }
+            job.request.headers.entries.firstOrNull { it.key.equals("User-Agent", true) }?.let { applySourceUserAgent(it.value) }
             blockNetworkLoads = true
             allowFileAccess = false; allowContentAccess = false
             @Suppress("DEPRECATION")

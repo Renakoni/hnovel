@@ -3,6 +3,7 @@ package hnovel.rhino
 import hnovel.rules.*
 import kotlinx.serialization.json.*
 import org.mozilla.javascript.Context
+import org.mozilla.javascript.NativeArray
 import org.mozilla.javascript.NativeObject
 import org.mozilla.javascript.Scriptable
 import org.apache.commons.text.StringEscapeUtils
@@ -25,18 +26,26 @@ internal class ScriptRuleHelpers(private val scope: Scriptable, frame: ScriptFra
     fun sourceValue(cx: Context): Any? = JsonScriptData(cx, scope, budget.limits.maxInputChars).convert(json(root))
 
     fun elementView(cx: Context, active: Scriptable, data: JsonElement): Any? {
-        fun convert(value: RuleValue): Any? = when (value) {
+        return elements?.let { inputView(cx, active, it, limits.maxBridgeChars) }
+            ?: JsonScriptData(cx, active, limits.maxBridgeChars).convert(data)
+    }
+
+    fun inputView(cx: Context, active: Scriptable, input: RuleValue, maxChars: Int): Any? {
+        // Keep the JSON input budget, but retain DOM methods for selected HTML nodes.
+        val plain = JsonScriptData(cx, active, maxChars).convert(json(input))
+        fun convert(value: RuleValue, data: Any?): Any? = when (value) {
             is RuleValue.Node -> if (value.kind == InputKind.Html) ScriptDom.wrap(cx, active, value.htmlElement(""))
                 else if (value.kind == InputKind.Xml) ScriptDom.fragment(cx, active, value.content, "", true)
-                else JsonScriptData(cx, active, limits.maxBridgeChars).convert(json(value))
+                else data
             is RuleValue.Items -> {
-                val nodes = value.values.map(::convert)
+                val array = data as NativeArray
+                val nodes = value.values.mapIndexed { index, item -> convert(item, array.get(index, array)) }
                 if ((nodes.isNotEmpty() || value.elementKind == InputKind.Html) && nodes.all { it is ScriptDomElement }) ScriptDom.elements(cx, active, nodes.map { (it as ScriptDomElement).element })
-                else ScriptRealm.current(cx).arrayIn(active, nodes.toTypedArray())
+                else array.apply { nodes.forEachIndexed { index, item -> put(index, this, item) } }
             }
-            else -> JsonScriptData(cx, active, limits.maxBridgeChars).convert(json(value))
+            else -> data
         }
-        return elements?.let(::convert) ?: JsonScriptData(cx, active, limits.maxBridgeChars).convert(data)
+        return convert(input, plain)
     }
 
     fun supports(name: String, args: List<JsonElement>) = name in setOf("java.getString", "java.getStringList",
@@ -86,7 +95,7 @@ internal class ScriptRuleHelpers(private val scope: Scriptable, frame: ScriptFra
                 // Nested input must neither create a caller binding nor write through its const result.
                 val nested = NativeObject().apply {
                     prototype = scope
-                    put("result", this, JsonScriptData(cx, this, budget.limits.maxInputChars).convert(json(request.input)))
+                    put("result", this, inputView(cx, this, request.input, budget.limits.maxInputChars))
                     put("baseUrl", this, baseUrl)
                     put("src", this, sourceValue(cx))
                 }

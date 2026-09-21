@@ -15,14 +15,15 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
     private val calls: java.util.concurrent.atomic.AtomicInteger = java.util.concurrent.atomic.AtomicInteger(),
     private val headerRule: String = "", private val interactive: Boolean = false, private val trace: ContentTrace = ContentTrace.None,
     private val sourceLoginUrl: String = "", private val sourceComment: String? = null,
-    private val verification: (hnovel.network.BrokerResult.Failure) -> SourceVerification? = { null }) {
+    private val verification: (hnovel.network.BrokerResult.Failure) -> SourceVerification? = { null },
+    private val maxRuleCalls: Int = 65536) {
     var discovery: JsonObject? = null
     var nextChapterUrl: String? = null
     private val limits = ExecutionLimits(timeoutMillis = if (interactive) 60000 else 30000, maxOutputBytes = 196608,
         maxRequests = 64, maxDataBytes = BridgeWire.MAX_REPLY_BYTES)
 
     fun fork(bookId: String? = this.bookId, chapterId: String? = this.chapterId) =
-        RuleEvaluation(identity, authority, session, runner, library, bookId, chapterId, book.copy(), chapter.copy(), baseUrl, keyword, page, calls, headerRule, interactive, trace, sourceLoginUrl, sourceComment, verification)
+        RuleEvaluation(identity, authority, session, runner, library, bookId, chapterId, book.copy(), chapter.copy(), baseUrl, keyword, page, calls, headerRule, interactive, trace, sourceLoginUrl, sourceComment, verification, maxRuleCalls)
             .also { it.discovery = discovery; it.nextChapterUrl = nextChapterUrl }
 
     suspend fun headers(): Map<String, String> {
@@ -63,7 +64,7 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
     private suspend fun execute(task: ExecutionTask, field: String, inputChars: Int): ExecutedRule {
         currentCoroutineContext().ensureActive()
         if (!authority.accepts(identity)) throw SourceContentException(ContentError.Unavailable, field)
-        if (calls.incrementAndGet() > 65536) throw SourceContentException(ContentError.Limit, field)
+        if (calls.incrementAndGet() > maxRuleCalls) throw SourceContentException(ContentError.Limit, field)
         // Lists carry complete API objects before per-book/chapter fields are selected.
         // A single text field's 192 KiB budget must not reject a normal multi-book response.
         val limits = if (field in setOf("ruleToc.chapterList", "ruleSearch.bookList", "ruleExplore.bookList"))

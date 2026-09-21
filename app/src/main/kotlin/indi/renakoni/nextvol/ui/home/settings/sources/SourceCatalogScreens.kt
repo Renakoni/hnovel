@@ -37,6 +37,7 @@ internal fun SourceCatalogAddScreen(state: SourceManagementState, tab: Int, onTa
             if (state.busy) item { SourceImportProgress(onCancel) }
             state.message?.let { message -> item { Text(stringResource(message), color = MaterialTheme.colorScheme.error) } }
             if (tab == 0) {
+                val grouped = state.catalog.groupBy { it.category }
                 items(SourceCategory.entries.chunked(2)) { categories ->
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         categories.forEach { category ->
@@ -46,11 +47,13 @@ internal fun SourceCatalogAddScreen(state: SourceManagementState, tab: Int, onTa
                                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                         Text(stringResource(category.title), Modifier.weight(1f), style = MaterialTheme.typography.headlineSmall)
-                                        Text(state.catalog.count { it.category == category }.toString(),
+                                        Text(grouped[category].orEmpty().size.toString(),
                                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
-                                    val examples = stringResource(category.examples).split(" · ")
-                                    FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    val examples = grouped[category].orEmpty().take(3).map { it.name }
+                                    if (category == SourceCategory.Official) Text(stringResource(R.string.source_category_official_description),
+                                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    else FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                         examples.forEachIndexed { index, name ->
                                             Text(name + if (index < examples.lastIndex) " ·" else "", style = MaterialTheme.typography.bodySmall,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant)

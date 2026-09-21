@@ -102,7 +102,8 @@ class SourceRevisionUpdates @Inject constructor(@ApplicationContext context: Con
                     if (session.permissionFailure(base) != null) throw RevisionException(RevisionError.PermissionRequired)
                     // Adapter construction checks structure; initialization runs only in the real isolated runner.
                     RuleSource(definition, ticket, authority, session, runner).use {
-                        for ((field, required) in mapOf("ruleBookInfo" to "name", "ruleToc" to "chapterList", "ruleContent" to "content")) {
+                        // BookInfo may reuse the name already extracted by search/discovery.
+                        for ((field, required) in mapOf("ruleToc" to "chapterList", "ruleContent" to "content")) {
                             if (raw[field]?.jsonObject?.get(required)?.jsonPrimitive?.content.isNullOrBlank())
                                 throw RevisionException(RevisionError.InvalidCandidate)
                         }

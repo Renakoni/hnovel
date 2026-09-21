@@ -131,12 +131,15 @@ class NativeSourceBrowserService : Service() {
         private val finished = AtomicBoolean()
         private var evaluating = false
         private var navigation = 0
-        private var httpError = false
+        @Volatile private var httpError = false
+        @Volatile private var httpChallenge: BrowserChallengeKind? = null
 
         fun open() {
             CookieManager.getInstance().apply {
-                setAcceptCookie(job.cookiesEnabled)
-                setAcceptThirdPartyCookies(view, job.cookiesEnabled)
+                // Legado's enabledCookieJar controls automatic HTTP cookie capture,
+                // not the browser session required by login and human verification.
+                setAcceptCookie(true)
+                setAcceptThirdPartyCookies(view, true)
             }
             ServiceWorkerController.getInstance().serviceWorkerWebSettings.apply {
                 blockNetworkLoads = false; allowFileAccess = false; allowContentAccess = false
@@ -151,7 +154,7 @@ class NativeSourceBrowserService : Service() {
                 allowUniversalAccessFromFileURLs = false
                 mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
                 cacheMode = WebSettings.LOAD_DEFAULT
-                job.request.headers.entries.firstOrNull { it.key.equals("User-Agent", true) }?.let { userAgentString = it.value }
+                job.request.headers.entries.firstOrNull { it.key.equals("User-Agent", true) }?.let { applySourceUserAgent(it.value) }
                 javaScriptCanOpenWindowsAutomatically = false
                 setSupportMultipleWindows(false)
                 mediaPlaybackRequiresUserGesture = true
@@ -174,13 +177,16 @@ class NativeSourceBrowserService : Service() {
                     return false
                 }
                 override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+                    // Some WebViews deliver the response error before onPageStarted.
+                    // Reset at request dispatch so onPageStarted cannot erase a challenge.
+                    if (request.isForMainFrame) { httpError = false; httpChallenge = null }
                     if (!job.options.overrideUrl && matches(request.url.toString())) handler.post {
                         completeText(request.url.toString(), view.url ?: job.request.url)
                     }
                     return null
                 }
                 override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
-                    navigation++; httpError = false
+                    navigation++
                 }
                 override fun onPageFinished(view: WebView, url: String) {
                     if (url != view.url) return
@@ -188,7 +194,11 @@ class NativeSourceBrowserService : Service() {
                         handler.postDelayed({ evaluate() }, 1000 + job.options.delayMillis)
                 }
                 override fun onReceivedHttpError(view: WebView, request: WebResourceRequest, response: WebResourceResponse) {
-                    if (request.isForMainFrame) httpError = true
+                    if (request.isForMainFrame) {
+                        httpError = true
+                        if (response.responseHeaders?.entries?.any { it.key.equals("cf-mitigated", true) && it.value == "challenge" } == true)
+                            httpChallenge = BrowserChallengeKind.Cloudflare
+                    }
                 }
                 override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
                     if (request.isForMainFrame) fail(FailureCode.Network)
@@ -221,7 +231,8 @@ class NativeSourceBrowserService : Service() {
             view.evaluateJavascript("""
                 (function(){try {
                     var challenge=window._cf_chl_opt || /^\s*Just a moment/i.test(document.title) ? 'Cloudflare' :
-                        /^\/antibot(\/|${'$'})/.test(location.pathname) || /^\s*人机校验/.test(document.title) ? 'SiteVerification' :
+                        /^\/antibot(\/|${'$'})/.test(location.pathname) || /^\s*人机校验/.test(document.title) ||
+                        document.querySelector('form#J_ManMachineVerify') ? 'SiteVerification' :
                         /^\/login(\/|${'$'})/.test(location.pathname) && document.querySelector('input[type=password]') ? 'Login' : null;
                     return JSON.stringify({url:location.href,challenge:challenge,value:challenge ? null : eval(${JsonPrimitive(script)})});
                 }catch(e){return null;}})()
@@ -232,7 +243,7 @@ class NativeSourceBrowserService : Service() {
                 try {
                     val outer = Json.parseToJsonElement(encoded)
                     val result = if (outer == JsonNull) null else Json.parseToJsonElement(outer.jsonPrimitive.content).jsonObject
-                    val challenge = result?.get("challenge")?.takeUnless { it == JsonNull }?.jsonPrimitive?.content
+                    val challenge = result?.get("challenge")?.takeUnless { it == JsonNull }?.jsonPrimitive?.content ?: httpChallenge?.name
                     if (challenge != null) {
                         if (job.options.interactive) handler.postDelayed({ evaluate() }, 1000)
                         else finish(BrokerResult.Failure(RequestStage.Response, FailureCode.BrowserRequired,

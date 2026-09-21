@@ -150,6 +150,7 @@ fun DetailScreen(
     onClickMarkAsRead: () -> Unit,
     onRetry: () -> Unit = {},
     onMarkChaptersUnread: suspend (Set<String>) -> Unit = {},
+    onRetryVolumes: () -> Unit = onRetry,
 ) {
     val navController = LocalNavController.current
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
@@ -179,7 +180,7 @@ fun DetailScreen(
         confirmUnread = false
     }
     BackHandler(selectingChapters) { if (!savingUnread) exitSelection() }
-    val volumesEmpty = uiState.bookVolumes == null
+    val volumesEmpty = catalogIds.isEmpty()
 
     val isCollapsed by remember {
         derivedStateOf {
@@ -199,7 +200,7 @@ fun DetailScreen(
     val scrollingUp by lazyListState.isScrollingUp()
     val fabVisible by remember(uiState.bookVolumes, lazyListState) {
         derivedStateOf {
-            val hasVolumes = uiState.bookVolumes != null
+            val hasVolumes = uiState.bookVolumes?.get()?.volumes?.any { it.chapters.isNotEmpty() } == true
             val allowByDirection = !lazyListState.isScrollInProgress || scrollingUp
             val canGoForward = lazyListState.canScrollForward
 
@@ -350,7 +351,8 @@ fun DetailScreen(
                         requestAddBookToBookshelf = requestAddBookToBookshelf,
                         onClickTag = onClickTag,
                         onClickCover = onClickCover,
-                        onClickShowInfo = { showInfoBottomSheet = true }
+                        onClickShowInfo = { showInfoBottomSheet = true },
+                        onRetryVolumes = onRetryVolumes,
                     )
                 }?.onErr {
                     Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -557,6 +559,7 @@ private fun DetailContent(
     selectingChapters: Boolean,
     selectedChapterIds: Set<String>,
     selectionEnabled: Boolean,
+    onRetryVolumes: () -> Unit,
 ) {
     var hideReadChapters by remember { mutableStateOf(false) }
     val deferred = 6
@@ -661,8 +664,14 @@ private fun DetailContent(
                         lastReadingChapterId = uiState.userReadingData?.lastReadChapterId
                     )
                 }
-            }?.onErr {
-                //TODO 错误显示
+            }?.onErr { error ->
+                item {
+                    Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(error.title, style = typography.titleMedium)
+                        Text(error.message, style = typography.bodyMedium)
+                        TextButton(onClick = onRetryVolumes) { Text(stringResource(R.string.discovery_retry)) }
+                    }
+                }
             } ?: item {
                 Box(
                     modifier = Modifier

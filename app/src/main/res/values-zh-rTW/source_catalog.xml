@@ -6,13 +6,9 @@
     <string name="source_category_literature">經典文學</string>
     <string name="source_category_general">綜合補充</string>
     <string name="source_category_adult">r18</string>
-    <string name="source_examples_platforms">起點 · 番茄 · 七貓</string>
-    <string name="source_examples_female">晉江 · 紅袖 · 長佩</string>
-    <string name="source_examples_anime">SF · 輕之文庫</string>
-    <string name="source_examples_literature">九九藏書 · 古詩文網</string>
-    <string name="source_examples_general">筆趣閣 · 69書吧</string>
-    <string name="source_examples_adult">愛麗絲 · hlib · PO18</string>
     <string name="source_catalog_tab">分類</string>
+    <string name="source_category_official">官方站點</string>
+    <string name="source_category_official_description">官方站點，部分作品可能需要付費</string>
     <string name="source_import_tab">匯入</string>
     <string name="source_catalog_count">%1$d 個</string>
     <string name="source_catalog_count_added">%1$d 個 · 已新增 %2$d 個</string>

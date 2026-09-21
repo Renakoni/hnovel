@@ -14,7 +14,10 @@ import kotlinx.serialization.json.jsonObject
 internal class RuleDiscoveryProvider(private val source: RuleSource,
     private val session: RuleDiscoverySession = source.openDiscovery(java.util.UUID.randomUUID().toString()),
     private val recovery: RuleRequestRecovery? = null) : DiscoveryProvider {
-    override val hasFeed get() = source.canFeed
+    override val hasFeed get() = source.canFeed && (current?.takeIf {
+        // Empty/login/transient responses cannot prove that the source is category-only.
+        it.homepage != null || it.rows.any { row -> row.type == "url" && row.url.isNotBlank() }
+    }?.let { RuleDiscoveryClassifier.feed(it).isNotEmpty() } ?: true)
     override val hasCategories get() = source.canCategorize
     override val hasInteractions = true
     override var failureField: String? = null
@@ -44,6 +47,7 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
         for (category in entries) {
             val preview = request { session.page(category.url, 1, catalog.values).take(6).map(::book) }
             val failure = preview.getError()?.let { DiscoveryPreviewFailure(it, failureField, permissionFailure) }
+                ?: if (preview.get().isNullOrEmpty()) DiscoveryPreviewFailure(DiscoveryError.InvalidResponse, "ruleExplore.bookList") else null
             sections += DiscoverySection(category.id, category.title, preview.get().orEmpty(), category.url,
                 category.id.takeIf { definition.homepage == null }, failure)
             // A failed preview belongs to its entry, not to the successful catalogue snapshot.
@@ -51,7 +55,10 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
             // Recovery belongs to the current module, so a later challenge does not replay earlier previews.
             emit(Ok(sections.toList()))
         }
-        if (entries.isEmpty()) emit(Ok(emptyList()))
+        if (entries.isEmpty()) {
+            if (hasFeed) { failureField = "exploreUrl"; emit(Err(DiscoveryError.InvalidResponse)) }
+            else emit(Ok(emptyList()))
+        }
     }
     override fun filters(target: String) = if (target.startsWith(DISCOVERY_SEARCH_PREFIX)) emptyList() else
         current?.rows.orEmpty().filter { row -> row.targetPrefixes.isEmpty() || row.targetPrefixes.any(target::startsWith) }.mapNotNull(::filter)

@@ -22,6 +22,9 @@ import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
+const val DESKTOP_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
+
 /** Host-owned authority. A script receives a bound session protocol, never open() or a raw client. */
 class SourceBroker(private val storageRoot: Path, private val dns: Dns = VpnDns.Default,
     private val limits: BrokerLimits = BrokerLimits(), private val cipher: StorageCipher = StorageCipher.Plain,
@@ -64,6 +67,8 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
     private val valuesCache = ValueCache(limits, SourceStorage(root, scope.components(false) + "cache",
         limits.copy(maxStorageBytes = limits.maxCacheBytes.toLong()), cipher))
     private val config = SourceStorage(root, scope.components(false) + "config", limits, cipher)
+    private val bookState by lazy { SourceStorage(root, scope.components(false) + "books",
+        limits.copy(maxStorageBytes = limits.maxBookStorageBytes), cipher) }
     private val account = SourceStorage(root, scope.components(true) + "account", limits, cipher)
     private val cookieStorage = SourceStorage(root, scope.components(true) + "cookies", limits, cipher)
     private val cookies = SourceCookies(cookieStorage)
@@ -74,13 +79,16 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         private set
     var localStorageRetention = LocalStorageRetention()
         private set
+    private var defaultUserAgent: String? = null
     @Synchronized fun configureSource(url: String, cookiesEnabled: Boolean, browserRead: Boolean = false,
-        concurrentRate: String? = null, localStorageRetention: LocalStorageRetention = LocalStorageRetention()) {
+        concurrentRate: String? = null, localStorageRetention: LocalStorageRetention = LocalStorageRetention(),
+        defaultUserAgent: String? = null) {
         require(sourceUrl.isEmpty() || sourceUrl == url)
         sourceUrl = url
         enabledCookieJar = cookiesEnabled
         this.browserRead = browserRead
         this.localStorageRetention = localStorageRetention.approved(grants)
+        this.defaultUserAgent = defaultUserAgent
         val parsedRate = SourceRequestRate.parse(concurrentRate)
         if (sourcePacing.rate != parsedRate) sourcePacing = SourceRequestPacer(parsedRate)
     }
@@ -194,6 +202,7 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
             StorageArea.Config -> config.read(request.key)
             StorageArea.Account -> account.read(request.key)
             StorageArea.Cache -> valuesCache.read(request.key)
+            StorageArea.BookState -> bookState.read(request.key)
         }
     }
     @Synchronized fun write(request: StorageRequest): StorageResult {
@@ -202,6 +211,7 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
             StorageArea.Config -> config.write(request.key, request.value)
             StorageArea.Account -> account.write(request.key, request.value)
             StorageArea.Cache -> valuesCache.write(request)
+            StorageArea.BookState -> bookState.write(request.key, request.value)
         }
     }
     fun newVariables(initial: Map<String, String> = emptyMap()) = RequestVariables(initial)
@@ -277,8 +287,9 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
                         BrokerResult.Success(BrokerResponse(200, "http://localhost/", emptyMap(), bytes, snapshot.charset, 0,
                             message = "OK", protocol = "data"))
                     } else if (snapshot.browser != null) {
-                        policy.check(snapshot.url.toHttpUrlOrNull() ?: throw BrokerFailure(RequestStage.Parse, FailureCode.InvalidRequest))
-                        browser?.execute(this@SourceSession, snapshot.copy(browser = null), snapshot.browser, guard, transport)
+                        val url = snapshot.url.toHttpUrlOrNull() ?: throw BrokerFailure(RequestStage.Parse, FailureCode.InvalidRequest)
+                        val browserHeaders = headers(url, snapshot.headers, policy, includeCookies = false).toMap()
+                        browser?.execute(this@SourceSession, snapshot.copy(browser = null, headers = browserHeaders), snapshot.browser, guard, transport)
                             ?: BrokerResult.Failure(RequestStage.Parse, FailureCode.BrowserRequired)
                     } else permits.withPermit { stage = RequestStage.Connect; perform(snapshot, guard, policy, paceSource, transport) }
                 }
@@ -402,8 +413,11 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         error("Unreachable redirect state")
     }
 
-    private fun headers(url: HttpUrl, explicit: Map<String, String>, policy: NetworkPolicy): Headers {
+    private fun headers(url: HttpUrl, explicit: Map<String, String>, policy: NetworkPolicy, includeCookies: Boolean = true): Headers {
         val headers = Headers.Builder()
+        // Legado supplies a desktop UA even when the source has no header rule. Some sites
+        // return HTTP 200 with null book/chapter data to OkHttp's default client identity.
+        defaultUserAgent?.let { headers.set("User-Agent", it) }
         policy.check(url).headers.forEach { (key, value) -> headers.set(key, value) }
         val sameOrigin = sourceUrl.toHttpUrlOrNull()?.let { NetworkPolicy.origin(it) == NetworkPolicy.origin(url) } == true
         val loginHeaders = if (sameOrigin) (account.read(StorageRequestKey.LOGIN_HEADERS) as? StorageResult.Value)?.value else null
@@ -420,6 +434,9 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         if (headers.build().names().any { it.lowercase() in setOf("host", "content-length", "transfer-encoding", "proxy-authorization", "proxy-connection") }) {
             throw BrokerFailure(RequestStage.Permission, FailureCode.InvalidRequest)
         }
+        // Chromium owns its persistent cookie store; the mediated browser reads the jar
+        // through its host bridge. Do not inject an HTTP jar snapshot as a native Cookie header.
+        if (!includeCookies) return headers.build()
         val cookie = if (enabledCookieJar && (policy !== imagePolicy || knownOrigin)) cookies.header(url, headers["Cookie"])
             else headers["Cookie"].orEmpty()
         headers.removeAll("Cookie")

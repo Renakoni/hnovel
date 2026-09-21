@@ -96,12 +96,18 @@ private class ScriptBridge(private val bridge: HostBridge, private val rules: Sc
             call(cx, activeScope, args[0].toString(), args.drop(1).toTypedArray())
         }
         val javaBridge = objectFor("java", listOf("ajax", "ajaxAll", "connect", "get", "head", "post", "getCookie", "androidId",
-            "put", "getString", "getStringList", "getElement", "getElements", "importScript", "cacheFile", "downloadFile",
+            "getString", "getStringList", "getElement", "getElements", "importScript", "cacheFile", "downloadFile",
             "readFile", "readTxtFile", "deleteFile", "toURL", "webView", "webViewGetSource", "webViewGetOverrideUrl",
             "startBrowser", "startBrowserAwait", "getVerificationCode", "getWebViewUA", "getUrl") + ScriptTools.methods + ScriptCryptoObjects.factories + fonts.methods + resources.methods)
         method(javaBridge, "setContent") { cx, activeScope, args ->
             call(cx, activeScope, "java.setContent", args)
             javaBridge
+        }
+        method(javaBridge, "put") { cx, activeScope, args ->
+            require(args.size == 2)
+            // AnalyzeRule.put(String, String) uses Rhino's String conversion, including
+            // the one-item array returned by a book ID regular-expression match.
+            call(cx, activeScope, "java.put", arrayOf(Context.toString(args[0]), Context.toString(args[1])))
         }
         listOf("toast", "longToast").forEach { name ->
             method(javaBridge, name) { cx, activeScope, args ->
@@ -143,7 +149,8 @@ data class ScriptFrame(val sourceId: String, val profile: String, val bookId: St
     val ruleBudget: RuleBudget? = null, val book: JsonObject = JsonObject(emptyMap()),
     val chapter: JsonObject = JsonObject(emptyMap()), val chineseConverter: Int = 0, val sourceHeaderRule: String = "",
     val discovery: ScriptDiscovery? = null, val sourceLoginUrl: String = "", val sourceComment: String? = null,
-    val nextChapterUrl: String? = null, val speakText: String? = null, val speakSpeed: Int = 10)
+    val nextChapterUrl: String? = null, val speakText: String? = null, val speakSpeed: Int = 10,
+    val scriptInput: RuleValue? = null)
 
 data class ScriptLimits(val instructionLimit: Int = 1_000_000, val maxResultChars: Int = 256 * 1024,
     val maxScriptChars: Int = 256 * 1024, val maxBridgeChars: Int = DEFAULT_BRIDGE_CHARS,
@@ -252,9 +259,12 @@ class RhinoScriptEngine(private val bridge: HostBridge, private val limits: Scri
                 scope.put("nextChapterUrl", scope, frame.nextChapterUrl)
                 // The rule input is already inside the worker; reverse host-call limits do not apply.
                 val inputLimit = frame.ruleBudget?.limits?.maxInputChars ?: limits.maxBridgeChars
+                val rules = ScriptRuleHelpers(scope, frame.copy(ruleContext = ruleContext), limits)
                 // BaseSource discovery callbacks have no rule input and may declare their own result.
                 if (frame.discovery?.snapshot?.get("noResult")?.jsonPrimitive?.boolean != true) {
-                    scope.put("result", scope, JsonScriptData(context, scope, inputLimit).convert(frame.variables["result"] ?: JsonNull))
+                    scope.put("result", scope, if (frame.scriptInput != null)
+                        rules.inputView(context, scope, frame.scriptInput, inputLimit)
+                    else JsonScriptData(context, scope, inputLimit).convert(frame.variables["result"] ?: JsonNull))
                 }
                 scope.put("key", scope, frame.key)
                 if (frame.speakText != null) {
@@ -264,7 +274,6 @@ class RhinoScriptEngine(private val bridge: HostBridge, private val limits: Scri
                 scope.put("page", scope, frame.page)
                 scope.put("baseUrl", scope, ruleContext.contentBaseUrl)
                 context.putThreadLocal(bridgeLimitKey, limits.maxBridgeChars)
-                val rules = ScriptRuleHelpers(scope, frame.copy(ruleContext = ruleContext), limits)
                 scope.put("src", scope, rules.sourceValue(context))
                 ScriptBridge(bridge, rules, ScriptRequestTemplates(scope, frame), archives).install(context, scope, frame)
                 val value = try { evaluateGlobal(context, scope, source, "source-script") }

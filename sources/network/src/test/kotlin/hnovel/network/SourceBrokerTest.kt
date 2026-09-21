@@ -30,6 +30,48 @@ class SourceBrokerTest {
         return (result as BrokerResult.Success).response
     }
 
+    @Test fun legadoRequestsUseDesktopUserAgentUnlessASourceOverridesIt() = runBlocking {
+        MockWebServer().use { server ->
+            server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest) = MockResponse().setBody(
+                    if (request.getHeader("User-Agent")?.contains("Windows NT") == true) "chapters" else "null")
+            }
+            server.start()
+            SourceBroker(directory.root.toPath()).use { broker ->
+                val session = broker.open(scope(), listOf(grant(server.url("/"))))
+                session.configureSource(server.url("/").toString(), true, defaultUserAgent = DESKTOP_USER_AGENT)
+                assertEquals("chapters", success(session.execute(request(server.url("/toc")))).text())
+                assertTrue(server.recorded().getHeader("User-Agent")!!.startsWith("Mozilla/5.0"))
+                success(session.execute(request(server.url("/explicit")).copy(headers = mapOf("user-agent" to "source-specific"))))
+                assertEquals("source-specific", server.recorded().getHeader("User-Agent"))
+                val account = broker.open(scope("account"), listOf(grant(server.url("/"), headers = mapOf("USER-AGENT" to "account-specific"))))
+                account.configureSource(server.url("/").toString(), true, defaultUserAgent = DESKTOP_USER_AGENT)
+                success(account.execute(request(server.url("/account"))))
+                assertEquals("account-specific", server.recorded().getHeader("User-Agent"))
+                val speech = broker.open(scope("speech", profile = "http-tts"), listOf(grant(server.url("/"))))
+                success(speech.execute(request(server.url("/speech"))))
+                assertFalse(server.recorded().getHeader("User-Agent").orEmpty().contains("Windows NT"))
+            }
+        }
+    }
+
+    @Test fun browserRequestsUseTheSameDefaultAndExplicitUserAgentAsHttp() = runBlocking {
+        val requests = mutableListOf<BrokerRequest>()
+        val browser = BrowserExecutor { _, request, _, _, _ ->
+            requests += request
+            BrokerResult.Success(BrokerResponse(200, request.url, emptyMap(), "page".toByteArray(), "UTF-8", 0))
+        }
+        SourceBroker(directory.root.toPath(), browser = browser).use { broker ->
+            val session = broker.open(scope(), listOf(NetworkGrant("https://fixture.invalid")))
+            session.configureSource("https://fixture.invalid", true, defaultUserAgent = DESKTOP_USER_AGENT)
+            val request = BrokerRequest("browser", "https://fixture.invalid/book", browser = BrowserOptions())
+            success(session.execute(request))
+            assertTrue(requests.last().headers.entries.single { it.key.equals("User-Agent", true) }.value.contains("Windows NT"))
+            success(session.execute(request.copy(headers = mapOf("user-agent" to "source-specific"))))
+            assertEquals("source-specific", requests.last().headers.entries.single { it.key.equals("User-Agent", true) }.value)
+        }
+    }
+
     @Test fun dnsNoRecordsAndFakeIpKeepDifferentCodes() = runBlocking {
         for ((resolver, expected) in listOf(
             Dns { throw java.net.UnknownHostException() } to FailureCode.Dns,
@@ -219,6 +261,25 @@ class SourceBrokerTest {
                 assertFalse(ip, NetworkPolicy.isPublicAddress(InetAddress.getByName(ip)))
             }
             assertTrue(NetworkPolicy.isPublicAddress(InetAddress.getByName("2606:4700:4700::1111")))
+        }
+    }
+
+    @Test fun bookSnapshotsHaveTheirOwnBoundedQuotaAndKeepSourceIsolation() {
+        val limits = BrokerLimits(maxStorageBytes = 8, maxBookStorageBytes = 32)
+        val snapshot = StorageRequest(StorageArea.BookState, "book", "x".repeat(24))
+        SourceBroker(directory.root.toPath(), limits = limits).use { broker ->
+            val a = broker.open(scope(), emptyList())
+            assertEquals(StorageResult.Value(snapshot.value), a.write(snapshot))
+            assertEquals(StorageResult.Value("settings"), a.write(StorageRequest(StorageArea.Config, "key", "settings")))
+            assertEquals(StorageResult.Failure(FailureCode.StorageQuota), a.write(StorageRequest(StorageArea.Config, "extra", "x")))
+            assertEquals(StorageResult.Failure(FailureCode.StorageQuota), a.write(snapshot.copy(key = "second", value = "y".repeat(9))))
+            assertEquals(StorageResult.Value(null), broker.open(scope("b"), emptyList()).read(snapshot))
+            assertEquals(StorageResult.Value(null), broker.open(scope(profile = "other"), emptyList()).read(snapshot))
+            a.clearAccount()
+            assertEquals(StorageResult.Value(snapshot.value), broker.open(scope(generation = 1), emptyList()).read(snapshot))
+        }
+        SourceBroker(directory.root.toPath(), limits = limits).use { broker ->
+            assertEquals(StorageResult.Value(snapshot.value), broker.open(scope(), emptyList()).read(snapshot))
         }
     }
 

@@ -8,6 +8,8 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequest
 import androidx.work.WorkManager
 import com.github.michaelbull.result.Ok
+import com.github.michaelbull.result.Err
+import com.github.michaelbull.result.getError
 import indi.renakoni.nextvol.data.book.*
 import indi.renakoni.nextvol.data.bookshelf.BookshelfRepository
 import indi.renakoni.nextvol.data.download.DownloadProgressRepository
@@ -70,6 +72,25 @@ class DetailCapabilitiesTest {
             assertTrue(model.uiState.readingAvailable)
             assertFalse(model.uiState.canCache)
             verify(exactly = 1) { repository.getBookVolumesFlow(key, any()) }
+
+            val failure = io.nightfish.lightnovelreader.api.error.WebRequestError("Directory", "No chapters")
+            every { repository.getBookVolumesFlow(key, any()) } returns flowOf(Err(failure))
+            model.retryVolumes()
+            until { model.uiState.bookVolumes?.getError() == failure }
+            val cancelled = CompletableDeferred<Unit>()
+            every { repository.getBookVolumesFlow(key, any()) } returns flow {
+                try { awaitCancellation() } finally { cancelled.complete(Unit) }
+            }
+            model.retryVolumes()
+            until { model.uiState.bookVolumes == null }
+            verify(timeout = 5000, exactly = 3) { repository.getBookVolumesFlow(key, any()) }
+            availability.value = BookReadingAvailability(false, false, true, 2)
+            withTimeout(5000) { cancelled.await() }
+            until { !model.uiState.readingAvailable }
+            model.retryVolumes()
+            assertNull(model.uiState.bookVolumes)
+            verify(exactly = 3) { repository.getBookVolumesFlow(key, any()) }
+            verify(exactly = 2) { repository.getBookInformationFlow(key, any()) }
         } finally {
             val job = model.viewModelScope.coroutineContext.job
             store.clear()

@@ -11,6 +11,45 @@ import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.RecordedRequest
 
 class RuleSourceTest {
+    @Test fun regexChapterIdsInsideScriptsRemainDistinctAcrossCataloguePages() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            fixture.source { raw -> JsonObject(raw + ("ruleToc" to buildJsonObject {
+                put("chapterList", """:<li><a href='/c/(\d+)'>([^<]+)</a></li>""")
+                put("chapterName", "${'$'}2")
+                put("chapterUrl", "@js:'/c/${'$'}1'")
+                put("nextTocUrl", "a.next@href")
+            })) }.use { source ->
+                val book = source.search("fixture").single()
+                val chapters = source.directory(book.id)
+                assertEquals(listOf("One", "Two"), chapters.map { it.title })
+                assertEquals(listOf("/c/1", "/c/2").map { fixture.server.url(it).toString() }, chapters.map { it.id })
+                assertTrue(source.content(book.id, chapters.first().id).parts.any { it.text == "A first" })
+            }
+        }
+    }
+
+    @Test fun importedProfilesApplyTheSameDesktopIdentityToHttpAndBrowserRequests() = runBlocking {
+        for (profile in listOf(hnovel.imports.LEGADO_PROFILE, hnovel.imports.EXTENSION_PROFILE)) {
+            val browserHeaders = mutableListOf<Map<String, String>>()
+            val browser = BrowserExecutor { _, request, _, _, _ ->
+                browserHeaders += request.headers
+                BrokerResult.Success(BrokerResponse(0, request.url, emptyMap(),
+                    "<li><a href='/book/one'><h2>Fixture</h2></a></li>".toByteArray(), "UTF-8", 0,
+                    kind = ResponseKind.BrowserDocument))
+            }
+            RuleSourceFixture(browser).use { fixture ->
+                fixture.source(profile = profile).use { source ->
+                    source.search("fixture")
+                    assertEquals(DESKTOP_USER_AGENT, fixture.server.takeRequest(3, java.util.concurrent.TimeUnit.SECONDS)!!.getHeader("User-Agent"))
+                }
+                fixture.source("browser", profile) { JsonObject(it + ("browserRead" to JsonPrimitive(true))) }.use { source ->
+                    source.search("fixture")
+                    assertEquals(DESKTOP_USER_AGENT, browserHeaders.single().entries.single { it.key.equals("User-Agent", true) }.value)
+                }
+            }
+        }
+    }
+
     @Test fun sourceFallbackAndRowVariablesPersistThroughTheProductionPipeline(): Unit = runBlocking {
         RuleSourceFixture().use { fixture -> fixture.source(customize = { raw -> JsonObject(raw + mapOf(
             "ruleSearch" to JsonObject(raw.getValue("ruleSearch").jsonObject + mapOf(
@@ -777,7 +816,7 @@ class RuleSourceTest {
             if (cancel) operation.join() else assertEquals(ContentError.Unavailable, (operation.await().exceptionOrNull() as SourceContentException).code)
             val definition = source.definition
             val session = fixture.broker.open(SourceScope("rules", definition.sourceId, definition.profile), listOf(NetworkGrant(fixture.server.url("/").toString(), true)))
-            val saved = session.read(StorageRequest(StorageArea.Config, "content/book/" + digest(id))) as StorageResult.Value
+            val saved = session.read(StorageRequest(StorageArea.BookState, "content/book/" + digest(id))) as StorageResult.Value
             val record = Json.decodeFromString(BookRecord.serializer(), saved.value!!)
             assertEquals("One", record.chapters[1].title)
             assertEquals("One", record.chapters[1].state.variables["chapterKey"])

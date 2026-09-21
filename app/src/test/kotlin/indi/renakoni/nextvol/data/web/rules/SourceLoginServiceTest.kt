@@ -180,7 +180,7 @@ class SourceLoginServiceTest {
                 val bookId = fixture.server.url("/book/one").toString()
                 val digest = java.security.MessageDigest.getInstance("SHA-256").digest(bookId.toByteArray())
                     .joinToString("") { "%02x".format(it) }
-                val record = old.session.read(StorageRequest(StorageArea.Config, "content/book/$digest")) as StorageResult.Value
+                val record = old.session.read(StorageRequest(StorageArea.BookState, "content/book/$digest")) as StorageResult.Value
                 assertNotNull(record.value)
                 login.logout(a)
                 assertTrue(old.session.closed)
@@ -190,7 +190,7 @@ class SourceLoginServiceTest {
                 assertEquals(StorageResult.Value(null), fresh.read(StorageRequest(StorageArea.Account, StorageRequestKey.LOGIN_INFO)))
                 assertEquals(StorageResult.Value("note-alice"), fresh.read(StorageRequest(StorageArea.Config, "value:saved")))
                 assertEquals(StorageResult.Value("cached-alice"), fresh.read(StorageRequest(StorageArea.Cache, "value:saved")))
-                assertEquals(record, fresh.read(StorageRequest(StorageArea.Config, "content/book/$digest")))
+                assertEquals(record, fresh.read(StorageRequest(StorageArea.BookState, "content/book/$digest")))
                 assertEquals(StorageResult.Value(null), fresh.read(StorageRequest(StorageArea.Account, StorageRequestKey.LOGIN_HEADERS)))
                 assertEquals("", fresh.cookie(fixture.server.url("/").toString()))
                 assertTrue(runCatching { login.submit(attemptA, mapOf("user" to "alice")) }.isFailure)

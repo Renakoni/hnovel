@@ -10,6 +10,10 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.*
 
+private const val DIRECTORY_MAX_CHAPTERS = 50_000
+private const val DIRECTORY_MAX_PAGES = 2048
+private const val DIRECTORY_TIMEOUT_MILLIS = 600_000L
+
 /** One registered revision/account. Source retirement revokes its ticket; it never chooses another source. */
 class RuleSource(val definition: SourceDefinition, private val identity: ExecutionIdentity,
     private val authority: ExecutionAuthority, private val session: SourceSession,
@@ -54,7 +58,8 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         require(identity.sourceId == definition.sourceId && identity.profile == definition.profile && identity.revision == definition.contentDigest)
         require(session.scope.sourceId == identity.sourceId && session.scope.namespace == identity.namespace &&
             session.scope.profile == identity.profile && session.scope.accountGeneration == identity.accountGeneration)
-        session.configureSource(spec.baseUrl, spec.cookiesEnabled, spec.browserRead, spec.concurrentRate, spec.localStorageRetention)
+        session.configureSource(spec.baseUrl, spec.cookiesEnabled, spec.browserRead, spec.concurrentRate,
+            spec.localStorageRetention, defaultUserAgent = DESKTOP_USER_AGENT)
     }
 
     private var cachedLoginForm: LoginForm? = null
@@ -218,7 +223,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         return ordered
     }
 
-    suspend fun information(bookId: String): RuleBook = operation("ruleBookInfo") {
+    suspend fun information(bookId: String): RuleBook = operation("ruleBookInfo", timeoutMillis = DIRECTORY_TIMEOUT_MILLIS) {
         prefetchedDirectoryId = null
         val id = sourceLink(spec.baseUrl, bookId)
         val old = store.read(id)
@@ -235,7 +240,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         refreshed.book
     }
 
-    suspend fun directory(bookId: String): List<RuleChapter> = operation("ruleToc", timeoutMillis = 120000) {
+    suspend fun directory(bookId: String): List<RuleChapter> = operation("ruleToc", timeoutMillis = DIRECTORY_TIMEOUT_MILLIS) {
         val id = sourceLink(spec.baseUrl, bookId)
         val prefetched = prefetchedDirectoryId == id
         prefetchedDirectoryId = null
@@ -243,7 +248,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         if (prefetched) book.chapters else directory(book).also(store::write).chapters
     }
 
-    suspend fun content(bookId: String, chapterId: String): RuleContent = operation("ruleContent") {
+    suspend fun content(bookId: String, chapterId: String): RuleContent = operation("ruleContent", timeoutMillis = DIRECTORY_TIMEOUT_MILLIS) {
         val id = sourceLink(spec.baseUrl, bookId)
         var record = record(id)
         if (record.chapters.isEmpty()) record = directory(record)
@@ -409,7 +414,9 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
     }
 
     private suspend fun directory(initial: BookRecord): BookRecord {
-        val context = evaluation(initial.book)
+        // A web-novel catalogue may contain tens of thousands of rows. Its budget is
+        // independent of a single chapter's pagination and includes all per-row rules.
+        val context = evaluation(initial.book, maxRuleCalls = DIRECTORY_MAX_CHAPTERS * 8 + DIRECTORY_MAX_PAGES * 4)
         spec.toc.string("preUpdateJs").takeIf { it.isNotBlank() }?.let { context.script(it, RuleValue.Empty, "ruleToc.preUpdateJs") }
         val rule = spec.toc.string("chapterList")
         if (rule.isBlank()) throw SourceContentException(ContentError.MissingCapability, "ruleToc.chapterList")
@@ -420,13 +427,13 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val pageChapters = mutableSetOf<List<String>>()
         var completePageList = false
         while (queue.isNotEmpty()) {
-            val url = queue.removeFirst(); visit(visited, url, "ruleToc.nextTocUrl")
+            val url = queue.removeFirst(); visit(visited, url, "ruleToc.nextTocUrl", DIRECTORY_MAX_PAGES)
             val document = initial.document?.takeIf { visited.size == 1 && it.url == url }
                 ?: fetch(context, url, "ruleToc.chapterList")
             context.baseUrl = document.ruleUrl
             if (!document.inline && document.url != url && !visited.add(document.url)) throw SourceContentException(ContentError.RepeatedPage, "ruleToc.nextTocUrl")
             val items = context.value(rule.removePrefix("-").removePrefix("+"), document.input(), "ruleToc.chapterList", OutputKind.Elements).items()
-            if (items.size + chapters.size > 5000) throw SourceContentException(ContentError.Limit, "ruleToc.chapterList")
+            if (items.size + chapters.size > DIRECTORY_MAX_CHAPTERS) throw SourceContentException(ContentError.Limit, "ruleToc.chapterList")
             val pageStart = chapters.size
             for ((index, item) in items.withIndex()) {
                 val row = context.fork(chapterId = "pending:$index")
@@ -471,6 +478,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val formatted = mutableListOf<RuleChapter>()
         var gInt: JsonElement = JsonPrimitive(0)
         for ((index, chapter) in ordered.withIndex()) {
+            currentCoroutineContext().ensureActive()
             val row = context.fork(chapterId = chapter.id); row.chapter = chapter.state
             row.chapterField("index", JsonPrimitive(index))
             val format = spec.toc.string("formatJs")
@@ -498,11 +506,12 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val old = store.read(id)
         return if (old?.informationLoaded == true && old.revision == identity.revision) old else information(id, old)
     }
-    internal fun evaluation(book: RuleBook? = null, chapter: RuleChapter? = null, keyword: String = "", page: Int = 1, interactive: Boolean = false): RuleEvaluation {
+    internal fun evaluation(book: RuleBook? = null, chapter: RuleChapter? = null, keyword: String = "", page: Int = 1,
+        interactive: Boolean = false, maxRuleCalls: Int = 65536): RuleEvaluation {
         val result = RuleEvaluation(identity, authority, session, runner, spec.library, book?.id, chapter?.id,
             book?.state ?: ScriptState(), chapter?.state ?: ScriptState(), book?.id ?: spec.baseUrl, keyword, page,
             headerRule = spec.header, interactive = interactive, trace = trace, sourceLoginUrl = spec.loginUrl,
-            sourceComment = spec.comment, verification = ::verification)
+            sourceComment = spec.comment, verification = ::verification, maxRuleCalls = maxRuleCalls)
         book?.let {
             result.bookField("bookUrl", it.id)
             if ("name" !in result.book.metadata) result.bookField("name", it.title)
@@ -625,9 +634,9 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
     private suspend fun links(context: RuleEvaluation, rule: String, document: PageDocument, field: String): List<String> =
         if (rule.isBlank()) emptyList() else context.value(rule, document.input(), field, OutputKind.TextList).items()
             .map { it.text().trim() }.filter { it.isNotEmpty() }.map { sourceLink(document.url, it) }.distinct()
-    private fun visit(visited: MutableSet<String>, url: String, field: String) {
+    private fun visit(visited: MutableSet<String>, url: String, field: String, maxPages: Int = 64) {
         if (!visited.add(url)) throw SourceContentException(ContentError.RepeatedPage, field)
-        if (visited.size > 64) throw SourceContentException(ContentError.Limit, field)
+        if (visited.size > maxPages) throw SourceContentException(ContentError.Limit, field)
     }
     // Host storage and orchestration use IO. The caller's priority dispatcher owns the outer
     // request only; nested timeout jobs must not compete with their parent for its last permit.
