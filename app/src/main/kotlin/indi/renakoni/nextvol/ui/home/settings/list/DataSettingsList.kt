@@ -14,6 +14,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -34,8 +35,9 @@ fun DataSettingsList(
     importData: (Uri, Boolean) -> OneTimeWorkRequest,
     onClickStorageManager: () -> Unit,
 ) {
-    val dataImportFailedText = stringResource(R.string.data_import_failed)
-    val dataImportSuccessText = stringResource(R.string.data_import_success)
+    val dataImportFailedText by rememberUpdatedState(stringResource(R.string.data_import_failed))
+    val dataImportSuccessText by rememberUpdatedState(stringResource(R.string.data_import_success))
+    val dataFileChooserTitle = stringResource(R.string.data_file_choose)
 
     val context = LocalContext.current
     val workManager = WorkManager.getInstance(context)
@@ -102,7 +104,7 @@ fun DataSettingsList(
         painter = painterResource(R.drawable.input_24px),
         title = stringResource(R.string.settings_import_data),
         description = stringResource(R.string.settings_import_data_desc),
-        onClick = { selectDataFile(importDataLauncher, context.getString(R.string.data_file_choose)) }
+        onClick = { selectDataFile(importDataLauncher, dataFileChooserTitle) }
     )
     SettingsClickableEntry(
         modifier = Modifier.background(colorScheme.surfaceContainer),

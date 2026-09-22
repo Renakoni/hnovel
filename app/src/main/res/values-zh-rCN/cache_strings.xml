@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="sources_import_partial">未能启用全部来源。已启用来源保留，请重新预览导入以重试。</string>
+    <string name="sources_import_partial">未能启用全部书源。已启用书源保留，请重新预览导入以重试。</string>
     <string name="settings_clear_reading_cache">清理阅读缓存</string>
     <string name="settings_clear_reading_cache_desc">清理临时内容，保留下载。</string>
     <string name="settings_clear_downloads">清理下载</string>

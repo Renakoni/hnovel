@@ -20,7 +20,10 @@ timeout 15s adb shell pm path android > "$diagnostics/package-manager-before.txt
 # first input and leave a system dialog covering every subsequent test activity.
 # Reset only this emulator launcher before tests, including a pending ANR whose
 # dialog has not appeared yet. App crashes and test failures remain untouched.
-timeout 15s adb logcat -d -v threadtime > "$diagnostics/boot-logcat.txt" 2>&1
+# Diagnostic capture can disconnect while the emulator resizes its log buffer.
+# Launcher and window readiness checks below must still succeed before testing.
+timeout 15s adb logcat -d -v threadtime > "$diagnostics/boot-logcat.txt" 2>&1 ||
+  echo 'Boot logcat capture failed; continuing with emulator readiness checks.' >&2
 launcher=$(timeout 15s adb shell pm list packages com.google.android.apps.nexuslauncher | tr -d '\r')
 if [[ "$launcher" == 'package:com.google.android.apps.nexuslauncher' ]]; then
   timeout 15s adb shell am force-stop com.google.android.apps.nexuslauncher

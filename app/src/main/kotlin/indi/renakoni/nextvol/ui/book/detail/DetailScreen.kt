@@ -77,6 +77,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
@@ -155,6 +156,7 @@ fun DetailScreen(
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
     val snackbarHostState = LocalSnackbarHost.current
     val context = LocalContext.current
+    val markUnreadFailedText by rememberUpdatedState(stringResource(R.string.mark_unread_failed))
 
     val exportBottomSheetState = rememberBottomSheetState(initialValue = SheetValue.PartiallyExpanded)
     val infoBottomSheetState = rememberBottomSheetState(initialValue = SheetValue.PartiallyExpanded)
@@ -407,7 +409,7 @@ fun DetailScreen(
                         android.util.Log.e("DetailScreen", "Could not mark chapters unread", error)
                         confirmUnread = false
                         coroutineScope.launch {
-                            snackbarHostState.showSnackbar(context.getString(R.string.mark_unread_failed))
+                            snackbarHostState.showSnackbar(markUnreadFailedText)
                         }
                     } finally {
                         savingUnread = false
