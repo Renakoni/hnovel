@@ -40,7 +40,9 @@ case "$*" in
     elif [[ "$EMULATOR_CASE" == app-error ]]; then
       echo 'Window{456 u0 Application Not Responding: indi.renakoni.nextvol.debug}'
     fi ;;
-  'logcat -d -v threadtime') echo 'ActivityManager: ANR in com.google.android.apps.nexuslauncher' ;;
+  'logcat -d -v threadtime')
+    echo 'ActivityManager: ANR in com.google.android.apps.nexuslauncher'
+    if [[ "$EMULATOR_CASE" == boot-log-fails ]]; then exit 23; fi ;;
 esac
 ''')
         self.script('test-command', '''#!/usr/bin/env bash
@@ -86,6 +88,13 @@ exit "$EMULATOR_TEST_EXIT"
 
     def test_diagnostic_failure_does_not_replace_test_exit_code(self):
         self.assertEqual(42, self.run_case('diagnostics-fail', 42))
+
+    def test_partial_boot_log_does_not_skip_tests_or_hide_their_failure(self):
+        self.assertEqual(42, self.run_case('boot-log-fails', 42))
+        self.assertTrue((self.root / 'ran').exists())
+        self.assertTrue((self.root / 'stopped').exists())
+        self.assertIn('ANR in com.google.android.apps.nexuslauncher', (self.diagnostics / 'boot-logcat.txt').read_text())
+        self.assertIn('Boot log collection failed', self.result.stderr)
 
     def test_remaining_launcher_dialog_fails_before_tests(self):
         self.assertEqual(1, self.run_case('stuck'))

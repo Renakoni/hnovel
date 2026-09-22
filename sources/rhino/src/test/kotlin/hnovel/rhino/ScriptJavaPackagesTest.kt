@@ -62,6 +62,9 @@ class ScriptJavaPackagesTest {
     }
 
     @Test fun importsAndDataObjectsDoNotExposeReflectionProvidersOrIo() {
+        // An unavailable class is a NativeJavaPackage placeholder, not undefined.
+        assertEquals(ScriptResult.Success("\"object/undefined\""), engine.evaluate(
+            "typeof Packages.java.lang.Runtime + '/' + typeof java.getClass", frame))
         val result = engine.evaluate("""
             var j = new JavaImporter(Packages.java.lang, Packages.javax.crypto);
             with (j) {
@@ -72,6 +75,7 @@ class ScriptJavaPackagesTest {
         """.trimIndent(), frame)
         assertEquals(ScriptResult.Success("[\"undefined\",\"undefined\",\"undefined\",\"undefined\"]"), result)
         for (script in listOf(
+            "Packages.java.lang.Runtime.getRuntime()",
             "new JavaImporter(Packages.java.lang); Packages.java.lang.System.exit(0)",
             "new Packages.java.io.File('/unused')",
             "Packages.java.lang.Class.forName('java.lang.Runtime')",
