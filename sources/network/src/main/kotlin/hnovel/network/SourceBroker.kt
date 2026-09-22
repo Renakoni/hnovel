@@ -22,6 +22,9 @@ import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
+const val DESKTOP_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
+
 /** Host-owned authority. A script receives a bound session protocol, never open() or a raw client. */
 class SourceBroker(private val storageRoot: Path, private val dns: Dns = VpnDns.Default,
     private val limits: BrokerLimits = BrokerLimits(), private val cipher: StorageCipher = StorageCipher.Plain,
@@ -64,9 +67,12 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
     private val valuesCache = ValueCache(limits, SourceStorage(root, scope.components(false) + "cache",
         limits.copy(maxStorageBytes = limits.maxCacheBytes.toLong()), cipher))
     private val config = SourceStorage(root, scope.components(false) + "config", limits, cipher)
+    private val bookState by lazy { SourceStorage(root, scope.components(false) + "books",
+        limits.copy(maxStorageBytes = limits.maxBookStorageBytes, maxStorageEntries = limits.maxBookStorageEntries), cipher) }
     private val account = SourceStorage(root, scope.components(true) + "account", limits, cipher)
     private val cookieStorage = SourceStorage(root, scope.components(true) + "cookies", limits, cipher)
     private val cookies = SourceCookies(cookieStorage)
+    private val certificates = SourceCertificates(SourceStorage(root, scope.components(true) + "certificate-exceptions", limits, cipher))
     @Volatile var enabledCookieJar = true
     var sourceUrl: String = ""
         private set
@@ -74,13 +80,16 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         private set
     var localStorageRetention = LocalStorageRetention()
         private set
+    private var defaultUserAgent: String? = null
     @Synchronized fun configureSource(url: String, cookiesEnabled: Boolean, browserRead: Boolean = false,
-        concurrentRate: String? = null, localStorageRetention: LocalStorageRetention = LocalStorageRetention()) {
+        concurrentRate: String? = null, localStorageRetention: LocalStorageRetention = LocalStorageRetention(),
+        defaultUserAgent: String? = null) {
         require(sourceUrl.isEmpty() || sourceUrl == url)
         sourceUrl = url
         enabledCookieJar = cookiesEnabled
         this.browserRead = browserRead
         this.localStorageRetention = localStorageRetention.approved(grants)
+        this.defaultUserAgent = defaultUserAgent
         val parsedRate = SourceRequestRate.parse(concurrentRate)
         if (sourcePacing.rate != parsedRate) sourcePacing = SourceRequestPacer(parsedRate)
     }
@@ -103,18 +112,28 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
             (chain.request().tag(NetworkPolicy::class.java) ?: policy).checkPeer(chain.request().url, peer.address)
             chain.proceed(chain.request())
         }.build()
-    private val routeClients = mutableMapOf<SourceNetworkRoute, OkHttpClient>()
+    private val routeClients = mutableMapOf<Pair<SourceNetworkRoute, String>, OkHttpClient>()
 
-    @Synchronized private fun clientFor(route: SourceNetworkRoute): OkHttpClient {
+    @Synchronized private fun clientFor(route: SourceNetworkRoute, url: HttpUrl): OkHttpClient {
         checkOpen()
         route.checkAvailable()
         routeClients.entries.removeAll { (network, transport) ->
-            (!network.available).also { if (it) network.detach(transport.connectionPool) }
+            (!network.first.available).also { if (it) network.first.detach(transport.connectionPool) }
         }
-        return routeClients.getOrPut(route) {
+        val origin = NetworkPolicy.origin(url)
+        if ((route to origin) !in routeClients && routeClients.size >= 64) {
+            // Public cover URLs can introduce more origins than the source's explicit grants.
+            val idle = routeClients.entries.firstOrNull {
+                it.value.connectionPool.connectionCount() == it.value.connectionPool.idleConnectionCount()
+            }
+            if (idle != null) { idle.key.first.detach(idle.value.connectionPool); routeClients.remove(idle.key) }
+        }
+        return routeClients.getOrPut(route to origin) {
             val pool = ConnectionPool()
+            val builder = client.newBuilder().socketFactory(route.socketFactory).connectionPool(pool)
+            val transport = (if (url.isHttps) certificates.configure(builder, origin) else builder).build()
             route.attach(pool)
-            client.newBuilder().socketFactory(route.socketFactory).connectionPool(pool).build()
+            transport
         }
     }
     val closed get() = !lifetime.isActive
@@ -123,6 +142,33 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
     fun onClosed(action: () -> Unit): AutoCloseable {
         val subscription = lifetime.coroutineContext.job.invokeOnCompletion { action() }
         return AutoCloseable { subscription.dispose() }
+    }
+
+    @Synchronized fun certificateExceptions(): List<CertificateExceptionSite> { checkOpen(); return certificates.exceptions() }
+
+    /** Host UI only; accepts only a certificate observed by this still-current session. */
+    @Synchronized fun approveCertificate(problem: CertificateProblem) {
+        checkOpen()
+        certificates.approve(problem)
+        routeClients.entries.removeAll { (key, transport) ->
+            (key.second == problem.origin).also { if (it) key.first.detach(transport.connectionPool) }
+        }
+    }
+
+    /** Retires HTTP pools and in-flight commits; onClosed also stops the native browser. */
+    @Synchronized fun revokeCertificate(origin: String) {
+        checkOpen()
+        close()
+        cache.clear()
+        certificates.revoke(origin)
+    }
+
+    /** Trusted native browser callback. Unknown origins still need their ordinary network grant. */
+    @Synchronized fun browserCertificateFailure(problem: CertificateProblem): BrokerResult.Failure {
+        checkOpen()
+        permissionFailureDetail(problem.origin)?.let { return it }
+        certificates.remember(problem)
+        return BrokerResult.Failure(RequestStage.Connect, FailureCode.Certificate, certificate = problem)
     }
 
     suspend fun webViewUserAgent(): String {
@@ -143,7 +189,7 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
     fun inheritCookies(previous: SourceSession) {
         require(scope == previous.scope)
         checkOpen()
-        cookies.restoreMemory(previous.cookies.snapshot())
+        cookies.inherit(previous.cookies)
     }
 
     /** Retain source caches when credentials or a runtime binding change. */
@@ -162,6 +208,19 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
     @Synchronized fun removeCookie(url: String) { checkOpen(); val parsed = url.toHttpUrlOrNull() ?: error("Invalid cookie URL")
         policy.check(parsed); cookies.setHeader(parsed, "", true) }
 
+    /** Host-only cookie handoff; never exposed as a website JavascriptInterface. */
+    @Synchronized fun nativeBrowserCookies(url: String): List<String> {
+        checkOpen(); val parsed = url.toHttpUrlOrNull() ?: error("Invalid cookie URL")
+        policy.check(parsed)
+        return cookies.browserSnapshot(parsed)
+    }
+
+    @Synchronized fun updateNativeBrowserCookies(url: String, values: List<String>, completeMetadata: Boolean = true) {
+        checkOpen(); val parsed = url.toHttpUrlOrNull() ?: error("Invalid cookie URL")
+        policy.check(parsed)
+        cookies.replaceBrowserSnapshot(parsed, values, completeMetadata)
+    }
+
     @Synchronized fun browserCookie(url: String, value: String? = null): String {
         checkOpen(); val parsed = url.toHttpUrlOrNull() ?: error("Invalid cookie URL"); policy.check(parsed)
         if (!enabledCookieJar) return ""
@@ -175,8 +234,9 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
             close()
             val accountCleared = account.clear() is StorageResult.Value
             val cookiesCleared = cookieStorage.clear() is StorageResult.Value
+            val certificatesCleared = certificates.clear() is StorageResult.Value
             cookies.restoreMemory(emptyList())
-            if (accountCleared && cookiesCleared) null else IllegalStateException("Account cleanup failed")
+            if (accountCleared && cookiesCleared && certificatesCleared) null else IllegalStateException("Account cleanup failed")
         }
         // Browser cancellation may finish on another thread that checks this session.
         // Do not hold the session monitor while waiting for its process to stop.
@@ -194,6 +254,7 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
             StorageArea.Config -> config.read(request.key)
             StorageArea.Account -> account.read(request.key)
             StorageArea.Cache -> valuesCache.read(request.key)
+            StorageArea.BookState -> bookState.read(request.key)
         }
     }
     @Synchronized fun write(request: StorageRequest): StorageResult {
@@ -202,7 +263,12 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
             StorageArea.Config -> config.write(request.key, request.value)
             StorageArea.Account -> account.write(request.key, request.value)
             StorageArea.Cache -> valuesCache.write(request)
+            StorageArea.BookState -> bookState.write(request.key, request.value)
         }
+    }
+    @Synchronized fun writeBookStates(values: Map<String, String>): StorageResult {
+        checkOpen()
+        return bookState.writeAll(values)
     }
     fun newVariables(initial: Map<String, String> = emptyMap()) = RequestVariables(initial)
 
@@ -277,10 +343,15 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
                         BrokerResult.Success(BrokerResponse(200, "http://localhost/", emptyMap(), bytes, snapshot.charset, 0,
                             message = "OK", protocol = "data"))
                     } else if (snapshot.browser != null) {
-                        policy.check(snapshot.url.toHttpUrlOrNull() ?: throw BrokerFailure(RequestStage.Parse, FailureCode.InvalidRequest))
-                        browser?.execute(this@SourceSession, snapshot.copy(browser = null), snapshot.browser, guard, transport)
+                        val url = snapshot.url.toHttpUrlOrNull() ?: throw BrokerFailure(RequestStage.Parse, FailureCode.InvalidRequest)
+                        val browserHeaders = headers(url, snapshot.headers, policy, includeCookies = false).toMap()
+                        val maxBytes = minOf(snapshot.maxResponseBytes ?: limits.maxResponseBytes, limits.maxResponseBytes)
+                        val result = browser?.execute(this@SourceSession, snapshot.copy(browser = null, headers = browserHeaders,
+                            maxResponseBytes = maxBytes), snapshot.browser, guard, transport)
                             ?: BrokerResult.Failure(RequestStage.Parse, FailureCode.BrowserRequired)
-                    } else permits.withPermit { stage = RequestStage.Connect; perform(snapshot, guard, policy, paceSource, transport) }
+                        if (result is BrokerResult.Success && result.response.body.size > maxBytes)
+                            BrokerResult.Failure(RequestStage.Response, FailureCode.ResponseTooLarge) else result
+                    } else permits.withPermit { stage = RequestStage.Connect; perform(snapshot, guard, policy, paceSource, transport, browserDefault) }
                 }
             } catch (_: TimeoutCancellationException) {
                 BrokerResult.Failure(stage, FailureCode.Timeout)
@@ -316,7 +387,7 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
     }
 
     private suspend fun perform(request: BrokerRequest, guard: RequestCommitGuard, policy: NetworkPolicy,
-        paceSource: Boolean, route: SourceNetworkRoute): BrokerResult {
+        paceSource: Boolean, route: SourceNetworkRoute, detectChallenges: Boolean): BrokerResult {
         val initialUrl = request.url.toHttpUrlOrNull() ?: throw BrokerFailure(RequestStage.Parse, FailureCode.InvalidRequest)
         policy.check(initialUrl)
         val initialHeaders = headers(initialUrl, request.headers, policy)
@@ -333,6 +404,14 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         for (attempt in 0..request.retry) {
             try {
                 val response = redirects(request, initialUrl, guard, policy, paceSource, route)
+                // Raw java.ajax/connect responses and browser subrequests must remain available
+                // to source login/check scripts. Detect challenges before document extraction.
+                if (detectChallenges && request.kind == ResourceKind.Document) {
+                    websiteChallenge(response)?.let { challenge ->
+                        return BrokerResult.Failure(RequestStage.Response, FailureCode.BrowserRequired, attempt,
+                            challenge = challenge, verificationRequest = request)
+                    }
+                }
                 if (response.status in setOf(429, 502, 503, 504) && attempt < request.retry) continue
                 if (request.cache == CacheMode.ReadThrough && response.status in 200..299) guard.commit {
                     cache.put(cacheKey, response)
@@ -341,6 +420,13 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
             } catch (failure: BrokerFailure) { throw failure }
               catch (failure: IOException) {
                 route.checkAvailable()
+                val rejected = generateSequence<Throwable>(failure) { it.cause }.take(16).filterIsInstance<RejectedCertificate>().firstOrNull()
+                if (rejected != null) {
+                    guard.commit { synchronized(this) { checkOpen(); certificates.remember(rejected.problem) } }
+                    return BrokerResult.Failure(RequestStage.Connect, FailureCode.Certificate, attempt, certificate = rejected.problem)
+                }
+                if (failure is javax.net.ssl.SSLPeerUnverifiedException)
+                    return BrokerResult.Failure(RequestStage.Connect, FailureCode.Certificate, attempt)
                 if (attempt == request.retry) return BrokerResult.Failure(RequestStage.Connect,
                     when (failure) {
                         is java.net.UnknownHostException -> FailureCode.Dns
@@ -375,8 +461,11 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
             if (bytes != null && bytes.size > limits.maxRequestBytes) throw BrokerFailure(RequestStage.Parse, FailureCode.InvalidRequest)
             val requestBody = if (method in setOf("POST", "PUT", "PATCH") || bytes != null)
                 (bytes ?: ByteArray(0)).toRequestBody(headers["Content-Type"]?.toMediaTypeOrNull()) else null
-            val transport = clientFor(route)
-            val call = transport.newBuilder().dns(policy.dns(url, route.dns)).callTimeout(request.timeoutMillis, TimeUnit.MILLISECONDS)
+            val transport = clientFor(route, url)
+            // Catalogue parsing can outlive a server's pooled connection. Let OkHttp recover
+            // safe reads, without implicitly replaying login/submission bodies after a lost reply.
+            val call = transport.newBuilder().retryOnConnectionFailure(method == "GET" || method == "HEAD")
+                .dns(policy.dns(url, route.dns)).callTimeout(request.timeoutMillis, TimeUnit.MILLISECONDS)
                 .readTimeout(request.timeoutMillis, TimeUnit.MILLISECONDS).build()
                 .newCall(Request.Builder().url(url).tag(NetworkPolicy::class.java, policy).headers(headers).method(method, requestBody).build())
             route.track(call)
@@ -395,15 +484,19 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
             }
             if (NetworkPolicy.origin(next) != NetworkPolicy.origin(url)) {
                 if (body != null) throw BrokerFailure(RequestStage.Permission, FailureCode.RedirectBodyDenied)
-                callerHeaders = emptyMap()
+                // The website's client identity survives a redirect; credentials remain origin-bound.
+                callerHeaders = callerHeaders.filterKeys { it.equals("User-Agent", true) }
             }
             url = next
         }
         error("Unreachable redirect state")
     }
 
-    private fun headers(url: HttpUrl, explicit: Map<String, String>, policy: NetworkPolicy): Headers {
+    private fun headers(url: HttpUrl, explicit: Map<String, String>, policy: NetworkPolicy, includeCookies: Boolean = true): Headers {
         val headers = Headers.Builder()
+        // Legado supplies a desktop UA even when the source has no header rule. Some sites
+        // return HTTP 200 with null book/chapter data to OkHttp's default client identity.
+        defaultUserAgent?.let { headers.set("User-Agent", it) }
         policy.check(url).headers.forEach { (key, value) -> headers.set(key, value) }
         val sameOrigin = sourceUrl.toHttpUrlOrNull()?.let { NetworkPolicy.origin(it) == NetworkPolicy.origin(url) } == true
         val loginHeaders = if (sameOrigin) (account.read(StorageRequestKey.LOGIN_HEADERS) as? StorageResult.Value)?.value else null
@@ -420,7 +513,12 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         if (headers.build().names().any { it.lowercase() in setOf("host", "content-length", "transfer-encoding", "proxy-authorization", "proxy-connection") }) {
             throw BrokerFailure(RequestStage.Permission, FailureCode.InvalidRequest)
         }
-        val cookie = if (enabledCookieJar && (policy !== imagePolicy || knownOrigin)) cookies.header(url, headers["Cookie"])
+        // Chromium owns its persistent cookie store; the mediated browser reads the jar
+        // through its host bridge. Do not inject an HTTP jar snapshot as a native Cookie header.
+        if (!includeCookies) return headers.build()
+        // enabledCookieJar controls automatic HTTP response capture. Explicit login/verification
+        // cookies are sent even when it is off (Legado AnalyzeUrl.setCookie).
+        val cookie = if (policy !== imagePolicy || knownOrigin) cookies.header(url, headers["Cookie"])
             else headers["Cookie"].orEmpty()
         headers.removeAll("Cookie")
         if (cookie.isNotEmpty()) headers.set("Cookie", cookie)
@@ -477,8 +575,9 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
     @Synchronized override fun close() {
         lifetime.cancel()
         denied.clear()
+        certificates.close()
         client.dispatcher.cancelAll()
-        routeClients.forEach { (route, transport) -> route.detach(transport.connectionPool) }
+        routeClients.forEach { (key, transport) -> key.first.detach(transport.connectionPool) }
         routeClients.clear()
         client.connectionPool.evictAll()
         client.dispatcher.executorService.shutdown()
@@ -522,6 +621,7 @@ internal class ValueCache(private val limits: BrokerLimits, private val storage:
 
 private class ResponseCache(private val limits: BrokerLimits) {
     private val entries = linkedMapOf<String, Pair<Long, BrokerResponse>>()
+    @Synchronized fun clear() { entries.clear() }
     @Synchronized fun get(key: String): BrokerResponse? {
         val cached = entries[key] ?: return null
         if ((System.nanoTime() - cached.first) / 1_000_000 >= limits.cacheTtlMillis) { entries.remove(key); return null }

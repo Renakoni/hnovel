@@ -15,6 +15,7 @@ internal fun discoverySources(sources: List<SourceListing>, capability: SourceCa
     // Discovery owns lazy initialization. Keep registered sources visible while they
     // initialize, but never retain a source whose initialization has failed.
     .filter { it.status != SourceStatus.Failed && capability in it.metadata.capabilities }
+    .filter { capability != SourceCapability.Explore || it.resolvedFeed != false }
     .sortedWith(compareBy({ !it.metadata.builtIn }, { it.metadata.id.namespace }, { it.metadata.id.id }))
 
 internal fun selectedSource(sources: List<SourceListing>, requested: Identifier?): Identifier? =

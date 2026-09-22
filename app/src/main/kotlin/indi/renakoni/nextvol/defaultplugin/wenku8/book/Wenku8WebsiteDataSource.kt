@@ -160,7 +160,7 @@ class Wenku8WebsiteDataSource(
             var text = ""
             for (node in content.childNodes()) {
                 when (node) {
-                    is TextNode -> text += node.nodeValue().replace(" ", "  ")
+                    is TextNode -> text += node.wholeText.replace(" ", "  ")
                     is Element if node.`is`("div.divimage") -> {
                         simpleText(text)
                         text = ""

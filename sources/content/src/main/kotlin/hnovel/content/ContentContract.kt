@@ -12,7 +12,7 @@ fun interface RuleTaskRunner {
 
 enum class ContentError { Unavailable, LoginRequired, MissingCapability, BrowserRequired, PermissionDenied,
     Network, InvalidRule, EmptyContent, RepeatedPage, Limit, Storage, AddressDenied, Dns, UnsupportedDependency,
-    RouteUnavailable, RouteUnsupported }
+    RouteUnavailable, RouteUnsupported, Certificate }
 
 /** Same interpretation for direct requests and host-denied script requests. No URL crosses this boundary. */
 internal fun hnovel.network.FailureCode.contentError(): ContentError = when (this) {
@@ -24,11 +24,13 @@ internal fun hnovel.network.FailureCode.contentError(): ContentError = when (thi
     hnovel.network.FailureCode.ResponseTooLarge -> ContentError.Limit
     hnovel.network.FailureCode.Timeout -> ContentError.Network
     hnovel.network.FailureCode.BrowserRequired -> ContentError.BrowserRequired
+    hnovel.network.FailureCode.Certificate -> ContentError.Certificate
     else -> ContentError.Network
 }
 
 /** Recovery is a host-owned action, never a script-provided URL or authority claim. */
-class SourceVerification internal constructor(val kind: hnovel.network.BrowserChallengeKind,
+class SourceVerification internal constructor(val kind: hnovel.network.BrowserChallengeKind?,
+    val certificate: hnovel.network.CertificateProblem? = null,
     private val action: suspend () -> Unit) {
     suspend fun complete() = action()
     override fun toString() = "SourceVerification(kind=$kind)"

@@ -36,7 +36,9 @@ class SourceCatalogScreenTest {
     private val entries = listOf(
         CatalogSource("https://female.invalid/", SourceCategory.Female, "Female source", "Romance", 0),
         CatalogSource("https://added.invalid/", SourceCategory.Female, "Installed source", "Romance", 1),
-        CatalogSource("https://anime.invalid/", SourceCategory.Anime, "Anime source", "Light novels", 0))
+        CatalogSource("https://anime.invalid/", SourceCategory.Anime, "Anime source", "Light novels", 0),
+        CatalogSource("https://official.invalid/", SourceCategory.Official, "Official source", "Subscription chapters", 0),
+        CatalogSource("https://platform.invalid/", SourceCategory.Official, "Official platform", "Subscription chapters", 1))
     private val installed = SourceDefinition("existing", "legado", LEGADO_PROFILE, entries[1].key, entries[1].name,
         true, true, ImportOrigin(ImportOrigin.Kind.Paste), "digest", 1, "{}")
     private val state = SourceManagementState(catalog = entries, installed = listOf(InstalledRuleSource(installed, emptyList(), null)))
@@ -56,6 +58,7 @@ class SourceCatalogScreenTest {
         restoration.setContent { MaterialTheme { SourcesScreen(state, model, onDiagnostics = {}) {} } }
         compose.onNodeWithText("Add book source").performClick()
         compose.onNodeWithText("Female fiction").performClick()
+        compose.onNodeWithText("Official source").assertDoesNotExist()
         compose.onNodeWithText("0 selected").assertIsDisplayed()
         compose.onNodeWithText("Continue").assertIsNotEnabled()
         compose.onNodeWithText("Installed source").assertIsNotEnabled()
@@ -70,6 +73,37 @@ class SourceCatalogScreenTest {
         compose.onNodeWithText("2 selected").assertIsDisplayed()
         compose.onNodeWithText("Continue").performClick()
         verify(exactly = 1) { model.previewCatalog(setOf(entries[0].key, entries[2].key)) }
+        verify(exactly = 0) { model.commit(any(), any(), any()) }
+    }
+
+    @Test fun officialCategoryUsesTheExistingCrossCategorySelectionAndRestoration() {
+        val contentRule = object : ComposeContentTestRule, ComposeTestRule by compose {
+            override fun setContent(composable: @Composable () -> Unit) { activity.get().setContent(content = composable) }
+        }
+        val restoration = StateRestorationTester(contentRule)
+        restoration.setContent { MaterialTheme { SourcesScreen(state, model, onDiagnostics = {}) {} } }
+        compose.onNodeWithText("Add book source").performClick()
+        compose.onNodeWithText("Categories").assertIsDisplayed()
+        compose.onNodeWithText("Official platforms; some works may require payment.").assertIsDisplayed()
+        compose.onNodeWithText("Official sites").performClick()
+        compose.onNodeWithText("0 selected").assertIsDisplayed()
+        compose.onNodeWithText("Female source").assertDoesNotExist()
+        compose.onNodeWithText("Select all").performClick()
+        compose.onNodeWithText("2 selected").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Back").performClick()
+        compose.onNodeWithText("Female fiction").performClick()
+        compose.onNodeWithText("Official source").assertDoesNotExist()
+        compose.onNodeWithText("Select all").performClick()
+        compose.onNodeWithText("3 selected").assertIsDisplayed()
+        restoration.emulateSavedInstanceStateRestore()
+        compose.onNodeWithText("Female source").assertIsOn()
+        compose.onNodeWithContentDescription("Back").performClick()
+        compose.onNodeWithText("Official sites").performClick()
+        compose.onNodeWithText("Official source").assertIsOn()
+        compose.onNodeWithText("Official platform").assertIsOn()
+        compose.onNodeWithText("3 selected").assertIsDisplayed()
+        compose.onNodeWithText("Continue").performClick()
+        verify(exactly = 1) { model.previewCatalog(setOf(entries[0].key, entries[3].key, entries[4].key)) }
         verify(exactly = 0) { model.commit(any(), any(), any()) }
     }
 

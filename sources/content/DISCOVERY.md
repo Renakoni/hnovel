@@ -188,7 +188,7 @@ inside a discovery action.
 
 ## Bounds, errors, and verification
 
-- At most 1,024 raw rows per field and 1,024 combined normalized rows, including
+- At most 4,096 raw rows per field and 4,096 combined normalized rows, including
   exploreScreen and the custom button; no truncation. Catalogue growth does not change
   the separate limits of 64 choices per control, 16 deferred actions per interaction,
   128 draft fields, 4,096 characters per value, and 32,768 total draft characters.
@@ -229,5 +229,5 @@ no actionable category is silently discarded or given an invented meaning. This
 catalogue validation does not disable its search or reading APIs.
 
 The new regressions cover complete/static/dynamic catalogues, exact spacer shape,
-original diagnostics, 1,024-row and separate form limits. Host tests verify a single
+original diagnostics, 4,096-row and separate form limits. Host tests verify a single
 feed preview, original targets, and scrolling/selecting item 326 in both screens.

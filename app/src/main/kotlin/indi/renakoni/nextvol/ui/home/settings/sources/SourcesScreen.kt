@@ -4,6 +4,8 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -22,6 +24,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.LifecycleStartEffect
+import androidx.navigation.NavBackStackEntry
+import androidx.navigation.NavController
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
 import androidx.navigation.toRoute
@@ -46,6 +51,7 @@ fun NavGraphBuilder.settingsSourcesDestination() {
         val route = entry.toRoute<Route.Main.Settings.SourceImport>()
         val nav = LocalNavController.current
         val model = hiltViewModel<SourcesViewModel>()
+        SourceSettingsLifecycle(model, entry, nav)
         val state by model.state.collectAsStateWithLifecycle()
         LaunchedEffect(model) {
             model.state.first { !it.busy }
@@ -55,9 +61,10 @@ fun NavGraphBuilder.settingsSourcesDestination() {
             onDiagnostics = { id -> nav.navigate(Route.Main.Settings.SourceDiagnostic(id.namespace, id.id)) },
             onSearch = { id -> nav.navigate(Route.Main.Explore.Search(id.namespace, id.id)) }) { nav.popBackStack() }
     }
-    composable<Route.Main.Settings.Sources> {
+    composable<Route.Main.Settings.Sources> { entry ->
         val nav = LocalNavController.current
         val model = hiltViewModel<SourcesViewModel>()
+        SourceSettingsLifecycle(model, entry, nav)
         val state by model.state.collectAsStateWithLifecycle()
         SourcesScreen(state, model,
             onDiagnostics = { id -> nav.navigate(Route.Main.Settings.SourceDiagnostic(id.namespace, id.id)) },
@@ -67,6 +74,7 @@ fun NavGraphBuilder.settingsSourcesDestination() {
         val route = entry.toRoute<Route.Main.Settings.SourceDetail>()
         val nav = LocalNavController.current
         val model = hiltViewModel<SourcesViewModel>()
+        SourceSettingsLifecycle(model, entry, nav)
         val state by model.state.collectAsStateWithLifecycle()
         LaunchedEffect(model) {
             model.state.first { !it.busy }
@@ -78,6 +86,17 @@ fun NavGraphBuilder.settingsSourcesDestination() {
     }
 }
 
+@Composable
+private fun SourceSettingsLifecycle(model: SourcesViewModel, entry: NavBackStackEntry, nav: NavController) {
+    LifecycleStartEffect(model, entry) {
+        model.setActive(true)
+        onStopOrDispose { model.setActive(false, retainBrowser = nav.currentBackStackEntry?.id == entry.id) }
+    }
+    DisposableEffect(model, entry) {
+        onDispose { if (nav.currentBackStackEntry?.id != entry.id) model.setActive(false) }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
@@ -86,17 +105,37 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
     var addTab by rememberSaveable { mutableIntStateOf(0) }
     var category by rememberSaveable { mutableStateOf<SourceCategory?>(null) }
     var managementCategory by rememberSaveable { mutableStateOf<SourceCategory?>(null) }
+    var managementGroup by rememberSaveable { mutableStateOf<String?>(null) }
+    var managingGroups by rememberSaveable { mutableStateOf(false) }
+    var selecting by rememberSaveable { mutableStateOf(false) }
+    var selectedSources by rememberSaveable { mutableStateOf(emptyList<String>()) }
+    var groupingSources by rememberSaveable { mutableStateOf<List<String>?>(null) }
+    val visibleSources = state.installed.filter {
+        (managementCategory == null || it.preferences.category == managementCategory) &&
+            (managementGroup == null || it.preferences.groupId.orEmpty() == managementGroup)
+    }
     var chosen by rememberSaveable { mutableStateOf(emptyList<String>()) }
     var url by rememberSaveable { mutableStateOf("") }
     val addStates = rememberSaveableStateHolder()
     var deleting by remember { mutableStateOf(false) }
     var rollback by remember { mutableStateOf(false) }
     val listState = rememberSaveable(state.selected, saver = LazyListState.Saver) { LazyListState() }
+    var observedGroupRevision by rememberSaveable { mutableLongStateOf(state.groupRevision) }
+    LaunchedEffect(state.groupRevision) {
+        if (observedGroupRevision != state.groupRevision) {
+            observedGroupRevision = state.groupRevision
+            groupingSources = null; selectedSources = emptyList(); selecting = false
+        }
+    }
     LaunchedEffect(state.message) {
         if (state.message == R.string.sources_saved) { adding = false; category = null; chosen = emptyList() }
     }
     LaunchedEffect(state.installed) {
         chosen = chosen - state.installed.map { it.definition.importKey }.toSet()
+        selectedSources = selectedSources.filter { selected -> state.installed.any { it.definition.sourceId == selected } }
+    }
+    LaunchedEffect(state.groups) {
+        if (!managementGroup.isNullOrEmpty() && state.groups.none { it.id == managementGroup }) managementGroup = null
     }
     val file = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let { uri -> model.previewFile(uri, AUTO_PROFILE) } }
     val installed = state.installed.find { ImportedRuleSources.id(it.definition) == state.selected }
@@ -109,6 +148,7 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
             state.selected != null -> model.select(null)
             adding && category != null -> category = null
             adding -> adding = false
+            selecting -> { selecting = false; selectedSources = emptyList() }
             else -> onBack()
         }
     }
@@ -126,6 +166,14 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
             navigationIcon = { IconButton(onClick = { back() }) {
                 Icon(painterResource(R.drawable.arrow_back_24px), stringResource(R.string.sources_back))
             } })
+    }, bottomBar = {
+        if (selecting && state.selected == null && !adding && state.preview == null) SourceSelectionBar(
+            summary = stringResource(R.string.source_group_selected, selectedSources.size),
+            secondary = stringResource(android.R.string.cancel),
+            onSecondary = { selecting = false; selectedSources = emptyList() },
+            action = stringResource(R.string.source_group_move),
+            onAction = { groupingSources = selectedSources }, actionEnabled = selectedSources.isNotEmpty() && !state.busy,
+            secondaryEnabled = !state.busy)
     }) { padding ->
         if (state.preview != null) {
             SourceImportPreview(state, model, Modifier.padding(padding))
@@ -171,7 +219,7 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                         }
                         state.network?.let {
                             SectionHeader(text = stringResource(R.string.sources_network_section))
-                            SourceNetworkSection(it, state.busy, model::setBypassVpn)
+                            SourceNetworkSection(it, state.busy, model::setBypassVpn, model::revokeCertificate)
                         }
                         val savedAccount = state.storedSettingsAvailable && state.loginStatus != LoginStatus.LoggedOut
                         if (settings.loginDeclared || settings.loginErrorField != null || savedAccount || state.verification != null) {
@@ -235,7 +283,14 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                         onSearch = { onSearch(state.selected) }, onBypassVpn = model::setBypassVpn)
                 }
             } else {
-                item { Button(onClick = { adding = true }, enabled = !state.busy, colors = sourceButtonColors()) { Text(stringResource(R.string.sources_add)) } }
+                item(key = "source-management-actions") {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        SourceManagementAction(stringResource(R.string.sources_add), R.drawable.library_add_24px,
+                            !state.busy, Modifier.weight(1f)) { adding = true }
+                        SourceManagementAction(stringResource(R.string.source_groups_manage), R.drawable.view_list_24px,
+                            !state.busy, Modifier.weight(1f)) { managingGroups = true }
+                    }
+                }
                 item { SectionHeader(text = stringResource(R.string.sources_builtin_group)) }
                 item {
                     val entry = state.registry.find { it.metadata.id == ZLibrarySources.ID }
@@ -269,8 +324,21 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                         if (state.installed.isNotEmpty()) SourceManagementFilter(managementCategory) { managementCategory = it }
                     }
                 }
-                val visible = state.installed.filter { managementCategory == null || it.preferences.category == managementCategory }
-                if (visible.isEmpty()) item {
+                item(key = "source-user-groups") {
+                    SourceGroupFilters(state.groups, state.installed, managementGroup) { managementGroup = it }
+                    if (state.installed.isNotEmpty()) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        if (selecting) TextButton(enabled = !state.busy && visibleSources.isNotEmpty(), onClick = {
+                            val ids = visibleSources.map { it.definition.sourceId }
+                            selectedSources = if (ids.all { it in selectedSources }) selectedSources - ids.toSet()
+                                else (selectedSources + ids).distinct()
+                        }) { Text(stringResource(if (visibleSources.isNotEmpty() && visibleSources.all { it.definition.sourceId in selectedSources })
+                            R.string.source_group_deselect_visible else R.string.source_group_select_visible)) }
+                        else TextButton(onClick = { selecting = true }, enabled = !state.busy) {
+                            Text(stringResource(R.string.source_group_select))
+                        }
+                    }
+                }
+                if (visibleSources.isEmpty()) item {
                     Column {
                         Text(stringResource(R.string.source_catalog_empty), color = MaterialTheme.colorScheme.onSurfaceVariant)
                         if (managementCategory != null) TextButton(onClick = { category = managementCategory; adding = true }) {
@@ -278,15 +346,33 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                         }
                     }
                 }
-                items(visible, key = { it.definition.sourceId }) { source ->
+                items(visibleSources, key = { it.definition.sourceId }) { source ->
                     val id = ImportedRuleSources.id(source.definition)
                     val presentation = state.catalog.find { it.key == source.definition.importKey }
+                    val selected = source.definition.sourceId in selectedSources
+                    val groupAction = stringResource(R.string.source_group_move_named, presentation?.name ?: source.definition.displayName)
+                    val groupName = state.groups.find { it.id == source.preferences.groupId }?.name
+                        ?: stringResource(R.string.source_group_ungrouped)
                     ListItem(headlineContent = { Text(presentation?.name ?: source.definition.displayName) },
-                        supportingContent = { Text(presentation?.host?.takeIf(String::isNotBlank)
-                            ?: android.net.Uri.parse(source.definition.importKey).host.orEmpty()) },
-                        trailingContent = { Switch(source.preferences.enabled, { model.setEnabled(id, it) }, enabled = !state.busy) },
-                        modifier = Modifier.clip(MaterialTheme.shapes.large).clickable(enabled = !state.busy) { model.select(id) },
-                        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer))
+                        leadingContent = if (selecting) ({ Checkbox(selected, onCheckedChange = null) }) else null,
+                        supportingContent = { Column {
+                            Text(presentation?.host?.takeIf(String::isNotBlank)
+                                ?: android.net.Uri.parse(source.definition.importKey).host.orEmpty())
+                            if (!selecting) TextButton(onClick = { groupingSources = listOf(source.definition.sourceId) }, enabled = !state.busy,
+                                contentPadding = PaddingValues(horizontal = 0.dp), modifier = Modifier.semantics { contentDescription = groupAction }) {
+                                Text(groupName, style = MaterialTheme.typography.labelMedium,
+                                    maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                            }
+                        } },
+                        trailingContent = if (selecting) null else ({ Switch(source.preferences.enabled,
+                            { model.setEnabled(id, it) }, enabled = !state.busy) }),
+                        modifier = Modifier.clip(MaterialTheme.shapes.large).then(if (selecting)
+                            Modifier.toggleable(selected, enabled = !state.busy, role = Role.Checkbox) {
+                                selectedSources = if (selected) selectedSources - source.definition.sourceId
+                                    else selectedSources + source.definition.sourceId
+                            } else Modifier.clickable(enabled = !state.busy) { model.select(id) }),
+                        colors = ListItemDefaults.colors(containerColor = if (selecting && selected)
+                            MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainer))
                 }
                 val installedIds = state.installed.map { ImportedRuleSources.id(it.definition) }.toSet()
                 val plugins = state.registry.filter { !it.metadata.builtIn && it.metadata.id !in installedIds && it.metadata.id != ZLibrarySources.ID }
@@ -299,6 +385,13 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                 }
             }
         }
+    }
+    if (managingGroups || groupingSources != null) {
+        val members = groupingSources.orEmpty().map { Identifier("rules", it) }.toSet()
+        SourceGroupsDialog(state.groups, state.installed, state.busy, groupingSources != null, state.message, state.groupRevision,
+            onDismiss = { managingGroups = false; groupingSources = null },
+            onChoose = { model.moveToGroup(members, it) },
+            onCreate = { model.createGroup(it, members) }, onRename = model::renameGroup, onDelete = model::deleteGroup)
     }
     state.loginForm?.let { form ->
         SourceLoginDialog(form, state.busy, model::submitLogin, model::cancelLogin)

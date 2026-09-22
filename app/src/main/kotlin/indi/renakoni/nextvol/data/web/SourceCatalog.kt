@@ -14,35 +14,48 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 @Serializable
-enum class SourceCategory(val title: Int, val examples: Int) {
-    Platforms(R.string.source_category_platforms, R.string.source_examples_platforms),
-    Female(R.string.source_category_female, R.string.source_examples_female),
-    Anime(R.string.source_category_anime, R.string.source_examples_anime),
-    Literature(R.string.source_category_literature, R.string.source_examples_literature),
-    General(R.string.source_category_general, R.string.source_examples_general),
-    Adult(R.string.source_category_adult, R.string.source_examples_adult),
+enum class SourceCategory(val title: Int) {
+    Platforms(R.string.source_category_platforms),
+    Female(R.string.source_category_female),
+    Anime(R.string.source_category_anime),
+    Literature(R.string.source_category_literature),
+    General(R.string.source_category_general),
+    Adult(R.string.source_category_adult),
+    Official(R.string.source_category_official),
 }
 
 @Serializable
 data class CatalogSource(val key: String, val category: SourceCategory, val name: String,
-    val subtitle: String, val index: Int, val host: String = "")
+    val subtitle: String, val index: Int, val host: String = "", val available: Boolean = true,
+    val replaces: Set<String> = emptySet())
 
 /** Presentation metadata is separate from the original, explicitly imported rule definitions. */
 @Singleton
 class SourceCatalog @Inject constructor(@ApplicationContext private val context: Context) {
-    val entries: List<CatalogSource> by lazy {
+    private val allEntries: List<CatalogSource> by lazy {
         context.assets.open("source-catalog/catalog.json").bufferedReader().use {
             Json.decodeFromString<List<CatalogSource>>(it.readText())
         }
     }
-    private val byKey by lazy { entries.associateBy { it.key } }
+    val entries: List<CatalogSource> by lazy { allEntries.filter { it.available } }
+    private val byKey by lazy { allEntries.associateBy { it.key } }
 
     // Match the complete import identity, never a display name, group label or hostname.
     fun entry(definition: SourceDefinition): CatalogSource? = byKey[definition.importKey]
 
+    /** Only an exact, unmodified bundled revision is eligible for a bundled repair. */
+    internal fun replacement(definition: SourceDefinition): String? {
+        val entry = entry(definition)?.takeIf { definition.contentDigest in it.replaces } ?: return null
+        return definitions(listOf(entry))
+    }
+
     fun definitions(keys: Set<String>): String {
         val selected = entries.filter { it.key in keys }
         require(selected.isNotEmpty() && selected.size == keys.size)
+        return definitions(selected)
+    }
+
+    private fun definitions(selected: List<CatalogSource>): String {
         val batches = selected.map { it.category }.distinct().associateWith { category ->
             context.assets.open("source-catalog/${category.name}.json").bufferedReader().use {
                 Json.parseToJsonElement(it.readText()).jsonArray

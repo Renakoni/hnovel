@@ -2,10 +2,15 @@ package hnovel.rules
 
 import java.util.regex.Pattern
 
-/** Matcher reads check the same request budget, including during catastrophic backtracking. */
+/** Check scans in small batches: normal long paragraphs can revisit millions of characters. */
 internal class BudgetText(private val value: String, private val budget: RuleBudget) : CharSequence {
+    private var reads = 0
     override val length get() = value.length
-    override fun get(index: Int): Char { budget.check(); return value[index] }
+    override fun get(index: Int): Char {
+        // Keep deadline/interruption checks inside the matcher, including backtracking.
+        if (reads++ and 255 == 0) budget.check()
+        return value[index]
+    }
     override fun subSequence(startIndex: Int, endIndex: Int): CharSequence = BudgetText(value.substring(startIndex, endIndex), budget)
     override fun toString() = value
 }

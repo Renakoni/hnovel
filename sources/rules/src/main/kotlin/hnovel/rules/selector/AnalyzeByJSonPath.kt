@@ -4,7 +4,6 @@ package hnovel.rules.selector
 
 import com.jayway.jsonpath.JsonPath
 import com.jayway.jsonpath.ReadContext
-import com.jayway.jsonpath.PathNotFoundException
 
 
 @Suppress("RegExpRedundantEscape")
@@ -48,9 +47,7 @@ class AnalyzeByJSonPath(json: Any) {
                     } else {
                         ob.toString()
                     }
-                } catch (e: Exception) {
-                    if (e !is PathNotFoundException) throw e
-                }
+                } catch (_: Exception) { /* AnalyzeByJSonPath treats an invalid optional path as empty. */ }
             }
             return result
         } else {
@@ -85,9 +82,7 @@ class AnalyzeByJSonPath(json: Any) {
                     } else {
                         result.add(obj.toString())
                     }
-                } catch (e: Exception) {
-                    if (e !is PathNotFoundException) throw e
-                }
+                } catch (_: Exception) { /* Keep the next || branch available. */ }
             } else {
                 result.add(st)
             }
@@ -135,10 +130,7 @@ class AnalyzeByJSonPath(json: Any) {
             ctx.let {
                 try {
                     return it.read<ArrayList<Any>>(rules[0])
-                } catch (e: Exception) {
-                    // A non-list branch is empty for getList, so || can try the next path.
-                    if (e !is PathNotFoundException && e !is ClassCastException) throw e
-                }
+                } catch (_: Exception) { /* Non-list and invalid paths are empty branches. */ }
             }
         } else {
             val results = ArrayList<ArrayList<*>>()

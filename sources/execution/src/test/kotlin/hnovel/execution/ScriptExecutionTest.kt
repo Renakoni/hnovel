@@ -155,6 +155,34 @@ class ScriptExecutionTest {
         }
     }
 
+    @Test fun repeatedSourceIdentityReadsLeaveTheRequestBudgetForIoAndRespectRevocation() = runBlocking {
+        val authority = ExecutionAuthority()
+        MockWebServer().use { server ->
+            server.start()
+            SourceBroker(directory.root.toPath()).use { sessions ->
+                val id = authority.issue("a", "legado", "1", "fixture")
+                val base = server.url("/").toString()
+                val session = sessions.open(SourceScope("fixture", "a", "legado"), listOf(NetworkGrant(base, true)))
+                session.configureSource(base, true, false)
+                SourceExecutionBroker(id, authority, session, ExecutionLimits(maxRequests = 1), base).use { bridge ->
+                    server.enqueue(MockResponse().setBody("chapter"))
+                    assertEquals(ExecutionResult.Success("\"chapter\""), runScript(id, bridge, """
+                        for(var i=0;i<128;i++) {
+                            if(source.getKey()!==${JsonPrimitive(base)} || source.key!==source.bookSourceUrl) throw new Error('identity');
+                        }
+                        java.ajax('/chapter')
+                    """.trimIndent()))
+                    assertEquals(1, server.requestCount)
+                    assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied), runScript(id, bridge, "java.ajax('/second')"))
+                    assertTrue(bridge.requestLimitExceeded)
+                    assertEquals(1, server.requestCount)
+                    authority.revoke(id)
+                    assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied), runScript(id, bridge, "source.getKey()"))
+                }
+            }
+        }
+    }
+
     @Test fun revokeBeforeResponseCommitDoesNotSaveCookies() = runBlocking {
         val authority = ExecutionAuthority()
         MockWebServer().use { server ->

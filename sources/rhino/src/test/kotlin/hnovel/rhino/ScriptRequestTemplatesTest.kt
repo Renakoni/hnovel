@@ -5,6 +5,18 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ScriptRequestTemplatesTest {
+    @Test fun sourceKeyPropertyUsesTheSameHostIdentityAsItsGetter() {
+        val engine = RhinoScriptEngine(HostBridge { name, _ ->
+            assertEquals("source.getKey", name)
+            JsonPrimitive("https://source.invalid/")
+        })
+        assertEquals(ScriptResult.Success("true"), engine.evaluate("source.key===source.getKey()", frame))
+    }
+
+    @Test fun malformedOptionalUrlObjectFallsBackBeforeTheHostCompiler() {
+        assertEquals("/search?q={{key}},{}", expanded("""/search?q={{key}},{"body":"id"="search-form"}"""))
+    }
+
     @Test fun singleQuotedOptionsRemainDataAndOptionScriptsStillRunInTheWorker() {
         val rule = """/search,{'method':'POST','body':'keyword={{key}}','header':{'X-Test':'it\'s "quoted"'}}"""
         assertEquals("/search," + hnovel.rules.RequestOptionsJson.options(rule.substringAfter(',')), expanded(rule))
@@ -12,11 +24,21 @@ class ScriptRequestTemplatesTest {
             expanded("""/search,{'method':'POST','js':'baseUrl+"/new"'}"""))
     }
 
-    @Test fun invalidRequestOptionsAreRedactedParseFailuresWithoutHostCalls() {
+    @Test fun ignoredOptionalObjectSyntaxNeverExecutesAsJavaScript() {
+        val engine = RhinoScriptEngine(HostBridge { _, args ->
+            assertEquals("/search,{}", args[0].jsonPrimitive.content)
+            JsonPrimitive("ok")
+        })
+        assertEquals(ScriptResult.Success("false"), engine.evaluate(
+            "var executed=false;java.ajax(\"/search,{'body':(function(){executed=true})()}\");executed", frame))
+        assertEquals(ScriptResult.Success("\"ok\""), engine.evaluate(
+            "java.ajax(\"/search,{'body':'unterminated}\")", frame))
+    }
+
+    @Test fun invalidEmbeddedRequestDataHasRedactedFailuresWithoutHostCalls() {
         var calls = 0
         val engine = RhinoScriptEngine(HostBridge { _, _ -> calls++; JsonNull })
-        for (rule in listOf("/search,{'body':'secret-unterminated}", "/search,{'body':function(){}}",
-            "/search,{'header':\"{'X':'secret-unterminated}\"}",
+        for (rule in listOf("/search,{'header':\"{'X':'secret-unterminated}\"}",
             "/search,{'method':'POST','body':\"{'q':'secret-unterminated}\"}")) {
             val result = engine.evaluate("java.ajax(${JsonPrimitive(rule)})", frame) as ScriptResult.Failure
             assertEquals("RequestSyntax", result.code.name)
@@ -28,7 +50,7 @@ class ScriptRequestTemplatesTest {
             assertEquals(0, calls)
         }
         assertEquals(ScriptResult.Success("true"), engine.evaluate(
-            "try { java.ajax(\"/search,{'body':'secret-unterminated}\"); false } catch(e) { e instanceof Error && String(e).indexOf('secret') < 0 }", frame))
+            "try { java.ajax(\"/search,{'header':\\\"{'X':'secret-unterminated}\\\"}\"); false } catch(e) { e instanceof Error && String(e).indexOf('secret') < 0 }", frame))
         assertEquals(0, calls)
     }
 

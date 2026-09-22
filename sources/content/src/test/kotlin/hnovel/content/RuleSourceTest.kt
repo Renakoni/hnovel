@@ -11,6 +11,231 @@ import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.RecordedRequest
 
 class RuleSourceTest {
+    @Test fun httpCaptchaDuringPaginationDoesNotReturnOrSaveATruncatedDirectory() = runBlocking {
+        var verified = false
+        val opened = mutableListOf<String>()
+        val browser = BrowserExecutor { session, request, options, _, _ ->
+            assertTrue(options.interactive)
+            assertFalse(session.browserRead)
+            opened += request.url
+            verified = true
+            BrokerResult.Success(BrokerResponse(0, request.url, emptyMap(), "verified".toByteArray(), "UTF-8", 0,
+                kind = ResponseKind.BrowserDocument))
+        }
+        RuleSourceFixture(browser).use { fixture ->
+            val original = fixture.server.dispatcher
+            fixture.server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse = when {
+                    request.requestUrl!!.encodedPath == "/toc/2" && !verified ->
+                        MockResponse().setResponseCode(302).setHeader("Location", "/WAF/VERIFY/CAPTCHA?from=/toc/2")
+                    request.requestUrl!!.encodedPath == "/WAF/VERIFY/CAPTCHA" ->
+                        MockResponse().setBody("<html><title>Verify Yourself</title><form id='ui-form'>Slide to Unlock</form></html>")
+                    else -> original.dispatch(request)
+                }
+            }
+            fixture.source().use { source ->
+                val book = source.search("fixture").single()
+                // Information also attempts a directory when no update marker exists.
+                val first = failure { source.information(book.id) }
+                assertEquals(ContentError.BrowserRequired, first.code)
+                assertEquals(BrowserChallengeKind.SiteVerification, first.verification!!.kind)
+                assertTrue(opened.isEmpty())
+                assertEquals(ContentError.BrowserRequired, failure { source.directory(book.id) }.code)
+                first.verification.complete()
+                assertEquals(listOf(fixture.server.url("/toc/2").toString()), opened)
+                val chapters = source.directory(book.id)
+                assertEquals(listOf("Volume one", "One", "Two"), chapters.map { it.title })
+                assertTrue(source.content(book.id, chapters.last().id).parts.any { it.text == "second chapter" })
+            }
+        }
+    }
+
+    @Test fun bookAndTocUrlRulesSelectTheFirstLinkBeforeLaterScripts() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            val original = fixture.server.dispatcher
+            fixture.server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest) = when (request.requestUrl!!.encodedPath) {
+                    "/search" -> MockResponse().setBody("<li><h2>Book</h2><a href='/book/one'>Read</a><a href='/author'>Author</a></li>")
+                    "/book/one" -> MockResponse().setBody("<h1>Book</h1><nav><a href='/toc/1'>Chapters</a><a href='/comments'>Comments</a></nav>")
+                    else -> original.dispatch(request)
+                }
+            }
+            fixture.source { raw -> JsonObject(raw + mapOf(
+                "ruleSearch" to JsonObject(raw.getValue("ruleSearch").jsonObject + ("bookUrl" to JsonPrimitive("a@href@js:result"))),
+                "ruleBookInfo" to JsonObject(raw.getValue("ruleBookInfo").jsonObject + ("tocUrl" to JsonPrimitive("nav@a@href@js:result")))
+            )) }.use { source ->
+                val book = source.search("fixture").single()
+                assertEquals(fixture.server.url("/book/one").toString(), book.id)
+                assertEquals(fixture.server.url("/toc/1").toString(), source.information(book.id).tocUrl)
+                assertEquals(2, source.directory(book.id).count { !it.isVolume })
+            }
+        }
+    }
+
+    @Test fun sourceUrlBeanPropertyUsesTheSameIdentityAsGetKey() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            fixture.source { raw -> JsonObject(raw + ("ruleSearch" to JsonObject(raw.getValue("ruleSearch").jsonObject +
+                ("bookUrl" to JsonPrimitive("@js:source.bookSourceUrl.replace(/source-A$/, '')+'book/one'"))))) }.use { source ->
+                val book = source.search("fixture").single()
+                assertEquals(fixture.server.url("/book/one").toString(), book.id)
+                assertEquals(2, source.directory(book.id).count { !it.isVolume })
+            }
+        }
+    }
+
+    @Test fun searchKeepsLargeListsAndDoesNotRejectAllBooksAtOneThousandRows() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            val html = (1..1462).joinToString("") { "<li><a href='/book/$it'><h2>Book $it</h2></a></li>" }
+            fixture.server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest) = MockResponse().setBody(html)
+            }
+            fixture.source { raw -> JsonObject(raw + ("ruleSearch" to buildJsonObject {
+                put("bookList", "li"); put("name", "h2@text"); put("bookUrl", "a@href")
+            })) }.use { source ->
+                val books = source.search("fixture")
+                assertEquals(1462, books.size)
+                assertEquals("Book 1462", books.last().title)
+            }
+        }
+    }
+
+    @Test fun invalidLockedChapterLinksDoNotDiscardTheReadableCatalogue() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            val original = fixture.server.dispatcher
+            fixture.server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest) = if (request.requestUrl!!.encodedPath == "/toc/2")
+                    MockResponse().setBody("<li><a href='javascript:void(0);'>Locked</a></li>".repeat(3))
+                else original.dispatch(request)
+            }
+            fixture.source().use { source ->
+                val book = source.search("fixture").single()
+                val chapters = source.directory(book.id)
+                assertEquals(listOf("Volume one", "One", "Locked"), chapters.map { it.title })
+                assertTrue(source.content(book.id, chapters[1].id).parts.any { it.text == "A first" })
+                val before = fixture.server.requestCount
+                assertEquals(ContentError.InvalidRule, failure { source.content(book.id, chapters.last().id) }.code)
+                assertEquals(before, fixture.server.requestCount)
+            }
+        }
+    }
+
+    @Test fun largePageChromeDoesNotPreventReadingItsSmallChapter() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            val original = fixture.server.dispatcher
+            val html = "<!--" + "x".repeat(9 * 1024 * 1024) + "--><article>Readable chapter</article>"
+            fixture.server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest) = if (request.requestUrl!!.encodedPath == "/c/1")
+                    MockResponse().setBody(html) else original.dispatch(request)
+            }
+            fixture.source { raw -> JsonObject(raw + ("ruleContent" to buildJsonObject { put("content", "article@text") })) }.use { source ->
+                val book = source.search("fixture").single()
+                val chapter = source.directory(book.id).first { !it.isVolume }
+                assertEquals(listOf("Readable chapter"), source.content(book.id, chapter.id).parts.mapNotNull { it.text })
+            }
+        }
+    }
+
+    @Test fun loginCheckCanReturnTheUnchangedCatalogueResponse() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            val original = fixture.server.dispatcher
+            fixture.server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest) = if (request.requestUrl!!.encodedPath == "/toc/2")
+                    MockResponse().setBody("<!--" + "x".repeat(350000) + "--><li><a href='/c/2'>Two</a></li>")
+                else original.dispatch(request)
+            }
+            fixture.source { raw -> JsonObject(raw + ("loginCheckJs" to JsonPrimitive("result"))) }.use { source ->
+                val book = source.search("fixture").single()
+                assertEquals(listOf("Volume one", "One", "Two"), source.directory(book.id).map { it.title })
+            }
+        }
+    }
+
+    @Test fun scriptLedBookListsCanRecoverFromAnHttpErrorResponse() = runBlocking {
+        for (discovery in listOf(false, true)) RuleSourceFixture().use { fixture ->
+            val original = fixture.server.dispatcher
+            fixture.server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
+                override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest) =
+                    if (request.requestUrl!!.encodedPath == "/placeholder")
+                        okhttp3.mockwebserver.MockResponse().setResponseCode(404).setBody("placeholder")
+                    else original.dispatch(request)
+            }
+            fixture.source(customize = { raw -> JsonObject(raw + mapOf(
+                "searchUrl" to JsonPrimitive("/placeholder"),
+                "exploreUrl" to JsonPrimitive("Latest::/placeholder"),
+                (if (discovery) "ruleExplore" else "ruleSearch") to JsonObject(raw.getValue("ruleSearch").jsonObject +
+                    ("bookList" to JsonPrimitive("<js>java.ajax('/search')</js>li")))
+            )) }).use { source ->
+                val books = if (discovery) source.openDiscovery("http-error").page("/placeholder", 1, emptyMap())
+                    else source.search("title")
+                assertEquals("Same title", books.single().title)
+                assertEquals(listOf("/placeholder", "/search"), (1..2).map { fixture.server.takeRequest().requestUrl!!.encodedPath })
+            }
+        }
+    }
+
+    @Test fun aDirectoryContainingOnlyVolumeHeadingsIsNotAReadableSuccess() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            fixture.source(customize = { raw -> JsonObject(raw + ("ruleToc" to JsonObject(
+                raw.getValue("ruleToc").jsonObject + ("isVolume" to JsonPrimitive("@js:true")))))
+            }).use { source ->
+                val id = source.search("title").single().id
+                assertEquals(ContentError.EmptyContent, failure { source.directory(id) }.code)
+            }
+        }
+    }
+
+    @Test fun decimalZeroFlagsDoNotTurnChaptersIntoVolumesOrPaidEntries() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            fixture.source { raw -> JsonObject(raw + ("ruleToc" to JsonObject(
+                raw.getValue("ruleToc").jsonObject + listOf("isVolume", "isVip", "isPay")
+                    .associateWith { JsonPrimitive("@js:'0.0'") }
+            ))) }.use { source ->
+                val chapters = source.directory(source.search("title").single().id)
+                assertTrue(chapters.isNotEmpty())
+                assertTrue(chapters.none { it.isVolume || it.isVip || it.isPay })
+            }
+        }
+    }
+
+    @Test fun regexChapterIdsInsideScriptsRemainDistinctAcrossCataloguePages() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            fixture.source { raw -> JsonObject(raw + ("ruleToc" to buildJsonObject {
+                put("chapterList", """:<li><a href='/c/(\d+)'>([^<]+)</a></li>""")
+                put("chapterName", "${'$'}2")
+                put("chapterUrl", "@js:'/c/${'$'}1'")
+                put("nextTocUrl", "a.next@href")
+            })) }.use { source ->
+                val book = source.search("fixture").single()
+                val chapters = source.directory(book.id)
+                assertEquals(listOf("One", "Two"), chapters.map { it.title })
+                assertEquals(listOf("/c/1", "/c/2").map { fixture.server.url(it).toString() }, chapters.map { it.id })
+                assertTrue(source.content(book.id, chapters.first().id).parts.any { it.text == "A first" })
+            }
+        }
+    }
+
+    @Test fun importedProfilesApplyTheSameDesktopIdentityToHttpAndBrowserRequests() = runBlocking {
+        for (profile in listOf(hnovel.imports.LEGADO_PROFILE, hnovel.imports.EXTENSION_PROFILE)) {
+            val browserHeaders = mutableListOf<Map<String, String>>()
+            val browser = BrowserExecutor { _, request, _, _, _ ->
+                browserHeaders += request.headers
+                BrokerResult.Success(BrokerResponse(0, request.url, emptyMap(),
+                    "<li><a href='/book/one'><h2>Fixture</h2></a></li>".toByteArray(), "UTF-8", 0,
+                    kind = ResponseKind.BrowserDocument))
+            }
+            RuleSourceFixture(browser).use { fixture ->
+                fixture.source(profile = profile).use { source ->
+                    source.search("fixture")
+                    assertEquals(DESKTOP_USER_AGENT, fixture.server.takeRequest(3, java.util.concurrent.TimeUnit.SECONDS)!!.getHeader("User-Agent"))
+                }
+                fixture.source("browser", profile) { JsonObject(it + ("browserRead" to JsonPrimitive(true))) }.use { source ->
+                    source.search("fixture")
+                    assertEquals(DESKTOP_USER_AGENT, browserHeaders.single().entries.single { it.key.equals("User-Agent", true) }.value)
+                }
+            }
+        }
+    }
+
     @Test fun sourceFallbackAndRowVariablesPersistThroughTheProductionPipeline(): Unit = runBlocking {
         RuleSourceFixture().use { fixture -> fixture.source(customize = { raw -> JsonObject(raw + mapOf(
             "ruleSearch" to JsonObject(raw.getValue("ruleSearch").jsonObject + mapOf(
@@ -631,11 +856,11 @@ class RuleSourceTest {
         } }
     }
 
-    @Test fun cyclesAndHttpFailuresNeverBecomeEmptySuccess() = runBlocking {
+    @Test fun catalogueCyclesEndWithCollectedChaptersWhileHttpFailuresStillFail() = runBlocking {
         RuleSourceFixture().use { fixture -> fixture.source().use { source ->
             val id = fixture.server.url("/book/one").toString()
             fixture.cycle = true
-            assertEquals(ContentError.RepeatedPage, failure { source.directory(id) }.code)
+            assertEquals(listOf("Volume one", "One", "Two"), source.directory(id).map { it.title })
             fixture.cycle = false
             assertEquals(3, source.directory(id).size)
             fixture.status = 401
@@ -743,10 +968,12 @@ class RuleSourceTest {
         } }
     }
 
-    @Test fun changingCursorCannotHideRepeatedCatalogPages() = runBlocking {
+    @Test fun repeatedCatalogueRowsKeepTheLastOccurrenceWithoutLosingReadableChapters() = runBlocking {
         RuleSourceFixture().use { fixture -> fixture.source().use { source ->
             fixture.duplicateToc = true
-            assertEquals(ContentError.RepeatedPage, failure { source.directory(fixture.server.url("/book/one").toString()) }.code)
+            val chapters = source.directory(fixture.server.url("/book/one").toString())
+            assertEquals(listOf("Volume one", "One"), chapters.map { it.title })
+            assertEquals(fixture.server.url("/c/1").toString(), chapters.last().id)
         } }
     }
 
@@ -777,7 +1004,7 @@ class RuleSourceTest {
             if (cancel) operation.join() else assertEquals(ContentError.Unavailable, (operation.await().exceptionOrNull() as SourceContentException).code)
             val definition = source.definition
             val session = fixture.broker.open(SourceScope("rules", definition.sourceId, definition.profile), listOf(NetworkGrant(fixture.server.url("/").toString(), true)))
-            val saved = session.read(StorageRequest(StorageArea.Config, "content/book/" + digest(id))) as StorageResult.Value
+            val saved = session.read(StorageRequest(StorageArea.BookState, "content/book/" + digest(id))) as StorageResult.Value
             val record = Json.decodeFromString(BookRecord.serializer(), saved.value!!)
             assertEquals("One", record.chapters[1].title)
             assertEquals("One", record.chapters[1].state.variables["chapterKey"])

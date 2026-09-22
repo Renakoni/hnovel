@@ -48,20 +48,33 @@ class RequestOptionsRegressionTest {
         }
     }
 
-    @Test fun invalidSourceHeadersIdentifyTheHeaderFieldWithoutNetworkRequests() = runBlocking {
+    @Test fun malformedOptionalSourceHeadersKeepTheDefaultRequest() = runBlocking {
         RuleSourceFixture().use { fixture ->
             fixture.source(customize = { JsonObject(it + ("header" to JsonPrimitive("{'X-Test':'unterminated}"))) }).use { source ->
-                val failure = runCatching { source.search("title") }.exceptionOrNull() as SourceContentException
-                assertEquals(ContentError.InvalidRule, failure.code)
-                assertEquals("header", failure.field)
-                assertEquals(0, fixture.server.requestCount)
+                assertEquals("Same title", source.search("title").single().title)
+                val request = fixture.server.takeRequest(3, TimeUnit.SECONDS)!!
+                assertEquals("GET", request.method)
+                assertNull(request.getHeader("X-Test"))
+                assertTrue(request.getHeader("User-Agent")!!.startsWith("Mozilla/5.0"))
             }
         }
     }
 
-    @Test fun invalidOptionsKeepTheirRuleFieldAndDifferFromMissingNetworkPermission() = runBlocking {
+    @Test fun malformedOptionalUrlOptionsKeepTheBaseRequest() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            fixture.source(customize = { JsonObject(it + ("searchUrl" to JsonPrimitive("/search,{'body':'unterminated}"))) }).use { source ->
+                assertEquals("Same title", source.search("title").single().title)
+                val request = fixture.server.takeRequest(3, TimeUnit.SECONDS)!!
+                assertEquals("/search", request.path)
+                assertEquals("GET", request.method)
+                assertEquals(0L, request.bodySize)
+            }
+        }
+    }
+
+    @Test fun explicitInvalidRequestsAndMissingPermissionsKeepTheirRuleField() = runBlocking {
         for ((rule, expected) in listOf(
-            "/search,{'body':'unterminated}" to ContentError.InvalidRule,
+            "@js:java.connect('/search', \"{'X-Test':'unterminated}\")" to ContentError.InvalidRule,
             "https://not-granted.invalid/search" to ContentError.PermissionDenied
         )) RuleSourceFixture().use { fixture ->
             fixture.source(customize = { JsonObject(it + ("searchUrl" to JsonPrimitive(rule))) }).use { source ->

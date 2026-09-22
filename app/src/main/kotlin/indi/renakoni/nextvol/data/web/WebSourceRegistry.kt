@@ -122,7 +122,7 @@ class WebSourceRegistry internal constructor(private val dispatcher: CoroutineDi
 
     private fun publish() {
         mutableSources.value = Collections.unmodifiableList(entries.values
-            .map { SourceListing(it.metadata, it.status, it.generation) }
+            .map { SourceListing(it.metadata, it.status, it.generation, it.resolvedFeed) }
             .sortedWith(compareBy({ !it.metadata.builtIn }, { it.metadata.id.namespace }, { it.metadata.id.id })))
     }
 
@@ -142,6 +142,7 @@ class WebSourceRegistry internal constructor(private val dispatcher: CoroutineDi
         private var started = false
         private var runtime: SourceRuntime? = null
         var status = SourceStatus.Registered
+        var resolvedFeed: Boolean? = null
 
         val initialization = lifetime.async(start = CoroutineStart.LAZY) {
             update(this@Entry, SourceStatus.Initializing)
@@ -157,7 +158,14 @@ class WebSourceRegistry internal constructor(private val dispatcher: CoroutineDi
                 currentCoroutineContext().ensureActive()
                 synchronized(ownership) {
                     check(!retired) { "Source was removed during initialization" }
-                    SourceRuntime(metadata, source, lifetime, cleanupScope).also { runtime = it }
+                    SourceRuntime(metadata, source, lifetime, cleanupScope) { hasFeed ->
+                        synchronized(lock) {
+                            if (entries[metadata.id] === this@Entry && resolvedFeed != hasFeed) {
+                                resolvedFeed = hasFeed
+                                publish()
+                            }
+                        }
+                    }.also { runtime = it }
                 }.also { update(this@Entry, SourceStatus.Ready) }
             } catch (failure: Throwable) {
                 // A constructed source which never reaches Ready is still our resource.

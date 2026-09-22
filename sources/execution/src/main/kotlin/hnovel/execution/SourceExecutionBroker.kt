@@ -23,6 +23,8 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
         private set
     @Volatile var requestLimitExceeded = false
         private set
+    @Volatile var responseLimitExceeded = false
+        private set
 
     init {
         require(identity.namespace == session.scope.namespace && identity.sourceId == session.scope.sourceId &&
@@ -49,6 +51,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
     suspend fun call(name: String, args: List<JsonElement>): JsonElement {
         requestFailure = null
         requestLimitExceeded = false
+        responseLimitExceeded = false
         if (name != "request.withHeaders") return callWithHeaders(name, args, emptyMap())
         require(args.size == 3)
         val operation = args[0].jsonPrimitive.content
@@ -58,6 +61,12 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
     }
 
     private suspend fun callWithHeaders(name: String, args: List<JsonElement>, sourceHeaders: Map<String, String>): JsonElement {
+        // BookSource.getKey only returns its URL. Per-image text replacement can read it
+        // hundreds of times without making any requests or accessing persistent storage.
+        if (name == "source.getKey") return authorized {
+            require(args.isEmpty())
+            JsonPrimitive(session.sourceUrl.ifBlank { baseUrl })
+        }
         val requestNumber = reserveRequest()
         return ownedWork {
             when (name) {
@@ -104,10 +113,9 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
                     fun string(index: Int) = args.getOrNull(index)?.takeUnless { it == JsonNull }?.jsonPrimitive?.content.orEmpty()
                     val url = string(1).ifBlank { baseUrl }
                     val options = BrowserOptions(script = string(2), html = string(0).takeIf { it.isNotBlank() },
-                        sourceRegex = string(3), overrideUrl = name == "java.webViewGetOverrideUrl")
+                        sourceRegex = string(3), overrideUrl = name == "java.webViewGetOverrideUrl", nativeWebsite = string(0).isBlank())
                     JsonPrimitive(fetch(BrokerRequest("script-$requestNumber", url, headers = sourceHeaders, browser = options)).text())
                 }
-                "source.getKey" -> JsonPrimitive(session.sourceUrl.ifBlank { baseUrl })
                 "source.getLoginInfo", "source.getLoginInfoMap", "source.getLoginHeader", "source.getLoginHeaderMap" -> authorized {
                     require(args.isEmpty())
                     val key = if (name.contains("LoginInfo")) StorageRequestKey.LOGIN_INFO else StorageRequestKey.LOGIN_HEADERS
@@ -184,8 +192,11 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
                         val pending = requests.map { request -> async {
                             decoding.withPermit {
                                 fetch(request, limits.scriptDataLimit).scriptSnapshot(false).also {
-                                    check(responseBytes.addAndGet(it.toString().toByteArray().size.toLong() + 1) <=
-                                        (limits.maxDataBytes ?: BridgeWire.MAX_BYTES)) { "Batch response too large" }
+                                    if (responseBytes.addAndGet(it.toString().toByteArray().size.toLong() + 1) >
+                                        (limits.maxDataBytes ?: BridgeWire.MAX_BYTES)) {
+                                        responseLimitExceeded = true
+                                        error("Batch response too large")
+                                    }
                                 }
                             }
                         } }
@@ -200,25 +211,29 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
                         body = if (post) args[1].jsonPrimitive.content else null, followRedirects = false, kind = ResourceKind.Api)
                     fetch(request, limits.scriptDataLimit).scriptSnapshot(true)
                 }
-                "cache.get", "source.get", "source.getVariable" -> authorized {
+                "cache.get", "cache.getFile", "source.get", "source.getVariable" -> authorized {
                     require(args.size == if (name == "source.getVariable") 0 else 1)
-                    val key = if (name == "source.getVariable") "variable" else "value:" + args[0].jsonPrimitive.content
+                    val key = if (name == "source.getVariable") "variable"
+                        else (if (name == "cache.getFile") "file:" else "value:") + args[0].jsonPrimitive.content
                     val area = if (name.startsWith("cache.")) StorageArea.Cache else StorageArea.Config
                     val stored = session.read(StorageRequest(area, key))
                     check(stored is StorageResult.Value) { "Storage read failed" }
                     stored.value?.let(::JsonPrimitive) ?: if (!name.startsWith("cache.")) JsonPrimitive("") else JsonNull
                 }
-                "cache.put", "source.put", "cache.delete", "source.setVariable" -> authorized {
+                "cache.put", "cache.putFile", "source.put", "cache.delete", "source.setVariable" -> authorized {
                     val variable = name == "source.setVariable"
                     val deletion = name == "cache.delete"
-                    require(args.size == (if (variable || deletion) 1 else 2) || name == "cache.put" && args.size == 3)
-                    val key = if (variable) "variable" else "value:" + args[0].jsonPrimitive.content
+                    require(args.size == (if (variable || deletion) 1 else 2) || name in setOf("cache.put", "cache.putFile") && args.size == 3)
+                    val key = if (variable) "variable"
+                        else (if (name == "cache.putFile") "file:" else "value:") + args[0].jsonPrimitive.content
                     val value = if (deletion) null else args[if (variable) 0 else 1].let {
                         if (it == JsonNull) null else it.jsonPrimitive.content
                     }
-                    val ttl = if (name == "cache.put") Math.multiplyExact(args.getOrNull(2)?.jsonPrimitive?.int?.toLong() ?: 0, 1000) else null
+                    val ttl = if (name in setOf("cache.put", "cache.putFile")) Math.multiplyExact(args.getOrNull(2)?.jsonPrimitive?.int?.toLong() ?: 0, 1000) else null
                     val area = if (name.startsWith("cache.")) StorageArea.Cache else StorageArea.Config
                     check(session.write(StorageRequest(area, key, value, ttl)) is StorageResult.Value) { "Storage write failed" }
+                    if (deletion) check(session.write(StorageRequest(StorageArea.Cache,
+                        "file:" + args[0].jsonPrimitive.content)) is StorageResult.Value) { "Storage write failed" }
                     if (name == "source.put") JsonPrimitive(value.orEmpty()) else JsonNull
                 }
                 else -> error("Unknown bridge operation")
@@ -239,7 +254,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
     }
 
     private suspend fun fetch(request: BrokerRequest, maxResponseBytes: Int = limits.maxDataBytes ?: BridgeWire.MAX_BYTES): BrokerResponse {
-        val result = session.execute(request.copy(timeoutMillis = limits.timeoutMillis, maxResponseBytes = minOf(maxResponseBytes, 4 * 1024 * 1024)), RequestCommitGuard { action -> authorized(action) })
+        val result = session.execute(request.copy(timeoutMillis = limits.timeoutMillis, maxResponseBytes = minOf(maxResponseBytes, BrokerLimits.DEFAULT_MAX_RESPONSE_BYTES)), RequestCommitGuard { action -> authorized(action) })
         if (result is BrokerResult.Failure) requestFailure = result
         check(result is BrokerResult.Success) { "Broker request failed" }
         return result.response

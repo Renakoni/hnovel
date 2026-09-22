@@ -40,7 +40,7 @@ class SourceLoginCookiesTest {
             session.setCookie(base, "manual=yes")
             server.enqueue(MockResponse().setBody("ok").addHeader("Set-Cookie", "auto=no; Path=/"))
             session.execute(BrokerRequest("one", base))
-            assertNull(server.takeRequest().getHeader("Cookie"))
+            assertEquals("manual=yes", server.takeRequest().getHeader("Cookie"))
             assertEquals("manual=yes", session.cookie(base))
             server.enqueue(MockResponse().setBody("ok"))
             session.execute(BrokerRequest("two", base, headers = mapOf("Cookie" to session.cookie(base))))

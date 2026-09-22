@@ -39,6 +39,33 @@ class ResourceBridgeTest {
         }
     }
 
+    @Test fun fileCacheKeepsItsOwnKeysAndSharesExpiryDeletionAndSourceIsolation() = runBlocking {
+        val scope = SourceScope("fixture", "file-cache", "legado")
+        fun open(sessions: SourceBroker, source: SourceScope = scope) = SourceExecutionBroker(
+            authority.issue(source.sourceId, source.profile, "1", source.namespace), authority,
+            sessions.open(source, emptyList()), ExecutionLimits(maxRequests = 30))
+        SourceBroker(folder.root.toPath()).use { sessions ->
+            open(sessions).use { broker ->
+                assertEquals(ExecutionResult.Success("[null,\"file\",\"value\",null,\"One,Two\"]"), script(broker, """
+                    cache.put('catalog','value');cache.putFile('catalog','file');
+                    cache.putFile('expired','gone',-1);
+                    cache.putFile('rows',['One','Two']);
+                    [cache.getFile('missing'),cache.getFile('catalog'),cache.get('catalog'),cache.getFile('expired'),cache.getFile('rows')]
+                """, ""))
+            }
+        }
+        SourceBroker(folder.root.toPath()).use { sessions ->
+            open(sessions, scope.copy(sourceId = "other")).use { broker ->
+                assertEquals(ExecutionResult.Success("null"), script(broker, "cache.getFile('catalog')", ""))
+            }
+            open(sessions).use { broker ->
+                assertEquals(ExecutionResult.Success("\"file\""), script(broker, "cache.getFile('catalog')", ""))
+                assertEquals(ExecutionResult.Success("[null,null]"), script(broker,
+                    "cache.delete('catalog');[cache.getFile('catalog'),cache.get('catalog')]", ""))
+            }
+        }
+    }
+
     @Test fun consumingAnExtractionCannotDeleteAnotherPublishedBetweenReadAndDelete() = runBlocking {
         MockWebServer().use { server ->
             server.start()

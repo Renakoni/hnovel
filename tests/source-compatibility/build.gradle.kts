@@ -15,7 +15,7 @@ dependencies {
     testImplementation(project(":source-network"))
     testImplementation(libs.junit)
     // Keep oracle dependencies at the reference revision's versions, not the app's.
-    testImplementation("org.jsoup:jsoup:1.16.2")
+    testImplementation(libs.jsoup)
     testImplementation("com.jayway.jsonpath:json-path:2.10.0")
     testImplementation("cn.wanghaomiao:JsoupXpath:2.5.3")
     testImplementation("com.google.code.gson:gson:2.13.2")

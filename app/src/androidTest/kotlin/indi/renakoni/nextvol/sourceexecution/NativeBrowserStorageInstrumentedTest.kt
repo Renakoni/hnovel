@@ -28,7 +28,7 @@ class NativeBrowserStorageInstrumentedTest {
         val saved = read(old)
         assertEquals("old", saved["payload"]!!.jsonPrimitive.content)
         assertEquals("old", saved["indexed"]!!.jsonPrimitive.content)
-        assertEquals("account=old", saved["cookie"]!!.jsonPrimitive.content)
+        assertEquals(setOf("broker=old", "account=old"), saved["cookie"]!!.jsonPrimitive.content.split(';').map(String::trim).toSet())
         val count = server.requestCount
         old.clearAccount()
         assertEquals("Account cleanup must not visit the website", count, server.requestCount)

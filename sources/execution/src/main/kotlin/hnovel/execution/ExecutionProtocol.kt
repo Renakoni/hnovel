@@ -26,7 +26,7 @@ private class WorkerOutputLimit : RuntimeException()
 }
 @Serializable data class ExecutionLimits(val timeoutMillis: Long = 5000, val maxOutputBytes: Int = 65536, val maxRequests: Int = 16,
  val maxDataBytes: Int? = null) {
- init { require(timeoutMillis in 1..60000 && maxOutputBytes in 1..4 * 1024 * 1024 && maxRequests in 0..1024 &&
+ init { require(timeoutMillis in 1..60000 && maxOutputBytes in 1..16 * 1024 * 1024 && maxRequests in 0..1024 &&
   (maxDataBytes == null || maxDataBytes in 1..BridgeWire.MAX_REPLY_BYTES)) }
 }
 
@@ -178,8 +178,9 @@ class IsolatedExecutor(private val javaCommand: String = javaHome(), private val
 object ExecutionWire {
  // Logical JSON can contain a complete catalogue. Android compresses these values before Binder;
  // packets and reverse host calls retain their smaller transport limits.
- const val MAX_INPUT_BYTES = 4 * 1024 * 1024
- const val MAX_RESULT_BYTES = 4 * 1024 * 1024
+ // Include JSON escaping around a response body and the nested result envelope.
+ const val MAX_INPUT_BYTES = 32 * 1024 * 1024
+ const val MAX_RESULT_BYTES = 32 * 1024 * 1024
  const val MAX_INPUT_PACKET_BYTES = 512 * 1024
  fun encode(identity: ExecutionIdentity, task: ExecutionTask, limits: ExecutionLimits, libraryScripts: List<String>? = null): ByteArray =
   kotlinx.serialization.json.Json.encodeToString(Wire.serializer(), Wire(identity, task, limits, libraryScripts)).toByteArray(Charsets.UTF_8)
@@ -222,7 +223,7 @@ class WorkerRuntime(private val archives: hnovel.rhino.ArchiveDecoder = hnovel.r
   if (input.length > ExecutionWire.MAX_INPUT_BYTES || input.toByteArray(Charsets.UTF_8).size > ExecutionWire.MAX_INPUT_BYTES)
    return kotlinx.serialization.json.Json.encodeToString(ExecutionResult.serializer(), ExecutionResult.Failure(FailureCode.InputLimit))
   val wire = try { kotlinx.serialization.json.Json.decodeFromString(Wire.serializer(),
-   BridgeWire.validate(input.toByteArray(Charsets.UTF_8), ExecutionWire.MAX_INPUT_BYTES)) }
+   BridgeWire.validateNesting(input)) }
     catch (_: Exception) { return kotlinx.serialization.json.Json.encodeToString(ExecutionResult.serializer(), ExecutionResult.Failure(FailureCode.InvalidTask)) }
   if (SourceLibraryDefinition.isUrlMap(wire.task.libraryCode()) && wire.libraryScripts == null)
    return kotlinx.serialization.json.Json.encodeToString(ExecutionResult.serializer(), ExecutionResult.Failure(FailureCode.BridgeDenied))
@@ -241,7 +242,7 @@ class WorkerRuntime(private val archives: hnovel.rhino.ArchiveDecoder = hnovel.r
      chineseConverter = task.chineseConverter, sourceLoginUrl = task.sourceLoginUrl, sourceComment = task.sourceComment,
      nextChapterUrl = task.nextChapterUrl, sourceHeaderRule = task.sourceHeaderRule,
      speakText = task.speakText, speakSpeed = task.speakSpeed)
-    when (val evaluated = RhinoScriptEngine(bridge, ScriptLimits(maxResultChars = wire.limits.maxOutputBytes,
+    when (val evaluated = RhinoScriptEngine(bridge, ScriptLimits(timeoutMillis = wire.limits.timeoutMillis, maxResultChars = wire.limits.maxOutputBytes,
      maxBridgeChars = wire.limits.scriptDataLimit), archives)
      .evaluate(task.code, frame, library(wire.identity, task.libraryCode, wire.libraryScripts))) {
      is ScriptResult.Success -> if (evaluated.json.toByteArray(Charsets.UTF_8).size > wire.limits.maxOutputBytes)

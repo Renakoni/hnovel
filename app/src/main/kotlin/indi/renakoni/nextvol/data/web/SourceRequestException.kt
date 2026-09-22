@@ -23,6 +23,7 @@ fun sourceFailureMessage(error: SourceContentException): Int = when (error.code)
     ContentError.Dns -> R.string.sources_dns_failed
     ContentError.RouteUnavailable -> R.string.sources_route_unavailable
     ContentError.RouteUnsupported -> R.string.sources_network_native
+    ContentError.Certificate -> R.string.source_certificate_failed
     ContentError.Network -> R.string.discovery_network
     ContentError.Unavailable -> R.string.discovery_unavailable
     ContentError.MissingCapability -> R.string.discovery_unsupported
@@ -39,6 +40,7 @@ fun sourceFailureMessage(error: DiscoveryError): Int = when (error) {
     DiscoveryError.Dns -> R.string.sources_dns_failed
     DiscoveryError.RouteUnavailable -> R.string.sources_route_unavailable
     DiscoveryError.RouteUnsupported -> R.string.sources_network_native
+    DiscoveryError.Certificate -> R.string.source_certificate_failed
     DiscoveryError.InvalidRules -> R.string.discovery_invalid_rules
     DiscoveryError.Limit -> R.string.discovery_limit
     DiscoveryError.Network -> R.string.discovery_network
