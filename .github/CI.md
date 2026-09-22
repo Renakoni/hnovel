@@ -67,8 +67,9 @@ The gate fails on Error/Fatal diagnostics outside the reviewed baseline. Warning
 remain visible without requiring a mechanical cleanup of all existing warnings.
 See [Lint triage](LINT.md) for exact deferred locations and removal conditions.
 Do not regenerate a baseline automatically in CI, globally disable i18n/API/back
-checks, or add a known crash/data-loss defect to it. `LintBaselineFixed` is fatal:
-when a deferred finding is fixed, remove its obsolete baseline entry too.
+checks, or add a known crash/data-loss defect to it. `LintBaselineFixed` is an
+Error in full Lint: when a deferred finding is fixed, remove its obsolete entry.
+It is not Fatal because lintVital does not run every detector in the baseline.
 
 The Lint concurrency key includes the event and PR/ref, keeping PR, merge-group,
 and manual runs independent from one another and from the other three workflows.
