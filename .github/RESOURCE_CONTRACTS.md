@@ -28,7 +28,7 @@ overrides beyond the listed directories are outside its coverage.
 
 Identical text is reviewed, not automatically treated as missing translation.
 The existing exceptions are brand/font names (`Bangumi`, `Source Han Serif`,
-`LXGW WenKai`), the font sample `永 Aa`, the `r18` label, original source names
+`LXGW WenKai`), translator credits, the font sample `永 Aa`, the `r18`/`CI` labels, original source names
 in `source_examples_*`, technical `ID`/`SHA-256`/HTTP labels, and templates that
 contain only parameters, punctuation, units, or percentages (`source_page_*`,
 `sources_import_problem`, `sources_check_summary`, `tts_factor`,

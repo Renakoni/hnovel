@@ -73,7 +73,7 @@
     <string name="import_back">Назад</string>
     <string name="import_in_progress_title">Импорт…</string>
     <string name="import_in_progress_desc">Подождите…</string>
-    <string name="download_in_progress">In Progress</string>
+    <string name="download_in_progress">Загрузка</string>
     <string name="download_item_progress">%1$s: загружено %2$d%%</string>
     <string name="download_item_finished">%s: завершено</string>
     <string name="download_item_failed">%s: ошибка</string>
@@ -512,7 +512,7 @@
     <string name="plugin_install_conflict_app_plugin">Не удалось установить: уже установлено приложение-плагин с таким же ID. Сначала удалите его.</string>
     <string name="plugin_install_signature_mismatch">Не удалось установить: подписи не совпадают. Перед установкой этого плагина удалите установленную версию.</string>
     <string name="plugin_install_overwrite_prompt">Плагин уже установлен. Заменить его?</string>
-    <string name="plugin_install_confirm_body">Do you want to install the plugin \"%1$s\"?</string>
+    <string name="plugin_install_confirm_body">Установить плагин «%1$s»?</string>
     <string name="plugin_install_reading">Чтение плагина…</string>
     <string name="plugin_install_parsing">Разбор сведений о плагине…</string>
     <string name="plugin_install_verifying">Проверка плагина…</string>
