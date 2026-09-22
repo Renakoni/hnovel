@@ -142,7 +142,7 @@ class LocalBookStore @Inject constructor(
         withContext(Dispatchers.IO) { lock.withLock {
             requireImport(draft.directory in drafts, LocalBookImportReason.SessionExpired) { "This import session is no longer available." }
             currentCoroutineContext().ensureActive()
-            val title = fallbackTitle ?: draft.originalName.substringBeforeLast('.').ifBlank { "Local book" }
+            val title = (fallbackTitle ?: draft.originalName.substringBeforeLast('.')).ifBlank { "Local book" }
             val parsed = when (draft.format) {
                 LocalBookFormat.TXT -> TxtBookParser.parse(draft.original.readBytes(), title, encoding, rule)
                 LocalBookFormat.EPUB -> EpubBookParser.parse(draft.original, File(draft.directory, "assets"), title)

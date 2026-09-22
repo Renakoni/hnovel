@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="local_file_backup_scope">.lnr 備份儲存所選的書庫資料，不包含 EPUB、TXT 原檔案。請另行保管原檔案；在新裝置還原後，可在本機書籍詳情中「重新關聯原檔案」，保留原有閱讀進度和書籤。</string>
+    <string name="local_file_backup_scope">.lnr 備份儲存所選的書庫資料，不包含 EPUB、TXT 原始檔案。請另行保管原始檔案；在新裝置還原後，可在本機書籍詳情中「重新關聯原始檔案」，保留原有閱讀進度和書籤。</string>
     <string name="local_file_missing_title">需要原始檔案</string>
     <string name="local_file_missing_body">書架、閱讀進度和書籤已保留。選擇原始 EPUB 或 TXT 檔案，即可在此裝置繼續閱讀。</string>
     <string name="local_file_relink_action">重新關聯原始檔案</string>

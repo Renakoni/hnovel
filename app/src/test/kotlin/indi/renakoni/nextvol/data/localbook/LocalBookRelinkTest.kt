@@ -132,6 +132,7 @@ class LocalBookRelinkTest {
         assertEquals(LocalBookRelinkMatch.Exact, third.preview(book, renamed).match)
     }
     @Test fun txtRestoreWithoutCacheRetainsIdentityShelfProgressAndBookmarks() = runBlocking { roundTrip(txt(text = "Preface\nChapter 1\nText")) }
+    @Test fun extensionOnlyFileNameKeepsItsFallbackChapterAcrossDevices() = runBlocking { roundTrip(txt(name = ".txt", text = "A book without headings")) }
     @Test fun epubRestoreResolvesImagesFromTheNewDeviceDirectory() = runBlocking { roundTrip(epub()) }
 
     @Test fun changedOriginalAndSameNameDifferentBookCannotBind() = runBlocking {
