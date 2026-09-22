@@ -29,12 +29,12 @@ class PluginSignatureResourcesTest {
 
     @Test @Config(qualifiers = "ru")
     fun russianPublicKeyDetailsAcceptLengthAndAlgorithm() {
-        assertPublicKeyDetails("2048-bit RSA")
+        assertPublicKeyDetails("2048 бит, RSA")
     }
 
     @Test @Config(qualifiers = "ru-rRU")
     fun russianRegionalPublicKeyDetailsAcceptLengthAndAlgorithm() {
-        assertPublicKeyDetails("2048-bit RSA")
+        assertPublicKeyDetails("2048 бит, RSA")
     }
 
     private fun assertPublicKeyDetails(expected: String) {

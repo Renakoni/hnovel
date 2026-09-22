@@ -84,7 +84,9 @@ class ReaderVolumeKeysTest {
     private val fastChapterChange = mutableStateOf(false)
     private var nextChapters = 0
     private var previousChapters = 0
-    private val scroll = MutableScrollContentUiSate({}, {}, {}, {}, {})
+    private var scrollProgressRestored = false
+    private val scroll = MutableScrollContentUiSate({}, {}, {}, {}, {},
+        onProgressRestored = { scrollProgressRestored = true })
     private lateinit var flip: MutableFlipPageContentUiState
     private val reader = MutableReaderScreenUiState(scroll)
     private val settings = object : ReaderSettings by mockk<ReaderSettings>(relaxed = true) {
@@ -144,6 +146,13 @@ class ReaderVolumeKeysTest {
                     }
                 }
             }
+        }
+        compose.waitForIdle()
+        // Compose can be idle while the chapter is prepared on Dispatchers.Default.
+        // Initial placement must finish before a key can measure or change its offset.
+        compose.waitUntil(5_000) {
+            compose.waitForIdle()
+            scrollProgressRestored
         }
         compose.waitForIdle()
     }

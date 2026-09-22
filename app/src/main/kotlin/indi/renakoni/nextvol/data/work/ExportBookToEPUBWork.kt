@@ -401,7 +401,7 @@ class ExportBookToEPUBWork @AssistedInject constructor(
                         buildProgressNotification(progress, applicationContext.getString(
                             R.string.epub_export_notification_stage_images, count, total))
                     }).run()
-                check(result is Result.Success) { "Image preparation failed" }
+                check(result == Result.success()) { "Image preparation failed" }
             }
             acquire(tasks.values.toList())
             val covers = linkedMapOf<String, File>()

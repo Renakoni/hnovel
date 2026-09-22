@@ -92,8 +92,8 @@
     <string name="offline_desc">目前無法取得線上資料，請重新整理再試\n檢查來源網站連線狀態，或者換個網路試試</string>
     <string name="saved_to_pictures_dir">已保存到 Pictures/NextVol/%s</string>
     <string name="save_failed">保存失敗</string>
-    <string name="reader_custom_font_load_failed">自定義字體載入失敗，恢復為預設字體。</string>
-    <string name="reader_custom_background_load_failed">自定義背景載入失敗，恢復為預設背景。</string>
+    <string name="reader_custom_font_load_failed">字型載入失敗，已恢復預設字型。請重新選擇字型。</string>
+    <string name="reader_custom_background_load_failed">背景圖片載入失敗，請重新選擇圖片。</string>
     <string name="reader_first_page">已經是第一頁了</string>
     <string name="reader_reached_top">已經到頂了</string>
     <string name="reader_last_page">已經是最後一頁了</string>
@@ -144,13 +144,13 @@
     <string name="settings_reader_line_spacing">行距</string>
     <string name="settings_reader_keep_screen_on">保持螢幕常亮</string>
     <string name="settings_reader_keep_screen_on_desc">在閱讀時保持螢幕亮起。可能會增加電量消耗</string>
-    <string name="settings_reader_battery_indicator">電池指示器模式</string>
-    <string name="settings_reader_battery_indicator_desc">設定電池電量指示器的顯示模式</string>
-    <string name="settings_reader_time_indicator">時間指示器</string>
+    <string name="settings_reader_battery_indicator">電量顯示</string>
+    <string name="settings_reader_battery_indicator_desc">設定電量的顯示方式</string>
+    <string name="settings_reader_time_indicator">顯示時間</string>
     <string name="settings_reader_time_indicator_desc">在左下角顯示目前時間</string>
-    <string name="settings_reader_chapter_indicator">章節指示器</string>
+    <string name="settings_reader_chapter_indicator">顯示章節標題</string>
     <string name="settings_reader_chapter_indicator_desc">在右下角顯示目前章節標題</string>
-    <string name="settings_reader_progress_indicator">進度指示器</string>
+    <string name="settings_reader_progress_indicator">顯示閱讀進度</string>
     <string name="settings_reader_progress_indicator_desc">在右下角顯示閱讀進度</string>
     <string name="settings_reader_page_mode">翻頁模式</string>
     <string name="settings_reader_page_mode_desc">切換捲動模式和翻頁模式</string>
@@ -159,7 +159,7 @@
     <string name="settings_reader_volume_key_interval">按鍵持續翻頁間隔</string>
     <string name="reader_volume_scroll_title">音量鍵捲動</string>
     <string name="reader_volume_scroll_description">音量+後退，音量-前進，橫豎螢幕方向一致。閱讀控制列開啟時正常調節音量。</string>
-    <string name="reader_volume_scroll_step">捲動距離（閱讀區域百分比）</string>
+    <string name="reader_volume_scroll_step" formatted="false">捲動距離（閱讀區域百分比）</string>
     <string name="reader_volume_scroll_interval">長按重複間隔（-1：關閉）</string>
     <string name="settings_reader_t2tp">點擊翻頁</string>
     <string name="settings_reader_t2tp_desc">啟用點擊翻頁。點擊螢幕左側/右側以翻頁，點擊中間展開選單</string>
@@ -221,13 +221,13 @@
     <string name="settings_theme_text_font_desc">使用應用內建的字型或自訂字型檔案</string>
     <string name="settings_theme_text_font_weight">字重</string>
     <string name="data_settings">資料</string>
-    <string name="settings_snap_data">快照資料</string>
+    <string name="settings_snap_data">備份資料</string>
     <string name="settings_snap_data_desc">將應用程式內的使用者資料匯出為 .lnr 檔案</string>
     <string name="settings_import_data">匯入資料</string>
     <string name="settings_import_data_desc">從選定的 .lnr 檔案匯入使用者資料</string>
     <string name="settings_storage_manager">儲存與清理</string>
     <string name="settings_storage_manager_desc">查看儲存空間用量，清理閱讀快取或下載內容</string>
-    <string name="settings_plugins">擴充外掛</string>
+    <string name="settings_plugins">外掛管理</string>
     <string name="settings_plugins_desc">安裝與管理擴充外掛</string>
     <string name="settings_app_logs">應用程式日誌</string>
     <string name="settings_app_logs_desc">檢視與分享應用程式日誌</string>
@@ -704,4 +704,20 @@
     <string name="log_recording_off_desc">選擇日誌等級，重新啟動應用程式後開始記錄</string>
     <string name="log_empty_file_desc">這份檔案沒有日誌內容</string>
     <string name="log_empty_current_desc">新的日誌會顯示在此，修改等級後需重新啟動</string>
+    <string name="explore_more">查看更多</string>
+    <string name="explore_search">搜尋此書源</string>
+    <string name="search_hub_title">搜尋</string>
+    <string name="explore_no_sources">暫無支援探索的書源。可在書源管理中新增書源，或搜尋支援搜尋的書源。</string>
+    <string name="explore_empty">此書源暫無探索內容。</string>
+    <string name="discovery_unnamed_entry">未命名入口</string>
+    <string name="bookshelf_selection_actions">已選書籍操作</string>
+    <string name="bookshelf_pin_selected">置頂／取消置頂所選書籍</string>
+    <string name="bookshelf_remove_selected">從目前書架移除</string>
+    <string name="bookshelf_collect_selected">加入書架</string>
+    <string name="sources_non_text_skipped">已略過 %1$d 個漫畫、音訊等非文字書源。</string>
+    <string name="source_verification_download_paused">已停止：需要完成網站驗證</string>
+    <string name="source_verification_background_open">開啟驗證</string>
+    <string name="source_verification_background">%1$s 需要驗證，背景讀取已停止。驗證後請重新開始下載。</string>
+    <string name="source_verification_failed">驗證未完成，或書源帳號已變更。請從該書源重試。</string>
+    <string name="discovery_verification_required">網站驗證尚未完成，請重試以開啟驗證頁面。</string>
 </resources>
