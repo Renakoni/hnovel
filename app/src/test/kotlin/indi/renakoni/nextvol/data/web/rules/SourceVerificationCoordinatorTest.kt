@@ -22,6 +22,7 @@ class SourceVerificationCoordinatorTest {
     })
     private val verification = mockk<SourceVerification> {
         every { kind } returns BrowserChallengeKind.Cloudflare
+        every { certificate } returns null
         coEvery { complete() } returns Unit
     }
     private val failure = SourceContentException(ContentError.BrowserRequired, "searchUrl", verification = verification)
@@ -152,6 +153,70 @@ class SourceVerificationCoordinatorTest {
         coVerify(exactly = 0) { verification.complete() }
     }
 
+    @Test fun foregroundCertificateWaitsForExplicitConfirmationBeforeTrustingAndRetrying() = runTest {
+        every { verification.certificate } returns mockk<hnovel.network.CertificateProblem>()
+        var calls = 0
+        val request = async(ForegroundSourceRequest()) { coordinator.execute(owner, "Fixture") {
+            if (++calls == 1) throw failure
+            "chapter"
+        } }
+        runCurrent()
+        val prompt = coordinator.prompts.value.single()
+        assertTrue(prompt.confirmingCertificate)
+        assertFalse(prompt.opening)
+        assertEquals(1, calls)
+        coVerify(exactly = 0) { verification.complete() }
+        coordinator.approveCertificate(prompt.id)
+        assertEquals("chapter", request.await())
+        assertEquals(2, calls)
+        coVerify(exactly = 1) { verification.complete() }
+        assertTrue(coordinator.prompts.value.isEmpty())
+    }
+
+    @Test fun dismissingCertificateDoesNotTrustOrRetry() = runTest {
+        every { verification.certificate } returns mockk<hnovel.network.CertificateProblem>()
+        var calls = 0
+        val request = async(ForegroundSourceRequest()) { runCatching {
+            coordinator.execute(owner, "Fixture") { calls++; throw failure }
+        } }
+        runCurrent()
+        val id = coordinator.prompts.value.single().id
+        coordinator.dismiss(id)
+        coordinator.approveCertificate(id)
+        assertEquals(ContentError.Certificate, (request.await().exceptionOrNull() as SourceContentException).code)
+        assertEquals(1, calls)
+        coVerify(exactly = 0) { verification.complete() }
+    }
+
+    @Test fun openingBackgroundCertificateNoticeStillRequiresTheSeparateConfirmation() = runTest {
+        every { verification.certificate } returns mockk<hnovel.network.CertificateProblem>()
+        runCatching { coordinator.execute(owner, "Fixture") { throw failure } }
+        val id = coordinator.prompts.value.single().id
+        coordinator.approveCertificate(id) // No dialog has been opened yet.
+        val opened = async { coordinator.verifyBackground(id) }
+        runCurrent()
+        assertFalse(opened.isCompleted)
+        assertTrue(coordinator.prompts.value.single().confirmingCertificate)
+        coVerify(exactly = 0) { verification.complete() }
+        coordinator.approveCertificate(id)
+        opened.await()
+        coVerify(exactly = 1) { verification.complete() }
+    }
+
+    @Test fun retiringAnAccountWhileItsCertificateDialogIsOpenPreventsConsent() = runTest {
+        every { verification.certificate } returns mockk<hnovel.network.CertificateProblem>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { coordinator.observeRetirement() }
+        val request = async(ForegroundSourceRequest()) { runCatching { coordinator.execute(owner, "Fixture") { throw failure } } }
+        runCurrent()
+        val id = coordinator.prompts.value.single().id
+        listings.value = listings.value.map { it.copy(metadata = it.metadata.copy(accountGeneration = 1)) }
+        runCurrent()
+        coordinator.approveCertificate(id)
+        assertEquals(ContentError.Unavailable, (request.await().exceptionOrNull() as SourceContentException).code)
+        coVerify(exactly = 0) { verification.complete() }
+        assertTrue(coordinator.prompts.value.isEmpty())
+    }
+
     @Test fun replacedRevisionAndDisabledSourcesCannotOpenBackgroundTickets() = runTest {
         val original = listings.value
         for (retired in listOf(original.map { it.copy(metadata = it.metadata.copy(revision = "replaced")) },
@@ -165,5 +230,91 @@ class SourceVerificationCoordinatorTest {
             assertTrue(coordinator.prompts.value.isEmpty())
         }
         coVerify(exactly = 0) { verification.complete() }
+    }
+
+    @Test fun certificateInsideVerificationBrowserRequiresConsentThenResumesTheBrowser() = runTest {
+        for (foreground in listOf(true, false)) {
+            clearMocks(verification, answers = false)
+            val certificateVerification = mockk<SourceVerification> {
+                every { kind } returns null
+                every { certificate } returns mockk<hnovel.network.CertificateProblem>()
+                coEvery { complete() } returns Unit
+            }
+            val certificateFailure = SourceContentException(ContentError.Certificate, "browser.verification", verification = certificateVerification)
+            var openings = 0
+            coEvery { verification.complete() } coAnswers { if (++openings == 1) throw certificateFailure }
+            var requests = 0
+            suspend fun request(): String = coordinator.execute(owner, "Fixture") {
+                if (++requests == 1) throw failure
+                "chapter"
+            }
+            if (!foreground) assertSame(failure, runCatching { request() }.exceptionOrNull())
+            val work = async(ForegroundSourceRequest()) {
+                if (foreground) request() else coordinator.verifyBackground(coordinator.prompts.value.single().id)
+            }
+            runCurrent()
+            assertFalse(work.isCompleted)
+            val prompt = coordinator.prompts.value.single()
+            assertSame(certificateVerification.certificate, prompt.certificate)
+            assertTrue(prompt.confirmingCertificate)
+            assertFalse(prompt.opening)
+            coVerify(exactly = 0) { certificateVerification.complete() }
+            assertEquals(1, requests)
+            coordinator.approveCertificate(prompt.id)
+            work.await()
+            coVerify(exactly = 1) { certificateVerification.complete() }
+            assertEquals(2, openings)
+            assertEquals(if (foreground) 2 else 1, requests)
+            assertTrue(coordinator.prompts.value.isEmpty())
+        }
+    }
+
+    @Test fun nestedCertificateDismissalOrAccountRetirementNeverTrustsOrResumes() = runTest {
+        val original = listings.value
+        for (retire in listOf(false, true)) {
+            listings.value = original
+            val certificateVerification = mockk<SourceVerification> {
+                every { kind } returns null
+                every { certificate } returns mockk<hnovel.network.CertificateProblem>()
+                coEvery { complete() } returns Unit
+            }
+            coEvery { verification.complete() } throws SourceContentException(ContentError.Certificate,
+                "browser.verification", verification = certificateVerification)
+            var requests = 0
+            val work = async(ForegroundSourceRequest()) { runCatching {
+                coordinator.execute(owner, "Fixture") { requests++; throw failure }
+            } }
+            runCurrent()
+            val id = coordinator.prompts.value.single().id
+            if (retire) {
+                listings.value = original.map { it.copy(metadata = it.metadata.copy(accountGeneration = 1)) }
+                val monitor = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { coordinator.observeRetirement() }
+                runCurrent()
+                monitor.cancelAndJoin()
+            } else coordinator.dismiss(id)
+            coordinator.approveCertificate(id)
+            assertEquals(if (retire) ContentError.Unavailable else ContentError.Certificate,
+                (work.await().exceptionOrNull() as SourceContentException).code)
+            coVerify(exactly = 0) { certificateVerification.complete() }
+            assertEquals(1, requests)
+            assertTrue(coordinator.prompts.value.isEmpty())
+        }
+    }
+
+    @Test fun repeatedCertificateInsideVerificationBrowserDoesNotCreateAConsentLoop() = runTest {
+        val certificateVerification = mockk<SourceVerification> {
+            every { kind } returns null
+            every { certificate } returns mockk<hnovel.network.CertificateProblem>()
+            coEvery { complete() } returns Unit
+        }
+        val certificateFailure = SourceContentException(ContentError.Certificate, "browser.verification", verification = certificateVerification)
+        coEvery { verification.complete() } throws certificateFailure
+        val work = async(ForegroundSourceRequest()) { runCatching { coordinator.execute(owner, "Fixture") { throw failure } } }
+        runCurrent()
+        coordinator.approveCertificate(coordinator.prompts.value.single().id)
+        assertSame(certificateFailure, work.await().exceptionOrNull())
+        coVerify(exactly = 1) { certificateVerification.complete() }
+        coVerify(exactly = 2) { verification.complete() }
+        assertTrue(coordinator.prompts.value.isEmpty())
     }
 }

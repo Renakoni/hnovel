@@ -27,7 +27,11 @@ fun SourceVerificationHost(coordinator: SourceVerificationCoordinator) {
     val background = prompts.firstOrNull { !it.foreground }
     val scope = rememberCoroutineScope()
     var failure by remember { mutableStateOf<Int?>(null) }
-    if (foreground == null && background != null && !background.opening) {
+    val confirmation = prompts.firstOrNull { it.confirmingCertificate }
+    confirmation?.certificate?.let { problem ->
+        SourceCertificateDialog(problem, { coordinator.approveCertificate(confirmation.id) }, { coordinator.dismiss(confirmation.id) })
+    }
+    if (foreground == null && background != null && !background.opening && confirmation == null) {
         Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.BottomCenter) {
             Snackbar(action = {
                 TextButton(onClick = {
@@ -37,12 +41,18 @@ fun SourceVerificationHost(coordinator: SourceVerificationCoordinator) {
                         catch (error: SourceContentException) { failure = sourceFailureMessage(error) }
                         catch (_: Exception) { failure = R.string.source_verification_failed }
                     }
-                }) { Text(stringResource(if (background.kind == BrowserChallengeKind.Login) R.string.sources_login_continue
-                    else R.string.source_verification_background_open)) }
+                }) { Text(stringResource(when {
+                    background.certificate != null -> R.string.source_certificate_review
+                    background.kind == BrowserChallengeKind.Login -> R.string.sources_login_continue
+                    else -> R.string.source_verification_background_open
+                })) }
             }, dismissAction = {
                 TextButton(onClick = { coordinator.dismiss(background.id) }) { Text(stringResource(android.R.string.cancel)) }
-            }) { Text(stringResource(if (background.kind == BrowserChallengeKind.Login) R.string.source_login_background
-                else R.string.source_verification_background, background.name)) }
+            }) { Text(stringResource(when {
+                background.certificate != null -> R.string.source_certificate_background
+                background.kind == BrowserChallengeKind.Login -> R.string.source_login_background
+                else -> R.string.source_verification_background
+            }, background.name)) }
         }
     }
     failure?.let { message -> AlertDialog(onDismissRequest = { failure = null },

@@ -195,6 +195,7 @@ class RuleDiscoveryProviderTest {
             val books = original.page("/search", 1, emptyMap())
             val verification = mockk<SourceVerification> {
                 every { kind } returns hnovel.network.BrowserChallengeKind.Cloudflare
+                every { certificate } returns null
                 coEvery { complete() } returns Unit
             }
             val session = mockk<RuleDiscoverySession>()
@@ -484,7 +485,7 @@ class RuleDiscoveryProviderTest {
 
     @Test fun catalogLimitAndInvalidControlsHaveDifferentHostErrorsAndLocations() = runBlocking {
         RuleSourceFixture().use { fixture ->
-            val large = buildJsonArray { repeat(1025) { i -> add(buildJsonObject { put("title", "Row $i"); put("url", "/$i") }) } }
+            val large = buildJsonArray { repeat(4097) { i -> add(buildJsonObject { put("title", "Row $i"); put("url", "/$i") }) } }
             for ((rows, error, field) in listOf(
                 Triple(large, DiscoveryError.Limit, "exploreUrl"),
                 Triple(Json.parseToJsonElement("""[{"title":"","type":"text"}]""").jsonArray,

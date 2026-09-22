@@ -32,6 +32,17 @@ class RuleDiscoveryCatalogTest {
         }
     }
 
+    @Test fun authorCatalogsAboveOneThousandEntriesKeepTheLastTarget() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            val raw = (1..1119).joinToString("\n") { "Author $it::/writer/$it" }
+            fixture.source { JsonObject(it + ("exploreUrl" to JsonPrimitive(raw))) }.use { source ->
+                val rows = source.openDiscovery("authors").catalog().rows
+                assertEquals(1119, rows.size)
+                assertEquals("/writer/1119", rows.last().url)
+            }
+        }
+    }
+
     @Test fun unnamedUrlEntriesRemainNavigableAndInertBlankRowsNeedNoStyle() = runBlocking {
         RuleSourceFixture().use { fixture ->
             fixture.source { definition(it, Json.parseToJsonElement("""[
@@ -110,11 +121,12 @@ class RuleDiscoveryCatalogTest {
 
     @Test fun completeCatalogHasAnExplicitLimitAndNeverTruncatesExcessRows() = runBlocking {
         RuleSourceFixture().use { fixture ->
-            fixture.source("maximum") { definition(it, urls(1024)) }.use { source ->
-                assertEquals(1024, source.openDiscovery("maximum").catalog().rows.size)
+            val maximum = RuleDiscoveryCatalogParser.MAX_CATALOG_ROWS
+            fixture.source("maximum") { definition(it, urls(maximum)) }.use { source ->
+                assertEquals(maximum, source.openDiscovery("maximum").catalog().rows.size)
             }
             val spacer = DiscoveryCatalogFixtures.rows(9).last()
-            for (rows in listOf(urls(1025), JsonArray(List(1025) { spacer })))
+            for (rows in listOf(urls(maximum + 1), JsonArray(List(maximum + 1) { spacer })))
                 fixture.source("excess") { definition(it, rows) }.use { source ->
                     val error = failure { source.openDiscovery("excess").catalog() }
                     assertEquals(ContentError.Limit, error.code)
@@ -133,7 +145,7 @@ class RuleDiscoveryCatalogTest {
                     put("ruleContent", buildJsonObject { put("callBackJs", "java.refreshExplore()") })
                 },
             )
-            for (extra in cases) fixture.source { JsonObject(definition(it, urls(1024)) + extra) }.use { source ->
+            for (extra in cases) fixture.source { JsonObject(definition(it, urls(RuleDiscoveryCatalogParser.MAX_CATALOG_ROWS)) + extra) }.use { source ->
                 val error = failure { source.openDiscovery("combined").catalog() }
                 assertEquals(ContentError.Limit, error.code)
                 assertEquals("exploreUrl", error.field)

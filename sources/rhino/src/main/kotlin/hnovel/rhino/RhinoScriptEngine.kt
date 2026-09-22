@@ -42,7 +42,8 @@ private class ScriptBridge(private val bridge: HostBridge, private val rules: Sc
                 else if (name == "request.headers") { require(arguments.isEmpty()); requests.headers(cx) }
                 else if (name == "java.readTxtFile") resources.text(cx, arguments)
                 else if (name.startsWith("java.") && name.substringAfter("java.") in resources.methods) resources.archive(cx, name.substringAfter("java."), arguments)
-                else if (rules.supports(name, arguments)) rules.call(cx, name, arguments)
+                else if (rules.supports(name, arguments)) rules.call(cx, name, arguments,
+                    (args.getOrNull(if (name == "java.setContent") 0 else 1) as? ScriptDomElement)?.element?.ruleNode())
                 else if (pureTool) ScriptTools.call(name.removePrefix("java."), arguments) else requests.call(cx, bridge, name, arguments)
                 if (Thread.currentThread().isInterrupted) throw ScriptCancelled()
                 val networkResponse = name in setOf("java.ajaxAll", "java.connect", "java.startBrowserAwait") ||
@@ -122,12 +123,24 @@ private class ScriptBridge(private val bridge: HostBridge, private val rules: Sc
             require(args.size == 1)
             args[0]
         }
-        objectFor("cache", listOf("get", "put", "delete"))
+        val cache = objectFor("cache", listOf("get", "put", "delete"))
+        for (name in listOf("getFile", "putFile")) method(cache, name) { cx, activeScope, args ->
+            require(if (name == "getFile") args.size == 1 else args.size in 2..3)
+            val strings = if (name == "getFile") 1 else 2
+            // CacheManager's file API takes Java strings, including comma-joined JS arrays.
+            val values = args.mapIndexed { index, value ->
+                if (index < strings) { require(value != null); Context.toString(value) } else value
+            }.toTypedArray()
+            call(cx, activeScope, "cache.$name", values)
+        }
         objectFor("cookie", listOf("getCookie", "getKey", "setCookie", "replaceCookie", "removeCookie"))
         val source = objectFor("source", listOf("get", "put", "getVariable", "setVariable", "getKey", "getLoginInfo", "getLoginInfoMap",
             "putLoginInfo", "removeLoginInfo", "getLoginHeader", "getLoginHeaderMap", "putLoginHeader", "removeLoginHeader"))
         source.defineProperty("id", frame.sourceId, ScriptableObject.READONLY)
         source.defineProperty("profile", frame.profile, ScriptableObject.READONLY)
+        for (name in listOf("key", "bookSourceUrl")) source.defineProperty(name, java.util.function.Supplier<Any?> {
+            call(Context.getCurrentContext(), scope, "source.getKey", emptyArray())
+        }, null, ScriptableObject.PERMANENT)
         // Definitions can explicitly eval this prelude from search/discovery. Reading it does not
         // initiate login, and the worker never receives a mutable Android Source object.
         source.defineProperty("loginUrl", frame.sourceLoginUrl, ScriptableObject.READONLY or ScriptableObject.PERMANENT)
@@ -152,10 +165,11 @@ data class ScriptFrame(val sourceId: String, val profile: String, val bookId: St
     val nextChapterUrl: String? = null, val speakText: String? = null, val speakSpeed: Int = 10,
     val scriptInput: RuleValue? = null)
 
-data class ScriptLimits(val instructionLimit: Int = 1_000_000, val maxResultChars: Int = 256 * 1024,
+data class ScriptLimits(val instructionLimit: Int? = null, val maxResultChars: Int = 256 * 1024,
     val maxScriptChars: Int = 256 * 1024, val maxBridgeChars: Int = DEFAULT_BRIDGE_CHARS,
-    val maxInterpreterStackDepth: Int = 1000) {
-    init { require(instructionLimit > 0 && maxResultChars > 0 && maxScriptChars > 0 && maxBridgeChars > 0 && maxInterpreterStackDepth in 1..1000) }
+    val maxInterpreterStackDepth: Int = 1000, val timeoutMillis: Long = 5000) {
+    init { require((instructionLimit == null || instructionLimit > 0) && maxResultChars > 0 && maxScriptChars > 0 && maxBridgeChars > 0 &&
+        maxInterpreterStackDepth in 1..1000 && timeoutMillis in 1..60000) }
     companion object { const val DEFAULT_BRIDGE_CHARS = 64 * 1024 }
 }
 
@@ -179,7 +193,7 @@ internal fun evaluateGlobal(context: Context, scope: Scriptable, code: String, n
     return compiled.exec(context, scope)
 }
 
-/** Interpreted JS is instruction-bounded. Native calls/regex still require the #86 process boundary. */
+/** The instruction observer checks deadlines/cancellation; native work also retains the process deadline. */
 class RhinoScriptEngine(private val bridge: HostBridge, private val limits: ScriptLimits = ScriptLimits(), private val archives: ArchiveDecoder = ArchiveDecoder.Zip) {
     fun evaluate(source: String, frame: ScriptFrame, library: ScriptLibrary? = null): ScriptResult =
         if (library == null) evaluateOwned(source, frame, null)
@@ -193,29 +207,41 @@ class RhinoScriptEngine(private val bridge: HostBridge, private val limits: Scri
         if (source.length > limits.maxScriptChars) return ScriptResult.Failure(FailureCode.ResultTooLarge, "script too large")
         // ContextFactory.call reuses an already-entered Context, whose observer we do not own.
         if (Context.getCurrentContext() != null) return ScriptResult.Failure(FailureCode.Runtime, "nested execution context")
+        val started = System.nanoTime()
+        fun checkDeadline() {
+            if (Thread.currentThread().isInterrupted) throw ScriptCancelled()
+            if ((System.nanoTime() - started) / 1_000_000 >= limits.timeoutMillis) throw ScriptBudgetExceeded()
+            try { frame.ruleBudget?.check(0) }
+            catch (_: RuleBudgetExceeded) { throw ScriptBudgetExceeded() }
+        }
         val factory = object : ContextFactory() {
             private var instructions = 0L
             override fun makeContext(): Context = super.makeContext().apply {
                 languageVersion = Context.VERSION_ES6
                 optimizationLevel = -1
                 maximumInterpreterStackDepth = limits.maxInterpreterStackDepth
-                instructionObserverThreshold = minOf(1000, limits.instructionLimit)
+                instructionObserverThreshold = minOf(1000, limits.instructionLimit ?: 1000)
                 setClassShutter { false }
             }
 
             override fun observeInstructionCount(cx: Context, instructionCount: Int) {
-                if (Thread.currentThread().isInterrupted) throw ScriptCancelled()
+                // Rhino charges native RegExp scanning here too. A fixed total rejects normal
+                // large pages; MD3 uses this callback to check cancellation, not a total count.
+                checkDeadline()
                 instructions += instructionCount
-                if (instructions > limits.instructionLimit) throw ScriptBudgetExceeded()
+                if (limits.instructionLimit != null && instructions > limits.instructionLimit) throw ScriptBudgetExceeded()
             }
         }
         return try {
             factory.call { context ->
-                if (Thread.currentThread().isInterrupted) throw ScriptCancelled()
+                checkDeadline()
                 val realm = library?.realm ?: ScriptRealm(context)
                 ScriptRealm.install(context, realm)
                 context.putThreadLocal(bridgeLimitKey, limits.maxBridgeChars)
-                if (library?.realm == null) ScriptParsers.install(context, realm.global)
+                if (library?.realm == null) {
+                    ScriptParsers.install(context, realm.global)
+                    ScriptJavaPackages.install(context, realm.global)
+                }
                 if (library != null) context.putThreadLocal(scriptLibraryKey, library)
                 val scope = if (library == null) realm.global else {
                     val shared = library.scope ?: NativeObject().apply {
@@ -285,12 +311,12 @@ class RhinoScriptEngine(private val bridge: HostBridge, private val limits: Scri
                 frame.discovery?.capture()
                 ruleContext.bookMetadata = ScriptMetadata.capture(book, limits.maxBridgeChars).toString()
                 ruleContext.chapterMetadata = ScriptMetadata.capture(chapter, limits.maxBridgeChars).toString()
-                if (Thread.currentThread().isInterrupted) throw ScriptCancelled()
+                checkDeadline()
                 val json = BoundedJsonResult(limits.maxResultChars).encode(value)
-                if (Thread.currentThread().isInterrupted) throw ScriptCancelled()
+                checkDeadline()
                 ScriptResult.Success(json)
             }
-        } catch (_: ScriptBudgetExceeded) { ScriptResult.Failure(FailureCode.Timeout, "instruction budget exceeded") }
+        } catch (_: ScriptBudgetExceeded) { ScriptResult.Failure(FailureCode.Timeout, "execution budget exceeded") }
           catch (_: ScriptCancelled) { ScriptResult.Failure(FailureCode.Cancelled, "script cancelled") }
           catch (_: SerializationCancelled) { ScriptResult.Failure(FailureCode.Cancelled, "script cancelled") }
           catch (_: ResultTooLarge) { ScriptResult.Failure(FailureCode.ResultTooLarge, "result too large") }

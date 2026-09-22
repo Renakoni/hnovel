@@ -10,6 +10,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 internal class SourceCookies(private val storage: SourceStorage) {
     @Serializable private data class SavedCookie(val origin: String, val cookie: String)
     private val cookies = linkedMapOf<String, Pair<String, Cookie>>()
+    private val browserOnly = mutableSetOf<String>()
 
     init {
         val stored = storage.read("cookies")
@@ -57,7 +58,11 @@ internal class SourceCookies(private val storage: SourceStorage) {
         val saved = Json.encodeToString(next.values.filter { it.second.persistent }.map { SavedCookie(it.first, it.second.toString()) })
         when (val result = storage.write("cookies", saved)) {
             is StorageResult.Failure -> throw BrokerFailure(RequestStage.Storage, result.code)
-            is StorageResult.Value -> { cookies.clear(); cookies.putAll(next) }
+            is StorageResult.Value -> {
+                cookies.clear(); cookies.putAll(next)
+                browserOnly.removeAll(incoming.map(::key).toSet())
+                browserOnly.retainAll(cookies.keys)
+            }
         }
     }
 
@@ -91,9 +96,43 @@ internal class SourceCookies(private val storage: SourceStorage) {
     }
 
     @Synchronized fun snapshot(): List<Pair<String, Cookie>> = cookies.values.toList()
+
+    @Synchronized fun browserSnapshot(url: HttpUrl): List<String> = cookies.values.map { it.second }
+        .filter { key(it) !in browserOnly && it.expiresAt > System.currentTimeMillis() && it.matches(url) }.map(Cookie::toString)
+
+    /** A trusted browser snapshot includes HttpOnly cookies and their original attributes. */
+    @Synchronized fun replaceBrowserSnapshot(url: HttpUrl, values: List<String>, completeMetadata: Boolean) {
+        require(values.size <= 256 && values.sumOf(String::length) <= 65536)
+        val parsed = values.mapNotNull { Cookie.parse(url, it) }
+        require(parsed.all { it.matches(url) })
+        val before = snapshot()
+        val beforeBrowserOnly = browserOnly.toSet()
+        cookies.entries.removeAll { it.value.second.matches(url) }
+        try {
+            val headers = okhttp3.Headers.Builder()
+            values.forEach { headers.add("Set-Cookie", it) }
+            if (parsed.isEmpty()) {
+                val saved = Json.encodeToString(cookies.values.filter { it.second.persistent }.map { SavedCookie(it.first, it.second.toString()) })
+                check(storage.write("cookies", saved) is StorageResult.Value)
+            } else save(url, headers.build())
+            browserOnly.retainAll(cookies.keys)
+            // A legacy getCookie header cannot tell us visibility/expiry. It can authorize
+            // HTTP, but must not overwrite the original Chromium cookie's attributes.
+            if (!completeMetadata) browserOnly.addAll(parsed.map(::key))
+        } catch (failure: Exception) {
+            restoreMemory(before); browserOnly.clear(); browserOnly.addAll(beforeBrowserOnly); throw failure
+        }
+    }
+
+    @Synchronized fun inherit(previous: SourceCookies) = synchronized(previous) {
+        restoreMemory(previous.snapshot())
+        browserOnly.clear(); browserOnly.addAll(previous.browserOnly)
+    }
+
     @Synchronized fun restoreMemory(snapshot: List<Pair<String, Cookie>>) {
         cookies.clear()
         snapshot.forEach { cookies[key(it.second)] = it }
+        browserOnly.retainAll(cookies.keys)
     }
 }
 

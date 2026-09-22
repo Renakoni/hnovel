@@ -11,21 +11,21 @@ object RequestOptionsJson {
     private const val MAX_CHARS = 65536
     private const val MAX_DEPTH = 64
     fun parse(text: String, parameters: Map<String, JsonElement> = emptyMap(), maxChars: Int = MAX_CHARS): JsonElement = try {
-        require(maxChars > 0 && text.length <= maxChars)
+        bound(maxChars > 0 && text.length <= maxChars)
         val prepared = templateValues(text, parameters, maxChars)
-        require(prepared.length <= maxChars)
+        bound(prepared.length <= maxChars)
         JsonReader(StringReader(prepared)).use { reader ->
             reader.strictness = Strictness.LENIENT
             fun read(depth: Int): JsonElement = when (reader.peek()) {
                 JsonToken.BEGIN_OBJECT -> {
-                    require(depth < MAX_DEPTH)
+                    bound(depth < MAX_DEPTH)
                     reader.beginObject()
                     val values = linkedMapOf<String, JsonElement>()
                     while (reader.hasNext()) values[reader.nextName()] = read(depth + 1)
                     reader.endObject(); JsonObject(values)
                 }
                 JsonToken.BEGIN_ARRAY -> {
-                    require(depth < MAX_DEPTH)
+                    bound(depth < MAX_DEPTH)
                     reader.beginArray()
                     val values = mutableListOf<JsonElement>()
                     while (reader.hasNext()) values.add(read(depth + 1))
@@ -38,10 +38,14 @@ object RequestOptionsJson {
                 else -> throw RequestOptionsException()
             }
             read(0).also {
-                require(reader.peek() == JsonToken.END_DOCUMENT && it.toString().length <= maxChars)
+                require(reader.peek() == JsonToken.END_DOCUMENT)
+                bound(it.toString().length <= maxChars)
             }
         }
-    } catch (_: Exception) { throw RequestOptionsException() }
+    } catch (failure: RequestOptionsException) { throw failure }
+      catch (_: Exception) { throw RequestOptionsException() }
+
+    private fun bound(accepted: Boolean) { if (!accepted) throw RequestOptionsException(limitExceeded = true) }
 
     /** Bare template values must become JSON values before Gson sees their braces. */
     private fun templateValues(text: String, parameters: Map<String, JsonElement>, maxChars: Int): String {
@@ -64,18 +68,33 @@ object RequestOptionsJson {
                 require(end >= 0)
                 val value = parameters[text.substring(index + 2, end).trim()] ?: throw RequestOptionsException()
                 result.append(value); index = end + 2
-                require(result.length <= maxChars)
+                bound(result.length <= maxChars)
                 continue
             }
             result.append(char); index++
-            require(result.length <= maxChars)
+            bound(result.length <= maxChars)
         }
         return result.toString()
     }
 
     /** Embedded header/body JSON uses the same bounds before either worker or host dispatch. */
     fun options(text: String, parameters: Map<String, JsonElement> = emptyMap()): JsonObject = try {
-        val options = parse(text, parameters).jsonObject.toMutableMap()
+        options(parse(text, parameters).jsonObject, parameters)
+    } catch (failure: RequestOptionsException) { throw failure }
+      catch (_: IllegalArgumentException) { throw RequestOptionsException() }
+
+    /** AnalyzeUrl ignores an unreadable optional object, but never evaluates it as JavaScript. */
+    fun optionalOptions(text: String, parameters: Map<String, JsonElement> = emptyMap()): JsonObject {
+        val value = try { parse(text, parameters) as? JsonObject ?: return JsonObject(emptyMap()) }
+            catch (failure: RequestOptionsException) {
+                if (failure.limitExceeded) throw failure
+                return JsonObject(emptyMap())
+            }
+        return options(value, parameters)
+    }
+
+    private fun options(value: JsonObject, parameters: Map<String, JsonElement>): JsonObject = try {
+        val options = value.toMutableMap()
         val headerKey = if ("headers" in options) "headers" else "header"
         options[headerKey]?.let { options[headerKey] = headers(it, parameters) }
         val body = options["body"]
@@ -83,14 +102,23 @@ object RequestOptionsJson {
             options["body"] = parse(body.content, parameters)
         require(options["js"] == null || options["js"] is JsonPrimitive)
         JsonObject(options)
-    } catch (_: IllegalArgumentException) { throw RequestOptionsException() }
+    } catch (failure: RequestOptionsException) { throw failure }
+      catch (_: IllegalArgumentException) { throw RequestOptionsException() }
+
+    /** BaseSource keeps the default request identity when its optional header JSON is malformed. */
+    fun optionalHeaders(value: JsonElement): JsonObject = try { headers(value) }
+        catch (failure: RequestOptionsException) {
+            if (failure.limitExceeded) throw failure
+            JsonObject(emptyMap())
+        }
 
     fun headers(value: JsonElement, parameters: Map<String, JsonElement> = emptyMap()): JsonObject = try {
         (if (value is JsonPrimitive) parse(value.content, parameters) else value).jsonObject.also {
             require(it.values.all { header -> header is JsonPrimitive })
         }
-    } catch (_: IllegalArgumentException) { throw RequestOptionsException() }
+    } catch (failure: RequestOptionsException) { throw failure }
+      catch (_: IllegalArgumentException) { throw RequestOptionsException() }
 }
 
 /** Neither a parser's original message nor the request data may escape into diagnostics. */
-class RequestOptionsException : IllegalArgumentException("Invalid request options")
+class RequestOptionsException(val limitExceeded: Boolean = false) : IllegalArgumentException("Invalid request options")

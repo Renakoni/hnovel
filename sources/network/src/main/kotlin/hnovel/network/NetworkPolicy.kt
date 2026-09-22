@@ -31,12 +31,19 @@ internal class NetworkPolicy(grants: List<NetworkGrant>, private val resolver: D
     }
 
     /** This resolver is installed in the actual OkHttp connection path; there is no second unchecked lookup. */
-    fun dns(url: HttpUrl, resolver: Dns = this.resolver) = Dns { hostname ->
-        if (hostname != url.host) throw BrokerFailure(RequestStage.Permission, FailureCode.OriginDenied)
-        val grant = check(url)
-        resolver.lookup(hostname).also { addresses ->
-            if (addresses.isEmpty()) throw java.net.UnknownHostException()
-            addresses.forEach { checkAddress(it, grant) }
+    fun dns(url: HttpUrl, resolver: Dns = this.resolver): Dns = CheckedDns(this,
+        url.newBuilder().encodedPath("/").query(null).fragment(null).build(), resolver)
+
+    // OkHttp includes Dns equality in the connection address. A fresh lambda per page prevents
+    // all pooling. Only the same policy, origin and route resolver may share a connection.
+    private data class CheckedDns(val policy: NetworkPolicy, val origin: HttpUrl, val resolver: Dns) : Dns {
+        override fun lookup(hostname: String): List<InetAddress> {
+            if (hostname != origin.host) throw BrokerFailure(RequestStage.Permission, FailureCode.OriginDenied)
+            val grant = policy.check(origin)
+            return resolver.lookup(hostname).also { addresses ->
+                if (addresses.isEmpty()) throw java.net.UnknownHostException()
+                addresses.forEach { policy.checkAddress(it, grant) }
+            }
         }
     }
 

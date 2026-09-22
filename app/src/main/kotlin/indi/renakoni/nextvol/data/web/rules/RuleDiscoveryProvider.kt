@@ -121,6 +121,7 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
         ContentError.Dns -> DiscoveryError.Dns
         ContentError.RouteUnavailable -> DiscoveryError.RouteUnavailable
         ContentError.RouteUnsupported -> DiscoveryError.RouteUnsupported
+        ContentError.Certificate -> DiscoveryError.Certificate
         ContentError.Network -> DiscoveryError.Network
         ContentError.Unavailable -> DiscoveryError.Unavailable
         ContentError.Limit -> DiscoveryError.Limit

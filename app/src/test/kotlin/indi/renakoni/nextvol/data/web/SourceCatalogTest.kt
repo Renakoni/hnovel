@@ -26,9 +26,9 @@ class SourceCatalogTest {
         Json.parseToJsonElement(it.readText()).jsonArray[entry.index].jsonObject
     }
 
-    @Test fun verifiedCatalogEntriesUseTheirBundledDefinitionsAndPassTheProductionImporter() {
-        assertEquals(listOf(2, 1, 2, 1, 1, 2, 9), SourceCategory.entries.map { category -> catalog.entries.count { it.category == category } })
-        assertEquals(18, catalog.entries.map { it.key }.toSet().size)
+    @Test fun catalogEntriesUseTheirBundledDefinitionsAndPassTheProductionImporter() {
+        assertEquals(listOf(7, 3, 6, 14, 9, 6, 29), SourceCategory.entries.map { category -> catalog.entries.count { it.category == category } })
+        assertEquals(74, catalog.entries.map { it.key }.toSet().size)
         val store = SourceDefinitionStore(folder.newFolder().toPath())
         val importer = SourceDefinitionImporter(store)
         val preview = importer.preview(catalog.definitions(catalog.entries.map { it.key }.toSet()), AUTO_PROFILE)
@@ -54,17 +54,19 @@ class SourceCatalogTest {
                 true, true, ImportOrigin(ImportOrigin.Kind.Paste), "custom", 1, "{}")
             assertEquals(entry.category, catalog.entry(definition)?.category)
         }
-        assertTrue(entries.filter { it.name in setOf("轻小说机翻", "连城读书", "ESJ Zone", "鲸云轻说", "经典书库", "八一中文", "全本小说（quanben5）", "趣书网（qubook）") }
+        assertTrue(entries.filter { it.name in setOf("轻小说机翻", "连城读书", "ESJ Zone", "鲸云轻说", "疯情书库", "八一中文", "全本小说（quanben5）", "趣书网（qubook）", "掌阅") }
             .all { !it.available })
+        assertTrue(entries.filter { raw(it)["exploreUrl"]?.jsonPrimitive?.content.isNullOrBlank() }.all { !it.available })
     }
 
     @Test fun officialPlatformsAreExplicitAndSeparateFromFreeRecommendations() {
         val official = catalog.entries.filter { it.category == SourceCategory.Official }
-        assertEquals(setOf("起点中文网", "纵横中文网", "磨铁中文", "红袖添香", "潇湘书院",
-            "花溪小说", "米国度", "刺猬猫", "次元姬"), official.map { it.name }.toSet())
+        assertTrue(official.map { it.name }.containsAll(setOf("起点中文网", "纵横中文网", "磨铁中文", "红袖添香", "潇湘书院",
+            "花溪小说", "米国度", "刺猬猫", "次元姬", "晋江文学城", "QQ阅读", "长佩文学", "SF轻小说／菠萝包")))
         val free = catalog.entries.filterNot { it.category == SourceCategory.Official }
-        assertEquals(setOf("疯读小说", "33言情", "言情书吧", "轻小说百科", "全本同人", "国学典籍（新都）",
-            "书海阁", "八叉书库", "涩涩俱乐部"), free.map { it.name }.toSet())
+        assertTrue(free.map { it.name }.containsAll(setOf("番茄小说", "七猫小说", "爱丽丝书屋", "hlib", "疯读小说",
+            "33言情", "言情书吧", "轻小说百科", "全本同人", "国学典籍（新都）", "书海阁", "八叉书库", "涩涩俱乐部",
+            "笔趣阁 · biqusa", "笔趣阁 · 365", "经典书库")))
         assertTrue(official.none { site -> free.any { it.key == site.key } })
         val raw = Json.parseToJsonElement(catalog.definitions(free.map { it.key }.toSet())).jsonArray
         assertEquals(free.map { it.key }, raw.map { it.jsonObject.getValue("bookSourceUrl").jsonPrimitive.content })

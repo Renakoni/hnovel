@@ -75,6 +75,7 @@ internal fun searchFailure(failure: Throwable): SourceSearchFailure = when (fail
         ContentError.Dns -> DiscoveryError.Dns
         ContentError.RouteUnavailable -> DiscoveryError.RouteUnavailable
         ContentError.RouteUnsupported -> DiscoveryError.RouteUnsupported
+        ContentError.Certificate -> DiscoveryError.Certificate
         ContentError.Network -> DiscoveryError.Network
         ContentError.Unavailable -> DiscoveryError.Unavailable
         else -> DiscoveryError.InvalidRules

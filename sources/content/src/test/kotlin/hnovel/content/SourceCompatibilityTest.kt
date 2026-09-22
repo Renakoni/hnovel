@@ -22,7 +22,7 @@ class SourceCompatibilityTest {
     @Test fun unavailableLibraryDependencyHasAnActionableFailureAcrossEntryPoints() = runBlocking {
         RuleSourceFixture().use { fixture ->
             fixture.source(profile = EXTENSION_PROFILE) { raw -> JsonObject(raw + mapOf(
-                "jsLib" to JsonPrimitive("new JavaImporter();"),
+                "jsLib" to JsonPrimitive("new JavaAdapter();"),
                 "searchUrl" to JsonPrimitive("@js:'/search'"),
                 "exploreUrl" to JsonPrimitive("@js:JSON.stringify([{title:'Browse',url:'/search'}])"),
                 "loginUi" to JsonPrimitive("@js:JSON.stringify([{name:'user',type:'text'}])")
@@ -33,7 +33,7 @@ class SourceCompatibilityTest {
                     val failure = runCatching { operation() }.exceptionOrNull() as SourceContentException
                     assertEquals("UnsupportedDependency", failure.code.name)
                     assertEquals("jsLib", failure.field)
-                    assertEquals(hnovel.rules.ScriptDependency.JavaImporter, failure.dependency)
+                    assertEquals(hnovel.rules.ScriptDependency.JavaAdapter, failure.dependency)
                     assertNull(failure.denial)
                 }
                 assertEquals(0, fixture.documents.get())

@@ -65,6 +65,15 @@ class RuleEvaluatorTest {
         assertEquals("https://fixture.invalid/path/", value("class.missing@href", output = OutputKind.Url).text())
     }
 
+    @Test fun urlResolutionPreservesLogicalRequestOptionsAndUnencodedTitles() {
+        val context = RuleContext("url", baseUrl = "https://fixture.invalid/list/page,{'method':'POST'}")
+        val url = "../chapter?name=第一 卷,{'method':'POST'}"
+        val input = RuleValue.Text("<a href=\"$url\">Read</a>")
+        assertEquals("https://fixture.invalid/chapter?name=第一 卷,{'method':'POST'}",
+            value("a@href", input, OutputKind.Url, context).text())
+        assertEquals("", value("a@href", RuleValue.Text("<a href='javascript:void(0)'>Locked</a>"), OutputKind.Url, context).text())
+    }
+
     @Test fun putsAndTemplatesUseRequestContextAndPreserveCaptureReplacement() {
         val context = RuleContext("a", "book", chapterVariables = mapOf("title" to "Chapter"))
         assertEquals("Library Chapter", value("""@put:{"name":"tag.h1@text"}@get:{name} @get:{title}""", context = context).text())
@@ -101,6 +110,15 @@ class RuleEvaluatorTest {
         assertEquals("||", split.first)
         assertEquals(2, split.second.size)
         assertEquals(1, RuleParser().split("tag.a\\&&text", listOf("&&"), RuleLocation("name"), RuleBudget()).second.size)
+    }
+
+    @Test fun scalarBilingualContentInterleavesParagraphsBeforeJoiningText() {
+        val input = RuleValue.Text("<p class='en'>One</p><p class='en'>Two</p>" +
+            "<p class='cn' title='一'></p><p class='cn' title='二'></p><p class='cn' title='三'></p>")
+        assertEquals("One\n一\nTwo\n二", value(".en@text%%.cn@title", input, OutputKind.Text).text())
+        // Legado retains only the first branch's length, even for a scalar result.
+        assertEquals("一\nOne\n二\nTwo\n三", value(".cn@title%%.en@text", input, OutputKind.Text).text())
+        assertEquals("One\n一\nTwo\n二", value(".missing@text||.en@text%%.cn@title", input, OutputKind.Text).text())
     }
 
     @Test fun requestsAcrossSourcesBooksAndThreadsNeverShareWrites() {
@@ -156,6 +174,13 @@ class RuleEvaluatorTest {
         assertEquals(listOf("Alpha", "One", "Beta"), captures.map { (it as RuleValue.Captures).groups[1] })
     }
 
+    @Test(timeout = 5000) fun ordinaryReplacementCanScanLongParagraphsWithoutMatchingTheNotice() {
+        val paragraph = "正文文字".repeat(1500)
+        val input = "$paragraph\n在线阅读提示\n最后一段。"
+        assertEquals("$paragraph\n\n最后一段。",
+            value("##.*在线阅读.*", RuleValue.Text(input), OutputKind.Text).text())
+    }
+
     @Test(timeout = 5000) fun malformedOversizedAndBacktrackingRulesReturnLocatedFailuresWithinBudget() {
         val engine = RuleEvaluator()
         val location = RuleLocation("ruleSearch.name", 10)
@@ -170,6 +195,6 @@ class RuleEvaluatorTest {
             location, RuleBudget(RuleLimits(maxSteps = 10000, timeoutMillis = 200))) as RuleResult.Failure
         assertEquals(RuleStage.Budget, catastrophic.error.stage)
         val invalidJsonPath = engine.evaluate("$.a[?(@.x ===)]", RuleValue.Text("{}"), RuleContext("a"))
-        assertTrue(invalidJsonPath is RuleResult.Failure)
+        assertEquals(RuleResult.Success(RuleValue.Items(emptyList())), invalidJsonPath)
     }
 }

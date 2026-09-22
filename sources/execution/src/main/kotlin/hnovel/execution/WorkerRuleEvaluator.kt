@@ -33,14 +33,15 @@ internal object WorkerRuleEvaluator {
                 emptyMap(), task.key, task.page, task.baseUrl, current, task.input, budget, task.book, task.chapter, task.chineseConverter,
                 sourceHeaderRule = task.sourceHeaderRule, discovery = discovery, sourceLoginUrl = task.sourceLoginUrl,
                 sourceComment = task.sourceComment, nextChapterUrl = task.nextChapterUrl, scriptInput = request.input)
-            when (val result = RhinoScriptEngine(bridge, ScriptLimits(maxResultChars = limits.maxOutputBytes,
+            when (val result = RhinoScriptEngine(bridge, ScriptLimits(timeoutMillis = limits.timeoutMillis, maxResultChars = limits.maxOutputBytes,
                 maxBridgeChars = limits.scriptDataLimit), archives)
                 .evaluate(request.script, frame, library)) {
                 is ScriptResult.Success -> value(Json.parseToJsonElement(result.json))
                 is ScriptResult.Failure -> { scriptFailure = result; throw RuleScriptFailure(result.code.name) }
             }
         }
-        val budget = RuleBudget(RuleLimits(timeoutMillis = limits.timeoutMillis, maxOutputChars = limits.maxOutputBytes))
+        val budget = RuleBudget(RuleLimits(timeoutMillis = limits.timeoutMillis,
+            maxInputChars = ExecutionWire.MAX_INPUT_BYTES, maxOutputChars = limits.maxOutputBytes))
         return when (val result = evaluator.evaluate(task.rule, task.input, context, task.output, task.location, budget)) {
             is RuleResult.Success -> {
                 fun changed(snapshot: String?, initial: JsonObject) = snapshot?.let { Json.parseToJsonElement(it).jsonObject }?.takeIf { it != initial }

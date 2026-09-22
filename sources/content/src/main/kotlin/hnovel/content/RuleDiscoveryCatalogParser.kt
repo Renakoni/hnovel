@@ -114,7 +114,7 @@ internal object RuleDiscoveryCatalogParser {
 
     // Catalogue rows are not infoMap entries. Larger real catalogues keep the existing
     // 128-value / 32,768-character form-state limits and 64-choice control limits.
-    const val MAX_CATALOG_ROWS = 1024
+    const val MAX_CATALOG_ROWS = 4096
     private val separatorKeys = setOf("title", "url", "style")
     val inputTypes = setOf("text", "toggle", "select")
 }

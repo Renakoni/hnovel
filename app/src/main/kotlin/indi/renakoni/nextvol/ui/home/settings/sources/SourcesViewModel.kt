@@ -46,7 +46,8 @@ data class SourceManagementState(val installed: List<InstalledRuleSource> = empt
     }
 }
 
-data class SourceNetworkState(val bypassVpn: Boolean = false, val limitation: Int? = null)
+data class SourceNetworkState(val bypassVpn: Boolean = false, val limitation: Int? = null,
+    val certificates: List<CertificateExceptionSite> = emptyList())
 
 /** Screen state survives rotation; previews grant nothing and each explicit mutation has a single owner. */
 @HiltViewModel
@@ -64,6 +65,8 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
     private var operationGeneration = 0
     private var openedFromDiscovery: Identifier? = null
     private var openedImportLink: String? = null
+    private val foreground = ForegroundSourceRequest()
+    fun setActive(value: Boolean, retainBrowser: Boolean = false) = foreground.setActive(value, retainBrowser)
 
     init {
         viewModelScope.launch { registry.sources.collect { list -> mutable.update { it.copy(registry = list) } } }
@@ -87,7 +90,7 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
         if (mutable.value.busy) return
         val generation = ++operationGeneration
         mutable.update { it.copy(busy = true, showProgress = showProgress, message = null) }
-        operation = viewModelScope.launch {
+        operation = viewModelScope.launch(foreground) {
             try { withContext(Dispatchers.IO) { block() } }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (failure: Exception) { mutable.update { it.copy(message = when (failure) {
@@ -128,7 +131,8 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
             val field = if (form != null) SourceLoginService.accountNameField(form) else state.value.ruleSettings?.accountNameField
             val saved = sources.storedSettings(id, field)
             mutable.update { if (it.selected == id) it.copy(loginStatus = SourceLoginService.savedStatus(saved.loginStatus),
-                variable = saved.variable, storedSettingsAvailable = true, accountName = saved.accountName) else it }
+                variable = saved.variable, storedSettingsAvailable = true, accountName = saved.accountName,
+                network = it.network?.copy(certificates = saved.certificates)) else it }
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) {
             mutable.update { if (it.selected == id) it.copy(storedSettingsAvailable = false, accountName = null,
@@ -264,7 +268,14 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
             listing?.metadata?.builtIn == false -> R.string.sources_network_plugin
             else -> R.string.sources_network_unsupported
         }
-        return SourceNetworkState(networkSettings.mode(id) == SourceNetworkMode.BypassVpn, limitation)
+        return SourceNetworkState(networkSettings.mode(id) == SourceNetworkMode.BypassVpn, limitation,
+            state.value.network?.certificates.orEmpty().takeIf { state.value.selected == id }.orEmpty())
+    }
+    fun revokeCertificate(origin: String) = launch {
+        val id = checkNotNull(state.value.selected)
+        sources.revokeCertificate(id, origin)
+        selectSource(id)
+        mutable.update { it.copy(message = R.string.source_certificate_revoked) }
     }
     fun setBypassVpn(enabled: Boolean) = launch {
         val id = checkNotNull(state.value.selected)
@@ -356,6 +367,7 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
     }
     fun cancel() { operation?.cancel() }
     override fun onCleared() {
+        foreground.setActive(false)
         val active = attempt
         if (active != null) CoroutineScope(Dispatchers.IO).launch { login.cancel(active) }
     }

@@ -33,7 +33,7 @@ class SourceDiagnosticsTest {
             val diagnostics = SourceDiagnostics(context, sources, fixture.runner, fixture.authority, accounts, registry, StorageCipher.Plain)
             try {
                 val raw = JsonObject(fixture.raw() + mapOf(
-                    "jsLib" to JsonPrimitive("var privateValue='synthetic-secret'; new JavaImporter();"),
+                    "jsLib" to JsonPrimitive("var privateValue='synthetic-secret'; new JavaAdapter();"),
                     "searchUrl" to JsonPrimitive("@js:'/search'")
                 ))
                 val preview = sources.importer.preview(raw.toString(), EXTENSION_PROFILE)
@@ -42,9 +42,9 @@ class SourceDiagnosticsTest {
                 val report = diagnostics.run(id, DiagnosticStage.Search, "fixture", "", "")
                 assertEquals("UnsupportedDependency", report.result)
                 assertEquals("jsLib", report.field)
-                assertEquals(hnovel.rules.ScriptDependency.JavaImporter, report.dependency)
+                assertEquals(hnovel.rules.ScriptDependency.JavaAdapter, report.dependency)
                 assertEquals(EXTENSION_PROFILE, report.profile)
-                assertTrue(report.events.any { it.ruleCode == "UnsupportedDependency.JavaImporter" })
+                assertTrue(report.events.any { it.ruleCode == "UnsupportedDependency.JavaAdapter" })
                 assertFalse(report.export().contains("synthetic-secret"))
                 assertFalse(report.export().contains("privateValue"))
                 assertEquals(0, fixture.documents.get())

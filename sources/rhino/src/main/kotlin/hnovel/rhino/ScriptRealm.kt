@@ -10,6 +10,7 @@ internal class ScriptRealm(context: Context) {
     private val objectPrototype = ScriptableObject.getObjectPrototype(global)
     private val arrayPrototype = ScriptableObject.getArrayPrototype(global)
     val functionPrototype: Scriptable = ScriptableObject.getFunctionPrototype(global)
+    val stringPrototype: Scriptable = ScriptableObject.getClassPrototype(global, "String")
     private val errorPrototype = ScriptableObject.getClassPrototype(global, "Error")
 
     fun objectIn(scope: Scriptable) = NativeObject().apply { parentScope = scope; prototype = objectPrototype }

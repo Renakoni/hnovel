@@ -35,7 +35,9 @@ composeUi = "1.11.4"
 foundationLayout = "1.11.4"
 composeAnimationGraphics = "1.11.4"
 coil = "3.5.0"
-jsoup = "1.22.2"
+# Legado selector semantics must also hold in the APK. Newer Jsoup may auto-select
+# the app's RE2J engine, which rejects source lookarounds and backreferences.
+jsoup = { strictly = "1.16.2" }
 markdown = "0.5.7"
 room = "2.8.4"
 work = "2.11.2"

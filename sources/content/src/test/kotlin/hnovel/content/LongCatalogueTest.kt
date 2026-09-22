@@ -76,6 +76,44 @@ class LongCatalogueTest {
         }
     }
 
+    @Test fun thousandsOfJsonChapterObjectsCanCrossTheWorkerBoundaryInOnePage() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            val count = 7501
+            val body = buildJsonObject {
+                put("list", buildJsonArray {
+                    add(buildJsonObject {
+                        put("bookChapters", buildJsonArray {
+                            for (index in 1..count) add(buildJsonObject {
+                                put("name", "Chapter $index")
+                                put("url", "/c/$index")
+                                put("updated", "day-$index")
+                                put("metadata", "metadata-".repeat(40))
+                            })
+                        })
+                    })
+                })
+            }.toString()
+            val original = fixture.server.dispatcher
+            fixture.server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest) = if (request.path == "/toc/1")
+                    MockResponse().setHeader("Content-Type", "application/json").setBody(body)
+                else original.dispatch(request)
+            }
+            fixture.source(customize = { raw -> JsonObject(raw + ("ruleToc" to buildJsonObject {
+                put("chapterList", "$.list..bookChapters[*]")
+                put("chapterName", "$.name")
+                put("chapterUrl", "$.url")
+                put("updateTime", "$.updated")
+            })) }).use { source ->
+                val chapters = source.directory(fixture.server.url("/book/one").toString())
+                assertEquals(count, chapters.size)
+                assertEquals((1..count).map { "Chapter $it" }, chapters.map { it.title })
+                assertEquals(fixture.server.url("/c/$count").toString(), chapters.last().id)
+                assertEquals("day-$count", chapters.last().updateTime)
+            }
+        }
+    }
+
     private fun catalogue(fixture: RuleSourceFixture, chapters: Int, perPage: Int): (JsonObject) -> JsonObject {
         val original = fixture.server.dispatcher
         fixture.server.dispatcher = object : Dispatcher() {

@@ -22,6 +22,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.LifecycleStartEffect
+import androidx.navigation.NavBackStackEntry
+import androidx.navigation.NavController
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
 import androidx.navigation.toRoute
@@ -46,6 +49,7 @@ fun NavGraphBuilder.settingsSourcesDestination() {
         val route = entry.toRoute<Route.Main.Settings.SourceImport>()
         val nav = LocalNavController.current
         val model = hiltViewModel<SourcesViewModel>()
+        SourceSettingsLifecycle(model, entry, nav)
         val state by model.state.collectAsStateWithLifecycle()
         LaunchedEffect(model) {
             model.state.first { !it.busy }
@@ -55,9 +59,10 @@ fun NavGraphBuilder.settingsSourcesDestination() {
             onDiagnostics = { id -> nav.navigate(Route.Main.Settings.SourceDiagnostic(id.namespace, id.id)) },
             onSearch = { id -> nav.navigate(Route.Main.Explore.Search(id.namespace, id.id)) }) { nav.popBackStack() }
     }
-    composable<Route.Main.Settings.Sources> {
+    composable<Route.Main.Settings.Sources> { entry ->
         val nav = LocalNavController.current
         val model = hiltViewModel<SourcesViewModel>()
+        SourceSettingsLifecycle(model, entry, nav)
         val state by model.state.collectAsStateWithLifecycle()
         SourcesScreen(state, model,
             onDiagnostics = { id -> nav.navigate(Route.Main.Settings.SourceDiagnostic(id.namespace, id.id)) },
@@ -67,6 +72,7 @@ fun NavGraphBuilder.settingsSourcesDestination() {
         val route = entry.toRoute<Route.Main.Settings.SourceDetail>()
         val nav = LocalNavController.current
         val model = hiltViewModel<SourcesViewModel>()
+        SourceSettingsLifecycle(model, entry, nav)
         val state by model.state.collectAsStateWithLifecycle()
         LaunchedEffect(model) {
             model.state.first { !it.busy }
@@ -75,6 +81,17 @@ fun NavGraphBuilder.settingsSourcesDestination() {
         SourcesScreen(state, model,
             onDiagnostics = { id -> nav.navigate(Route.Main.Settings.SourceDiagnostic(id.namespace, id.id)) },
             onSearch = { id -> nav.navigate(Route.Main.Explore.Search(id.namespace, id.id)) }) { nav.popBackStack() }
+    }
+}
+
+@Composable
+private fun SourceSettingsLifecycle(model: SourcesViewModel, entry: NavBackStackEntry, nav: NavController) {
+    LifecycleStartEffect(model, entry) {
+        model.setActive(true)
+        onStopOrDispose { model.setActive(false, retainBrowser = nav.currentBackStackEntry?.id == entry.id) }
+    }
+    DisposableEffect(model, entry) {
+        onDispose { if (nav.currentBackStackEntry?.id != entry.id) model.setActive(false) }
     }
 }
 
@@ -171,7 +188,7 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                         }
                         state.network?.let {
                             SectionHeader(text = stringResource(R.string.sources_network_section))
-                            SourceNetworkSection(it, state.busy, model::setBypassVpn)
+                            SourceNetworkSection(it, state.busy, model::setBypassVpn, model::revokeCertificate)
                         }
                         val savedAccount = state.storedSettingsAvailable && state.loginStatus != LoginStatus.LoggedOut
                         if (settings.loginDeclared || settings.loginErrorField != null || savedAccount || state.verification != null) {

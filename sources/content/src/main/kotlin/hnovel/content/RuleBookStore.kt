@@ -16,11 +16,14 @@ internal class RuleBookStore(private val session: SourceSession, private val aut
         if (result !is StorageResult.Value) throw SourceContentException(ContentError.Storage, "bookState")
         result.value?.let { Json.decodeFromString(BookRecord.serializer(), it) }?.takeIf { it.book.id == bookId }
     }
-    fun write(record: BookRecord) = authority.authorized(identity) {
-        val result = session.write(StorageRequest(StorageArea.BookState, key(record.book.id), Json.encodeToString(BookRecord.serializer(), record)))
+    fun write(record: BookRecord) = write(listOf(record))
+    fun write(records: List<BookRecord>) = authority.authorized(identity) {
+        if (records.isEmpty()) return@authorized
+        val values = records.associate { key(it.book.id) to Json.encodeToString(BookRecord.serializer(), it) }
+        val result = session.writeBookStates(values)
         if (result !is StorageResult.Value) throw SourceContentException(ContentError.Storage, "bookState")
         // Release the old quota only after the new snapshot has been committed atomically.
-        if (session.write(StorageRequest(StorageArea.Config, key(record.book.id))) !is StorageResult.Value)
+        if (values.keys.any { session.write(StorageRequest(StorageArea.Config, it)) !is StorageResult.Value })
             throw SourceContentException(ContentError.Storage, "bookState")
         Unit
     }

@@ -34,7 +34,7 @@ internal class ScriptRuleHelpers(private val scope: Scriptable, frame: ScriptFra
         // Keep the JSON input budget, but retain DOM methods for selected HTML nodes.
         val plain = JsonScriptData(cx, active, maxChars).convert(json(input))
         fun convert(value: RuleValue, data: Any?): Any? = when (value) {
-            is RuleValue.Node -> if (value.kind == InputKind.Html) ScriptDom.wrap(cx, active, value.htmlElement(""))
+            is RuleValue.Node -> if (value.kind == InputKind.Html || value.kind == InputKind.Xml && value.parentTag != null) ScriptDom.wrap(cx, active, value.htmlElement(""))
                 else if (value.kind == InputKind.Xml) ScriptDom.fragment(cx, active, value.content, "", true)
                 else data
             is RuleValue.Items -> {
@@ -51,7 +51,7 @@ internal class ScriptRuleHelpers(private val scope: Scriptable, frame: ScriptFra
     fun supports(name: String, args: List<JsonElement>) = name in setOf("java.getString", "java.getStringList",
         "java.getElement", "java.getElements", "java.setContent", "java.put", "java.getUrl") || name == "java.get" && args.size == 1
 
-    fun call(cx: Context, name: String, args: List<JsonElement>): JsonElement {
+    fun call(cx: Context, name: String, args: List<JsonElement>, elementInput: RuleValue? = null): JsonElement {
         elements = null
         if (++depth > budget.limits.maxDepth) { depth--; throw ScriptBudgetExceeded() }
         try {
@@ -63,7 +63,7 @@ internal class ScriptRuleHelpers(private val scope: Scriptable, frame: ScriptFra
                     require(it is JsonPrimitive && it.isString)
                     it.content
                 }
-                root = if (args[0] is JsonArray) RuleValue.Node(args[0].toString(), InputKind.Json) else value(args[0])
+                root = elementInput ?: if (args[0] is JsonArray) RuleValue.Node(args[0].toString(), InputKind.Json) else value(args[0])
                 if (nextBase != null) baseUrl = nextBase
                 return JsonNull
             }
@@ -82,7 +82,7 @@ internal class ScriptRuleHelpers(private val scope: Scriptable, frame: ScriptFra
             }
             val booleanOverload = name == "java.getString" && args.size == 2 && args[1] is JsonPrimitive && args[1].jsonPrimitive.booleanOrNull != null
             val unescape = !booleanOverload || args[1].jsonPrimitive.boolean
-            val input = args.getOrNull(1)?.takeUnless { booleanOverload || it == JsonNull }?.let(::value) ?: root
+            val input = elementInput ?: args.getOrNull(1)?.takeUnless { booleanOverload || it == JsonNull }?.let(::value) ?: root
             val url = args.getOrNull(2)?.jsonPrimitive?.boolean ?: false
             val output = when (name) {
                 "java.getString" -> if (url) OutputKind.Url else OutputKind.Text

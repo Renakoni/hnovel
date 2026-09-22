@@ -10,6 +10,7 @@ class RuleContentMarkupTest {
     @Test fun fortyParagraphChapterUsesProductionLimits() = chapter(40)
     @Test fun eightyParagraphChapterKeepsTextAndImageOrder() = chapter(80)
     @Test fun longChapterUsesProductionLimits() = chapter(400)
+    @Test fun longChineseChapterKeepsEveryParagraphThroughTheWorkerEnvelope() = chapter(980, "文".repeat(55))
 
     @Test fun jsonChapterRetainsNewlinesAndInlineImagePosition() = runBlocking {
         RuleSourceFixture().use { fixture ->
@@ -120,9 +121,9 @@ class RuleContentMarkupTest {
         }
     }
 
-    private fun chapter(count: Int) = runBlocking {
+    private fun chapter(count: Int, lineText: String = "a".repeat(80)) = runBlocking {
         RuleSourceFixture().use { fixture ->
-            val paragraphs = List(count) { "Paragraph $it " + "a".repeat(80) }
+            val paragraphs = List(count) { "Paragraph $it " + lineText }
             val middle = count / 2
             val html = paragraphs.mapIndexed { index, text ->
                 (if (index == middle) "<img src='../image.png'>" else "") + "<p>$text</p>"

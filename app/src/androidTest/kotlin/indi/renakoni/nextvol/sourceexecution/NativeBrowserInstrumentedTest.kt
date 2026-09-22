@@ -80,6 +80,22 @@ class NativeBrowserInstrumentedTest {
         assertNotNull(failure.verificationRequest)
     } }
 
+    @Test fun largeRenderedDocumentsCrossThePipeAndRespectTheCallerLimit(): Unit = runBlocking { fixture { broker, server ->
+        val text = "文".repeat(600000)
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest) = MockResponse().setHeader("Content-Type", "text/html; charset=UTF-8")
+                .setBody("<html><head><link rel='icon' href='data:,'></head><body><article>$text</article></body></html>")
+        }
+        val account = session(broker, server)
+        val request = BrokerRequest("large", server.url("/book").toString(), maxResponseBytes = 2 * 1024 * 1024, timeoutMillis = 60000)
+        val result = account.execute(request)
+        assertTrue(result.toString(), result is BrokerResult.Success)
+        val response = (result as BrokerResult.Success).response
+        assertTrue(response.body.size > 1024 * 1024)
+        assertEquals(text, org.jsoup.Jsoup.parse(response.text()).selectFirst("article")!!.text())
+        assertEquals(FailureCode.ResponseTooLarge, (account.execute(request.copy(maxResponseBytes = 1024 * 1024)) as BrokerResult.Failure).code)
+    } }
+
     @Test fun siteCaptchaRedirectResumesTheOriginalChapterWithItsVerifiedCookies(): Unit = runBlocking {
         ActivityScenario.launch(BrowserTestHostActivity::class.java).use { fixture { broker, server ->
             val accepted = java.util.concurrent.atomic.AtomicBoolean()
@@ -110,7 +126,11 @@ class NativeBrowserInstrumentedTest {
         } }
     }
 
-    @Test fun nativeIframeFetchCookiesAndFinalUrlArePreserved(): Unit = runBlocking { fixture { broker, server ->
+    @Test fun nativeIframeFetchCookiesAndFinalUrlArePreserved() = iframeCookies(true)
+
+    @Test fun legadoWebViewOptionUsesNativeWebsiteWithoutRequiringBrowserRead() = iframeCookies(false)
+
+    private fun iframeCookies(browserRead: Boolean): Unit = runBlocking { fixture { broker, server ->
         server.dispatcher = object : Dispatcher() {
             override fun dispatch(request: RecordedRequest): MockResponse = when (request.path) {
                 "/start" -> MockResponse().setResponseCode(302).setHeader("Location", "/page")
@@ -134,7 +154,17 @@ class NativeBrowserInstrumentedTest {
                 else -> MockResponse().setResponseCode(404)
             }
         }
-        val response = render(session(broker, server), server.url("/start").toString(), "window.answer || null")
+        val account = session(broker, server)
+        account.configureSource(server.url("/").toString(), true, browserRead = browserRead)
+        val response = if (browserRead) render(account, server.url("/start").toString(), "window.answer || null") else {
+            val rule = server.url("/start").toString() + "," + buildJsonObject {
+                put("webView", true); put("webJs", "window.answer || null")
+            }
+            val compiled = RequestCompiler().compile("render", rule, server.url("/").toString()) as CompiledRequest.Ready
+            val result = account.execute(compiled.request.copy(timeoutMillis = 60000))
+            assertTrue(result.toString(), result is BrokerResult.Success)
+            (result as BrokerResult.Success).response
+        }
         assertEquals(ResponseKind.BrowserDocument, response.kind)
         assertEquals(0, response.status); assertEquals("", response.protocol); assertTrue(response.headers.isEmpty())
         assertEquals(server.url("/page").toString(), response.finalUrl)

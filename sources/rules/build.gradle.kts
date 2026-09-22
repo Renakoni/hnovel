@@ -9,7 +9,7 @@ kotlin {
 
 dependencies {
     implementation(libs.kotlinx.serialization.json)
-    implementation("org.jsoup:jsoup:1.16.2")
+    implementation(libs.jsoup)
     implementation("com.jayway.jsonpath:json-path:2.10.0")
     implementation("cn.wanghaomiao:JsoupXpath:2.5.3")
     implementation("com.google.code.gson:gson:2.13.2")

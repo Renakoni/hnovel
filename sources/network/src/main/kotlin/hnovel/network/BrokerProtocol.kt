@@ -26,7 +26,7 @@ data class SourceScope(val namespace: String, val sourceId: String, val profile:
 @Serializable enum class FailureCode {
     InvalidRequest, UnknownOption, ScriptRequired, BrowserRequired, OriginDenied, AddressDenied,
     RedirectLimit, RedirectBodyDenied, Timeout, Network, ResponseTooLarge, CacheMiss, StorageQuota, StorageUnavailable, Dns,
-    RouteUnavailable, RouteUnsupported,
+    RouteUnavailable, RouteUnsupported, Certificate,
 }
 
 @Serializable data class BrokerRequest(
@@ -64,7 +64,7 @@ data class SourceScope(val namespace: String, val sourceId: String, val profile:
     @Serializable data class Success(val response: BrokerResponse) : BrokerResult
     @Serializable data class Failure(val stage: RequestStage, val code: FailureCode, val attempt: Int = 0,
         val denial: OriginDenial? = null, val challenge: BrowserChallengeKind? = null,
-        val verificationRequest: BrokerRequest? = null) : BrokerResult
+        val verificationRequest: BrokerRequest? = null, val certificate: CertificateProblem? = null) : BrokerResult
 }
 
 @Serializable sealed interface CompiledRequest {
@@ -83,13 +83,17 @@ data class SourceScope(val namespace: String, val sourceId: String, val profile:
 }
 
 data class BrokerLimits(val concurrency: Int = 4, val minIntervalMillis: Long = 0,
-    val maxResponseBytes: Int = 4 * 1024 * 1024, val maxRequestBytes: Int = 1024 * 1024,
+    val maxResponseBytes: Int = DEFAULT_MAX_RESPONSE_BYTES, val maxRequestBytes: Int = 1024 * 1024,
     val maxStorageBytes: Long = 2 * 1024 * 1024, val maxStorageEntries: Int = 1024,
     val maxCacheBytes: Int = 8 * 1024 * 1024, val cacheTtlMillis: Long = 60000,
     val maxRedirects: Int = 10, val maxRetry: Int = 3, val maxTimeoutMillis: Long = 60000,
-    val maxBookStorageBytes: Long = 128 * 1024 * 1024) {
+    val maxBookStorageBytes: Long = 128 * 1024 * 1024, val maxBookStorageEntries: Int = 16384) {
     init { require(concurrency > 0 && minIntervalMillis >= 0 && maxResponseBytes > 0 && maxRequestBytes > 0 &&
-        maxStorageBytes > 0 && maxStorageEntries > 0 && maxCacheBytes > 0 && cacheTtlMillis > 0 && maxRedirects >= 0 && maxRetry >= 0 && maxTimeoutMillis > 0 && maxBookStorageBytes > 0) }
+        maxStorageBytes > 0 && maxStorageEntries > 0 && maxCacheBytes > 0 && cacheTtlMillis > 0 && maxRedirects >= 0 && maxRetry >= 0 && maxTimeoutMillis > 0 && maxBookStorageBytes > 0 && maxBookStorageEntries > 0) }
+    companion object {
+        // Some reading pages embed a multi-megabyte catalogue beside a short chapter.
+        const val DEFAULT_MAX_RESPONSE_BYTES = 16 * 1024 * 1024
+    }
 }
 
 /** A fresh instance for each rule invocation; it is never the session's persistent configuration. */

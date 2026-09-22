@@ -318,7 +318,30 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
             val info = (session.read(StorageRequest(StorageArea.Account, hnovel.network.StorageRequestKey.LOGIN_INFO)) as? StorageResult.Value)?.value
             SourceLoginService.savedAccountName(accountNameField, info)
         } else null
-        RuleStoredSettings(read(StorageArea.Config, "variable").orEmpty(), status, name)
+        RuleStoredSettings(read(StorageArea.Config, "variable").orEmpty(), status, name, session.certificateExceptions())
+    }
+
+    internal suspend fun revokeCertificate(id: Identifier, origin: String) = withContext(Dispatchers.IO) {
+        restore()
+        lock.withLock {
+            val current = checkNotNull(active[id]) { "Source is not installed" }
+            accounts.withCurrent(id) { account ->
+                try {
+                    val live = current.session?.takeIf { !it.closed && it.scope.accountGeneration == account.generation }
+                    if (live != null) live.revokeCertificate(origin)
+                    else SourceBroker(File(directory, "runtime").toPath(), cipher = storageCipher).use { broker ->
+                        broker.open(SourceScope(id.namespace, id.id, current.installed.definition.profile, account.generation),
+                            emptyList()).revokeCertificate(origin)
+                    }
+                } catch (failure: Exception) {
+                    current.registration?.unregister()
+                    current.broker?.close()
+                    throw failure
+                }
+                current.broker?.close()
+                active[id] = restoreBinding(current.installed, current)
+            }
+        }
     }
 
     internal suspend fun saveVariable(id: Identifier, value: String) = withStoredSession(id) { session ->
@@ -406,4 +429,5 @@ data class InstalledRuleSource(val definition: SourceDefinition, val origins: Li
 internal data class RuleLoginTarget(val source: Identifier, val revision: String, val generation: Long,
     val rules: RuleSource, val session: hnovel.network.SourceSession)
 
-internal data class RuleStoredSettings(val variable: String, val loginStatus: String?, val accountName: String? = null)
+internal data class RuleStoredSettings(val variable: String, val loginStatus: String?, val accountName: String? = null,
+    val certificates: List<hnovel.network.CertificateExceptionSite> = emptyList())
