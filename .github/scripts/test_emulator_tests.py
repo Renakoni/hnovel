@@ -27,6 +27,7 @@ case "$*" in
     if [[ "$EMULATOR_CASE" == offline ]]; then exit 17; fi
     echo package:/system/framework/framework-res.apk ;;
   'shell pm list packages com.google.android.apps.nexuslauncher')
+    if [[ "$EMULATOR_CASE" == boot-diagnostics-offline ]]; then exit 17; fi
     if [[ "$EMULATOR_CASE" != no-launcher ]]; then echo package:com.google.android.apps.nexuslauncher; fi ;;
   'shell am force-stop com.google.android.apps.nexuslauncher')
     if [[ "$EMULATOR_CASE" == stop-fails ]]; then exit 19; fi
@@ -40,11 +41,13 @@ case "$*" in
     elif [[ "$EMULATOR_CASE" == app-error ]]; then
       echo 'Window{456 u0 Application Not Responding: indi.renakoni.nextvol.debug}'
     fi ;;
-  'logcat -d -v threadtime') echo 'ActivityManager: ANR in com.google.android.apps.nexuslauncher' ;;
+  'logcat -d -v threadtime')
+    echo 'ActivityManager: ANR in com.google.android.apps.nexuslauncher'
+    if [[ "$EMULATOR_CASE" == boot-diagnostics-* ]]; then exit 255; fi ;;
 esac
 ''')
         self.script('test-command', '''#!/usr/bin/env bash
-printf '%s\n' "$@" > "$EMULATOR_CASE_ROOT/ran"
+printf '%s\n' "$@" >> "$EMULATOR_CASE_ROOT/ran"
 exit "$EMULATOR_TEST_EXIT"
 ''')
 
@@ -86,6 +89,20 @@ exit "$EMULATOR_TEST_EXIT"
 
     def test_diagnostic_failure_does_not_replace_test_exit_code(self):
         self.assertEqual(42, self.run_case('diagnostics-fail', 42))
+
+    def test_boot_logcat_failure_still_runs_the_original_command_once(self):
+        self.assertEqual(0, self.run_case('boot-diagnostics-fail'), self.result.stderr)
+        self.assertEqual(['one argument', 'second'], (self.root / 'ran').read_text().splitlines())
+        self.assertIn('Boot logcat capture failed', self.result.stderr)
+        self.assertIn('ANR in com.google.android.apps.nexuslauncher', (self.diagnostics / 'boot-logcat.txt').read_text())
+
+    def test_boot_logcat_failure_does_not_hide_test_failure(self):
+        self.assertEqual(42, self.run_case('boot-diagnostics-fail', 42))
+        self.assertTrue((self.root / 'ran').exists())
+
+    def test_adb_still_offline_after_boot_logcat_failure_blocks_tests(self):
+        self.assertEqual(17, self.run_case('boot-diagnostics-offline'))
+        self.assertFalse((self.root / 'ran').exists())
 
     def test_remaining_launcher_dialog_fails_before_tests(self):
         self.assertEqual(1, self.run_case('stuck'))
