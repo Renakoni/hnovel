@@ -106,6 +106,8 @@ android {
     testOptions {
         unitTests.isIncludeAndroidResources = true
         unitTests.all {
+            // Multi-SDK Robolectric resource tests exceed Gradle's default 512 MiB heap.
+            it.maxHeapSize = "2g"
             it.jvmArgs(
                 "--add-opens=java.base/java.lang=ALL-UNNAMED",
                 "--add-opens=java.base/java.util=ALL-UNNAMED",
