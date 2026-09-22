@@ -36,7 +36,6 @@ import io.mockk.mockk
 import io.nightfish.lightnovelreader.api.content.component.SimpleTextComponentData
 import indi.renakoni.nextvol.ui.book.reader.bookmark.LocalReaderBookmarks
 import indi.renakoni.nextvol.ui.book.reader.bookmark.ReaderBookmarkSession
-import indi.renakoni.nextvol.data.bookmark.ReadingBookmark
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
