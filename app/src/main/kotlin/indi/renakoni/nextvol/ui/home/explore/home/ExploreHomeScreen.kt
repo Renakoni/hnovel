@@ -43,25 +43,19 @@ fun ExploreHomeScreen(
     onMore: (SourceDiscoverySection) -> Unit,
     onBook: (SourceBookId) -> Unit,
     onSearch: () -> Unit,
-    onCategories: () -> Unit,
     onManageSources: () -> Unit,
     onInput: (String, String) -> Unit,
     onAction: (String, Boolean) -> Unit,
     onSettings: () -> Unit,
+    onScope: (SourceCategory?) -> Unit = {},
+    onPage: (Int) -> Unit = {},
 ) {
-    val selected = state.sources.firstOrNull { it.metadata.id == state.selected }
-    val capabilities = selected?.metadata?.capabilities.orEmpty()
     Scaffold(topBar = {
         TopAppBar(
-            title = {},
-            expandedHeight = 56.dp,
+            title = { SourceScopeTitle(state, onScope) },
+            expandedHeight = sourceTopBarHeight(),
             navigationIcon = { Icon(painterResource(R.drawable.outline_explore_24px), stringResource(R.string.nav_explore), Modifier.padding(12.dp)) },
             actions = {
-                if (SourceCapability.Categories in capabilities) {
-                    IconButton(onClick = onCategories) {
-                        Icon(painterResource(R.drawable.view_list_24px), stringResource(R.string.categories_title))
-                    }
-                }
                 IconButton(onClick = onSearch) {
                     Icon(painterResource(R.drawable.search_24px), stringResource(R.string.search_hub_title))
                 }
@@ -74,20 +68,9 @@ fun ExploreHomeScreen(
                     CircularProgressIndicator()
                 }
             } else if (state.sources.isEmpty()) {
-                DiscoveryEmpty(stringResource(R.string.explore_no_sources), onManageSources)
+                SourceScopeEmpty(state, explore = true, onScope, onManageSources)
             } else {
-                PrimaryScrollableTabRow(
-                    selectedTabIndex = state.sources.indexOfFirst { it.metadata.id == state.selected }.coerceAtLeast(0),
-                    modifier = Modifier.fillMaxWidth(),
-                    edgePadding = 0.dp,
-                    divider = {},
-                ) {
-                    state.sources.forEach { source ->
-                        Tab(selected = source.metadata.id == state.selected, onClick = { onSelect(source.metadata.id) },
-                            text = { Text(source.metadata.item.name, Modifier.widthIn(max = 208.dp),
-                                maxLines = 1, overflow = TextOverflow.Ellipsis) })
-                    }
-                }
+                SourceTabs(state, onSelect, onPage)
                 val id = state.selected
                 val content = state.content[id] ?: DiscoveryPageContent()
                 if (id != null) key(id, content.resetId) {

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="reader_directory_search_hint">Chapter title or number</string>
+    <string name="reader_directory_clear_search">Clear chapter search</string>
+    <string name="reader_directory_no_results">No matching chapters</string>
+    <string name="reader_directory_no_results_hint">Try part of a chapter title or its number.</string>
+    <plurals name="reader_directory_matches">
+        <item quantity="one">%1$d chapter found</item>
+        <item quantity="other">%1$d chapters found</item>
+    </plurals>
+</resources>
