@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="reader_directory_search_hint">搜尋章節名或編號</string>
+    <string name="reader_directory_clear_search">清除目錄搜尋</string>
+    <string name="reader_directory_no_results">沒有符合的章節</string>
+    <string name="reader_directory_no_results_hint">試試章節名中的詞語或章節編號。</string>
+    <plurals name="reader_directory_matches">
+        <item quantity="other">找到 %1$d 章</item>
+    </plurals>
+</resources>
