@@ -171,6 +171,12 @@ class SourceBrowseControlsTest {
             "「經典文學」分類下暫無已啟用且提供分類的書源。", "全部書源")
     }
 
+    @Test @Config(qualifiers = "ru-rRU-w320dp-h800dp-mdpi")
+    fun russianScopeMessageKeepsActionsVisibleWithLargeText() {
+        assertScopeMessageAndActions(true,
+            "В категории «Классика» нет включённых источников с обзором книг.", "Все источники")
+    }
+
     private fun assertScopeMessageAndActions(explore: Boolean, message: String, all: String) {
         var state by mutableStateOf(DiscoveryPageState(scope = SourceCategory.Literature))
         var opened = false

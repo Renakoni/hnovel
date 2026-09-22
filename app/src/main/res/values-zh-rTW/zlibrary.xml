@@ -1,0 +1,21 @@
+<resources>
+    <string name="zlibrary_source_summary">依語言與格式搜尋書籍</string>
+    <string name="zlibrary_capabilities">在應用程式內搜尋並查看書籍資訊與封面。暫不支援登入、檔案下載和全文閱讀。</string>
+    <string name="zlibrary_mirror">API 網站</string>
+    <string name="zlibrary_mirror_help">填寫不含路徑的網站位址。更換網站不會變更書籍關聯；所選網站也需要列在下方權限中。</string>
+    <string name="zlibrary_save">儲存網站與權限</string>
+    <string name="zlibrary_settings_failed">設定未能還原。請檢查網站與權限，儲存後恢復使用。</string>
+    <string name="zlibrary_search_hint">書名或作者（最多 500 項）</string>
+    <string name="zlibrary_filter_all">所有語言與格式</string>
+    <string name="zlibrary_filter_chinese">中文 · 所有格式</string>
+    <string name="zlibrary_filter_english">英文 · 所有格式</string>
+    <string name="zlibrary_filter_epub">EPUB · 所有語言</string>
+    <string name="zlibrary_filter_pdf">PDF · 所有語言</string>
+    <string name="zlibrary_filter_chinese_epub">中文 · EPUB</string>
+    <string name="zlibrary_filter_chinese_pdf">中文 · PDF</string>
+    <string name="zlibrary_filter_english_epub">英文 · EPUB</string>
+    <string name="zlibrary_filter_english_pdf">英文 · PDF</string>
+    <string name="source_rate_limited">網站請求過於頻繁，請稍後重試。</string>
+    <string name="source_metadata_only">此書源提供書籍資訊，暫不支援在應用程式內閱讀全文。</string>
+    <string name="source_reading_unavailable">暫時無法閱讀，請啟用書源或開啟已儲存離線內容的書籍。</string>
+</resources>
