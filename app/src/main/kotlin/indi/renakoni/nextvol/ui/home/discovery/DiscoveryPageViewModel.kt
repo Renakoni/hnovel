@@ -39,7 +39,15 @@ data class DiscoveryPageState(
     val selected: Identifier? = null,
     val content: Map<Identifier, DiscoveryPageContent> = emptyMap(),
     val loadingSources: Boolean = false,
-)
+    val scope: SourceCategory? = null,
+    val availableSources: List<SourceListing> = sources,
+) {
+    val pageIndex: Int get() = sources.indexOfFirst { it.metadata.id == selected }.coerceAtLeast(0) / SOURCE_PAGE_SIZE
+    val pageCount: Int get() = (sources.size + SOURCE_PAGE_SIZE - 1) / SOURCE_PAGE_SIZE
+    val pageSources: List<SourceListing> get() = sources.drop(pageIndex * SOURCE_PAGE_SIZE).take(SOURCE_PAGE_SIZE)
+}
+
+internal const val SOURCE_PAGE_SIZE = 20
 
 data class DiscoveryCommand(val source: Identifier, val epoch: Long, val action: DiscoveryAction, val values: Map<String, String>)
 
@@ -49,18 +57,20 @@ abstract class DiscoveryPageViewModel(
     accounts: SourceSessionManager,
     private val saved: SavedStateHandle,
     private val capability: SourceCapability,
+    private val browsing: SourceBrowseSettings,
 ) : ViewModel() {
     private val key = if (capability == SourceCapability.Categories) "category" else "explore"
     private var contentId = 0L
-    private val mutableState = MutableStateFlow(DiscoveryPageState(loadingSources = true))
+    private val mutableState = MutableStateFlow(DiscoveryPageState(loadingSources = true, scope = browsing.scope.value))
     val state = mutableState.asStateFlow()
     private var versions = emptyMap<Identifier, DiscoveryVersion>()
     // category./explore. keys own this entry's persisted selection. Bare namespace/sourceId
     // are Route.Main.Categories arguments, used only as the initial fallback. Later shortcuts
-    // to a restored entry must be consumed through select(), not by rewriting route arguments.
-    private var requested = (saved.get<String>("$key.namespace") ?: saved.get<String>("namespace"))?.let { namespace ->
-        (saved.get<String>("$key.source") ?: saved.get<String>("sourceId"))?.let { Identifier(namespace, it) }
-    }
+    // to a restored entry must be consumed through openSource(), not by rewriting route arguments.
+    private var explicitRequest = if (saved.get<String>("$key.namespace") == null)
+        saved.get<String>("namespace")?.let { namespace -> saved.get<String>("sourceId")?.let { Identifier(namespace, it) } }
+        else null
+    private val pageSelections = mutableMapOf<Pair<SourceCategory?, Int>, Identifier>()
     private var active = false
     private var pending: Job? = null
     private var browser: Job? = null
@@ -76,11 +86,31 @@ abstract class DiscoveryPageViewModel(
 
     init {
         viewModelScope.launch {
-            combine(registry.sources, accounts.changes) { sources, generations ->
-                discoverySources(sources, capability) to generations
-            }.collect { (sources, generations) ->
-                val next = sources.associate { it.metadata.id to it.version(generations) }
-                val selected = selectedSource(sources, requested)
+            combine(registry.sources, accounts.changes, browsing.scope) { sources, generations, scope ->
+                Triple(discoverySources(sources, capability), generations, scope)
+            }.collect { (available, generations, scope) ->
+                val explicit = available.find { it.metadata.id == explicitRequest }
+                if (explicit != null && scope != null && explicit.metadata.category != scope) {
+                    browsing.selectScope(explicit.metadata.category)
+                    return@collect
+                }
+                val sources = available.filter { scope == null || it.metadata.category == scope }
+                val ids = sources.map { it.metadata.id }.toSet()
+                val previous = state.value
+                val scopeChanged = previous.loadingSources || previous.scope != scope
+                val restored = if (scopeChanged || previous.selected == null) savedSelection(scope) else null
+                val fallback = if (capability == SourceCapability.Categories && previous.selected == null)
+                    browsing.selected("explore", scope) else null
+                val requested = explicit?.metadata?.id ?: restored?.takeIf { it in ids }
+                    ?: previous.selected?.takeIf { it in ids } ?: fallback?.takeIf { it in ids }
+                val oldIndex = previous.sources.indexOfFirst { it.metadata.id == previous.selected }
+                val neighbor = if (!scopeChanged && oldIndex >= 0) {
+                    (previous.sources.drop(oldIndex + 1) + previous.sources.take(oldIndex).asReversed())
+                        .firstOrNull { it.metadata.id in ids }?.metadata?.id
+                } else null
+                val selected = selectedSource(sources, requested ?: neighbor)
+                // Scope changes must not retire other sources' cached content, drafts or sessions.
+                val next = available.associate { it.metadata.id to it.version(generations) }
                 val changed = selected != state.value.selected || versions[selected] != next[selected]
                 if (changed) cancelLoad()
                 // cancelLoad also clears loading flags; do not restore a snapshot captured before it.
@@ -88,8 +118,9 @@ abstract class DiscoveryPageViewModel(
                 sessions.keys.retainAll(content.keys)
                 refreshCatalog.retainAll(next.keys)
                 versions = next
-                mutableState.value = DiscoveryPageState(sources, selected, content)
+                mutableState.value = DiscoveryPageState(sources, selected, content, scope = scope, availableSources = available)
                 if (selected != null) remember(selected)
+                if (explicit != null && explicit.metadata.id == selected) explicitRequest = null
                 if (active) load()
             }
         }
@@ -104,11 +135,35 @@ abstract class DiscoveryPageViewModel(
     }
 
     fun select(id: Identifier) {
+        explicitRequest = null
         if (id == state.value.selected || state.value.sources.none { it.metadata.id == id }) return
         cancelLoad()
         remember(id)
         mutableState.value = state.value.copy(selected = id)
         if (active) load()
+    }
+
+    fun selectScope(category: SourceCategory?) {
+        explicitRequest = null
+        browsing.selectScope(category)
+    }
+
+    fun selectPage(page: Int) {
+        if (page !in 0 until state.value.pageCount) return
+        val sources = state.value.sources.drop(page * SOURCE_PAGE_SIZE).take(SOURCE_PAGE_SIZE)
+        val remembered = pageSelections[state.value.scope to page]
+        select(selectedSource(sources, remembered) ?: return)
+    }
+
+    /** Explicit routes can reveal a source outside the shared scope; bottom-tab visits never do. */
+    fun openSource(id: Identifier) {
+        val source = state.value.availableSources.find { it.metadata.id == id } ?: return
+        if (state.value.scope == null || source.metadata.category == state.value.scope) select(id)
+        else {
+            cancelLoad()
+            explicitRequest = id
+            browsing.selectScope(source.metadata.category)
+        }
     }
 
     fun refresh() {
@@ -193,9 +248,25 @@ abstract class DiscoveryPageViewModel(
     }
 
     private fun remember(id: Identifier) {
-        requested = id
+        val scope = state.value.scope
+        val scopedKey = "$key.${scope?.name.orEmpty()}"
+        saved["$scopedKey.namespace"] = id.namespace
+        saved["$scopedKey.source"] = id.id
         saved["$key.namespace"] = id.namespace
         saved["$key.source"] = id.id
+        saved["$key.scope"] = scope?.name.orEmpty()
+        browsing.remember(key, scope, id)
+        val page = state.value.sources.indexOfFirst { it.metadata.id == id } / SOURCE_PAGE_SIZE
+        pageSelections[scope to page] = id
+    }
+
+    private fun savedSelection(scope: SourceCategory?): Identifier? {
+        val scopedKey = "$key.${scope?.name.orEmpty()}"
+        fun read(prefix: String) = saved.get<String>("$prefix.namespace")?.let { namespace ->
+            saved.get<String>("$prefix.source")?.let { Identifier(namespace, it) }
+        }
+        return read(scopedKey) ?: read(key)?.takeIf { saved.get<String>("$key.scope").orEmpty() == scope?.name.orEmpty() }
+            ?: browsing.selected(key, scope)
     }
 
     private fun cancelLoad(retainBrowser: Boolean = false) {

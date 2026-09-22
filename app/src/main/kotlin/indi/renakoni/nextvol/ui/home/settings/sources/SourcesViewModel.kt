@@ -27,10 +27,11 @@ import java.util.UUID
 import javax.inject.Inject
 
 data class SourceManagementState(val installed: List<InstalledRuleSource> = emptyList(),
+    val catalog: List<CatalogSource> = emptyList(), val catalogPreview: Boolean = false,
     val registry: List<SourceListing> = emptyList(), val selected: Identifier? = null,
     val preview: ImportPreview? = null, val updateTarget: Identifier? = null,
     val previewOrigins: Map<Int, String> = emptyMap(),
-    val busy: Boolean = false, val message: Int? = null, val loginForm: LoginForm? = null,
+    val busy: Boolean = false, val showProgress: Boolean = true, val message: Int? = null, val loginForm: LoginForm? = null,
     val loginStatus: LoginStatus = LoginStatus.LoggedOut, val variable: String = "",
     val zLibrary: ZLibraryState = ZLibraryState(), val checks: Map<String, SourceCheckSummary> = emptyMap(),
     val network: SourceNetworkState? = null, val storedSettingsAvailable: Boolean = false,
@@ -54,7 +55,8 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
     private val login: SourceLoginService, private val registry: WebSourceRegistry,
     private val zLibrary: ZLibrarySources, private val checkHistory: SourceCheckHistory = SourceCheckHistory(context),
     private val networkSettings: SourceNetworkSettings = SourceNetworkSettings(context, AndroidSourceNetworks(context)),
-    private val verification: SourceVerificationCoordinator = SourceVerificationCoordinator(registry)) : ViewModel() {
+    private val verification: SourceVerificationCoordinator = SourceVerificationCoordinator(registry),
+    private val catalog: SourceCatalog = SourceCatalog(context)) : ViewModel() {
     private val mutable = MutableStateFlow(SourceManagementState())
     val state = mutable.asStateFlow()
     private var operation: Job? = null
@@ -81,10 +83,10 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
         refresh()
     }
 
-    private fun launch(block: suspend () -> Unit) {
+    private fun launch(showProgress: Boolean = true, block: suspend () -> Unit) {
         if (mutable.value.busy) return
         val generation = ++operationGeneration
-        mutable.update { it.copy(busy = true, message = null) }
+        mutable.update { it.copy(busy = true, showProgress = showProgress, message = null) }
         operation = viewModelScope.launch {
             try { withContext(Dispatchers.IO) { block() } }
             catch (cancelled: CancellationException) { throw cancelled }
@@ -97,16 +99,16 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
                 is SourceContentException -> sourceFailureMessage(failure)
                 else -> R.string.sources_action_failed
             }) } }
-            finally { if (generation == operationGeneration) mutable.update { it.copy(busy = false) } }
+            finally { if (generation == operationGeneration) mutable.update { it.copy(busy = false, showProgress = true) } }
         }
     }
 
     private suspend fun reload() {
         val installed = sources.installedSources()
-        mutable.update { it.copy(installed = installed) }
+        mutable.update { it.copy(installed = installed, catalog = catalog.entries) }
     }
     fun refresh() = launch { reload() }
-    fun select(id: Identifier?) = launch { selectSource(id) }
+    fun select(id: Identifier?) = launch(showProgress = false) { selectSource(id) }
     private suspend fun selectSource(id: Identifier?) {
         reload() // Includes the current session's redacted refusals, including background image loads.
         if (id == ZLibrarySources.ID) zLibrary.refresh()
@@ -136,7 +138,7 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
 
     fun openFromDiscovery(id: Identifier, signIn: Boolean) {
         if (openedFromDiscovery == id) return
-        launch {
+        launch(showProgress = signIn) {
             selectSource(id)
             openedFromDiscovery = id
             if (signIn && SourceCapability.Login in registry.sources.value.find { it.metadata.id == id }.actionCapabilities()) {
@@ -146,6 +148,10 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
     }
 
     fun previewText(text: String, profile: String = AUTO_PROFILE) = launch { showPreview(sources.importer.preview(text, profile)) }
+    fun previewCatalog(keys: Set<String>) = launch {
+        val available = keys - state.value.installed.map { it.definition.importKey }.toSet()
+        showPreview(sources.importer.preview(catalog.definitions(available), AUTO_PROFILE), catalogSelection = true)
+    }
     fun openImportLink(url: String) {
         if (openedImportLink == url) return
         openedImportLink = url
@@ -167,8 +173,8 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
             showPreview(sources.importer.previewUrl(address, session, profile))
         } } finally { root.deleteRecursively() }
     }
-    private fun showPreview(preview: ImportPreview, target: Identifier? = null) {
-        mutable.update { it.copy(preview = preview, updateTarget = target,
+    private fun showPreview(preview: ImportPreview, target: Identifier? = null, catalogSelection: Boolean = false) {
+        mutable.update { it.copy(preview = preview, updateTarget = target, catalogPreview = catalogSelection,
             previewOrigins = candidateOrigins(preview), message = if (preview.issues.any { issue -> issue.code != ImportCode.UnsupportedType }) R.string.sources_import_invalid else null) }
     }
     private fun candidateOrigins(preview: ImportPreview) = preview.candidates.associate {
@@ -336,7 +342,7 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
     fun cancelLogin() {
         operation?.cancel()
         val generation = ++operationGeneration
-        mutable.update { it.copy(busy = true) }
+        mutable.update { it.copy(busy = true, showProgress = true) }
         val active = attempt; attempt = null
         viewModelScope.launch {
             withContext(NonCancellable) {

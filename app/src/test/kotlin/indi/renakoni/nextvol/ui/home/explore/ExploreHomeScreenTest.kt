@@ -53,10 +53,9 @@ class ExploreHomeScreenTest {
         val books = mutableListOf<SourceBookId>()
         val more = mutableListOf<SourceDiscoverySection>()
         var search: Identifier? = null
-        var categories: Identifier? = null
         activity.get().setContent { MaterialTheme {
             ExploreHomeScreen(state, { state = state.copy(selected = it) }, { _, _ -> }, {}, { more += it }, { books += it },
-                { search = state.selected }, { categories = state.selected }, {}, { _, _ -> }, { _, _ -> }, {})
+                { search = state.selected }, {}, { _, _ -> }, { _, _ -> }, {})
         } }
         compose.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.Selected)).assertCountEquals(2)
         compose.onNodeWithText("Source A").assertIsSelected()
@@ -66,11 +65,11 @@ class ExploreHomeScreenTest {
         compose.onNode(hasClickAction() and hasText("Same book")).performClick()
         compose.onNodeWithContentDescription("Show more").performClick()
         compose.onNodeWithContentDescription("Search").performClick()
-        compose.onNodeWithContentDescription("Categories").performClick()
+        compose.onNodeWithContentDescription("Categories").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Source scope: All sources").assertIsDisplayed()
         assertEquals(listOf(a, b), books.map { it.sourceId })
         assertEquals(listOf(a, b), more.map { it.more!!.sourceId })
         assertEquals(b, search)
-        assertEquals(b, categories)
     }
 
     @Test fun partialFeedRemainsVisibleAndNavigableWhileLaterPreviewsLoad() {
@@ -79,7 +78,7 @@ class ExploreHomeScreenTest {
         var more: SourceDiscoverySection? = null
         activity.get().setContent { MaterialTheme {
             ExploreHomeScreen(DiscoveryPageState(listOf(listing(id)), id, mapOf(id to page)),
-                {}, { _, _ -> }, {}, { more = it }, {}, {}, {}, {}, { _, _ -> }, { _, _ -> }, {})
+                {}, { _, _ -> }, {}, { more = it }, {}, {}, {}, { _, _ -> }, { _, _ -> }, {})
         } }
         // The indeterminate refresh indicator intentionally remains active.
         compose.mainClock.autoAdvance = false
@@ -98,7 +97,7 @@ class ExploreHomeScreenTest {
         var scroll = DiscoveryScroll()
         activity.get().setContent { MaterialTheme {
             ExploreHomeScreen(DiscoveryPageState(listOf(listing(id)), id, mapOf(id to page)),
-                {}, { _, position -> scroll = position }, {}, {}, {}, {}, {}, {}, { _, _ -> }, { _, _ -> }, {})
+                {}, { _, position -> scroll = position }, {}, {}, {}, {}, {}, { _, _ -> }, { _, _ -> }, {})
         } }
         compose.mainClock.autoAdvance = false
         compose.mainClock.advanceTimeByFrame()
@@ -133,7 +132,7 @@ class ExploreHomeScreenTest {
         activity.get().setContent { MaterialTheme {
             if (visible) ExploreHomeScreen(state, { state = state.copy(selected = it) }, { id, position ->
                 state = state.copy(content = state.content + (id to state.content.getValue(id).copy(scroll = position)))
-            }, {}, {}, {}, {}, {}, {}, { _, _ -> }, { _, _ -> }, {})
+            }, {}, {}, {}, {}, {}, { _, _ -> }, { _, _ -> }, {})
         } }
         compose.onNode(hasScrollToIndexAction() and SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange))
             .performScrollToIndex(8)
@@ -152,7 +151,7 @@ class ExploreHomeScreenTest {
         val id = Identifier("fixture", "Only source")
         activity.get().setContent { MaterialTheme {
             ExploreHomeScreen(DiscoveryPageState(listOf(listing(id, setOf(SourceCapability.Explore))), id, mapOf(id to content(id))),
-                {}, { _, _ -> }, {}, {}, {}, {}, {}, {}, { _, _ -> }, { _, _ -> }, {})
+                {}, { _, _ -> }, {}, {}, {}, {}, {}, { _, _ -> }, { _, _ -> }, {})
         } }
         compose.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.Selected)).assertCountEquals(1)
         compose.onNodeWithText("Only source").assertIsSelected()
@@ -168,7 +167,7 @@ class ExploreHomeScreenTest {
         activity.get().setContent { MaterialTheme {
             ExploreHomeScreen(DiscoveryPageState(listOf(listing(id)), id,
                 mapOf(id to DiscoveryPageContent(loaded = true, sections = sections))),
-                {}, { _, _ -> }, {}, { opened += it }, {}, {}, {}, {}, { _, _ -> }, { _, _ -> }, {})
+                {}, { _, _ -> }, {}, { opened += it }, {}, {}, {}, { _, _ -> }, { _, _ -> }, {})
         } }
         compose.onNode(hasScrollToIndexAction() and SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange))
             .performScrollToIndex(sections.lastIndex)
@@ -180,7 +179,7 @@ class ExploreHomeScreenTest {
     @Test fun emptySourceStateOffersManagementAndNoFakeTabs() {
         var opened = 0
         activity.get().setContent { MaterialTheme {
-            ExploreHomeScreen(DiscoveryPageState(), {}, { _, _ -> }, {}, {}, {}, {}, {}, { opened++ }, { _, _ -> }, { _, _ -> }, {})
+            ExploreHomeScreen(DiscoveryPageState(), {}, { _, _ -> }, {}, {}, {}, {}, { opened++ }, { _, _ -> }, { _, _ -> }, {})
         } }
         compose.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.Selected)).assertCountEquals(0)
         compose.onNodeWithText("Book sources").performClick()
@@ -195,7 +194,7 @@ class ExploreHomeScreenTest {
         val page = content(id).copy(sections = listOf(broken) + content(id).sections)
         activity.get().setContent { MaterialTheme {
             ExploreHomeScreen(DiscoveryPageState(listOf(listing(id)), id, mapOf(id to page)),
-                {}, { _, _ -> }, {}, { opened += it }, {}, {}, {}, {}, { _, _ -> }, { _, _ -> }, {})
+                {}, { _, _ -> }, {}, { opened += it }, {}, {}, {}, { _, _ -> }, { _, _ -> }, {})
         } }
         compose.onNodeWithText("Broken preview").assertExists()
         compose.onNodeWithText("Retry").performClick()
@@ -210,7 +209,7 @@ class ExploreHomeScreenTest {
         activity.get().setContent { MaterialTheme {
             ExploreHomeScreen(DiscoveryPageState(listOf(listing(id)), id,
                 mapOf(id to DiscoveryPageContent(loaded = true, sections = listOf(section)))),
-                {}, { _, _ -> }, {}, { opened = it }, {}, {}, {}, {}, { _, _ -> }, { _, _ -> }, {})
+                {}, { _, _ -> }, {}, { opened = it }, {}, {}, {}, { _, _ -> }, { _, _ -> }, {})
         } }
         compose.onNodeWithText("Recently updated").assertIsDisplayed()
         compose.onNodeWithText("This list has no books yet.").assertIsDisplayed()
@@ -227,7 +226,7 @@ class ExploreHomeScreenTest {
             values = mapOf("sort" to "new"), buttons = listOf(DiscoveryButton("login", "Sign in")))
         activity.get().setContent { MaterialTheme {
             ExploreHomeScreen(DiscoveryPageState(listOf(listing(id)), id, mapOf(id to page)),
-                {}, { _, _ -> }, {}, {}, {}, {}, {}, {}, { key, value -> input += key to value },
+                {}, { _, _ -> }, {}, {}, {}, {}, {}, { key, value -> input += key to value },
                 { key, long -> actions += key to long }, {})
         } }
         compose.onNodeWithText("Sort: New").performClick()
