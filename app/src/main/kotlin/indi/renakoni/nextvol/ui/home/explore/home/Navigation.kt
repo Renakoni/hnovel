@@ -8,7 +8,6 @@ import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
 import indi.renakoni.nextvol.ui.book.detail.navigateToBookDetailDestination
 import indi.renakoni.nextvol.ui.home.discovery.DiscoveryPageEffects
-import indi.renakoni.nextvol.ui.home.navigateToMainRoot
 import indi.renakoni.nextvol.ui.home.settings.navigateToSettingsDestination
 import indi.renakoni.nextvol.utils.isResumed
 import io.nightfish.lightnovelreader.api.Route
@@ -24,11 +23,10 @@ fun NavGraphBuilder.exploreHomeDestination() {
             onMore = { model.more(it)?.let { route -> nav.navigate(route) } },
             onBook = { nav.navigateToBookDetailDestination(it.storageKey) },
             onSearch = { nav.navigate(Route.Main.Explore.SearchHub) },
-            onCategories = { model.categories()?.let { nav.navigateToMainRoot(it) } },
             onManageSources = { nav.navigate(state.selected?.let { Route.Main.Settings.SourceDetail(it.namespace, it.id) } ?: Route.Main.Settings.Sources) },
             onInput = { id, value -> model.interact(id, value) },
             onAction = { id, longClick -> model.interact(id, longClick = longClick) },
-            onSettings = nav::navigateToSettingsDestination)
+            onSettings = nav::navigateToSettingsDestination, onScope = model::selectScope, onPage = model::selectPage)
     }
 }
 

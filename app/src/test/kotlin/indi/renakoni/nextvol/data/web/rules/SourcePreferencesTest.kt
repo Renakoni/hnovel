@@ -36,6 +36,72 @@ class SourcePreferencesTest {
         return sources.definitions.list().single { it.reference() == reference }
     }
 
+    @Test fun catalogCategorySurvivesRenamingIdentityMappingDisablementAndRestart() = runBlocking {
+        val context = host()
+        RuleSourceFixture().use { fixture ->
+            val accounts = SourceSessionManager(fixture.authority)
+            var registry = WebSourceRegistry(fixture.authority)
+            var sources = ImportedRuleSources(context, registry, fixture.authority, accounts, fixture.runner)
+            val entry = SourceCatalog(context).entries.first { it.category == SourceCategory.Female }
+            val grants = listOf(NetworkGrant(fixture.server.url("/").toString(), true))
+            try {
+                val raw = JsonObject(fixture.raw() + mapOf("bookSourceUrl" to JsonPrimitive(entry.key), "enabled" to JsonPrimitive(false)))
+                val first = definition(sources, raw)
+                val id = sources.activate(first.reference(), grants)
+                assertEquals(SourceCategory.Female, sources.installedSources().single().preferences.category)
+                sources.setPreferences(id, enabled = true)
+                assertEquals(SourceCategory.Female, registry.sources.value.single().metadata.category)
+                sources.setPreferences(id, enabled = false)
+                val preview = sources.importer.preview(JsonObject(raw + mapOf("bookSourceName" to JsonPrimitive("Renamed"),
+                    "bookSourceUrl" to JsonPrimitive("https://moved.invalid/"))).toString())
+                val reference = sources.importer.commit(preview, listOf(ImportSelection(0, ImportDecision.MapIdentity(first.reference()))))
+                    .items.single().reference!!
+                fixture.afterRun = { error("Disabled update must not execute source code") }
+                SourceRevisionUpdates(context, sources, accounts, fixture.runner, fixture.authority).apply(id, reference, grants, true)
+                assertEquals(SourceCategory.Female, sources.installedSources().single().preferences.category)
+                sources.stop()
+                registry = WebSourceRegistry(fixture.authority)
+                sources = ImportedRuleSources(context, registry, fixture.authority, accounts, fixture.runner)
+                sources.restore()
+                val restored = sources.installedSources().single()
+                assertEquals(id, ImportedRuleSources.id(restored.definition))
+                assertEquals("Renamed", restored.definition.displayName)
+                assertEquals("https://moved.invalid/", restored.definition.importKey)
+                assertEquals(SourceCategory.Female, restored.preferences.category)
+                assertFalse(restored.preferences.enabled)
+                assertEquals(0, fixture.server.requestCount)
+            } finally { sources.stop() }
+        }
+    }
+
+    @Test fun olderInstalledSourcesReceiveOnlyExactCatalogMappings() = runBlocking {
+        val context = host()
+        RuleSourceFixture().use { fixture ->
+            val accounts = SourceSessionManager(fixture.authority)
+            var registry = WebSourceRegistry(fixture.authority)
+            var sources = ImportedRuleSources(context, registry, fixture.authority, accounts, fixture.runner)
+            val entry = SourceCatalog(context).entries.first()
+            try {
+                val known = definition(sources, JsonObject(fixture.raw() + ("bookSourceUrl" to JsonPrimitive(entry.key))))
+                sources.activate(known.reference(), emptyList())
+                val unknown = definition(sources, JsonObject(fixture.raw() + ("bookSourceName" to JsonPrimitive(entry.name))))
+                sources.activate(unknown.reference(), emptyList())
+                sources.stop()
+                val snapshot = File(context.filesDir, "rule-sources/active.json")
+                val legacy = Json.parseToJsonElement(snapshot.readText()).jsonArray.map { row ->
+                    JsonObject(row.jsonObject + ("preferences" to JsonObject(row.jsonObject.getValue("preferences").jsonObject - "category")))
+                }
+                snapshot.writeText(JsonArray(legacy).toString())
+                registry = WebSourceRegistry(fixture.authority)
+                sources = ImportedRuleSources(context, registry, fixture.authority, accounts, fixture.runner)
+                sources.restore()
+                assertEquals(entry.category, sources.installedSources().first { it.definition.sourceId == known.sourceId }.preferences.category)
+                assertNull(sources.installedSources().first { it.definition.sourceId == unknown.sourceId }.preferences.category)
+                assertTrue(registry.sources.value.isEmpty())
+            } finally { sources.stop() }
+        }
+    }
+
     @Test fun defaultDisabledDefinitionsCanBeInstalledWithoutOpeningRuntime() = runBlocking {
         RuleSourceFixture().use { fixture ->
             val registry = WebSourceRegistry(fixture.authority)

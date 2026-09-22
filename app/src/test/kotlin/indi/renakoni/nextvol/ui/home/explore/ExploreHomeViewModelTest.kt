@@ -48,7 +48,7 @@ class ExploreHomeViewModelTest {
         Dispatchers.resetMain()
     }
     private fun model(saved: SavedStateHandle = SavedStateHandle()) =
-        ExploreHomeViewModel(registry, accounts, saved, text).also {
+        ExploreHomeViewModel(registry, accounts, saved, text, SourceBrowseSettings(org.robolectric.RuntimeEnvironment.getApplication())).also {
             stores += ViewModelStore().apply { put("explore", it) }
             it.setActive(true)
         }
@@ -324,7 +324,7 @@ class ExploreHomeViewModelTest {
         assertFalse(model.state.value.content[a]!!.loaded)
     }
 
-    @Test fun moreSearchAndCategoryRoutesKeepSourceAndUseIndependentResultSessions() = runTest(dispatcher) {
+    @Test fun moreAndSearchRoutesKeepSourceAndUseIndependentResultSessions() = runTest(dispatcher) {
         val a = add("a", Feed())
         val b = add("b", Feed())
         val model = model()
@@ -332,27 +332,23 @@ class ExploreHomeViewModelTest {
         val firstSection = model.state.value.content[a]!!.sections.single()
         val first = model.more(firstSection)!!
         val search = model.search()!!
-        val category = model.categories()!!
         model.select(b)
         advanceUntilIdle()
         val second = model.more(model.state.value.content[b]!!.sections.single())!!
         assertEquals(a, firstSection.books.single().id.sourceId)
         assertEquals(a.id, search.sourceId)
-        assertEquals(a.id, category.sourceId)
         assertEquals(b.id, second.sourceId)
         assertNotEquals(first.sessionId, second.sessionId)
         assertNull(model.more(firstSection))
         assertEquals(search, Json.decodeFromString<Route.Main.Explore.Search>(Json.encodeToString(search)))
-        assertEquals(category, Json.decodeFromString<Route.Main.Categories>(Json.encodeToString(category)))
         assertEquals(first, Json.decodeFromString<Route.Main.DiscoveryResults>(Json.encodeToString(first)))
     }
 
-    @Test fun absentSearchAndCategoriesCapabilitiesDoNotOfferRoutes() = runTest(dispatcher) {
+    @Test fun absentSearchCapabilityDoesNotOfferSourceSearch() = runTest(dispatcher) {
         add("feed", Feed(), capabilities = setOf(SourceCapability.Explore))
         val model = model()
         advanceUntilIdle()
         assertNull(model.search())
-        assertNull(model.categories())
     }
 
     @Test fun sourceRegistrationAndAccountChangesInvalidateOnlyTheirOwnContent() = runTest(dispatcher) {
@@ -390,7 +386,7 @@ class ExploreHomeViewModelTest {
         advanceUntilIdle()
         assertEquals(b, model.state.value.selected)
         assertEquals(0, aFeed.feeds)
-        assertTrue(saved.keys().all { it in setOf("explore.namespace", "explore.source", "explore.session") })
+        assertTrue(saved.keys().all { saved.get<Any>(it) is String })
         registry.unregister(b)
         advanceUntilIdle()
         assertEquals(a, model.state.value.selected)

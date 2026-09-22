@@ -36,7 +36,8 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
     private val storageCipher: hnovel.network.StorageCipher = hnovel.network.StorageCipher.Plain,
     private val browser: hnovel.network.BrowserExecutor? = null,
     private val verification: SourceVerificationCoordinator? = null,
-    private val networkSettings: SourceNetworkSettings? = null) {
+    private val networkSettings: SourceNetworkSettings? = null,
+    private val catalog: SourceCatalog = SourceCatalog(context)) {
     private val directory = File(context.filesDir, "rule-sources")
     val definitions by lazy { SourceDefinitionStore(File(directory, "definitions").toPath()) }
     val importer by lazy { SourceDefinitionImporter(definitions) }
@@ -81,7 +82,13 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
             restorationFailed = true
             emptyList()
         }
-        installed.forEach { entry -> active[id(entry.definition)] = restoreBinding(entry) }
+        val classified = installed.map { entry ->
+            val preferences = entry.preferences()
+            val category = preferences.category ?: catalog.entry(entry.definition)?.category
+            if (category == preferences.category) entry else entry.copy(preferences = preferences.copy(category = category))
+        }
+        if (classified != installed) save(classified)
+        classified.forEach { entry -> active[id(entry.definition)] = restoreBinding(entry) }
         restored = true
     } }
 
@@ -98,7 +105,9 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
                 check(it.installed.definition == definition && it.installed.origins == approvedOrigins) { "Revision/grant replacement belongs to the update service" }
                 return@withLock identity
             }
-            val installed = InstalledSource(definition, approvedOrigins.map { it.copy(headers = it.headers.toMap()) })
+            val installed = InstalledSource(definition, approvedOrigins.map { it.copy(headers = it.headers.toMap()) },
+                preferences = SourcePreferences(definition.enabled, definition.enabledExplore,
+                    category = catalog.entry(definition)?.category))
             // Constructing the adapter opens no network and runs no source code.
             val previous = active.values.map { it.installed }
             var saved = false
@@ -125,7 +134,8 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
                     ?.jsonPrimitive?.content?.isNotBlank() == true
                 InstalledSource(definition, origins.map { it.copy(headers = it.headers.toMap()) },
                     preferences = if (enableNew) SourcePreferences(true, definition.enabledExplore || hasExploreUrl,
-                        enabledSetByUser = true) else null)
+                        enabledSetByUser = true, category = catalog.entry(definition)?.category)
+                    else SourcePreferences(definition.enabled, definition.enabledExplore, category = catalog.entry(definition)?.category))
             }
             // Save once for a collection; opening one definition must not rewrite thousands of others.
             save(active.values.map { it.installed } + additions)
@@ -235,13 +245,13 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
         }
         val source = try { RuleSource(definition, ticket, authority, session, runner, trace, discoveryEnabled = preferences.discoveryVisible) }
             catch (failure: Exception) { authority.revoke(ticket); broker.close(); throw failure }
-        val metadata = SourceMetadata(WebDataSourceItem(id, definition.displayName, "Imported source"), buildSet {
+        val metadata = SourceMetadata(WebDataSourceItem(id, catalog.entry(definition)?.name ?: definition.displayName, "Imported source"), buildSet {
             addAll(listOf(SourceCapability.BookInformation, SourceCapability.Directory, SourceCapability.ChapterContent, SourceCapability.Images))
             if (source.canSearch) add(SourceCapability.Search)
             if (source.canLogin) add(SourceCapability.Login)
             if (source.canFeed) add(SourceCapability.Explore)
             if (source.canCategorize) add(SourceCapability.Categories)
-        }, revision = definition.contentDigest, accountGeneration = generation)
+        }, revision = definition.contentDigest, accountGeneration = generation, category = preferences.category)
         val publish = {
             previous?.session?.takeIf { it.scope == session.scope }?.let { session.inheritCookies(it); session.inheritCaches(it) }
             beforePublish()
@@ -357,7 +367,8 @@ data class InstalledRuleSource(val definition: SourceDefinition, val origins: Li
         .let { it as? kotlinx.serialization.json.JsonPrimitive }?.content?.isNotBlank() == true
 }
 
-@Serializable data class SourcePreferences(val enabled: Boolean, val discoveryVisible: Boolean, val enabledSetByUser: Boolean = false)
+@Serializable data class SourcePreferences(val enabled: Boolean, val discoveryVisible: Boolean, val enabledSetByUser: Boolean = false,
+    val category: SourceCategory? = null)
 
 internal data class RuleLoginTarget(val source: Identifier, val revision: String, val generation: Long,
     val rules: RuleSource, val session: hnovel.network.SourceSession)

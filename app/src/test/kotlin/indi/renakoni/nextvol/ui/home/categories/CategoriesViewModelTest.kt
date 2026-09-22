@@ -43,7 +43,8 @@ class CategoriesViewModelTest {
         dispatcher.scheduler.advanceUntilIdle()
         Dispatchers.resetMain()
     }
-    private fun model(saved: SavedStateHandle = SavedStateHandle()) = CategoriesViewModel(registry, accounts, saved).also {
+    private fun model(saved: SavedStateHandle = SavedStateHandle()) = CategoriesViewModel(registry, accounts, saved,
+        SourceBrowseSettings(org.robolectric.RuntimeEnvironment.getApplication())).also {
         stores += ViewModelStore().apply { put("categories", it) }
         it.setActive(true)
     }
