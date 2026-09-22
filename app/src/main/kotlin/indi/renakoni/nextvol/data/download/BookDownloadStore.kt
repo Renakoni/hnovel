@@ -2,6 +2,7 @@ package indi.renakoni.nextvol.data.download
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import android.util.AtomicFile
 import androidx.room.withTransaction
 import coil3.SingletonImageLoader
@@ -55,7 +56,7 @@ class BookDownloadStore @Inject constructor(@ApplicationContext private val cont
     fun generation(): Long = database.userDataDao().getEntity(EPOCH)?.value?.toLong() ?: 0
     fun observe(book: SourceBookId) = combine(dao.observe(book.storageKey), dao.observeChapters(book.storageKey)) { _, _ -> Unit }
 
-    suspend fun prepare() = withContext(Dispatchers.IO) { lock.withLock { migrateLegacy() } }
+    suspend fun prepare() = withContext(Dispatchers.IO) { lock.withLock { removeRetiredGenerations(); migrateLegacy() } }
     /** Normal downloads and export preparation must not replace each other's attempt. */
     suspend fun <T> withBookOperation(book: SourceBookId, block: suspend () -> T): T =
         bookOperations.getOrPut(book.storageKey) { Mutex() }.withLock { block() }
@@ -280,21 +281,56 @@ class BookDownloadStore @Inject constructor(@ApplicationContext private val cont
         }
     }
 
-    /** Backups contain bodies/ownership, not running jobs or image files. Missing images stay partial. */
-    suspend fun restore(books: List<BookDownloadEntity>, chapters: List<DownloadedChapterEntity>, legacy: Boolean) =
-        withContext(Dispatchers.IO) { lock.withLock {
-            database.withTransaction {
-                for (book in books) {
-                    if (dao.get(book.bookId) != null) continue
-                    dao.put(book.copy(generation = generation(), attempt = "", phase = "partial"))
-                    chapters.filter { it.bookId == book.bookId }.forEach { chapter ->
-                        if (database.chapterContentDao().getId(chapter.id) != null) dao.put(chapter)
-                    }
-                }
-                if (legacy) database.userDataDao().remove(MIGRATED)
+    /**
+     * The caller holds the statistics lock. The library and download ownership commit together.
+     * Overwrite uses a new file generation: rollback/process death can never erase the old files.
+     * Backups contain bodies/ownership, not running jobs or image files; missing images stay partial.
+     */
+    suspend fun restore(
+        books: List<BookDownloadEntity>, chapters: List<DownloadedChapterEntity>, legacy: Boolean,
+        overwrite: Boolean = false, beforeCommit: () -> Unit = {}, writeLibrary: suspend () -> Unit = {},
+    ) = withContext(Dispatchers.IO) { lock.withLock {
+        val images = if (overwrite) imagesFor(dao.getAll()) else emptyList()
+        removeRetiredGenerations()
+        database.withTransaction {
+            if (overwrite) {
+                val next = Math.addExact(generation(), 1)
+                check(!File(root, next.toString()).exists()) { "Download restore directory is unavailable" }
+                database.userDataDao().insert(EPOCH, GROUP, "Long", next.toString())
+                dao.clearDownloadedContent(); dao.clearChapters(); dao.clearBooks()
+                clearHistory(null)
             }
+            writeLibrary()
+            for (book in books) {
+                if (dao.get(book.bookId) != null) continue
+                dao.put(book.copy(generation = generation(), attempt = "", phase = "partial"))
+                chapters.filter { it.bookId == book.bookId }.forEach { chapter ->
+                    if (database.chapterContentDao().getId(chapter.id) != null) dao.put(chapter)
+                }
+            }
+            if (legacy) database.userDataDao().remove(MIGRATED)
             migrateLegacy()
-        } }
+            beforeCommit()
+        }
+        // Cleanup is recoverable maintenance after the commit, never a failed restore.
+        if (overwrite) runCatching { clearCachedImages(images) }.onFailure {
+            Log.w("BookDownloadStore", "Could not evict retired image cache", it)
+        }
+        runCatching { removeRetiredGenerations() }.onFailure {
+            Log.w("BookDownloadStore", "Could not clean retired downloads after restore", it)
+        }
+    } }
+
+    /** Retry abandoned staging/retired file cleanup after process recreation. Keep every live owner. */
+    private suspend fun removeRetiredGenerations() {
+        val keep = dao.getAll().map { it.generation }.toSet() + generation()
+        root.listFiles()?.forEach { directory ->
+            val generation = directory.name.toLongOrNull() ?: return@forEach
+            if (generation !in keep) runCatching {
+                check(directory.deleteRecursively()) { "Could not remove retired download generation" }
+            }.onFailure { Log.w("BookDownloadStore", "Could not clean retired downloads", it) }
+        }
+    }
 
     /** Old completed CACHE records establish intent; ordinary reading hits do not become downloads. */
     private suspend fun migrateLegacy() {
