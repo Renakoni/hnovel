@@ -2,10 +2,13 @@ package indi.renakoni.nextvol.ui.book.reader
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -33,6 +36,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.semantics.contentDescription
@@ -69,7 +74,7 @@ internal fun ReaderLayoutSettingsPage(settings: ReaderSettingsEditor) {
                 // Keep the sample visible while the independent controls scroll beneath it.
                 Column(Modifier.padding(horizontal = 8.dp, vertical = 6.dp).clip(RoundedCornerShape(16.dp))
                     .background(MaterialTheme.colorScheme.surfaceContainer)) {
-                    Text(stringResource(R.string.reader_layout_preview),
+                    Text(stringResource(R.string.reader_layout_preview_scaled),
                         modifier = Modifier.padding(start = 16.dp, top = 12.dp),
                         style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     ReaderLayoutPreview(previewSettings, Modifier.fillMaxWidth().height(previewHeight))
@@ -144,14 +149,32 @@ private fun ReaderLayoutSlider(
 @Composable
 internal fun ReaderLayoutPreview(settings: ReaderSettingsEditor, modifier: Modifier = Modifier) = ReaderPaperTheme(settings) {
     val layout = rememberReaderTextLayout(settings)
-    val paragraphSpacing = with(LocalDensity.current) { layout.settings.paragraphSpacing.sp.toDp() }
-    Box(modifier.clip(RoundedCornerShape(16.dp)).background(readerBackgroundColor(settings))) {
+    val density = LocalDensity.current
+    val paragraphSpacing = with(density) { layout.settings.paragraphSpacing.sp.toDp() }
+    val windowSize = LocalWindowInfo.current.containerSize
+    val direction = LocalLayoutDirection.current
+    val indicatorHeight = if (settings.enableTimeIndicator || settings.enableReadingChapterProgressIndicator ||
+        settings.enableChapterTitleIndicator) 40.dp else 0.dp
+    val pagePadding = readerPadding(layout.settings, indicatorHeight)
+    BoxWithConstraints(modifier.clip(RoundedCornerShape(16.dp)).background(readerBackgroundColor(settings))) {
+        // Preserve the fraction of each page edge occupied by margins, system bars and the footer.
+        // Text stays at the chosen size and scrolls inside that viewport, even at maximum margins.
+        val widthScale = (constraints.maxWidth.toFloat() / windowSize.width.coerceAtLeast(1)).coerceAtMost(1f)
+        val heightScale = (constraints.maxHeight.toFloat() / windowSize.height.coerceAtLeast(1)).coerceAtMost(1f)
+        val previewPadding = PaddingValues(
+            start = pagePadding.calculateStartPadding(direction) * widthScale,
+            end = pagePadding.calculateEndPadding(direction) * widthScale,
+            top = pagePadding.calculateTopPadding() * heightScale,
+            bottom = pagePadding.calculateBottomPadding() * heightScale,
+        )
         if (settings.usesBackgroundImage) Image(
             painter = rememberReaderBackgroundPainter(settings), contentDescription = null,
             modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop,
         )
         Column(
-            Modifier.fillMaxWidth().align(Alignment.Center).verticalScroll(rememberScrollState()).padding(16.dp),
+            Modifier.fillMaxSize().padding(previewPadding)
+                .border(1.dp, readerTextColor(settings).copy(alpha = 0.12f), RoundedCornerShape(4.dp))
+                .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(paragraphSpacing),
         ) {
