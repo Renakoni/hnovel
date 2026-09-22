@@ -26,6 +26,10 @@ import indi.renakoni.nextvol.data.storage.StorageUsageRepository
 import indi.renakoni.nextvol.data.statistics.StatsRepository
 import indi.renakoni.nextvol.data.statistics.StatisticsWriteCoordinator
 import io.nightfish.lightnovelreader.api.userdata.UserDataPath
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -133,19 +137,40 @@ class LocalDataManager @Inject constructor(
         }
     }
 
-    suspend fun importAppLocalData(appLocalData: AppLocalData): Result<Unit, Throwable> {
+    suspend fun importAppLocalData(appLocalData: AppLocalData, overwrite: Boolean = false): Result<Unit, Throwable> {
         if (currentAppDataVersion != appLocalData.version) {
             Log.e(TAG, "Unsupported data versions")
             return Err(Error("Unsupported data versions"))
         }
         validateBackup(appLocalData)
-        importLocalDataToDatabase(appLocalData.globalLocalData)
-        for (localData in appLocalData.localDataList) {
-            importLocalData(localData).let {
-                it.component1() ?: return it.asErr()
+        val parts = listOf(appLocalData.globalLocalData) + appLocalData.localDataList
+        val caller = currentCoroutineContext()
+        val restore: suspend () -> Unit = {
+            // Check the caller before committing, but finish the commit and buffer reset together.
+            // Cancellation after that point leaves a complete restored library.
+            withContext(NonCancellable) {
+                downloads.restore(
+                    parts.flatMap { it.bookDownloadEntities },
+                    parts.flatMap { it.downloadedChapterEntities },
+                    legacy = parts.any { part -> part.userDataEntities.any {
+                        it.path == UserDataPath.CompletedDownloadBookList.path
+                    } },
+                    overwrite = overwrite,
+                    beforeCommit = { caller.ensureActive() },
+                ) {
+                    caller.ensureActive()
+                    if (overwrite) clearLibraryRows()
+                    for (part in parts) {
+                        caller.ensureActive()
+                        importRows(part)
+                    }
+                    storageUsageRepository.invalidateSnapshot()
+                }
             }
         }
-        storageUsageRepository.invalidateSnapshot()
+        // Lock order: statistics buffer -> statistics writer -> download store -> Room.
+        if (overwrite) statsRepository.withStatisticsResetLock { restore() }
+        else statisticsWriteCoordinator.withLock { restore() }
         return Ok(Unit)
     }
 
@@ -158,9 +183,11 @@ class LocalDataManager @Inject constructor(
         appLocalData.localDataList.forEach { it.validateIdentities() }
     }
 
-    suspend fun importLocalDataToDatabase(localData: LocalData): Result<Unit, Throwable> {
-        localData.validateIdentities()
-        val result = statisticsWriteCoordinator.withLock { database.withTransaction {
+    suspend fun importLocalDataToDatabase(localData: LocalData): Result<Unit, Throwable> =
+        importAppLocalData(AppLocalData(localDataList = listOf(localData), globalLocalData = LocalData.empty()))
+
+    /** The caller holds the statistics/download locks and the entire restore transaction. */
+    private suspend fun importRows(localData: LocalData) {
           for (entity in localData.bookInformationEntities) {
             bookBookInformationDao.insert(
                 bookBookInformationDao.getEntity(entity.id)?.let(entity::merge) ?: entity
@@ -218,35 +245,24 @@ class LocalDataManager @Inject constructor(
             if (entity.path.startsWith("hnovel/downloads/")) continue
             userDataDao.insert(userDataDao.getEntity(entity.path)?.let(entity::merge) ?: entity)
           }
-          storageUsageRepository.invalidateSnapshot()
-          Ok(Unit)
-        } }
-        downloads.restore(localData.bookDownloadEntities, localData.downloadedChapterEntities,
-            legacy = localData.userDataEntities.any { it.path == UserDataPath.CompletedDownloadBookList.path })
-        return result
     }
 
     /** Explicit overwrite restore only. Source registration and browsing never call this. */
     suspend fun cleanDatabaseWithoutGlobalUserData() {
-        downloads.clearDownloads()
-        statsRepository.withStatisticsResetLock {
-          bookBookInformationDao.clear()
-          bookRecordDao.clear()
-          dailyCountDao.clear()
-          bookshelfDao.clear()
-          bookVolumesDao.clear()
-          chapterContentDao.clear()
-          formattingRuleDao.clear()
-          userReadingDataDao.clear()
-
-          for (entity in userDataDao.getAllEntities()) {
-              if (!libraryUserDataPaths.contains(entity.path)) continue
-              userDataDao.remove(entity.path)
-          }
-          runCatching {
-              storageUsageRepository.invalidateSnapshot()
-          }
-        }
+        importAppLocalData(AppLocalData(localDataList = emptyList(), globalLocalData = LocalData.empty()), overwrite = true)
     }
 
+    private suspend fun clearLibraryRows() {
+        bookBookInformationDao.clear()
+        bookRecordDao.clear()
+        dailyCountDao.clear()
+        bookshelfDao.clear()
+        bookVolumesDao.clear()
+        chapterContentDao.clear()
+        formattingRuleDao.clear()
+        userReadingDataDao.clear()
+        for (entity in userDataDao.getAllEntities()) {
+            if (libraryUserDataPaths.contains(entity.path)) userDataDao.remove(entity.path)
+        }
+    }
 }
