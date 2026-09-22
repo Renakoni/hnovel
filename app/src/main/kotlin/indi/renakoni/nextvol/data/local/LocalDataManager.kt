@@ -116,15 +116,38 @@ class LocalDataManager @Inject constructor(
             this.settings.enable = settings
         }
 
+        var localBookFiles = emptyList<indi.renakoni.nextvol.data.localbook.LocalBookFileManifest>()
         var readingBookmarks = emptyList<indi.renakoni.nextvol.data.bookmark.ReadingBookmark>()
         return runCatching {
             statisticsWriteCoordinator.withLock { database.withTransaction {
                 exportOptionLocalData.solve()
                 if (bookmark) readingBookmarks = database.readingBookmarkDao().all()
+                val localIds = buildSet {
+                    addAll(exportOptionLocalData.bookInformationEntities.map { it.id })
+                    addAll(exportOptionLocalData.bookshelfEntities.flatMap { it.allBookIds })
+                    addAll(exportOptionLocalData.userReadingDataEntities.map { it.id })
+                    addAll(exportOptionLocalData.bookRecordEntities.map { it.bookId })
+                    addAll(readingBookmarks.map { it.bookId })
+                }.filter { indi.renakoni.nextvol.data.localbook.LocalBookStore.isLocal(indi.renakoni.nextvol.data.book.BookIdentity.book(it)) }.toSet()
+                localBookFiles = database.localBookFileManifestDao().all().filter { it.bookId in localIds }
+                for (key in localIds) {
+                    if (exportOptionLocalData.bookInformationEntities.none { it.id == key }) {
+                        database.bookInformationDao().getEntity(key)?.let(exportOptionLocalData.bookInformationEntities::add)
+                    }
+                    // Old imported copies have no fingerprint; their directory is the minimum migration evidence.
+                    if (localBookFiles.none { it.bookId == key } && !localBookCache) {
+                        val volumes = database.bookVolumesDao().getVolumeEntitiesByBookId(key)
+                        exportOptionLocalData.volumeEntities.addAll(volumes)
+                        for (chapter in volumes.flatMap { it.chapterIds }.distinct()) {
+                            database.bookVolumesDao().getChapterInformationEntity(chapter)?.let(exportOptionLocalData.chapterInformationEntities::add)
+                        }
+                    }
+                }
             } }
         }.andThen {
             Ok(
                 LocalData(
+                    localBookFiles = localBookFiles,
                     readingBookmarks = readingBookmarks,
                     bookInformationEntities = exportOptionLocalData.bookInformationEntities,
                     bookRecordEntities = exportOptionLocalData.bookRecordEntities,
@@ -195,6 +218,7 @@ class LocalDataManager @Inject constructor(
 
     /** The caller holds the statistics/download locks and the entire restore transaction. */
     private suspend fun importRows(localData: LocalData) {
+          for (file in localData.localBookFiles) database.localBookFileManifestDao().restore(file)
           for (bookmark in localData.readingBookmarks) database.readingBookmarkDao().insert(bookmark)
           for (entity in localData.bookInformationEntities) {
             bookBookInformationDao.insert(
@@ -261,6 +285,7 @@ class LocalDataManager @Inject constructor(
     }
 
     private suspend fun clearLibraryRows() {
+        database.localBookFileManifestDao().clearUnowned()
         database.readingBookmarkDao().clear()
         bookBookInformationDao.clear()
         bookRecordDao.clear()
