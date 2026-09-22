@@ -364,10 +364,12 @@ class NativeBrowserInstrumentedTest {
 
     @Test fun suppliedHtmlUsesTheSyntheticBrowserWithoutNetwork(): Unit = runBlocking { fixture { broker, server ->
         val result = session(broker, server).execute(BrokerRequest("html", server.url("/").toString(),
-            browser = BrowserOptions(html = "<html><body>synthetic</body></html>", script = "document.body.textContent")))
+            browser = BrowserOptions(html = "<html><head><link rel='icon' href='data:,'></head><body>synthetic</body></html>",
+                script = "document.body.textContent")))
         assertTrue(result.toString(), result is BrokerResult.Success)
         assertEquals("synthetic", (result as BrokerResult.Success).response.text().trim())
-        assertEquals(0, server.requestCount)
+        val unexpected = List(server.requestCount) { server.takeRequest(1, TimeUnit.SECONDS)?.path }
+        assertEquals("Synthetic HTML unexpectedly fetched $unexpected", emptyList<String>(), unexpected)
     } }
 
     @Test fun backgroundDocumentHasAnActualViewport(): Unit = runBlocking { fixture { broker, server ->
