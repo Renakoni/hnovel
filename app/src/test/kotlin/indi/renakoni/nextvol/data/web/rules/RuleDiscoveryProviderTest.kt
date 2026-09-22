@@ -36,6 +36,67 @@ import org.robolectric.annotation.Config
 class RuleDiscoveryProviderTest {
     @get:Rule val directory = TemporaryFolder()
 
+    @Test fun resolvedGenreOnlyCatalogLeavesDiscoveryButFailuresAndEmptyResponsesKeepItsTab() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            var response = "[]"
+            var failed = true
+            fixture.server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
+                override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest) = okhttp3.mockwebserver.MockResponse()
+                    .setResponseCode(if (failed) 503 else 200).setBody(if (failed) "[{" else response)
+            }
+            val rule = fixture.source { raw -> JsonObject(definition(raw) +
+                ("exploreUrl" to JsonPrimitive("@js:java.ajax('${fixture.server.url("/catalog")}')"))) }
+            val id = Identifier("rules", rule.definition.sourceId)
+            val registry = WebSourceRegistry()
+            registry.register(RuleWebBookDataSource(id, rule), SourceMetadata(WebDataSourceItem(id, "Fixture", "Tests"),
+                setOf(SourceCapability.Categories, SourceCapability.Explore)))
+            fun visible(capability: SourceCapability) = indi.renakoni.nextvol.ui.home.discovery.discoverySources(registry.sources.value, capability)
+            try {
+                val runtime = (registry.resolve(id) as SourceResolution.Ready).runtime
+                val discovery = runtime.discovery!!.forSession("catalog")
+                assertEquals(1, visible(SourceCapability.Explore).size)
+                assertNotNull(discovery.homepageCatalog().getError())
+                assertEquals(1, visible(SourceCapability.Explore).size)
+                failed = false
+                assertNotNull(discovery.homepageCatalog(true).get())
+                assertEquals(1, visible(SourceCapability.Explore).size)
+                assertEquals(DiscoveryError.InvalidResponse, discovery.feed().getError())
+                response = """[{"title":"玄幻","url":"/fantasy"},{"title":"言情","url":"/romance"}]"""
+                val generation = registry.sources.value.single().generation
+                assertEquals(2, discovery.homepageCatalog(true).get()!!.categories.size)
+                assertTrue(visible(SourceCapability.Explore).isEmpty())
+                assertEquals(1, visible(SourceCapability.Categories).size)
+                assertEquals(generation, registry.sources.value.single().generation)
+                assertTrue(runtime.isAvailable)
+                // A refreshed catalogue can acquire a real homepage without replacing the runtime.
+                response = """[{"title":"推荐榜","url":"/ranking"}]"""
+                assertNotNull(discovery.catalog(true).get())
+                assertEquals(1, visible(SourceCapability.Explore).size)
+            } finally { registry.unregister(id) }
+        }
+    }
+
+    @Test fun emptyHomepagePreviewIsVisibleAsAResponseFailureAndCanRecover() = runBlocking {
+        RuleSourceFixture().use { fixture -> fixture.source { raw -> JsonObject(definition(raw) + mapOf(
+            "exploreUrl" to JsonPrimitive("热门推荐::/search"),
+            "ruleExplore" to JsonObject(raw.getValue("ruleSearch").jsonObject + ("bookList" to JsonPrimitive("article")))
+        )) }.use { source ->
+            val provider = RuleDiscoveryProvider(source)
+            val section = provider.feed().get()!!.single()
+            assertTrue(provider.hasFeed)
+            assertEquals(DiscoveryError.InvalidResponse, section.previewFailure?.error)
+            assertEquals("ruleExplore.bookList", section.previewFailure?.field)
+            assertNotNull(section.more)
+            fixture.server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
+                override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest) = okhttp3.mockwebserver.MockResponse()
+                    .setBody("<article><h2>Restored</h2><a href='/book/one'>Read</a></article>")
+            }
+            val restored = provider.feed().get()!!.single()
+            assertNull(restored.previewFailure)
+            assertEquals("Restored", restored.books.single().title)
+        } }
+    }
+
     @Test fun importedSearchOnlySourcesNeverAdvertiseDiscoveryEvenWhenItsDisplaySwitchIsOn() = runBlocking {
         RuleSourceFixture().use { fixture ->
             val authority = ExecutionAuthority()
@@ -134,6 +195,7 @@ class RuleDiscoveryProviderTest {
             val books = original.page("/search", 1, emptyMap())
             val verification = mockk<SourceVerification> {
                 every { kind } returns hnovel.network.BrowserChallengeKind.Cloudflare
+                every { certificate } returns null
                 coEvery { complete() } returns Unit
             }
             val session = mockk<RuleDiscoverySession>()
@@ -423,7 +485,7 @@ class RuleDiscoveryProviderTest {
 
     @Test fun catalogLimitAndInvalidControlsHaveDifferentHostErrorsAndLocations() = runBlocking {
         RuleSourceFixture().use { fixture ->
-            val large = buildJsonArray { repeat(1025) { i -> add(buildJsonObject { put("title", "Row $i"); put("url", "/$i") }) } }
+            val large = buildJsonArray { repeat(4097) { i -> add(buildJsonObject { put("title", "Row $i"); put("url", "/$i") }) } }
             for ((rows, error, field) in listOf(
                 Triple(large, DiscoveryError.Limit, "exploreUrl"),
                 Triple(Json.parseToJsonElement("""[{"title":"","type":"text"}]""").jsonArray,

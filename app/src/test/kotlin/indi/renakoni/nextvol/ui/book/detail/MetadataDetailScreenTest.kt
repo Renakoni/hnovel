@@ -91,6 +91,25 @@ class MetadataDetailScreenTest {
         assertEquals(1, retries)
     }
 
+    @Test fun failedDirectoryIsVisibleAndCanRetryInsteadOfOfferingAnInertReadAction() {
+        val key = SourceBookId(io.nightfish.lightnovelreader.api.identifier.Identifier("fixture", "a"), "book").storageKey
+        val state = MutableDetailUiState().apply {
+            bookInformation = Ok(BookInformation(key, "Book", author = "Author", description = "Description",
+                publishingHouse = "", wordCount = WordCount(1), lastUpdated = LocalDateTime.of(2026, 9, 15, 0, 0), isComplete = false))
+            readingAvailable = true
+            userReadingData = io.nightfish.lightnovelreader.api.book.UserReadingData(key)
+            bookVolumes = Err(WebRequestError("Directory failed", "EmptyContent: ruleToc.chapterList"))
+        }
+        var retries = 0
+        show(state, retry = { retries++ })
+        compose.mainClock.advanceTimeBy(500)
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("EmptyContent: ruleToc.chapterList"))
+        compose.onNodeWithText("EmptyContent: ruleToc.chapterList").assertIsDisplayed()
+        compose.onNodeWithText(activity.get().getString(R.string.start_reading)).assertDoesNotExist()
+        compose.onNodeWithText(activity.get().getString(R.string.discovery_retry)).performClick()
+        assertEquals(1, retries)
+    }
+
     @Test fun completedDownloadsCanUpdateAndFailuresCanRetryWithoutNegativeProgress() {
         val key = SourceBookId(io.nightfish.lightnovelreader.api.identifier.Identifier("fixture", "a"), "book").storageKey
         val state = MutableDetailUiState().apply {

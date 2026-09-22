@@ -40,12 +40,12 @@ class SourceDiscovery internal constructor(private val runtime: SourceRuntime, p
 
     suspend fun catalog(refresh: Boolean = false): Result<SourceDiscoveryCatalog, DiscoveryError> = runtime.execute {
         if (!hasCategories) return@execute Err(DiscoveryError.Unsupported)
-        provider.catalog(refresh).map(::bind)
+        provider.catalog(refresh).map { runtime.discoveryResolved(provider.hasFeed); bind(it) }
     }
 
     suspend fun homepageCatalog(refresh: Boolean = false): Result<SourceDiscoveryCatalog, DiscoveryError> = runtime.execute {
         if (!hasFeed && !hasCategories) return@execute Err(DiscoveryError.Unsupported)
-        provider.homepageCatalog(refresh).map(::bind)
+        provider.homepageCatalog(refresh).map { runtime.discoveryResolved(provider.hasFeed); bind(it) }
     }
 
     suspend fun interact(id: String, value: String?, longClick: Boolean) = runtime.execute {

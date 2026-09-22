@@ -10,6 +10,10 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.*
 
+private const val DIRECTORY_MAX_CHAPTERS = 50_000
+private const val DIRECTORY_MAX_PAGES = 2048
+private const val DIRECTORY_TIMEOUT_MILLIS = 600_000L
+
 /** One registered revision/account. Source retirement revokes its ticket; it never chooses another source. */
 class RuleSource(val definition: SourceDefinition, private val identity: ExecutionIdentity,
     private val authority: ExecutionAuthority, private val session: SourceSession,
@@ -43,7 +47,8 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
     }
 
     internal suspend fun discoveryPage(context: RuleEvaluation, url: String): List<RuleBook> =
-        booksFromPage(context, fetch(context, url, "exploreUrl"), spec.explore, "ruleExplore")
+        booksFromPage(context, fetch(context, url, "exploreUrl",
+            acceptErrorResponse = spec.explore.string("bookList").isScriptRule()), spec.explore, "ruleExplore")
 
     suspend fun openDiscoveryBrowser(url: String, html: String? = null, script: String = "", title: String = ""): Unit =
         operation("discovery.browser", timeoutMillis = 300000) {
@@ -54,7 +59,8 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         require(identity.sourceId == definition.sourceId && identity.profile == definition.profile && identity.revision == definition.contentDigest)
         require(session.scope.sourceId == identity.sourceId && session.scope.namespace == identity.namespace &&
             session.scope.profile == identity.profile && session.scope.accountGeneration == identity.accountGeneration)
-        session.configureSource(spec.baseUrl, spec.cookiesEnabled, spec.browserRead, spec.concurrentRate, spec.localStorageRetention)
+        session.configureSource(spec.baseUrl, spec.cookiesEnabled, spec.browserRead, spec.concurrentRate,
+            spec.localStorageRetention, defaultUserAgent = DESKTOP_USER_AGENT)
     }
 
     private var cachedLoginForm: LoginForm? = null
@@ -126,7 +132,8 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
                 timeoutMillis = 60000, browser = BrowserOptions(interactive = true)),
                 RequestCommitGuard { authority.authorized(identity, it) })
             when (response) {
-                is BrokerResult.Failure -> throw SourceContentException(response.code.contentError(), "loginUrl", response.denial)
+                is BrokerResult.Failure -> throw SourceContentException(response.code.contentError(), "loginUrl", response.denial,
+                    verification = verification(response))
                 is BrokerResult.Success -> checkStatus(response.response.status, "loginUrl", response.response.kind == ResponseKind.BrowserDocument)
             }
             // Closing a website preserves its session; HTTP 200 alone does not verify a login.
@@ -175,7 +182,8 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
     suspend fun search(keyword: String, page: Int = 1): List<RuleBook> = operation("ruleSearch") {
         if (!canSearch) throw SourceContentException(ContentError.MissingCapability, "searchUrl")
         val context = evaluation(keyword = keyword, page = page)
-        val document = fetch(context, spec.searchUrl, "searchUrl")
+        val document = fetch(context, spec.searchUrl, "searchUrl",
+            acceptErrorResponse = spec.search.string("bookList").isScriptRule())
         booksFromPage(context, document, spec.search, "ruleSearch")
     }
 
@@ -183,7 +191,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
     suspend fun discovery(url: String, page: Int = 1): List<RuleBook> = operation("ruleExplore") {
         if (url.isBlank() || spec.explore.isEmpty()) throw SourceContentException(ContentError.MissingCapability, "ruleExplore")
         val context = evaluation(page = page)
-        booksFromPage(context, fetch(context, url, "exploreUrl"), spec.explore, "ruleExplore")
+        discoveryPage(context, url)
     }
 
     private suspend fun booksFromPage(context: RuleEvaluation, document: PageDocument, fields: JsonObject,
@@ -198,27 +206,26 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             return listOf(record.book)
         }
         val items = context.value(rule.removePrefix("-").removePrefix("+"), document.input(), "$field.bookList", OutputKind.Elements).items()
-        if (items.size > 1000) throw SourceContentException(ContentError.Limit, "$field.bookList")
         val books = mutableListOf<RuleBook>()
         for (item in items) {
             val row = context.fork()
             val parsed = bookFields(row, item, fields, field, RuleBook(""))
             if (parsed.title.isBlank()) continue
-            val rawUrl = row.text(fields.string("bookUrl"), item, "$field.bookUrl")
+            val rawUrl = row.url(fields.string("bookUrl"), item, "$field.bookUrl")
             val id = sourceLink(document.url, rawUrl.ifBlank { document.url })
             row.bookId = id; row.bookField("bookUrl", id)
             books += parsed.copy(id = id, tocUrl = id, state = row.book)
         }
         val ordered = (if (rule.startsWith('-')) books.reversed() else books).distinctBy { it.id }
-        ordered.forEach { book ->
+        store.write(ordered.mapNotNull { book ->
             val old = store.read(book.id)
             if (old?.informationLoaded != true || old.revision != identity.revision)
-                store.write(BookRecord(identity.revision, book))
-        }
+                BookRecord(identity.revision, book) else null
+        })
         return ordered
     }
 
-    suspend fun information(bookId: String): RuleBook = operation("ruleBookInfo") {
+    suspend fun information(bookId: String): RuleBook = operation("ruleBookInfo", timeoutMillis = DIRECTORY_TIMEOUT_MILLIS) {
         prefetchedDirectoryId = null
         val id = sourceLink(spec.baseUrl, bookId)
         val old = store.read(id)
@@ -235,7 +242,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         refreshed.book
     }
 
-    suspend fun directory(bookId: String): List<RuleChapter> = operation("ruleToc", timeoutMillis = 120000) {
+    suspend fun directory(bookId: String): List<RuleChapter> = operation("ruleToc", timeoutMillis = DIRECTORY_TIMEOUT_MILLIS) {
         val id = sourceLink(spec.baseUrl, bookId)
         val prefetched = prefetchedDirectoryId == id
         prefetchedDirectoryId = null
@@ -243,7 +250,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         if (prefetched) book.chapters else directory(book).also(store::write).chapters
     }
 
-    suspend fun content(bookId: String, chapterId: String): RuleContent = operation("ruleContent") {
+    suspend fun content(bookId: String, chapterId: String): RuleContent = operation("ruleContent", timeoutMillis = DIRECTORY_TIMEOUT_MILLIS) {
         val id = sourceLink(spec.baseUrl, bookId)
         var record = record(id)
         if (record.chapters.isEmpty()) record = directory(record)
@@ -259,6 +266,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val queue = ArrayDeque<String>().apply { add(chapter.id) }
         val visited = linkedSetOf<String>()
         val pages = mutableListOf<String>()
+        var firstPage: PageDocument? = null
         var completePageList = false
         var title = chapter.title
         while (queue.isNotEmpty()) {
@@ -267,22 +275,14 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             if (url == next || url in visited) continue
             visit(visited, url, "ruleContent.nextContentUrl")
             val browser = if (spec.content.string("webJs").isNotBlank() || spec.content.string("sourceRegex").isNotBlank())
-                BrowserOptions(script = spec.content.string("webJs"), sourceRegex = spec.content.string("sourceRegex")) else null
+                BrowserOptions(script = spec.content.string("webJs"), sourceRegex = spec.content.string("sourceRegex"), nativeWebsite = true) else null
             // Script-led content rules can use a placeholder chapter URL and perform their
             // own requests. Like WebBook, pass the HTTP response body into those scripts.
-            val scriptContent = rule.trimStart().let { it.startsWith("@js:", true) || it.startsWith("<js>", true) }
-            val document = fetch(context, url, "ruleContent.content", browser, acceptErrorResponse = scriptContent)
+            val document = fetch(context, url, "ruleContent.content", browser, acceptErrorResponse = rule.isScriptRule())
             // Redirects cannot turn a continuation (or the first page) into the next logical chapter.
             if (document.url == next) continue
             if (!document.inline && document.url != url && !visited.add(document.url)) throw SourceContentException(ContentError.RepeatedPage, "ruleContent.nextContentUrl")
-            if (pages.isEmpty()) {
-                val extracted = try { context.text(spec.content.string("title"), document.input(), "ruleContent.title") }
-                catch (failure: SourceContentException) {
-                    if (failure.code != ContentError.InvalidRule) throw failure
-                    ""
-                }
-                extracted.takeIf { it.isNotBlank() }?.let { title = it; context.chapterField("title", JsonPrimitive(it)) }
-            }
+            if (firstPage == null) firstPage = document
             val html = context.text(rule, document.input(), "ruleContent.content", unescape = false)
             // BookContent formats and decodes each page before whole-chapter replacement.
             // Reuse the ported HtmlFormatter and resolve images before joining different page bases.
@@ -301,6 +301,17 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             context.page++
         }
         if (pages.isEmpty()) throw SourceContentException(ContentError.EmptyContent, "ruleContent.content")
+        // BookContent evaluates title and whole-chapter replacement on the first page,
+        // after every content page has written its book/chapter variables.
+        val initial = checkNotNull(firstPage)
+        context.baseUrl = initial.ruleUrl
+        context.page = 1
+        val extracted = try { context.text(spec.content.string("title"), initial.input(), "ruleContent.title") }
+        catch (failure: SourceContentException) {
+            if (failure.code != ContentError.InvalidRule) throw failure
+            ""
+        }
+        extracted.takeIf { it.isNotBlank() }?.let { title = it; context.chapterField("title", JsonPrimitive(it)) }
         var merged = pages.joinToString("\n")
         val replacement = spec.content.string("replaceRegex")
         if (replacement.isNotBlank()) merged = context.text(replacement,
@@ -352,7 +363,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val input = if (init.isBlank()) document.input() else context.value(init, document.input(), "ruleBookInfo.init", OutputKind.Element)
         var book = bookFields(context, input, spec.information, "ruleBookInfo", initial)
         if (book.title.isBlank()) throw SourceContentException(ContentError.EmptyContent, "ruleBookInfo.name")
-        val toc = context.text(spec.information.string("tocUrl"), input, "ruleBookInfo.tocUrl")
+        val toc = context.url(spec.information.string("tocUrl"), input, "ruleBookInfo.tocUrl")
         val tocUrl = sourceLink(document.url, toc.ifBlank { id })
         context.bookField("tocUrl", tocUrl)
         val changed = old?.informationLoaded != true || initial.latestChapter != book.latestChapter || initial.updateTime != book.updateTime
@@ -409,7 +420,9 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
     }
 
     private suspend fun directory(initial: BookRecord): BookRecord {
-        val context = evaluation(initial.book)
+        // A web-novel catalogue may contain tens of thousands of rows. Its budget is
+        // independent of a single chapter's pagination and includes all per-row rules.
+        val context = evaluation(initial.book, maxRuleCalls = DIRECTORY_MAX_CHAPTERS * 8 + DIRECTORY_MAX_PAGES * 4)
         spec.toc.string("preUpdateJs").takeIf { it.isNotBlank() }?.let { context.script(it, RuleValue.Empty, "ruleToc.preUpdateJs") }
         val rule = spec.toc.string("chapterList")
         if (rule.isBlank()) throw SourceContentException(ContentError.MissingCapability, "ruleToc.chapterList")
@@ -417,17 +430,17 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val queue = ArrayDeque<String>().apply { add(sourceLink(initial.book.id, tocUrl)) }
         val visited = linkedSetOf<String>()
         val chapters = mutableListOf<RuleChapter>()
-        val pageChapters = mutableSetOf<List<String>>()
         var completePageList = false
         while (queue.isNotEmpty()) {
-            val url = queue.removeFirst(); visit(visited, url, "ruleToc.nextTocUrl")
+            val url = queue.removeFirst()
+            if (url in visited) continue
+            visit(visited, url, "ruleToc.nextTocUrl", DIRECTORY_MAX_PAGES)
             val document = initial.document?.takeIf { visited.size == 1 && it.url == url }
                 ?: fetch(context, url, "ruleToc.chapterList")
             context.baseUrl = document.ruleUrl
-            if (!document.inline && document.url != url && !visited.add(document.url)) throw SourceContentException(ContentError.RepeatedPage, "ruleToc.nextTocUrl")
+            if (!document.inline && document.url != url && !visited.add(document.url)) continue
             val items = context.value(rule.removePrefix("-").removePrefix("+"), document.input(), "ruleToc.chapterList", OutputKind.Elements).items()
-            if (items.size + chapters.size > 5000) throw SourceContentException(ContentError.Limit, "ruleToc.chapterList")
-            val pageStart = chapters.size
+            if (items.size + chapters.size > DIRECTORY_MAX_CHAPTERS) throw SourceContentException(ContentError.Limit, "ruleToc.chapterList")
             for ((index, item) in items.withIndex()) {
                 val row = context.fork(chapterId = "pending:$index")
                 row.chapterField("baseUrl", JsonPrimitive(document.url))
@@ -441,7 +454,14 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
                 row.chapterField("updateTime", JsonPrimitive(time))
                 row.chapterField("tag", JsonPrimitive(time))
                 val volume = row.text(spec.toc.string("isVolume"), item, "ruleToc.isVolume").truth()
-                val id = if (volume && raw.isBlank()) "volume:" + digest("$url:$index:$title") else sourceLink(document.url, raw.ifBlank { url })
+                val id = if (volume && raw.isBlank()) "volume:" + digest("$url:$index:$title") else try {
+                    sourceLink(document.url, raw.ifBlank { url })
+                } catch (failure: SourceContentException) {
+                    if (failure.code != ContentError.InvalidRule) throw failure
+                    // Reading retains locked/placeholder links in the catalogue. Validate them
+                    // when requested so one non-HTTP link cannot discard all readable chapters.
+                    raw
+                }
                 row.chapterId = id
                 row.chapterField("url", JsonPrimitive(raw.ifBlank { if (volume) title + index else url }))
                 row.chapterField("isVolume", JsonPrimitive(volume))
@@ -451,8 +471,6 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
                 chapters += RuleChapter(id, title, volume, vip, pay, time, row.chapter)
                 context.book = row.book
             }
-            val ids = chapters.drop(pageStart).filterNot { it.isVolume }.map { it.id }
-            if (ids.isNotEmpty() && !pageChapters.add(ids)) throw SourceContentException(ContentError.RepeatedPage, "ruleToc.nextTocUrl")
             if (!completePageList) {
                 val next = links(context, spec.toc.string("nextTocUrl"), document, "ruleToc.nextTocUrl")
                     .filter { it != document.url }
@@ -462,15 +480,16 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             }
             context.page++
         }
-        if (chapters.isEmpty()) throw SourceContentException(ContentError.EmptyContent, "ruleToc.chapterList")
         // The pinned default keeps the last occurrence, then restores the requested source order.
         val reverse = (context.book.metadata["readConfig"] as? JsonObject)?.get("reverseToc")?.jsonPrimitive?.booleanOrNull == true
         val ordered = (if (rule.startsWith('-')) chapters else chapters.reversed()).distinctBy { it.id }
             .let { if (reverse) it else it.reversed() }
+        if (ordered.none { !it.isVolume }) throw SourceContentException(ContentError.EmptyContent, "ruleToc.chapterList")
         context.book = context.book.copy(metadata = JsonObject(context.book.metadata + ("totalChapterNum" to JsonPrimitive(ordered.size))))
         val formatted = mutableListOf<RuleChapter>()
         var gInt: JsonElement = JsonPrimitive(0)
         for ((index, chapter) in ordered.withIndex()) {
+            currentCoroutineContext().ensureActive()
             val row = context.fork(chapterId = chapter.id); row.chapter = chapter.state
             row.chapterField("index", JsonPrimitive(index))
             val format = spec.toc.string("formatJs")
@@ -498,11 +517,12 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val old = store.read(id)
         return if (old?.informationLoaded == true && old.revision == identity.revision) old else information(id, old)
     }
-    internal fun evaluation(book: RuleBook? = null, chapter: RuleChapter? = null, keyword: String = "", page: Int = 1, interactive: Boolean = false): RuleEvaluation {
+    internal fun evaluation(book: RuleBook? = null, chapter: RuleChapter? = null, keyword: String = "", page: Int = 1,
+        interactive: Boolean = false, maxRuleCalls: Int = 65536): RuleEvaluation {
         val result = RuleEvaluation(identity, authority, session, runner, spec.library, book?.id, chapter?.id,
             book?.state ?: ScriptState(), chapter?.state ?: ScriptState(), book?.id ?: spec.baseUrl, keyword, page,
             headerRule = spec.header, interactive = interactive, trace = trace, sourceLoginUrl = spec.loginUrl,
-            sourceComment = spec.comment, verification = ::verification)
+            sourceComment = spec.comment, verification = ::verification, maxRuleCalls = maxRuleCalls)
         book?.let {
             result.bookField("bookUrl", it.id)
             if ("name" !in result.book.metadata) result.bookField("name", it.title)
@@ -586,9 +606,17 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             .containsMatchIn(response.text())
     }
     private fun verification(failure: BrokerResult.Failure): SourceVerification? {
+        val certificate = failure.certificate
+        if (failure.code == hnovel.network.FailureCode.Certificate && certificate != null) {
+            return SourceVerification(null, certificate) {
+                operation("certificate.verification") {
+                    authority.authorized(identity) { session.approveCertificate(certificate) }
+                }
+            }
+        }
         val kind = failure.challenge ?: return null
         val request = failure.verificationRequest ?: return null
-        if (!spec.browserRead || failure.code != hnovel.network.FailureCode.BrowserRequired) return null
+        if (failure.code != hnovel.network.FailureCode.BrowserRequired) return null
         return SourceVerification(kind) {
             operation("browser.verification", timeoutMillis = 300000) {
                 // Recovery opens immediately and finishes when the original extraction is ready.
@@ -598,7 +626,8 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
                     title = definition.displayName, script = options.script.ifBlank { "document.documentElement.outerHTML" })),
                     RequestCommitGuard { authority.authorized(identity, it) })
                 if (result is BrokerResult.Failure)
-                    throw SourceContentException(result.code.contentError(), "browser.verification", result.denial)
+                    throw SourceContentException(result.code.contentError(), "browser.verification", result.denial,
+                        verification = if (result.certificate != null) verification(result) else null)
                 if (result is BrokerResult.Success)
                     checkStatus(result.response.status, "browser.verification", result.response.kind == ResponseKind.BrowserDocument)
                 // A newer failed request must retain its own fallback target.
@@ -625,9 +654,9 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
     private suspend fun links(context: RuleEvaluation, rule: String, document: PageDocument, field: String): List<String> =
         if (rule.isBlank()) emptyList() else context.value(rule, document.input(), field, OutputKind.TextList).items()
             .map { it.text().trim() }.filter { it.isNotEmpty() }.map { sourceLink(document.url, it) }.distinct()
-    private fun visit(visited: MutableSet<String>, url: String, field: String) {
+    private fun visit(visited: MutableSet<String>, url: String, field: String, maxPages: Int = 64) {
         if (!visited.add(url)) throw SourceContentException(ContentError.RepeatedPage, field)
-        if (visited.size > 64) throw SourceContentException(ContentError.Limit, field)
+        if (visited.size > maxPages) throw SourceContentException(ContentError.Limit, field)
     }
     // Host storage and orchestration use IO. The caller's priority dispatcher owns the outer
     // request only; nested timeout jobs must not compete with their parent for its last permit.
@@ -644,4 +673,5 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
 }
 
 private fun PageDocument.input() = RuleValue.Text(body)
-private fun String.truth() = isNotBlank() && this != "null" && trim().lowercase() !in setOf("false", "no", "not", "0")
+private fun String.isScriptRule() = trimStart().let { it.startsWith("@js:", true) || it.startsWith("<js>", true) }
+private fun String.truth() = isNotBlank() && this != "null" && trim().lowercase() !in setOf("false", "no", "not", "0", "0.0")

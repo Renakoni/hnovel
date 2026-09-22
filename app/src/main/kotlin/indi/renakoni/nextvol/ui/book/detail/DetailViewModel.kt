@@ -27,6 +27,7 @@ import io.nightfish.lightnovelreader.api.web.WebDataSourcePriority
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
@@ -47,6 +48,7 @@ class DetailViewModel @Inject constructor(
     var exportSettings = ExportSettings()
     private var book: indi.renakoni.nextvol.data.book.SourceBookId? = null
     private var informationJob: Job? = null
+    private val directoryRetry = MutableStateFlow(0)
     private val foreground = indi.renakoni.nextvol.data.web.ForegroundSourceRequest()
     fun setActive(value: Boolean, retainBrowser: Boolean = false) = foreground.setActive(value, retainBrowser)
     val uiState: DetailUiState = _uiState
@@ -61,13 +63,14 @@ class DetailViewModel @Inject constructor(
         isInitialized = true
         loadInformation(bookId)
         viewModelScope.launch(Dispatchers.IO + foreground) {
-            bookRepository.readingAvailability(bookId).collectLatest { availability ->
+            combine(bookRepository.readingAvailability(bookId), directoryRetry) { availability, _ -> availability }.collectLatest { availability ->
                 _uiState.readingAvailable = availability.available
                 _uiState.canCache = availability.online
                 _uiState.metadataOnly = availability.metadataOnly
+                _uiState.bookVolumes = null
                 if (availability.available) bookRepository.getBookVolumesFlow(bookId, WebDataSourcePriority.High).collect {
                     _uiState.bookVolumes = it
-                } else _uiState.bookVolumes = null
+                }
             }
         }
         viewModelScope.launch(Dispatchers.IO) {
@@ -94,6 +97,8 @@ class DetailViewModel @Inject constructor(
     }
 
     fun retryInformation() { book?.let { loadInformation(it.storageKey) } }
+
+    fun retryVolumes() { if (_uiState.readingAvailable) directoryRetry.value++ }
 
     suspend fun markChaptersUnread(chapterIds: Set<String>) {
         val bookId = checkNotNull(book).storageKey

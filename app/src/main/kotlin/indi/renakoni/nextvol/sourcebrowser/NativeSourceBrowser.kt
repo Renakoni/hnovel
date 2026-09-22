@@ -127,12 +127,24 @@ internal class NativeSourceBrowser(private val context: Context, private val net
         val result = CompletableDeferred<BrokerResult>()
         val work = CoroutineScope(currentCoroutineContext() + SupervisorJob(currentCoroutineContext()[Job]))
         val host = object : IBrowserHost.Stub() {
-            override fun call(operation: String, arguments: String): ParcelFileDescriptor = error("No page bridge")
+            override fun call(operation: String, arguments: String): ParcelFileDescriptor {
+                check(Binder.getCallingUid() == context.applicationInfo.uid)
+                require(operation == "cookies" && arguments.length <= 262144)
+                val snapshots = Json.decodeFromString<List<NativeCookieSnapshot>>(arguments)
+                require(snapshots.size <= 4)
+                guard.commit {
+                    check(!session.closed && route.available)
+                    snapshots.filter { session.permissionFailure(it.url) == null }.forEach {
+                        session.updateNativeBrowserCookies(it.url, it.cookies, it.completeMetadata)
+                    }
+                }
+                return BrowserWire.pipe("true")
+            }
             override fun complete(output: ParcelFileDescriptor) {
                 check(Binder.getCallingUid() == context.applicationInfo.uid)
                 work.launch {
                     try {
-                        val response = Json.decodeFromString<BrokerResult>(BrowserWire.read(output))
+                        val response = BrowserWire.readResult(output)
                         current(); result.complete(response)
                     } catch (failure: Exception) { result.completeExceptionally(failure) }
                 }.invokeOnCompletion { output.close() }
@@ -170,7 +182,8 @@ internal class NativeSourceBrowser(private val context: Context, private val net
             session.awaitBrowserAdmission()
             current()
             if (!route.available) return@withLock routeUnavailable()
-            remote.start(Json.encodeToString(BrowserJob(request, options, owner, session.enabledCookieJar, network?.networkHandle)), host)
+            remote.start(Json.encodeToString(BrowserJob(request, options, owner, session.enabledCookieJar,
+                network?.networkHandle, session.certificateExceptions(), session.nativeBrowserCookies(request.url))), host)
             val response = select {
                 result.onAwait { it }
                 bound.died.onAwait { BrokerResult.Failure(RequestStage.Response, FailureCode.Network) }
@@ -190,6 +203,12 @@ internal class NativeSourceBrowser(private val context: Context, private val net
             }
             // A failed startup must not leave a half-initialized process for the next request.
             completed = response !is BrokerResult.Failure || response.stage != RequestStage.Connect
+            val certificate = (response as? BrokerResult.Failure)?.certificate
+            if (response is BrokerResult.Failure && response.code == FailureCode.Certificate && certificate != null) {
+                var failure: BrokerResult.Failure? = null
+                guard.commit { failure = session.browserCertificateFailure(certificate) }
+                return@withLock checkNotNull(failure)
+            }
             if (response is BrokerResult.Failure && response.challenge != null && !options.interactive)
                 response.copy(verificationRequest = request.copy(browser = options))
             else response

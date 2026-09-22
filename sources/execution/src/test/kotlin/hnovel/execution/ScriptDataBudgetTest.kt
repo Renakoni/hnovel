@@ -9,11 +9,34 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ScriptDataBudgetTest {
+    @Test fun nextPageRegexCanScanALargeDocumentAndReturnASmallUrlList() {
+        val identity = ExecutionAuthority().issue("large-directory", "legado", "1")
+        val rule = """@js:
+            var n=result.match(/[^\d](\d+)页/);
+            n=n?n[1]:'1';
+            var list=[];
+            for(var i=2;i<=n;i++){list.push(baseUrl.replace(/page=\d+/,'page=')+i);}
+            list;
+        """.trimIndent()
+        WorkerRuntime().use { worker ->
+            for (suffix in listOf("", "3页")) {
+                val task = ExecutionTask.Rule(rule, RuleValue.Text("x".repeat(1_300_000) + suffix), OutputKind.UrlList,
+                    baseUrl = "https://fixture.invalid/toc?page=1")
+                val wire = ExecutionWire.encode(identity, task, ExecutionLimits(timeoutMillis = 30000, maxOutputBytes = 196608))
+                val result = ExecutionWire.decodeResult(worker.executeSerialized(wire.toString(Charsets.UTF_8),
+                    HostBridge { _, _ -> error("No host calls expected") }).toByteArray())
+                assertTrue(result.toString(), result is ExecutionResult.Success)
+                val expected = if (suffix.isEmpty()) emptyList() else listOf(2, 3).map { RuleValue.Text("https://fixture.invalid/toc?page=$it") }
+                assertEquals(RuleValue.Items(expected), Json.decodeFromString(ExecutedRule.serializer(), (result as ExecutionResult.Success).output).value)
+            }
+        }
+    }
+
     @Test fun realHtmlInputCrossesTheChildPipeWithoutExpandingItsOutputAllowance() {
         val authority = ExecutionAuthority()
         val identity = authority.issue("large-page", "legado", "1")
         val executor = IsolatedExecutor(authority = authority)
-        val task = ExecutionTask.Rule("article@text", hnovel.rules.RuleValue.Text("<!--" + "x".repeat(320000) + "--><article>chapter</article>"),
+        val task = ExecutionTask.Rule("article@text", hnovel.rules.RuleValue.Text("<!--" + "x".repeat(9 * 1024 * 1024) + "--><article>chapter</article>"),
             hnovel.rules.OutputKind.Text)
         val result = executor.execute(identity, task)
         assertTrue(result.toString(), result is ExecutionResult.Success)

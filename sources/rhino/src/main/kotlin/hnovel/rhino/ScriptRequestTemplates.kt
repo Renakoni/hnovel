@@ -42,7 +42,7 @@ internal class ScriptRequestTemplates(private val scope: Scriptable, private val
         if (rule.length > limit) throw ResultTooLarge()
         resolvingHeaders = true
         try {
-            val text = if (rule.startsWith('{')) rule else {
+            val text = if (!rule.startsWith("@js:", true) && !rule.startsWith("<js>", true)) rule else {
                 val code = when {
                     rule.startsWith("@js:", true) -> rule.substring(4)
                     rule.startsWith("<js>", true) && rule.endsWith("</js>", true) -> rule.substring(4, rule.length - 5)
@@ -55,7 +55,11 @@ internal class ScriptRequestTemplates(private val scope: Scriptable, private val
                 if (result is JsonPrimitive) result.content else result.toString()
             }
             if (text.length > limit) throw ResultTooLarge()
-            return JsonObject(RequestOptionsJson.headers(JsonPrimitive(text)).mapValues { JsonPrimitive(it.value.jsonPrimitive.content) })
+            return JsonObject(RequestOptionsJson.optionalHeaders(JsonPrimitive(text)).mapValues { JsonPrimitive(it.value.jsonPrimitive.content) })
+        } catch (_: RhinoException) {
+            // Optional source-header scripts have the same fallback as BaseSource.getHeaderMap.
+            // Budget/cancellation sentinels are Errors and still escape this catch.
+            return JsonObject(emptyMap())
         } finally { resolvingHeaders = false }
     }
 
@@ -190,7 +194,7 @@ internal class ScriptRequestTemplates(private val scope: Scriptable, private val
                 put("key", JsonPrimitive("{{key}}")); put("page", JsonPrimitive(frame.page)); put("baseUrl", JsonPrimitive("{{baseUrl}}"))
                 if (frame.speakText != null) { put("speakText", JsonPrimitive("{{speakText}}")); put("speakSpeed", JsonPrimitive(frame.speakSpeed)) }
             }
-            val options = RequestOptionsJson.options(value.substring(optionStart.range.last + 1), variables)
+            val options = RequestOptionsJson.optionalOptions(value.substring(optionStart.range.last + 1), variables)
             val script = options["js"]?.jsonPrimitive?.content
                 ?: return bounded(value.substring(0, optionStart.range.first) + "," + options)
             // URL-option JS receives the resolved URL, and baseUrl follows its authority.

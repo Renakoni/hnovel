@@ -58,6 +58,8 @@ internal object RuleDiscoveryCatalogParser {
         if (raw.size > MAX_CATALOG_ROWS) throw SourceContentException(ContentError.Limit, field)
         val occurrences = mutableMapOf<String, Int>()
         return raw.mapIndexedNotNull { index, item ->
+            // Legado's lenient Gson array reader filters nulls, including trailing commas.
+            if (field == "exploreUrl" && item == JsonNull) return@mapIndexedNotNull null
             val location = "$field[$index]"
             val row = item as? JsonObject ?: throw SourceContentException(ContentError.InvalidRule, location)
             // Keep style acceptance aligned with LoginForm.parse: sources may declare it, but the
@@ -112,7 +114,7 @@ internal object RuleDiscoveryCatalogParser {
 
     // Catalogue rows are not infoMap entries. Larger real catalogues keep the existing
     // 128-value / 32,768-character form-state limits and 64-choice control limits.
-    const val MAX_CATALOG_ROWS = 1024
+    const val MAX_CATALOG_ROWS = 4096
     private val separatorKeys = setOf("title", "url", "style")
     val inputTypes = setOf("text", "toggle", "select")
 }

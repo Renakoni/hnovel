@@ -49,7 +49,10 @@ class AndroidSourceBrowser @Inject constructor(@ApplicationContext private val c
         require(options.title.length <= 1024 && options.script.length <= 65536 && options.sourceRegex.length <= 2048 &&
             options.delayMillis in 0..30000 && (options.html?.length ?: 0) <= 196608)
         require(!options.verificationCode || options.interactive)
-        if (session.browserRead && !options.verificationCode) {
+        val nativeRequest = NativeBrowserFiles(context).supported && request.method == "GET" && request.followRedirects && !request.responseAsHex &&
+            request.cache != CacheMode.Only && request.headers.keys.none { it.equals("Cookie", true) }
+        if ((session.browserRead || nativeRequest && (options.interactive || options.nativeWebsite)) &&
+            !options.verificationCode && options.html == null) {
             if (route.mode == SourceNetworkMode.BypassVpn && !supportsVpnBypass(context))
                 return@withContext BrokerResult.Failure(RequestStage.Connect, FailureCode.RouteUnsupported)
             return@withContext native.execute(session, request, options, guard, route)

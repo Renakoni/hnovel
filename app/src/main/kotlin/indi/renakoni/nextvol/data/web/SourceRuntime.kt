@@ -32,6 +32,7 @@ class SourceRuntime internal constructor(
     private val source: WebBookDataSource,
     private val lifetime: CoroutineScope,
     private val cleanupScope: CoroutineScope,
+    internal val discoveryResolved: (Boolean) -> Unit = {},
 ) {
     val id get() = metadata.id
     val isAvailable get() = lifetime.isActive

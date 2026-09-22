@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.os.IBinder
+import android.os.ParcelFileDescriptor
 import android.os.Process
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -13,6 +14,7 @@ import hnovel.execution.ExecutionLimits
 import hnovel.execution.ExecutionResult
 import hnovel.execution.ExecutionTask
 import hnovel.execution.ExecutionWire
+import hnovel.execution.ExecutionPayload
 import hnovel.execution.FailureCode
 import hnovel.execution.SourceExecutionBroker
 import hnovel.execution.ExecutedRule
@@ -24,7 +26,6 @@ import hnovel.rules.RuleLocation
 import hnovel.rules.RuleStage
 import hnovel.rules.RuleValue
 import hnovel.rules.OutputKind
-import hnovel.rules.ScriptDependency
 import hnovel.network.SourceBroker
 import hnovel.network.SourceScope
 import hnovel.network.NetworkGrant
@@ -49,6 +50,38 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class IsolatedExecutionInstrumentedTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
+
+    @Test fun largeWorkerResultsUseAPipeAndStillEnforceTheOutputBudget() = runBlocking {
+        val authority = ExecutionAuthority()
+        val executor = AndroidIsolatedExecutor(context, authority)
+        val id = authority.issue("large-result", "legado", "1")
+        val random = java.util.Random(721)
+        val alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+        val text = CharArray(512 * 1024) { alphabet[random.nextInt(alphabet.length)] }.concatToString()
+        val task = ExecutionTask.Echo(text)
+        val limits = ExecutionLimits(timeoutMillis = 15000, maxOutputBytes = text.length)
+        assertNotNull(ExecutionPayload.pack(ExecutionWire.encode(id, task, limits), ExecutionWire.MAX_INPUT_PACKET_BYTES))
+        assertNull(ExecutionPayload.pack(ExecutionWire.encodeResult(ExecutionResult.Success(text)), IsolatedExecutionService.MAX_IPC_BYTES))
+        try {
+            val result = executor.execute(id, task, limits)
+            assertTrue("Expected a pipe result, got ${(result as? ExecutionResult.Failure)?.code}", result is ExecutionResult.Success)
+            assertEquals(text, (result as ExecutionResult.Success).output)
+            assertEquals(ExecutionResult.Failure(FailureCode.OutputLimit),
+                executor.execute(id, task, limits.copy(maxOutputBytes = text.length - 1)))
+            assertEquals(ExecutionResult.Success("next"), executor.execute(id, ExecutionTask.Echo("next"), limits))
+        } finally { executor.close() }
+    }
+
+    @Test fun stalledResultPipeCanBeCancelledAndClosesItsDescriptor() = runBlocking {
+        val ends = ParcelFileDescriptor.createPipe()
+        try {
+            val reading = async(Dispatchers.IO) { readExecutionResultPacket(ends[0]) }
+            delay(150)
+            reading.cancel()
+            withTimeout(2000) { reading.join() }
+            assertFalse(ends[0].fileDescriptor.valid())
+        } finally { ends.forEach { runCatching { it.close() } } }
+    }
 
     @Test fun dynamicCataloguesCanDeclareResultInsideThePackagedWorker() = runBlocking {
         val authority = ExecutionAuthority()
@@ -119,14 +152,21 @@ class IsolatedExecutionInstrumentedTest {
                 SourceBroker(root.toPath()).use { sessions ->
                     val session = sessions.open(SourceScope("large-bridge", "A", "legado"), listOf(NetworkGrant(base, true)))
                     val identity = authority.issue("A", "legado", "1", "large-bridge")
-                    val limits = ExecutionLimits(timeoutMillis = 30000, maxOutputBytes = 1024, maxDataBytes = 4 * 1024 * 1024)
+                    val limits = ExecutionLimits(timeoutMillis = 30000, maxOutputBytes = 1024,
+                        maxRequests = 48, maxDataBytes = 32 * 1024 * 1024)
                     SourceExecutionBroker(identity, authority, session, limits, base).use { bridge ->
                         server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
                             override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest) = MockResponse()
-                                .setBody("x".repeat(700000) + request.path!!.last())
+                                .setBody("文".repeat(200000) + request.path)
                         }
-                        val task = ExecutionTask.Script("java.ajaxAll(['/0','/1','/2']).map(r=>r.body().slice(-1))", baseUrl = base)
-                        assertEquals(ExecutionResult.Success("[\"0\",\"1\",\"2\"]"), executor.execute(identity, task, limits, bridge))
+                        val paths = JsonArray((0 until 40).map { JsonPrimitive("/$it") })
+                        val task = ExecutionTask.Script("java.ajaxAll($paths).map(r=>r.body().slice(200000))", baseUrl = base)
+                        assertEquals(ExecutionResult.Success(paths.toString()), executor.execute(identity, task, limits, bridge))
+                    }
+                    // The executor closes each invocation's broker, including successful calls.
+                    SourceExecutionBroker(identity, authority, session, limits, base).use { bridge ->
+                        assertEquals(ExecutionResult.Failure(FailureCode.OutputLimit), executor.execute(identity,
+                            ExecutionTask.Script("java.ajax('/overflow')", baseUrl = base), limits, bridge))
                     }
                 }
             }
@@ -145,10 +185,31 @@ class IsolatedExecutionInstrumentedTest {
                  baseUrl,typeof org.jsoup.Jsoup.connect,typeof Packages]
             """, libraryCode = library, baseUrl = "https://source.invalid/")
             // setContent changes selector input; URL results still resolve against the request URL.
-            assertEquals(ExecutionResult.Success("""["小说","正文","https://source.invalid/next","https://source.invalid/","undefined","undefined"]"""),
+            assertEquals(ExecutionResult.Success("""["小说","正文","https://source.invalid/next","https://source.invalid/","undefined","object"]"""),
                 executor.execute(id, task))
             assertEquals(ExecutionResult.Success("\"\""), executor.execute(id,
                 task.copy(code = "java.getString('a@text')")))
+        } finally { executor.close() }
+    }
+
+    @Test fun detachedTableNodesAndLargeDocumentsSurviveTheBinderTransport() = runBlocking {
+        val authority = ExecutionAuthority()
+        val executor = AndroidIsolatedExecutor(context, authority)
+        val id = authority.issue("document-boundaries", "legado", "1")
+        try {
+            for (mutation in listOf("row=row.clone()", "row.remove()")) {
+                val task = ExecutionTask.Rule("@js:var row=java.getElements('tag.tr')[0];$mutation;" +
+                    "java.setContent(row);java.getString('tag.td@data-url')",
+                    RuleValue.Text("<table><tr><td data-url='/c/1'>One</td></tr></table>"), OutputKind.Text)
+                val result = executor.execute(id, task)
+                assertTrue(result.toString(), result is ExecutionResult.Success)
+                assertEquals(RuleValue.Text("/c/1"), Json.decodeFromString<ExecutedRule>((result as ExecutionResult.Success).output).value)
+            }
+            val page = "<!--" + "x".repeat(9 * 1024 * 1024) + "--><article>正文</article>"
+            val result = executor.execute(id, ExecutionTask.Rule("article@text", RuleValue.Text(page), OutputKind.Text),
+                ExecutionLimits(timeoutMillis = 15000))
+            assertTrue(result.toString(), result is ExecutionResult.Success)
+            assertEquals(RuleValue.Text("正文"), Json.decodeFromString<ExecutedRule>((result as ExecutionResult.Success).output).value)
         } finally { executor.close() }
     }
 
@@ -846,9 +907,7 @@ class IsolatedExecutionInstrumentedTest {
             ExecutionTask.Script("/(a+)+$/.test('a'.repeat(40)+'!')"), ExecutionLimits(timeoutMillis = 4000)))
         val b = authority.issue("source-b", "legado", "1")
         assertEquals(ExecutionResult.Success("42"), executor.execute(b, ExecutionTask.Script("21*2"), limits))
-        assertEquals(ExecutionResult.Failure(FailureCode.UnsupportedDependency,
-            RuleError(RuleStage.Script, RuleLocation("script"), "UnsupportedDependency.Packages"),
-            ScriptDependency.Packages), executor.execute(b,
+        assertEquals(ExecutionResult.Failure(FailureCode.ScriptRuntime), executor.execute(b,
             ExecutionTask.Script("Packages.java.lang.System.exit(0)"), limits))
         assertEquals(ExecutionResult.Success("42"), executor.execute(b, ExecutionTask.Script("21*2"), limits))
     }
@@ -901,6 +960,10 @@ class IsolatedExecutionInstrumentedTest {
             val result = CompletableDeferred<ExecutionResult>()
             service.execute(ByteArray(ExecutionWire.MAX_INPUT_PACKET_BYTES + 1), object : IExecutionCallback.Stub() {
                 override fun onResult(bytes: ByteArray) { result.complete(ExecutionWire.decodeResult(bytes)) }
+                override fun onResultFile(pipe: ParcelFileDescriptor) {
+                    pipe.close()
+                    result.completeExceptionally(AssertionError("Input rejection must use the small result callback"))
+                }
             }, null)
             assertEquals(ExecutionResult.Failure(FailureCode.InputLimit), withTimeout(5000) { result.await() })
             service.terminate()

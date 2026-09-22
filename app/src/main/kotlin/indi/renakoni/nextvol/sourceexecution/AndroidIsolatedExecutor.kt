@@ -6,6 +6,9 @@ import android.os.IBinder
 import android.os.Process
 import android.os.ParcelFileDescriptor
 import android.os.RemoteException
+import android.system.Os
+import android.system.OsConstants
+import android.system.StructPollfd
 import hnovel.execution.ExecutionAuthority
 import hnovel.execution.ExecutionIdentity
 import hnovel.execution.ExecutionLimits
@@ -30,6 +33,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
@@ -38,6 +43,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.atomic.AtomicBoolean
+import java.io.ByteArrayOutputStream
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 
@@ -149,16 +155,33 @@ class AndroidIsolatedExecutor @Inject constructor(@ApplicationContext context: C
                     }
                 }
                 service.execute(packet, object : IExecutionCallback.Stub() {
+                    private val received = AtomicBoolean()
+
+                    private fun accept(): Boolean = Binder.getCallingUid() == workerUid &&
+                        !finished.get() && received.compareAndSet(false, true)
+
+                    private fun decode(bytes: ByteArray): ExecutionResult {
+                        if (!authority.accepts(identity)) return failure(FailureCode.Revoked)
+                        val decoded = ExecutionWire.decodeResult(ExecutionPayload.unpack(bytes, ExecutionWire.MAX_RESULT_BYTES))
+                        return if (decoded is ExecutionResult.Success && decoded.output.toByteArray(Charsets.UTF_8).size > limits.maxOutputBytes)
+                            failure(FailureCode.OutputLimit) else decoded
+                    }
+
                     override fun onResult(bytes: ByteArray) {
-                        if (Binder.getCallingUid() != workerUid || finished.get()) return
-                        val reply = if (!authority.accepts(identity)) failure(FailureCode.Revoked)
-                        else if (bytes.size > IsolatedExecutionService.MAX_IPC_BYTES) failure(FailureCode.OutputLimit)
-                        else try {
-                            val decoded = ExecutionWire.decodeResult(ExecutionPayload.unpack(bytes, ExecutionWire.MAX_RESULT_BYTES))
-                            if (decoded is ExecutionResult.Success && decoded.output.toByteArray(Charsets.UTF_8).size > limits.maxOutputBytes)
-                                failure(FailureCode.OutputLimit) else decoded
-                        } catch (_: Exception) { failure(FailureCode.InvalidTask) }
+                        if (!accept()) return
+                        val reply = if (bytes.size > IsolatedExecutionService.MAX_IPC_BYTES) failure(FailureCode.OutputLimit)
+                            else try { decode(bytes) } catch (_: Exception) { failure(FailureCode.InvalidTask) }
                         result.complete(reply)
+                    }
+
+                    override fun onResultFile(pipe: ParcelFileDescriptor) {
+                        if (!accept()) { pipe.close(); return }
+                        launch(Dispatchers.IO + brokerCalls) {
+                            try {
+                                result.complete(decode(readExecutionResultPacket(pipe)))
+                            } catch (cancelled: CancellationException) { throw cancelled }
+                              catch (_: Exception) { result.complete(failure(FailureCode.InvalidTask)) }
+                        }.invokeOnCompletion { runCatching { pipe.close() } }
                     }
                 }, brokerBinder)
                 select {
@@ -197,3 +220,20 @@ class AndroidIsolatedExecutor @Inject constructor(@ApplicationContext context: C
         private var retainedWorker: IsolatedWorkerConnection? = null
     }
 }
+
+/** Polling keeps a stalled pipe cancellable without blocking a Binder thread. */
+internal suspend fun readExecutionResultPacket(pipe: ParcelFileDescriptor): ByteArray =
+    ParcelFileDescriptor.AutoCloseInputStream(pipe).use { input ->
+        val output = ByteArrayOutputStream()
+        val buffer = ByteArray(8192)
+        val poll = StructPollfd().apply { fd = pipe.fileDescriptor; events = OsConstants.POLLIN.toShort() }
+        while (true) {
+            currentCoroutineContext().ensureActive()
+            if (Os.poll(arrayOf(poll), 100) == 0) continue
+            val count = input.read(buffer)
+            if (count < 0) break
+            require(output.size().toLong() + count <= ExecutionWire.MAX_RESULT_BYTES)
+            output.write(buffer, 0, count)
+        }
+        output.toByteArray()
+    }

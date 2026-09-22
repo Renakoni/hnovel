@@ -66,7 +66,11 @@ class SourceVerificationInstrumentedTest {
         instrumentation.sendStatus(0, android.os.Bundle().apply { putString("verificationStep", "found: $text") })
     }
 
-    @Test fun verificationOpensAutomaticallyAfterHostRecreationAndResumesTheOriginalSearch(): Unit = runBlocking {
+    @Test fun verificationOpensAutomaticallyAfterHostRecreationAndResumesTheOriginalSearch() = verifySearch(true)
+
+    @Test fun httpVerificationOpensNativeBrowserAndResumesTheOriginalSearch() = verifySearch(false)
+
+    private fun verifySearch(browserRead: Boolean): Unit = runBlocking {
         RuleSourceFixture().use { fixture ->
             val ordinary = fixture.server.dispatcher
             val challenged = java.util.concurrent.atomic.AtomicInteger()
@@ -109,7 +113,7 @@ class SourceVerificationInstrumentedTest {
                 browser = AndroidSourceBrowser(context), verification = coordinator)
             VerificationTestHostActivity.coordinator = coordinator
             try {
-                val raw = JsonObject(fixture.raw() + ("browserRead" to JsonPrimitive(true)))
+                val raw = JsonObject(fixture.raw() + ("browserRead" to JsonPrimitive(browserRead)))
                 val saved = sources.importer.commit(sources.importer.preview(raw.toString()), listOf(ImportSelection(0, ImportDecision.Add)))
                 val id = sources.activate(saved.items.single().reference!!, listOf(NetworkGrant(fixture.server.url("/").toString(), true)))
                 val runtime = (registry.resolve(id) as SourceResolution.Ready).runtime

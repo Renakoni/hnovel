@@ -114,6 +114,45 @@ class NetworkBridgeTest {
         }
     }
 
+    @Test fun multiBookHtmlBatchCrossesThePipeWithoutGrowingTheFinalOutputBudget() = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            val base = server.url("/").toString()
+            server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest) = MockResponse().setBody("文".repeat(200000) + request.path)
+            }
+            SourceBroker(folder.root.toPath()).use { sessions ->
+                val session = sessions.open(SourceScope("fixture", "a", "legado"), listOf(NetworkGrant(base, true)))
+                val limits = ExecutionLimits(timeoutMillis = 30000, maxRequests = 48, maxOutputBytes = 1024, maxDataBytes = 32 * 1024 * 1024)
+                SourceExecutionBroker(id, authority, session, limits, base).use { broker ->
+                    val paths = JsonArray((0 until 40).map { JsonPrimitive("/$it") })
+                    assertEquals(ExecutionResult.Success(paths.toString()), script(broker,
+                        "java.ajaxAll($paths).map(r=>r.body().slice(200000))"))
+                    assertFalse(broker.responseLimitExceeded)
+                }
+            }
+        }
+    }
+
+    @Test fun aggregateResponseLimitIsDistinguishedFromPermissionDenialAndResets() = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            val base = server.url("/").toString()
+            SourceBroker(folder.root.toPath()).use { sessions ->
+                val session = sessions.open(SourceScope("fixture", "a", "legado"), listOf(NetworkGrant(base, true)))
+                SourceExecutionBroker(id, authority, session, ExecutionLimits(maxDataBytes = 4096), base).use { broker ->
+                    repeat(2) { server.enqueue(MockResponse().setBody("x".repeat(3000))) }
+                    assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied), script(broker, "java.ajaxAll(['/1','/2'])"))
+                    assertTrue(broker.responseLimitExceeded)
+                    assertNull(broker.requestFailure)
+                    server.enqueue(MockResponse().setBody("ok"))
+                    assertEquals(ExecutionResult.Success("\"ok\""), script(broker, "java.ajax('/ok')"))
+                    assertFalse(broker.responseLimitExceeded)
+                }
+            }
+        }
+    }
+
     @Test fun responsePayloadIsNotDuplicatedAndOrdinaryPagesFitThroughTheWire() = runBlocking {
         MockWebServer().use { server ->
             server.start()

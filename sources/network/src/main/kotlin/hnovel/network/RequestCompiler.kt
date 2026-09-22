@@ -26,7 +26,7 @@ class RequestCompiler {
                 return CompiledRequest.Rejected(FailureCode.ScriptRequired)
             }
             val optionStart = Regex(",\\s*(?=\\{)").find(rule)
-            val options = optionStart?.let { RequestOptionsJson.options(rule.substring(it.range.last + 1), if (expandTemplates) variables else emptyMap()) } ?: buildJsonObject {}
+            val options = optionStart?.let { RequestOptionsJson.optionalOptions(rule.substring(it.range.last + 1), if (expandTemplates) variables else emptyMap()) } ?: buildJsonObject {}
             if (options.keys.any { it in setOf("js") }) return CompiledRequest.Rejected(FailureCode.ScriptRequired)
             if ("serverID" in options) return CompiledRequest.Rejected(FailureCode.BrowserRequired)
             if (options.keys.any { it !in setOf("method", "body", "headers", "header", "charset", "retry", "webView", "webJs", "webViewDelayTime", "type") }) return CompiledRequest.Rejected(FailureCode.UnknownOption)
@@ -35,8 +35,10 @@ class RequestCompiler {
             val webJs = options["webJs"]?.jsonPrimitive?.content.orEmpty()
             val browserDelay = options["webViewDelayTime"]?.jsonPrimitive?.long ?: 0
             if (browserDelay !in 0..30000 || webJs.length > 65536) return CompiledRequest.Rejected(FailureCode.InvalidRequest)
-            val browser = if (webView || webJs.isNotBlank() || browserDelay > 0) BrowserOptions(webJs, browserDelay) else null
-            val charset = options["charset"]?.jsonPrimitive?.content ?: "UTF-8"
+            val browser = if (webView || webJs.isNotBlank() || browserDelay > 0)
+                BrowserOptions(webJs, browserDelay, nativeWebsite = true) else null
+            val declaredCharset = options["charset"]?.takeUnless { it == JsonNull }?.jsonPrimitive?.content?.takeIf(String::isNotEmpty)
+            val charset = declaredCharset ?: "UTF-8"
             if (charset != "escape") Charset.forName(charset)
             fun expand(value: String, encodeKey: Boolean, pageAlternatives: Boolean = false): String {
                 if (!expandTemplates) return value
@@ -88,7 +90,7 @@ class RequestCompiler {
                 isForm -> raw.split('&').joinToString("&") { field -> field.split('=', limit = 2)
                     .joinToString("=") {
                         val expanded = expand(it, true)
-                        if (options["charset"] == null && encodedForm.matches(expanded)) expanded
+                        if (declaredCharset == null && encodedForm.matches(expanded)) expanded
                         else encode(expand(it, false), charset)
                     } }
                 raw.trimStart().startsWith('{') || raw.trimStart().startsWith('[') ->

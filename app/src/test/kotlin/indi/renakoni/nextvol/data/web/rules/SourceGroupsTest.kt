@@ -1,0 +1,229 @@
+package indi.renakoni.nextvol.data.web.rules
+
+import android.app.Application
+import android.content.ContextWrapper
+import com.github.michaelbull.result.get
+import hnovel.content.RuleSourceFixture
+import hnovel.imports.*
+import hnovel.network.*
+import indi.renakoni.nextvol.data.web.*
+import io.nightfish.lightnovelreader.api.identifier.Identifier
+import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.*
+import okhttp3.mockwebserver.Dispatcher
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.RecordedRequest
+import org.junit.Assert.*
+import org.junit.Rule
+import org.junit.Test
+import org.junit.rules.TemporaryFolder
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
+import org.robolectric.annotation.Config
+import java.io.File
+
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [27], application = Application::class)
+class SourceGroupsTest {
+    @get:Rule val folder = TemporaryFolder()
+    private fun host() = object : ContextWrapper(RuntimeEnvironment.getApplication()) {
+        private val root = folder.newFolder()
+        override fun getFilesDir() = root
+    }
+    private fun commit(sources: ImportedRuleSources, raw: JsonObject): DefinitionReference {
+        val preview = sources.importer.preview(raw.toString())
+        return sources.importer.commit(preview, listOf(ImportSelection(0,
+            preview.candidates.single().existing?.let(ImportDecision::Replace) ?: ImportDecision.Add))).items.single().reference!!
+    }
+
+    @Test fun pasteFileAndUrlImportsIgnoreAuthorGroupsAndStartUngrouped() = runBlocking {
+        val context = host()
+        RuleSourceFixture().use { fixture ->
+            val sources = ImportedRuleSources(context, WebSourceRegistry(fixture.authority), fixture.authority,
+                SourceSessionManager(fixture.authority), fixture.runner)
+            try {
+                sources.createGroup("My novels")
+                for (kind in listOf("paste", "file", "url")) {
+                    val raw = JsonObject(fixture.raw(kind) + ("bookSourceGroup" to JsonPrimitive("Author group,Official")))
+                    fixture.server.dispatcher = object : Dispatcher() {
+                        override fun dispatch(request: RecordedRequest) = MockResponse().setBody(raw.toString())
+                    }
+                    val preview = when (kind) {
+                        "file" -> sources.importer.previewStream(raw.toString().byteInputStream(), "sources.json")
+                        "url" -> {
+                            val session = fixture.broker.open(SourceScope("imports", "groups", LEGADO_PROFILE),
+                                listOf(NetworkGrant(fixture.server.url("/").toString(), true)))
+                            sources.importer.previewUrl(fixture.server.url("/sources.json").toString(), session)
+                        }
+                        else -> sources.importer.preview(raw.toString())
+                    }
+                    val ref = sources.importer.commit(preview, listOf(ImportSelection(0, ImportDecision.Add))).items.single().reference!!
+                    sources.activate(ref, emptyList())
+                }
+                assertEquals(3, sources.installedSources().size)
+                assertTrue(sources.installedSources().all { it.preferences.groupId == null })
+                assertEquals(1, sources.sourceGroups().size)
+            } finally { sources.stop() }
+        }
+    }
+
+    @Test fun batchMovesRenameDeleteAndEmptyGroupsSurviveRestartWithoutRebindingSources() = runBlocking {
+        val context = host()
+        RuleSourceFixture().use { fixture ->
+            val accounts = SourceSessionManager(fixture.authority)
+            var registry = WebSourceRegistry(fixture.authority)
+            var sources = ImportedRuleSources(context, registry, fixture.authority, accounts, fixture.runner)
+            try {
+                val grants = listOf(NetworkGrant(fixture.server.url("/").toString(), true))
+                val ids = listOf("one", "two").map { sources.activate(commit(sources, fixture.raw(it)), grants) }.toSet()
+                val before = sources.installedSources()
+                val runtime = (registry.resolve(ids.first()) as SourceResolution.Ready).runtime
+                sources.createGroup(" Favorites ", ids)
+                sources.createGroup("Empty")
+                val group = sources.sourceGroups().first()
+                assertEquals("Favorites", group.name)
+                assertTrue(sources.installedSources().all { it.preferences.groupId == group.id })
+                assertSame(runtime, (registry.resolve(ids.first()) as SourceResolution.Ready).runtime)
+                assertEquals(before.map { it.definition }, sources.installedSources().map { it.definition })
+                assertEquals(before.map { it.origins }, sources.installedSources().map { it.origins })
+                sources.renameGroup(group.id, "Reading")
+                sources.stop()
+                registry = WebSourceRegistry(fixture.authority)
+                sources = ImportedRuleSources(context, registry, fixture.authority, accounts, fixture.runner)
+                assertEquals(listOf("Reading", "Empty"), sources.sourceGroups().map { it.name })
+                assertTrue(sources.installedSources().all { it.preferences.groupId == group.id })
+                sources.moveToGroup(setOf(ids.first()), null)
+                assertEquals(1, sources.installedSources().count { it.preferences.groupId == group.id })
+                sources.deleteGroup(group.id)
+                assertEquals(2, sources.installedSources().size)
+                assertTrue(sources.installedSources().all { it.preferences.groupId == null })
+                sources.stop()
+                sources = ImportedRuleSources(context, WebSourceRegistry(fixture.authority), fixture.authority, accounts, fixture.runner)
+                assertEquals(listOf("Empty"), sources.sourceGroups().map { it.name })
+                assertTrue(sources.installedSources().all { it.preferences.groupId == null })
+            } finally { sources.stop() }
+        }
+    }
+
+    @Test fun invalidNamesAndStaleBatchMembershipLeaveSnapshotUnchanged() = runBlocking {
+        val context = host()
+        RuleSourceFixture().use { fixture ->
+            val sources = ImportedRuleSources(context, WebSourceRegistry(fixture.authority), fixture.authority,
+                SourceSessionManager(fixture.authority), fixture.runner)
+            try {
+                val id = sources.activate(commit(sources, fixture.raw()), emptyList())
+                sources.createGroup("Reading")
+                val group = sources.sourceGroups().single()
+                val file = File(context.filesDir, "rule-sources/active.json")
+                val before = file.readText()
+                for (name in listOf("", "  ", "reading", "a\nb", "x".repeat(61)))
+                    assertTrue(runCatching { sources.createGroup(name) }.isFailure)
+                assertTrue(runCatching { sources.moveToGroup(setOf(id, Identifier("rules", "removed")), group.id) }.isFailure)
+                assertTrue(runCatching { sources.moveToGroup(setOf(id), "removed") }.isFailure)
+                assertEquals(before, file.readText())
+                assertNull(sources.installedSources().single().preferences.groupId)
+            } finally { sources.stop() }
+        }
+    }
+
+    @Test fun replacementAndRollbackPreserveGroupWhileRemovalDoesNotRestoreMembership() = runBlocking {
+        val context = host()
+        RuleSourceFixture().use { fixture ->
+            val accounts = SourceSessionManager(fixture.authority)
+            val sources = ImportedRuleSources(context, WebSourceRegistry(fixture.authority), fixture.authority, accounts, fixture.runner)
+            try {
+                val grants = listOf(NetworkGrant(fixture.server.url("/").toString(), true))
+                val id = sources.activate(commit(sources, fixture.raw()), grants)
+                sources.createGroup("Reading", setOf(id))
+                val group = sources.sourceGroups().single()
+                val update = commit(sources, JsonObject(fixture.raw() + ("bookSourceName" to JsonPrimitive("Renamed"))))
+                val service = SourceRevisionUpdates(context, sources, accounts, fixture.runner, fixture.authority)
+                service.apply(id, update, grants)
+                assertEquals(group.id, sources.installedSources().single().preferences.groupId)
+                service.rollback(id, grants)
+                assertEquals(group.id, sources.installedSources().single().preferences.groupId)
+                sources.rotateAccount(id)
+                assertEquals(group.id, sources.installedSources().single().preferences.groupId)
+                sources.remove(id)
+                sources.activate(sources.definitions.list().single().reference(), grants)
+                assertNull(sources.installedSources().single().preferences.groupId)
+                assertEquals(listOf(group), sources.sourceGroups())
+            } finally { sources.stop() }
+        }
+    }
+
+    @Test fun legacyArrayLoadsUngroupedAndMigratesWithItsFirstGroupWrite() = runBlocking {
+        val context = host()
+        RuleSourceFixture().use { fixture ->
+            val accounts = SourceSessionManager(fixture.authority)
+            var sources = ImportedRuleSources(context, WebSourceRegistry(fixture.authority), fixture.authority, accounts, fixture.runner)
+            try {
+                sources.activate(commit(sources, fixture.raw()), emptyList())
+                val file = File(context.filesDir, "rule-sources/active.json")
+                sources.stop()
+                val old = Json.parseToJsonElement(file.readText()).jsonObject.getValue("sources")
+                file.writeText(old.toString())
+                sources = ImportedRuleSources(context, WebSourceRegistry(fixture.authority), fixture.authority, accounts, fixture.runner)
+                assertTrue(sources.sourceGroups().isEmpty())
+                assertNull(sources.installedSources().single().preferences.groupId)
+                sources.createGroup("Empty")
+                val saved = Json.parseToJsonElement(file.readText()).jsonObject
+                assertEquals(old, saved.getValue("sources"))
+                assertEquals(1, saved.getValue("groups").jsonArray.size)
+            } finally { sources.stop() }
+        }
+    }
+
+    @Test fun failedGroupWriteLeavesMembershipRuntimeAndSavedGroupsIntact() = runBlocking {
+        val context = host()
+        RuleSourceFixture().use { fixture ->
+            val registry = WebSourceRegistry(fixture.authority)
+            val sources = ImportedRuleSources(context, registry, fixture.authority,
+                SourceSessionManager(fixture.authority), fixture.runner)
+            try {
+                val id = sources.activate(commit(sources, fixture.raw()), listOf(NetworkGrant(fixture.server.url("/").toString(), true)))
+                sources.createGroup("Reading", setOf(id))
+                val before = sources.installedSources()
+                val groups = sources.sourceGroups()
+                val runtime = (registry.resolve(id) as SourceResolution.Ready).runtime
+                val base = File(context.filesDir, "rule-sources/active.json")
+                val saved = base.readBytes()
+                val backup = File(context.filesDir, "rule-sources/active.json.bak").apply { writeBytes(saved) }
+                check(base.delete()); check(base.mkdir()); File(base, "block").writeText("fixture")
+                try {
+                    assertTrue(runCatching { sources.deleteGroup(groups.single().id) }.isFailure)
+                    assertTrue(runCatching { sources.createGroup("New", setOf(id)) }.isFailure)
+                } finally { base.deleteRecursively(); base.writeBytes(saved); backup.delete() }
+                assertEquals(before, sources.installedSources())
+                assertEquals(groups, sources.sourceGroups())
+                assertSame(runtime, (registry.resolve(id) as SourceResolution.Ready).runtime)
+                assertEquals("Same title", runtime.getBookInformation(fixture.server.url("/book/one").toString()).get()!!.title)
+            } finally { sources.stop() }
+        }
+    }
+
+    @Test fun invalidSourceSnapshotDoesNotPartiallyRestoreGroupsOrOverwriteSavedData() = runBlocking {
+        val context = host()
+        RuleSourceFixture().use { fixture ->
+            val accounts = SourceSessionManager(fixture.authority)
+            var sources = ImportedRuleSources(context, WebSourceRegistry(fixture.authority), fixture.authority, accounts, fixture.runner)
+            try {
+                sources.activate(commit(sources, fixture.raw()), emptyList())
+                sources.createGroup("Reading")
+                val file = File(context.filesDir, "rule-sources/active.json")
+                val snapshot = Json.parseToJsonElement(file.readText()).jsonObject
+                val row = snapshot.getValue("sources").jsonArray.single()
+                val damaged = JsonObject(snapshot + ("sources" to JsonArray(listOf(row, row)))).toString()
+                sources.stop()
+                file.writeText(damaged)
+                sources = ImportedRuleSources(context, WebSourceRegistry(fixture.authority), fixture.authority, accounts, fixture.runner)
+                assertTrue(sources.installedSources().isEmpty())
+                assertTrue(sources.sourceGroups().isEmpty())
+                assertTrue(sources.restorationFailed)
+                assertTrue(runCatching { sources.createGroup("New") }.isFailure)
+                assertEquals(damaged, file.readText())
+            } finally { sources.stop() }
+        }
+    }
+}

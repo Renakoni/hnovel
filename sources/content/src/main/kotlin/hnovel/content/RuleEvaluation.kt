@@ -15,22 +15,27 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
     private val calls: java.util.concurrent.atomic.AtomicInteger = java.util.concurrent.atomic.AtomicInteger(),
     private val headerRule: String = "", private val interactive: Boolean = false, private val trace: ContentTrace = ContentTrace.None,
     private val sourceLoginUrl: String = "", private val sourceComment: String? = null,
-    private val verification: (hnovel.network.BrokerResult.Failure) -> SourceVerification? = { null }) {
+    private val verification: (hnovel.network.BrokerResult.Failure) -> SourceVerification? = { null },
+    private val maxRuleCalls: Int = 65536) {
     var discovery: JsonObject? = null
     var nextChapterUrl: String? = null
     private val limits = ExecutionLimits(timeoutMillis = if (interactive) 60000 else 30000, maxOutputBytes = 196608,
-        maxRequests = 64, maxDataBytes = BridgeWire.MAX_REPLY_BYTES)
+        maxRequests = 64, maxDataBytes = 16 * 1024 * 1024)
 
     fun fork(bookId: String? = this.bookId, chapterId: String? = this.chapterId) =
-        RuleEvaluation(identity, authority, session, runner, library, bookId, chapterId, book.copy(), chapter.copy(), baseUrl, keyword, page, calls, headerRule, interactive, trace, sourceLoginUrl, sourceComment, verification)
+        RuleEvaluation(identity, authority, session, runner, library, bookId, chapterId, book.copy(), chapter.copy(), baseUrl, keyword, page, calls, headerRule, interactive, trace, sourceLoginUrl, sourceComment, verification, maxRuleCalls)
             .also { it.discovery = discovery; it.nextChapterUrl = nextChapterUrl }
 
     suspend fun headers(): Map<String, String> {
         if (headerRule.isBlank()) return emptyMap()
-        val text = if (headerRule.trimStart().startsWith('{')) headerRule
-            else script(headerRule, RuleValue.Empty, "header").text()
-        val value = try { RequestOptionsJson.headers(JsonPrimitive(text)) }
-            catch (_: RequestOptionsException) { throw SourceContentException(ContentError.InvalidRule, "header") }
+        val marked = headerRule.trimStart().let { it.startsWith("@js:", true) || it.startsWith("<js>", true) }
+        val text = if (!marked) headerRule else try { script(headerRule, RuleValue.Empty, "header").text() }
+            catch (failure: SourceContentException) {
+                if (failure.code !in setOf(ContentError.InvalidRule, ContentError.UnsupportedDependency)) throw failure
+                return emptyMap()
+            }
+        val value = try { RequestOptionsJson.optionalHeaders(JsonPrimitive(text)) }
+            catch (_: RequestOptionsException) { throw SourceContentException(ContentError.Limit, "header") }
         return value.mapValues { it.value.jsonPrimitive.content }
     }
 
@@ -63,26 +68,38 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
     private suspend fun execute(task: ExecutionTask, field: String, inputChars: Int): ExecutedRule {
         currentCoroutineContext().ensureActive()
         if (!authority.accepts(identity)) throw SourceContentException(ContentError.Unavailable, field)
-        if (calls.incrementAndGet() > 65536) throw SourceContentException(ContentError.Limit, field)
-        // Lists carry complete API objects before per-book/chapter fields are selected.
-        // A single text field's 192 KiB budget must not reject a normal multi-book response.
-        val limits = if (field in setOf("ruleToc.chapterList", "ruleSearch.bookList", "ruleExplore.bookList"))
-            this.limits.copy(maxOutputBytes = 2 * 1024 * 1024) else this.limits
+        if (calls.incrementAndGet() > maxRuleCalls) throw SourceContentException(ContentError.Limit, field)
+        // Lists carry complete API objects; chapter text also needs room for UTF-8 and the
+        // paragraph envelope. Keep metadata fields small and the whole-chapter bound in RuleSource.
+        val limits = when (field) {
+            // These hooks return a whole response, before the actual field selectors run.
+            "loginCheckJs", "ruleBookInfo.init" -> this.limits.copy(maxOutputBytes = 16 * 1024 * 1024)
+            // A single JSON response can contain thousands of complete chapter objects.
+            // Retain their fields until per-chapter rules run, within the existing wire bound.
+            "ruleToc.chapterList" -> this.limits.copy(maxOutputBytes = 16 * 1024 * 1024, maxDataBytes = BridgeWire.MAX_REPLY_BYTES)
+            "ruleSearch.bookList", "ruleExplore.bookList" ->
+                this.limits.copy(maxOutputBytes = 2 * 1024 * 1024, maxDataBytes = BridgeWire.MAX_REPLY_BYTES)
+            "ruleContent.content", "ruleContent.images", "ruleContent.replaceRegex", "ruleContent.parts" ->
+                this.limits.copy(maxOutputBytes = 2 * 1024 * 1024)
+            else -> this.limits
+        }
         val started = System.nanoTime()
         var networkFailure: hnovel.network.BrokerResult.Failure? = null
         var requestLimitExceeded = false
+        var responseLimitExceeded = false
         val result = SourceExecutionBroker(identity, authority, session, limits, baseUrl, keyword, page,
             allowInteraction = interactive).use {
             val executed = try { runner.execute(identity, task, limits, it) }
             catch (cancelled: java.util.concurrent.CancellationException) { throw cancelled }
             catch (failure: Exception) {
                 // Host-side library loading can fail before the worker receives the task.
-                if (it.requestFailure != null || it.requestLimitExceeded) ExecutionResult.Failure(FailureCode.BridgeDenied) else throw failure
+                if (it.requestFailure != null || it.requestLimitExceeded || it.responseLimitExceeded) ExecutionResult.Failure(FailureCode.BridgeDenied) else throw failure
             }
             executed.also { _ ->
                 if (it.interactionRequired) throw SourceContentException(ContentError.LoginRequired, field)
                 networkFailure = it.requestFailure
                 requestLimitExceeded = it.requestLimitExceeded
+                responseLimitExceeded = it.responseLimitExceeded
             }
         }
         val failure = result as? ExecutionResult.Failure
@@ -91,7 +108,7 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
         trace.record(ContentTraceEvent("rule", failureField, (System.nanoTime() - started) / 1_000_000,
             inputChars, (result as? ExecutionResult.Success)?.output?.length ?: 0,
             if (result is ExecutionResult.Failure && result.code == FailureCode.BridgeDenied)
-                if (requestLimitExceeded) "RequestLimit" else networkFailure?.code?.name ?: result.code.name
+                if (requestLimitExceeded) "RequestLimit" else if (responseLimitExceeded) "ResponseLimit" else networkFailure?.code?.name ?: result.code.name
             else (result as? ExecutionResult.Failure)?.code?.name ?: "Success",
             (result as? ExecutionResult.Failure)?.ruleError?.code,
             (result as? ExecutionResult.Failure)?.ruleError?.location?.offset))
@@ -101,17 +118,20 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
             is ExecutionResult.Failure -> throw SourceContentException(when (result.code) {
                 FailureCode.Revoked, FailureCode.InvalidIdentity -> ContentError.Unavailable
                 FailureCode.Timeout, FailureCode.InputLimit, FailureCode.OutputLimit -> ContentError.Limit
-                FailureCode.BridgeDenied -> if (requestLimitExceeded) ContentError.Limit else networkFailure?.code?.contentError() ?: ContentError.PermissionDenied
+                FailureCode.BridgeDenied -> if (requestLimitExceeded || responseLimitExceeded) ContentError.Limit else networkFailure?.code?.contentError() ?: ContentError.PermissionDenied
                 FailureCode.UnsupportedDependency -> ContentError.UnsupportedDependency
                 else -> ContentError.InvalidRule
             }, failureField, networkFailure?.denial.takeIf { result.code == FailureCode.BridgeDenied }, dependency,
-                networkFailure?.takeIf { result.code == FailureCode.BridgeDenied && !requestLimitExceeded }?.let(verification))
+                networkFailure?.takeIf { result.code == FailureCode.BridgeDenied && !requestLimitExceeded && !responseLimitExceeded }?.let(verification))
             is ExecutionResult.Success -> Json.decodeFromString(ExecutedRule.serializer(), result.output)
         }
     }
 
     suspend fun text(rule: String, input: RuleValue, field: String, unescape: Boolean = true): String =
         if (rule.isBlank()) "" else value(rule, input, field, unescape = unescape).text()
+
+    suspend fun url(rule: String, input: RuleValue, field: String): String =
+        if (rule.isBlank()) "" else value(rule, input, field, OutputKind.Url).text()
 
     suspend fun script(code: String, input: RuleValue, field: String): RuleValue =
         value(if (code.startsWith("@js:", true) || code.startsWith("<js>", true)) code else "@js:$code", input, field, OutputKind.Element,

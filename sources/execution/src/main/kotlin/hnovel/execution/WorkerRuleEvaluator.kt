@@ -30,17 +30,18 @@ internal object WorkerRuleEvaluator {
         val evaluator = RuleEvaluator(unescapeHtml = task.unescapeHtml, scriptTemplates = task.scriptTemplates) { request, current, budget ->
             budget.check()
             val frame = ScriptFrame(identity.sourceId, identity.profile, task.bookId, task.chapterId,
-                mapOf("result" to input(request.input)), task.key, task.page, task.baseUrl, current, task.input, budget, task.book, task.chapter, task.chineseConverter,
+                emptyMap(), task.key, task.page, task.baseUrl, current, task.input, budget, task.book, task.chapter, task.chineseConverter,
                 sourceHeaderRule = task.sourceHeaderRule, discovery = discovery, sourceLoginUrl = task.sourceLoginUrl,
-                sourceComment = task.sourceComment, nextChapterUrl = task.nextChapterUrl)
-            when (val result = RhinoScriptEngine(bridge, ScriptLimits(maxResultChars = limits.maxOutputBytes,
+                sourceComment = task.sourceComment, nextChapterUrl = task.nextChapterUrl, scriptInput = request.input)
+            when (val result = RhinoScriptEngine(bridge, ScriptLimits(timeoutMillis = limits.timeoutMillis, maxResultChars = limits.maxOutputBytes,
                 maxBridgeChars = limits.scriptDataLimit), archives)
                 .evaluate(request.script, frame, library)) {
                 is ScriptResult.Success -> value(Json.parseToJsonElement(result.json))
                 is ScriptResult.Failure -> { scriptFailure = result; throw RuleScriptFailure(result.code.name) }
             }
         }
-        val budget = RuleBudget(RuleLimits(timeoutMillis = limits.timeoutMillis, maxOutputChars = limits.maxOutputBytes))
+        val budget = RuleBudget(RuleLimits(timeoutMillis = limits.timeoutMillis,
+            maxInputChars = ExecutionWire.MAX_INPUT_BYTES, maxOutputChars = limits.maxOutputBytes))
         return when (val result = evaluator.evaluate(task.rule, task.input, context, task.output, task.location, budget)) {
             is RuleResult.Success -> {
                 fun changed(snapshot: String?, initial: JsonObject) = snapshot?.let { Json.parseToJsonElement(it).jsonObject }?.takeIf { it != initial }
@@ -65,14 +66,6 @@ internal object WorkerRuleEvaluator {
                 ?: if (scriptFailure?.code == hnovel.rhino.FailureCode.RequestSyntax) result.error.copy(stage = RuleStage.Parse) else result.error,
                 scriptFailure?.dependency)
         }
-    }
-
-    private fun input(value: RuleValue): JsonElement = when (value) {
-        is RuleValue.Text -> JsonPrimitive(value.value)
-        is RuleValue.Node -> if (value.kind == InputKind.Json) Json.parseToJsonElement(value.content) else JsonPrimitive(value.content)
-        is RuleValue.Items -> JsonArray(value.values.map(::input))
-        is RuleValue.Captures -> JsonArray(value.groups.map(::JsonPrimitive))
-        RuleValue.Empty -> JsonNull
     }
 
     private fun value(json: JsonElement): RuleValue = when (json) {

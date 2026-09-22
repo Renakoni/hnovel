@@ -1,0 +1,23 @@
+<resources>
+    <string name="source_group_save">Сохранить</string>
+    <string name="source_group_delete">Удалить</string>
+    <string name="source_groups_manage">Группы</string>
+    <string name="source_groups_help">Распределите добавленные источники по своим группам.</string>
+    <string name="source_groups_empty">Создайте группу для своих источников.</string>
+    <string name="source_group_ungrouped">Без группы</string>
+    <string name="source_group_create">Новая группа</string>
+    <string name="source_group_rename">Переименовать группу</string>
+    <string name="source_group_rename_named">Переименовать «%1$s»</string>
+    <string name="source_group_delete_title">Удалить группу «%1$s»</string>
+    <string name="source_group_delete_help">Источники останутся без группы. Источники и данные чтения будут сохранены.</string>
+    <string name="source_group_name">Название группы</string>
+    <string name="source_group_name_help">Уникальное название длиной от 1 до 60 символов.</string>
+    <string name="source_group_move">Переместить в группу</string>
+    <string name="source_group_move_named">Изменить группу для «%1$s»</string>
+    <string name="source_group_select">Выбрать источники</string>
+    <string name="source_group_select_visible">Выбрать видимые</string>
+    <string name="source_group_deselect_visible">Снять выбор видимых</string>
+    <string name="source_group_selected">Выбрано: %1$d</string>
+    <string name="source_groups_saved">Группы обновлены</string>
+    <string name="source_groups_import_help">Новые источники не входят в группы. Распределите их после добавления.</string>
+</resources>
