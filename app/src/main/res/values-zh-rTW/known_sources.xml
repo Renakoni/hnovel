@@ -1,0 +1,3 @@
+<resources>
+    <string name="sources_notice_known_package">已辨識此版本的書源套件，將匯入應用程式維護的書源定義，無需安裝外掛。書源適配隨應用程式更新發布，重新匯入此檔案即可預覽更新。請逐個檢查書源，部分上游網站可能暫時無法使用。</string>
+</resources>

@@ -12,8 +12,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.core.app.ShareCompat
 import androidx.core.content.FileProvider
 import androidx.lifecycle.Lifecycle
@@ -39,6 +41,7 @@ fun BookshelfHomeScreen(
 ) {
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
+    val shareTitle by rememberUpdatedState(stringResource(R.string.share_bookshelf))
     val workManager = WorkManager.getInstance(context)
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
     val backgroundColor by animateColorAsState(
@@ -87,9 +90,9 @@ fun BookshelfHomeScreen(
                         WorkInfo.State.SUCCEEDED -> {
                             ShareCompat.IntentBuilder(context)
                                 .setType("application/zip")
-                                .setSubject(context.getString(R.string.share_bookshelf))
+                                .setSubject(shareTitle)
                                 .addStream(uri)
-                                .setChooserTitle(context.getString(R.string.share_bookshelf))
+                                .setChooserTitle(shareTitle)
                                 .startChooser()
                         }
 

@@ -32,7 +32,7 @@ fun ExtensionsSettingsList(
     SettingsClickableEntry(
         modifier = Modifier.background(colorScheme.surfaceContainer),
         painter = painterResource(R.drawable.extension_24px),
-        title = stringResource(R.string.plugin_install_plugin),
+        title = stringResource(R.string.settings_plugins),
         description = stringResource(R.string.settings_plugins_desc),
         onClick = onClickPluginManager,
     )

@@ -16,6 +16,6 @@
     <string name="zlibrary_filter_english_epub">英文 · EPUB</string>
     <string name="zlibrary_filter_english_pdf">英文 · PDF</string>
     <string name="source_rate_limited">站点请求过于频繁，请稍候重试。</string>
-    <string name="source_metadata_only">此来源提供书籍信息，暂不支持在应用内阅读全文。</string>
-    <string name="source_reading_unavailable">暂时无法阅读，请启用来源或打开已保存离线内容的书籍。</string>
+    <string name="source_metadata_only">此书源提供书籍信息，暂不支持在应用内阅读全文。</string>
+    <string name="source_reading_unavailable">暂时无法阅读，请启用书源或打开已保存离线内容的书籍。</string>
 </resources>
