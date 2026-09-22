@@ -31,7 +31,12 @@ class SpeechInterruptionTest {
 
     @Test fun disconnectingHeadphonesDuringSynthesisPausesBeforeTheFirstAudioArrives() = runTest {
         val context = RuntimeEnvironment.getApplication()
-        val player = ExoPlayer.Builder(context).build().apply { setHandleAudioBecomingNoisy(true) }
+        val player = ExoPlayer.Builder(context).build()
+        val playbackLooper = shadowOf(player.playbackLooper)
+        // Media3 registers the noisy receiver on its playback Looper. Hold that queue
+        // so this test also covers registration delayed beyond the coroutine startup.
+        playbackLooper.pause()
+        player.setHandleAudioBecomingNoisy(true)
         val gate = CompletableDeferred<Unit>()
         lateinit var session: ReadAloudSession
         val playback = ExoSpeechPlayback(player, context) { session.pause() }
@@ -56,6 +61,15 @@ class SpeechInterruptionTest {
             session.start(SpeechRequest("book", "chapter"))
             runCurrent()
             assertEquals(SpeechPhase.Preparing, session.state.value.phase)
+            assertFalse(shadowOf(context).registeredReceivers.any {
+                it.intentFilter.hasAction(AudioManager.ACTION_AUDIO_BECOMING_NOISY)
+            })
+            playbackLooper.idle()
+            assertTrue("The real receiver must be registered before sending a system broadcast",
+                shadowOf(context).registeredReceivers.any {
+                    it.intentFilter.hasAction(AudioManager.ACTION_AUDIO_BECOMING_NOISY)
+                })
+            playbackLooper.unPause()
             context.sendBroadcast(Intent(AudioManager.ACTION_AUDIO_BECOMING_NOISY))
             shadowOf(Looper.getMainLooper()).idle()
             runCurrent()
@@ -70,6 +84,7 @@ class SpeechInterruptionTest {
             session.stop()
             gate.complete(Unit)
             runCurrent()
+            playbackLooper.unPause()
             player.release()
         }
     }

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="reader_directory_search_hint">搜索章节名或编号</string>
+    <string name="reader_directory_clear_search">清空目录搜索</string>
+    <string name="reader_directory_no_results">没有匹配的章节</string>
+    <string name="reader_directory_no_results_hint">试试章节名中的词语或章节编号。</string>
+    <plurals name="reader_directory_matches">
+        <item quantity="other">找到 %1$d 章</item>
+    </plurals>
+</resources>
