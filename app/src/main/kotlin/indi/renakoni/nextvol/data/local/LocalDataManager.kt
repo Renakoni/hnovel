@@ -64,11 +64,12 @@ class LocalDataManager @Inject constructor(
         localBookCache: Boolean = true,
         bookshelf: Boolean = true,
         readingRecord: Boolean = true,
-        settings: Boolean = true
+        settings: Boolean = true,
+        bookmark: Boolean = true,
     ): Result<AppLocalData, Throwable> {
         val localDataList = mutableListOf<LocalData>()
         exportCurrentLocalData(
-            localBookCache, bookshelf, readingRecord, settings
+            localBookCache, bookshelf, readingRecord, settings, bookmark
         ).let {
             it.component1() ?: return it.asErr()
         }.let(localDataList::add)
@@ -92,7 +93,8 @@ class LocalDataManager @Inject constructor(
         localBookCache: Boolean = true,
         bookshelf: Boolean = true,
         readingRecord: Boolean = true,
-        settings: Boolean = true
+        settings: Boolean = true,
+        bookmark: Boolean = true,
     ): Result<LocalData, Throwable> {
         downloads.prepare()
         val exportOptionLocalData = ExportOptionLocalData(
@@ -114,11 +116,16 @@ class LocalDataManager @Inject constructor(
             this.settings.enable = settings
         }
 
+        var readingBookmarks = emptyList<indi.renakoni.nextvol.data.bookmark.ReadingBookmark>()
         return runCatching {
-            statisticsWriteCoordinator.withLock { database.withTransaction { exportOptionLocalData.solve() } }
+            statisticsWriteCoordinator.withLock { database.withTransaction {
+                exportOptionLocalData.solve()
+                if (bookmark) readingBookmarks = database.readingBookmarkDao().all()
+            } }
         }.andThen {
             Ok(
                 LocalData(
+                    readingBookmarks = readingBookmarks,
                     bookInformationEntities = exportOptionLocalData.bookInformationEntities,
                     bookRecordEntities = exportOptionLocalData.bookRecordEntities,
                     dailyCountEntities = exportOptionLocalData.dailyCountEntities,
@@ -188,6 +195,7 @@ class LocalDataManager @Inject constructor(
 
     /** The caller holds the statistics/download locks and the entire restore transaction. */
     private suspend fun importRows(localData: LocalData) {
+          for (bookmark in localData.readingBookmarks) database.readingBookmarkDao().insert(bookmark)
           for (entity in localData.bookInformationEntities) {
             bookBookInformationDao.insert(
                 bookBookInformationDao.getEntity(entity.id)?.let(entity::merge) ?: entity
@@ -253,6 +261,7 @@ class LocalDataManager @Inject constructor(
     }
 
     private suspend fun clearLibraryRows() {
+        database.readingBookmarkDao().clear()
         bookBookInformationDao.clear()
         bookRecordDao.clear()
         dailyCountDao.clear()

@@ -79,6 +79,12 @@ import indi.renakoni.nextvol.utils.rememberReaderBackgroundPainter
 import indi.renakoni.nextvol.ui.book.reader.usesBackgroundImage
 import indi.renakoni.nextvol.utils.rememberReaderFontFamily
 import indi.renakoni.nextvol.utils.showSnackbar
+import indi.renakoni.nextvol.ui.book.reader.bookmark.LocalReaderBookmarks
+import indi.renakoni.nextvol.ui.book.reader.bookmark.ReaderBookmarkPosition
+import indi.renakoni.nextvol.ui.book.reader.bookmark.RegisterBookmarkCapture
+import indi.renakoni.nextvol.ui.book.reader.bookmark.anchorIn
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.collectLatest
@@ -135,6 +141,8 @@ fun ScrollContentTextComponent(
                 lazyColumnSize.width, lazyColumnSize.height)
         }
     }
+    val bookmarks = LocalReaderBookmarks.current
+    var bookmarkReady by remember(listState) { mutableStateOf(false) }
     val speech by rememberUpdatedState(LocalReaderSpeechFollow.current)
     val latestPrepared by rememberUpdatedState(preparedChapters)
     val reduceMotion by rememberUpdatedState(settingState.reduceMotion)
@@ -144,6 +152,39 @@ fun ScrollContentTextComponent(
         val prepared = latestPrepared.getOrNull(index) ?: return null
         val anchor = speech.anchor(prepared.content) ?: return null
         return prepared.offsetFor(anchor)?.let { index to it }
+    }
+
+    RegisterBookmarkCapture {
+        if (!bookmarkReady || uiState.lazyListState !== listState || listState.isScrollInProgress || bookmarks?.pending != null) null
+        else listState.layoutInfo.visibleItemsInfo.firstOrNull { it.offset + it.size > 0 }?.let { item ->
+            val prepared = latestPrepared.getOrNull(item.index)?.takeIf {
+                it.content === uiState.contentList.getOrNull(item.index)?.second?.get() &&
+                    (textLayout == null || it.layout == textLayout && it.size == lazyColumnSize)
+            }
+            prepared?.anchorAt((-item.offset).coerceAtLeast(0))?.let { anchor ->
+                ReaderBookmarkPosition(uiState.bookId, prepared.content, anchor,
+                    (lazyColumnSize.height - item.offset).toFloat() / item.size.coerceAtLeast(1))
+            }
+        }
+    }
+    val bookmark = bookmarks?.pending
+    val bookmarkChapter = preparedChapters.firstOrNull { it?.content?.id == bookmark?.chapterId }
+    LaunchedEffect(listState, bookmark, uiState.readingChapterId, bookmarkChapter, textLayout, lazyColumnSize) {
+        if (bookmark == null || bookmark.bookId != uiState.bookId || bookmark.chapterId != uiState.readingChapterId) return@LaunchedEffect
+        snapshotFlow { bookmarkReady }.first { it }
+        val prepared = bookmarkChapter?.takeIf {
+            it.content === uiState.readingChapterContent?.get() &&
+                (textLayout == null || it.layout == textLayout && it.size == lazyColumnSize)
+        } ?: return@LaunchedEffect
+        val anchor = withContext(Dispatchers.Default) { bookmark.anchorIn(prepared.content) }
+        if (anchor == null) { bookmarks.finish(bookmark, false); return@LaunchedEffect }
+        val index = latestPrepared.indexOf(prepared)
+        if (index < 0 || bookmarks.pending !== bookmark) return@LaunchedEffect
+        listState.scrollToItem(index)
+        val offset = snapshotFlow { prepared.offsetFor(anchor) }.filterNotNull().first()
+        if (bookmarks.pending !== bookmark || uiState.lazyListState !== listState) return@LaunchedEffect
+        listState.scrollToItem(index, offset)
+        bookmarks.finish(bookmark, true)
     }
 
     val reachedTopMsg = stringResource(R.string.reader_reached_top)
@@ -187,6 +228,7 @@ fun ScrollContentTextComponent(
         }
         listState.scrollToItem(initialTarget?.first ?: 1, offset)
         uiState.onProgressRestored(listState)
+        bookmarkReady = true
         snapshotFlow { speechTarget() }.collectLatest { target ->
             if (target == null) return@collectLatest
             val viewport = listState.layoutInfo.viewportSize.height

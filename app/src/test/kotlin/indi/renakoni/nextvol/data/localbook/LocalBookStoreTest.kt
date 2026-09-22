@@ -64,7 +64,7 @@ class LocalBookStoreTest {
 
     private fun openDatabase() {
         database = Room.databaseBuilder(context, NextVolDatabase::class.java, File(temporary.root, "library.db").path)
-            .addMigrations(NextVolDatabase.MIGRATION_18_19, NextVolDatabase.MIGRATION_19_20, NextVolDatabase.MIGRATION_20_21).allowMainThreadQueries().build()
+            .addMigrations(NextVolDatabase.MIGRATION_18_19, NextVolDatabase.MIGRATION_19_20, NextVolDatabase.MIGRATION_20_21, NextVolDatabase.MIGRATION_21_22).allowMainThreadQueries().build()
         store = LocalBookStore(context, database)
         local = LocalBookDataSource(database.bookInformationDao(), database.bookVolumesDao(), database.chapterContentDao(), database.userReadingDataDao())
         downloads = BookDownloadStore(context, database, ContentJsonDecoder(ContentComponentRegistry()))
@@ -170,10 +170,16 @@ class LocalBookStoreTest {
         val second = importBook(original)
         database.bookshelfDao().createBookshelf(shelf(8).copy(allBookIds = listOf(first.storageKey)))
         local.updateUserReadingData(second.storageKey) { it.copy(totalReadTime = 73) }
+        fun bookmark(book: SourceBookId) = indi.renakoni.nextvol.data.bookmark.ReadingBookmark(
+            bookId = book.storageKey, chapterId = SourceChapterId(book, "0").storageKey,
+            chapterTitle = "Chapter", componentIndex = 0, offset = 0, fingerprint = "a".repeat(64), preview = "Text", progress = 0f)
+        database.readingBookmarkDao().insert(bookmark(first))
+        database.readingBookmarkDao().insert(bookmark(second))
         // Clear only the cache directory index first: deletion must still find cached chapters.
         database.bookVolumesDao().deleteByBookIds(listOf(first.storageKey))
         assertTrue(store.storedBytes(first) > 0)
         store.delete(first)
+        assertEquals(listOf(second.storageKey), database.readingBookmarkDao().all().map { it.bookId })
         assertFalse(store.contains(first))
         assertEquals(0L, store.storedBytes(first))
         assertNull(database.chapterContentDao().get(SourceChapterId(first, "0").storageKey))
@@ -239,7 +245,7 @@ class LocalBookStoreTest {
         }
         database.close()
         openDatabase()
-        assertEquals(21, database.openHelper.writableDatabase.version)
+        assertEquals(22, database.openHelper.writableDatabase.version)
         assertEquals("Imported novel", database.bookInformationDao().get(oldBook.storageKey)!!.title)
         assertEquals(91, books.getUserReadingData(oldBook.storageKey).totalReadTime)
         assertNotNull(database.bookshelfDao().getBookshelf(7))

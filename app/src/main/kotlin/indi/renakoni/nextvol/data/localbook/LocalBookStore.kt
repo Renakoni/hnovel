@@ -244,6 +244,7 @@ class LocalBookStore @Inject constructor(
             database.bookVolumesDao().deleteByBookIds(listOf(key))
             database.bookInformationDao().deleteByIds(listOf(key))
             database.userReadingDataDao().deleteByIds(listOf(key))
+            database.readingBookmarkDao().deleteBooks(listOf(key))
             StringListUserData(UserDataPath.ReadingBooks.path, database.userDataDao()).update { it - key }
             for (shelf in database.bookshelfDao().getAllBookshelves()) if (key in shelf.allBookIds) {
                 database.bookshelfDao().insertBookshelf(shelf.copy(allBookIds = shelf.allBookIds - key,

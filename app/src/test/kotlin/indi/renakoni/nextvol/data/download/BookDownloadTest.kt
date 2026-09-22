@@ -96,7 +96,7 @@ class BookDownloadTest {
     private fun openLibrary() {
         db = Room.databaseBuilder(context, NextVolDatabase::class.java, directory.root.resolve("library.db").path)
             .addMigrations(NextVolDatabase.MIGRATION_17_18, NextVolDatabase.MIGRATION_18_19,
-                NextVolDatabase.MIGRATION_19_20, NextVolDatabase.MIGRATION_20_21).allowMainThreadQueries().build()
+                NextVolDatabase.MIGRATION_19_20, NextVolDatabase.MIGRATION_20_21, NextVolDatabase.MIGRATION_21_22).allowMainThreadQueries().build()
         local = LocalBookDataSource(db.bookInformationDao(), db.bookVolumesDao(), db.chapterContentDao(), db.userReadingDataDao())
         downloads = BookDownloadStore(context, db, decoder)
         val shelves = BookshelfRepository(db.bookshelfDao(), mockk(relaxed = true), registry, downloads)
@@ -336,7 +336,7 @@ class BookDownloadTest {
             execSQL("DROP TABLE bangumi_binding"); execSQL("DROP TABLE bangumi_sync_record"); version = 17
         }
         db.close(); openLibrary()
-        assertEquals(21, db.openHelper.writableDatabase.version)
+        assertEquals(22, db.openHelper.writableDatabase.version)
         val blocked = File(context.filesDir, "book-downloads").apply { writeText("not a directory") }
         try { downloads.prepare(); fail("Image copy must fail before ownership is committed") }
         catch (_: java.io.IOException) { }

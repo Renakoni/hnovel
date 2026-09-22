@@ -43,6 +43,8 @@ import io.nightfish.lightnovelreader.api.content.component.SimpleTextComponentDa
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
+import indi.renakoni.nextvol.ui.book.reader.bookmark.LocalReaderBookmarks
+import indi.renakoni.nextvol.ui.book.reader.bookmark.ReaderBookmarkSession
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -60,6 +62,7 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ScrollTextWindowTest {
     @get:Rule val compose = createEmptyComposeRule()
+    private val bookmarks = ReaderBookmarkSession()
     private lateinit var activity: ActivityController<ComponentActivity>
     private lateinit var scope: CoroutineScope
     private var speech by mutableStateOf<SpeechPosition?>(null)
@@ -244,6 +247,28 @@ class ScrollTextWindowTest {
         compose.waitForIdle()
     }
 
+    @Test fun bookmarkReturnsToTheSameParagraphAfterFontReflowAndRejectsChangedText() {
+        following = false
+        mount(0.5f)
+        awaitBody()
+        val saved = compose.runOnIdle { bookmarks.capture!!.invoke()!!.bookmark() }
+        assertTrue(saved.offset > 0)
+        val expected = saved.preview.substringBefore(' ')
+        compose.runOnIdle {
+            scope.launch { state.lazyListState.scrollToItem(1, 0) }
+            fontSize = 24f
+        }
+        compose.waitForIdle()
+        compose.runOnIdle { bookmarks.pending = saved }
+        compose.waitUntil(10_000) { compose.waitForIdle(); bookmarks.pending == null }
+        compose.onNodeWithText(expected, useUnmergedTree = true).assertIsDisplayed()
+        val actual = compose.runOnIdle { bookmarks.capture!!.invoke()!!.bookmark() }
+        assertEquals(saved.offset, actual.offset)
+        compose.runOnIdle { bookmarks.pending = saved.copy(fingerprint = "b".repeat(64)) }
+        compose.waitUntil(10_000) { compose.waitForIdle(); bookmarks.pending == null }
+        assertEquals(indi.renakoni.nextvol.R.string.reader_bookmarks_changed, bookmarks.notice)
+    }
+
     private fun mount(progress: Float, text: String = chapterText, previousText: String? = null) {
         val component = SimpleTextComponent(SimpleTextComponentData(text), mockk(relaxed = true), activity.get())
         state.bookId = "book"
@@ -260,7 +285,7 @@ class ScrollTextWindowTest {
             activity.get().setContent {
                 MaterialTheme {
                     scope = rememberCoroutineScope()
-                    CompositionLocalProvider(LocalAppTheme provides AppTheme(false, MaterialTheme.colorScheme),
+                    CompositionLocalProvider(LocalReaderBookmarks provides bookmarks, LocalAppTheme provides AppTheme(false, MaterialTheme.colorScheme),
                         LocalReaderSpeechFollow provides ReaderSpeechFollow(speech, following, { following = false }, active),
                         LocalReaderTextLayout provides rememberReaderTextLayout(settings)) {
                         Box(Modifier.width(320.dp).height(320.dp)) {

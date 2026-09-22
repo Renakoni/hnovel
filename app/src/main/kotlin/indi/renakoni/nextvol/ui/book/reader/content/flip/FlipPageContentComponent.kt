@@ -68,6 +68,12 @@ import io.nightfish.lightnovelreader.api.content.component.AbstractContentCompon
 import io.nightfish.lightnovelreader.api.error.WebRequestError
 import io.nightfish.lightnovelreader.api.ui.LocalReaderStyle
 import io.nightfish.lightnovelreader.api.ui.LocalTextLocaleList
+import indi.renakoni.nextvol.ui.book.reader.bookmark.LocalReaderBookmarks
+import indi.renakoni.nextvol.ui.book.reader.bookmark.ReaderBookmarkPosition
+import indi.renakoni.nextvol.ui.book.reader.bookmark.RegisterBookmarkCapture
+import indi.renakoni.nextvol.ui.book.reader.bookmark.anchorIn
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import kotlin.math.absoluteValue
 
@@ -156,7 +162,33 @@ private fun SimpleFlipPageTextComponent(
         textLocaleList = textLocaleList,
         textLayout = textLayout,
     )
+    val bookmarks = LocalReaderBookmarks.current
     val visiblePage = slippedContentComponentList.getOrNull(uiState.pagerState.settledPage) as? ReaderPage
+    RegisterBookmarkCapture {
+        val anchor = readingAnchor ?: visiblePage?.anchor
+        if (anchor == null || visiblePage == null || uiState.pagerState.isScrollInProgress ||
+            uiState.readingChapterContent?.get() !== chapterContent || bookmarks?.pending != null) null
+        else ReaderBookmarkPosition(uiState.bookId, chapterContent,
+            if (chapterContent.content.getOrNull(anchor.componentIndex) is indi.renakoni.nextvol.data.content.component.SimpleTextComponent)
+                anchor else anchor.copy(offset = 0), uiState.readingProgress)
+    }
+    val bookmark = bookmarks?.pending
+    LaunchedEffect(bookmark, chapterContent, slippedContentComponentList, uiState.pagerState) {
+        if (bookmark == null || bookmark.bookId != uiState.bookId || bookmark.chapterId != chapterContent.id ||
+            slippedContentComponentList.isEmpty()) return@LaunchedEffect
+        val anchor = withContext(Dispatchers.Default) { bookmark.anchorIn(chapterContent) }
+        val target = anchor?.let { position -> slippedContentComponentList.indexOfFirst { (it as? ReaderPage)?.contains(position) == true } } ?: -1
+        if (bookmarks.pending !== bookmark || uiState.readingChapterContent?.get() !== chapterContent) return@LaunchedEffect
+        if (target >= 0) {
+            val pager = uiState.pagerState
+            // Explicit positions, like speech anchors, cancel any late percentage recovery.
+            uiState.updateSpeechPageState(pager)
+            pager.scrollToPage(target)
+            readingAnchor = anchor
+            anchoredPage = slippedContentComponentList[target] as ReaderPage
+        }
+        bookmarks.finish(bookmark, target >= 0)
+    }
     val pending = uiState.pendingChapter
     val pendingContent = pending?.result?.get()
     val pendingInput = pendingContent?.let { paginationInput.copy(chapterId = it.id, content = it.content) }
