@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="reader_bookmarks_title">Bookmarks</string>
+    <string name="reader_bookmarks_description">Keep places you want to return to.</string>
+    <string name="reader_bookmarks_add">Bookmark this position</string>
+    <string name="reader_bookmarks_empty">Your saved places will appear here.</string>
+    <string name="reader_bookmarks_position">Chapter · %1$d%%</string>
+    <string name="reader_bookmarks_illustration">Illustration or other content</string>
+    <string name="reader_bookmarks_delete">Delete bookmark in %1$s</string>
+    <string name="reader_bookmarks_added">Bookmark saved</string>
+    <string name="reader_bookmarks_duplicate">This position is already bookmarked</string>
+    <string name="reader_bookmarks_failed">Could not update bookmarks. Please try again.</string>
+    <string name="reader_bookmarks_changed">The chapter content has changed. This bookmark could not be positioned precisely.</string>
+    <string name="reader_bookmarks_missing">This chapter is no longer in the contents. The bookmark has been kept.</string>
+    <string name="reader_bookmarks_not_ready">Wait for the chapter and contents to finish loading, then try again.</string>
+    <string name="reader_bookmarks_load_failed">Could not load the bookmarked chapter. The bookmark has been kept.</string>
+    <string name="reader_bookmarks_export_description">Saved reading positions from all books.</string>
+</resources>

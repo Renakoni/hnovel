@@ -38,7 +38,7 @@ class BangumiMigrationTest {
             it.version = 20
         }
         val migrated = Room.databaseBuilder(context, NextVolDatabase::class.java, name)
-            .addMigrations(NextVolDatabase.MIGRATION_20_21).build()
+            .addMigrations(NextVolDatabase.MIGRATION_20_21, NextVolDatabase.MIGRATION_21_22).build()
         try {
             val dao = migrated.bangumiBindingDao()
             assertEquals(setOf("subject:11"), dao.get(17, "saved-book")!!.binding().acknowledged)
@@ -63,7 +63,7 @@ class BangumiMigrationTest {
             it.version = 19
         }
         val migrated = Room.databaseBuilder(context, NextVolDatabase::class.java, name)
-            .addMigrations(NextVolDatabase.MIGRATION_19_20, NextVolDatabase.MIGRATION_20_21).build()
+            .addMigrations(NextVolDatabase.MIGRATION_19_20, NextVolDatabase.MIGRATION_20_21, NextVolDatabase.MIGRATION_21_22).build()
         try {
             assertEquals("Saved", migrated.bookInformationDao().get("saved-book")!!.title)
             assertTrue(migrated.bangumiBindingDao().getAll(17).isEmpty())
