@@ -36,8 +36,10 @@ not proof that all back navigation fails or that a crash/data loss was observed.
 #325 owns the gesture/key/history/verification completion and lifecycle changes.
 Do not expand this baseline to other locations or suppress the detector globally.
 
-Remove each entry with its #325 fix. `LintBaselineFixed` is fatal so obsolete
-entries fail validation instead of silently remaining. Never regenerate this
+Remove each entry with its #325 fix. `LintBaselineFixed` is an Error so obsolete
+entries fail full Lint validation instead of silently remaining. It must not be
+Fatal: lintVital only runs fatal detectors and would otherwise mistake the
+unscanned back-navigation entries for fixed findings. Never regenerate this
 file in CI. If an additional crash or data-loss path is confirmed, fix it rather
 than recording it as a baseline exception.
 

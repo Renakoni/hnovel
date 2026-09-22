@@ -24,7 +24,8 @@ android {
 
     lint {
         baseline = file("lint-baseline.xml")
-        fatal += "LintBaselineFixed"
+        // Full scans must reject stale entries. Vital scans do not run every baseline detector.
+        error += "LintBaselineFixed"
     }
 
     defaultConfig {
