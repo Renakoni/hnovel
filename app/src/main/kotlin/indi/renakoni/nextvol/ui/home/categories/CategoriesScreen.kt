@@ -20,10 +20,10 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.data.web.SourceDiscoveryCategory
+import indi.renakoni.nextvol.data.web.SourceCategory
 import indi.renakoni.nextvol.ui.home.discovery.*
 import indi.renakoni.nextvol.ui.home.HomeSettingsAction
 import io.nightfish.lightnovelreader.api.identifier.Identifier
@@ -41,10 +41,12 @@ fun CategoriesScreen(
     onBack: () -> Unit,
     onInput: (String, String) -> Unit = { _, _ -> },
     onAction: (String, Boolean) -> Unit = { _, _ -> },
+    onScope: (SourceCategory?) -> Unit = {},
+    onPage: (Int) -> Unit = {},
 ) {
     val content = state.content[state.selected] ?: DiscoveryPageContent()
     Scaffold(topBar = { CategoriesTopBar(onRefresh, onSettings,
-        loading = !state.loadingSources && (content.loading || content.acting)) }) { padding ->
+        loading = !state.loadingSources && (content.loading || content.acting), title = { SourceScopeTitle(state, onScope) }) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             if (state.loadingSources) {
                 // No inventory snapshot yet is not an authoritative empty-source result.
@@ -52,21 +54,9 @@ fun CategoriesScreen(
                     CircularProgressIndicator()
                 }
             } else if (state.sources.isEmpty()) {
-                DiscoveryEmpty(stringResource(R.string.categories_no_sources), onManageSources)
+                SourceScopeEmpty(state, explore = false, onScope, onManageSources)
             } else {
-                PrimaryScrollableTabRow(
-                    selectedTabIndex = state.sources.indexOfFirst { it.metadata.id == state.selected }.coerceAtLeast(0),
-                    modifier = Modifier.fillMaxWidth(),
-                    edgePadding = 0.dp,
-                    divider = {},
-                ) {
-                    state.sources.forEach { source ->
-                        Tab(selected = source.metadata.id == state.selected,
-                            onClick = { onSelect(source.metadata.id) },
-                            text = { Text(source.metadata.item.name, Modifier.widthIn(max = 208.dp),
-                                maxLines = 1, overflow = TextOverflow.Ellipsis) })
-                    }
-                }
+                SourceTabs(state, onSelect, onPage)
                 val id = state.selected
                 content.error?.let { DiscoveryFailure(it, onRefresh, onManageSources, onBack, content.errorField, content.errorPermission) }
                 if (id != null) key(id, content.resetId) {
@@ -128,9 +118,9 @@ fun CategoriesScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun CategoriesTopBar(onRefresh: () -> Unit, onSettings: () -> Unit, loading: Boolean = false) {
+internal fun CategoriesTopBar(onRefresh: () -> Unit, onSettings: () -> Unit, loading: Boolean = false, title: @Composable () -> Unit = {}) {
     val refreshLabel = stringResource(R.string.discovery_refresh)
-    TopAppBar(title = {}, expandedHeight = 56.dp,
+    TopAppBar(title = title, expandedHeight = sourceTopBarHeight(),
         navigationIcon = { Icon(painterResource(R.drawable.view_list_24px), stringResource(R.string.categories_title), Modifier.padding(12.dp)) },
         actions = {
             IconButton(onClick = onRefresh) {

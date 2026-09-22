@@ -1,12 +1,15 @@
 package indi.renakoni.nextvol.ui.home.settings.sources
 
 import android.app.Application
+import android.content.ContextWrapper
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.lifecycle.viewModelScope
 import io.mockk.mockk
 import io.mockk.every
 import io.mockk.coEvery
@@ -20,8 +23,16 @@ import indi.renakoni.nextvol.data.web.*
 import indi.renakoni.nextvol.data.web.rules.ImportedRuleSources
 import indi.renakoni.nextvol.data.web.rules.InstalledRuleSource
 import indi.renakoni.nextvol.data.web.rules.LoginStatus
+import indi.renakoni.nextvol.data.web.rules.RuleStoredSettings
+import indi.renakoni.nextvol.data.web.rules.SourceRevisionUpdates
+import indi.renakoni.nextvol.data.web.zlibrary.ZLibrarySources
+import indi.renakoni.nextvol.data.web.zlibrary.ZLibraryState
 import io.nightfish.lightnovelreader.api.identifier.Identifier
 import io.nightfish.lightnovelreader.api.web.WebDataSourceItem
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.After
 import org.junit.Before
 import org.junit.Rule
@@ -46,6 +57,60 @@ class SourcesScreenTest {
         activity.setup()
     }
     @After fun destroy() { activity.pause().stop().destroy() }
+
+    @Test @Config(qualifiers = "en-rUS-w360dp-h800dp")
+    fun openingSettingsDoesNotInsertProgressButUpdatesStillDo() {
+        val directory = java.nio.file.Files.createTempDirectory("source-settings-progress").toFile()
+        val context = object : ContextWrapper(activity.get()) { override fun getFilesDir() = directory }
+        val definition = SourceDefinition("qq-fixture", "legado", "fixture", "https://fixture.invalid/", "QQ fixture", true,
+            false, ImportOrigin(ImportOrigin.Kind.Paste), "digest", 1, "{}")
+        val id = ImportedRuleSources.id(definition)
+        val sources = mockk<ImportedRuleSources>()
+        coEvery { sources.installedSources() } returns listOf(InstalledRuleSource(definition, emptyList(), null))
+        val readingSettings = CompletableDeferred<Unit>()
+        val finishReading = CompletableDeferred<Unit>()
+        coEvery { sources.storedSettings(id, null) } coAnswers {
+            readingSettings.complete(Unit)
+            finishReading.await()
+            RuleStoredSettings("", null, null)
+        }
+        val checkingUpdate = CompletableDeferred<Unit>()
+        val updates = mockk<SourceRevisionUpdates>()
+        coEvery { updates.check(id) } coAnswers { checkingUpdate.complete(Unit); awaitCancellation() }
+        val zLibrary = mockk<ZLibrarySources>()
+        every { zLibrary.state } returns MutableStateFlow(ZLibraryState())
+        val realModel = SourcesViewModel(context, sources, updates, mockk(), WebSourceRegistry(), zLibrary)
+        fun waitUntil(condition: () -> Boolean) = compose.waitUntil(10000) {
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+            condition()
+        }
+        try {
+            activity.get().setContent { MaterialTheme {
+                val state by realModel.state.collectAsState()
+                SourcesScreen(state, realModel, onDiagnostics = {}) {}
+            } }
+            waitUntil { !realModel.state.value.busy }
+            compose.onNodeWithText("QQ fixture").performScrollTo().performClick()
+            waitUntil { readingSettings.isCompleted }
+            val progress = SemanticsMatcher.keyIsDefined(SemanticsProperties.ProgressBarRangeInfo)
+            compose.onAllNodes(progress).assertCountEquals(0)
+            val details = compose.onNodeWithText("Advanced options").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+            finishReading.complete(Unit)
+            waitUntil { !realModel.state.value.busy }
+            org.junit.Assert.assertEquals(details,
+                compose.onNodeWithText("Advanced options").fetchSemanticsNode().boundsInRoot)
+            compose.runOnIdle { realModel.checkUpdate(id) }
+            waitUntil { checkingUpdate.isCompleted }
+            compose.onAllNodes(progress).assertCountEquals(1)
+            compose.runOnIdle { realModel.cancel() }
+            waitUntil { !realModel.state.value.busy }
+            compose.onAllNodes(progress).assertCountEquals(0)
+        } finally {
+            finishReading.complete(Unit)
+            realModel.viewModelScope.cancel()
+            directory.deleteRecursively()
+        }
+    }
 
     @Test @Config(qualifiers = "en-rUS-w320dp-h640dp")
     fun longImportKeepsConfirmationReachableBeforeScrollingThroughCandidates() {
@@ -172,6 +237,7 @@ class SourcesScreenTest {
     @Test fun emptyStateOpensExplicitPreviewFlowWithoutImportingAutomatically() {
         activity.get().setContent { MaterialTheme { SourcesScreen(SourceManagementState(), model, onDiagnostics = {}) {} } }
         compose.onNodeWithText("Add book source").performClick()
+        compose.onNodeWithText("Import").performClick()
         compose.onNodeWithText("Source file URL").performScrollTo().performTextInput("https://fixture.invalid/source.json")
         compose.onNodeWithText("Download and preview").performScrollTo().performClick()
         verify(exactly = 1) { model.previewUrl("https://fixture.invalid/source.json", hnovel.imports.AUTO_PROFILE) }

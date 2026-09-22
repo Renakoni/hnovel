@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="source_category_platforms">Mainstream</string>
+    <string name="source_category_female">Female fiction</string>
+    <string name="source_category_anime">Light novels</string>
+    <string name="source_category_literature">Classics</string>
+    <string name="source_category_general">More fiction</string>
+    <string name="source_category_adult">r18</string>
+    <string name="source_examples_platforms">起点 · 番茄 · 七猫</string>
+    <string name="source_examples_female">晋江 · 红袖 · 长佩</string>
+    <string name="source_examples_anime">SF · 轻之文库</string>
+    <string name="source_examples_literature">九九藏书 · 古诗文网</string>
+    <string name="source_examples_general">笔趣阁 · 69书吧</string>
+    <string name="source_examples_adult">爱丽丝 · hlib · PO18</string>
+    <string name="source_catalog_tab">Categories</string>
+    <string name="source_import_tab">Import</string>
+    <string name="source_catalog_count">%1$d sources</string>
+    <string name="source_catalog_count_added">%1$d sources · %2$d added</string>
+    <string name="source_catalog_added">Added</string>
+    <string name="source_catalog_selected">%1$d selected</string>
+    <string name="source_catalog_select_all">Select all</string>
+    <string name="source_catalog_deselect_all">Deselect all</string>
+    <string name="source_catalog_clear">Clear</string>
+    <string name="source_catalog_continue">Continue</string>
+    <string name="source_catalog_empty">No sources</string>
+    <string name="source_catalog_installed">Added sources · %1$d</string>
+    <string name="source_range_all">All sources</string>
+    <string name="source_range_title">Source scope</string>
+    <string name="source_range_description">Source scope: %1$s</string>
+    <string name="source_range_empty_explore">No enabled %1$s sources support discovery.</string>
+    <string name="source_range_empty_categories">No enabled %1$s sources provide categories.</string>
+    <string name="source_pages_title">Source pages</string>
+    <string name="source_page_number">Page %1$d</string>
+    <string name="source_page_range">%1$d–%2$d · %3$s</string>
+    <string name="source_page_position">%1$d/%2$d</string>
+    <string name="source_page_description">Source page %1$d of %2$d</string>
+    <string name="source_page_previous">Previous source page</string>
+    <string name="source_page_next">Next source page</string>
+</resources>

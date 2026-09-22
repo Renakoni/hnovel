@@ -23,7 +23,7 @@ internal fun SourceImportPreview(state: SourceManagementState, model: SourcesVie
     val preview = checkNotNull(state.preview)
     var advanced by rememberSaveable(preview) { mutableStateOf(false) }
     var selected by rememberSaveable(preview) { mutableStateOf(if (state.updateTarget == null)
-        preview.candidates.deduplicated().filter { it.enabled }.map { it.index } else emptyList<Int>()) }
+        preview.candidates.deduplicated().filter { state.catalogPreview || it.enabled }.map { it.index } else emptyList<Int>()) }
     var filter by rememberSaveable(preview) { mutableIntStateOf(0) }
     var approveIdentity by rememberSaveable(preview) { mutableStateOf(false) }
     var permissions by rememberSaveable(preview, stateSaver = mapSaver<Map<Int, String>>(
@@ -42,7 +42,6 @@ internal fun SourceImportPreview(state: SourceManagementState, model: SourcesVie
         LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(stringResource(R.string.sources_preview), style = MaterialTheme.typography.titleLarge)
                     TextButton(onClick = { advanced = !advanced }) { Text(stringResource(R.string.sources_advanced)) }
                     val ignored = preview.issues.count { it.code == ImportCode.UnsupportedType }
                     if (ignored > 0) Text(stringResource(R.string.sources_non_text_skipped, ignored), style = MaterialTheme.typography.bodySmall)
@@ -126,17 +125,10 @@ internal fun SourceImportPreview(state: SourceManagementState, model: SourcesVie
                 }
             }
         }
-        Surface(tonalElevation = 3.dp) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                    Text(stringResource(R.string.sources_selected_count, selected.size, candidates.size), Modifier.weight(1f),
-                        style = MaterialTheme.typography.labelLarge)
-                    TextButton(onClick = { if (state.busy) model.cancel() else model.dismissPreview() }) { Text(stringResource(android.R.string.cancel)) }
-                }
-                Button(onClick = { model.commit(selected.toSet(), selected.associateWith { permissions[it] ?: state.previewOrigins[it].orEmpty() }, approveIdentity) },
-                    modifier = Modifier.fillMaxWidth(), enabled = !state.busy && selected.isNotEmpty()) { Text(stringResource(R.string.sources_apply)) }
-            }
-        }
+        SourceSelectionBar(stringResource(R.string.sources_selected_count, selected.size, candidates.size),
+            secondary = stringResource(android.R.string.cancel), onSecondary = { if (state.busy) model.cancel() else model.dismissPreview() },
+            action = stringResource(R.string.sources_apply), actionEnabled = !state.busy && selected.isNotEmpty(),
+            onAction = { model.commit(selected.toSet(), selected.associateWith { permissions[it] ?: state.previewOrigins[it].orEmpty() }, approveIdentity) })
     }
 }
 
