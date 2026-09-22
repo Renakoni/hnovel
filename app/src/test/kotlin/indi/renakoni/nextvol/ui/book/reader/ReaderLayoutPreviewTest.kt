@@ -15,14 +15,20 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.WindowInfo
 import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasAnyDescendant
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -30,6 +36,7 @@ import indi.renakoni.nextvol.theme.AppTheme
 import indi.renakoni.nextvol.ui.LocalAppTheme
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -111,9 +118,27 @@ class ReaderLayoutPreviewTest {
         compose.onNodeWithText("Welcome to Nextvol").performScrollTo()
     }
 
-    private fun viewport(): Rect = compose.onNode(hasScrollAction()).fetchSemanticsNode().boundsInRoot
+    @Test fun draggingAMarginUpdatesTheFixedPreviewBeforeCommittingOnRelease() {
+        val topPaddingUserData = base.topPaddingUserData
+        previewSize = IntSize(360, 640)
+        showPreview(fullPage = true)
+        val initial = viewport()
+        val slider = compose.onNodeWithContentDescription("Top Margin").performScrollTo()
+        compose.onNodeWithText("Page preview · margins shown to scale").assertIsDisplayed()
+        slider.performTouchInput {
+            down(Offset(width * 0.1f, centerY))
+            moveTo(Offset(width * 0.7f, centerY), delayMillis = 100)
+        }
+        assertTrue(viewport().top > initial.top)
+        verify(exactly = 0) { topPaddingUserData.asynchronousSet(any()) }
+        slider.performTouchInput { up() }
+        verify(exactly = 1) { topPaddingUserData.asynchronousSet(match { it > 12f && it <= 128f }) }
+    }
 
-    private fun showPreview() {
+    private fun viewport(): Rect = compose.onNode(hasScrollAction() and hasAnyDescendant(hasText("Welcome to Nextvol")))
+        .fetchSemanticsNode().boundsInRoot
+
+    private fun showPreview(fullPage: Boolean = false) {
         compose.runOnUiThread {
             activity.get().setContent {
                 val settings = object : ReaderSettingsEditor by base {
@@ -140,7 +165,8 @@ class ReaderLayoutPreviewTest {
                     val padding = readerPadding(layout, if (indicator) 40.dp else 0.dp)
                     SideEffect { bodyPadding = padding }
                     MaterialTheme {
-                        ReaderLayoutPreview(settings, Modifier.size(previewSize.width.dp, previewSize.height.dp))
+                        if (fullPage) ReaderLayoutSettingsPage(settings)
+                        else ReaderLayoutPreview(settings, Modifier.size(previewSize.width.dp, previewSize.height.dp))
                     }
                 }
             }
