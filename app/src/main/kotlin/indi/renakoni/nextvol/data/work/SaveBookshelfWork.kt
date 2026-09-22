@@ -55,7 +55,7 @@ class SaveBookshelfWork @AssistedInject constructor(
         val appLocalData = AppLocalData(
             version = localDataManager.currentAppDataVersion,
             localDataList = listOf(
-                LocalData.empty().copy(
+                localDataManager.localFileReferences(bookshelfEntityList.flatMap { it.allBookIds }.toSet()).copy(
                     bookshelfEntities = bookshelfEntityList,
                     bookshelfBookMetadataEntities = bookshelfBookMetadataEntities
                 )
