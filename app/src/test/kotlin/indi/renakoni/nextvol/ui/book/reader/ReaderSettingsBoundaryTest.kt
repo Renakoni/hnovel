@@ -179,6 +179,28 @@ class ReaderSettingsBoundaryTest {
     }
 
     @Test
+    fun allMarginsAndAutomaticModePersistWithoutReplacingManualValues() = runBlocking {
+        val dao = InMemoryUserDataDao()
+        val first = SettingState(UserDataRepository(dao), scope)
+        first.autoPaddingUserData.set(false)
+        first.topPaddingUserData.set(24f)
+        first.bottomPaddingUserData.set(48f)
+        first.leftPaddingUserData.set(32f)
+        first.rightPaddingUserData.set(40f)
+        val restored = SettingState(UserDataRepository(dao), scope)
+        withTimeout(5_000) {
+            while (restored.autoPadding || restored.topPadding != 24f || restored.bottomPadding != 48f ||
+                restored.leftPadding != 32f || restored.rightPadding != 40f) delay(1)
+        }
+        first.autoPaddingUserData.set(true)
+        withTimeout(5_000) { while (!restored.autoPadding) delay(1) }
+        first.autoPaddingUserData.set(false)
+        withTimeout(5_000) { while (restored.autoPadding) delay(1) }
+        assertEquals(listOf(24f, 48f, 32f, 40f),
+            listOf(restored.topPadding, restored.bottomPadding, restored.leftPadding, restored.rightPadding))
+    }
+
+    @Test
     fun adapterCanBeNarrowedToReaderAndThemeCapabilities() {
         val state = SettingState(UserDataRepository(InMemoryUserDataDao()), scope)
         val readerSettings: ReaderSettings = state
