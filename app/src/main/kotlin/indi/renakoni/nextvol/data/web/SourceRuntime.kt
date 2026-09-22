@@ -7,6 +7,8 @@ import android.util.Log
 import indi.renakoni.nextvol.data.web.proxy.ProxyCachedWebBookDataSource
 import indi.renakoni.nextvol.data.web.proxy.ProxyCoalescingWebBookDataSource
 import indi.renakoni.nextvol.data.web.proxy.ProxyPriorityWebBookDataSource
+import indi.renakoni.nextvol.data.explore.PagedSearchProvider
+import indi.renakoni.nextvol.data.explore.SearchPage
 import io.nightfish.lightnovelreader.api.book.ChapterContent
 import io.nightfish.lightnovelreader.api.book.Volume
 import io.nightfish.lightnovelreader.api.util.Cache
@@ -118,6 +120,12 @@ class SourceRuntime internal constructor(
             checkAvailable()
             return source.searchProvider.getSearchSuggestions(history, keyword)
         }
+    }
+
+    internal val hasSearchPages get() = source.searchProvider is PagedSearchProvider
+
+    internal fun searchPage(type: SearchType, keyword: String, page: Int): Flow<SearchPage> = observe {
+        flow { emit((source.searchProvider as PagedSearchProvider).searchPage(type, keyword, page)) }
     }
 
     internal fun retire() {

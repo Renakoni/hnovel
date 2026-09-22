@@ -6,8 +6,11 @@ import com.github.michaelbull.result.Ok
 import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.onErr
 import com.github.michaelbull.result.onOk
+import com.github.michaelbull.result.getOrElse
 import hnovel.content.*
 import indi.renakoni.nextvol.R
+import indi.renakoni.nextvol.data.explore.PagedSearchProvider
+import indi.renakoni.nextvol.data.explore.SearchPage
 import indi.renakoni.nextvol.data.web.EmptyWebDataSource
 import io.nightfish.lightnovelreader.api.book.*
 import io.nightfish.lightnovelreader.api.content.builder.ContentBuilder
@@ -33,8 +36,16 @@ internal class RuleWebBookDataSource(override val id: Identifier, private val so
     override val isOffLineFlow = MutableStateFlow(false)
     override suspend fun isOffLine() = false
     override val discoveryProvider = RuleDiscoveryProvider(source, recovery = recovery)
-    override val searchProvider = object : SearchProvider {
+    override val searchProvider: SearchProvider = object : SearchProvider, PagedSearchProvider {
         override val searchTypes = if (source.canSearch) listOf(SearchType("keyword", LocalString(R.string.sources_search_type), LocalString(R.string.sources_search_hint))) else emptyList()
+        override suspend fun searchPage(type: SearchType, keyword: String, page: Int): SearchPage {
+            if (page !in 1..64) throw SourceContentException(ContentError.Limit, "ruleSearch")
+            val books = request { source.search(keyword, page) }.getOrElse {
+                throw (it.throwable ?: SourceContentException(ContentError.Unavailable, "ruleSearch"))
+            }
+            return SearchPage(books.map { SearchResult.MultipleBook(it.id, it.information()) },
+                if (books.isEmpty()) null else page + 1)
+        }
         override fun search(searchType: SearchType, keyword: String) = flow {
             val seen = mutableSetOf<String>()
             for (page in 1..64) {

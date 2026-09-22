@@ -118,7 +118,8 @@ class ZLibrarySources @Inject constructor(@ApplicationContext private val contex
         val ID = Identifier("builtin", "zlibrary")
         val MIRRORS = listOf("https://z-lib.gd:443", "https://z-lib.fo:443", "https://library-asia.sk:443")
         val METADATA = SourceMetadata(WebDataSourceItem(ID, "Z-Library", "Z-Library"),
-            setOf(SourceCapability.Search, SourceCapability.BookInformation, SourceCapability.Images), builtIn = true)
+            setOf(SourceCapability.Search, SourceCapability.BookInformation, SourceCapability.Images), builtIn = true,
+            category = SourceCategory.General)
 
         private fun validate(settings: ZLibrarySettings): ZLibrarySettings {
             fun origin(value: String): String {

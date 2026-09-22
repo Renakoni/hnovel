@@ -23,13 +23,15 @@ class SourceManagerRegistrationTest {
         val manager = WebBookDataSourceManager(WebSourceRegistry())
         val source = BuiltInFixture()
         val other = BuiltInFixture(Identifier("fixture", "other"))
-        manager.loadBuiltInSource(source)
+        manager.loadBuiltInSource(source, SourceCategory.Anime)
         manager.registerWebDataSource(other, WebDataSourceItem(other.id, "Other", "fixture"))
         try {
             assertEquals(2, manager.webDataSourceItems.size)
             assertEquals(0, source.loads.get())
             assertEquals(0, other.loads.get())
             assertTrue(manager.registry.sources.value.first().metadata.builtIn)
+            assertEquals(SourceCategory.Anime, manager.registry.sources.value.first().metadata.category)
+            assertNull(manager.registry.sources.value.last().metadata.category)
             val runtime = (manager.registry.resolve(source.id) as SourceResolution.Ready).runtime
             assertSame(runtime, (manager.registry.resolve(source.id) as SourceResolution.Ready).runtime)
             assertEquals(1, source.loads.get())
