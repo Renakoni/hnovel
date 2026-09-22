@@ -31,7 +31,7 @@ class NativeBrowserCookiesTest {
                 assertFalse(session.cookie(base).contains("automatic=no"))
                 session.configureSource(base, true)
                 assertFalse(session.browserCookie(base).contains("verified=yes"))
-                assertTrue(session.nativeBrowserCookies(base).any { it.contains("httponly", true) })
+                assertTrue(session.nativeBrowserCookies(base).isEmpty())
                 assertThrows(Exception::class.java) { session.updateNativeBrowserCookies("https://unapproved.invalid/", listOf("secret=yes")) }
                 // Legacy header-only handoffs must not change Chromium's original visibility.
                 session.updateNativeBrowserCookies(base, listOf("legacy=yes; Path=/; HttpOnly"), completeMetadata = false)
@@ -47,9 +47,24 @@ class NativeBrowserCookiesTest {
                 session.close()
                 val reopened = broker.open(owner, grants)
                 assertEquals("durable=yes", reopened.cookie(base))
+                assertTrue("Restart must not replay a Chromium cookie without its SameSite attributes", reopened.nativeBrowserCookies(base).isEmpty())
                 assertFalse(reopened.cookie(server.url("/private/").toString()).contains("restricted=yes"))
                 reopened.clearAccount()
                 assertEquals("", broker.open(owner.copy(accountGeneration = 1), grants).cookie(base))
+            }
+        } } finally { root.toFile().deleteRecursively() }
+    }
+
+    @Test fun secureLoopbackCookieHandoffDoesNotAuthorizePlainHttpOrOtherPaths(): Unit = runBlocking {
+        val root = Files.createTempDirectory("secure-loopback-handoff")
+        try { SourceBroker(root).use { broker ->
+            val base = "http://localhost:18766/"
+            val session = broker.open(SourceScope("test", "loopback", "legado"), listOf(NetworkGrant(base, true)))
+            session.updateNativeBrowserCookies(base, listOf("secure=value; Secure; HttpOnly; SameSite=None; Path=/"))
+            assertEquals("", session.cookie(base))
+            assertTrue(session.nativeBrowserCookies(base).isEmpty())
+            assertThrows(IllegalArgumentException::class.java) {
+                session.updateNativeBrowserCookies(base, listOf("other=value; Path=/private"))
             }
         } } finally { root.toFile().deleteRecursively() }
     }

@@ -116,7 +116,7 @@ class BenchmarkFixtureReceiver : BroadcastReceiver() {
                     row('Library', () => sharedLabel()),
                     row('Bridge', () => String(source.getLoginHeader()) + '/' + java.base64Decode('aGVsbG8=')),
                     row('DOM', () => org.jsoup.Jsoup.parse('<h1>Chapter</h1>').select('h1').first().text()),
-                    row('Isolation', () => typeof Packages + '/' + typeof java.getClass)
+                    row('Isolation', () => typeof Packages.java.lang.Runtime + '/' + typeof java.getClass)
                 ])
             """.trimIndent())
         }

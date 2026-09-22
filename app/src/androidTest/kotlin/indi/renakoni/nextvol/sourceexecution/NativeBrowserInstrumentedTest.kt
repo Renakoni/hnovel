@@ -356,10 +356,17 @@ class NativeBrowserInstrumentedTest {
         val request = BrokerRequest("unsupported", server.url("/").toString())
         for (input in listOf(request.copy(method = "POST", body = "field=value"),
             request.copy(followRedirects = false), request.copy(responseAsHex = true),
-            request.copy(cache = CacheMode.Only), request.copy(headers = mapOf("Cookie" to "injected=fixture")),
-            request.copy(browser = BrowserOptions(html = "<html>synthetic</html>")))) {
+            request.copy(cache = CacheMode.Only), request.copy(headers = mapOf("Cookie" to "injected=fixture")))) {
             assertEquals(BrokerResult.Failure(RequestStage.Parse, FailureCode.InvalidRequest), account.execute(input))
         }
+        assertEquals(0, server.requestCount)
+    } }
+
+    @Test fun suppliedHtmlUsesTheSyntheticBrowserWithoutNetwork(): Unit = runBlocking { fixture { broker, server ->
+        val result = session(broker, server).execute(BrokerRequest("html", server.url("/").toString(),
+            browser = BrowserOptions(html = "<html><body>synthetic</body></html>", script = "document.body.textContent")))
+        assertTrue(result.toString(), result is BrokerResult.Success)
+        assertEquals("synthetic", (result as BrokerResult.Success).response.text().trim())
         assertEquals(0, server.requestCount)
     } }
 
