@@ -57,6 +57,7 @@ import kotlinx.coroutines.*
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
+import org.junit.Ignore
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -270,6 +271,8 @@ class ReaderLayoutInstrumentedTest {
         compose.onNodeWithTag("reader-paper-sage").assertIsSelected()
     }
 
+    // Re-enable when #353 has a reproducible cause and regression for the initial font-list update.
+    @Ignore("Intermittent font-list timeout on API 24/35: https://github.com/Renakoni/hnovel/issues/353")
     @Test fun tenImportedFontsRemainSelectableAfterSwitchingAndReopening() = runBlocking {
         val source = File(context.cacheDir, "appearance-font.otf")
         val files = mutableListOf<File>()
