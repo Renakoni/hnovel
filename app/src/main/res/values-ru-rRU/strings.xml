@@ -92,8 +92,8 @@
     <string name="offline_desc">Проверьте доступность сайта и настройки прокси.</string>
     <string name="saved_to_pictures_dir">Saved to Pictures/NextVol/%s</string>
     <string name="save_failed">Save failed</string>
-    <string name="reader_custom_font_load_failed">Failed to load custom font, reverted to default.</string>
-    <string name="reader_custom_background_load_failed">Failed to load custom background, reverted to default.</string>
+    <string name="reader_custom_font_load_failed">Не удалось загрузить шрифт. Используется стандартный. Выберите другой шрифт.</string>
+    <string name="reader_custom_background_load_failed">Не удалось загрузить фоновое изображение. Выберите другое изображение.</string>
     <string name="reader_first_page">You are on the first page</string>
     <string name="reader_reached_top">You have reached the top</string>
     <string name="reader_last_page">You are on the last page</string>
@@ -227,7 +227,7 @@
     <string name="settings_import_data_desc">Импорт данных пользователя из выбранного файла .lnr</string>
     <string name="settings_storage_manager">Хранилище и очистка</string>
     <string name="settings_storage_manager_desc">Просмотр занятого места и очистка кеша чтения или загрузок.</string>
-    <string name="settings_plugins">Plugins</string>
+    <string name="settings_plugins">Управление плагинами</string>
     <string name="settings_plugins_desc">Install and manage Plugins</string>
     <string name="settings_app_logs">Логи приложения</string>
     <string name="settings_app_logs_desc">Просмотр и отправка логов приложения</string>

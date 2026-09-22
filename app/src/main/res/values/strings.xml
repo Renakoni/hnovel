@@ -95,8 +95,8 @@
     <string name="offline_desc">Please check the availability of the source website and your proxy settings.</string>
     <string name="saved_to_pictures_dir">Saved to Pictures/NextVol/%s</string>
     <string name="save_failed">Save failed</string>
-    <string name="reader_custom_font_load_failed">Failed to load custom font, reverted to default.</string>
-    <string name="reader_custom_background_load_failed">Failed to load custom background, reverted to default.</string>
+    <string name="reader_custom_font_load_failed">Font could not load. Using the default font. Choose another font.</string>
+    <string name="reader_custom_background_load_failed">Background image could not load. Choose another image.</string>
     <string name="reader_first_page">You are on the first page</string>
     <string name="reader_reached_top">You have reached the top</string>
     <string name="reader_last_page">You are on the last page</string>
@@ -237,7 +237,7 @@
     <string name="settings_import_data_desc">Import user data from a selected .lnr file</string>
     <string name="settings_storage_manager">Storage &amp; cleanup</string>
     <string name="settings_storage_manager_desc">View storage usage and clear reading cache or downloads.</string>
-    <string name="settings_plugins">Plugins</string>
+    <string name="settings_plugins">Plugin management</string>
     <string name="settings_plugins_desc">Install and manage Plugins</string>
     <string name="settings_app_logs">App Logs</string>
     <string name="settings_app_logs_desc">View and share application logs</string>

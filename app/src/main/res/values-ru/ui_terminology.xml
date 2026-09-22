@@ -1,0 +1,5 @@
+<resources>
+    <string name="settings_plugins">Управление плагинами</string>
+    <string name="reader_custom_font_load_failed">Не удалось загрузить шрифт. Используется стандартный. Выберите другой шрифт.</string>
+    <string name="reader_custom_background_load_failed">Не удалось загрузить фоновое изображение. Выберите другое изображение.</string>
+</resources>

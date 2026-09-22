@@ -23,12 +23,12 @@
     <string name="source_catalog_clear">清空</string>
     <string name="source_catalog_continue">繼續</string>
     <string name="source_catalog_empty">暫無書源</string>
-    <string name="source_catalog_installed">已新增來源 · %1$d</string>
+    <string name="source_catalog_installed">已新增書源 · %1$d</string>
     <string name="source_range_all">全部書源</string>
     <string name="source_range_title">書源範圍</string>
     <string name="source_range_description">書源範圍：%1$s</string>
-    <string name="source_range_empty_explore">暫無%1$s探索書源</string>
-    <string name="source_range_empty_categories">暫無提供分類的%1$s書源</string>
+    <string name="source_range_empty_explore">「%1$s」分類下暫無已啟用且支援探索的書源。</string>
+    <string name="source_range_empty_categories">「%1$s」分類下暫無已啟用且提供分類的書源。</string>
     <string name="source_pages_title">書源分頁</string>
     <string name="source_page_number">第 %1$d 頁</string>
     <string name="source_page_range">%1$d–%2$d · %3$s</string>
