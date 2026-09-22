@@ -207,13 +207,14 @@ class BackupRestoreTransactionTest {
     }
 
     @Test fun invalidVersionAndIdentityAreRejectedBeforeAnyChange() = runBlocking {
-        for (invalid in listOf(payload(incoming).copy(version = 99), payload(incoming).let {
+        assertTrue(backup.importAppLocalData(payload(incoming).copy(version = 99), overwrite = true).isErr)
+        assertOldLibrary()
+        val invalid = payload(incoming).let {
             it.copy(localDataList = listOf(LocalData.empty().copy(bookInformationEntities =
                 listOf(information(incoming).copy(id = "invalid-unscoped-id")))))
-        })) {
-            assertTrue(runCatching { backup.importAppLocalData(invalid, overwrite = true) }.exceptionOrNull() is IllegalArgumentException)
-            assertOldLibrary()
         }
+        assertTrue(runCatching { backup.importAppLocalData(invalid, overwrite = true) }.exceptionOrNull() is IllegalArgumentException)
+        assertOldLibrary()
     }
 
     @Test fun cancellationBeforeCommitRollsBackAndRetainsBufferedTime() = runBlocking {

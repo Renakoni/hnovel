@@ -4,6 +4,8 @@ import androidx.room.withTransaction
 import indi.renakoni.nextvol.data.local.room.NextVolDatabase
 import indi.renakoni.nextvol.data.local.cbor.validateIdentities
 import indi.renakoni.nextvol.data.download.BookDownloadStore
+import android.util.Log
+import com.github.michaelbull.result.Err
 import com.github.michaelbull.result.Ok
 import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.andThen
@@ -136,6 +138,10 @@ class LocalDataManager @Inject constructor(
     }
 
     suspend fun importAppLocalData(appLocalData: AppLocalData, overwrite: Boolean = false): Result<Unit, Throwable> {
+        if (currentAppDataVersion != appLocalData.version) {
+            Log.e(TAG, "Unsupported data versions")
+            return Err(Error("Unsupported data versions"))
+        }
         validateBackup(appLocalData)
         val parts = listOf(appLocalData.globalLocalData) + appLocalData.localDataList
         val caller = currentCoroutineContext()
