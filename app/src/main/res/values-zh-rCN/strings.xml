@@ -254,7 +254,7 @@
     <string name="storage_manager_section_app_title">应用</string>
     <string name="storage_manager_section_app_description">应用程序使用的空间。</string>
     <string name="storage_manager_section_database_title">应用数据</string>
-    <string name="storage_manager_section_database_description">当前数据文件使用的空间，包括用户数据和当前书源。</string>
+    <string name="storage_manager_section_database_description">数据库文件占用的空间，包括用户数据和书籍缓存。</string>
     <string name="storage_manager_section_plugins_title">插件资源文件</string>
     <string name="storage_manager_section_plugins_description">已安装的插件和它们的资源文件所占用的空间。</string>
     <string name="storage_manager_section_cache_title">临时缓存文件</string>
