@@ -28,6 +28,7 @@ data class LocalData(
     val userDataEntities: List<UserDataEntity>,
     val userReadingDataEntities: List<UserReadingDataEntity>,
     val volumeEntities: List<VolumeEntity>,
+    val localBookFiles: List<indi.renakoni.nextvol.data.localbook.LocalBookFileManifest> = emptyList(),
     val readingBookmarks: List<indi.renakoni.nextvol.data.bookmark.ReadingBookmark> = emptyList(),
     val bookDownloadEntities: List<BookDownloadEntity> = emptyList(),
     val downloadedChapterEntities: List<DownloadedChapterEntity> = emptyList(),

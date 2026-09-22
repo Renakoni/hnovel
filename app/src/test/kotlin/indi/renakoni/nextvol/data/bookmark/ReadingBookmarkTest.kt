@@ -54,7 +54,7 @@ class ReadingBookmarkTest {
         chapterTitle = "Chapter", componentIndex = 0, offset = offset,
         fingerprint = "a".repeat(64), preview = "Recognizable text", progress = .4f)
     private fun open() = Room.databaseBuilder(context, NextVolDatabase::class.java, name)
-        .allowMainThreadQueries().addMigrations(NextVolDatabase.MIGRATION_21_22).build()
+        .allowMainThreadQueries().addMigrations(NextVolDatabase.MIGRATION_21_22, NextVolDatabase.MIGRATION_22_23).build()
     private fun backup(): LocalDataManager {
         val coordinator = StatisticsWriteCoordinator()
         val stats = StatsRepository(db.bookRecordDao(), db.dailyCountDao(), mockk(), coordinator)
@@ -88,7 +88,12 @@ class ReadingBookmarkTest {
         db.userDataDao().insert("fixture/keep", "fixture", "String", "saved")
         db.close()
         SQLiteDatabase.openDatabase(context.getDatabasePath(name).path, null, SQLiteDatabase.OPEN_READWRITE).use {
+            it.execSQL("DROP TABLE local_book_file_manifest")
             it.execSQL("DROP TABLE reading_bookmark")
+            it.execSQL("ALTER TABLE imported_book RENAME TO imported_book_new")
+            it.execSQL("CREATE TABLE imported_book (bookId TEXT NOT NULL PRIMARY KEY)")
+            it.execSQL("INSERT INTO imported_book SELECT bookId FROM imported_book_new")
+            it.execSQL("DROP TABLE imported_book_new")
             it.version = 21
         }
         db = open()

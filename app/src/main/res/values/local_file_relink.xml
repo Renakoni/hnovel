@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="local_file_backup_scope">The .lnr backup contains selected library data, not the original EPUB or TXT files. Keep those files separately. After restoring on another device, use “Relink original file” on each local book to keep its reading position and bookmarks.</string>
+    <string name="local_file_missing_title">Original file needed</string>
+    <string name="local_file_missing_body">Your bookshelf, reading progress and bookmarks are saved. Select the original EPUB or TXT file to read this book on this device.</string>
+    <string name="local_file_relink_action">Relink original file</string>
+    <string name="local_file_relink_confirm">Relink</string>
+    <string name="local_file_relink_preserves">The book keeps its existing identity, bookshelf entries, progress and bookmarks. No duplicate book is created.</string>
+    <string name="local_file_match_exact">The original file and chapter mapping match the backup.</string>
+    <string name="local_file_match_legacy">This older backup has no file fingerprint. The chapter titles and order match, but the text cannot be verified. Check the preview before continuing; saved positions may differ.</string>
+    <string name="local_file_match_different_file">This is a different or modified original file. Choose the unchanged original. You can import this version as a separate book from your bookshelf.</string>
+    <string name="local_file_match_different_mapping">The chapter mapping or text differs. For TXT, use the original encoding and chapter rule. If they cannot be matched, import this file as a separate book.</string>
+    <string name="local_file_match_missing_mapping">This backup has no chapter mapping to verify. Relinking is unavailable; import the file as a separate book from your bookshelf.</string>
+    <string name="local_file_legacy_confirmation">I checked the preview and confirm this is the original book.</string>
+    <string name="local_file_relink_success">Original file relinked</string>
+</resources>

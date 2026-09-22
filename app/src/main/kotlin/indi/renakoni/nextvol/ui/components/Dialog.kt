@@ -300,6 +300,8 @@ fun ExportUserDataDialog(
                 checked = mutableExportContext.settings,
                 onCheckedChange = { mutableExportContext.settings = it }
             )
+            Text(stringResource(R.string.local_file_backup_scope), Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
+                style = typography.bodyMedium, color = colorScheme.onSurfaceVariant)
             HorizontalDivider(Modifier.padding(horizontal = 14.dp))
             CheckBoxListItem(
                 modifier = listItemModifier,
@@ -409,6 +411,8 @@ fun ImportUserDataDialog(
                         style = typography.bodyMedium,
                         color = colorScheme.onSurfaceVariant
                     )
+                    Text(stringResource(R.string.local_file_backup_scope), style = typography.bodyMedium,
+                        color = colorScheme.onSurfaceVariant)
                     ImportOptionTile(
                         icon = R.drawable.alt_route_24px,
                         title = stringResource(R.string.import_merge),
