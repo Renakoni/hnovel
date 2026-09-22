@@ -87,7 +87,7 @@ class HomeLoadingFeedbackTest {
             SourceDiscoverySection("one", "Recommended", emptyList(), SourceDiscoveryTarget(id, "/one")))))
         activity.get().setContent { MaterialTheme {
             ExploreHomeScreen(DiscoveryPageState(listOf(source), id, mapOf(id to page)),
-                {}, { _, _ -> }, {}, {}, {}, {}, {}, {}, { _, _ -> }, { _, _ -> }, {})
+                {}, { _, _ -> }, {}, {}, {}, {}, {}, { _, _ -> }, { _, _ -> }, {})
         } }
         val before = compose.onNodeWithText("Recommended").fetchSemanticsNode().boundsInRoot
         compose.runOnIdle { page = page.copy(loading = true, acting = true) }

@@ -13,6 +13,7 @@ data class SourceMetadata(
     val builtIn: Boolean = false,
     val revision: String = "1",
     val accountGeneration: Long = 0,
+    val category: SourceCategory? = null,
 ) {
     val id: Identifier get() = item.id
     val supportsReading: Boolean get() = SourceCapability.Directory in capabilities && SourceCapability.ChapterContent in capabilities

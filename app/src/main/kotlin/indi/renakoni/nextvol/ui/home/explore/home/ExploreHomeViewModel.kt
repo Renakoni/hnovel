@@ -20,7 +20,8 @@ class ExploreHomeViewModel @Inject constructor(
     accounts: SourceSessionManager,
     saved: SavedStateHandle,
     private val text: TextProcessingRepository,
-) : DiscoveryPageViewModel(registry, accounts, saved, SourceCapability.Explore) {
+    browsing: SourceBrowseSettings,
+) : DiscoveryPageViewModel(registry, accounts, saved, SourceCapability.Explore, browsing) {
     override fun feedUpdates(discovery: SourceDiscovery) = discovery.feedUpdates().map { result -> result.map { sections ->
         sections.map { section -> section.copy(books = section.books.map { book ->
             val display = text.processExploreBooksRow(ExploreDisplayBook(
@@ -40,10 +41,6 @@ class ExploreHomeViewModel @Inject constructor(
 
     fun search(): Route.Main.Explore.Search? = selected(SourceCapability.Search)?.let {
         Route.Main.Explore.Search(it.namespace, it.id)
-    }
-
-    fun categories(): Route.Main.Categories? = selected(SourceCapability.Categories)?.let {
-        Route.Main.Categories(it.namespace, it.id)
     }
 
     private fun selected(capability: SourceCapability) = state.value.selected?.takeIf { id ->

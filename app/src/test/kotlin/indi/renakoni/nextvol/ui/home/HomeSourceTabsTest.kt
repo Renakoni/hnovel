@@ -62,7 +62,7 @@ class HomeSourceTabsTest {
         activity.get().setContent {
             CompositionLocalProvider(LocalDensity provides Density(1f, 1.5f)) {
                 MaterialTheme {
-                    if (explore) ExploreHomeScreen(state, select, { _, _ -> }, {}, {}, {}, {}, {}, {}, { _, _ -> }, { _, _ -> }, {})
+                    if (explore) ExploreHomeScreen(state, select, { _, _ -> }, {}, {}, {}, {}, {}, { _, _ -> }, { _, _ -> }, {})
                     else CategoriesScreen(state, select, {}, { _, _ -> }, {}, {}, {}, {})
                 }
             }

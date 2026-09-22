@@ -28,14 +28,15 @@ fun NavGraphBuilder.categoriesDestination() {
         val nav = LocalNavController.current
         val model = hiltViewModel<CategoriesViewModel>()
         val state by model.state.collectAsStateWithLifecycle()
-        CategorySourceSelection(entry, !state.loadingSources, model::select)
+        CategorySourceSelection(entry, !state.loadingSources, model::openSource)
         DiscoveryPageEffects(model, entry)
         CategoriesScreen(state, model::select,
             onCategory = { category -> model.result(category)?.let { nav.navigate(it) } },
             model::scroll, model::refresh,
             onManageSources = { nav.navigate(state.selected?.let { Route.Main.Settings.SourceDetail(it.namespace, it.id) } ?: Route.Main.Settings.Sources) },
             onSettings = nav::navigateToSettingsDestination, onBack = { nav.popBackStackIfResumed() },
-            onInput = { id, value -> model.interact(id, value) }, onAction = { id, longClick -> model.interact(id, longClick = longClick) })
+            onInput = { id, value -> model.interact(id, value) }, onAction = { id, longClick -> model.interact(id, longClick = longClick) },
+            onScope = model::selectScope, onPage = model::selectPage)
     }
     composable<Route.Main.DiscoveryResults> { entry ->
         val nav = LocalNavController.current

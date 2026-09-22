@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="source_category_platforms">主流平台</string>
+    <string name="source_category_female">女頻</string>
+    <string name="source_category_anime">二次元</string>
+    <string name="source_category_literature">經典文學</string>
+    <string name="source_category_general">綜合補充</string>
+    <string name="source_category_adult">r18</string>
+    <string name="source_examples_platforms">起點 · 番茄 · 七貓</string>
+    <string name="source_examples_female">晉江 · 紅袖 · 長佩</string>
+    <string name="source_examples_anime">SF · 輕之文庫</string>
+    <string name="source_examples_literature">九九藏書 · 古詩文網</string>
+    <string name="source_examples_general">筆趣閣 · 69書吧</string>
+    <string name="source_examples_adult">愛麗絲 · hlib · PO18</string>
+    <string name="source_catalog_tab">分類</string>
+    <string name="source_import_tab">匯入</string>
+    <string name="source_catalog_count">%1$d 個</string>
+    <string name="source_catalog_count_added">%1$d 個 · 已新增 %2$d 個</string>
+    <string name="source_catalog_added">已新增</string>
+    <string name="source_catalog_selected">已選 %1$d 個</string>
+    <string name="source_catalog_select_all">全選</string>
+    <string name="source_catalog_deselect_all">取消全選</string>
+    <string name="source_catalog_clear">清空</string>
+    <string name="source_catalog_continue">繼續</string>
+    <string name="source_catalog_empty">暫無書源</string>
+    <string name="source_catalog_installed">已新增來源 · %1$d</string>
+    <string name="source_range_all">全部書源</string>
+    <string name="source_range_title">書源範圍</string>
+    <string name="source_range_description">書源範圍：%1$s</string>
+    <string name="source_range_empty_explore">暫無%1$s探索書源</string>
+    <string name="source_range_empty_categories">暫無提供分類的%1$s書源</string>
+    <string name="source_pages_title">書源分頁</string>
+    <string name="source_page_number">第 %1$d 頁</string>
+    <string name="source_page_range">%1$d–%2$d · %3$s</string>
+    <string name="source_page_position">%1$d/%2$d</string>
+    <string name="source_page_description">書源第 %1$d 頁，共 %2$d 頁</string>
+    <string name="source_page_previous">上一頁書源</string>
+    <string name="source_page_next">下一頁書源</string>
+</resources>

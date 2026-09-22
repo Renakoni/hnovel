@@ -8,17 +8,17 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -30,6 +30,7 @@ import hnovel.imports.EXTENSION_PROFILE
 import hnovel.imports.AUTO_PROFILE
 import indi.renakoni.nextvol.ui.components.SectionHeader
 import indi.renakoni.nextvol.data.web.SourceCapability
+import indi.renakoni.nextvol.data.web.SourceCategory
 import indi.renakoni.nextvol.data.web.SourceListing
 import indi.renakoni.nextvol.data.web.SourceStatus
 import indi.renakoni.nextvol.data.web.rules.ImportedRuleSources
@@ -81,12 +82,22 @@ fun NavGraphBuilder.settingsSourcesDestination() {
 @Composable
 fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
     onDiagnostics: (Identifier) -> Unit, onSearch: (Identifier) -> Unit = {}, onBack: () -> Unit) {
-    var adding by remember { mutableStateOf(false) }
-    var url by remember { mutableStateOf("") }
+    var adding by rememberSaveable { mutableStateOf(false) }
+    var addTab by rememberSaveable { mutableIntStateOf(0) }
+    var category by rememberSaveable { mutableStateOf<SourceCategory?>(null) }
+    var managementCategory by rememberSaveable { mutableStateOf<SourceCategory?>(null) }
+    var chosen by rememberSaveable { mutableStateOf(emptyList<String>()) }
+    var url by rememberSaveable { mutableStateOf("") }
+    val addStates = rememberSaveableStateHolder()
     var deleting by remember { mutableStateOf(false) }
     var rollback by remember { mutableStateOf(false) }
-    val listState = remember(state.selected, adding) { LazyListState() }
-    LaunchedEffect(state.message) { if (state.message == R.string.sources_saved) adding = false }
+    val listState = rememberSaveable(state.selected, saver = LazyListState.Saver) { LazyListState() }
+    LaunchedEffect(state.message) {
+        if (state.message == R.string.sources_saved) { adding = false; category = null; chosen = emptyList() }
+    }
+    LaunchedEffect(state.installed) {
+        chosen = chosen - state.installed.map { it.definition.importKey }.toSet()
+    }
     val file = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let { uri -> model.previewFile(uri, AUTO_PROFILE) } }
     val installed = state.installed.find { ImportedRuleSources.id(it.definition) == state.selected }
     val selectedEntry = state.registry.find { it.metadata.id == state.selected }
@@ -96,22 +107,39 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
             state.busy -> model.cancel()
             state.preview != null -> model.dismissPreview()
             state.selected != null -> model.select(null)
+            adding && category != null -> category = null
             adding -> adding = false
             else -> onBack()
         }
     }
     BackHandler { back() }
     Scaffold(topBar = {
-        TopAppBar(title = { Text(if (state.selected == ZLibrarySources.ID) "Z-Library"
-            else installed?.definition?.displayName ?: selectedEntry?.metadata?.item?.name ?: stringResource(R.string.sources_title)) },
+        TopAppBar(title = { Text(when {
+            state.preview != null -> stringResource(R.string.sources_preview)
+            state.selected == ZLibrarySources.ID -> "Z-Library"
+            installed != null -> state.catalog.find { it.key == installed.definition.importKey }?.name ?: installed.definition.displayName
+            selectedEntry != null -> selectedEntry.metadata.item.name
+            adding && category != null -> stringResource(category!!.title)
+            adding -> stringResource(R.string.sources_add)
+            else -> stringResource(R.string.sources_title)
+        }) },
             navigationIcon = { IconButton(onClick = { back() }) {
                 Icon(painterResource(R.drawable.arrow_back_24px), stringResource(R.string.sources_back))
             } })
     }) { padding ->
         if (state.preview != null) {
             SourceImportPreview(state, model, Modifier.padding(padding))
+        } else if (adding && state.selected == null) {
+            val selectedCategory = category
+            addStates.SaveableStateProvider(selectedCategory?.name ?: "add") {
+                if (selectedCategory == null) SourceCatalogAddScreen(state, addTab, { addTab = it }, url, { url = it },
+                    onPreviewUrl = { model.previewUrl(url, AUTO_PROFILE) }, onFile = { file.launch(arrayOf("*/*")) },
+                    onCategory = { category = it }, onCancel = model::cancel, modifier = Modifier.padding(padding))
+                else SourceCatalogSelectionScreen(state, selectedCategory, chosen, { chosen = it },
+                    onContinue = { model.previewCatalog(chosen.toSet()) }, onCancel = model::cancel, modifier = Modifier.padding(padding))
+            }
         } else LazyColumn(Modifier.fillMaxSize().padding(padding), state = listState, contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (state.busy) item { LinearProgressIndicator(Modifier.fillMaxWidth()); TextButton(onClick = model::cancel) { Text(stringResource(android.R.string.cancel)) } }
+            if (state.busy && state.showProgress) item { LinearProgressIndicator(Modifier.fillMaxWidth()); TextButton(onClick = model::cancel) { Text(stringResource(android.R.string.cancel)) } }
             state.message?.let { message -> item { Text(stringResource(message), color = MaterialTheme.colorScheme.primary) } }
             if (state.selected == ZLibrarySources.ID) {
                 item(key = "zlibrary-settings") { ZLibrarySettingsEditor(state.zLibrary, state.busy, state.registry.find { it.metadata.id == ZLibrarySources.ID },
@@ -207,60 +235,67 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                         onSearch = { onSearch(state.selected) }, onBypassVpn = model::setBypassVpn)
                 }
             } else {
-                item { Button(onClick = { adding = !adding }, enabled = !state.busy) { Text(stringResource(R.string.sources_add)) } }
-                if (adding) item {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedTextField(url, { url = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.sources_url)) }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
-                        Button(onClick = { model.previewUrl(url, AUTO_PROFILE) }, enabled = !state.busy && url.isNotBlank()) { Text(stringResource(R.string.sources_preview_url)) }
-                        OutlinedButton(onClick = { file.launch(arrayOf("*/*")) }, enabled = !state.busy) { Text(stringResource(R.string.sources_file)) }
+                item { Button(onClick = { adding = true }, enabled = !state.busy, colors = sourceButtonColors()) { Text(stringResource(R.string.sources_add)) } }
+                item { SectionHeader(text = stringResource(R.string.sources_builtin_group)) }
+                item {
+                    val entry = state.registry.find { it.metadata.id == ZLibrarySources.ID }
+                    ListItem(headlineContent = { Text("Z-Library") },
+                        supportingContent = { Column {
+                            Text(stringResource(R.string.zlibrary_source_summary))
+                        } },
+                        trailingContent = {
+                            if (state.zLibrary.settings.available && SourceCapability.Search in entry.actionCapabilities()) IconButton(onClick = { onSearch(ZLibrarySources.ID) }, enabled = !state.busy) {
+                                Icon(painterResource(R.drawable.search_24px), stringResource(R.string.explore_search))
+                            }
+                        }, modifier = Modifier.clip(MaterialTheme.shapes.large).clickable(enabled = !state.busy) { model.select(ZLibrarySources.ID) },
+                        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer))
+                }
+                items(state.registry.filter { it.metadata.builtIn && it.metadata.id != ZLibrarySources.ID }, key = { it.metadata.id.toString() }) { entry ->
+                    ListItem(headlineContent = { Text(entry.metadata.item.name) }, supportingContent = { Column {
+                        Text(stringResource(R.string.sources_builtin))
+                    } },
+                        modifier = Modifier.clip(MaterialTheme.shapes.large).clickable(enabled = !state.busy) { model.select(entry.metadata.id) },
+                        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                        trailingContent = {
+                            if (SourceCapability.Search in entry.actionCapabilities()) IconButton(onClick = { onSearch(entry.metadata.id) }, enabled = !state.busy) {
+                                Icon(painterResource(R.drawable.search_24px), stringResource(R.string.explore_search))
+                            }
+                        })
+                }
+                item {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        SectionHeader(Modifier.weight(1f), text = if (state.installed.isEmpty()) stringResource(R.string.sources_imported_group)
+                            else stringResource(R.string.source_catalog_installed, state.installed.size))
+                        if (state.installed.isNotEmpty()) SourceManagementFilter(managementCategory) { managementCategory = it }
                     }
                 }
-                if (!adding) {
-                    item { SectionHeader(text = stringResource(R.string.sources_builtin_group)) }
-                    item {
-                        val entry = state.registry.find { it.metadata.id == ZLibrarySources.ID }
-                        ListItem(headlineContent = { Text("Z-Library") },
-                            supportingContent = { Column {
-                                Text(stringResource(R.string.zlibrary_source_summary))
-                            } },
-                            trailingContent = {
-                                if (state.zLibrary.settings.available && SourceCapability.Search in entry.actionCapabilities()) IconButton(onClick = { onSearch(ZLibrarySources.ID) }, enabled = !state.busy) {
-                                    Icon(painterResource(R.drawable.search_24px), stringResource(R.string.explore_search))
-                                }
-                            }, modifier = Modifier.clip(MaterialTheme.shapes.large).clickable(enabled = !state.busy) { model.select(ZLibrarySources.ID) },
-                            colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer))
+                val visible = state.installed.filter { managementCategory == null || it.preferences.category == managementCategory }
+                if (visible.isEmpty()) item {
+                    Column {
+                        Text(stringResource(R.string.source_catalog_empty), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (managementCategory != null) TextButton(onClick = { category = managementCategory; adding = true }) {
+                            Text(stringResource(R.string.sources_add), color = MaterialTheme.colorScheme.onSurface)
+                        }
                     }
-                    items(state.registry.filter { it.metadata.builtIn && it.metadata.id != ZLibrarySources.ID }, key = { it.metadata.id.toString() }) { entry ->
-                        ListItem(headlineContent = { Text(entry.metadata.item.name) }, supportingContent = { Column {
-                            Text(stringResource(R.string.sources_builtin))
-                        } },
-                            modifier = Modifier.clip(MaterialTheme.shapes.large).clickable(enabled = !state.busy) { model.select(entry.metadata.id) },
-                            colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-                            trailingContent = {
-                                if (SourceCapability.Search in entry.actionCapabilities()) IconButton(onClick = { onSearch(entry.metadata.id) }, enabled = !state.busy) {
-                                    Icon(painterResource(R.drawable.search_24px), stringResource(R.string.explore_search))
-                                }
-                            })
-                    }
-                    item { SectionHeader(text = stringResource(R.string.sources_imported_group)) }
-                    if (state.installed.isEmpty()) item { Text(stringResource(R.string.sources_empty)) }
-                    items(state.installed, key = { it.definition.sourceId }) { source ->
-                        val id = ImportedRuleSources.id(source.definition)
-                        ListItem(headlineContent = { Text(source.definition.displayName) },
-                            supportingContent = { Text(android.net.Uri.parse(source.definition.importKey).host.orEmpty()) },
-                            trailingContent = { Switch(source.preferences.enabled, { model.setEnabled(id, it) }, enabled = !state.busy) },
-                            modifier = Modifier.clip(MaterialTheme.shapes.large).clickable(enabled = !state.busy) { model.select(id) },
-                            colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer))
-                    }
-                    val installedIds = state.installed.map { ImportedRuleSources.id(it.definition) }.toSet()
-                    val plugins = state.registry.filter { !it.metadata.builtIn && it.metadata.id !in installedIds && it.metadata.id != ZLibrarySources.ID }
-                    if (plugins.isNotEmpty()) item { SectionHeader(text = stringResource(R.string.sources_plugins_group)) }
-                    items(plugins, key = { it.metadata.id.toString() }) { entry ->
-                        ListItem(headlineContent = { Text(entry.metadata.item.name) },
-                            supportingContent = { Text(entry.metadata.item.provider) },
-                            modifier = Modifier.clip(MaterialTheme.shapes.large).clickable(enabled = !state.busy) { model.select(entry.metadata.id) },
-                            colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer))
-                    }
+                }
+                items(visible, key = { it.definition.sourceId }) { source ->
+                    val id = ImportedRuleSources.id(source.definition)
+                    val presentation = state.catalog.find { it.key == source.definition.importKey }
+                    ListItem(headlineContent = { Text(presentation?.name ?: source.definition.displayName) },
+                        supportingContent = { Text(presentation?.host?.takeIf(String::isNotBlank)
+                            ?: android.net.Uri.parse(source.definition.importKey).host.orEmpty()) },
+                        trailingContent = { Switch(source.preferences.enabled, { model.setEnabled(id, it) }, enabled = !state.busy) },
+                        modifier = Modifier.clip(MaterialTheme.shapes.large).clickable(enabled = !state.busy) { model.select(id) },
+                        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer))
+                }
+                val installedIds = state.installed.map { ImportedRuleSources.id(it.definition) }.toSet()
+                val plugins = state.registry.filter { !it.metadata.builtIn && it.metadata.id !in installedIds && it.metadata.id != ZLibrarySources.ID }
+                if (plugins.isNotEmpty()) item { SectionHeader(text = stringResource(R.string.sources_plugins_group)) }
+                items(plugins, key = { it.metadata.id.toString() }) { entry ->
+                    ListItem(headlineContent = { Text(entry.metadata.item.name) },
+                        supportingContent = { Text(entry.metadata.item.provider) },
+                        modifier = Modifier.clip(MaterialTheme.shapes.large).clickable(enabled = !state.busy) { model.select(entry.metadata.id) },
+                        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer))
                 }
             }
         }
