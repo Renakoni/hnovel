@@ -25,7 +25,7 @@ object TxtBookParser {
     data class Decoded(val text: String, val encoding: String)
 
     fun decode(bytes: ByteArray, encoding: String? = null): Decoded {
-        require(bytes.isNotEmpty()) { "The text file is empty." }
+        requireImport(bytes.isNotEmpty(), LocalBookImportReason.EmptyFile) { "The text file is empty." }
         fun begins(vararg prefix: Int) = bytes.size >= prefix.size && prefix.indices.all { bytes[it].toInt() and 255 == prefix[it] }
         val bom = when {
             begins(0xEF, 0xBB, 0xBF) -> "UTF-8" to 3
@@ -39,13 +39,13 @@ object TxtBookParser {
             val text = charset.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
                 .onUnmappableCharacter(CodingErrorAction.REPORT)
                 .decode(ByteBuffer.wrap(bytes, offset, bytes.size - offset)).toString()
-            require(text.none { it == '\u0000' } && text.count { it.isISOControl() && it !in "\r\n\t" } == 0) {
+            requireImport(text.none { it == '\u0000' } && text.count { it.isISOControl() && it !in "\r\n\t" } == 0, LocalBookImportReason.InvalidEncoding) {
                 "The file is not readable text in this encoding. Choose another encoding."
             }
             return Decoded(text.replace("\r\n", "\n").replace('\r', '\n'), charset.name())
         }
         if (encoding != null) {
-            require(encoding in encodings) { "Unsupported text encoding." }
+            requireImport(encoding in encodings, LocalBookImportReason.UnsupportedEncoding) { "Unsupported text encoding." }
             return strict(encoding)
         }
         if (bom != null) return strict(bom.first)
@@ -64,7 +64,7 @@ object TxtBookParser {
     }
 
     fun parse(bytes: ByteArray, title: String, encoding: String? = null, rule: String = DEFAULT_RULE): ParsedLocalBook {
-        require(rule.length <= 1_024) { "The chapter rule is too long." }
+        requireImport(rule.length <= 1_024, LocalBookImportReason.RuleTooLong) { "The chapter rule is too long." }
         val matcher = rule.takeIf { it.isNotBlank() }?.let(Pattern::compile)
         val decoded = decode(bytes, encoding)
         val chapters = mutableListOf<LocalBookChapter>()
@@ -76,7 +76,7 @@ object TxtBookParser {
         val blocks = mutableListOf<LocalBookBlock>()
         fun flush() {
             if (blocks.isEmpty() && !explicitChapter) return
-            require(chapters.size < MAX_CHAPTERS) { "Too many chapters. Adjust the chapter rule." }
+            requireImport(chapters.size < MAX_CHAPTERS, LocalBookImportReason.TooManyChapters) { "Too many chapters. Adjust the chapter rule." }
             chapters += LocalBookChapter(if (part == 1) currentTitle else "$currentTitle ($part)", currentVolume, blocks.toList())
             blocks.clear()
             length = 0
@@ -110,7 +110,7 @@ object TxtBookParser {
             }
         }
         flush()
-        require(chapters.any { it.blocks.isNotEmpty() }) { "The file has no readable text." }
+        requireImport(chapters.any { it.blocks.isNotEmpty() }, LocalBookImportReason.NoContent) { "The file has no readable text." }
         return ParsedLocalBook(title, chapters, encoding = decoded.encoding)
     }
 

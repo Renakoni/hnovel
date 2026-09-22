@@ -101,15 +101,15 @@ class LocalBookStore @Inject constructor(
                 val format = when {
                     name.endsWith(".epub", true) || mime == "application/epub+zip" -> LocalBookFormat.EPUB
                     name.endsWith(".txt", true) || mime == "text/plain" -> LocalBookFormat.TXT
-                    else -> throw IllegalArgumentException(context.getString(R.string.local_book_supported_formats))
+                    else -> throw LocalBookImportException(LocalBookImportReason.UnsupportedFormat, "Only EPUB and TXT files are supported.")
                 }
                 val book = SourceBookId(SOURCE, UUID.randomUUID().toString())
                 val directory = File(root, "pending-${book.remoteId}")
-                check(directory.mkdirs()) { "Cannot create the import directory." }
+                requireImport(directory.mkdirs(), LocalBookImportReason.Storage) { "Cannot create the import directory." }
                 val draft = LocalBookDraft(book, name, format, directory)
                 staged = draft
                 drafts += directory
-                requireNotNull(context.contentResolver.openInputStream(uri)) { "Cannot open the selected file." }.use { input ->
+                requireImportNotNull(context.contentResolver.openInputStream(uri), LocalBookImportReason.FileAccess) { "Cannot open the selected file." }.use { input ->
                     draft.original.outputStream().use { output ->
                         val buffer = ByteArray(8192)
                         var size = 0L
@@ -118,12 +118,12 @@ class LocalBookStore @Inject constructor(
                             val count = input.read(buffer)
                             if (count < 0) break
                             size += count
-                            require(size <= MAX_FILE_BYTES && (format != LocalBookFormat.TXT || size <= 16L * 1024 * 1024)) {
-                                context.getString(R.string.local_book_file_too_large)
+                            requireImport(size <= MAX_FILE_BYTES && (format != LocalBookFormat.TXT || size <= 16L * 1024 * 1024), LocalBookImportReason.FileTooLarge) {
+                                "The selected file exceeds the import size limit."
                             }
                             output.write(buffer, 0, count)
                         }
-                        require(size > 0) { "The selected file is empty." }
+                        requireImport(size > 0, LocalBookImportReason.EmptyFile) { "The selected file is empty." }
                     }
                 }
                 draft
@@ -136,7 +136,7 @@ class LocalBookStore @Inject constructor(
 
     suspend fun preview(draft: LocalBookDraft, encoding: String? = null, rule: String = TxtBookParser.DEFAULT_RULE): ParsedLocalBook =
         withContext(Dispatchers.IO) { lock.withLock {
-            require(draft.directory in drafts) { "This import session is no longer available." }
+            requireImport(draft.directory in drafts, LocalBookImportReason.SessionExpired) { "This import session is no longer available." }
             currentCoroutineContext().ensureActive()
             val title = draft.originalName.substringBeforeLast('.').ifBlank { "Local book" }
             val parsed = when (draft.format) {
@@ -154,8 +154,8 @@ class LocalBookStore @Inject constructor(
     /** Confirmation cannot be cancelled halfway through publishing files and the Room transaction. */
     suspend fun publish(draft: LocalBookDraft, parsed: ParsedLocalBook, title: String, shelfId: Int?): Pair<SourceBookId, Int> =
         withContext(NonCancellable + Dispatchers.IO) { lock.withLock {
-            require(draft.directory in drafts) { "This import session is no longer available." }
-            require(title.isNotBlank() && title.length <= 200) { "Enter a book title of at most 200 characters." }
+            requireImport(draft.directory in drafts, LocalBookImportReason.SessionExpired) { "This import session is no longer available." }
+            requireImport(title.isNotBlank() && title.length <= 200, LocalBookImportReason.InvalidTitle) { "Enter a book title of at most 200 characters." }
             val index = LocalBookIndex(title.trim(), parsed.author, parsed.description, parsed.publishingHouse,
                 parsed.coverPath, LocalDateTime.now().toString(),
                 parsed.chapters.sumOf { chapter -> chapter.blocks.filterIsInstance<LocalBookBlock.Text>().sumOf { it.value.length } },
@@ -167,16 +167,16 @@ class LocalBookStore @Inject constructor(
                     File(draft.directory, "$number.json").writeText(Json.encodeToString(chapter))
                 }
                 File(draft.directory, "index.json").writeText(Json.encodeToString(index))
-                check(draft.directory.renameTo(directory)) { "Cannot publish the imported files." }
+                requireImport(draft.directory.renameTo(directory), LocalBookImportReason.Storage) { "Cannot publish the imported files." }
                 moved = true
                 val target = database.withTransaction {
                     val shelves = database.bookshelfDao()
                     val shelf = if (shelfId == null) {
-                        require(shelves.getAllBookshelfIds().isEmpty()) { context.getString(R.string.local_book_shelf_changed) }
+                        requireImport(shelves.getAllBookshelfIds().isEmpty(), LocalBookImportReason.ShelfChanged) { "The selected bookshelf is no longer available." }
                         BookshelfEntity(0, context.getString(R.string.local_bookshelf_name), BookshelfSortType.Default.key,
                             autoCache = false, systemUpdateReminder = false, allBookIds = emptyList(),
                             pinnedBookIds = emptyList(), updatedBookIds = emptyList())
-                    } else requireNotNull(shelves.getBookshelf(shelfId)) { context.getString(R.string.local_book_shelf_changed) }
+                    } else requireImportNotNull(shelves.getBookshelf(shelfId), LocalBookImportReason.ShelfChanged) { "The selected bookshelf is no longer available." }
                     database.importedBookDao().insert(ImportedBookEntity(draft.book.storageKey))
                     val info = information(draft.book, index, directory)
                     database.bookInformationDao().insert(info)
@@ -284,7 +284,7 @@ class LocalBookStore @Inject constructor(
 
     private suspend fun recoverLocked() {
         if (recovered) return
-        check(root.isDirectory || root.mkdirs()) { "Cannot open the local library." }
+        requireImport(root.isDirectory || root.mkdirs(), LocalBookImportReason.Storage) { "Cannot open the local library." }
         val owned = database.importedBookDao().allIds().map { BookIdentity.book(it).fileKey }.toSet()
         root.listFiles()?.filter { it.isDirectory && it.name !in owned && it !in drafts }?.forEach(::deleteDirectory)
         recovered = true
@@ -292,7 +292,7 @@ class LocalBookStore @Inject constructor(
 
     private fun deleteDirectory(directory: File) {
         require(directory.canonicalFile.parentFile == root.canonicalFile) { "Invalid local book directory." }
-        check(!directory.exists() || directory.deleteRecursively()) { "Cannot remove the local book files." }
+        requireImport(!directory.exists() || directory.deleteRecursively(), LocalBookImportReason.Storage) { "Cannot remove the local book files." }
     }
 
     private fun asset(directory: File, path: String): Uri {

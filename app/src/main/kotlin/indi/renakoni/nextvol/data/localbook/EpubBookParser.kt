@@ -34,15 +34,15 @@ object EpubBookParser {
         var count = 0
         while (allEntries.hasMoreElements()) {
             val entry = allEntries.nextElement()
-            require(++count <= MAX_ENTRIES) { "The EPUB contains too many files." }
+            requireImport(++count <= MAX_ENTRIES, LocalBookImportReason.EpubLimit) { "The EPUB contains too many files." }
             if (entry.isDirectory) continue
             val path = normalizePath(entry.name)
-            require(entries.put(path, entry) == null) { "The EPUB has duplicate resource paths." }
+            requireImport(entries.put(path, entry) == null, LocalBookImportReason.CorruptEpub) { "The EPUB has duplicate resource paths." }
         }
         var expanded = 0L
         fun read(path: String): ByteArray {
-            val entry = requireNotNull(entries[path]) { "An EPUB resource is missing: $path" }
-            require(entry.size <= MAX_ENTRY_BYTES) { "An EPUB resource is too large." }
+            val entry = requireImportNotNull(entries[path], LocalBookImportReason.CorruptEpub) { "An EPUB resource is missing: $path" }
+            requireImport(entry.size <= MAX_ENTRY_BYTES, LocalBookImportReason.EpubLimit) { "An EPUB resource is too large." }
             return zip.getInputStream(entry).use { input ->
                 val output = ByteArrayOutputStream()
                 val crc = CRC32()
@@ -53,11 +53,11 @@ object EpubBookParser {
                     if (read < 0) break
                     size += read
                     expanded += read
-                    require(size <= MAX_ENTRY_BYTES && expanded <= MAX_EXPANDED_BYTES) { "The EPUB expands beyond the import limit." }
+                    requireImport(size <= MAX_ENTRY_BYTES && expanded <= MAX_EXPANDED_BYTES, LocalBookImportReason.EpubLimit) { "The EPUB expands beyond the import limit." }
                     output.write(buffer, 0, read)
                     crc.update(buffer, 0, read)
                 }
-                require(entry.crc == crc.value) { "An EPUB resource is damaged." }
+                requireImport(entry.crc == crc.value, LocalBookImportReason.CorruptEpub) { "An EPUB resource is damaged." }
                 output.toByteArray()
             }
         }
@@ -66,27 +66,27 @@ object EpubBookParser {
         val packagePath = container.named("rootfile").firstOrNull {
             it.attr("media-type") == "application/oebps-package+xml"
         }?.attr("full-path") ?: container.named("rootfile").firstOrNull()?.attr("full-path")
-        val opfPath = resolve("", requireNotNull(packagePath) { "The EPUB has no package document." }).first
+        val opfPath = resolve("", requireImportNotNull(packagePath, LocalBookImportReason.CorruptEpub) { "The EPUB has no package document." }).first
         val opf = xml(opfPath)
-        val metadata = requireNotNull(opf.named("metadata").firstOrNull()) { "The EPUB has no metadata." }
-        val manifest = requireNotNull(opf.named("manifest").firstOrNull()) { "The EPUB has no manifest." }
+        val metadata = requireImportNotNull(opf.named("metadata").firstOrNull(), LocalBookImportReason.CorruptEpub) { "The EPUB has no metadata." }
+        val manifest = requireImportNotNull(opf.named("manifest").firstOrNull(), LocalBookImportReason.CorruptEpub) { "The EPUB has no manifest." }
         val items = manifest.named("item").map { item ->
             Item(item.attr("id"), resolve(opfPath, item.attr("href")).first, item.attr("media-type"),
                 item.attr("properties").split(whitespace).toSet())
         }
-        require(items.isNotEmpty() && items.all { it.id.isNotBlank() } && items.map { it.id }.distinct().size == items.size) {
+        requireImport(items.isNotEmpty() && items.all { it.id.isNotBlank() } && items.map { it.id }.distinct().size == items.size, LocalBookImportReason.CorruptEpub) {
             "The EPUB manifest has invalid IDs."
         }
         val byId = items.associateBy { it.id }
-        val spine = requireNotNull(opf.named("spine").firstOrNull()) { "The EPUB has no reading order." }
+        val spine = requireImportNotNull(opf.named("spine").firstOrNull(), LocalBookImportReason.CorruptEpub) { "The EPUB has no reading order." }
         val readingOrder = spine.named("itemref").map {
-            requireNotNull(byId[it.attr("idref")]) { "The EPUB reading order refers to a missing item." }
+            requireImportNotNull(byId[it.attr("idref")], LocalBookImportReason.CorruptEpub) { "The EPUB reading order refers to a missing item." }
         }
-        require(readingOrder.isNotEmpty()) { "The EPUB has no readable chapters." }
+        requireImport(readingOrder.isNotEmpty(), LocalBookImportReason.NoContent) { "The EPUB has no readable chapters." }
         val encrypted = if (entries.containsKey("META-INF/encryption.xml")) {
             xml("META-INF/encryption.xml").named("CipherReference").map { resolve("", it.attr("URI")).first }.toSet()
         } else emptySet()
-        require(readingOrder.none { it.path in encrypted }) { "Encrypted EPUB text is not supported." }
+        requireImport(readingOrder.none { it.path in encrypted }, LocalBookImportReason.EncryptedEpub) { "Encrypted EPUB text is not supported." }
 
         val navigation = mutableListOf<NavigationEntry>()
         val navItem = items.firstOrNull { "nav" in it.properties }
@@ -110,11 +110,11 @@ object EpubBookParser {
         }
         val savedAssets = mutableMapOf<String, String>()
         fun image(path: String): String = savedAssets.getOrPut(path) {
-            require(path !in encrypted) { "Encrypted EPUB images are not supported." }
-            require(!path.endsWith(".svg", ignoreCase = true) && items.none { it.path == path && it.mediaType == "image/svg+xml" }) {
+            requireImport(path !in encrypted, LocalBookImportReason.EncryptedEpub) { "Encrypted EPUB images are not supported." }
+            requireImport(!path.endsWith(".svg", ignoreCase = true) && items.none { it.path == path && it.mediaType == "image/svg+xml" }, LocalBookImportReason.UnsupportedEpub) {
                 "Standalone SVG images are not supported. Convert this EPUB to use PNG or JPEG images."
             }
-            require(assetsDirectory.isDirectory || assetsDirectory.mkdirs()) { "Cannot create the EPUB image directory." }
+            requireImport(assetsDirectory.isDirectory || assetsDirectory.mkdirs(), LocalBookImportReason.Storage) { "Cannot create the EPUB image directory." }
             val digest = MessageDigest.getInstance("SHA-256").digest(path.toByteArray()).joinToString("") { "%02x".format(it) }
             val extension = path.substringAfterLast('.', "img").takeIf { it.matches(Regex("[a-zA-Z0-9]{1,6}")) } ?: "img"
             val name = "$digest.$extension"
@@ -125,7 +125,7 @@ object EpubBookParser {
         val cover = items.firstOrNull { "cover-image" in it.properties } ?: byId[coverId]
         val chapters = mutableListOf<LocalBookChapter>()
         for (item in readingOrder) {
-            require(item.mediaType in setOf("application/xhtml+xml", "text/html")) { "Unsupported EPUB spine content: ${item.mediaType}" }
+            requireImport(item.mediaType in setOf("application/xhtml+xml", "text/html"), LocalBookImportReason.UnsupportedEpub) { "Unsupported EPUB spine content: ${item.mediaType}" }
             val labels = navigation.filter { it.path == item.path && it.title.isNotBlank() }
             val document = Jsoup.parse(read(item.path).inputStream(), null, "")
             val fallback = labels.firstOrNull()?.title
@@ -141,9 +141,9 @@ object EpubBookParser {
                 val end = boundaries.getOrNull(index + 1)?.first ?: body.content.size
                 if (end > start) chapters += splitChapter(title.limit(200), body.content.subList(start, end))
             }
-            require(chapters.size <= TxtBookParser.MAX_CHAPTERS) { "The EPUB contains too many chapters." }
+            requireImport(chapters.size <= TxtBookParser.MAX_CHAPTERS, LocalBookImportReason.TooManyChapters) { "The EPUB contains too many chapters." }
         }
-        require(chapters.isNotEmpty()) { "The EPUB has no readable content." }
+        requireImport(chapters.isNotEmpty(), LocalBookImportReason.NoContent) { "The EPUB has no readable content." }
         ParsedLocalBook(
             title = (metadata.named("title").firstOrNull()?.text()?.takeIf { it.isNotBlank() } ?: fallbackTitle).limit(200),
             chapters = chapters,
@@ -164,19 +164,19 @@ object EpubBookParser {
             text.clear()
         }
         fun visit(node: Node, depth: Int) {
-            require(depth <= 256) { "The EPUB markup is nested too deeply." }
+            requireImport(depth <= 256, LocalBookImportReason.EpubLimit) { "The EPUB markup is nested too deeply." }
             if (node is TextNode) { text.append(node.wholeText); return }
             if (node !is Element) return
             val tag = node.tagName().substringAfter(':').lowercase()
             if (tag in ignored) return
-            require(tag != "svg" || node.named("image").isNotEmpty()) { "Inline vector SVG artwork is not supported." }
+            requireImport(tag != "svg" || node.named("image").isNotEmpty(), LocalBookImportReason.UnsupportedEpub) { "Inline vector SVG artwork is not supported." }
             if (tag in blocks) flush()
             val id = node.id().ifEmpty { if (tag == "a") node.attr("name") else "" }
             if (id.isNotEmpty()) { flush(); anchors.putIfAbsent(id, content.size) }
             if (tag == "img" || tag == "image") {
                 flush()
                 val href = node.attr("src").ifEmpty { node.attr("href") }.ifEmpty { node.attr("xlink:href") }
-                require(href.isNotBlank()) { "An EPUB image has no resource path." }
+                requireImport(href.isNotBlank(), LocalBookImportReason.CorruptEpub) { "An EPUB image has no resource path." }
                 content += LocalBookBlock.Image(image(href))
             } else {
                 node.childNodes().forEach { visit(it, depth + 1) }
@@ -224,27 +224,33 @@ object EpubBookParser {
     }
 
     private fun resolve(base: String, href: String): Pair<String, String> {
-        require(!scheme.containsMatchIn(href) && !href.startsWith('/')) { "EPUB resources must be local to the archive." }
+        requireImport(!scheme.containsMatchIn(href) && !href.startsWith('/'), LocalBookImportReason.CorruptEpub) { "EPUB resources must be local to the archive." }
         val rawPath = href.substringBefore('#').substringBefore('?')
-        val fragment = URLDecoder.decode(href.substringAfter('#', "").replace("+", "%2B"), "UTF-8")
+        val fragment = decodePath(href.substringAfter('#', ""))
         if (rawPath.isEmpty()) return base to fragment
-        val path = URLDecoder.decode(rawPath.replace("+", "%2B"), "UTF-8")
-        require(!path.startsWith('/') && !scheme.containsMatchIn(path)) { "EPUB resources must be local to the archive." }
+        val path = decodePath(rawPath)
+        requireImport(!path.startsWith('/') && !scheme.containsMatchIn(path), LocalBookImportReason.CorruptEpub) { "EPUB resources must be local to the archive." }
         val parent = base.substringBeforeLast('/', "")
         return normalizePath(if (parent.isEmpty()) path else "$parent/$path") to fragment
     }
 
+    private fun decodePath(path: String): String = try {
+        URLDecoder.decode(path.replace("+", "%2B"), "UTF-8")
+    } catch (failure: IllegalArgumentException) {
+        throw LocalBookImportException(LocalBookImportReason.CorruptEpub, "Invalid EPUB resource encoding.", failure)
+    }
+
     private fun normalizePath(path: String): String {
-        require(path.isNotEmpty() && path.length <= 4096 && !path.startsWith('/') && '\\' !in path && '\u0000' !in path && !scheme.containsMatchIn(path)) {
+        requireImport(path.isNotEmpty() && path.length <= 4096 && !path.startsWith('/') && '\\' !in path && '\u0000' !in path && !scheme.containsMatchIn(path), LocalBookImportReason.CorruptEpub) {
             "Invalid EPUB resource path."
         }
         val parts = mutableListOf<String>()
         for (part in path.split('/')) when (part) {
             "", "." -> Unit
-            ".." -> { require(parts.isNotEmpty()) { "An EPUB resource escapes the archive." }; parts.removeAt(parts.lastIndex) }
+            ".." -> { requireImport(parts.isNotEmpty(), LocalBookImportReason.CorruptEpub) { "An EPUB resource escapes the archive." }; parts.removeAt(parts.lastIndex) }
             else -> parts += part
         }
-        require(parts.isNotEmpty()) { "Invalid EPUB resource path." }
+        requireImport(parts.isNotEmpty(), LocalBookImportReason.CorruptEpub) { "Invalid EPUB resource path." }
         return parts.joinToString("/")
     }
 }

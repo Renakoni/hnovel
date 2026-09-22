@@ -183,10 +183,7 @@ fun LocalBookImportDialog(
                         }
                         state.error?.let { error ->
                             item {
-                                Text(stringResource(R.string.local_book_import_failed), Modifier.padding(start = 24.dp, end = 24.dp, top = 16.dp),
-                                    style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.error)
-                                Text(error, Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
-                                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                LocalBookImportError(error, Modifier.padding(horizontal = 24.dp, vertical = 16.dp))
                             }
                         }
                         state.preview?.let { preview ->

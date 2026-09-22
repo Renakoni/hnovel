@@ -14,6 +14,7 @@ import indi.renakoni.nextvol.data.localbook.LocalBookBlock
 import indi.renakoni.nextvol.data.localbook.LocalBookChapter
 import indi.renakoni.nextvol.data.localbook.LocalBookDraft
 import indi.renakoni.nextvol.data.localbook.LocalBookFormat
+import indi.renakoni.nextvol.data.localbook.LocalBookImportReason
 import indi.renakoni.nextvol.data.localbook.LocalBookStore
 import indi.renakoni.nextvol.data.localbook.ParsedLocalBook
 import indi.renakoni.nextvol.data.localbook.TxtBookParser
@@ -92,13 +93,14 @@ class LocalBookImportViewModelTest {
         val model = model()
         model.open(file().toUri())
         await { !model.state.busy }
-        assertTrue(model.state.error, model.state.canImport)
+        assertTrue(model.state.error?.details, model.state.canImport)
         assertEquals(2, model.state.preview!!.chapters.size)
         model.changeRule("(")
         assertFalse(model.state.canImport)
         model.confirm()
         await { !model.state.busy }
         assertNotNull(model.state.error)
+        assertEquals(LocalBookImportReason.InvalidRule, model.state.error!!.reason)
         assertTrue(database.importedBookDao().allIds().isEmpty())
         model.changeRule("")
         await { !model.state.busy }
@@ -120,7 +122,7 @@ class LocalBookImportViewModelTest {
         assertNotNull(model.state.error)
         model.changeEncoding("UTF-16LE")
         await { !model.state.busy }
-        assertTrue(model.state.error, model.state.canImport)
+        assertTrue(model.state.error?.details, model.state.canImport)
         assertEquals("book", model.state.title)
         assertEquals("UTF-16LE", model.state.preview!!.encoding)
     }
@@ -135,6 +137,50 @@ class LocalBookImportViewModelTest {
         assertFalse(model.state.visible)
         assertTrue(database.bookshelfDao().getBookshelf(7)!!.allBookIds.isEmpty())
         assertTrue(file.isFile)
+    }
+
+    @Test fun emptyAndOversizedFilesHaveStableReasonsBeforePreview() = runBlocking {
+        val model = model()
+        model.open(temporary.newFile("empty.txt").toUri())
+        await { !model.state.busy }
+        assertEquals(LocalBookImportReason.EmptyFile, model.state.error!!.reason)
+        val large = temporary.newFile("large.txt")
+        java.io.RandomAccessFile(large, "rw").use { it.setLength(16L * 1024 * 1024 + 1) }
+        model.open(large.toUri())
+        await { !model.state.busy }
+        assertEquals(LocalBookImportReason.FileTooLarge, model.state.error!!.reason)
+        assertTrue(database.importedBookDao().allIds().isEmpty())
+    }
+
+    @Test fun finalPublicationFailureKeepsAnAccurateReasonAndNoImportedBook() = runBlocking {
+        val model = model()
+        model.open(file().toUri())
+        await { model.state.canImport }
+        database.bookshelfDao().deleteBookshelf(7)
+        model.confirm()
+        await { !model.state.importing }
+        assertEquals(LocalBookImportReason.ShelfChanged, model.state.error!!.reason)
+        assertTrue(model.state.visible)
+        assertTrue(database.importedBookDao().allIds().isEmpty())
+        model.dismiss()
+    }
+
+    @Test fun unknownFailureIsDiagnosticOnlyAndReselectingCanRetry() = runBlocking {
+        val store = mockk<LocalBookStore>(relaxed = true)
+        coEvery { store.stage(any()) } throws IllegalStateException("private raw diagnostic")
+        val model = model(store)
+        val source = file()
+        model.open(source.toUri())
+        await { !model.state.busy }
+        assertEquals(LocalBookImportReason.Unknown, model.state.error!!.reason)
+        assertTrue(model.state.error!!.details.contains("private raw diagnostic"))
+        val staged = LocalBookDraft(SourceBookId(LocalBookStore.SOURCE, "retry"), "book.txt", LocalBookFormat.TXT, temporary.newFolder())
+        coEvery { store.stage(any()) } returns staged
+        coEvery { store.preview(any(), any(), any()) } returns ParsedLocalBook("Retry", listOf(
+            LocalBookChapter("Chapter", blocks = listOf(LocalBookBlock.Text("Text")))))
+        model.open(source.toUri())
+        await { model.state.canImport }
+        assertNull(model.state.error)
     }
 
     @Test fun aPickerResultAfterRecreationKeepsThePreviouslySelectedShelf() = runBlocking {
