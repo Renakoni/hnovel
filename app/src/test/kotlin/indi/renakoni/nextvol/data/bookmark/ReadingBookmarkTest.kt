@@ -136,5 +136,3 @@ class ReadingBookmarkTest {
         assertEquals(listOf(saved), db.readingBookmarkDao().all())
     }
 }
-
-
