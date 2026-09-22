@@ -26,6 +26,19 @@ class NativeBrowserFilesTest {
     }
     @After fun releaseProvider() { unmockkStatic(WebViewFeature::class) }
 
+    @Test @Config(sdk = [24])
+    fun unsupportedProviderFailsBeforeCallingNewWebViewApi() {
+        val files = NativeBrowserFiles(context(temp.newFolder()))
+        assertFalse(files.supported)
+        assertThrows(IllegalStateException::class.java) { files.initialize("a".repeat(64)) }
+    }
+
+    @Test fun fallbackCannotInitializeAnotherProfilesActiveDirectory() {
+        val files = NativeBrowserFiles(context(temp.newFolder()))
+        files.prepare("a".repeat(64))
+        assertThrows(IllegalStateException::class.java) { files.initialize("b".repeat(64)) }
+    }
+
     private fun context(root: File) = object : ContextWrapper(RuntimeEnvironment.getApplication()) {
         override fun getNoBackupFilesDir() = File(root, "no-backup")
         override fun getCacheDir() = File(root, "cache")

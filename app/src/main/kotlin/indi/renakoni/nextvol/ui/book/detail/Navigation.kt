@@ -1,5 +1,11 @@
 package indi.renakoni.nextvol.ui.book.detail
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import indi.renakoni.nextvol.data.localbook.LocalBookStore
+import indi.renakoni.nextvol.ui.localbook.LocalBookImportDialog
+import indi.renakoni.nextvol.ui.localbook.LocalBookImportState
+import indi.renakoni.nextvol.ui.localbook.LocalBookRelinkViewModel
 import android.annotation.SuppressLint
 import android.widget.Toast
 import androidx.compose.runtime.LaunchedEffect
@@ -67,7 +73,31 @@ fun NavGraphBuilder.bookDetailDestination() {
         LaunchedEffect(bookId) {
             viewModel.init(bookId)
         }
+        val relinkViewModel = hiltViewModel<LocalBookRelinkViewModel>(entry)
+        val relinkPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            uri?.let { relinkViewModel.open(BookIdentity.book(bookId), it) }
+        }
+        LaunchedEffect(relinkViewModel) {
+            relinkViewModel.completed.collect {
+                viewModel.retryInformation()
+                snackbarHostState.showSnackbar(context.getString(R.string.local_file_relink_success))
+            }
+        }
+        val relinkState = relinkViewModel.state
+        if (relinkState.visible) LocalBookImportDialog(
+            state = LocalBookImportState(visible = true, busy = relinkState.busy, importing = relinkState.saving,
+                fileName = relinkState.fileName, fileBytes = relinkState.fileBytes, format = relinkState.format, bookKey = bookId,
+                title = relinkState.preview?.information?.title ?: relinkState.preview?.parsed?.title.orEmpty(),
+                encoding = relinkState.encoding, rule = relinkState.rule, preview = relinkState.preview?.parsed,
+                error = relinkState.error),
+            onDismiss = relinkViewModel::dismiss, onTitleChange = {},
+            onEncodingChange = relinkViewModel::changeEncoding, onRuleChange = relinkViewModel::changeRule,
+            onImport = relinkViewModel::confirm, relinkState = relinkState,
+            onConfirmLegacy = relinkViewModel::confirmLegacy,
+        )
         DetailScreen(
+            localFileMissing = LocalBookStore.isLocal(BookIdentity.book(bookId)) && !viewModel.uiState.readingAvailable,
+            onRelink = { relinkPicker.launch(arrayOf("text/plain", "application/epub+zip")) },
             uiState = viewModel.uiState,
             onRetry = viewModel::retryInformation,
             onRetryVolumes = viewModel::retryVolumes,

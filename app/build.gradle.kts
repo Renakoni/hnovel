@@ -22,6 +22,12 @@ android {
     namespace = "indi.renakoni.nextvol"
     compileSdk = 37
 
+    lint {
+        baseline = file("lint-baseline.xml")
+        // Full scans must reject stale entries. Vital scans do not run every baseline detector.
+        error += "LintBaselineFixed"
+    }
+
     defaultConfig {
         multiDexEnabled = true
         applicationId = "indi.renakoni.nextvol"
@@ -100,6 +106,8 @@ android {
     testOptions {
         unitTests.isIncludeAndroidResources = true
         unitTests.all {
+            // Multi-SDK Robolectric resource tests exceed Gradle's default 512 MiB heap.
+            it.maxHeapSize = "2g"
             it.jvmArgs(
                 "--add-opens=java.base/java.lang=ALL-UNNAMED",
                 "--add-opens=java.base/java.util=ALL-UNNAMED",

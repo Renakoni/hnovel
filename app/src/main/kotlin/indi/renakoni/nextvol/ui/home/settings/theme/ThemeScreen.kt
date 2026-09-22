@@ -44,6 +44,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -302,6 +303,7 @@ fun ReaderThemeSettingsList(
         if (ReaderPaper.fromId(settingState.paperId) != ReaderPaper.Default) return@SettingsCategory
         val context = LocalContext.current
         val snackbarHostState = LocalSnackbarHost.current
+        val downloadingText by rememberUpdatedState(stringResource(R.string.paper_background_downloading))
 
         var lastEnabled by remember { mutableStateOf(settingState.enableBackgroundImage) }
 
@@ -316,7 +318,7 @@ fun ReaderThemeSettingsList(
                 val diskHit = loader.diskCache?.openSnapshot(key)?.use { true } ?: false
 
                 if (!memHit && !diskHit) {
-                    snackbarHostState.showSnackbar(context.getString(R.string.paper_background_downloading))
+                    snackbarHostState.showSnackbar(downloadingText)
 
                     loader.enqueue(
                         ImageRequest.Builder(context)

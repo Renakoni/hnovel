@@ -103,6 +103,14 @@ import indi.renakoni.nextvol.utils.readerBackgroundColor
 import indi.renakoni.nextvol.utils.rememberReaderBackgroundPainter
 import indi.renakoni.nextvol.utils.showSnackbar
 import kotlinx.coroutines.launch
+import indi.renakoni.nextvol.data.bookmark.ReadingBookmark
+import indi.renakoni.nextvol.ui.book.reader.bookmark.LocalReaderBookmarks
+import indi.renakoni.nextvol.ui.book.reader.bookmark.ReaderBookmarkSession
+import indi.renakoni.nextvol.ui.book.reader.bookmark.ReaderBookmarkPosition
+import indi.renakoni.nextvol.ui.book.reader.bookmark.ReaderBookmarksSheet
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CancellationException
 import java.time.LocalTime
 import java.util.Locale
 
@@ -125,6 +133,12 @@ fun ReaderScreen(
     onSpeechCommand: (SpeechAction) -> Unit,
     onSpeechSettings: () -> Unit,
     onSleepTimer: (Int?) -> Unit,
+    bookmarks: List<ReadingBookmark> = emptyList(),
+    bookmarksBusy: Boolean = false,
+    bookmarkNotice: Int? = null,
+    onBookmarkNoticeShown: () -> Unit = {},
+    onAddBookmark: (ReadingBookmark) -> Unit = {},
+    onDeleteBookmark: (ReadingBookmark) -> Unit = {},
 ) = ReaderMotionTheme(settingState.reduceMotion) {
     ReaderPaperTheme(settingState, manageSystemBars = true) {
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
@@ -135,6 +149,10 @@ fun ReaderScreen(
     var lastBackPressTime: Long by remember { mutableLongStateOf(0) }
     var showSettingsBottomSheet by remember { mutableStateOf(false) }
     var showChapterSelectionBottomSheet by remember { mutableStateOf(false) }
+    val bookmarkSession = remember(readingScreenUiState.bookId) { ReaderBookmarkSession() }
+    var showBookmarks by remember(readingScreenUiState.bookId) { mutableStateOf(false) }
+    var bookmarkPosition by remember(readingScreenUiState.bookId) { mutableStateOf<ReaderBookmarkPosition?>(null) }
+    var creatingBookmark by remember { mutableStateOf(false) }
     var showReadAloud by remember { mutableStateOf(false) }
     var selectedVolumeId by remember { mutableStateOf("") }
     var followSpeech by rememberSaveable(readingScreenUiState.bookId, speechState.request?.bookId) { mutableStateOf(true) }
@@ -148,9 +166,9 @@ fun ReaderScreen(
                 } == true) followSpeech = false
         },
         active = lifecycle == Lifecycle.State.RESUMED &&
-            !showSettingsBottomSheet && !showChapterSelectionBottomSheet && !showReadAloud)
-    val previousChapter = { speechFollow.onManualNavigation(); onClickPrevChapter() }
-    val nextChapter = { speechFollow.onManualNavigation(); onClickNextChapter() }
+            !showSettingsBottomSheet && !showChapterSelectionBottomSheet && !showReadAloud && !showBookmarks)
+    val previousChapter = { bookmarkSession.pending = null; speechFollow.onManualNavigation(); onClickPrevChapter() }
+    val nextChapter = { bookmarkSession.pending = null; speechFollow.onManualNavigation(); onClickNextChapter() }
     LaunchedEffect(speechPosition?.chapterId, speechFollow.following, speechFollow.active, readingScreenUiState.contentUiState) {
         val mode = readingScreenUiState.contentUiState
         if (speechFollow.following && speechFollow.active && speechPosition != null && mode != null &&
@@ -158,6 +176,21 @@ fun ReaderScreen(
     }
 
     val coroutineScope = rememberCoroutineScope()
+    LaunchedEffect(bookmarkNotice, bookmarkSession.notice, showBookmarks) {
+        if (showBookmarks) return@LaunchedEffect
+        val notice = bookmarkSession.notice ?: bookmarkNotice ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(context.getString(notice))
+        bookmarkSession.notice = null
+        onBookmarkNoticeShown()
+    }
+    LaunchedEffect(readingScreenUiState.contentUiState?.readingChapterContent, bookmarkSession.pending) {
+        val pending = bookmarkSession.pending
+        val content = readingScreenUiState.contentUiState
+        if (pending != null && content?.readingChapterId == pending.chapterId && content.readingChapterContent?.isErr == true) {
+            bookmarkSession.pending = null
+            bookmarkSession.notice = R.string.reader_bookmarks_load_failed
+        }
+    }
     val settingsBottomSheetState = rememberBottomSheetState(initialValue = SheetValue.Hidden)
     val chaptersBottomSheetState = rememberBottomSheetState(initialValue = SheetValue.Hidden)
 
@@ -243,10 +276,10 @@ fun ReaderScreen(
             accumulateReadTime = accumulateReadTime,
         )
 
-        CompositionLocalProvider(LocalReaderSpeechFollow provides speechFollow) {
+        CompositionLocalProvider(LocalReaderSpeechFollow provides speechFollow, LocalReaderBookmarks provides bookmarkSession) {
             Content(
                 isImmersive = isImmersive,
-                volumeKeysEnabled = !showSettingsBottomSheet && !showChapterSelectionBottomSheet && !showReadAloud,
+                volumeKeysEnabled = !showSettingsBottomSheet && !showChapterSelectionBottomSheet && !showReadAloud && !showBookmarks,
                 readingScreenUiState = readingScreenUiState,
                 settingState = settingState,
                 fontFamilySettings = fontFamilySettings,
@@ -281,10 +314,53 @@ fun ReaderScreen(
                 onClickNextChapter = nextChapter,
                 onClickSettings = { showSettingsBottomSheet = true },
                 onClickChapterSelector = { showChapterSelectionBottomSheet = true },
+                onClickBookmarks = {
+                    bookmarkPosition = bookmarkSession.capture?.invoke()
+                    showBookmarks = true
+                },
             )
             }
         }
         }
+    }
+    if (showBookmarks) {
+        ReaderBookmarksSheet(bookmarks.filter { it.bookId == readingScreenUiState.bookId },
+            busy = bookmarksBusy || creatingBookmark,
+            notice = bookmarkSession.notice ?: bookmarkNotice,
+            onAdd = {
+                val position = bookmarkPosition
+                if (position == null || position.bookId != readingScreenUiState.bookId) {
+                    bookmarkSession.notice = R.string.reader_bookmarks_not_ready
+                } else if (!creatingBookmark) {
+                    creatingBookmark = true
+                    coroutineScope.launch {
+                        try {
+                            val bookmark = withContext(Dispatchers.Default) { position.bookmark() }
+                            if (bookmark.bookId == readingScreenUiState.bookId) onAddBookmark(bookmark)
+                        } catch (failure: CancellationException) { throw failure
+                        } catch (failure: Exception) {
+                            android.util.Log.e("ReadingBookmark", "Cannot capture bookmark", failure)
+                            bookmarkSession.notice = R.string.reader_bookmarks_failed
+                        } finally { creatingBookmark = false }
+                    }
+                }
+            },
+            onJump = { bookmark ->
+                val volumes = readingScreenUiState.bookVolumes?.get()
+                when {
+                    volumes == null -> bookmarkSession.notice = R.string.reader_bookmarks_not_ready
+                    bookmark.bookId != readingScreenUiState.bookId || volumes.volumes.none { volume -> volume.chapters.any { it.id == bookmark.chapterId } } ->
+                        bookmarkSession.notice = R.string.reader_bookmarks_missing
+                    else -> {
+                        speechFollow.onManualNavigation()
+                        bookmarkSession.pending = bookmark
+                        showBookmarks = false
+                        val content = readingScreenUiState.contentUiState
+                        if (content?.readingChapterId != bookmark.chapterId || content.readingChapterContent?.isOk != true)
+                            onChangeChapter(bookmark.chapterId)
+                    }
+                }
+            }, onDelete = onDeleteBookmark, onDismiss = { showBookmarks = false })
     }
     if (showReadAloud) {
         ReadAloudSheet(
@@ -341,7 +417,7 @@ fun ReaderScreen(
                                     }
                                 }?.volumeId ?: ""
                         },
-                        onClickChapter = { speechFollow.onManualNavigation(); onChangeChapter(it) },
+                        onClickChapter = { bookmarkSession.pending = null; speechFollow.onManualNavigation(); onChangeChapter(it) },
                         onChangeSelectedVolumeId = {
                             selectedVolumeId = it
                         }
@@ -485,7 +561,8 @@ internal fun ReaderBottomBar(
     onClickPrevChapter: () -> Unit,
     onClickNextChapter: () -> Unit,
     onClickSettings: () -> Unit,
-    onClickChapterSelector: () -> Unit
+    onClickChapterSelector: () -> Unit,
+    onClickBookmarks: () -> Unit = {},
 ) {
     BottomAppBar(
         windowInsets = WindowInsets.navigationBarsIgnoringVisibility
@@ -525,12 +602,7 @@ internal fun ReaderBottomBar(
             Row(
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(
-                    enabled = false,
-                    onClick = {
-                        // TODO 添加至书签
-                    }
-                ) {
+                IconButton(onClick = onClickBookmarks) {
                     Icon(
                         painter = painterResource(R.drawable.outline_bookmark_24px),
                         contentDescription = stringResource(R.string.action_bookmark)

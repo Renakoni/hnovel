@@ -19,12 +19,12 @@
     <string name="source_catalog_clear">清空</string>
     <string name="source_catalog_continue">继续</string>
     <string name="source_catalog_empty">暂无书源</string>
-    <string name="source_catalog_installed">已添加来源 · %1$d</string>
+    <string name="source_catalog_installed">已添加书源 · %1$d</string>
     <string name="source_range_all">全部书源</string>
     <string name="source_range_title">书源范围</string>
     <string name="source_range_description">书源范围：%1$s</string>
-    <string name="source_range_empty_explore">暂无%1$s发现书源</string>
-    <string name="source_range_empty_categories">暂无提供分类的%1$s书源</string>
+    <string name="source_range_empty_explore">“%1$s”分类下暂无已启用且支持发现的书源。</string>
+    <string name="source_range_empty_categories">“%1$s”分类下暂无已启用且提供分类的书源。</string>
     <string name="source_pages_title">书源分页</string>
     <string name="source_page_number">第 %1$d 页</string>
     <string name="source_page_range">%1$d–%2$d · %3$s</string>

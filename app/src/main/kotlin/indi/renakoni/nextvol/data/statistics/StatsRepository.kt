@@ -206,8 +206,8 @@ class StatsRepository @Inject constructor(
     suspend fun withStatisticsResetLock(block: suspend () -> Unit) {
         bookReadTimeBufferMutex.withLock {
             statisticsWriteCoordinator.withLock {
-                bookReadTimeBuffer.clear()
                 block()
+                bookReadTimeBuffer.clear()
             }
         }
     }

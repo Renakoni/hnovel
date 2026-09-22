@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="reader_bookmarks_title">閱讀書籤</string>
+    <string name="reader_bookmarks_description">留住想要重訪的片刻。</string>
+    <string name="reader_bookmarks_add">儲存目前位置</string>
+    <string name="reader_bookmarks_empty">儲存的閱讀位置會出現在這裡。</string>
+    <string name="reader_bookmarks_position">章節內 · %1$d%%</string>
+    <string name="reader_bookmarks_illustration">插圖或其他內容</string>
+    <string name="reader_bookmarks_delete">刪除「%1$s」的書籤</string>
+    <string name="reader_bookmarks_added">已儲存書籤</string>
+    <string name="reader_bookmarks_duplicate">這個位置已有書籤</string>
+    <string name="reader_bookmarks_failed">暫時無法更新書籤，請重試。</string>
+    <string name="reader_bookmarks_changed">章節正文已更新，無法精確定位這條書籤。</string>
+    <string name="reader_bookmarks_missing">目錄中已沒有這一章，書籤仍為你保留。</string>
+    <string name="reader_bookmarks_not_ready">請等待章節與目錄載入完成後重試。</string>
+    <string name="reader_bookmarks_load_failed">無法載入書籤所在章節，書籤仍為你保留。</string>
+    <string name="reader_bookmarks_export_description">所有書籍中儲存的正文位置。</string>
+</resources>

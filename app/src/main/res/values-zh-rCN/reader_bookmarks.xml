@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="reader_bookmarks_title">阅读书签</string>
+    <string name="reader_bookmarks_description">留住想要重访的片刻。</string>
+    <string name="reader_bookmarks_add">保存当前位置</string>
+    <string name="reader_bookmarks_empty">保存的阅读位置会出现在这里。</string>
+    <string name="reader_bookmarks_position">章节内 · %1$d%%</string>
+    <string name="reader_bookmarks_illustration">插图或其他内容</string>
+    <string name="reader_bookmarks_delete">删除“%1$s”的书签</string>
+    <string name="reader_bookmarks_added">已保存书签</string>
+    <string name="reader_bookmarks_duplicate">这个位置已有书签</string>
+    <string name="reader_bookmarks_failed">暂时无法更新书签，请重试。</string>
+    <string name="reader_bookmarks_changed">章节正文已更新，无法精确定位这条书签。</string>
+    <string name="reader_bookmarks_missing">目录中已没有这一章，书签仍为你保留。</string>
+    <string name="reader_bookmarks_not_ready">请等待章节与目录加载完成后重试。</string>
+    <string name="reader_bookmarks_load_failed">无法加载书签所在章节，书签仍为你保留。</string>
+    <string name="reader_bookmarks_export_description">所有书籍中保存的正文位置。</string>
+</resources>

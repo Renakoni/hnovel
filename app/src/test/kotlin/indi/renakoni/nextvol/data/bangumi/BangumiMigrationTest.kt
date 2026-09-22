@@ -35,10 +35,13 @@ class BangumiMigrationTest {
             it.execSQL("DROP TABLE bangumi_binding")
             it.execSQL("ALTER TABLE binding_v20 RENAME TO bangumi_binding")
             it.execSQL("CREATE UNIQUE INDEX index_bangumi_binding_accountId_subjectId ON bangumi_binding (accountId, subjectId)")
+            it.execSQL("DROP TABLE local_book_file_manifest")
+            it.execSQL("DROP TABLE imported_book")
+            it.execSQL("CREATE TABLE imported_book (bookId TEXT NOT NULL PRIMARY KEY)")
             it.version = 20
         }
         val migrated = Room.databaseBuilder(context, NextVolDatabase::class.java, name)
-            .addMigrations(NextVolDatabase.MIGRATION_20_21).build()
+            .addMigrations(NextVolDatabase.MIGRATION_20_21, NextVolDatabase.MIGRATION_21_22, NextVolDatabase.MIGRATION_22_23).build()
         try {
             val dao = migrated.bangumiBindingDao()
             assertEquals(setOf("subject:11"), dao.get(17, "saved-book")!!.binding().acknowledged)
@@ -60,10 +63,13 @@ class BangumiMigrationTest {
         SQLiteDatabase.openDatabase(context.getDatabasePath(name).path, null, SQLiteDatabase.OPEN_READWRITE).use {
             it.execSQL("DROP TABLE bangumi_binding")
             it.execSQL("DROP TABLE bangumi_sync_record")
+            it.execSQL("DROP TABLE local_book_file_manifest")
+            it.execSQL("DROP TABLE imported_book")
+            it.execSQL("CREATE TABLE imported_book (bookId TEXT NOT NULL PRIMARY KEY)")
             it.version = 19
         }
         val migrated = Room.databaseBuilder(context, NextVolDatabase::class.java, name)
-            .addMigrations(NextVolDatabase.MIGRATION_19_20, NextVolDatabase.MIGRATION_20_21).build()
+            .addMigrations(NextVolDatabase.MIGRATION_19_20, NextVolDatabase.MIGRATION_20_21, NextVolDatabase.MIGRATION_21_22, NextVolDatabase.MIGRATION_22_23).build()
         try {
             assertEquals("Saved", migrated.bookInformationDao().get("saved-book")!!.title)
             assertTrue(migrated.bangumiBindingDao().getAll(17).isEmpty())

@@ -73,8 +73,9 @@ class BookRepository @Inject constructor(
      * A disabled source can still supply offline chapters; a metadata-only source cannot supply a TOC. */
     fun readingAvailability(bookId: String): Flow<BookReadingAvailability> {
         val book = BookIdentity.book(bookId)
+        if (LocalBookStore.isLocal(book)) return localBooks.observeAvailability(book)
+            .map { BookReadingAvailability(false, it, false, null) }.distinctUntilChanged()
         return sourceRegistry.sources.map { sources ->
-            if (LocalBookStore.isLocal(book)) return@map BookReadingAvailability(false, localBooks.contains(book), false, null)
             val entry = sources.find { it.metadata.id == book.sourceId }
             val capabilities = entry?.metadata?.capabilities.orEmpty()
             val online = entry?.metadata?.supportsReading == true &&

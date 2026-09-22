@@ -12,6 +12,7 @@ import dagger.assisted.AssistedInject
 import indi.renakoni.nextvol.data.local.LocalDataManager
 import indi.renakoni.nextvol.data.local.cbor.AppLocalData
 import indi.renakoni.nextvol.utils.readAppLocalData
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.cbor.Cbor
 import kotlinx.serialization.decodeFromByteArray
@@ -37,6 +38,8 @@ class ImportDataWork @AssistedInject constructor(
                     Cbor.decodeFromByteArray<AppLocalData>(inputStream.readAppLocalData())
                 }
             }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             Log.e(TAG, "Failed to load file")
             e.printStackTrace()
@@ -48,15 +51,18 @@ class ImportDataWork @AssistedInject constructor(
             Log.e(TAG, "Invalid backup identities", failure)
             return Result.failure()
         }
-        if (overwrite) {
-            localDataManager.cleanDatabaseWithoutGlobalUserData()
+        try {
+            localDataManager.importAppLocalData(appLocalData, overwrite)
+                .onErr {
+                    Log.e(TAG, "Failed to import the data", it)
+                    return Result.failure()
+                }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            Log.e(TAG, "Failed to import the data", failure)
+            return Result.failure()
         }
-        localDataManager.importAppLocalData(appLocalData)
-            .onErr {
-                Log.e(TAG, "Failed to import the data")
-                it.printStackTrace()
-                return Result.failure()
-            }
         return Result.success()
     }
 }

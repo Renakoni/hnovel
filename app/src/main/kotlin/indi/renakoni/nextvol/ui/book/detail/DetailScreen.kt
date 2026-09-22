@@ -77,6 +77,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
@@ -104,6 +105,7 @@ import com.github.michaelbull.result.map
 import com.github.michaelbull.result.onErr
 import com.github.michaelbull.result.onOk
 import com.valentinilk.shimmer.shimmer
+import indi.renakoni.nextvol.ui.localbook.LocalBookMissingFile
 import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.data.book.get
 import indi.renakoni.nextvol.data.download.DownloadItem
@@ -149,6 +151,8 @@ fun DetailScreen(
     onClickCover: (Uri) -> Unit,
     onClickMarkAsRead: () -> Unit,
     onRetry: () -> Unit = {},
+    localFileMissing: Boolean = false,
+    onRelink: () -> Unit = {},
     onMarkChaptersUnread: suspend (Set<String>) -> Unit = {},
     onRetryVolumes: () -> Unit = onRetry,
 ) {
@@ -156,6 +160,7 @@ fun DetailScreen(
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
     val snackbarHostState = LocalSnackbarHost.current
     val context = LocalContext.current
+    val markUnreadFailedText by rememberUpdatedState(stringResource(R.string.mark_unread_failed))
 
     val exportBottomSheetState = rememberBottomSheetState(initialValue = SheetValue.PartiallyExpanded)
     val infoBottomSheetState = rememberBottomSheetState(initialValue = SheetValue.PartiallyExpanded)
@@ -336,6 +341,8 @@ fun DetailScreen(
                             .fillMaxSize()
                             .background(colorScheme.surface),
                         uiState = uiState,
+                        localFileMissing = localFileMissing,
+                        onRelink = onRelink,
                         bookInformation = it,
                         onClickChapter = { id ->
                             if (selectingChapters) {
@@ -356,6 +363,7 @@ fun DetailScreen(
                     )
                 }?.onErr {
                     Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        if (localFileMissing) LocalBookMissingFile(onRelink)
                         Text(it.title, style = typography.titleMedium)
                         Text(it.message, style = typography.bodyMedium)
                         TextButton(onClick = onRetry) { Text(stringResource(R.string.discovery_retry)) }
@@ -409,7 +417,7 @@ fun DetailScreen(
                         android.util.Log.e("DetailScreen", "Could not mark chapters unread", error)
                         confirmUnread = false
                         coroutineScope.launch {
-                            snackbarHostState.showSnackbar(context.getString(R.string.mark_unread_failed))
+                            snackbarHostState.showSnackbar(markUnreadFailedText)
                         }
                     } finally {
                         savingUnread = false
@@ -560,6 +568,8 @@ private fun DetailContent(
     selectedChapterIds: Set<String>,
     selectionEnabled: Boolean,
     onRetryVolumes: () -> Unit,
+    localFileMissing: Boolean,
+    onRelink: () -> Unit,
 ) {
     var hideReadChapters by remember { mutableStateOf(false) }
     val deferred = 6
@@ -620,7 +630,9 @@ private fun DetailContent(
         }
 
         if (visible >= 5 && !uiState.readingAvailable) item {
-            Text(stringResource(if (uiState.metadataOnly) R.string.source_metadata_only else R.string.source_reading_unavailable),
+            if (localFileMissing) LocalBookMissingFile(onRelink,
+                Modifier.padding(horizontal = itemHorizontalPadding, vertical = itemVerticalPadding))
+            else Text(stringResource(if (uiState.metadataOnly) R.string.source_metadata_only else R.string.source_reading_unavailable),
                 Modifier.padding(horizontal = itemHorizontalPadding, vertical = itemVerticalPadding),
                 style = typography.bodyMedium, color = colorScheme.onSurfaceVariant)
         }

@@ -34,6 +34,8 @@ import indi.renakoni.nextvol.utils.LocalSnackbarHost
 import io.mockk.every
 import io.mockk.mockk
 import io.nightfish.lightnovelreader.api.content.component.SimpleTextComponentData
+import indi.renakoni.nextvol.ui.book.reader.bookmark.LocalReaderBookmarks
+import indi.renakoni.nextvol.ui.book.reader.bookmark.ReaderBookmarkSession
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -51,6 +53,7 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class FlipSpeechFollowTest {
     @get:Rule val compose = createEmptyComposeRule()
+    private val bookmarks = ReaderBookmarkSession()
     private lateinit var activity: ActivityController<ComponentActivity>
     private var text = (1..80).joinToString("\n") { "PARAGRAPH_%03d".format(it) }
     private var speech by mutableStateOf(position(40))
@@ -177,6 +180,26 @@ class FlipSpeechFollowTest {
         return SpeechPosition("book", "chapter", SpeechChapter("book", "chapter", "", "", text).fingerprint, start, start + 13)
     }
 
+    @Test fun bookmarkRestoresItsCharacterAfterResizeAndDoesNotFollowSpeech() {
+        mount()
+        awaitText("PARAGRAPH_040")
+        val saved = compose.runOnIdle { bookmarks.capture!!.invoke()!!.bookmark() }
+        assertTrue(saved.offset > 0)
+        compose.runOnIdle { following = false; height = 180.dp }
+        compose.waitForIdle()
+        compose.onNodeWithTag("viewport").performTouchInput { click(centerRight - androidx.compose.ui.geometry.Offset(10f, 0f)) }
+        compose.runOnIdle { bookmarks.pending = saved }
+        compose.waitUntil(10_000) { compose.waitForIdle(); bookmarks.pending == null }
+        val actual = compose.runOnIdle { bookmarks.capture!!.invoke()!!.bookmark() }
+        assertEquals(saved.offset, actual.offset)
+        assertFalse(following)
+        val page = state.pagerState.currentPage
+        compose.runOnIdle { bookmarks.pending = saved.copy(fingerprint = "b".repeat(64)) }
+        compose.waitUntil(10_000) { compose.waitForIdle(); bookmarks.pending == null }
+        assertEquals(page, state.pagerState.currentPage)
+        assertEquals(indi.renakoni.nextvol.R.string.reader_bookmarks_changed, bookmarks.notice)
+    }
+
     private fun mount() {
         val content = SimpleTextComponent(SimpleTextComponentData(text), mockk(relaxed = true), activity.get())
         state.bookId = "book"
@@ -185,7 +208,7 @@ class FlipSpeechFollowTest {
         compose.runOnUiThread {
             activity.get().setContent {
                 MaterialTheme {
-                    CompositionLocalProvider(LocalAppTheme provides AppTheme(false, MaterialTheme.colorScheme),
+                    CompositionLocalProvider(LocalReaderBookmarks provides bookmarks, LocalAppTheme provides AppTheme(false, MaterialTheme.colorScheme),
                         LocalSnackbarHost provides remember { SnackbarHostState() },
                         LocalReaderTextLayout provides rememberReaderTextLayout(settings),
                         LocalReaderSpeechFollow provides ReaderSpeechFollow(speech, following, { following = false }, active)) {

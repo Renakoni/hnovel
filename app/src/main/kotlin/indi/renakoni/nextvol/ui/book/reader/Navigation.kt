@@ -59,6 +59,7 @@ fun NavGraphBuilder.bookReaderDestination(onReaderActiveChanged: (Boolean) -> Un
         // Keep the existing Book-graph lifetime for queued recording writes, while each
         // restored reader entry owns a separate session during navigation transitions.
         val viewModel = hiltViewModel<ReaderViewModel>(parentEntry, key = navBackStackEntry.id)
+        val bookmarkModel = hiltViewModel<indi.renakoni.nextvol.ui.book.reader.bookmark.ReaderBookmarksViewModel>(navBackStackEntry)
         val speechState by viewModel.readAloud.state.collectAsStateWithLifecycle()
         androidx.lifecycle.compose.LifecycleStartEffect(viewModel) {
             viewModel.setActive(true)
@@ -69,6 +70,7 @@ fun NavGraphBuilder.bookReaderDestination(onReaderActiveChanged: (Boolean) -> Un
         }
         val route = navBackStackEntry.toRoute<Route.Book.Reader>()
         LaunchedEffect(navBackStackEntry) {
+            bookmarkModel.open(route.bookId)
             viewModel.openBook(route.bookId, route.chapterId)
         }
         if (viewModel.uiState.bookId == route.bookId) {
@@ -84,6 +86,12 @@ fun NavGraphBuilder.bookReaderDestination(onReaderActiveChanged: (Boolean) -> Un
                     onClickNextChapter = viewModel::nextChapter,
                     onChangeChapter = viewModel::changeChapter,
                     onClickThemeSettings = navController::navigateToSettingsThemeDestination,
+                    bookmarks = bookmarkModel.bookmarks,
+                    bookmarksBusy = bookmarkModel.busy,
+                    bookmarkNotice = bookmarkModel.notice,
+                    onBookmarkNoticeShown = bookmarkModel::clearNotice,
+                    onAddBookmark = bookmarkModel::add,
+                    onDeleteBookmark = bookmarkModel::delete,
                     speechState = speechState,
                     onStartReadAloud = viewModel::startReadAloud,
                     onSpeechCommand = viewModel.readAloud::command,

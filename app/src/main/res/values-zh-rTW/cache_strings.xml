@@ -1,0 +1,17 @@
+<resources>
+    <string name="sources_import_partial">未能啟用全部書源。已啟用的書源會保留，請重新預覽匯入以重試。</string>
+    <string name="settings_clear_reading_cache">清除閱讀快取</string>
+    <string name="settings_clear_reading_cache_desc">移除暫存內容，保留下載。</string>
+    <string name="settings_clear_downloads">清除下載</string>
+    <string name="settings_clear_downloads_desc">移除已下載的章節與圖片，保留書架與閱讀記錄。</string>
+    <string name="settings_cache_cleared">已清除</string>
+    <string name="settings_cache_clear_failed">無法清除，請重試。</string>
+    <string name="book_download_partial">部分下載</string>
+    <string name="book_download_updating">下載中</string>
+    <string name="book_download_failed">下載失敗</string>
+    <string name="book_download_outdated">有更新</string>
+    <string name="book_download_check_updates">檢查更新</string>
+    <string name="book_download_continue">繼續下載</string>
+    <string name="book_download_retry">重試</string>
+    <string name="book_download_update">更新</string>
+</resources>

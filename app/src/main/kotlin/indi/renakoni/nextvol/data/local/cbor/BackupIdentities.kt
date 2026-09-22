@@ -9,6 +9,8 @@ import kotlinx.serialization.json.Json
 
 /** Validate identity ownership before any import writes, including metadata-only backups. */
 internal fun LocalData.validateIdentities() {
+    localBookFiles.forEach { it.validate() }
+    readingBookmarks.forEach { it.validate() }
     val downloadedBooks = bookDownloadEntities.map { SourceBookId.fromStorageKey(it.bookId) }.toSet()
     downloadedChapterEntities.forEach { chapter ->
         val book = SourceBookId.fromStorageKey(chapter.bookId)

@@ -1,6 +1,7 @@
 package indi.renakoni.nextvol.ui.book.reader.content
 
 import androidx.compose.runtime.Stable
+import indi.renakoni.nextvol.ui.book.reader.bookmark.computeBookmarkFingerprint
 import indi.renakoni.nextvol.data.content.component.SimpleTextComponent
 import indi.renakoni.nextvol.tts.SpeechTextIndex
 import io.nightfish.lightnovelreader.api.content.component.AbstractContentComponent
@@ -13,6 +14,8 @@ class ChapterContentUiState(
     val prevChapter: String?,
     val nextChapter: String?
 ) {
+    internal val bookmarkFingerprint by lazy { computeBookmarkFingerprint() }
+
     internal val speechTextIndex by lazy {
         SpeechTextIndex(content.mapIndexedNotNull { index, component ->
             (component as? SimpleTextComponent)?.let { index to it.data.text }

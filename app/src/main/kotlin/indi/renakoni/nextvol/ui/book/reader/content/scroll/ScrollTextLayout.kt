@@ -20,6 +20,7 @@ import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.createFontFamilyResolver
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.IntSize
 import indi.renakoni.nextvol.data.content.component.SimpleTextComponent
 import indi.renakoni.nextvol.ui.book.reader.ReaderTextLayoutInput
 import indi.renakoni.nextvol.ui.book.reader.content.ChapterContentUiState
@@ -52,6 +53,17 @@ internal class ScrollTextLayout(val fragments: List<ReaderTextFragment>, val sty
         return offsets[index] + fragment.spacingBefore + (fragment.lineTops.getOrNull(line) ?: 0)
     }
 
+    fun anchorAt(y: Int): ReaderContentAnchor? {
+        if (fragments.isEmpty()) return null
+        val index = (offsets.binarySearch(y.coerceIn(0, (height - 1).coerceAtLeast(0))).let {
+            if (it >= 0) it else -it - 2
+        }).coerceIn(fragments.indices)
+        val fragment = fragments[index]
+        val local = y - offsets[index] - fragment.spacingBefore
+        val line = fragment.lineTops.indexOfLast { it <= local }.coerceAtLeast(0)
+        return ReaderContentAnchor(fragment.componentIndex, fragment.lineStarts.getOrElse(line) { fragment.start })
+    }
+
     fun visibleRange(top: Int, bottom: Int): IntRange {
         if (bottom <= top || bottom <= 0 || top >= height || fragments.isEmpty()) return IntRange.EMPTY
         fun indexAt(y: Int): Int {
@@ -65,12 +77,21 @@ internal class ScrollTextLayout(val fragments: List<ReaderTextFragment>, val sty
 internal class PreparedScrollChapter(
     val content: ChapterContentUiState,
     val text: Map<Int, ScrollTextLayout>,
+    val layout: ReaderTextLayoutInput? = null,
+    val size: IntSize = IntSize.Zero,
 ) {
     // Positions inside the chapter include its title, images and component spacing.
     val componentOffsets = mutableStateMapOf<Int, Int>()
     fun offsetFor(anchor: ReaderContentAnchor): Int? {
         val top = componentOffsets[anchor.componentIndex] ?: return null
         return text[anchor.componentIndex]?.offsetFor(anchor)?.plus(top)
+            ?: top.takeIf { content.content.getOrNull(anchor.componentIndex) !is SimpleTextComponent }
+    }
+
+    fun anchorAt(y: Int): ReaderContentAnchor? {
+        val component = componentOffsets.entries.filter { it.value <= y }.maxByOrNull { it.value }
+            ?: componentOffsets.entries.minByOrNull { it.value } ?: return null
+        return text[component.key]?.anchorAt(y - component.value) ?: ReaderContentAnchor(component.key, 0)
     }
 }
 
@@ -105,7 +126,7 @@ internal fun rememberPreparedScrollChapter(
                 }.flatten()
                 index to ScrollTextLayout(fragments, layout.style)
             }.toMap()
-            PreparedScrollChapter(content, text)
+            PreparedScrollChapter(content, text, layout, IntSize(width, viewportHeight))
         }
         prepared = result
     }

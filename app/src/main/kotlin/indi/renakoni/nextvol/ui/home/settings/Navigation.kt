@@ -148,10 +148,10 @@ private fun NavGraphBuilder.exportUserDataDialog() {
                 workManager.getWorkInfoByIdFlow(viewModel.exportToFile(uri, exportContext).id).collect {
                     when (it?.state) {
                         WorkInfo.State.FAILED -> {
-                            Toast.makeText(context, context.getString(R.string.data_export_failed), Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context.applicationContext, R.string.data_export_failed, Toast.LENGTH_SHORT).show()
                         }
                         WorkInfo.State.SUCCEEDED -> {
-                            Toast.makeText(context, context.getString(R.string.data_export_success), Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context.applicationContext, R.string.data_export_success, Toast.LENGTH_SHORT).show()
                         }
                         else -> {}
                     }
@@ -159,6 +159,7 @@ private fun NavGraphBuilder.exportUserDataDialog() {
             }
             navController.popBackStack()
         }
+        val selectLocationTitle = stringResource(R.string.select_location)
         ExportUserDataDialog(
             onDismissRequest = { navController.popBackStack() },
             onClickSaveAndSend = {
@@ -168,7 +169,7 @@ private fun NavGraphBuilder.exportUserDataDialog() {
             },
             onClickSaveToFile = {
                 exportContext = it
-                createDataFile("NextVolData", context.getString(R.string.select_location), saveDataToFileLauncher)
+                createDataFile("NextVolData", selectLocationTitle, saveDataToFileLauncher)
             }
         )
     }

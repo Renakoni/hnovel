@@ -38,6 +38,7 @@ class ExportDataWork @AssistedInject constructor(
             localBookCache = exportLocalBookCache,
             bookshelf = exportBookshelf,
             readingRecord = exportReadingData,
+            bookmark = inputData.getBoolean("exportBookmark", true),
             settings = exportSetting
         ).andThen { appLocalData ->
             runCatching {

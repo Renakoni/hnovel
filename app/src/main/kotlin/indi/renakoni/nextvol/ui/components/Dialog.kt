@@ -268,7 +268,7 @@ fun ExportUserDataDialog(
         description = stringResource(R.string.dialog_snap_user_data_text),
         onDismissRequest = onDismissRequest,
     ) {
-        Column(Modifier.width(IntrinsicSize.Max).sizeIn(maxHeight = 350.dp)) {
+        Column(Modifier.width(IntrinsicSize.Max).sizeIn(maxHeight = 350.dp).verticalScroll(rememberScrollState())) {
             CheckBoxListItem(
                 modifier = listItemModifier,
                 title = stringResource(R.string.dialog_snap_local_book_cache),
@@ -300,15 +300,17 @@ fun ExportUserDataDialog(
                 checked = mutableExportContext.settings,
                 onCheckedChange = { mutableExportContext.settings = it }
             )
-            /*HorizontalDivider(Modifier.padding(horizontal = 14.dp))
+            Text(stringResource(R.string.local_file_backup_scope), Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
+                style = typography.bodyMedium, color = colorScheme.onSurfaceVariant)
+            HorizontalDivider(Modifier.padding(horizontal = 14.dp))
             CheckBoxListItem(
                 modifier = listItemModifier,
-                title = stringResource(R.string.dialog_snap_bookmarks),
-                supportingText = stringResource(R.string.dialog_snap_bookmarks_text),
+                title = stringResource(R.string.reader_bookmarks_title),
+                supportingText = stringResource(R.string.reader_bookmarks_export_description),
                 checked = mutableExportContext.bookmark,
                 onCheckedChange = { mutableExportContext.bookmark = it }
             )
-            HorizontalDivider(Modifier.padding(horizontal = 14.dp))*/
+            HorizontalDivider(Modifier.padding(horizontal = 14.dp))
         }
         Row(
             modifier = Modifier
@@ -409,6 +411,8 @@ fun ImportUserDataDialog(
                         style = typography.bodyMedium,
                         color = colorScheme.onSurfaceVariant
                     )
+                    Text(stringResource(R.string.local_file_backup_scope), style = typography.bodyMedium,
+                        color = colorScheme.onSurfaceVariant)
                     ImportOptionTile(
                         icon = R.drawable.alt_route_24px,
                         title = stringResource(R.string.import_merge),
