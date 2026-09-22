@@ -1,0 +1,23 @@
+<resources>
+    <string name="source_groups_manage">Manage groups</string>
+    <string name="source_group_save">Save</string>
+    <string name="source_group_delete">Delete</string>
+    <string name="source_groups_help">Organize added sources into your own groups.</string>
+    <string name="source_groups_empty">Create a group to start organizing your sources.</string>
+    <string name="source_group_ungrouped">Ungrouped</string>
+    <string name="source_group_create">New group</string>
+    <string name="source_group_rename">Rename group</string>
+    <string name="source_group_rename_named">Rename %1$s</string>
+    <string name="source_group_delete_title">Delete group %1$s</string>
+    <string name="source_group_delete_help">Sources in this group will become ungrouped. Your sources and reading data will be kept.</string>
+    <string name="source_group_name">Group name</string>
+    <string name="source_group_name_help">Use a unique name of 1–60 characters.</string>
+    <string name="source_group_move">Move to group</string>
+    <string name="source_group_move_named">Change group for %1$s</string>
+    <string name="source_group_select">Select sources</string>
+    <string name="source_group_select_visible">Select visible</string>
+    <string name="source_group_deselect_visible">Deselect visible</string>
+    <string name="source_group_selected">Selected: %1$d</string>
+    <string name="source_groups_saved">Groups updated</string>
+    <string name="source_groups_import_help">New sources are ungrouped. Organize them after adding.</string>
+</resources>

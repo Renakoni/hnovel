@@ -1,0 +1,23 @@
+<resources>
+    <string name="source_groups_manage">分類管理</string>
+    <string name="source_group_save">儲存</string>
+    <string name="source_group_delete">刪除分組</string>
+    <string name="source_groups_help">整理已新增的書源，建立自己的分類。</string>
+    <string name="source_groups_empty">建立一個群組，開始整理書源。</string>
+    <string name="source_group_ungrouped">未分組</string>
+    <string name="source_group_create">新增群組</string>
+    <string name="source_group_rename">重新命名群組</string>
+    <string name="source_group_rename_named">重新命名「%1$s」</string>
+    <string name="source_group_delete_title">刪除「%1$s」群組</string>
+    <string name="source_group_delete_help">組內書源會移回「未分組」。書源與閱讀資料皆會保留。</string>
+    <string name="source_group_name">群組名稱</string>
+    <string name="source_group_name_help">使用不重複的名稱，長度為 1–60 個字元。</string>
+    <string name="source_group_move">移至群組</string>
+    <string name="source_group_move_named">變更「%1$s」的群組</string>
+    <string name="source_group_select">批次整理</string>
+    <string name="source_group_select_visible">全選目前清單</string>
+    <string name="source_group_deselect_visible">取消目前清單選取</string>
+    <string name="source_group_selected">已選取 %1$d 個書源</string>
+    <string name="source_groups_saved">群組已更新</string>
+    <string name="source_groups_import_help">新匯入的書源預設放入「未分組」，可在新增後整理。</string>
+</resources>

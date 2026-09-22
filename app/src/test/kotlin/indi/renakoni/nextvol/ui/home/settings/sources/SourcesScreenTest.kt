@@ -66,6 +66,7 @@ class SourcesScreenTest {
             false, ImportOrigin(ImportOrigin.Kind.Paste), "digest", 1, "{}")
         val id = ImportedRuleSources.id(definition)
         val sources = mockk<ImportedRuleSources>()
+        coEvery { sources.sourceGroups() } returns emptyList()
         coEvery { sources.installedSources() } returns listOf(InstalledRuleSource(definition, emptyList(), null))
         val readingSettings = CompletableDeferred<Unit>()
         val finishReading = CompletableDeferred<Unit>()
@@ -407,7 +408,8 @@ class SourcesScreenTest {
         activity.get().setContent { MaterialTheme { SourcesScreen(state, model, onDiagnostics = {}) {} } }
         compose.onNodeWithText("Wenku8").performClick()
         verify(exactly = 1) { model.select(builtinId) }
-        compose.onNodeWithText("Plugin fixture").performScrollTo().performClick()
+        compose.onAllNodes(hasScrollToIndexAction()).onFirst().performScrollToNode(hasText("Plugin fixture"))
+        compose.onNodeWithText("Plugin fixture").performClick()
         verify(exactly = 1) { model.select(pluginId) }
         compose.runOnIdle { state = state.copy(selected = pluginId, network = SourceNetworkState(limitation =
             indi.renakoni.nextvol.R.string.sources_network_plugin)) }

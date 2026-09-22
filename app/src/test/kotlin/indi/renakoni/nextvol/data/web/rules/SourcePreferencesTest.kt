@@ -88,7 +88,7 @@ class SourcePreferencesTest {
                 sources.activate(unknown.reference(), emptyList())
                 sources.stop()
                 val snapshot = File(context.filesDir, "rule-sources/active.json")
-                val legacy = Json.parseToJsonElement(snapshot.readText()).jsonArray.map { row ->
+                val legacy = Json.parseToJsonElement(snapshot.readText()).jsonObject.getValue("sources").jsonArray.map { row ->
                     JsonObject(row.jsonObject + ("preferences" to JsonObject(row.jsonObject.getValue("preferences").jsonObject - "category")))
                 }
                 snapshot.writeText(JsonArray(legacy).toString())
