@@ -35,7 +35,11 @@ internal fun SourceCatalogAddScreen(state: SourceManagementState, tab: Int, onTa
         }
         LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (state.busy) item { SourceImportProgress(onCancel) }
-            state.message?.let { message -> item { Text(stringResource(message), color = MaterialTheme.colorScheme.error) } }
+            state.message?.takeUnless { it == R.string.source_groups_saved }?.let { message ->
+                item { Text(stringResource(message), color = MaterialTheme.colorScheme.error) }
+            }
+            item { Text(stringResource(R.string.source_groups_import_help), style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant) }
             if (tab == 0) {
                 val grouped = state.catalog.groupBy { it.category }
                 items(SourceCategory.entries.chunked(2)) { categories ->

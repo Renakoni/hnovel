@@ -35,7 +35,8 @@ data class SourceManagementState(val installed: List<InstalledRuleSource> = empt
     val loginStatus: LoginStatus = LoginStatus.LoggedOut, val variable: String = "",
     val zLibrary: ZLibraryState = ZLibraryState(), val checks: Map<String, SourceCheckSummary> = emptyMap(),
     val network: SourceNetworkState? = null, val storedSettingsAvailable: Boolean = false,
-    val accountName: String? = null, val verifications: List<VerificationPrompt> = emptyList()) {
+    val accountName: String? = null, val verifications: List<VerificationPrompt> = emptyList(),
+    val groups: List<SourceGroup> = emptyList(), val groupRevision: Long = 0) {
     val ruleSettings = installed.find { ImportedRuleSources.id(it.definition) == selected }
         ?.let { RuleSettingsPresentation.read(it.definition) }
     val verification get() = verifications.firstOrNull { prompt ->
@@ -108,9 +109,26 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
 
     private suspend fun reload() {
         val installed = sources.installedSources()
-        mutable.update { it.copy(installed = installed, catalog = catalog.entries) }
+        val groups = sources.sourceGroups()
+        mutable.update { it.copy(installed = installed, groups = groups, catalog = catalog.entries) }
     }
     fun refresh() = launch { reload() }
+    fun createGroup(name: String, members: Set<Identifier> = emptySet()) = launch(showProgress = false) {
+        sources.createGroup(name, members); reload()
+        mutable.update { it.copy(message = R.string.source_groups_saved, groupRevision = it.groupRevision + 1) }
+    }
+    fun renameGroup(id: String, name: String) = launch(showProgress = false) {
+        sources.renameGroup(id, name); reload()
+        mutable.update { it.copy(message = R.string.source_groups_saved, groupRevision = it.groupRevision + 1) }
+    }
+    fun deleteGroup(id: String) = launch(showProgress = false) {
+        sources.deleteGroup(id); reload()
+        mutable.update { it.copy(message = R.string.source_groups_saved, groupRevision = it.groupRevision + 1) }
+    }
+    fun moveToGroup(members: Set<Identifier>, groupId: String?) = launch(showProgress = false) {
+        sources.moveToGroup(members, groupId); reload()
+        mutable.update { it.copy(message = R.string.source_groups_saved, groupRevision = it.groupRevision + 1) }
+    }
     fun select(id: Identifier?) = launch(showProgress = false) { selectSource(id) }
     private suspend fun selectSource(id: Identifier?) {
         reload() // Includes the current session's redacted refusals, including background image loads.
