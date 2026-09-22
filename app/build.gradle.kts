@@ -22,6 +22,11 @@ android {
     namespace = "indi.renakoni.nextvol"
     compileSdk = 37
 
+    lint {
+        baseline = file("lint-baseline.xml")
+        fatal += "LintBaselineFixed"
+    }
+
     defaultConfig {
         multiDexEnabled = true
         applicationId = "indi.renakoni.nextvol"
