@@ -3,12 +3,12 @@
     <color name="source_browser_background">#141218</color>
     <color name="source_browser_foreground">#E6E0E9</color>
     <color name="source_browser_accent">#D0BCFF</color>
-    <style name="Theme.SourceBrowser" parent="android:Theme.Material.NoActionBar">
+    <style name="Theme.SourceBrowser.Base" parent="android:Theme.Material.NoActionBar">
         <item name="colorControlNormal">@color/source_browser_foreground</item>
         <item name="android:colorBackground">@color/source_browser_background</item>
         <item name="android:statusBarColor">@color/source_browser_background</item>
         <item name="android:navigationBarColor">@color/source_browser_background</item>
         <item name="android:windowLightStatusBar">false</item>
-        <item name="android:windowLightNavigationBar">false</item>
     </style>
+    <style name="Theme.SourceBrowser" parent="Theme.SourceBrowser.Base" />
 </resources>

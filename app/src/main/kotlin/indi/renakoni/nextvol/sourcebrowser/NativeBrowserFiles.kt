@@ -59,10 +59,10 @@ internal class NativeBrowserFiles(private val context: Context) {
         if (relocated) {
             ProcessGlobalConfig.apply(ProcessGlobalConfig().setDirectoryBasePaths(context, directory(profile),
                 File(context.cacheDir, "source-browser/$profile")))
-        } else {
-            check(Build.VERSION.SDK_INT >= 28 && owner() == profile)
+        } else if (Build.VERSION.SDK_INT >= 28) {
+            check(owner() == profile)
             WebView.setDataDirectorySuffix("source_native")
-        }
+        } else error("Browser profile isolation is unavailable")
     }
 
     fun clear(profile: String) {

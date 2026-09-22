@@ -1,4 +1,4 @@
-name: Android checks 2/3 - Devices
+name: Android checks 2/4 - Devices
 
 on:
   pull_request:
