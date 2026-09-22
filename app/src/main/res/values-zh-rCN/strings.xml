@@ -159,7 +159,7 @@
     <string name="settings_reader_volume_key_interval">按键持续翻页间隔</string>
     <string name="reader_volume_scroll_title">音量键滚动</string>
     <string name="reader_volume_scroll_description">音量+后退，音量-前进，横竖屏方向一致。阅读控制栏打开时正常调节音量。</string>
-    <string name="reader_volume_scroll_step">滚动距离（阅读区域百分比）</string>
+    <string name="reader_volume_scroll_step" formatted="false">滚动距离（阅读区域百分比）</string>
     <string name="reader_volume_scroll_interval">长按重复间隔（-1：关闭）</string>
     <string name="settings_reader_t2tp">点击翻页</string>
     <string name="settings_reader_t2tp_desc">启用点击翻页。点击屏幕左侧/右侧以翻页，点击中间展开菜单</string>
@@ -662,6 +662,7 @@
     <string name="never_read">未读</string>
     <string name="explore_more">查看更多</string>
     <string name="explore_search">搜索此书源</string>
+    <string name="search_hub_title">搜索</string>
     <string name="explore_no_sources">暂无支持发现的书源。可在书源管理中添加书源，或搜索支持搜索的书源。</string>
     <string name="explore_empty">此书源暂无发现内容。</string>
     <string name="discovery_unnamed_entry">未命名入口</string>

@@ -159,7 +159,7 @@
     <string name="settings_reader_volume_key_interval">按鍵持續翻頁間隔</string>
     <string name="reader_volume_scroll_title">音量鍵捲動</string>
     <string name="reader_volume_scroll_description">音量+後退，音量-前進，橫豎螢幕方向一致。閱讀控制列開啟時正常調節音量。</string>
-    <string name="reader_volume_scroll_step">捲動距離（閱讀區域百分比）</string>
+    <string name="reader_volume_scroll_step" formatted="false">捲動距離（閱讀區域百分比）</string>
     <string name="reader_volume_scroll_interval">長按重複間隔（-1：關閉）</string>
     <string name="settings_reader_t2tp">點擊翻頁</string>
     <string name="settings_reader_t2tp_desc">啟用點擊翻頁。點擊螢幕左側/右側以翻頁，點擊中間展開選單</string>
@@ -704,4 +704,20 @@
     <string name="log_recording_off_desc">選擇日誌等級，重新啟動應用程式後開始記錄</string>
     <string name="log_empty_file_desc">這份檔案沒有日誌內容</string>
     <string name="log_empty_current_desc">新的日誌會顯示在此，修改等級後需重新啟動</string>
+    <string name="explore_more">查看更多</string>
+    <string name="explore_search">搜尋此書源</string>
+    <string name="search_hub_title">搜尋</string>
+    <string name="explore_no_sources">暫無支援探索的書源。可在書源管理中新增書源，或搜尋支援搜尋的書源。</string>
+    <string name="explore_empty">此書源暫無探索內容。</string>
+    <string name="discovery_unnamed_entry">未命名入口</string>
+    <string name="bookshelf_selection_actions">已選書籍操作</string>
+    <string name="bookshelf_pin_selected">置頂／取消置頂所選書籍</string>
+    <string name="bookshelf_remove_selected">從目前書架移除</string>
+    <string name="bookshelf_collect_selected">加入書架</string>
+    <string name="sources_non_text_skipped">已略過 %1$d 個漫畫、音訊等非文字書源。</string>
+    <string name="source_verification_download_paused">已停止：需要完成網站驗證</string>
+    <string name="source_verification_background_open">開啟驗證</string>
+    <string name="source_verification_background">%1$s 需要驗證，背景讀取已停止。驗證後請重新開始下載。</string>
+    <string name="source_verification_failed">驗證未完成，或書源帳號已變更。請從該書源重試。</string>
+    <string name="discovery_verification_required">網站驗證尚未完成，請重試以開啟驗證頁面。</string>
 </resources>
