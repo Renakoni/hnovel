@@ -352,18 +352,6 @@ fun ReaderScreen(
             } ?: {
                 //TODO 加载显示
             }
-
-            LaunchedEffect(readingScreenUiState.bookVolumes) {
-                contentUiState.readingChapterId?.let { chapterId ->
-                    readingScreenUiState.bookVolumes?.onOk { bookVolumes ->
-                        selectedVolumeId = bookVolumes.volumes.firstOrNull { volume ->
-                            volume.chapters.any {
-                                it.id == chapterId
-                            }
-                        }?.volumeId ?: ""
-                    }
-                }
-            }
         }
     }
     }
