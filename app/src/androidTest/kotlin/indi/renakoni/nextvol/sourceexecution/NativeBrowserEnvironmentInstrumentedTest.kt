@@ -107,7 +107,7 @@ class NativeBrowserEnvironmentInstrumentedTest {
                     suspend fun read(url: String): JsonObject {
                         val result = session.execute(BrokerRequest("evidence", url, timeoutMillis = 60000,
                             browser = BrowserOptions(script = "window.answer || null", interactive = foreground)))
-                        assertTrue("Native fixture request failed", result is BrokerResult.Success)
+                        assertTrue("Native fixture request failed: $result", result is BrokerResult.Success)
                         return Json.parseToJsonElement((result as BrokerResult.Success).response.text()).jsonObject
                     }
                     try { repeat(2) { iteration ->

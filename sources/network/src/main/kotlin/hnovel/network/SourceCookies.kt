@@ -8,8 +8,9 @@ import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 
 internal class SourceCookies(private val storage: SourceStorage) {
-    @Serializable private data class SavedCookie(val origin: String, val cookie: String)
+    @Serializable private data class SavedCookie(val origin: String, val cookie: String, val browserOwned: Boolean = false)
     private val cookies = linkedMapOf<String, Pair<String, Cookie>>()
+    private val browserOnly = mutableSetOf<String>()
 
     init {
         val stored = storage.read("cookies")
@@ -19,7 +20,10 @@ internal class SourceCookies(private val storage: SourceStorage) {
             catch (_: Exception) { throw BrokerFailure(RequestStage.Storage, FailureCode.StorageUnavailable) }
         decoded.forEach {
             val cookie = Cookie.parse(it.origin.toHttpUrl(), it.cookie)
-            if (cookie != null && cookie.expiresAt > System.currentTimeMillis()) cookies[key(cookie)] = it.origin to cookie
+            if (cookie != null && cookie.expiresAt > System.currentTimeMillis()) {
+                cookies[key(cookie)] = it.origin to cookie
+                if (it.browserOwned) browserOnly.add(key(cookie))
+            }
         }
     }
 
@@ -43,7 +47,7 @@ internal class SourceCookies(private val storage: SourceStorage) {
         return matching.joinToString("; ") { "${it.name}=${it.value}" }
     }
 
-    @Synchronized fun save(url: HttpUrl, headers: okhttp3.Headers) {
+    @Synchronized fun save(url: HttpUrl, headers: okhttp3.Headers, fromBrowser: Boolean = false) {
         val incoming = Cookie.parseAll(url, headers)
         if (incoming.isEmpty()) return
         val next = LinkedHashMap(cookies)
@@ -53,15 +57,25 @@ internal class SourceCookies(private val storage: SourceStorage) {
         }
         next.entries.removeAll { it.value.second.expiresAt <= System.currentTimeMillis() }
         if (next.size > 256) throw BrokerFailure(RequestStage.Storage, FailureCode.StorageQuota)
+        val nextBrowserOnly = browserOnly.intersect(next.keys).toMutableSet()
+        if (fromBrowser) nextBrowserOnly.addAll(incoming.map(::key)) else nextBrowserOnly.removeAll(incoming.map(::key).toSet())
         // Session cookies are intentionally memory-only; persistent cookies retain absolute expiry.
-        val saved = Json.encodeToString(next.values.filter { it.second.persistent }.map { SavedCookie(it.first, it.second.toString()) })
+        val saved = encode(next.values, nextBrowserOnly)
         when (val result = storage.write("cookies", saved)) {
             is StorageResult.Failure -> throw BrokerFailure(RequestStage.Storage, result.code)
-            is StorageResult.Value -> { cookies.clear(); cookies.putAll(next) }
+            is StorageResult.Value -> {
+                cookies.clear(); cookies.putAll(next)
+                browserOnly.clear(); browserOnly.addAll(nextBrowserOnly)
+            }
         }
     }
 
     private fun key(cookie: Cookie) = "${cookie.name}\n${cookie.domain}\n${cookie.path}"
+
+    private fun encode(values: Collection<Pair<String, Cookie>>, owned: Set<String> = browserOnly) =
+        Json.encodeToString(values.filter { it.second.persistent }.map {
+            SavedCookie(it.first, it.second.toString(), key(it.second) in owned)
+        })
 
     @Synchronized fun documentHeader(url: HttpUrl): String = cookies.values.map { it.second }
         .filter { !it.httpOnly && it.expiresAt > System.currentTimeMillis() && it.matches(url) }
@@ -84,16 +98,57 @@ internal class SourceCookies(private val storage: SourceStorage) {
         }
         try {
             if (value.isBlank()) {
-                val saved = Json.encodeToString(cookies.values.filter { it.second.persistent }.map { SavedCookie(it.first, it.second.toString()) })
+                val saved = encode(cookies.values)
                 check(storage.write("cookies", saved) is StorageResult.Value)
             } else save(url, headers.build())
         } catch (failure: Exception) { restoreMemory(before); throw failure }
     }
 
     @Synchronized fun snapshot(): List<Pair<String, Cookie>> = cookies.values.toList()
+
+    @Synchronized fun browserSnapshot(url: HttpUrl): List<String> = cookies.values.map { it.second }
+        .filter { key(it) !in browserOnly && it.expiresAt > System.currentTimeMillis() && it.matches(url) }.map(Cookie::toString)
+
+    private fun browserMatches(cookie: Cookie, url: HttpUrl): Boolean {
+        val loopback = url.host in setOf("localhost", "127.0.0.1", "::1")
+        return cookie.matches(if (cookie.secure && loopback) url.newBuilder().scheme("https").build() else url)
+    }
+
+    /** A trusted browser snapshot includes HttpOnly cookies and their original attributes. */
+    @Synchronized fun replaceBrowserSnapshot(url: HttpUrl, values: List<String>, completeMetadata: Boolean) {
+        require(values.size <= 256 && values.sumOf(String::length) <= 65536)
+        val parsed = values.mapNotNull { Cookie.parse(url, it) }
+        // Chromium permits Secure cookies on trustworthy loopback HTTP origins. Validate
+        // domain/path here; normal HTTP dispatch must still enforce the Secure attribute.
+        require(parsed.all { browserMatches(it, url) })
+        require(completeMetadata || parsed.none { it.persistent })
+        val before = snapshot()
+        val beforeBrowserOnly = browserOnly.toSet()
+        cookies.entries.removeAll { browserMatches(it.value.second, url) }
+        try {
+            val headers = okhttp3.Headers.Builder()
+            values.forEach { headers.add("Set-Cookie", it) }
+            if (parsed.isEmpty()) {
+                val saved = encode(cookies.values)
+                check(storage.write("cookies", saved) is StorageResult.Value)
+            } else save(url, headers.build(), fromBrowser = true)
+            browserOnly.retainAll(cookies.keys)
+            // OkHttp's Cookie model cannot retain SameSite, even with complete metadata.
+            // Chromium owns its original cookies; only HTTP/rule updates are sent back.
+        } catch (failure: Exception) {
+            restoreMemory(before); browserOnly.clear(); browserOnly.addAll(beforeBrowserOnly); throw failure
+        }
+    }
+
+    @Synchronized fun inherit(previous: SourceCookies) = synchronized(previous) {
+        restoreMemory(previous.snapshot())
+        browserOnly.clear(); browserOnly.addAll(previous.browserOnly)
+    }
+
     @Synchronized fun restoreMemory(snapshot: List<Pair<String, Cookie>>) {
         cookies.clear()
         snapshot.forEach { cookies[key(it.second)] = it }
+        browserOnly.retainAll(cookies.keys)
     }
 }
 

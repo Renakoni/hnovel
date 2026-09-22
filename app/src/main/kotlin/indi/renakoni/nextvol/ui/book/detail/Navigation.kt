@@ -100,6 +100,7 @@ fun NavGraphBuilder.bookDetailDestination() {
             onRelink = { relinkPicker.launch(arrayOf("text/plain", "application/epub+zip")) },
             uiState = viewModel.uiState,
             onRetry = viewModel::retryInformation,
+            onRetryVolumes = viewModel::retryVolumes,
             onMarkChaptersUnread = viewModel::markChaptersUnread,
             onClickExportToEpub = { settings ->
                 viewModel.exportSettings = settings
@@ -121,7 +122,7 @@ fun NavGraphBuilder.bookDetailDestination() {
                 if (viewModel.uiState.userReadingData?.lastReadChapterId == null)
                     viewModel.uiState.bookVolumes
                         ?.map {
-                            it.volumes.firstOrNull()?.chapters?.firstOrNull()?.id
+                            it.volumes.firstNotNullOfOrNull { volume -> volume.chapters.firstOrNull()?.id }
                         }?.onOk { id ->
                             id?.let {
                                 navController.navigateToBookReaderDestination(bookId, it, context)

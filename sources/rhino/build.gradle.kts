@@ -7,7 +7,7 @@ dependencies {
     implementation("cn.hutool:hutool-crypto:5.8.22")
     implementation("com.github.liuyueyi.quick-chinese-transfer:quick-transfer-core:0.2.16")
     api(project(":source-rules"))
-    implementation("org.jsoup:jsoup:1.16.2")
+    implementation(libs.jsoup)
     implementation("org.apache.commons:commons-text:1.15.0")
     implementation(libs.okhttp)
     testImplementation("com.squareup.okhttp3:mockwebserver:5.4.0")

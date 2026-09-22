@@ -12,6 +12,19 @@ class RhinoBudgetTest {
     private val bridge = HostBridge { _, _ -> error("unexpected bridge") }
     private val frame = ScriptFrame("fixture", "legado")
 
+    @Test(timeout = 5000) fun deadlinesStopLoopsGettersAndRegexBacktrackingWithoutATotalInstructionCap() {
+        val engine = RhinoScriptEngine(bridge, ScriptLimits(timeoutMillis = 50))
+        for (script in listOf("try { while(true) {} } catch(e) { 'caught'; }",
+            "({get value() {while(true) {}}})", "/(a+)+$/.test('a'.repeat(1000)+'!')")) {
+            assertEquals(FailureCode.Timeout, (engine.evaluate(script, frame) as ScriptResult.Failure).code)
+            assertNull(Context.getCurrentContext())
+        }
+        ScriptLibrary(frame.sourceId, frame.profile, "while(true){}").use { library ->
+            assertEquals(FailureCode.Timeout, (engine.evaluate("1", frame, library) as ScriptResult.Failure).code)
+            assertNull(library.scope)
+        }
+    }
+
     @Test(timeout = 5000) fun infiniteLoopConsumesBudgetEvenIfScriptAttemptsToCatchIt() {
         val engine = RhinoScriptEngine(bridge, ScriptLimits(instructionLimit = 3000))
         for (script in listOf("while(true) {}", "try { while(true) {} } catch(e) { 'caught'; }")) {

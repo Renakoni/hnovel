@@ -447,6 +447,7 @@ fun Content(
 ) {
     val textLayout = rememberReaderTextLayout(settingState)
     val speechFollow = LocalReaderSpeechFollow.current
+    val bookmarks = LocalReaderBookmarks.current
     Box(modifier = Modifier.fillMaxSize().readerProbeLayout("content-root")) {
         val isEnableIndicator =
             settingState.enableTimeIndicator ||
@@ -461,6 +462,8 @@ fun Content(
             ) { contentUiState ->
                 // Controls cover the reading viewport; outgoing animated modes must release input.
                 CompositionLocalProvider(LocalReaderTextLayout provides textLayout,
+                    LocalReaderBookmarks provides if (contentUiState === readingScreenUiState.contentUiState)
+                        bookmarks else null,
                     LocalReaderSpeechFollow provides if (contentUiState === readingScreenUiState.contentUiState)
                         speechFollow else ReaderSpeechFollow(), LocalReaderVolumeKeysEnabled provides (
                     volumeKeysEnabled && isImmersive && contentUiState === readingScreenUiState.contentUiState

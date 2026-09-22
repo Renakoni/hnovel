@@ -1,0 +1,15 @@
+<resources>
+    <string name="source_certificate_title">Website certificate needs confirmation</string>
+    <string name="source_certificate_expired">This website’s certificate has expired.</string>
+    <string name="source_certificate_not_yet_valid">This website’s certificate is not valid yet. Check your device’s date and time.</string>
+    <string name="source_certificate_untrusted">The certificate issuer could not be verified.</string>
+    <string name="source_certificate_help">The connection could not be verified normally. Continuing may put login details at risk. This exception trusts only the current certificate for this website and this source account. A different certificate requires confirmation again. You can revoke the exception in the source’s network settings.</string>
+    <string name="source_certificate_continue">Continue to this website</string>
+    <string name="source_certificate_review">Review certificate</string>
+    <string name="source_certificate_background">%1$s needs certificate confirmation. Background reading has stopped.</string>
+    <string name="source_certificate_failed">The website certificate could not be verified. Check the certificate notice or retry after the website fixes it.</string>
+    <string name="source_certificate_exceptions">Certificate exceptions</string>
+    <string name="source_certificate_exceptions_help">Approved only for this source account and the certificate you confirmed. Revoking stops current requests and restores normal verification.</string>
+    <string name="source_certificate_revoke">Revoke</string>
+    <string name="source_certificate_revoked">Certificate exception revoked</string>
+</resources>

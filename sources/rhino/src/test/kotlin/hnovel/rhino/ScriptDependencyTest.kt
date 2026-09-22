@@ -10,9 +10,9 @@ class ScriptDependencyTest {
         try {
             for (locale in listOf(java.util.Locale.ENGLISH, java.util.Locale.SIMPLIFIED_CHINESE)) {
                 java.util.Locale.setDefault(locale)
-                val failure = engine.evaluate("Packages.java.lang.System", frame) as ScriptResult.Failure
+                val failure = engine.evaluate("JavaAdapter", frame) as ScriptResult.Failure
                 assertEquals(FailureCode.UnsupportedDependency,failure.code)
-                assertEquals(ScriptDependency.Packages,failure.dependency)
+                assertEquals(ScriptDependency.JavaAdapter,failure.dependency)
             }
         } finally { java.util.Locale.setDefault(previous) }
     }
@@ -27,7 +27,7 @@ class ScriptDependencyTest {
     private val engine = RhinoScriptEngine(HostBridge { _, _ -> error("No host call expected") })
 
     @Test fun missingInteropBindingsAreReportedWithoutIntroducingFakeJavaObjects() {
-        for (dependency in ScriptDependency.entries) {
+        for (dependency in listOf(ScriptDependency.ImportClass, ScriptDependency.ImportPackage, ScriptDependency.JavaAdapter)) {
             val code = "${dependency.binding}();"
             val failure = engine.evaluate(code, frame) as ScriptResult.Failure
             assertEquals(FailureCode.UnsupportedDependency, failure.code)
@@ -39,9 +39,9 @@ class ScriptDependencyTest {
     }
 
     @Test fun libraryErrorsIdentifyTheirOwnerAndOrdinaryErrorsDoNotLeakMessages() {
-        ScriptLibrary(frame.sourceId, frame.profile, "new JavaImporter();").use { library ->
+        ScriptLibrary(frame.sourceId, frame.profile, "new JavaAdapter();").use { library ->
             val failure = engine.evaluate("42", frame, library) as ScriptResult.Failure
-            assertEquals(ScriptDependency.JavaImporter, failure.dependency)
+            assertEquals(ScriptDependency.JavaAdapter, failure.dependency)
             assertTrue(failure.inLibrary)
         }
         for (code in listOf("missing_private_identifier", "throw new ReferenceError('JavaImporter synthetic-secret')",

@@ -8,7 +8,7 @@ class ScriptParsersTest {
     private val engine = RhinoScriptEngine(HostBridge { _, _ -> error("Parsing must stay in the worker") })
 
     @Test fun jsoupEntryUsesExistingDomMethodsAndExplicitBaseUri() {
-        assertEquals(ScriptResult.Success("[\"Chapter\",\"https://text.invalid/next\",\"\",\"undefined\",\"undefined\",\"undefined\"]"), engine.evaluate("""
+        assertEquals(ScriptResult.Success("[\"Chapter\",\"https://text.invalid/next\",\"\",\"undefined\",\"undefined\",\"object\"]"), engine.evaluate("""
             var html='<article><blockquote>Discard</blockquote><a href="next">Chapter</a></article>';
             var doc=org.jsoup.Jsoup.parse(html,'https://text.invalid/book');
             doc.select('blockquote').remove();
@@ -23,6 +23,15 @@ class ScriptParsersTest {
             assertEquals(ScriptResult.Success("\"Chapter\""), engine.evaluate("doc.select('p').text()", frame, library))
             assertEquals(ScriptResult.Success("\"Chapter\""), engine.evaluate("doc.select('p').text()", frame, library))
         }
+    }
+
+    @Test fun selectedElementListsCanBeParsedAndEnumeratedLikeNativeJsoup() {
+        assertEquals(ScriptResult.Success("[\"One\",\"Two\"]"), engine.evaluate("""
+            var selected = org.jsoup.Jsoup.parse('<div><a>One</a><a>Two</a></div>').select('div');
+            var links = org.jsoup.Jsoup.parse(selected).select('a'), titles = [];
+            for (var index in links) titles.push(links[index].text());
+            titles;
+        """.trimIndent(), frame))
     }
 
     @Test fun parserArgumentsAndRetainedMethodsUseCurrentInvocationBudget() {

@@ -8,6 +8,24 @@ import org.junit.Test
 
 /** Fixed pages derived from BookContent/BookChapterList and replayed in the reference App. */
 class RuleSourceParityTest {
+    @Test fun malformedSourceHeadersKeepDefaultIdentityForPagesAndNestedRequests() = runBlocking {
+        val malformed = "{\"X-Partial\":\"must-not-send\",\"User-Agent\":\"unfinished}"
+        for (header in listOf(malformed, "@js:${JsonPrimitive(malformed)}", "Mozilla/5.0", "@js:throw new Error('optional header')")) RuleSourceFixture().use { fixture ->
+            fixture.source(customize = { raw -> JsonObject(raw + mapOf(
+                "header" to JsonPrimitive(header),
+                "ruleSearch" to JsonObject(raw.getValue("ruleSearch").jsonObject +
+                    ("bookList" to JsonPrimitive("@js:java.setContent(java.ajax('/search'));java.getElements('li')")))
+            )) }).use { source ->
+                assertEquals("Same title", source.search("title").single().title)
+                repeat(2) {
+                    val request = fixture.server.takeRequest(2, java.util.concurrent.TimeUnit.SECONDS)!!
+                    assertTrue(request.getHeader("User-Agent")!!.startsWith("Mozilla/5.0"))
+                    assertNull(request.getHeader("X-Partial"))
+                }
+            }
+        }
+    }
+
     @Test fun chapterMetadataKeepsRawUrlsAndTheCatalogueBaseDuringAndAfterExtraction() = runBlocking {
         RuleSourceFixture().use { fixture ->
             fixture.source(customize = { raw -> JsonObject(raw + mapOf(
@@ -109,6 +127,31 @@ class RuleSourceParityTest {
                 val content = source.content(book.id, chapters[1].id)
                 assertEquals("One", content.title)
                 assertTrue(content.parts.any { it.text == "last replaced" })
+            }
+        }
+    }
+
+    @Test fun contentTitleAndReplacementUseFirstPageAfterAllContentVariablesAreWritten() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            val normal = fixture.server.dispatcher
+            fixture.server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse = when (request.path) {
+                    "/c/1" -> MockResponse().setBody("<h1>First page</h1><article>One</article><a class='next' href='/c/1b'>Next</a>")
+                    "/c/1b" -> MockResponse().setBody("<h1>Last page</h1><article>Two</article>")
+                    else -> normal.dispatch(request)
+                }
+            }
+            fixture.source(customize = { raw -> JsonObject(raw + ("ruleContent" to buildJsonObject {
+                put("content", "@js:java.put('seen',Number(java.get('seen')||0)+1);java.getString('article@html')")
+                put("nextContentUrl", "a.next@href")
+                put("title", "@js:java.getString('h1@text')+' '+java.get('seen')")
+                put("replaceRegex", "@js:result+'\\n'+baseUrl")
+            })) }).use { source ->
+                val book = source.search("title").single()
+                val chapter = source.directory(book.id).first { !it.isVolume }
+                val content = source.content(book.id, chapter.id)
+                assertEquals("First page 2", content.title)
+                assertEquals(listOf("One", "Two", fixture.server.url("/c/1").toString()), content.parts.map { it.text })
             }
         }
     }

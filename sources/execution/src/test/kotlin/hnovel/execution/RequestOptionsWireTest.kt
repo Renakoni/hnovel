@@ -9,14 +9,16 @@ import org.junit.Test
 class RequestOptionsWireTest {
     @Test fun requestParseFailureSurvivesScriptAndRuleWireWithoutLosingItsField() {
         val identity = ExecutionAuthority().issue("source", "legado", "revision")
-        val code = "java.ajax(${JsonPrimitive("/search,{'body':'private-unterminated}")})"
+        val code = "java.connect('/search', ${JsonPrimitive("{'X-Private':'private-unterminated}")})"
         var calls = 0
         WorkerRuntime().use { worker ->
             for (task in listOf(ExecutionTask.Script(code),
                 ExecutionTask.Rule("@js:$code", RuleValue.Empty, location = RuleLocation("searchUrl")))) {
                 val wire = ExecutionWire.encode(identity, task, ExecutionLimits())
                 val result = ExecutionWire.decodeResult(worker.executeSerialized(wire.toString(Charsets.UTF_8),
-                    HostBridge { _, _ -> calls++; JsonPrimitive("unexpected") }).toByteArray()) as ExecutionResult.Failure
+                    HostBridge { _, _ -> calls++; JsonPrimitive("unexpected") }).toByteArray())
+                assertTrue(result.toString(), result is ExecutionResult.Failure)
+                result as ExecutionResult.Failure
                 assertEquals(FailureCode.RequestSyntax, result.code)
                 if (task is ExecutionTask.Rule) {
                     assertEquals(RuleStage.Parse, result.ruleError?.stage)
@@ -27,5 +29,23 @@ class RequestOptionsWireTest {
             }
         }
         assertEquals(0, calls)
+    }
+
+    @Test fun malformedOptionalUrlObjectUsesTheBaseRequestThroughTheWire() {
+        val identity = ExecutionAuthority().issue("source", "legado", "revision")
+        WorkerRuntime().use { worker ->
+            val task = ExecutionTask.Script("java.ajax(${JsonPrimitive("/search,{'body':'unterminated}")})")
+            val wire = ExecutionWire.encode(identity, task, ExecutionLimits())
+            var calls = 0
+            val result = ExecutionWire.decodeResult(worker.executeSerialized(wire.toString(Charsets.UTF_8),
+                HostBridge { method, args ->
+                    calls++
+                    assertEquals("java.ajax", method)
+                    assertEquals(JsonPrimitive("/search,{}"), args.single())
+                    JsonPrimitive("response")
+                }).toByteArray())
+            assertEquals(ExecutionResult.Success("\"response\""), result)
+            assertEquals(1, calls)
+        }
     }
 }

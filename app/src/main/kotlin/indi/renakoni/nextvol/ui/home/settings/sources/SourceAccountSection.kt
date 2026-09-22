@@ -25,6 +25,7 @@ internal fun SourceAccountSection(status: LoginStatus?, accountName: String?, av
     val hasSession = status == LoginStatus.LoginSubmitted || status == LoginStatus.SessionSaved
     val working = busy || verification?.opening == true
     val title = when {
+        verification?.certificate != null -> R.string.source_certificate_title
         verification?.kind == BrowserChallengeKind.Login -> R.string.sources_login_required
         verification != null -> R.string.sources_verification_required
         else -> when (status) {
@@ -65,8 +66,11 @@ internal fun SourceAccountSection(status: LoginStatus?, accountName: String?, av
             if (verification != null) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = onVerify, enabled = !working) {
-                        Text(stringResource(if (verification.kind == BrowserChallengeKind.Login) R.string.sources_login_continue
-                            else R.string.source_verification_background_open))
+                        Text(stringResource(when {
+                            verification.certificate != null -> R.string.source_certificate_review
+                            verification.kind == BrowserChallengeKind.Login -> R.string.sources_login_continue
+                            else -> R.string.source_verification_background_open
+                        }))
                     }
                     if (hasSession && available) OutlinedButton(onClick = onLogout, enabled = !working) {
                         Text(stringResource(R.string.sources_logout))

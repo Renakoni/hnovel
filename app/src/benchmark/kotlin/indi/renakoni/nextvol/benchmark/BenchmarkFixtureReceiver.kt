@@ -116,7 +116,13 @@ class BenchmarkFixtureReceiver : BroadcastReceiver() {
                     row('Library', () => sharedLabel()),
                     row('Bridge', () => String(source.getLoginHeader()) + '/' + java.base64Decode('aGVsbG8=')),
                     row('DOM', () => org.jsoup.Jsoup.parse('<h1>Chapter</h1>').select('h1').first().text()),
-                    row('Isolation', () => typeof Packages + '/' + typeof java.getClass)
+                    row('Isolation', () => {
+                        // Rhino represents unlisted names as packages. Check the denied call,
+                        // rather than treating a package placeholder as an exposed Java class.
+                        let runtime = 'exposed';
+                        try { Packages.java.lang.Runtime.getRuntime(); } catch (error) { runtime = 'blocked'; }
+                        return runtime + '/' + typeof java.getClass;
+                    })
                 ])
             """.trimIndent())
         }

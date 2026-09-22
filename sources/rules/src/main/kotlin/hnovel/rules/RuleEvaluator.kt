@@ -6,7 +6,7 @@ import hnovel.rules.selector.AnalyzeByJSonPath
 import hnovel.rules.selector.AnalyzeByJSoup
 import hnovel.rules.selector.AnalyzeByXPath
 import org.apache.commons.text.StringEscapeUtils
-import java.net.URI
+import java.net.URL
 
 /** Stateless evaluator; callers supply a distinct context and budget per request. No IO is performed here. */
 class RuleEvaluator(private val unescapeHtml: Boolean = true, private val scriptTemplates: Boolean = true,
@@ -47,9 +47,8 @@ class RuleEvaluator(private val unescapeHtml: Boolean = true, private val script
         for (step in plan.steps) {
             val at = location.copy(offset = location.offset + step.offset)
             val content = context.content ?: root
-            value = if (step.script) script(if (scriptTemplates) interpolate(step.text, value, content, context, at, budget, depth + 1,
-                captures = false) else step.text,
-                value, context, at, budget)
+            // AnalyzeRule.makeUpRule expands regex captures before JS as well as selectors.
+            value = if (step.script) scriptStep(step.text, value, content, context, at, budget, depth + 1)
                 else select(step.text, value, content, context, output, at, budget, depth + 1)
             budget.checkValue(value, budget.limits.maxOutputChars)
         }
@@ -61,6 +60,23 @@ class RuleEvaluator(private val unescapeHtml: Boolean = true, private val script
             value is RuleValue.Text && output in listOf(OutputKind.TextList, OutputKind.UrlList) ->
                 RuleValue.Items(value.value.split('\n').map(RuleValue::Text))
             else -> value
+        }
+    }
+
+    private fun scriptStep(raw: String, input: RuleValue, root: RuleValue, context: RuleContext,
+        location: RuleLocation, budget: RuleBudget, depth: Int): RuleValue {
+        // AnalyzeRule.SourceRule separates ## for JS rules too; raw lifecycle/request scripts
+        // use a different path and must retain literal ## text.
+        if (!scriptTemplates) return script(raw, input, context, location, budget)
+        val parts = raw.split("##")
+        val code = interpolate(parts[0], input, root, context, location, budget, depth)
+        val value = script(code, input, context, location, budget)
+        if (parts.size < 2 || parts[1].isEmpty()) return value
+        val pattern = interpolate(parts[1], input, root, context, location, budget, depth, captures = false)
+        val replacement = interpolate(parts.getOrElse(2) { "" }, input, root, context, location, budget, depth, captures = false)
+        return atStage(RuleStage.Replace, location) {
+            fun replace(item: RuleValue) = RuleValue.Text(RegexRules.replace(item.text(), pattern, replacement, parts.size > 3, budget))
+            if (value is RuleValue.Items) RuleValue.Items(value.values.map(::replace)) else replace(value)
         }
     }
 
@@ -159,8 +175,10 @@ class RuleEvaluator(private val unescapeHtml: Boolean = true, private val script
         if (operator != null) {
             val branches = mutableListOf<List<RuleValue>>()
             var characters = 0L
+            // AnalyzeByJSoup.getString joins getStringList only after paragraph interleaving.
+            val branchOutput = if (operator == "%%" && output == OutputKind.Text) OutputKind.TextList else output
             for (part in parts) {
-                val found = selectors(part.text.trim(), input, output, location.copy(offset = location.offset + part.offset), budget, depth + 1, mode).items()
+                val found = selectors(part.text.trim(), input, branchOutput, location.copy(offset = location.offset + part.offset), budget, depth + 1, mode).items()
                 characters += budget.checkValue(RuleValue.Items(found), budget.limits.maxOutputChars)
                 if (characters > budget.limits.maxOutputChars) throw RuleBudgetExceeded()
                 if (found.isNotEmpty() && found.any { it.text().isNotEmpty() }) {
@@ -194,20 +212,23 @@ class RuleEvaluator(private val unescapeHtml: Boolean = true, private val script
                     }
                 }
                 "xpath" -> {
-                    val selector = AnalyzeByXPath(body)
+                    val selector = AnalyzeByXPath(if (input is RuleValue.Node && (input.kind == InputKind.Html || input.kind == InputKind.Xml && input.parentTag != null))
+                        input.htmlElement() else body)
                     when {
-                        elements -> RuleValue.Items(selector.getElements(local).orEmpty().map { RuleValue.Node(it.toString(), InputKind.Xml) })
+                        elements -> RuleValue.Items(selector.getElements(local).orEmpty().map {
+                            if (it.isElement) it.asElement().ruleNode() else RuleValue.Node(it.toString(), InputKind.Xml)
+                        })
                         list -> RuleValue.Items(selector.getStringList(local).map(RuleValue::Text))
                         else -> selector.getString(local)?.let(RuleValue::Text) ?: RuleValue.Empty
                     }
                 }
                 else -> {
-                    val selector = AnalyzeByJSoup(if (input is RuleValue.Node && input.kind == InputKind.Html)
+                    val selector = AnalyzeByJSoup(if (input is RuleValue.Node && (input.kind == InputKind.Html || input.kind == InputKind.Xml && input.parentTag != null))
                         input.htmlElement() else body)
                     val expression = if (mode == "css") "@CSS:$local" else local
                     when {
                         elements -> {
-                            val nodes = selector.getElements(expression).map { RuleValue.Node(it.outerHtml(), InputKind.Html, it.parent()?.tagName()) }
+                            val nodes = selector.getElements(expression).map { it.ruleNode() }
                             RuleValue.Items(nodes, InputKind.Html.takeIf { nodes.isEmpty() })
                         }
                         list -> RuleValue.Items(selector.getStringList(expression).map(RuleValue::Text))
@@ -278,9 +299,14 @@ class RuleEvaluator(private val unescapeHtml: Boolean = true, private val script
         RuleValue.Empty -> JsonNull
     }
 
-    private fun absolute(base: String, value: String, emptyUsesBase: Boolean): String = when {
-        value.isBlank() -> if (emptyUsesBase) base else ""
-        else -> URI(base).resolve(value.trim()).toString()
+    private fun absolute(base: String, value: String, emptyUsesBase: Boolean): String {
+        if (value.isBlank()) return if (emptyUsesBase) base else ""
+        val path = value.trim()
+        val baseUrl = runCatching { URL(base.substringBefore(',')) }.getOrNull() ?: return path
+        // NetworkUtils.getAbsoluteURL keeps logical options/unencoded titles until AnalyzeUrl.
+        if (path.startsWith("http://", true) || path.startsWith("https://", true) || path.startsWith("data:", true)) return path
+        if (path.startsWith("javascript")) return ""
+        return runCatching { URL(baseUrl, path).toString() }.getOrDefault(path)
     }
 
     private inline fun <T> atStage(stage: RuleStage, location: RuleLocation, block: () -> T): T = try { block() }

@@ -18,10 +18,11 @@ enum class LoginStatus { LoggedOut, LoginSubmitted, SessionSaved, Required }
 
 /** No Activity is launched from a rule/worker. Foreground UI explicitly owns a cancellable login attempt. */
 @Singleton
-class SourceLoginService @Inject constructor(private val sources: ImportedRuleSources, private val accounts: SourceSessionManager) {
+class SourceLoginService @Inject constructor(private val sources: ImportedRuleSources, private val accounts: SourceSessionManager,
+    private val verification: SourceVerificationCoordinator? = null) {
     // loginForm() may suspend across logout, revision change or removal. Validate the same attempt
     // before loading and before returning, rejecting any form produced by a retired attempt.
-    suspend fun form(attempt: LoginAttempt): LoginForm = target(attempt).rules.loginForm().also { target(attempt) }
+    suspend fun form(attempt: LoginAttempt): LoginForm = recover(attempt) { target(attempt).rules.loginForm().also { target(attempt) } }
     suspend fun status(source: Identifier): LoginStatus = withContext(Dispatchers.IO) {
         val target = sources.loginTarget(source)
         savedStatus((target.session.read(StorageRequest(StorageArea.Account, "login/status")) as? StorageResult.Value)?.value)
@@ -42,7 +43,7 @@ class SourceLoginService @Inject constructor(private val sources: ImportedRuleSo
     suspend fun submit(attempt: LoginAttempt, values: Map<String, String>, action: String? = null) {
         val target = target(attempt)
         try {
-            target.rules.login(values.toMap(), action)
+            recover(attempt) { target(attempt).rules.login(values.toMap(), action) }
             target(attempt)
         } catch (cancelled: CancellationException) {
             withContext(NonCancellable) { cancel(attempt) }
@@ -61,6 +62,13 @@ class SourceLoginService @Inject constructor(private val sources: ImportedRuleSo
             runCatching { sources.rotateAccount(attempt.source, attempt.generation) }
     }
     suspend fun logout(source: Identifier) { sources.rotateAccount(source) }
+
+    private suspend fun <T> recover(attempt: LoginAttempt, block: suspend () -> T): T {
+        val coordinator = verification ?: return block()
+        val name = sources.installedSources().firstOrNull { ImportedRuleSources.id(it.definition) == attempt.source }
+            ?.definition?.displayName ?: attempt.source.id
+        return coordinator.execute(VerificationOwner(attempt.source, attempt.revision, attempt.generation), name, block)
+    }
 
     private suspend fun target(attempt: LoginAttempt): RuleLoginTarget {
         val current = sources.loginTarget(attempt.source)

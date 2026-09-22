@@ -29,24 +29,34 @@ internal class SourceStorage(root: Path, namespace: List<String>, private val li
         }
     }
 
-    @Synchronized fun write(key: String, value: String?): StorageResult = operation {
-        val path = path(key)
-        if (value == null) { Files.deleteIfExists(path); return@operation StorageResult.Value(null) }
-        val bytes = cipher.seal(value.toByteArray(Charsets.UTF_8), identity + hash(key))
+    @Synchronized fun write(key: String, value: String?): StorageResult {
+        if (value == null) return operation { Files.deleteIfExists(path(key)); StorageResult.Value(null) }
+        val result = writeAll(mapOf(key to value))
+        return if (result is StorageResult.Value) StorageResult.Value(value) else result
+    }
+
+    /** Search results are one batch; scanning the whole directory for every book is quadratic. */
+    @Synchronized fun writeAll(values: Map<String, String>): StorageResult = operation {
+        check(!Files.isSymbolicLink(directory) && directory.toRealPath() == directory)
         val files = Files.list(directory).use { it.iterator().asSequence().toList() }
         if (files.any { !Files.isRegularFile(it, NOFOLLOW_LINKS) }) return@operation StorageResult.Failure(FailureCode.StorageUnavailable)
-        val oldSize = if (Files.exists(path)) Files.size(path) else 0L
-        val total = files.sumOf { Files.size(it) } - oldSize + bytes.size
-        if (total > limits.maxStorageBytes || (path !in files && files.size >= limits.maxStorageEntries)) {
-            return@operation StorageResult.Failure(FailureCode.StorageQuota)
+        val sizes = files.associateWith { Files.size(it) }.toMutableMap()
+        var total = sizes.values.sum()
+        for ((key, value) in values) {
+            val path = path(key)
+            val bytes = cipher.seal(value.toByteArray(Charsets.UTF_8), identity + hash(key))
+            total += bytes.size - (sizes[path] ?: 0L)
+            if (total > limits.maxStorageBytes || (path !in sizes && sizes.size >= limits.maxStorageEntries))
+                return@operation StorageResult.Failure(FailureCode.StorageQuota)
+            val temp = Files.createTempFile(directory, "write-", ".tmp")
+            try {
+                Files.write(temp, bytes)
+                try { Files.move(temp, path, ATOMIC_MOVE, REPLACE_EXISTING) }
+                catch (_: java.nio.file.AtomicMoveNotSupportedException) { Files.move(temp, path, REPLACE_EXISTING) }
+            } finally { Files.deleteIfExists(temp) }
+            sizes[path] = bytes.size.toLong()
         }
-        val temp = Files.createTempFile(directory, "write-", ".tmp")
-        try {
-            Files.write(temp, bytes)
-            try { Files.move(temp, path, ATOMIC_MOVE, REPLACE_EXISTING) }
-            catch (_: java.nio.file.AtomicMoveNotSupportedException) { Files.move(temp, path, REPLACE_EXISTING) }
-        } finally { Files.deleteIfExists(temp) }
-        StorageResult.Value(value)
+        StorageResult.Value(null)
     }
 
     @Synchronized fun clear(): StorageResult = operation {

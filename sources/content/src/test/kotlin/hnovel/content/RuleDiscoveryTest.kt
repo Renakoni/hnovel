@@ -8,6 +8,27 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RuleDiscoveryTest {
+    @Test fun lenientCataloguesDiscardNullPlaceholdersIncludingTrailingCommas() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            fixture.source { definition(it, "[null,{title:'Latest',url:'/search'},null,]") }.use { source ->
+                assertTrue(source.canFeed)
+                val page = source.openDiscovery("trailing-comma")
+                val catalog = page.catalog()
+                assertEquals(listOf("Latest"), catalog.rows.map { it.title })
+                assertEquals("Same title", page.page(catalog.rows.single().url, 1, emptyMap()).single().title)
+            }
+            fixture.source { definition(it, "[null,]") }.use { source ->
+                assertFalse(source.canFeed)
+                assertFalse(source.canCategorize)
+                assertTrue(source.openDiscovery("empty").catalog().rows.isEmpty())
+            }
+            fixture.source { definition(it, "[{title:'Latest',url:'/search'},42]") }.use { source ->
+                try { source.openDiscovery("invalid-row").catalog(); fail("Invalid rows must remain errors") }
+                catch (failure: SourceContentException) { assertEquals("exploreUrl[1]", failure.field) }
+            }
+        }
+    }
+
     @Test fun bookListsHaveRoomForApiMetadataBeforePerBookFieldExtraction() = runBlocking {
         RuleSourceFixture().use { fixture ->
             val response = buildJsonObject { putJsonObject("data") { putJsonArray("data") {

@@ -6,12 +6,13 @@ kotlin { jvmToolchain(21); compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gr
 dependencies {
     implementation(project(":source-rules"))
     implementation(libs.okhttp)
-    implementation("org.jsoup:jsoup:1.16.2")
+    implementation(libs.jsoup)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.serialization.json)
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation("com.squareup.okhttp3:mockwebserver:5.4.0")
+    testImplementation("com.squareup.okhttp3:okhttp-tls:5.4.0")
 }
 
 tasks.test { useJUnit(); maxHeapSize = "512m" }

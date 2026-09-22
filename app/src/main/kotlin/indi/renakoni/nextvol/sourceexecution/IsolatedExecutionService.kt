@@ -5,6 +5,7 @@ import android.content.Intent
 import android.os.Binder
 import android.os.Debug
 import android.os.IBinder
+import android.os.ParcelFileDescriptor
 import android.os.Process
 import android.os.RemoteException
 import hnovel.execution.ExecutionResult
@@ -35,8 +36,16 @@ class IsolatedExecutionService : Service() {
 
     private fun enforceMemoryBudget() {
         val vm = Runtime.getRuntime()
-        val allocated = vm.totalMemory() - vm.freeMemory() + Debug.getNativeHeapAllocatedSize()
-        if (allocated > MAX_ALLOCATED_BYTES) Process.killProcess(Process.myPid())
+        fun allocated() = vm.totalMemory() - vm.freeMemory() + Debug.getNativeHeapAllocatedSize()
+        if (allocated() <= MAX_ALLOCATED_BYTES) return
+        // Large documents create short-lived decoding buffers. Reclaim them before treating
+        // the sampled heap as retained script state; a reachable runaway allocation still dies.
+        vm.gc()
+        val retained = allocated()
+        if (retained > MAX_ALLOCATED_BYTES) {
+            android.util.Log.w("SourceExecution", "Worker allocation budget exceeded: $retained bytes")
+            Process.killProcess(Process.myPid())
+        }
     }
 
     private fun enforceHost() {
@@ -85,8 +94,7 @@ class IsolatedExecutionService : Service() {
                     // The result permits the next serialized call; mark idle before notifying the host.
                     released = true
                     running.set(false)
-                    deliver(callback, ExecutionPayload.pack(result, MAX_IPC_BYTES) ?:
-                        ExecutionWire.encodeResult(ExecutionResult.Failure(FailureCode.OutputLimit)))
+                    deliver(callback, result)
                 } finally {
                     if (!released) running.set(false)
                 }
@@ -100,7 +108,25 @@ class IsolatedExecutionService : Service() {
     }
 
     private fun deliver(callback: IExecutionCallback, result: ByteArray) {
-        try { callback.onResult(result) } catch (_: RemoteException) {
+        val packet = if (result.size <= ExecutionWire.MAX_RESULT_BYTES)
+            ExecutionPayload.pack(result, ExecutionWire.MAX_RESULT_BYTES) else null
+        try {
+            if (packet == null) {
+                callback.onResult(ExecutionWire.encodeResult(ExecutionResult.Failure(FailureCode.OutputLimit)))
+            } else if (packet.size <= MAX_IPC_BYTES) {
+                callback.onResult(packet)
+            } else {
+                val ends = ParcelFileDescriptor.createPipe()
+                ends[0].use { read ->
+                    ParcelFileDescriptor.AutoCloseOutputStream(ends[1]).use { output ->
+                        callback.onResultFile(read)
+                        output.write(packet)
+                    }
+                }
+            }
+        } catch (_: RemoteException) {
+            Process.killProcess(Process.myPid())
+        } catch (_: java.io.IOException) {
             Process.killProcess(Process.myPid())
         }
     }

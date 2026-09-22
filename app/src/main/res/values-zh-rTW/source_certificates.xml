@@ -1,0 +1,15 @@
+<resources>
+    <string name="source_certificate_title">網站憑證需要確認</string>
+    <string name="source_certificate_expired">此網站的憑證已過期。</string>
+    <string name="source_certificate_not_yet_valid">此網站的憑證尚未生效，請先檢查裝置的日期和時間。</string>
+    <string name="source_certificate_untrusted">無法驗證此憑證的簽發機構。</string>
+    <string name="source_certificate_help">此連線無法通過正常驗證，繼續存取可能使登入資訊面臨風險。例外僅適用於此網站、目前憑證和此書源帳號，憑證變更後需重新確認。可隨時在書源的網路設定中撤銷。</string>
+    <string name="source_certificate_continue">繼續存取此網站</string>
+    <string name="source_certificate_review">檢視憑證</string>
+    <string name="source_certificate_background">%1$s 的網站憑證需要確認，背景讀取已停止。</string>
+    <string name="source_certificate_failed">網站憑證驗證失敗，請檢視憑證提示，或等待網站修復後重試。</string>
+    <string name="source_certificate_exceptions">憑證例外</string>
+    <string name="source_certificate_exceptions_help">僅適用於此書源帳號和已確認的憑證。撤銷會停止目前請求，並恢復正常驗證。</string>
+    <string name="source_certificate_revoke">撤銷</string>
+    <string name="source_certificate_revoked">已撤銷網站憑證例外</string>
+</resources>

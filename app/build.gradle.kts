@@ -303,5 +303,6 @@ dependencies {
     androidTestImplementation(testFixtures(project(":source-content")))
     implementation(project(":source-network"))
     androidTestImplementation("com.squareup.okhttp3:mockwebserver:5.4.0")
+    androidTestImplementation("com.squareup.okhttp3:okhttp-tls:5.4.0")
     testImplementation("com.squareup.okhttp3:mockwebserver:5.4.0")
 }

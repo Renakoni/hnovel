@@ -7,6 +7,99 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class WorkerRuleTest {
+    @Test fun xpathElementsKeepTheirAttributesAndDomMethodsAcrossTheWorker() {
+        val list = ExecutionTask.Rule("//div/a", RuleValue.Text("<div><a href='/c/1'>One</a><a href='/c/2'>Two</a></div>"), OutputKind.Elements)
+        val nodes = (value(run(list)).value as RuleValue.Items).values
+        assertEquals(listOf("/c/1", "/c/2"), nodes.map {
+            (value(run(ExecutionTask.Rule("href", it, OutputKind.Text))).value as RuleValue.Text).value
+        })
+        assertEquals(RuleValue.Text("/c/1"), value(run(ExecutionTask.Rule("@js:result.attr('href')", nodes[0], OutputKind.Text))).value)
+        val nested = list.copy(rule = "@js:var nodes=java.getElements('//div/a');java.setContent(nodes[0]);java.getString('href')", output = OutputKind.Text)
+        assertEquals(RuleValue.Text("/c/1"), value(run(nested)).value)
+        assertEquals(RuleValue.Text("/c/1"), value(run(nested.copy(rule = nested.rule.replace("nodes[0]", "nodes[0].clone()")))).value)
+        val direct = list.copy(rule = "@js:java.getString('href',java.getElements('//div/a')[1])", output = OutputKind.Text)
+        assertEquals(RuleValue.Text("/c/2"), value(run(direct)).value)
+        val xml = list.copy(rule = "//Chapter", input = RuleValue.Text("<?xml version='1.0'?><Root><Chapter LINK='/c/3'><Title>Three</Title></Chapter></Root>"))
+        val xmlNode = (value(run(xml)).value as RuleValue.Items).values.single()
+        assertEquals(RuleValue.Text("/c/3"), value(run(ExecutionTask.Rule("LINK", xmlNode, OutputKind.Text))).value)
+    }
+
+    @Test fun clonedAndDetachedTableNodesRetainTheirParsingContext() {
+        for (mutation in listOf("row=row.clone()", "row.remove()")) {
+            val task = ExecutionTask.Rule("@js:var row=java.getElements('tag.tr')[0];$mutation;java.setContent(row);java.getString('tag.td@data-url')",
+                RuleValue.Text("<table><tr><td data-url='/c/1'>One</td></tr></table>"), OutputKind.Text)
+            assertEquals(mutation, RuleValue.Text("/c/1"), value(run(task)).value)
+        }
+    }
+
+    @Test fun optionalJsonListPathCanFallBackInsideAnUnchangedScript() {
+        val task = ExecutionTask.Rule("""@js:
+            var rows=java.getElements('@class.story-item@a||class.ebook-list@li');
+            if(!rows.length)rows=java.getElements('${'$'}.list[*]');rows.length
+        """.trimIndent(), RuleValue.Text("""{"list":[{"id":1},{"id":2}]}"""), OutputKind.Text)
+        assertEquals(RuleValue.Text("2"), value(run(task)).value)
+    }
+
+    @Test fun scriptRuleReplacementRunsAfterTheScriptWithJavaCaptureSyntax() {
+        for (rule in listOf("text@js:result.toUpperCase()\n##ONE\\s*(\\d+)##Chapter ${'$'}1",
+                "text<js>result.toUpperCase()##ONE\\s*(\\d+)##Chapter ${'$'}1</js>")) {
+            val task = ExecutionTask.Rule(rule, RuleValue.Node("<a>One 42</a>", InputKind.Html), OutputKind.Text)
+            assertEquals(RuleValue.Text("Chapter 42"), value(run(task)).value)
+        }
+        val raw = ExecutionTask.Rule("@js:'literal##data'", RuleValue.Empty, OutputKind.Text, scriptTemplates = false)
+        assertEquals(RuleValue.Text("literal##data"), value(run(raw)).value)
+    }
+
+    @Test fun jsonFlagTemplatesPreserveTheOriginalZeroAndOneText() {
+        val input = RuleValue.Text("""{"chapterlist":[{"isvip":0,"chaptertype":0},{"isvip":1,"chaptertype":0},{"isvip":0,"chaptertype":1}]}""")
+        val list = ExecutionTask.Rule("""$.chapterlist[*]<js>result</js>$.[*]""", input, OutputKind.Elements)
+        val rows = (value(run(list)).value as RuleValue.Items).values
+        val flag = """<js>var vip=("{{${'$'}.isvip}}"!="0");var volume=("{{${'$'}.chaptertype}}"=='1'); !volume && vip;</js>"""
+        assertEquals(listOf("false", "true", "false"), rows.map { row ->
+            (value(run(ExecutionTask.Rule(flag, row, OutputKind.Text))).value as RuleValue.Text).value
+        })
+    }
+
+    @Test fun chapterElementScriptInputKeepsDomMethodsAcrossTheWorkerWire() {
+        val node = RuleValue.Node("<a href='/chapter/1'><i class='icon-lock'></i>One</a>", InputKind.Html, "li")
+        val task = ExecutionTask.Rule("@js:result.outerHtml().includes('icon-lock')", node, OutputKind.Text,
+            RuleLocation("ruleToc.isVip"), baseUrl = "https://fixture.invalid/toc")
+        assertEquals(RuleValue.Text("true"), value(run(task)).value)
+        assertEquals(RuleValue.Text("false"), value(run(task.copy(input = node.copy(content = "<a href='/chapter/2'>Two</a>")))).value)
+        assertEquals(RuleValue.Text("https://fixture.invalid/chapter/1|undefined"), value(run(task.copy(
+            rule = "@js:result.setBaseUri(baseUrl);result.absUrl('href')+'|'+typeof result.getClass"))).value)
+        assertEquals(RuleValue.Text("ONE"), value(run(task.copy(rule = "text@js:result.toUpperCase()"))).value)
+    }
+
+    @Test fun nestedRulesKeepElementScriptInputWithoutReplacingTheCallerResult() {
+        val task = ExecutionTask.Rule("""@js:java.getString('@js:result.text()')+'|'+result.outerHtml().includes('icon-lock')""",
+            RuleValue.Node("<a><i class='icon-lock'></i>One</a>", InputKind.Html), OutputKind.Text)
+        assertEquals(RuleValue.Text("One|true"), value(run(task)).value)
+    }
+
+    @Test fun chapterDomCanBePassedBackToTheJsoupTextParser() {
+        val task = ExecutionTask.Rule("""@js:org.jsoup.Jsoup.parse(result).select('a').first().attr('href')""",
+            RuleValue.Node("""<a href="/chapter/1"><span>One</span></a>""", InputKind.Html, "li"),
+            OutputKind.Url, RuleLocation("ruleToc.chapterUrl"), baseUrl = "https://fixture.invalid/toc")
+        assertEquals(RuleValue.Text("https://fixture.invalid/chapter/1"), value(run(task)).value)
+    }
+
+    @Test fun matchResultUsesTheJavaPutStringOverload() {
+        val task = ExecutionTask.Rule("""@js:var bid=baseUrl.match(/\d+/);java.put('bid',bid);java.get('bid')""",
+            RuleValue.Text("chapter"), OutputKind.Text, RuleLocation("ruleToc.chapterUrl"),
+            baseUrl = "https://fixture.invalid/book/12345/catalog/", bookId = "fixture-book")
+        val result = value(run(task))
+        assertEquals(RuleValue.Text("12345"), result.value)
+        assertEquals("12345", result.bookWrites["bid"])
+    }
+
+    @Test fun selectedHtmlListsRetainDomMethodsAndTableContext() {
+        val task = ExecutionTask.Rule("@@tr@js:result.get(0).child(0).text()+'|'+result.size()",
+            RuleValue.Text("<table><tr><td>One</td></tr><tr><td>Two</td></tr></table>"), OutputKind.Elements)
+        assertEquals(RuleValue.Text("One|2"), value(run(task)).value)
+        assertEquals(RuleValue.Text("|0"), value(run(task.copy(rule = "@@#missing@js:result.text()+'|'+result.size()"))).value)
+    }
+
     @Test fun jsonListsRemainStructuredAcrossScriptAndSelectorStages() {
         val input = RuleValue.Text("""{"chapterlist":[{"chapterid":1},{"chapterid":2}]}""")
         val task = ExecutionTask.Rule("""$.chapterlist[*]||$.[*]<js>result</js>$.[*]""",
