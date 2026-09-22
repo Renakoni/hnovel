@@ -2,8 +2,11 @@ package indi.renakoni.nextvol.data.localbook
 
 import android.app.Application
 import android.content.ContextWrapper
+import android.net.Uri
 import androidx.core.net.toUri
 import androidx.room.Room
+import androidx.work.ListenableWorker
+import androidx.work.workDataOf
 import com.github.michaelbull.result.get
 import indi.renakoni.nextvol.data.book.SourceBookId
 import indi.renakoni.nextvol.data.book.SourceChapterId
@@ -19,6 +22,9 @@ import indi.renakoni.nextvol.data.statistics.StatisticsWriteCoordinator
 import indi.renakoni.nextvol.data.statistics.StatsRepository
 import indi.renakoni.nextvol.data.reading.RepositoryReaderRecordStore
 import indi.renakoni.nextvol.data.userdata.UserDataRepository
+import indi.renakoni.nextvol.data.work.SaveBookshelfWork
+import indi.renakoni.nextvol.data.work.workerParameters
+import indi.renakoni.nextvol.utils.readAppLocalData
 import io.nightfish.lightnovelreader.api.userdata.UserDataPath
 import io.mockk.mockk
 import kotlinx.coroutines.CancellationException
@@ -40,8 +46,10 @@ import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import java.io.File
+import java.io.ByteArrayOutputStream
 import java.time.LocalDateTime
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
@@ -137,6 +145,52 @@ class LocalBookRelinkTest {
     @Test fun txtRestoreWithoutCacheRetainsIdentityShelfProgressAndBookmarks() = runBlocking { roundTrip(txt(text = "Preface\nChapter 1\nText")) }
     @Test fun extensionOnlyFileNameKeepsItsFallbackChapterAcrossDevices() = runBlocking { roundTrip(txt(name = ".txt", text = "A book without headings")) }
     @Test fun epubRestoreResolvesImagesFromTheNewDeviceDirectory() = runBlocking { roundTrip(epub()) }
+
+    @Test fun sharedBookshelfRetainsLocalFileEvidenceWithoutOtherBooksOrPrivateReadingData() = runBlocking {
+        sharedShelfRoundTrip(legacy = false)
+    }
+
+    @Test fun sharedLegacyBookshelfRetainsTheDirectoryRequiredForConfirmedRelink() = runBlocking {
+        sharedShelfRoundTrip(legacy = true)
+    }
+
+    private suspend fun sharedShelfRoundTrip(legacy: Boolean) {
+        val file = txt()
+        val old = Library("old")
+        val book = old.import(file)
+        old.seedPosition(book)
+        val shelf = old.db.bookshelfDao().getAllBookshelves().single()
+        old.db.bookshelfDao().insertBookshelf(shelf.copy(id = 2, allBookIds = emptyList()))
+        val otherDraft = old.store.stage(txt("private.txt").toUri())
+        old.store.publish(otherDraft, old.store.preview(otherDraft), "Private book", 2)
+        if (legacy) old.db.localBookFileManifestDao().delete(book.storageKey)
+        val uri = Uri.parse("content://shelf-export/selected")
+        val output = ByteArrayOutputStream()
+        shadowOf(old.context.contentResolver).registerOutputStream(uri, output)
+        val worker = SaveBookshelfWork(old.context,
+            workerParameters(workDataOf("bookshelfId" to shelf.id, "uri" to uri.toString())),
+            old.backup, old.db.bookshelfDao())
+        assertEquals(ListenableWorker.Result.success(), worker.doWork())
+        val data = Cbor.decodeFromByteArray<AppLocalData>(output.toByteArray().inputStream().readAppLocalData())
+        val target = Library("new")
+        target.restore(data)
+        val preview = target.preview(book, file)
+        assertEquals(if (legacy) LocalBookRelinkMatch.Legacy else LocalBookRelinkMatch.Exact, preview.match)
+        val part = data.localDataList.single()
+        assertEquals(listOf(shelf.id), part.bookshelfEntities.map { it.id })
+        assertEquals(listOf(book.storageKey), part.bookInformationEntities.map { it.id })
+        assertEquals(if (legacy) emptyList<String>() else listOf(book.storageKey), part.localBookFiles.map { it.bookId })
+        assertTrue(part.chapterContentEntities.isEmpty())
+        assertTrue(part.readingBookmarks.isEmpty())
+        assertTrue(part.userReadingDataEntities.isEmpty())
+        assertTrue(part.bookRecordEntities.isEmpty())
+        assertTrue(part.userDataEntities.isEmpty())
+        assertTrue(target.db.importedBookDao().allIds().isEmpty())
+        target.store.relink(preview, confirmLegacy = legacy)
+        assertEquals(listOf(book.storageKey), target.db.importedBookDao().allIds())
+        assertEquals("My saved title", target.store.readInformation(book).get()!!.title)
+        assertTrue(target.store.readChapter(SourceChapterId(book, "0")).isOk)
+    }
 
     @Test fun restoredEmptyRecentHistoryCanRecordTheRelinkedBook() = runBlocking {
         val file = txt()

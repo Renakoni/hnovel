@@ -128,20 +128,15 @@ class LocalDataManager @Inject constructor(
                     addAll(exportOptionLocalData.userReadingDataEntities.map { it.id })
                     addAll(exportOptionLocalData.bookRecordEntities.map { it.bookId })
                     addAll(readingBookmarks.map { it.bookId })
-                }.filter { indi.renakoni.nextvol.data.localbook.LocalBookStore.isLocal(indi.renakoni.nextvol.data.book.BookIdentity.book(it)) }.toSet()
-                localBookFiles = database.localBookFileManifestDao().all().filter { it.bookId in localIds }
-                for (key in localIds) {
-                    if (exportOptionLocalData.bookInformationEntities.none { it.id == key }) {
-                        database.bookInformationDao().getEntity(key)?.let(exportOptionLocalData.bookInformationEntities::add)
-                    }
-                    // Old imported copies have no fingerprint; their directory is the minimum migration evidence.
-                    if (localBookFiles.none { it.bookId == key } && !localBookCache) {
-                        val volumes = database.bookVolumesDao().getVolumeEntitiesByBookId(key)
-                        exportOptionLocalData.volumeEntities.addAll(volumes)
-                        for (chapter in volumes.flatMap { it.chapterIds }.distinct()) {
-                            database.bookVolumesDao().getChapterInformationEntity(chapter)?.let(exportOptionLocalData.chapterInformationEntities::add)
-                        }
-                    }
+                }
+                val references = localFileReferences(localIds, includeLegacyDirectory = !localBookCache)
+                localBookFiles = references.localBookFiles
+                exportOptionLocalData.bookInformationEntities.addAll(references.bookInformationEntities.filter { info ->
+                    exportOptionLocalData.bookInformationEntities.none { it.id == info.id }
+                })
+                if (!localBookCache) {
+                    exportOptionLocalData.volumeEntities.addAll(references.volumeEntities)
+                    exportOptionLocalData.chapterInformationEntities.addAll(references.chapterInformationEntities)
                 }
             } }
         }.andThen {
@@ -165,6 +160,24 @@ class LocalDataManager @Inject constructor(
                 )
             )
         }
+    }
+
+    /** Both backup and bookshelf sharing need portable relink evidence, never originals or reading data. */
+    internal suspend fun localFileReferences(bookIds: Set<String>, includeLegacyDirectory: Boolean = true): LocalData = database.withTransaction {
+        val localIds = bookIds.filter {
+            indi.renakoni.nextvol.data.localbook.LocalBookStore.isLocal(indi.renakoni.nextvol.data.book.BookIdentity.book(it))
+        }.toSet()
+        val files = database.localBookFileManifestDao().all().filter { it.bookId in localIds }
+        // Old imported copies have no fingerprint; their full directory is the minimum evidence.
+        val volumes = if (includeLegacyDirectory) localIds.filter { key -> files.none { it.bookId == key } }
+            .flatMap { database.bookVolumesDao().getVolumeEntitiesByBookId(it) } else emptyList()
+        LocalData.empty().copy(
+            localBookFiles = files,
+            bookInformationEntities = localIds.mapNotNull { database.bookInformationDao().getEntity(it) },
+            volumeEntities = volumes,
+            chapterInformationEntities = volumes.flatMap { it.chapterIds }.distinct()
+                .mapNotNull { database.bookVolumesDao().getChapterInformationEntity(it) },
+        )
     }
 
     suspend fun importAppLocalData(appLocalData: AppLocalData, overwrite: Boolean = false): Result<Unit, Throwable> {

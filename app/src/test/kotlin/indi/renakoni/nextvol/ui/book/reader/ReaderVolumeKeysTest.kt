@@ -39,6 +39,10 @@ import com.github.michaelbull.result.Ok
 import indi.renakoni.nextvol.theme.AppTheme
 import indi.renakoni.nextvol.ui.LocalAppTheme
 import indi.renakoni.nextvol.ui.book.reader.content.ChapterContentUiState
+import indi.renakoni.nextvol.ui.book.reader.bookmark.LocalReaderBookmarks
+import indi.renakoni.nextvol.ui.book.reader.bookmark.ReaderBookmarkSession
+import indi.renakoni.nextvol.data.content.component.SimpleTextComponent
+import io.nightfish.lightnovelreader.api.content.component.SimpleTextComponentData
 import indi.renakoni.nextvol.ui.book.reader.content.flip.MutableFlipPageContentUiState
 import indi.renakoni.nextvol.ui.book.reader.content.scroll.MutableScrollContentUiSate
 import indi.renakoni.nextvol.ui.home.settings.data.MenuOptions
@@ -89,6 +93,7 @@ class ReaderVolumeKeysTest {
         onProgressRestored = { scrollProgressRestored = true })
     private lateinit var flip: MutableFlipPageContentUiState
     private val reader = MutableReaderScreenUiState(scroll)
+    private val bookmarks = ReaderBookmarkSession()
     private val settings = object : ReaderSettings by mockk<ReaderSettings>(relaxed = true) {
         override val textColor = Color.Black
         override val textDarkColor = Color.White
@@ -123,6 +128,7 @@ class ReaderVolumeKeysTest {
                 override val containerSize = IntSize(600, height.value)
             }
             CompositionLocalProvider(
+                LocalReaderBookmarks provides bookmarks,
                 LocalAppTheme provides AppTheme(false, lightColorScheme()),
                 LocalLifecycleOwner provides owner,
                 LocalWindowInfo provides windowInfo,
@@ -295,6 +301,48 @@ class ReaderVolumeKeysTest {
         compose.waitForIdle()
         compose.waitUntil(5_000) { flip.pagerState.pageCount == 3 }
         compose.waitForIdle()
+    }
+
+    @Test
+    fun outgoingModeCannotCaptureOrConsumeBookmarksWhileIncomingModeLoads() {
+        val chapter = ChapterContentUiState("chapter", "Chapter", listOf(
+            SimpleTextComponent(SimpleTextComponentData("A readable paragraph. ".repeat(200)),
+                mockk(relaxed = true), activity.get()),
+        ), null, null)
+        compose.runOnIdle {
+            scroll.bookId = "book"
+            scroll.contentList[1] = "chapter" to Ok(chapter)
+            flip.bookId = "book"
+            flip.readingChapterContent = null
+        }
+        compose.waitUntil(5_000) {
+            compose.waitForIdle()
+            bookmarks.capture?.invoke()?.chapter === chapter
+        }
+        val saved = compose.runOnIdle { bookmarks.capture!!.invoke()!!.bookmark() }
+        compose.mainClock.autoAdvance = false
+        try {
+            compose.runOnIdle { reader.contentUiState = flip; Snapshot.sendApplyNotifications() }
+            compose.mainClock.advanceTimeBy(32)
+            compose.waitForIdle()
+            // The fading scroll viewport is still composed, but it no longer owns the position.
+            compose.runOnIdle { assertNull(bookmarks.capture?.invoke()) }
+            compose.runOnIdle { bookmarks.pending = saved }
+            compose.mainClock.advanceTimeBy(32)
+            compose.waitForIdle()
+            compose.runOnIdle { assertSame(saved, bookmarks.pending) }
+        } finally {
+            compose.mainClock.autoAdvance = true
+        }
+        compose.runOnIdle { flip.readingChapterContent = Ok(chapter) }
+        compose.waitUntil(5_000) {
+            compose.waitForIdle()
+            bookmarks.pending == null && bookmarks.capture?.invoke() != null
+        }
+        compose.runOnIdle {
+            assertNull(bookmarks.notice)
+            assertEquals(saved.fingerprint, bookmarks.capture!!.invoke()!!.bookmark().fingerprint)
+        }
     }
 
     private fun tap(code: Int) {
