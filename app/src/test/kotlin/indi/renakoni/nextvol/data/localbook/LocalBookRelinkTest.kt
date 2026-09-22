@@ -17,6 +17,9 @@ import indi.renakoni.nextvol.data.local.room.NextVolDatabase
 import indi.renakoni.nextvol.data.local.room.entity.UserReadingDataEntity
 import indi.renakoni.nextvol.data.statistics.StatisticsWriteCoordinator
 import indi.renakoni.nextvol.data.statistics.StatsRepository
+import indi.renakoni.nextvol.data.reading.RepositoryReaderRecordStore
+import indi.renakoni.nextvol.data.userdata.UserDataRepository
+import io.nightfish.lightnovelreader.api.userdata.UserDataPath
 import io.mockk.mockk
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -134,6 +137,20 @@ class LocalBookRelinkTest {
     @Test fun txtRestoreWithoutCacheRetainsIdentityShelfProgressAndBookmarks() = runBlocking { roundTrip(txt(text = "Preface\nChapter 1\nText")) }
     @Test fun extensionOnlyFileNameKeepsItsFallbackChapterAcrossDevices() = runBlocking { roundTrip(txt(name = ".txt", text = "A book without headings")) }
     @Test fun epubRestoreResolvesImagesFromTheNewDeviceDirectory() = runBlocking { roundTrip(epub()) }
+
+    @Test fun restoredEmptyRecentHistoryCanRecordTheRelinkedBook() = runBlocking {
+        val file = txt()
+        val old = Library("old")
+        val book = old.import(file)
+        UserDataRepository(old.db.userDataDao()).stringListUserData(UserDataPath.ReadingBooks.path).set(emptyList())
+        val target = Library("new")
+        target.restore(old.export(cache = false))
+        target.store.relink(target.preview(book, file))
+        val preferences = UserDataRepository(target.db.userDataDao())
+        val records = RepositoryReaderRecordStore(mockk(), mockk(), preferences)
+        records.updateRecentBooks { it + book.storageKey }
+        assertEquals(listOf(book.storageKey), preferences.stringListUserData(UserDataPath.ReadingBooks.path).get())
+    }
 
     @Test fun changedOriginalAndSameNameDifferentBookCannotBind() = runBlocking {
         val file = txt()
