@@ -61,10 +61,11 @@ import io.nightfish.lightnovelreader.api.content.builder.simpleText
         BookDownloadEntity::class,
         DownloadedChapterEntity::class,
         ImportedBookEntity::class,
+        indi.renakoni.nextvol.data.localbook.LocalBookFileManifest::class,
         indi.renakoni.nextvol.data.bangumi.BangumiBindingEntity::class,
         indi.renakoni.nextvol.data.bangumi.BangumiSyncRecord::class
     ],
-    version = 22,
+    version = 23,
     exportSchema = false
 )
 abstract class NextVolDatabase : RoomDatabase() {
@@ -74,6 +75,7 @@ abstract class NextVolDatabase : RoomDatabase() {
     abstract fun bookVolumesDao(): BookVolumesDao
     abstract fun chapterContentDao(): ChapterContentDao
     abstract fun bookDownloadDao(): BookDownloadDao
+    abstract fun localBookFileManifestDao(): indi.renakoni.nextvol.data.localbook.LocalBookFileManifestDao
     abstract fun importedBookDao(): ImportedBookDao
     abstract fun userReadingDataDao(): UserReadingDataDao
     abstract fun userDataDao(): UserDataDao
@@ -114,7 +116,8 @@ abstract class NextVolDatabase : RoomDatabase() {
                             MIGRATION_18_19,
                             MIGRATION_19_20,
                             MIGRATION_20_21,
-                            MIGRATION_21_22
+                            MIGRATION_21_22,
+                            MIGRATION_22_23
                         )
                         .allowMainThreadQueries()
                         .build()
@@ -917,6 +920,13 @@ abstract class NextVolDatabase : RoomDatabase() {
                 db.execSQL("CREATE TABLE IF NOT EXISTS downloaded_chapter (id TEXT NOT NULL PRIMARY KEY, " +
                     "bookId TEXT NOT NULL, signature TEXT NOT NULL, images TEXT NOT NULL)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_downloaded_chapter_bookId ON downloaded_chapter (bookId)")
+            }
+        }
+
+        internal val MIGRATION_22_23 = object : Migration(22, 23) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE imported_book ADD COLUMN directoryName TEXT NOT NULL DEFAULT ''")
+                db.execSQL("CREATE TABLE IF NOT EXISTS local_book_file_manifest (bookId TEXT NOT NULL PRIMARY KEY, format TEXT NOT NULL, originalName TEXT NOT NULL, originalDigest TEXT NOT NULL, mappingDigest TEXT NOT NULL, encoding TEXT, rule TEXT)")
             }
         }
 

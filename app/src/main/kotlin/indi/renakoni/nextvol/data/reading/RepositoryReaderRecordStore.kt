@@ -23,7 +23,7 @@ internal class RepositoryReaderRecordStore(
     private val readingBooks = userDataRepository.stringListUserData(UserDataPath.ReadingBooks.path)
 
     override suspend fun updateRecentBooks(update: (List<String>) -> List<String>) =
-        readingBooks.update { update(it).map(BookIdentity::bookKey).distinct() }
+        readingBooks.update { update(it.filter(String::isNotBlank)).map(BookIdentity::bookKey).distinct() }
 
     override suspend fun updateUserReadingData(
         bookId: String,

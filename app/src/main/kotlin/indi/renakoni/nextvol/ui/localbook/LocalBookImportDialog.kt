@@ -72,6 +72,8 @@ fun LocalBookImportDialog(
     onEncodingChange: (String?) -> Unit,
     onRuleChange: (String) -> Unit,
     onImport: () -> Unit,
+    relinkState: LocalBookRelinkState? = null,
+    onConfirmLegacy: (Boolean) -> Unit = {},
 ) {
     var encodingMenu by remember { mutableStateOf(false) }
     var editingRule by rememberSaveable { mutableStateOf(false) }
@@ -95,15 +97,15 @@ fun LocalBookImportDialog(
                 topBar = {
                     Column {
                         TopAppBar(
-                            title = { Text(stringResource(R.string.local_book_import), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            title = { Text(stringResource(if (relinkState == null) R.string.local_book_import else R.string.local_file_relink_action), maxLines = 1, overflow = TextOverflow.Ellipsis) },
                             navigationIcon = {
                                 IconButton(onClick = onDismiss, enabled = !state.importing) {
                                     Icon(painterResource(R.drawable.arrow_back_24px), stringResource(R.string.cancel))
                                 }
                             },
                             actions = {
-                                TextButton(onClick = onImport, enabled = state.canImport) {
-                                    Text(stringResource(if (state.importing) R.string.processing else R.string.local_book_confirm_import))
+                                TextButton(onClick = onImport, enabled = relinkState?.canRelink ?: state.canImport) {
+                                    Text(stringResource(if (state.importing) R.string.processing else if (relinkState != null) R.string.local_file_relink_confirm else R.string.local_book_confirm_import))
                                 }
                             },
                         )
@@ -124,12 +126,12 @@ fun LocalBookImportDialog(
                                         Text("${it.name} · ${formatSize(state.fileBytes)}", style = MaterialTheme.typography.labelMedium,
                                             color = MaterialTheme.colorScheme.primary)
                                     }
-                                    Text(stringResource(R.string.local_book_target, state.shelfName), style = MaterialTheme.typography.bodyMedium,
+                                    Text(if (relinkState == null) stringResource(R.string.local_book_target, state.shelfName) else state.title, style = MaterialTheme.typography.bodyMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                 }
                             }
                         }
-                        if (state.bookKey != null) {
+                        if (state.bookKey != null && relinkState == null) {
                             item {
                                 OutlinedTextField(value = state.title, onValueChange = onTitleChange,
                                     modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
@@ -142,6 +144,10 @@ fun LocalBookImportDialog(
                                 SectionDescription(Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
                                     stringResource(R.string.local_book_copy_note))
                             }
+                        }
+                        if (relinkState != null) item {
+                            LocalBookRelinkNotice(relinkState, onConfirmLegacy,
+                                Modifier.padding(horizontal = 24.dp, vertical = 12.dp))
                         }
                         if (state.format == LocalBookFormat.TXT) {
                             item {
