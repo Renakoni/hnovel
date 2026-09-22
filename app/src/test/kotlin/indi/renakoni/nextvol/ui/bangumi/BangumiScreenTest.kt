@@ -7,13 +7,18 @@ import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.*
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.unit.Density
 import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.data.bangumi.*
 import indi.renakoni.nextvol.ui.home.settings.list.ExtensionsSettingsList
 import io.nightfish.lightnovelreader.api.book.BookInformation
 import io.nightfish.lightnovelreader.api.book.WordCount
+import io.nightfish.lightnovelreader.api.ui.theme.AppTypography
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -43,13 +48,34 @@ class BangumiScreenTest {
 
     @Test fun extensionsEntryOpensBangumi() {
         var clicked = false
-        activity.get().setContent { MaterialTheme { Column { ExtensionsSettingsList({}, {}, { clicked = true }) } } }
+        var pluginsOpened = false
+        activity.get().setContent { MaterialTheme { Column { ExtensionsSettingsList({}, { pluginsOpened = true }, { clicked = true }) } } }
         compose.onNodeWithText("Bangumi").performClick()
         assertTrue(clicked)
         val source = compose.onNodeWithText(text(R.string.sources_title)).fetchSemanticsNode().boundsInRoot
         val bangumi = compose.onNodeWithText("Bangumi").fetchSemanticsNode().boundsInRoot
-        val plugins = compose.onNodeWithText(text(R.string.plugin_install_plugin)).fetchSemanticsNode().boundsInRoot
+        val plugins = compose.onNodeWithText(text(R.string.settings_plugins)).fetchSemanticsNode().boundsInRoot
         assertTrue(source.top < bangumi.top && bangumi.top < plugins.top)
+        compose.onNodeWithText(text(R.string.plugin_install_plugin)).assertDoesNotExist()
+        compose.onNodeWithText(text(R.string.settings_plugins)).performClick()
+        assertTrue(pluginsOpened)
+    }
+
+    @Test @Config(qualifiers = "ru-w320dp-h800dp-mdpi")
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun pluginManagementEntryRemainsReadableAndClickableWithLargeText() {
+        var opened = false
+        activity.get().setContent {
+            CompositionLocalProvider(LocalDensity provides Density(1f, 1.6f)) {
+                MaterialTheme(typography = AppTypography) { Column { ExtensionsSettingsList({}, { opened = true }) } }
+            }
+        }
+        val entry = compose.onNodeWithText("Управление плагинами").assertIsDisplayed()
+        val layouts = mutableListOf<TextLayoutResult>()
+        entry.performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
+        assertFalse(layouts.single().hasVisualOverflow)
+        entry.performClick()
+        assertTrue(opened)
     }
 
     @Test fun tokenIsClearedImmediatelyAfterConnectingAndDisconnectRequiresConfirmation() {

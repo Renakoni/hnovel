@@ -14,6 +14,7 @@ import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.data.web.*
 import io.nightfish.lightnovelreader.api.identifier.Identifier
 import io.nightfish.lightnovelreader.api.ui.theme.AppTypography
@@ -155,6 +156,36 @@ class SourceBrowseControlsTest {
         compose.onNodeWithContentDescription("Source scope: Female fiction").assertIsDisplayed()
         compose.onNodeWithText("No enabled Female fiction sources support discovery.").assertIsDisplayed()
         compose.onNodeWithText("All sources").performClick()
+        assertNull(state.scope)
+    }
+
+    @Test @Config(qualifiers = "zh-rCN-w320dp-h800dp-mdpi")
+    fun simplifiedChineseScopeMessageKeepsActionsVisibleWithLargeText() {
+        assertScopeMessageAndActions(true,
+            "“经典文学”分类下暂无已启用且支持发现的书源。", "全部书源")
+    }
+
+    @Test @Config(qualifiers = "zh-rTW-w320dp-h800dp-mdpi")
+    fun traditionalChineseScopeMessageKeepsActionsVisibleWithLargeText() {
+        assertScopeMessageAndActions(false,
+            "「經典文學」分類下暫無已啟用且提供分類的書源。", "全部書源")
+    }
+
+    private fun assertScopeMessageAndActions(explore: Boolean, message: String, all: String) {
+        var state by mutableStateOf(DiscoveryPageState(scope = SourceCategory.Literature))
+        var opened = false
+        activity.get().setContent {
+            CompositionLocalProvider(LocalDensity provides Density(1f, 1.6f)) { MaterialTheme(typography = AppTypography) {
+                SourceScopeEmpty(state, explore, { state = state.copy(scope = it) }, { opened = true })
+            } }
+        }
+        val label = compose.onNodeWithText(message).assertIsDisplayed()
+        val layouts = mutableListOf<TextLayoutResult>()
+        label.performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
+        assertFalse(layouts.single().hasVisualOverflow)
+        compose.onNodeWithText(activity.get().getString(R.string.sources_add)).assertIsDisplayed().performClick()
+        assertTrue(opened)
+        compose.onNodeWithText(all).assertIsDisplayed().performClick()
         assertNull(state.scope)
     }
 }
