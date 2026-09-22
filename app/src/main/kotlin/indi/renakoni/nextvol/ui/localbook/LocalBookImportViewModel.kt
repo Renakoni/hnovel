@@ -13,6 +13,7 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import indi.renakoni.nextvol.R
+import indi.renakoni.nextvol.data.localbook.LocalBookImportFailure
 import indi.renakoni.nextvol.data.localbook.LocalBookDraft
 import indi.renakoni.nextvol.data.localbook.LocalBookFormat
 import indi.renakoni.nextvol.data.localbook.LocalBookStore
@@ -46,7 +47,7 @@ data class LocalBookImportState(
     val encoding: String? = null,
     val rule: String = TxtBookParser.DEFAULT_RULE,
     val preview: ParsedLocalBook? = null,
-    val error: String? = null,
+    val error: LocalBookImportFailure? = null,
 ) {
     val canImport get() = !busy && !importing && error == null && preview != null && title.isNotBlank() && title.length <= 200
 }
@@ -89,7 +90,7 @@ class LocalBookImportViewModel @Inject constructor(
             } catch (failure: CancellationException) {
                 throw failure
             } catch (failure: Exception) {
-                if (current == revision) state = state.copy(error = failure.message ?: context.getString(R.string.local_book_import_failed))
+                if (current == revision) state = state.copy(error = LocalBookImportFailure.from(failure))
             } finally {
                 if (current == revision) state = state.copy(busy = false)
             }
@@ -120,7 +121,7 @@ class LocalBookImportViewModel @Inject constructor(
             } catch (failure: CancellationException) {
                 throw failure
             } catch (failure: Exception) {
-                if (current == revision) state = state.copy(error = failure.message ?: context.getString(R.string.local_book_import_failed))
+                if (current == revision) state = state.copy(error = LocalBookImportFailure.from(failure))
             } finally {
                 if (current == revision) state = state.copy(busy = false)
             }
@@ -150,7 +151,7 @@ class LocalBookImportViewModel @Inject constructor(
             } catch (failure: CancellationException) {
                 throw failure
             } catch (failure: Exception) {
-                state = state.copy(importing = false, error = failure.message ?: context.getString(R.string.local_book_import_failed))
+                state = state.copy(importing = false, error = LocalBookImportFailure.from(failure))
             } finally {
                 if (!currentCoroutineContext().isActive) {
                     draft?.let(::discardLater)

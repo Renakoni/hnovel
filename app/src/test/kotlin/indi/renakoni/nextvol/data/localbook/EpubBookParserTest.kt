@@ -32,6 +32,10 @@ class EpubBookParserTest {
     }
 
     private fun parse(file: File) = EpubBookParser.parse(file, temporary.newFolder(), "Filename")
+    private fun assertReason(reason: LocalBookImportReason, block: () -> Unit) {
+        val failure = assertThrows(Exception::class.java, block)
+        assertEquals(reason, LocalBookImportFailure.from(failure).reason)
+    }
     private fun body(book: ParsedLocalBook) = book.chapters.flatMap { it.blocks }
         .filterIsInstance<LocalBookBlock.Text>().joinToString("") { it.value }
 
@@ -93,23 +97,23 @@ class EpubBookParserTest {
     }
 
     @Test fun missingAndUnsupportedSpineResourcesFailWithoutProducingABook() {
-        assertThrows(IllegalArgumentException::class.java) { parse(epub(resources = emptyMap())) }
+        assertReason(LocalBookImportReason.CorruptEpub) { parse(epub(resources = emptyMap())) }
         assertThrows(IllegalArgumentException::class.java) { parse(epub(spine = "<itemref idref='missing'/>")) }
-        assertThrows(IllegalArgumentException::class.java) { parse(epub(resources = mapOf("OPS/one.xhtml" to "<html><body></body></html>"))) }
-        assertThrows(IllegalArgumentException::class.java) {
+        assertReason(LocalBookImportReason.NoContent) { parse(epub(resources = mapOf("OPS/one.xhtml" to "<html><body></body></html>"))) }
+        assertReason(LocalBookImportReason.UnsupportedEpub) {
             parse(epub(resources = mapOf("OPS/one.xhtml" to "<html><body><svg><path d='M0 0'/></svg></body></html>")))
         }
     }
 
     @Test fun encryptedTextIsRejectedButObfuscatedUnusedFontsAreAllowed() {
         fun encryption(path: String) = mapOf("META-INF/encryption.xml" to "<encryption><EncryptedData><CipherData><CipherReference URI='$path'/></CipherData></EncryptedData></encryption>".toByteArray())
-        assertThrows(IllegalArgumentException::class.java) { parse(epub(extra = encryption("OPS/one.xhtml"))) }
+        assertReason(LocalBookImportReason.EncryptedEpub) { parse(epub(extra = encryption("OPS/one.xhtml"))) }
         assertEquals(1, parse(epub(extra = encryption("OPS/font.otf"))).chapters.size)
     }
 
     @Test fun traversalExternalAndEncodedAbsoluteResourcePathsAreRejected() {
-        for (path in listOf("../../outside.png", "https://example.invalid/image.png", "%2Foutside.png", "..%2F..%2Foutside.png", "..\\outside.png")) {
-            assertThrows(IllegalArgumentException::class.java) {
+        for (path in listOf("../../outside.png", "https://example.invalid/image.png", "%2Foutside.png", "..%2F..%2Foutside.png", "..\\outside.png", "bad%zz.png", "one.xhtml#bad%zz")) {
+            assertReason(LocalBookImportReason.CorruptEpub) {
                 parse(epub(resources = mapOf("OPS/one.xhtml" to "<html><body><img src='$path'/></body></html>")))
             }
         }
@@ -118,10 +122,10 @@ class EpubBookParserTest {
     }
 
     @Test fun compressedOversizedResourcesAndDamagedArchivesAreRejected() {
-        assertThrows(IllegalArgumentException::class.java) {
+        assertReason(LocalBookImportReason.EpubLimit) {
             parse(epub(extra = mapOf("OPS/one.xhtml" to ByteArray(16 * 1024 * 1024 + 1) { 65 })))
         }
-        assertThrows(java.util.zip.ZipException::class.java) {
+        assertReason(LocalBookImportReason.CorruptEpub) {
             parse(temporary.newFile().apply { writeText("not a ZIP") })
         }
     }
