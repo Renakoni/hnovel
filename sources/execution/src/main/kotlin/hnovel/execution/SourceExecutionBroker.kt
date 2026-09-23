@@ -121,16 +121,23 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
                     val key = if (name.contains("LoginInfo")) StorageRequestKey.LOGIN_INFO else StorageRequestKey.LOGIN_HEADERS
                     val stored = session.read(StorageRequest(StorageArea.Account, key))
                     check(stored is StorageResult.Value)
-                    if (name.endsWith("Map")) stored.value?.let(Json::parseToJsonElement) ?: JsonNull
+                    if (name == "source.getLoginInfoMap") LoginInfo.stringFields(stored.value) ?: JsonNull
+                    else if (name.endsWith("Map")) stored.value?.let(Json::parseToJsonElement) ?: JsonNull
                     else stored.value?.let(::JsonPrimitive) ?: JsonNull
                 }
                 "source.putLoginInfo", "source.putLoginHeader", "source.removeLoginInfo", "source.removeLoginHeader" -> authorized {
                     val removing = name.contains("remove")
                     require(args.size == if (removing) 0 else 1)
                     val info = name.endsWith("Info")
-                    val value = if (removing) null else args.single().jsonPrimitive.content.also { text ->
-                        val data = Json.parseToJsonElement(text).jsonObject
-                        require(data.size <= 32 && text.length <= 16384 && data.values.all { it is JsonPrimitive && it.isString })
+                    val value = if (removing) null else args.single().jsonPrimitive.also { require(it.isString) }.content.also { text ->
+                        if (info) LoginInfo.validate(text) else {
+                            require(text.length <= 16384)
+                            val data = Json.parseToJsonElement(BridgeWire.validate(text.toByteArray())).jsonObject
+                            require(data.size <= 32 && data.all { (key, value) ->
+                                key.matches(Regex("[!#$%&'*+.^_`|~0-9A-Za-z-]+")) &&
+                                    value is JsonPrimitive && value.isString && value.content.all { it == '\t' || it.code in 32..126 }
+                            })
+                        }
                     }
                     val key = if (info) StorageRequestKey.LOGIN_INFO else StorageRequestKey.LOGIN_HEADERS
                     check(session.write(StorageRequest(StorageArea.Account, key, value)) is StorageResult.Value)
