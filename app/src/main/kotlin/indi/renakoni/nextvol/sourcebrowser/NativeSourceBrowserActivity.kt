@@ -8,6 +8,7 @@ import indi.renakoni.nextvol.R
 /** User-controlled website window; completion returns the current document to its waiting request. */
 class NativeSourceBrowserActivity : Activity() {
     private var browser: NativeSourceBrowserService? = null
+    private var systemBack: SourceBrowserBack? = null
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val active = NativeSourceBrowserService.active ?: run { finish(); return }
@@ -17,11 +18,15 @@ class NativeSourceBrowserActivity : Activity() {
         setContentView(sourceBrowserLayout(this, active.title, view,
             getText(android.R.string.cancel), { active.cancel() },
             getText(R.string.source_browser_done), { active.confirm() }))
+        systemBack = SourceBrowserBack(this) { handleBack() }.also { it.register() }
     }
-    @Deprecated("Platform callback") override fun onBackPressed() {
+    private fun handleBack() {
         if (browser?.webView?.canGoBack() == true) browser?.webView?.goBack() else browser?.cancel()
     }
+    @Suppress("DEPRECATION")
+    override fun onBackPressed() = handleBack()
     override fun onDestroy() {
+        systemBack?.unregister()
         if (browser?.activity === this) {
             browser?.activity = null
             if (isFinishing) browser?.cancel()
