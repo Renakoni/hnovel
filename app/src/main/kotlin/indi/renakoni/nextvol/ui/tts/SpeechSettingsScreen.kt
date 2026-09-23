@@ -80,7 +80,7 @@ fun SpeechSettingsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.tts_settings), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                title = { Text(stringResource(R.string.tts_settings), style = MaterialTheme.typography.displayLarge, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(painterResource(R.drawable.arrow_back_24px), stringResource(R.string.sources_back))

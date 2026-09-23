@@ -21,6 +21,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -162,7 +163,7 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
             adding && category != null -> stringResource(category!!.title)
             adding -> stringResource(R.string.sources_add)
             else -> stringResource(R.string.sources_title)
-        }) },
+        }, style = MaterialTheme.typography.displayLarge, maxLines = 1, overflow = TextOverflow.Ellipsis) },
             navigationIcon = { IconButton(onClick = { back() }) {
                 Icon(painterResource(R.drawable.arrow_back_24px), stringResource(R.string.sources_back))
             } })

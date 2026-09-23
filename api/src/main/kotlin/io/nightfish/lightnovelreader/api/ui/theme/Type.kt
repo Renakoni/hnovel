@@ -13,14 +13,20 @@ private val nonTrimLineHeightStyle = LineHeightStyle(
 )
 
 /**
- * 应用的 Material Design 3 字体排版配置
+ * 应用的 Material Design 3 字体排版配置。
+ *
+ * UI roles (font size / line height in sp): page title = displayLarge (22/28, W600),
+ * sheet title = displayMedium (19/26, W600), settings section = bodyLarge (15/24, W600
+ * at the call site), settings entry = headlineSmall (17/25.5, W400), supporting text =
+ * bodyMedium (14/20, W400). Compact discovery headings keep titleMedium (16/24, W500).
+ * See api/UI_TYPOGRAPHY.md for usage and overflow rules. Reader text uses user settings.
  *
  * @since Api 2
  */
 val AppTypography = Typography(
     displayLarge = TextStyle(
         fontSize = 22.sp,
-        lineHeight = 18.sp,
+        lineHeight = 28.sp,
         fontWeight = FontWeight.W600,
         lineHeightStyle = nonTrimLineHeightStyle
     ),

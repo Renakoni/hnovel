@@ -167,7 +167,7 @@ fun SearchHubScreen(
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {
             item { Text(stringResource(R.string.source_range_title), Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
-                style = MaterialTheme.typography.titleLarge) }
+                style = MaterialTheme.typography.displayMedium) }
             items(listOf(null) + SourceCategory.entries) { category ->
                 ListItem(headlineContent = { Text(stringResource(category?.title ?: R.string.source_range_all)) },
                     supportingContent = { Text(stringResource(R.string.search_source_count,
@@ -186,7 +186,7 @@ fun SearchHubScreen(
         LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {
             item {
                 Text(stringResource(R.string.search_incomplete_title), Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
-                    style = MaterialTheme.typography.titleLarge)
+                    style = MaterialTheme.typography.displayMedium)
                 TextButton(onClick = { showFailures = false; onRetry() }, enabled = !state.searching,
                     modifier = Modifier.padding(horizontal = 16.dp)) { Text(stringResource(R.string.search_retry_failed)) }
             }
