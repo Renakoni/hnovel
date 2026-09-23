@@ -4,6 +4,9 @@
     <string name="categories_empty">此书源未返回分类。</string>
     <string name="discovery_refresh">刷新</string>
     <string name="discovery_retry">重试</string>
+    <string name="discovery_load_failed">无法加载此内容</string>
+    <string name="discovery_error_details">错误详情</string>
+    <string name="discovery_error_type">错误类型：%1$s</string>
     <string name="discovery_apply">应用</string>
     <string name="discovery_load_more">加载更多</string>
     <string name="discovery_no_books">没有符合筛选条件的书籍。</string>

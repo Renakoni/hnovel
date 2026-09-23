@@ -1,13 +1,20 @@
 package indi.renakoni.nextvol.ui.home.discovery
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import indi.renakoni.nextvol.R
 import io.nightfish.lightnovelreader.api.web.discovery.DiscoveryError
@@ -18,7 +25,8 @@ import indi.renakoni.nextvol.ui.home.settings.sources.SourcePermissionLabel
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun DiscoveryTopBar(title: String, onBack: () -> Unit, onRefresh: () -> Unit, onSettings: () -> Unit) {
-    TopAppBar(title = { Text(title) }, navigationIcon = {
+    TopAppBar(title = { Text(title, style = MaterialTheme.typography.displayLarge,
+        maxLines = 1, overflow = TextOverflow.Ellipsis) }, navigationIcon = {
         IconButton(onClick = onBack) { Icon(painterResource(R.drawable.arrow_back_24px), stringResource(R.string.sources_back)) }
     }, actions = {
         TextButton(onClick = onRefresh) { Text(stringResource(R.string.discovery_refresh)) }
@@ -35,20 +43,42 @@ internal fun DiscoveryEmpty(message: String, onManageSources: () -> Unit) {
 }
 
 @Composable
-internal fun DiscoveryFailure(error: DiscoveryError, retry: () -> Unit, manage: () -> Unit, back: (() -> Unit)?, field: String? = null,
+internal fun DiscoveryFailure(error: DiscoveryError, retry: (() -> Unit)?, manage: () -> Unit, back: (() -> Unit)?, field: String? = null,
     permission: DiscoveryPermission? = null) {
     val message = indi.renakoni.nextvol.data.web.sourceFailureMessage(error)
-    Column(Modifier.padding(16.dp)) {
-        Text(stringResource(message), color = MaterialTheme.colorScheme.error)
+    var details by remember(error, field, permission) { mutableStateOf(false) }
+    val canRetry = retry != null && error != DiscoveryError.Unavailable && error != DiscoveryError.Unsupported &&
+        error != DiscoveryError.InvalidRequest
+    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Icon(painterResource(R.drawable.error_24px), null, tint = MaterialTheme.colorScheme.error)
+            Text(stringResource(R.string.discovery_load_failed), Modifier.semantics { heading() },
+                style = MaterialTheme.typography.titleSmall)
+        }
+        Text(stringResource(message), style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (error == DiscoveryError.PermissionDenied) permission?.let { SourcePermissionLabel(it.origin, it.resourceKind) }
-        field?.let { Text(stringResource(R.string.discovery_rule_field, it), style = MaterialTheme.typography.bodySmall) }
-        Row {
-            TextButton(onClick = retry) { Text(stringResource(R.string.discovery_retry)) }
+        FlowRow {
+            if (canRetry) TextButton(onClick = { retry?.invoke() }) { Text(stringResource(R.string.discovery_retry)) }
             TextButton(onClick = manage) { Text(stringResource(R.string.sources_title)) }
             if (back != null && (error == DiscoveryError.InvalidRequest || error == DiscoveryError.Unavailable))
                 TextButton(onClick = back) { Text(stringResource(R.string.sources_back)) }
+            TextButton(onClick = { details = true }) { Text(stringResource(R.string.discovery_error_details)) }
         }
     }
+    if (details) AlertDialog(onDismissRequest = { details = false },
+        title = { Text(stringResource(R.string.discovery_error_details)) },
+        text = {
+            SelectionContainer {
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(stringResource(message))
+                    Text(stringResource(R.string.discovery_error_type, error.name), style = MaterialTheme.typography.bodySmall)
+                    field?.let { Text(stringResource(R.string.discovery_rule_field, it), style = MaterialTheme.typography.bodySmall) }
+                    if (error == DiscoveryError.PermissionDenied) permission?.let { SourcePermissionLabel(it.origin, it.resourceKind) }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { details = false }) { Text(stringResource(R.string.close)) } })
 }
 
 @Composable

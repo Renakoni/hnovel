@@ -78,7 +78,7 @@ fun BangumiScreen(
         showRecords -> R.string.bangumi_records
         bookId != null -> R.string.bangumi_correct_match
         else -> R.string.bangumi_title
-    })) }, navigationIcon = {
+    }), style = MaterialTheme.typography.displayLarge, maxLines = 1, overflow = TextOverflow.Ellipsis) }, navigationIcon = {
         IconButton(onClick = {
             when {
                 showRecords -> backFromRecords()
