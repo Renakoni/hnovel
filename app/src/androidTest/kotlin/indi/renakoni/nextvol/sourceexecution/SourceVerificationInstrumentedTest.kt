@@ -75,7 +75,9 @@ class SourceVerificationInstrumentedTest {
 
     @Test fun nativeWafVerificationWaitsForSuccessAndResumesAllReadingStages() = verifySearch(true, waf = true)
 
-    private fun verifySearch(browserRead: Boolean, waf: Boolean = false): Unit = runBlocking {
+    @Test fun closingPostVerificationCancelsWithoutRetryingTheSearch() = verifySearch(false, waf = true, cancel = true)
+
+    private fun verifySearch(browserRead: Boolean, waf: Boolean = false, cancel: Boolean = false): Unit = runBlocking {
         RuleSourceFixture().use { fixture ->
             val ordinary = fixture.server.dispatcher
             val challenged = java.util.concurrent.atomic.AtomicInteger()
@@ -163,6 +165,22 @@ class SourceVerificationInstrumentedTest {
                         // Returning its 401 document early must not finish the original search.
                         delay(2000)
                         assertFalse(request.isCompleted)
+                    }
+                    if (cancel) {
+                        try {
+                            val close = instrumentation.uiAutomation.windows.firstNotNullOfOrNull {
+                                find(it.root?.takeIf { root -> root.packageName == context.packageName }, "android.widget.ImageButton")
+                            }
+                            assertTrue(close?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true)
+                            val result = withTimeout(5000) { request.await() }
+                            assertTrue(result is SearchResult.Error)
+                            assertEquals(hnovel.content.ContentError.BrowserRequired,
+                                ((result as SearchResult.Error).error as hnovel.content.SourceContentException).code)
+                            assertTrue(coordinator.prompts.value.isEmpty())
+                            assertFalse(accepted.isCompleted)
+                            assertEquals(listOf("keyword=fixture", "keyword=fixture"), postBodies)
+                        } finally { request.cancel() }
+                        return@use
                     }
                     allowVerification.set(true)
                     if (waf) {

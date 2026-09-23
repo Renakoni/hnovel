@@ -366,6 +366,48 @@ class SourceBrowserInstrumentedTest {
         }
     }
 
+    @Test fun postLoginStillAllowsExplicitConfirmation(): Unit = runBlocking {
+        ActivityScenario.launch(BrowserTestHostActivity::class.java).use { MockWebServer().use { server ->
+            server.enqueue(MockResponse().setHeader("Content-Type", "text/html")
+                .setBody("<html><head><link rel='icon' href='data:,'></head><body>Signed in</body></html>"))
+            server.start()
+            val root = File(context.cacheDir, "browser-confirm-${System.nanoTime()}")
+            try { SourceBroker(root.toPath(), browser = AndroidSourceBrowser(context)).use { broker ->
+                val session = broker.open(SourceScope("confirm", "A", "legado"), listOf(NetworkGrant(server.url("/").toString(), true)))
+                val pending = async { session.execute(BrokerRequest("login", server.url("/").toString(),
+                    method = "POST", body = "user=fixture", browser = BrowserOptions(interactive = true))) }
+                val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+                automation.serviceInfo = automation.serviceInfo.apply {
+                    flags = flags or android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+                }
+                val label = context.getString(indi.renakoni.nextvol.R.string.source_browser_done)
+                fun find(node: android.view.accessibility.AccessibilityNodeInfo?, text: String): android.view.accessibility.AccessibilityNodeInfo? {
+                    node ?: return null
+                    if (node.isVisibleToUser && (node.text?.contains(text, ignoreCase = true) == true ||
+                            node.contentDescription?.contains(text, ignoreCase = true) == true)) return node
+                    for (index in 0 until node.childCount) find(node.getChild(index), text)?.let { return it }
+                    return null
+                }
+                withTimeout(20000) {
+                    while (automation.windows.none { window ->
+                        find(window.root?.takeIf { it.packageName == context.packageName }, "Signed in") != null
+                    }) delay(100)
+                }
+                assertFalse(pending.isCompleted)
+                withTimeout(10000) {
+                    while (automation.windows.none { window ->
+                        find(window.root?.takeIf { it.packageName == context.packageName }, label)
+                            ?.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK) == true
+                    }) delay(100)
+                }
+                val result = withTimeout(10000) { pending.await() }
+                assertTrue(result is BrokerResult.Success)
+                assertEquals(200, (result as BrokerResult.Success).response.status)
+                assertTrue(result.response.text().contains("Signed in"))
+            } } finally { root.deleteRecursively() }
+        } }
+    }
+
     @Test fun foregroundLoginPreservesPostResponseAndCommitsOnlyItsOwnCookies(): Unit = runBlocking {
         // Await RESUMED using the Activity lifecycle; accessibility is only needed for the
         // browser's cross-process window below. Close the host after each attempt.
@@ -404,6 +446,7 @@ class SourceBrowserInstrumentedTest {
                     .filter { it.path == "/login" }
                 assertEquals(listOf("GET", "POST"), navigation.map { it.method })
                 assertEquals("source-login-agent", navigation.first().getHeader("User-Agent"))
+                assertEquals("source-login-agent", navigation.last().getHeader("User-Agent"))
                 assertEquals("Bearer source-login", navigation.first().getHeader("Authorization"))
                 assertEquals("source=login", navigation.first().getHeader("Cookie"))
             }

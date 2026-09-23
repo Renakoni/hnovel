@@ -234,6 +234,7 @@ class SourceBrowserService : Service() {
         complete(BrokerResult.Success(original.copy(body = value.toByteArray(), charset = "UTF-8", finalUrl = mainUrl)))
     }
     internal fun fail() { complete(BrokerResult.Failure(RequestStage.Response, FailureCode.Network)) }
+    internal fun cancel() { complete(BrokerResult.Failure(RequestStage.Response, FailureCode.BrowserRequired)) }
     private fun complete(result: BrokerResult) {
         if (!finished.compareAndSet(false, true)) return
         handler.post {

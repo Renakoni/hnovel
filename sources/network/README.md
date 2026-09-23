@@ -151,6 +151,9 @@ the actual HTTP status, while native DOM results remain `BrowserDocument` with s
 never a fabricated HTTP 200. Completing the page preserves its source session. The existing
 foreground coordinator retries the original operation once, so a repeated challenge or an
 unparseable document still fails. Background work exposes a notice without opening a window.
+In the broker browser, form submissions retain the page's User-Agent just like fetch requests.
+The close action cancels verification without extracting or retrying the current document;
+the separate confirmation action still supports ordinary login pages and image-code input.
 
 Challenge recognition does not solve captchas, authorize new domains, disable certificate
 checks or guarantee a site's availability. Actual Aitu reading and different network routes
