@@ -118,6 +118,29 @@ class ZLibrarySourceTest {
         }
     }
 
+    @Test fun pagedSearchReturnsBoundMetadataAndRequestsOnlyTheChosenPage() = runBlocking {
+        Fixture().use { f ->
+            f.server.enqueue(response(page(1, 2, 1, 2)))
+            f.server.enqueue(response(page(2, null, 3)))
+            val registry = WebSourceRegistry()
+            registry.register(f.source, ZLibrarySources.METADATA)
+            try {
+                val search = ExploreRepository(registry).open(ZLibrarySources.ID).get()!!
+                assertTrue(search.hasPages)
+                val first = search.page(search.types.first(), "三体", 1).first()
+                assertEquals(1, f.server.requestCount)
+                assertEquals(2, first.nextPage)
+                assertEquals("三体", first.books.first().information!!.title)
+                assertEquals(first.books.first().bookId, first.books.first().information!!.id)
+                assertEquals(ZLibrarySources.ID, SourceBookId.fromStorageKey(first.books.first().bookId).sourceId)
+                val second = search.page(search.types.first(), "三体", first.nextPage!!).first()
+                assertEquals(2, f.server.requestCount)
+                assertNull(second.nextPage)
+                assertEquals("3/abcdef", SourceBookId.fromStorageKey(second.books.single().bookId).remoteId)
+            } finally { registry.unregister(ZLibrarySources.ID) }
+        }
+    }
+
     @Test fun emptyNetworkNonJsonAuthenticationAndRateLimitStayDistinct() = runBlocking {
         Fixture().use { f ->
             val mode = f.source.searchProvider.searchTypes.first()

@@ -1,7 +1,7 @@
 package indi.renakoni.nextvol.ui.home.explore.search
 
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.DisposableEffect
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -20,16 +20,18 @@ fun NavGraphBuilder.searchHubDestination() {
     composable<Route.Main.Explore.SearchHub> {
         val nav = LocalNavController.current
         val model = hiltViewModel<SearchHubViewModel>()
-        val state by model.state.collectAsState()
+        val state by model.state.collectAsStateWithLifecycle()
         LifecycleStartEffect(model) {
             model.setActive(true)
             onStopOrDispose { model.setActive(false) }
         }
         SearchHubScreen(
             state = state, onQuery = model::setQuery, onSearch = model::search,
-            onSelect = model::select, onHistory = model::search,
+            onScope = model::selectScope,
             onDeleteHistory = model::deleteHistory, onClearHistory = model::clearHistory,
-            onOpenSource = { id, _ -> model.select(id) },
+            onLoadMore = model::loadMore, onStop = model::stop, onResume = model::resume, onRetry = model::retryFailures,
+            onManageSources = { nav.navigate(Route.Main.Settings.Sources) },
+            onSource = { id -> nav.navigate(Route.Main.Settings.SourceDetail(id.namespace, id.id)) },
             onBook = nav::navigateToBookDetailDestination, onBack = nav::popBackStackIfResumed
         )
     }

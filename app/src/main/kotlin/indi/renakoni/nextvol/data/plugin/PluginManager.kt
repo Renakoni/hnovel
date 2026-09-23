@@ -167,7 +167,8 @@ class PluginManager @Inject constructor(
 
     suspend fun initAllPlugin() {
         pluginsTempDir.deleteRecursively()
-        webBookDataSourceManager.loadBuiltInSource(Wenku8Api { id -> networkSettings.forSource(id).snapshot() })
+        webBookDataSourceManager.loadBuiltInSource(Wenku8Api { id -> networkSettings.forSource(id).snapshot() },
+            indi.renakoni.nextvol.data.web.SourceCategory.Anime)
         appPluginInfos = initAllAppPlugin()
         val enabledPlugins = enabledPluginsUserData.getOrDefault(emptyList())
         val pluginDirs = pluginsDir.listFiles()

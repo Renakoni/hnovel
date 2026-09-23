@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="search_input_hint">Название или ключевое слово</string>
+    <string name="search_source_count">Доступно источников: %1$d</string>
+    <string name="search_delete_history_entry">Удалить из истории: %1$s</string>
+    <string name="search_start_title">Найдите следующую книгу</string>
+    <string name="search_start_description">Ищите во включённых источниках или выберите группу для поиска.</string>
+    <string name="search_book_count">Найдено книг: %1$d</string>
+    <string name="search_progress">Проверено источников: %1$d из %2$d</string>
+    <string name="search_stopped">Поиск приостановлен</string>
+    <string name="search_stop">Приостановить поиск</string>
+    <string name="search_resume">Продолжить</string>
+    <string name="search_failure_count">Ошибок: %1$d</string>
+    <string name="search_empty_description">Попробуйте другой запрос или группу источников.</string>
+    <string name="search_incomplete_title">Некоторые источники не ответили</string>
+    <string name="search_incomplete_description">Книги пока не найдены. Проверьте источники с ошибками или повторите поиск.</string>
+    <string name="search_result_limit">Показано до 1000 книг. Уточните запрос или выберите группу источников.</string>
+    <string name="search_load_more">Загрузить ещё книги</string>
+    <string name="search_retry_failed">Повторить для источников с ошибками</string>
+    <string name="search_book_unavailable">Сведения о книге недоступны</string>
+    <string name="search_book_loading">Загрузка сведений о книге…</string>
+    <string name="search_no_sources">В группе нет источников для поиска</string>
+    <string name="search_no_sources_description">Выберите другую группу или включите источник в настройках источников.</string>
+</resources>

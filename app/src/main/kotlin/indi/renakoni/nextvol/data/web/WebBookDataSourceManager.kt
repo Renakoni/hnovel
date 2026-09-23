@@ -22,7 +22,8 @@ class WebBookDataSourceManager @Inject constructor (
         register(webBookDataSource, webDataSourceItem, builtIn = false)
     }
 
-    private fun register(source: WebBookDataSource, item: WebDataSourceItem, builtIn: Boolean): SourceRegistration {
+    private fun register(source: WebBookDataSource, item: WebDataSourceItem, builtIn: Boolean,
+        category: SourceCategory? = null): SourceRegistration {
         val registration = registry.register(source, SourceMetadata(item, buildSet {
             addAll(setOf(
             SourceCapability.Search, SourceCapability.BookInformation, SourceCapability.Directory,
@@ -30,7 +31,7 @@ class WebBookDataSourceManager @Inject constructor (
             ))
             if (source.discoveryProvider?.hasFeed == true) add(SourceCapability.Explore)
             if (source.discoveryProvider?.hasCategories == true) add(SourceCapability.Categories)
-        }, builtIn))
+        }, builtIn, category = category))
         return registration
     }
 
@@ -54,8 +55,8 @@ class WebBookDataSourceManager @Inject constructor (
         registrationsByPackage[packageName] = items
     }
 
-    fun loadBuiltInSource(instance: WebBookDataSource) {
-        val item = loadWebDataSourceClass(instance, builtIn = true)
+    fun loadBuiltInSource(instance: WebBookDataSource, category: SourceCategory? = null) {
+        val item = loadWebDataSourceClass(instance, builtIn = true, category = category)
         val packageName = instance.javaClass.`package`?.name ?: return
         if (registrationsByPackage.contains(packageName)) {
             registrationsByPackage[packageName] = registrationsByPackage[packageName]!! + listOf(item)
@@ -64,14 +65,15 @@ class WebBookDataSourceManager @Inject constructor (
         }
     }
 
-    private fun loadWebDataSourceClass(instance: WebBookDataSource, builtIn: Boolean = false): SourceRegistration {
+    private fun loadWebDataSourceClass(instance: WebBookDataSource, builtIn: Boolean = false,
+        category: SourceCategory? = null): SourceRegistration {
         val info = instance.javaClass.getAnnotationsByType(WebDataSource::class.java)
         val item = WebDataSourceItem(
             instance.id,
             info.first().name,
             info.first().provider,
         )
-        return register(instance, item, builtIn)
+        return register(instance, item, builtIn, category)
     }
 
     fun unloadWebDataSourcesFromClassLoader(packageName: String) {
