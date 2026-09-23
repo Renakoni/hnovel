@@ -116,6 +116,21 @@ class ScriptExecutionTest {
         assertEquals(ExecutionResult.Success("1"), worker.execute(id, ExecutionTask.Script("1")))
     }
 
+    @Test(timeout = 40000) fun childWorkerWaitConsumesItsDeadlineAndNextExecutionRecovers() {
+        val authority = ExecutionAuthority()
+        val id = authority.issue("source-wait", "legado", "1")
+        val worker = IsolatedExecutor(authority = authority)
+        assertEquals(ExecutionResult.Success("true"), worker.execute(id, ExecutionTask.Script("""
+            var start = Packages.java.lang.System.currentTimeMillis();
+            Packages.java.lang.Thread.sleep(30);
+            Packages.java.lang.System.currentTimeMillis() - start >= 25;
+        """.trimIndent()), ExecutionLimits(timeoutMillis = 15000)))
+        assertEquals(ExecutionResult.Failure(FailureCode.Timeout), worker.execute(id,
+            ExecutionTask.Script("try { Packages.java.lang.Thread.sleep(60000) } catch(e) { 'caught' }"),
+            ExecutionLimits(timeoutMillis = 2000)))
+        assertEquals(ExecutionResult.Success("42"), worker.execute(id, ExecutionTask.Script("42"), ExecutionLimits(timeoutMillis = 15000)))
+    }
+
     @Test fun scriptUsesRealBrokerForAjaxAndScopedStorage() = runBlocking<Unit> {
         val authority = ExecutionAuthority()
         MockWebServer().use { server ->
