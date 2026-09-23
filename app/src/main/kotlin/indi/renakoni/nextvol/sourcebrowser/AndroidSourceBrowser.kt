@@ -47,10 +47,12 @@ class AndroidSourceBrowser @Inject constructor(@ApplicationContext private val c
     override suspend fun execute(session: SourceSession, request: BrokerRequest, options: BrowserOptions,
         guard: RequestCommitGuard, route: SourceNetworkRoute): BrokerResult = serial.withLock { withContext(Dispatchers.IO) {
         require(options.title.length <= 1024 && options.script.length <= 65536 && options.sourceRegex.length <= 2048 &&
-            options.delayMillis in 0..30000 && (options.html?.length ?: 0) <= 196608)
+            options.delayMillis in 0..30000 && (options.html?.length ?: 0) <= 196608 && (options.webCookie?.length ?: 0) <= 65536)
         require(!options.verificationCode || options.interactive)
         val nativeRequest = NativeBrowserFiles(context).supported && request.method == "GET" && request.followRedirects && !request.responseAsHex &&
             request.cache != CacheMode.Only && request.headers.keys.none { it.equals("Cookie", true) }
+        if (options.webCookie != null && (!nativeRequest || options.html != null || options.verificationCode || options.interactive))
+            return@withContext BrokerResult.Failure(RequestStage.Parse, FailureCode.BrowserRequired)
         if ((session.browserRead || nativeRequest && (options.interactive || options.nativeWebsite)) &&
             !options.verificationCode && options.html == null) {
             if (route.mode == SourceNetworkMode.BypassVpn && !supportsVpnBypass(context))

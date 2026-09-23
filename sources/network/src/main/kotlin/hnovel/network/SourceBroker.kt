@@ -344,7 +344,10 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
                             message = "OK", protocol = "data"))
                     } else if (snapshot.browser != null) {
                         val url = snapshot.url.toHttpUrlOrNull() ?: throw BrokerFailure(RequestStage.Parse, FailureCode.InvalidRequest)
-                        val browserHeaders = headers(url, snapshot.headers, policy, includeCookies = false).toMap()
+                        val browserHeaders = if (snapshot.browser.webCookie != null) {
+                            policy.check(url)
+                            emptyMap()
+                        } else headers(url, snapshot.headers, policy, includeCookies = false).toMap()
                         val maxBytes = minOf(snapshot.maxResponseBytes ?: limits.maxResponseBytes, limits.maxResponseBytes)
                         val result = browser?.execute(this@SourceSession, snapshot.copy(browser = null, headers = browserHeaders,
                             maxResponseBytes = maxBytes), snapshot.browser, guard, transport)

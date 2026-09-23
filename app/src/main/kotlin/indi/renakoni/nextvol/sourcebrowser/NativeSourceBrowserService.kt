@@ -146,6 +146,22 @@ class NativeSourceBrowserService : Service() {
                 setAcceptCookie(true)
                 setAcceptThirdPartyCookies(view, true)
             }
+            job.options.webCookie?.let { header ->
+                // Complete after openPage has registered this page; finishing inside open() would leave it active.
+                val updates = try { nativeWebCookieUpdates(job.request.url, header, cookies(job.request.url)) } catch (failure: Exception) {
+                    handler.post { fail(if (failure is IllegalArgumentException) FailureCode.InvalidRequest else FailureCode.StorageUnavailable) }
+                    return
+                }
+                var pending = updates.size
+                if (pending == 0) handler.post { completeText("", job.request.url) }
+                else updates.forEach { cookie ->
+                    CookieManager.getInstance().setCookie(job.request.url, cookie) { accepted ->
+                        if (!accepted) fail(FailureCode.StorageUnavailable)
+                        if (--pending == 0 && !finished.get()) completeText("", job.request.url)
+                    }
+                }
+                return
+            }
             ServiceWorkerController.getInstance().serviceWorkerWebSettings.apply {
                 blockNetworkLoads = false; allowFileAccess = false; allowContentAccess = false
             }
