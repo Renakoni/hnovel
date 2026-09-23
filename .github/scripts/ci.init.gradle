@@ -1,3 +1,12 @@
+// Variant caches hold task outputs only; setup-gradle still owns dependencies
+// and transforms. Gradle checks task inputs before reusing any cached output.
+gradle.settingsEvaluated { settings ->
+    def taskCache = System.getenv('CI_GRADLE_BUILD_CACHE_DIR')
+    if (taskCache) {
+        settings.buildCache.local.directory = new File(taskCache)
+    }
+}
+
 gradle.beforeProject { project ->
     project.pluginManager.withPlugin('com.mikepenz.aboutlibraries.plugin.android') {
         def libraries = project.extensions.getByName('aboutLibraries')

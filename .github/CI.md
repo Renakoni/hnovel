@@ -40,15 +40,24 @@ keys together when upgrading. Automatic Gradle JDK/SDK provisioning is disabled.
 | Cache | Consumers | Contents / writer |
 | --- | --- | --- |
 | Gradle (`setup-gradle`) | All build/test checks | Wrapper, dependencies, transforms, local build cache; main writes, PR/merge-group runs read only |
+| Variant task outputs | Release and Minified checks | Separate Release/benchmark output directories; restored from the latest same-variant entry and saved after a successful APK build |
 | SDK | All checks | Platform, Build Tools, adb; saved immediately after successful preparation |
 | Emulator + one API image | Device checks only | API 24 and API 35 have separate exact keys; saved before boot/tests |
 | Robolectric SDKs | JVM check only | Runtime jars under `~/.m2/repository/org/robolectric` |
 
 `org.gradle.caching=true` remains enabled. Gradle validates task inputs before
 reusing outputs; a restored cache does not skip changed code or guarantee every
-task is cacheable. Only setup-gradle owns the Gradle cache: do not add a second
-whole-home/wrapper cache or archive every module's `build/` directory. PR checks
-read main's reusable entries rather than each writing another large snapshot.
+task is cacheable. Only setup-gradle owns the Gradle dependency/transform cache:
+do not add a second whole-home/wrapper cache or archive every module's `build/`
+directory. PR checks read main's reusable entries rather than each writing another
+large snapshot. Release and benchmark additionally retain task outputs, including
+R8, in separate local caches selected by `ci.init.gradle`. These start with shared
+main outputs and preserve each variant's own entries. The minified cache is saved
+before device tests so a test failure does not discard successful compilation.
+Cache keys include the variant and commit; restore prefixes allow reuse after
+source edits, with Gradle checking the actual task inputs. Closed PR cache entries
+are removed by `cleanup-pr-caches.yml`, which runs only trusted base workflow code
+and deletes only that PR's merge-ref caches without checking out PR code.
 Caches are disposable acceleration: misses fall back to normal dependency or
 fixed tool downloads. AboutLibraries uses local license texts instead of making
 per-library license/funding requests during APK builds.
