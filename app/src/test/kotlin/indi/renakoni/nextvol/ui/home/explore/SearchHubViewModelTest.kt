@@ -313,4 +313,48 @@ class SearchHubViewModelTest {
         assertFalse(model.state.value.hasMore)
         assertEquals(2, model.state.value.completed)
     }
+
+    @Test fun cachedBookInformationSurvivesRefreshTimeoutAndReleasesDetailPermits() = runTest(dispatcher) {
+        var active = 0
+        var peak = 0
+        every { books.getBookInformationFlow(any<String>(), any()) } answers {
+            val id = firstArg<String>()
+            flow {
+                active++; peak = maxOf(peak, active)
+                try {
+                    emit(Ok(item(id).information!!))
+                    awaitCancellation()
+                } finally { active-- }
+            }
+        }
+        add("legacy", Stream().apply { events = { flow {
+            repeat(5) { emit(SearchResult.MultipleBook("$it")) }
+            emit(SearchResult.End())
+        } } })
+        val model = model()
+        runCurrent(); model.search("query"); advanceUntilIdle()
+        val loaded = model.state.value.books.map { async { it.information.toList() } }
+        runCurrent()
+        assertEquals(4, active)
+        advanceUntilIdle()
+        loaded.forEach { assertTrue(it.await().last().isOk) }
+        assertEquals(4, peak)
+        assertEquals(0, active)
+        assertTrue(model.state.value.books.first().information.first().isOk)
+        verify(exactly = 5) { books.getBookInformationFlow(any<String>(), any()) }
+    }
+
+    @Test fun uncachedBookInformationTimeoutReportsFailureAndCanRetry() = runTest(dispatcher) {
+        every { books.getBookInformationFlow(any<String>(), any()) } returns flow { awaitCancellation() }
+        add("legacy", Stream().apply { events = { flowOf(SearchResult.SingleBook("1")) } })
+        val model = model()
+        runCurrent(); model.search("query"); advanceUntilIdle()
+        val book = model.state.value.books.single()
+        val first = async { book.information.toList() }
+        advanceUntilIdle()
+        assertTrue(first.await().single().isErr)
+        every { books.getBookInformationFlow(any<String>(), any()) } returns flowOf(Ok(item(book.id).information!!))
+        assertTrue(book.information.last().isOk)
+        verify(exactly = 2) { books.getBookInformationFlow(any<String>(), any()) }
+    }
 }

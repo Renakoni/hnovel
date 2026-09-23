@@ -237,7 +237,10 @@ class SearchHubViewModel internal constructor(
             }
         }.catch { error ->
             currentCoroutineContext().ensureActive()
-            emit(com.github.michaelbull.result.Err(WebRequestError("Search", "Book information unavailable", error)))
+            // A local preview remains usable if its remote refresh times out or fails.
+            if (cached?.isOk != true) {
+                emit(com.github.michaelbull.result.Err(WebRequestError("Search", "Book information unavailable", error)))
+            }
         }.flowOn(io)
     }
 
