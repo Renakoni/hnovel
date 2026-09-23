@@ -522,7 +522,8 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val result = RuleEvaluation(identity, authority, session, runner, spec.library, book?.id, chapter?.id,
             book?.state ?: ScriptState(), chapter?.state ?: ScriptState(), book?.id ?: spec.baseUrl, keyword, page,
             headerRule = spec.header, interactive = interactive, trace = trace, sourceLoginUrl = spec.loginUrl,
-            sourceComment = spec.comment, verification = ::verification, maxRuleCalls = maxRuleCalls)
+            sourceComment = spec.comment, verification = ::verification, maxRuleCalls = maxRuleCalls,
+            sourceName = definition.displayName, sourceLastUpdateTime = spec.lastUpdateTime)
         book?.let {
             result.bookField("bookUrl", it.id)
             if ("name" !in result.book.metadata) result.bookField("name", it.title)
@@ -535,7 +536,12 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         return result
     }
     private suspend fun request(context: RuleEvaluation, url: String, field: String, kind: ResourceKind = ResourceKind.Document,
-        browser: BrowserOptions? = null): BrokerResponse = executeRequest(prepareRequest(context, url, field, kind, browser), field)
+        browser: BrowserOptions? = null): BrokerResponse {
+        val request = prepareRequest(context, url, field, kind, browser)
+        val response = executeRequest(request, field)
+        context.requestUserAgent = if (response.protocol == "data") null else session.requestUserAgent(response.finalUrl, request.headers)
+        return response
+    }
 
     private suspend fun prepareRequest(context: RuleEvaluation, url: String, field: String, kind: ResourceKind,
         browser: BrowserOptions? = null): BrokerRequest {
