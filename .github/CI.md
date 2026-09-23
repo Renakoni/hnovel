@@ -19,29 +19,73 @@ particular, `Release APK` must be required separately now that it is outside the
 JVM job. Keep strict up-to-date checking and the other branch protections enabled.
 YAML alone does not update repository protection settings.
 
-## Shared Gradle cache
+## Fixed tools and reusable caches
 
-`gradle-cache.yml` writes caches from `main` when build configuration, dependencies,
-the wrapper, or workflow files change. It can also be dispatched manually on
-`main` after eviction or when investigating cache misses. It compiles the debug
-app and its test APKs without repeating the test suites.
+The repository contains scripts, SDK package metadata, and small AboutLibraries
+license texts. Toolchains, Maven dependencies, and system images are not Git
+assets. `.github/actions/android-environment` selects Temurin 21.0.8+9 for the
+compiler and 22.0.2+9 for Gradle/tests, plus the repository's Gradle wrapper.
+`.github/actions/android-sdk` restores only the SDK and optional image needed by
+that job. Actions are pinned to commits and runners use `ubuntu-24.04`; GitHub
+still updates the hosted OS, so this is not an immutable machine image.
 
-`gradle/actions/setup-gradle` owns the cache, including wrapper distributions,
-dependencies, transformed artifacts, and Gradle's local build cache. It stores
-wrapper distributions as separate reusable entries referenced by the Gradle
-User Home metadata; an additional `actions/cache` for `wrapper/dists` would
-duplicate that storage. Cache restore falls back across jobs on the same runner
-OS and architecture, so all four workflows can use the main cache.
+`prepare-android-sdk.sh` names exact upstream ZIP revisions: SDK platform 37.0 r2,
+Build Tools 36.0.0, Platform Tools 37.0.1, Emulator 37.1.11 (build 15917651), and
+Google APIs x86_64 images API 24 r27 / API 35 r9. A cache miss downloads only the
+missing packages with bounded connection times and retries. Installed-package
+metadata in `ci-environment/sdk-packages` lets AGP recognize those exact packages
+without sdkmanager/avdmanager repository scans. Change URLs, metadata, and cache
+keys together when upgrading. Automatic Gradle JDK/SDK provisioning is disabled.
 
-PR and merge-group checks are explicitly read-only. GitHub allows them to restore
-the default branch's cache, while caches written under a PR merge ref are only
-useful for reruns of that same PR. The warm workflow only runs on `main`; it does
-not execute PR code with cache write access.
+| Cache | Consumers | Contents / writer |
+| --- | --- | --- |
+| Gradle (`setup-gradle`) | All build/test checks | Wrapper, dependencies, transforms, local build cache; main writes, PR/merge-group runs read only |
+| SDK | All checks | Platform, Build Tools, adb; saved immediately after successful preparation |
+| Emulator + one API image | Device checks only | API 24 and API 35 have separate exact keys; saved before boot/tests |
+| Robolectric SDKs | JVM check only | Runtime jars under `~/.m2/repository/org/robolectric` |
 
-The first run before main has a cache, an evicted cache, and newly introduced
-dependencies can still require downloads. Release-only work and test execution
-remain in their own checks. Splitting workflows improves feedback and targeted
-reruns; it does not eliminate each runner's build or promise a fixed speedup.
+`org.gradle.caching=true` remains enabled. Gradle validates task inputs before
+reusing outputs; a restored cache does not skip changed code or guarantee every
+task is cacheable. Only setup-gradle owns the Gradle cache: do not add a second
+whole-home/wrapper cache or archive every module's `build/` directory. PR checks
+read main's reusable entries rather than each writing another large snapshot.
+Caches are disposable acceleration: misses fall back to normal dependency or
+fixed tool downloads. AboutLibraries uses local license texts instead of making
+per-library license/funding requests during APK builds.
+
+`gradle-cache.yml` populates main's caches after build/environment configuration
+changes or a manual main run. It compiles Debug/test APKs and unit-test sources,
+and assembles the benchmark instrumentation APK. It does not run R8, boot a
+device, or execute tests. Separate API image jobs only prepare SDK files. This
+main population matters because caches written by one PR are not shared with
+other PRs. Source edits can still miss older compiled outputs; manually warming
+main refreshes them without introducing extra checks on every PR.
+
+## Emulator scope and failure handling
+
+JVM tests, Lint, and Release assembly do not start an emulator. Device tests cover
+real Binder/isolated processes, WebView, Android UI, and service behavior that a
+host JVM cannot fully validate. API 24 retains minimum-version coverage. The
+Minified API 35 check runs only `MinifiedSourceRuntimeTest` and
+`ReadAloudSmokeTest` against a shrunk App; it does not repeat the Debug suite.
+Both `:app:assembleBenchmark` and `:benchmark:assembleBenchmark` are required:
+the former builds the shrunk App, the latter its instrumentation APK. The target
+APK configuration is non-transitive because App libraries are already inside
+that APK; resolving them again can select unrelated Desktop/JVM variants.
+
+APKs build before boot, avoiding competition between compilation and the device.
+`run-static-emulator.sh` creates a fresh 320x640, 160dpi KVM AVD from the fixed
+image, with no snapshots or online SDK tools. Boot/ADB readiness has two
+180-second polling windows with separately bounded ADB commands. Only a failed
+startup gets a second attempt with fresh data; assertions, App crashes, and tests
+are never rerun automatically. Missing tools/KVM fail before launch.
+
+`emulator-tests.sh` retains the NexusLauncher ANR readiness check and streams
+crash/system/event logcat to `runtime-events.txt` throughout testing. It also
+collects final diagnostics without replacing the test exit status. A missing
+JUnit/native report alone is not proof of an App crash: correlate these logs
+with instrumentation output and the job timeout/cancellation reason. Native
+environment reports remain required on API 35.
 
 ## Lint and translation coverage
 
@@ -78,6 +122,7 @@ the protection settings and retain the existing five checks and strict mode.
 
 ## Maintenance
 
-After workflow changes, run `actionlint` and the affected checks. For cache issues,
-inspect setup-gradle's cache report before scheduling another run. Generated test
-reports belong in Actions artifacts or local build directories, not in Git.
+After workflow changes, run `actionlint`, the script regression tests, and the
+affected Gradle input/task resolution. Exercise both cache hits and misses,
+including failed downloads, interrupted boot, and preserved test failures. Generated
+test reports belong in Actions artifacts or local build directories, not in Git.

@@ -15,21 +15,13 @@ concurrency:
 jobs:
   lint:
     name: Android Lint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '22'
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
-      # One cache owner, with no writes from PR or merge-group code.
-      - uses: gradle/actions/setup-gradle@v4
-        with:
-          cache-read-only: true
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Prepare fixed Android environment
+        id: environment
+        uses: ./.github/actions/android-environment
       - name: Check resource contracts
         shell: bash
         run: |
@@ -37,15 +29,14 @@ jobs:
           python3 .github/scripts/test_check_resources.py 2>&1 | tee build/reports/lint/resource-tests.log
           python3 .github/scripts/check_resources.py 2>&1 | tee build/reports/lint/resources.log
       - name: Run full app Debug Lint
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.environment.outcome == 'success' }}
         shell: bash
         run: |
           mkdir -p build/reports/lint
-          chmod +x ./gradlew
-          ./gradlew :app:lintDebug --console=plain --stacktrace --max-workers=2 2>&1 | tee build/reports/lint/gradle.log
+          ./gradlew --no-daemon :app:lintDebug --console=plain --stacktrace --max-workers=2 2>&1 | tee build/reports/lint/gradle.log
       - name: Upload Lint reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: android-lint-reports
           path: |

@@ -1,0 +1,41 @@
+name: Fixed Android environment
+description: Exact JDK and Android revisions with reusable tool and Gradle caches
+inputs:
+  api:
+    description: Optional emulator API, 24 or 35
+    default: ''
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+      id: java21
+      with:
+        distribution: temurin
+        java-version: '21.0.8+9'
+    - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+      with:
+        distribution: temurin
+        java-version: '22.0.2+9'
+    - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+      with:
+        # All checks reuse main's dependencies/transforms/build cache. Avoid six
+        # competing PR snapshots evicting the shared cache and fixed images.
+        cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+    - uses: ./.github/actions/android-sdk
+      with:
+        api: ${{ inputs.api }}
+    - name: Select fixed JDKs and local license data
+      shell: bash
+      env:
+        JAVA_21_HOME: ${{ steps.java21.outputs.path }}
+      run: |
+        export GRADLE_USER_HOME="${GRADLE_USER_HOME:-$HOME/.gradle}"
+        mkdir -p "$GRADLE_USER_HOME/init.d"
+        cat >> "$GRADLE_USER_HOME/gradle.properties" <<EOF
+        org.gradle.java.installations.auto-download=false
+        org.gradle.java.installations.auto-detect=false
+        org.gradle.java.installations.paths=$JAVA_21_HOME,$JAVA_HOME
+        android.builder.sdkDownload=false
+        EOF
+        cp .github/scripts/ci.init.gradle "$GRADLE_USER_HOME/init.d/hnovel-ci.gradle"
+        chmod +x ./gradlew

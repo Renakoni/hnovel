@@ -24,6 +24,12 @@ set -eu
 echo "$*" >> "$EMULATOR_CASE_ROOT/adb-calls"
 if [[ "$EMULATOR_CASE" == diagnostics-fail && -f "$EMULATOR_CASE_ROOT/ran" ]]; then exit 23; fi
 case "$*" in
+  'logcat -b crash -b events -b system -v threadtime')
+    echo $$ > "$EMULATOR_CASE_ROOT/logcat-pid"
+    echo 'AndroidRuntime: FATAL EXCEPTION: main'
+    touch "$EMULATOR_CASE_ROOT/stream-ready"
+    if [[ "$EMULATOR_CASE" == stream-fails ]]; then exit 23; fi
+    exec /bin/sleep 60 ;;
   'wait-for-device')
     if [[ "$EMULATOR_CASE" == report-offline || "$EMULATOR_CASE" == report-recovers && ! -f "$EMULATOR_CASE_ROOT/reconnected" ]]; then exit 17; fi ;;
   'reconnect offline')
@@ -63,6 +69,12 @@ case "$*" in
 esac
 ''')
         self.script('test-command', '''#!/usr/bin/env bash
+if [[ "$EMULATOR_CASE" == stream-* ]]; then
+  for attempt in {1..100}; do
+    [[ -f "$EMULATOR_CASE_ROOT/stream-ready" ]] && break
+    /bin/sleep 0.01
+  done
+fi
 printf '%s\n' "$@" >> "$EMULATOR_CASE_ROOT/ran"
 exit "$EMULATOR_TEST_EXIT"
 ''')
@@ -143,6 +155,16 @@ exit "$EMULATOR_TEST_EXIT"
 
     def test_diagnostic_failure_does_not_replace_test_exit_code(self):
         self.assertEqual(42, self.run_case('diagnostics-fail', 42))
+
+    def test_crash_events_survive_missing_report_and_logcat_process_is_stopped(self):
+        self.assertEqual(42, self.run_case('stream-crash', 42))
+        self.assertIn('FATAL EXCEPTION', (self.diagnostics / 'runtime-events.txt').read_text())
+        pid = int((self.root / 'logcat-pid').read_text())
+        with self.assertRaises(ProcessLookupError):
+            os.kill(pid, 0)
+
+    def test_stream_disconnect_does_not_replace_test_failure(self):
+        self.assertEqual(42, self.run_case('stream-fails', 42))
 
     def test_boot_logcat_failure_still_runs_the_original_command_once(self):
         self.assertEqual(0, self.run_case('boot-diagnostics-fail'), self.result.stderr)

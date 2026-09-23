@@ -1,9 +1,14 @@
-name: Warm Gradle cache
+name: Warm Android caches
 
 on:
   push:
     branches: [main]
     paths:
+      - '.github/actions/**'
+      - '.github/scripts/prepare-android-sdk.sh'
+      - '.github/scripts/ci.init.gradle'
+      - '.github/ci-environment/aboutlibraries/**'
+      - '.github/ci-environment/sdk-packages/**'
       - '.github/workflows/**'
       - '**/*.gradle.kts'
       - 'gradle/**'
@@ -16,26 +21,35 @@ permissions:
   contents: read
 
 concurrency:
-  group: gradle-cache-main
+  group: android-cache-main
   cancel-in-progress: false
 
 jobs:
   warm:
     if: github.ref == 'refs/heads/main'
     name: Populate main Gradle caches
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '22'
-      # setup-gradle also caches wrapper distributions; keep a single cache owner.
-      - uses: gradle/actions/setup-gradle@v4
-        with:
-          cache-read-only: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: ./.github/actions/android-environment
       - name: Warm dependency and compilation caches
-        run: |
-          chmod +x ./gradlew
-          ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest :app:compileDebugUnitTestKotlin --console=plain --stacktrace --max-workers=2
+        run: >-
+          ./gradlew --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest
+          :app:compileDebugUnitTestKotlin :benchmark:assembleBenchmark
+          --console=plain --stacktrace --max-workers=2
+
+  images:
+    if: github.ref == 'refs/heads/main'
+    name: Populate main API ${{ matrix.api }} image cache
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [24, 35]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: ./.github/actions/android-sdk
+        with:
+          api: ${{ matrix.api }}

@@ -41,6 +41,12 @@ androidComponents {
     }
 }
 
+// This configuration supplies the target APK. Its libraries are already packaged
+// in that APK; traversing them here selects unrelated Desktop/JVM variants.
+configurations.matching { it.name == "benchmarkTestedApks" }.configureEach {
+    isTransitive = false
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.test.ext.junit)

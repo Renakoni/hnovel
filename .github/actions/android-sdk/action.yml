@@ -1,0 +1,51 @@
+name: Fixed Android SDK
+description: Restore or install exact SDK and emulator revisions
+inputs:
+  api:
+    description: Optional emulator API, 24 or 35
+    default: ''
+runs:
+  using: composite
+  steps:
+    - name: Restore SDK cache
+      id: sdk
+      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      with:
+        path: |
+          ${{ runner.temp }}/hnovel-android-sdk/platforms
+          ${{ runner.temp }}/hnovel-android-sdk/build-tools
+          ${{ runner.temp }}/hnovel-android-sdk/platform-tools
+        key: android-linux-sdk37r2-build36-tools37.0.1-v1
+    - name: Restore emulator cache
+      if: inputs.api != ''
+      id: emulator
+      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      with:
+        path: |
+          ${{ runner.temp }}/hnovel-android-sdk/emulator
+          ${{ runner.temp }}/hnovel-android-sdk/system-images/android-${{ inputs.api }}
+        key: android-linux-emulator37.1.11-api${{ inputs.api }}-r24_27-r35_09-v1
+    - name: Prepare fixed SDK packages
+      shell: bash
+      env:
+        API_LEVEL: ${{ inputs.api }}
+      run: bash .github/scripts/prepare-android-sdk.sh "$API_LEVEL"
+    # Save successful preparation before tests, so a test failure does not force
+    # the next run to download the same multi-gigabyte image again.
+    - name: Save SDK cache
+      if: steps.sdk.outputs.cache-hit != 'true'
+      uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      with:
+        path: |
+          ${{ runner.temp }}/hnovel-android-sdk/platforms
+          ${{ runner.temp }}/hnovel-android-sdk/build-tools
+          ${{ runner.temp }}/hnovel-android-sdk/platform-tools
+        key: ${{ steps.sdk.outputs.cache-primary-key }}
+    - name: Save emulator cache
+      if: inputs.api != '' && steps.emulator.outputs.cache-hit != 'true'
+      uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      with:
+        path: |
+          ${{ runner.temp }}/hnovel-android-sdk/emulator
+          ${{ runner.temp }}/hnovel-android-sdk/system-images/android-${{ inputs.api }}
+        key: ${{ steps.emulator.outputs.cache-primary-key }}
