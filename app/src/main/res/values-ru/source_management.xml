@@ -6,6 +6,7 @@
     <string name="sources_account_section">Учётная запись</string>
     <string name="sources_account_name">Учётная запись: %1$s</string>
     <string name="sources_login_again">Войти снова</string>
+    <string name="sources_open_panel">Открыть панель источника</string>
     <string name="sources_account_required">Нужно войти снова</string>
     <string name="sources_account_loading">Загрузка состояния учётной записи…</string>
     <string name="sources_account_unknown">Не удалось прочитать состояние учётной записи</string>

@@ -558,10 +558,13 @@ class SourcesScreenTest {
         compose.onNodeWithText("Sign out").performScrollTo().performClick()
         verify(exactly = 1) { model.logout(id) }
         compose.onNodeWithText("Sign in again").performScrollTo().performClick()
+        verify(exactly = 1) { model.relogin(id) }
+        compose.onNodeWithText("Open source panel").performScrollTo().performClick()
         verify(exactly = 1) { model.beginLogin(id) }
         compose.runOnIdle { state = state.copy(busy = true) }
         compose.onNodeWithText("Sign out").assertIsNotEnabled()
         compose.onNodeWithText("Sign in again").assertIsNotEnabled()
+        compose.onNodeWithText("Open source panel").assertIsNotEnabled()
         compose.runOnIdle { state = state.copy(busy = false, loginStatus = LoginStatus.SessionSaved, accountName = null) }
         compose.onNodeWithText("Session saved").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Sign-in submitted").assertDoesNotExist()

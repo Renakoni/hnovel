@@ -65,6 +65,13 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
 
     private var cachedLoginForm: LoginForm? = null
 
+    /** A panel owns its form and execution ticket, while sharing the current account storage. */
+    fun openLoginSession(): RuleSource {
+        if (!authority.accepts(identity)) throw SourceContentException(ContentError.Unavailable, "login")
+        val ticket = authority.issue(identity.sourceId, identity.profile, identity.revision, identity.namespace, identity.accountGeneration)
+        return RuleSource(definition, ticket, authority, session, runner, trace, discoveryEnabled)
+    }
+
     suspend fun loginForm(): LoginForm = operation("loginUi") {
         (cachedLoginForm ?: loadLoginForm()).withValues(loginValues())
     }

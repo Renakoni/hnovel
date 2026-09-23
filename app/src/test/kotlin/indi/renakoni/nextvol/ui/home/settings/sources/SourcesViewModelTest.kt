@@ -76,7 +76,7 @@ class SourcesViewModelTest {
             model.beginLogin(id); idle()
             withTimeout(10000) { model.state.first { it.registry.singleOrNull()?.status == SourceStatus.Failed } }
             verify(exactly = 1) { source.onLoad() }
-            coVerify(exactly = 0) { login.begin(any()) }
+            coVerify(exactly = 0) { login.begin(any(), any()) }
             model.select(id)
             assertEquals("saved variable", idle().variable)
             assertEquals(id, idle().selected)
@@ -139,7 +139,7 @@ class SourcesViewModelTest {
         }
     }
 
-    @Test fun dynamicLoginFormBelongsToTheNewAccountAndCancellingItsLoadRetiresTheAttempt(): Unit = runBlocking {
+    @Test fun dynamicPanelUsesTheSavedAccountAndCancellingItsLoadKeepsTheAccount(): Unit = runBlocking {
         Dispatchers.setMain(Dispatchers.Unconfined)
         val root = Files.createTempDirectory("dynamic-login").toFile()
         val context = object : ContextWrapper(RuntimeEnvironment.getApplication()) {
@@ -150,7 +150,7 @@ class SourcesViewModelTest {
             val registry = WebSourceRegistry(fixture.authority)
             val accounts = SourceSessionManager(fixture.authority)
             val sources = ImportedRuleSources(context, registry, fixture.authority, accounts, fixture.runner)
-            val login = SourceLoginService(sources, accounts)
+            val login = spyk(SourceLoginService(sources, accounts))
             val model = SourcesViewModel(context, sources, SourceRevisionUpdates(context, sources, accounts, fixture.runner, fixture.authority), login, registry,
                 ZLibrarySources(context, registry, hnovel.network.StorageCipher.Plain))
             suspend fun idle() = withTimeout(10000) { model.state.first { !it.busy } }
@@ -165,7 +165,7 @@ class SourcesViewModelTest {
                 val id = sources.activate(committed.items.single().reference!!, listOf(NetworkGrant(fixture.server.url("/").toString(), true)))
                 sources.loginTarget(id).session.write(StorageRequest(StorageArea.Account, StorageRequestKey.LOGIN_INFO, "{\"user\":\"old-account\"}"))
                 model.beginLogin(id)
-                assertEquals("new-account", idle().loginForm!!.values["user"])
+                assertEquals("old-account", idle().loginForm!!.values["user"])
                 model.cancelLogin(); idle()
                 val previous = accounts.current(id).generation
                 val entered = CompletableDeferred<Unit>()
@@ -173,10 +173,22 @@ class SourcesViewModelTest {
                 model.beginLogin(id)
                 withTimeout(10000) { entered.await() }
                 model.cancel()
-                withTimeout(10000) { accounts.changes.first { (it[id] ?: 0) >= previous + 2 } }
                 assertNull(idle().loginForm)
+                assertEquals(previous, accounts.current(id).generation)
                 assertEquals(LoginStatus.LoggedOut, login.status(id))
                 assertEquals(0, fixture.documents.get())
+                fixture.afterRun = {}
+                model.beginLogin(id); idle()
+                val closed = CompletableDeferred<LoginAttempt>()
+                coEvery { login.cancel(any()) } coAnswers {
+                    callOriginal()
+                    closed.complete(firstArg())
+                    Unit
+                }
+                androidx.lifecycle.ViewModelStore().apply { put("sources", model); clear() }
+                val retired = withTimeout(10000) { closed.await() }
+                assertEquals(previous, accounts.current(id).generation)
+                assertTrue(runCatching { login.form(retired) }.isFailure)
             } finally { model.cancel(); sources.stop(); Dispatchers.resetMain(); root.deleteRecursively() }
         }
     }
@@ -208,7 +220,7 @@ class SourcesViewModelTest {
                 assertEquals(id, opened.selected)
                 assertEquals("user", opened.loginForm!!.fields.single().name)
                 val generation = accounts.current(id).generation
-                assertEquals(1L, generation)
+                assertEquals(0L, generation)
                 model.openFromDiscovery(id, true)
                 idle()
                 assertEquals(generation, accounts.current(id).generation)
@@ -231,6 +243,10 @@ class SourcesViewModelTest {
                 model.submitLogin(mapOf("user" to "next-reader"))
                 assertEquals("next-reader", idle().accountName)
                 model.beginLogin(id)
+                assertEquals(LoginStatus.LoginSubmitted, idle().loginStatus)
+                assertEquals("next-reader", idle().accountName)
+                model.cancelLogin(); idle()
+                model.relogin(id)
                 assertEquals(LoginStatus.LoggedOut, idle().loginStatus)
                 assertNull(idle().accountName)
                 model.cancelLogin()
@@ -336,7 +352,7 @@ class SourcesViewModelTest {
                 assertNull(idle().accountName)
                 val previous = sources.loginTarget(id)
                 httpStatus = 503
-                model.beginLogin(id)
+                model.relogin(id)
                 assertEquals(LoginStatus.LoggedOut, idle().loginStatus)
                 assertTrue(previous.session.closed)
                 assertNotEquals(previous.generation, sources.loginTarget(id).generation)
