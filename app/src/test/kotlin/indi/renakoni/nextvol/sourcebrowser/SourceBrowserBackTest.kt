@@ -13,7 +13,6 @@ import io.mockk.mockkObject
 import io.mockk.unmockkObject
 import io.mockk.verify
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonPrimitive
 import org.junit.After
 import org.junit.Before
 import org.junit.Assert.*
@@ -56,7 +55,7 @@ class SourceBrowserBackTest {
         controller.pause().stop().destroy()
     }
 
-    @Test fun loginBackNavigatesHistoryThenCompletesOnceEvenAfterDestruction() {
+    @Test fun loginBackNavigatesHistoryThenCancelsOnceEvenAfterDestruction() {
         val results = mutableListOf<BrokerResult>()
         val service = sourceService(results)
         val view = service.webView!!
@@ -69,14 +68,13 @@ class SourceBrowserBackTest {
         assertFalse(controller.get().isFinishing)
         shadowOf(view).setCanGoBack(false)
         back(controller.get())
-        shadowOf(view).lastEvaluatedJavascriptCallback.onReceiveValue(JsonPrimitive("""{"value":"signed in"}""").toString())
-        idleMainLooper()
+        assertNull(shadowOf(view).lastEvaluatedJavascript)
         assertTrue(controller.get().isFinishing)
         controller.pause().stop().destroy()
         service.fail()
         idleMainLooper()
         assertEquals(1, results.size)
-        assertEquals("signed in", (results.single() as BrokerResult.Success).response.text())
+        assertEquals(FailureCode.BrowserRequired, (results.single() as BrokerResult.Failure).code)
     }
 
     @Test fun verificationBackCancelsEvenWithHistoryAndCompletesOnce() {
@@ -92,7 +90,7 @@ class SourceBrowserBackTest {
         assertEquals(0, shadowOf(view).goBackInvocations)
         assertNull(shadowOf(view).lastEvaluatedJavascript)
         assertEquals(1, results.size)
-        assertTrue(results.single() is BrokerResult.Failure)
+        assertEquals(FailureCode.BrowserRequired, (results.single() as BrokerResult.Failure).code)
     }
 
     @Test fun recreationKeepsLoginPendingAndReattachesItsWebView() {

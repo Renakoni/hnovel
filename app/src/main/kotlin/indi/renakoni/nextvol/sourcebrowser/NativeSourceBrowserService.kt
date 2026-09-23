@@ -253,12 +253,7 @@ class NativeSourceBrowserService : Service() {
             val script = job.options.script.ifBlank { "document.documentElement.outerHTML" }
             view.evaluateJavascript("""
                 (function(){try {
-                    var challenge=window._cf_chl_opt || /^\s*Just a moment/i.test(document.title) ? 'Cloudflare' :
-                        /^\/WAF\/VERIFY\/CAPTCHA/i.test(location.pathname) &&
-                        (/^\s*Verify Yourself\s*${'$'}/i.test(document.title) || document.querySelector('form#ui-form')) ? 'SiteVerification' :
-                        /^\/antibot(\/|${'$'})/.test(location.pathname) || /^\s*人机校验/.test(document.title) ||
-                        document.querySelector('form#J_ManMachineVerify') ? 'SiteVerification' :
-                        /^\/login(\/|${'$'})/.test(location.pathname) && document.querySelector('input[type=password]') ? 'Login' : null;
+                    var challenge=$websiteChallengeScript;
                     return JSON.stringify({url:location.href,challenge:challenge,value:challenge ? null : eval(${JsonPrimitive(script)})});
                 }catch(e){return null;}})()
             """.trimIndent()) { encoded ->

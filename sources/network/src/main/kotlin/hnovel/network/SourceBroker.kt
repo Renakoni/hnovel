@@ -397,16 +397,23 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
             cache.get(cacheKey)?.let {
                 if (it.body.size > (request.maxResponseBytes ?: limits.maxResponseBytes))
                     return BrokerResult.Failure(RequestStage.Response, FailureCode.ResponseTooLarge)
-                return BrokerResult.Success(it)
+                // A previously cached verification page is not a readable document.
+                // Raw API callers still receive their original response unchanged.
+                if (!detectChallenges || request.kind != ResourceKind.Document || websiteChallenge(it) == null)
+                    return BrokerResult.Success(it)
             }
             if (request.cache == CacheMode.Only) return BrokerResult.Failure(RequestStage.Response, FailureCode.CacheMiss)
         }
         for (attempt in 0..request.retry) {
             try {
-                val response = redirects(request, initialUrl, guard, policy, paceSource, route)
+                var response = redirects(request, initialUrl, guard, policy, paceSource, route)
                 // Raw java.ajax/connect responses and browser subrequests must remain available
                 // to source login/check scripts. Detect challenges before document extraction.
                 if (detectChallenges && request.kind == ResourceKind.Document) {
+                    // Preserve the existing one-shot cookie bootstrap for GET documents.
+                    // POST must reach verification without silently replaying its body.
+                    if (request.method == "GET" && isCookieRefreshChallenge(response))
+                        response = redirects(request, initialUrl, guard, policy, paceSource, route)
                     websiteChallenge(response)?.let { challenge ->
                         return BrokerResult.Failure(RequestStage.Response, FailureCode.BrowserRequired, attempt,
                             challenge = challenge, verificationRequest = request)
