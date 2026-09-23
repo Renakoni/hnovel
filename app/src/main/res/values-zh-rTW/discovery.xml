@@ -4,6 +4,9 @@
     <string name="categories_empty">此書源未傳回分類。</string>
     <string name="discovery_refresh">重新整理</string>
     <string name="discovery_retry">重試</string>
+    <string name="discovery_load_failed">無法載入此內容</string>
+    <string name="discovery_error_details">錯誤詳情</string>
+    <string name="discovery_error_type">錯誤類型：%1$s</string>
     <string name="discovery_apply">套用</string>
     <string name="discovery_rule_field">書源規則：%1$s</string>
     <string name="discovery_source_action">書源操作</string>

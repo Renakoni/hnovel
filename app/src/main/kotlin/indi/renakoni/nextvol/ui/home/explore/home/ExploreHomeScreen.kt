@@ -156,7 +156,7 @@ private fun ExploreRowSection(
         }
 
         row.previewFailure?.let { failure ->
-            DiscoveryFailure(failure.error, { onClickExpand(row) }, onManageSources, back = null,
+            DiscoveryFailure(failure.error, if (row.more != null) ({ onClickExpand(row) }) else null, onManageSources, back = null,
                 field = failure.field, permission = failure.permission)
         }
         val lazyRowState = rememberLazyListState()
