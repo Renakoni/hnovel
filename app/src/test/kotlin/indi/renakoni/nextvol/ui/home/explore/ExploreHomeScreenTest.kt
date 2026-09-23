@@ -217,6 +217,40 @@ class ExploreHomeScreenTest {
         assertEquals(section, opened)
     }
 
+    @Test fun multipleFailedPreviewsKeepDetailsSeparateAndSuccessfulBooksBrowsable() {
+        val id = Identifier("fixture", "Partial source")
+        val broken = SourceDiscoverySection("broken", "Broken preview", emptyList(), SourceDiscoveryTarget(id, "/broken"),
+            previewFailure = DiscoveryPreviewFailure(DiscoveryError.InvalidRules, "header"))
+        val noTarget = broken.copy(id = "no-target", title = "Preview without a list", more = null,
+            previewFailure = DiscoveryPreviewFailure(DiscoveryError.Network, "ruleExplore.bookList"))
+        val page = content(id).copy(sections = listOf(broken, noTarget) + content(id).sections)
+        val opened = mutableListOf<SourceDiscoverySection>()
+        val books = mutableListOf<SourceBookId>()
+        activity.get().setContent { MaterialTheme {
+            ExploreHomeScreen(DiscoveryPageState(listOf(listing(id)), id, mapOf(id to page)),
+                {}, { _, _ -> }, {}, { opened += it }, { books += it }, {}, {}, { _, _ -> }, { _, _ -> }, {})
+        } }
+        compose.onNodeWithText("Source rule:", substring = true).assertDoesNotExist()
+        compose.onNodeWithText("This list has no books yet.").assertDoesNotExist()
+        compose.onAllNodesWithText("Error details").onFirst().performClick()
+        compose.onNodeWithText("Source rule: header").assertIsDisplayed()
+        compose.onNodeWithText("Error type: InvalidRules").assertIsDisplayed()
+        compose.onNodeWithText("Source rule: ruleExplore.bookList").assertDoesNotExist()
+        compose.onNodeWithText("Close").performClick()
+        compose.onNodeWithText("Retry").performClick()
+        assertEquals(listOf(broken), opened)
+        compose.onNode(hasScrollToIndexAction() and SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange))
+            .performScrollToIndex(1)
+        compose.onNodeWithText("Preview without a list").assertIsDisplayed()
+        compose.onNodeWithText("Retry").assertDoesNotExist()
+        compose.onAllNodesWithText("Error details").onFirst().performClick()
+        compose.onNodeWithText("Source rule: ruleExplore.bookList").assertIsDisplayed()
+        compose.onNodeWithText("Error type: Network").assertIsDisplayed()
+        compose.onNodeWithText("Close").performClick()
+        compose.onNode(hasClickAction() and hasText("Same book")).performScrollTo().performClick()
+        assertEquals(listOf(SourceBookId(id, "same")), books)
+    }
+
     @Test fun ruleInputsAndActionsShareTheFeedAndFailuresKeepVisibleContent() {
         val id = Identifier("fixture", "Rule source")
         val input = mutableListOf<Pair<String, String>>()

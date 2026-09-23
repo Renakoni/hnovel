@@ -123,7 +123,7 @@ class CategoriesScreenTest {
         assertTrue(clicked.single().target.target.isNotBlank())
     }
 
-    @Test fun processingLimitIsVisibleWithItsSourceField() {
+    @Test fun processingLimitIsVisibleWithItsSourceFieldInDetails() {
         val id = Identifier("fixture", "limited")
         activity.get().setContent { MaterialTheme {
             CategoriesScreen(DiscoveryPageState(listOf(listing(id, "Large source")), id,
@@ -131,7 +131,10 @@ class CategoriesScreenTest {
                 {}, {}, { _, _ -> }, {}, {}, {}, {})
         } }
         compose.onNodeWithText("The source exceeded a processing limit. Check source diagnostics or update the source.").assertExists()
+        compose.onNodeWithText("Source rule: exploreUrl").assertDoesNotExist()
+        compose.onNodeWithText("Error details").performClick()
         compose.onNodeWithText("Source rule: exploreUrl").assertExists()
+        compose.onNodeWithText("Error type: Limit").assertExists()
     }
 
     @Test fun emptyStateOpensSourceManagement() {

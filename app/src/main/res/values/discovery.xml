@@ -4,6 +4,9 @@
     <string name="categories_empty">This source returned no categories.</string>
     <string name="discovery_refresh">Refresh</string>
     <string name="discovery_retry">Retry</string>
+    <string name="discovery_load_failed">Could not load this content.</string>
+    <string name="discovery_error_details">Error details</string>
+    <string name="discovery_error_type">Error type: %1$s</string>
     <string name="discovery_apply">Apply</string>
     <string name="discovery_rule_field">Source rule: %1$s</string>
     <string name="discovery_source_action">Source action</string>
