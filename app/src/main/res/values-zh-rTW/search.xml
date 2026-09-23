@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="search_input_hint">書名或關鍵字</string>
+    <string name="search_source_count">%1$d 個可搜尋書源</string>
+    <string name="search_delete_history_entry">刪除搜尋記錄：%1$s</string>
+    <string name="search_start_title">尋找下一本想讀的書</string>
+    <string name="search_start_description">搜尋已啟用的書源，也可以選擇分組縮小範圍。</string>
+    <string name="search_book_count">找到 %1$d 本書</string>
+    <string name="search_progress">已搜尋 %1$d / %2$d 個書源</string>
+    <string name="search_stopped">搜尋已暫停</string>
+    <string name="search_stop">暫停搜尋</string>
+    <string name="search_resume">繼續搜尋</string>
+    <string name="search_failure_count">%1$d 個未完成</string>
+    <string name="search_empty_description">試試其他關鍵字，或切換書源分組。</string>
+    <string name="search_incomplete_title">部分書源未完成搜尋</string>
+    <string name="search_incomplete_description">暫未找到書籍。可以查看未完成的書源並重試。</string>
+    <string name="search_result_limit">最多顯示 1000 本書，請使用更具體的關鍵字或書源分組縮小範圍。</string>
+    <string name="search_load_more">載入更多書籍</string>
+    <string name="search_retry_failed">重試未完成的書源</string>
+    <string name="search_book_unavailable">書籍資訊暫不可用</string>
+    <string name="search_book_loading">正在載入書籍資訊…</string>
+    <string name="search_no_sources">此分組暫無可搜尋書源</string>
+    <string name="search_no_sources_description">請選擇其他分組，或前往書源管理啟用書源。</string>
+</resources>

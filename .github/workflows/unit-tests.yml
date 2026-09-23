@@ -41,6 +41,8 @@ jobs:
           path: |
             app/build/reports/tests/testDebugUnitTest
             app/build/test-results/testDebugUnitTest
+            app/hs_err_pid*.log
+            app/replay_pid*.log
             epub/build/reports/tests/test
             epub/build/test-results/test
             sources/rules/build/reports/tests/test
