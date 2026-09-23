@@ -113,7 +113,7 @@ class SourceBrowserInstrumentedTest {
     @Test fun defaultRenderingWaitsForDynamicChapterText(): Unit = runBlocking {
         MockWebServer().use { server ->
             server.enqueue(MockResponse().setHeader("Content-Type", "text/html").setBody("""
-                <html><body><main id="chapter"></main><script>
+                <html><head><title>Just a moment</title></head><body><main id="chapter"></main><script>
                 setTimeout(function(){document.getElementById('chapter').textContent='dynamic chapter';},500);
                 </script></body></html>
             """.trimIndent()))

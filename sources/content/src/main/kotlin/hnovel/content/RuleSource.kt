@@ -573,11 +573,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
     }
     private suspend fun fetch(context: RuleEvaluation, url: String, field: String, browser: BrowserOptions? = null,
         acceptErrorResponse: Boolean = false): PageDocument {
-        var response = request(context, url, field, browser = browser)
-        // A few public sites issue a short-lived cookie and a meta-refresh challenge
-        // before serving the document. The source cookie jar already captures Set-Cookie;
-        // retry that exact GET once so these sites work without requiring a manual browser step.
-        if (isCookieRefreshChallenge(response)) response = request(context, url, field, browser = browser)
+        val response = request(context, url, field, browser = browser)
         val inline = response.protocol == "data"
         context.baseUrl = if (inline) url else response.finalUrl
         if (spec.loginCheck.isBlank()) {
@@ -599,12 +595,6 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         return PageDocument(value.getValue("body").jsonPrimitive.content, finalUrl, inline, context.baseUrl)
     }
 
-    private fun isCookieRefreshChallenge(response: BrokerResponse): Boolean {
-        if (response.status != 401 || response.method != "GET") return false
-        if (response.headers.keys.none { it.equals("Set-Cookie", ignoreCase = true) }) return false
-        return Regex("<meta\\s+[^>]*http-equiv\\s*=\\s*['\\\"]?refresh", RegexOption.IGNORE_CASE)
-            .containsMatchIn(response.text())
-    }
     private fun verification(failure: BrokerResult.Failure): SourceVerification? {
         val certificate = failure.certificate
         if (failure.code == hnovel.network.FailureCode.Certificate && certificate != null) {
