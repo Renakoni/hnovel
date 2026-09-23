@@ -26,7 +26,7 @@ internal fun SourceCatalogAddScreen(state: SourceManagementState, tab: Int, onTa
     onCategory: (SourceCategory) -> Unit, onCancel: () -> Unit, modifier: Modifier = Modifier) {
     Column(modifier.fillMaxSize()) {
         PrimaryTabRow(selectedTabIndex = tab) {
-            listOf(R.string.source_catalog_tab, R.string.source_import_tab).forEachIndexed { index, title ->
+            listOf(R.string.source_import_tab, R.string.source_catalog_tab).forEachIndexed { index, title ->
                 Tab(selected = tab == index, onClick = { onTab(index) },
                     selectedContentColor = MaterialTheme.colorScheme.onSurface,
                     unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -40,7 +40,7 @@ internal fun SourceCatalogAddScreen(state: SourceManagementState, tab: Int, onTa
             }
             item { Text(stringResource(R.string.source_groups_import_help), style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            if (tab == 0) {
+            if (tab == 1) {
                 val grouped = state.catalog.groupBy { it.category }
                 items(SourceCategory.entries.chunked(2)) { categories ->
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
