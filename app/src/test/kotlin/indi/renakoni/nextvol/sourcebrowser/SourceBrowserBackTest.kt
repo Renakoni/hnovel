@@ -2,8 +2,10 @@ package indi.renakoni.nextvol.sourcebrowser
 
 import android.app.Activity
 import android.app.Application
+import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.webkit.WebView
+import android.window.OnBackInvokedCallback
 import hnovel.network.*
 import io.mockk.every
 import io.mockk.mockk
@@ -13,6 +15,7 @@ import io.mockk.verify
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 import org.junit.After
+import org.junit.Before
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -21,12 +24,17 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowApplication
 import org.robolectric.shadows.ShadowLooper.idleMainLooper
 import org.robolectric.util.ReflectionHelpers
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [24, 27, 35], application = Application::class)
 class SourceBrowserBackTest {
+    @Before fun enableSystemBack() {
+        if (Build.VERSION.SDK_INT >= 33) ShadowApplication.setEnableOnBackInvokedCallback(true)
+    }
+
     @After fun clearActiveBrowsers() {
         SourceBrowserService.active = null
         NativeSourceBrowserService.active = null
@@ -95,6 +103,10 @@ class SourceBrowserBackTest {
         assertSame(controller.get(), service.activity)
         assertNotNull(service.webView!!.parent)
         assertTrue(results.isEmpty())
+        shadowOf(service.webView!!).setCanGoBack(true)
+        back(controller.get())
+        assertEquals(1, shadowOf(service.webView!!).goBackInvocations)
+        assertTrue(results.isEmpty())
         controller.get().finish()
         controller.pause().stop().destroy()
         idleMainLooper()
@@ -126,16 +138,48 @@ class SourceBrowserBackTest {
         controller.recreate()
         assertSame(controller.get(), service.activity)
         verify(exactly = 0) { service.cancel() }
+        shadowOf(service.webView!!).setCanGoBack(true)
+        back(controller.get())
+        assertEquals(1, shadowOf(service.webView!!).goBackInvocations)
+        verify(exactly = 0) { service.cancel() }
         controller.get().finish()
         controller.pause().stop().destroy()
         assertNull(service.activity)
         verify(exactly = 1) { service.cancel() }
     }
 
+    @Test @Config(sdk = [35]) fun unregisterRestoresThePreviousCallbackWhileTheWindowIsAlive() {
+        val controller = Robolectric.buildActivity(Activity::class.java).setup()
+        val activity = controller.get()
+        val previous = systemCallback(activity)
+        var calls = 0
+        val back = SourceBrowserBack(activity) { calls++ }
+        back.register()
+        assertNotSame(previous, systemCallback(activity))
+        systemCallback(activity)!!.onBackInvoked()
+        assertEquals(1, calls)
+        back.unregister()
+        assertSame(previous, systemCallback(activity))
+        back.register()
+        systemCallback(activity)!!.onBackInvoked()
+        assertEquals(2, calls)
+        back.unregister()
+        controller.pause().stop().destroy()
+    }
+
+    private fun systemCallback(activity: Activity): OnBackInvokedCallback? =
+        ReflectionHelpers.callInstanceMethod(
+            checkNotNull(activity.window.decorView.findOnBackInvokedDispatcher()), "getTopCallback")
+
     private fun back(activity: Activity) {
         idleMainLooper()
-        @Suppress("DEPRECATION")
-        activity.onBackPressed()
+        if (Build.VERSION.SDK_INT >= 33) {
+            // Read the window's registered callback so missing registration cannot pass via the legacy override.
+            checkNotNull(systemCallback(activity)).onBackInvoked()
+        } else {
+            @Suppress("DEPRECATION")
+            activity.onBackPressed()
+        }
         idleMainLooper()
     }
 

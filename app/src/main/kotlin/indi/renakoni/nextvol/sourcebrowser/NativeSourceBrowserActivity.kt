@@ -1,5 +1,6 @@
 package indi.renakoni.nextvol.sourcebrowser
 
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.os.Bundle
 import android.view.ViewGroup
@@ -23,6 +24,8 @@ class NativeSourceBrowserActivity : Activity() {
     private fun handleBack() {
         if (browser?.webView?.canGoBack() == true) browser?.webView?.goBack() else browser?.cancel()
     }
+    // API 24-32 fallback; API 33+ uses SourceBrowserBack's registered callback.
+    @SuppressLint("GestureBackNavigation")
     @Suppress("DEPRECATION")
     override fun onBackPressed() = handleBack()
     override fun onDestroy() {
