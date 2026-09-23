@@ -57,6 +57,7 @@ class SourceCatalogScreenTest {
         val restoration = StateRestorationTester(contentRule)
         restoration.setContent { MaterialTheme { SourcesScreen(state, model, onDiagnostics = {}) {} } }
         compose.onNodeWithText("Add book source").performClick()
+        compose.onNodeWithText("Categories").performClick()
         compose.onNodeWithText("Female fiction").performClick()
         compose.onNodeWithText("Official source").assertDoesNotExist()
         compose.onNodeWithText("0 selected").assertIsDisplayed()
@@ -83,7 +84,7 @@ class SourceCatalogScreenTest {
         val restoration = StateRestorationTester(contentRule)
         restoration.setContent { MaterialTheme { SourcesScreen(state, model, onDiagnostics = {}) {} } }
         compose.onNodeWithText("Add book source").performClick()
-        compose.onNodeWithText("Categories").assertIsDisplayed()
+        compose.onNodeWithText("Categories").performClick()
         compose.onNodeWithText("Official platforms; some works may require payment.").assertIsDisplayed()
         compose.onNodeWithText("Official sites").performClick()
         compose.onNodeWithText("0 selected").assertIsDisplayed()
@@ -110,7 +111,7 @@ class SourceCatalogScreenTest {
     @Test fun importTabUsesTheExistingUrlAndFileEntryPoints() {
         activity.get().setContent { MaterialTheme { SourcesScreen(state, model, onDiagnostics = {}) {} } }
         compose.onNodeWithText("Add book source").performClick()
-        compose.onNodeWithText("Import").performClick()
+        compose.onNodeWithText("Import").assertIsSelected()
         compose.onNodeWithText("Download and preview").assertIsNotEnabled()
         compose.onNode(hasSetTextAction()).performTextInput("https://fixture.invalid/sources.json")
         compose.onNodeWithText("Download and preview").performClick()
