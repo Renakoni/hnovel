@@ -161,7 +161,7 @@ require separate live evidence; owned browser fixtures prove only the recovery m
 
 ## State and storage ownership
 
-Persistent config keys use source+profile; account KV/cookies also include account generation.
+Persistent config keys use source+profile; account KV/cookies and script caches also include account generation.
 Opening a new account generation retires the old session, preserves config and starts separate
 account state. A source/profile can only have one active session in a broker. Host grant changes
 require closing the existing session first. No current-source global or UI state is read.
@@ -177,13 +177,27 @@ symlinks/aliases outside the controlled directory. Null writes delete a key. Sto
 not encrypted by this module; the caller supplies app-private storage, and IPC/process access
 restrictions are #86's responsibility.
 
-`StorageArea.Cache` provides bounded session-local get/put/delete and per-entry TTL.
+`StorageArea.Cache` provides bounded persistent script get/put/delete and per-entry TTL.
+This includes both `cache.put` and `cache.putFile`; all values belong to the source,
+profile and account generation. Restart and revision replacement retain them for
+the same account. Logout/relogin clears the retired account's values, and a new
+generation never reads them even if cleanup is interrupted. Revoked sessions
+cannot write late values.
+
+Legacy script caches used only source/profile ownership and cannot be reliably
+classified as public or private by key names. On opening a source, its old script
+cache partition is cleared (best effort) without copying values into the new partition. Public
+script cache entries are also invalidated at upgrade and account rotation; sources
+must rebuild them. Durable source preferences belong in `source.put`/Config and
+retain their existing lifetime. BookState, downloaded resources, local books,
+images, content and reading progress are not script cache entries and are retained.
+
 `RequestVariables` is a separate bounded frame, copied per invocation, with snapshot reads.
-Neither is durable source configuration. HTTP GET caching is opt-in, keyed by URL/response
+Neither cache is durable source configuration. HTTP GET caching is opt-in, keyed by URL/response
 charset/effective headers (including scoped credentials); it is a host cache with a fixed TTL,
 not a claim to implement all HTTP cache directives. Cookie/account changes preserve cached
 bodies; changed effective headers choose their own entries, and hits never replay Set-Cookie.
-Source-account/runtime replacement inherits the same source caches. Cache-only misses fail
+Source-account/runtime replacement inherits the HTTP response cache. Cache-only misses fail
 without DNS/network, response arrays are copied, and ordinary TTL/eviction still apply.
 
 Serializable DTOs define the later IPC payloads. Their diagnostic strings omit headers,

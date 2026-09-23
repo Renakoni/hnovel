@@ -189,7 +189,7 @@ class SourceLoginServiceTest {
                 val fresh = sources.loginTarget(a).session
                 assertEquals(StorageResult.Value(null), fresh.read(StorageRequest(StorageArea.Account, StorageRequestKey.LOGIN_INFO)))
                 assertEquals(StorageResult.Value("note-alice"), fresh.read(StorageRequest(StorageArea.Config, "value:saved")))
-                assertEquals(StorageResult.Value("cached-alice"), fresh.read(StorageRequest(StorageArea.Cache, "value:saved")))
+                assertEquals(StorageResult.Value(null), fresh.read(StorageRequest(StorageArea.Cache, "value:saved")))
                 assertEquals(record, fresh.read(StorageRequest(StorageArea.BookState, "content/book/$digest")))
                 assertEquals(StorageResult.Value(null), fresh.read(StorageRequest(StorageArea.Account, StorageRequestKey.LOGIN_HEADERS)))
                 assertEquals("", fresh.cookie(fixture.server.url("/").toString()))

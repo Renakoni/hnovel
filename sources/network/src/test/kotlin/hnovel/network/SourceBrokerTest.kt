@@ -382,7 +382,7 @@ class SourceBrokerTest {
             assertEquals("two", two.get("name"))
             val newer = broker.open(scope(generation = 1), emptyList())
             assertTrue(a.closed)
-            assertEquals(StorageResult.Value("cached"), newer.read(StorageRequest(StorageArea.Cache, "saved")))
+            assertEquals(StorageResult.Value(null), newer.read(StorageRequest(StorageArea.Cache, "saved")))
             assertEquals(StorageResult.Value("config"), newer.read(StorageRequest(StorageArea.Config, "../../outside")))
             assertEquals(StorageResult.Value(null), newer.read(StorageRequest(StorageArea.Account, "name")))
             for (other in listOf(scope("b"), scope(profile = "other"))) {
