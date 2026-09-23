@@ -17,7 +17,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import indi.renakoni.nextvol.R
 import io.nightfish.lightnovelreader.api.ui.components.SettingsClickableEntry
 
@@ -43,7 +43,7 @@ internal fun ReaderPaperPage(
             TopAppBar(
                 windowInsets = windowInsets,
                 title = { Text(stringResource(R.string.paper_settings),
-                    style = MaterialTheme.typography.displayLarge, fontWeight = FontWeight.W600) },
+                    style = MaterialTheme.typography.displayLarge, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(painterResource(R.drawable.arrow_back_24px), stringResource(R.string.sources_back))

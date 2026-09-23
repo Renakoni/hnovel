@@ -14,6 +14,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import indi.renakoni.nextvol.R
 import io.nightfish.lightnovelreader.api.web.discovery.DiscoveryError
@@ -24,7 +25,8 @@ import indi.renakoni.nextvol.ui.home.settings.sources.SourcePermissionLabel
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun DiscoveryTopBar(title: String, onBack: () -> Unit, onRefresh: () -> Unit, onSettings: () -> Unit) {
-    TopAppBar(title = { Text(title) }, navigationIcon = {
+    TopAppBar(title = { Text(title, style = MaterialTheme.typography.displayLarge,
+        maxLines = 1, overflow = TextOverflow.Ellipsis) }, navigationIcon = {
         IconButton(onClick = onBack) { Icon(painterResource(R.drawable.arrow_back_24px), stringResource(R.string.sources_back)) }
     }, actions = {
         TextButton(onClick = onRefresh) { Text(stringResource(R.string.discovery_refresh)) }

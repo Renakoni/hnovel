@@ -97,7 +97,8 @@ fun LocalBookImportDialog(
                 topBar = {
                     Column {
                         TopAppBar(
-                            title = { Text(stringResource(if (relinkState == null) R.string.local_book_import else R.string.local_file_relink_action), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            title = { Text(stringResource(if (relinkState == null) R.string.local_book_import else R.string.local_file_relink_action),
+                                style = MaterialTheme.typography.displayLarge, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                             navigationIcon = {
                                 IconButton(onClick = onDismiss, enabled = !state.importing) {
                                     Icon(painterResource(R.drawable.arrow_back_24px), stringResource(R.string.cancel))
