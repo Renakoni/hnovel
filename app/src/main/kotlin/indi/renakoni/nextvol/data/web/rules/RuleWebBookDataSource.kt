@@ -38,9 +38,9 @@ internal class RuleWebBookDataSource(override val id: Identifier, private val so
     override val discoveryProvider = RuleDiscoveryProvider(source, recovery = recovery)
     override val searchProvider: SearchProvider = object : SearchProvider, PagedSearchProvider {
         override val searchTypes = if (source.canSearch) listOf(SearchType("keyword", LocalString(R.string.sources_search_type), LocalString(R.string.sources_search_hint))) else emptyList()
-        override suspend fun searchPage(type: SearchType, keyword: String, page: Int): SearchPage {
+        override suspend fun searchPage(type: SearchType, keyword: String, page: Int, query: String?): SearchPage {
             if (page !in 1..64) throw SourceContentException(ContentError.Limit, "ruleSearch")
-            val books = request { source.search(keyword, page) }.getOrElse {
+            val books = request { source.search(keyword, page, query) }.getOrElse {
                 throw (it.throwable ?: SourceContentException(ContentError.Unavailable, "ruleSearch"))
             }
             return SearchPage(books.map { SearchResult.MultipleBook(it.id, it.information()) },
@@ -48,8 +48,9 @@ internal class RuleWebBookDataSource(override val id: Identifier, private val so
         }
         override fun search(searchType: SearchType, keyword: String) = flow {
             val seen = mutableSetOf<String>()
+            val query = java.util.UUID.randomUUID().toString()
             for (page in 1..64) {
-                val result = request { source.search(keyword, page) }
+                val result = request { source.search(keyword, page, query) }
                 result.onErr { emit(SearchResult.Error(it.throwable ?: IllegalStateException(it.message))) }
                 if (result.isErr) return@flow
                 var added = false

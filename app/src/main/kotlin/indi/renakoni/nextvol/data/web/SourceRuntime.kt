@@ -125,8 +125,8 @@ class SourceRuntime internal constructor(
 
     internal val hasSearchPages get() = source.searchProvider is PagedSearchProvider
 
-    internal fun searchPage(type: SearchType, keyword: String, page: Int): Flow<SearchPage> = observe {
-        flow { emit((source.searchProvider as PagedSearchProvider).searchPage(type, keyword, page)) }
+    internal fun searchPage(type: SearchType, keyword: String, page: Int, query: String? = null): Flow<SearchPage> = observe {
+        flow { emit((source.searchProvider as PagedSearchProvider).searchPage(type, keyword, page, query)) }
     }
 
     internal fun retire() {

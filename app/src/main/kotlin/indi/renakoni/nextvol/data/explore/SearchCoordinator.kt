@@ -31,13 +31,13 @@ class SearchCoordinator internal constructor(private val explore: ExploreReposit
     private val gate = Semaphore(4)
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    internal fun search(keyword: String, requests: List<SearchRequest>): Flow<SearchBatch> = requests.asFlow()
+    internal fun search(keyword: String, requests: List<SearchRequest>, query: String? = null): Flow<SearchBatch> = requests.asFlow()
         .flatMapMerge(concurrency = 4) { request ->
-            flow { gate.withPermit { emitAll(load(keyword, request)) } }.flowOn(io)
+            flow { gate.withPermit { emitAll(load(keyword, request, query)) } }.flowOn(io)
         }
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    private fun load(keyword: String, request: SearchRequest): Flow<SearchBatch> = flow {
+    private fun load(keyword: String, request: SearchRequest, query: String?): Flow<SearchBatch> = flow {
         val pending = mutableListOf<SearchResult.MultipleBook>()
         val seen = hashSetOf<String>()
         var failure: SourceSearchFailure? = null
@@ -50,7 +50,7 @@ class SearchCoordinator internal constructor(private val explore: ExploreReposit
                     return@withTimeout
                 }
                 if (session.hasPages) {
-                    val page = session.page(session.types.first(), keyword, request.page).first()
+                    val page = session.page(session.types.first(), keyword, request.page, query).first()
                     pending += page.books.take(SEARCH_RESULT_LIMIT)
                     limited = page.books.size > SEARCH_RESULT_LIMIT
                     next = page.nextPage

@@ -37,7 +37,7 @@ internal class ZLibrarySource(private val context: Context, private val session:
     override suspend fun isOffLine() = false
     override val searchProvider: SearchProvider = object : SearchProvider, PagedSearchProvider {
         override val searchTypes = modes.map { SearchType(it.id, LocalString(it.label), LocalString(R.string.zlibrary_search_hint)) }
-        override suspend fun searchPage(type: SearchType, keyword: String, page: Int): SearchPage {
+        override suspend fun searchPage(type: SearchType, keyword: String, page: Int, query: String?): SearchPage {
             val mode = modes.find { it.id == type.type } ?: throw SourceRequestException(DiscoveryError.InvalidRequest)
             if (page > 25) throw SourceRequestException(DiscoveryError.Limit)
             val response = client.search(keyword, page, mode.language, mode.format)

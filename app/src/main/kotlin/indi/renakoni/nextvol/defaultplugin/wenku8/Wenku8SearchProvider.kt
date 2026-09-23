@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.Flow
 class Wenku8SearchProvider(
     val dispatcher: BookRequestDispatcher
 ): AbstractSearchProvider(), PagedSearchProvider {
-    override suspend fun searchPage(type: SearchType, keyword: String, page: Int) =
+    override suspend fun searchPage(type: SearchType, keyword: String, page: Int, query: String?) =
         dispatcher.source.first().searchPage(type.type, keyword, page)
 
     override fun search(
