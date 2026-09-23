@@ -11,7 +11,8 @@ runs:
       id: java21
       with:
         distribution: temurin
-        java-version: '21.0.8+9'
+        # setup-java compares the full Adoptium SemVer, including the LTS suffix.
+        java-version: '21.0.8+9.0.LTS'
     - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
       with:
         distribution: temurin
