@@ -30,4 +30,4 @@ if [[ "$(timeout 15s adb shell getprop ro.build.version.sdk | tr -d '\r')" == 24
   exit 0
 fi
 # Keep app storage until the workflow pulls fixture reports; the emulator is disposable.
-./gradlew :app:connectedDebugAndroidTest -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true "-Pandroid.testInstrumentationRunnerArguments.class=$test_classes" --console=plain --stacktrace --max-workers=2
+./gradlew --no-daemon :app:connectedDebugAndroidTest -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true "-Pandroid.testInstrumentationRunnerArguments.class=$test_classes" --console=plain --stacktrace --max-workers=2
