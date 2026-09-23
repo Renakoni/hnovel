@@ -5,7 +5,7 @@ import android.os.Bundle
 import android.view.ViewGroup
 import indi.renakoni.nextvol.R
 
-/** The only foreground window is opened by an explicit source-login action. */
+/** Foreground login or verification; cancellation never submits the current document. */
 class SourceBrowserActivity : Activity() {
     private var browser: SourceBrowserService? = null
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -15,19 +15,20 @@ class SourceBrowserActivity : Activity() {
         val view = active.webView ?: run { finish(); return }
         (view.parent as? ViewGroup)?.removeView(view)
         setContentView(sourceBrowserLayout(this, active.pageTitle, view,
-            getText(if (active.verificationCode) android.R.string.cancel else R.string.source_browser_done),
-            { if (active.verificationCode) active.fail() else active.evaluate() },
-            if (active.verificationCode) getText(android.R.string.ok) else null, { active.evaluate() }))
+            getText(android.R.string.cancel), { active.cancel() },
+            getText(if (active.verificationCode) android.R.string.ok else R.string.source_browser_done), { active.evaluate() }))
     }
     @Deprecated("Platform callback") override fun onBackPressed() {
         val active = browser ?: run { super.onBackPressed(); return }
-        if (active.verificationCode) active.fail()
+        if (active.verificationCode) active.cancel()
         else if (active.webView?.canGoBack() == true) active.webView?.goBack()
-        else active.evaluate()
+        else active.cancel()
     }
     override fun onDestroy() {
-        if (browser?.activity === this) browser?.activity = null
-        if (isFinishing) browser?.fail()
+        if (browser?.activity === this) {
+            browser?.activity = null
+            if (isFinishing) browser?.cancel()
+        }
         super.onDestroy()
     }
 }

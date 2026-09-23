@@ -66,15 +66,18 @@ mode; source-definition downloads and initial collection imports use their own d
 download route. Current background work has no separate unmetered-only policy.
 
 The broker-forwarded browser disables native loads and propagates the root route to every
-child HTTP request. The separate persistent **native Chromium** path cannot bind these
-sockets: bypass is disabled in its source settings and dispatch returns `RouteUnsupported`
-if an existing preference reaches it. Native routing is #219; Wenku8's Ktor client and
-unbound legacy images are #220. A plugin's private transport is not host-controlled.
+child HTTP request. The separate persistent **native Chromium** process binds its network
+before Chromium initialization and uses a direct proxy override when bypassing VPN (#219).
+Unsupported Android/WebView combinations report `RouteUnsupported`; no route fallback is
+implied. Native page subrequests use Chromium's networking, not the broker's per-peer checks.
+Cookie handoff still validates the current source/account and authorized origins. A plugin's
+private transport is not host-controlled.
 
-Address and origin enforcement applies to both routes. Do not grant private-address access
+Broker HTTP address and origin enforcement applies to both default and bypass routes.
+Do not grant private-address access
 as a workaround. `Dns` means a lookup failed; `AddressDenied` means a non-public answer;
 `OriginDenied` means an exact-origin permission is missing. Only the last belongs in the
-permission editor. Browser main-frame refusals retain broker codes across Binder. A page
+permission editor. Broker-browser main-frame refusals retain broker codes across Binder. A page
 may handle a failed subresource/XHR itself; handled failures do not replace successful
 rule results.
 
@@ -133,6 +136,28 @@ checks continue to apply to approved CDN/API/redirect targets.
   response decoding are distinct. The protocol retains the original bytes and nullable
   HTTP/override charset separately from the effective text encoding. No source rule,
   external resource or full response DOM is evaluated during charset selection.
+
+## Website verification (#173)
+
+Document requests recognize Cloudflare and supported site challenges before rule extraction,
+including same-origin `/@wafjs` scripts, `_wa_` cookie refreshes and `_waform` captcha forms.
+A 401 cookie bootstrap retries the same GET once; POST is preserved for the verification
+flow and is not silently retried. Raw API responses and browser subrequests remain available
+to source scripts. Cached challenge pages cannot become successful empty document results.
+
+Both browser transports inspect the live document before returning extraction results.
+Interactive verification waits through script and captcha pages; the broker browser retains
+the actual HTTP status, while native DOM results remain `BrowserDocument` with status 0,
+never a fabricated HTTP 200. Completing the page preserves its source session. The existing
+foreground coordinator retries the original operation once, so a repeated challenge or an
+unparseable document still fails. Background work exposes a notice without opening a window.
+In the broker browser, form submissions retain the page's User-Agent just like fetch requests.
+The close action cancels verification without extracting or retrying the current document;
+the separate confirmation action still supports ordinary login pages and image-code input.
+
+Challenge recognition does not solve captchas, authorize new domains, disable certificate
+checks or guarantee a site's availability. Actual Aitu reading and different network routes
+require separate live evidence; owned browser fixtures prove only the recovery mechanism.
 
 ## State and storage ownership
 

@@ -86,7 +86,7 @@
         new FormData(form).forEach(function (value, key) { if (typeof value !== 'string') throw new Error('File upload unavailable'); fields.append(key, value); });
         if (submitter && submitter.name) fields.append(submitter.name, submitter.value);
         if (method === 'GET') { location.href = url + (url.indexOf('?') < 0 ? '?' : '&') + fields.toString(); return; }
-        call('navigate', {url: url, method: method, body: fields.toString(), headers: {'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'}});
+        call('navigate', {url: url, method: method, body: fields.toString(), headers: {'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8', 'User-Agent': navigator.userAgent}});
     }
     addEventListener('submit', function (event) { event.preventDefault(); submit(event.target, event.submitter); }, true);
     HTMLFormElement.prototype.submit = function () { submit(this); };
