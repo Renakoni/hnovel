@@ -18,18 +18,18 @@ import indi.renakoni.nextvol.R
 /** Renders validated source fields. Scripts and account lifetime remain outside Compose. */
 @Composable
 internal fun SourceLoginDialog(form: LoginForm, busy: Boolean,
-    onSubmit: (Map<String, String>, String?) -> Unit, onCancel: () -> Unit) {
+    onSubmit: (Map<String, String>, String?, String) -> Unit, onCancel: () -> Unit) {
     val values = remember(form) { mutableStateMapOf<String, String>().apply { putAll(form.values) } }
     AlertDialog(onDismissRequest = onCancel, title = { Text(stringResource(R.string.sources_login)) },
         text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (form.browserUrl != null) Text(stringResource(R.string.sources_browser_login))
-            form.fields.forEach { field ->
+            form.fields.forEach { field -> key(field.id) {
                 fun change(value: String) {
                     values[field.name] = value
-                    if (field.action != null) onSubmit(values.toMap(), field.name)
+                    if (field.action != null) onSubmit(values.toMap(), field.id, form.id)
                 }
                 when (field.type) {
-                    "button" -> OutlinedButton(onClick = { onSubmit(values.toMap(), field.name) }, enabled = !busy) { Text(field.label) }
+                    "button" -> OutlinedButton(onClick = { onSubmit(values.toMap(), field.id, form.id) }, enabled = !busy) { Text(field.label) }
                     "toggle" -> OutlinedButton(onClick = {
                         change(field.choices[(field.choices.indexOf(values[field.name]) + 1) % field.choices.size])
                     }, enabled = !busy) { Text("${field.label}: ${values[field.name].orEmpty()}") }
@@ -47,12 +47,12 @@ internal fun SourceLoginDialog(form: LoginForm, busy: Boolean,
                             label = { Text(field.label) }, enabled = !busy,
                             visualTransformation = if (field.type == "password") PasswordVisualTransformation() else VisualTransformation.None,
                             keyboardOptions = KeyboardOptions(keyboardType = if (field.type == "password") KeyboardType.Password else KeyboardType.Text))
-                        if (field.action != null) TextButton(onClick = { onSubmit(values.toMap(), field.name) }, enabled = !busy) {
+                        if (field.action != null) TextButton(onClick = { onSubmit(values.toMap(), field.id, form.id) }, enabled = !busy) {
                             Text(stringResource(R.string.sources_apply_field))
                         }
                     }
                 }
-            }
-        } }, confirmButton = { TextButton(onClick = { onSubmit(values.toMap(), null) }, enabled = !busy) { Text(stringResource(R.string.sources_login)) } },
+            } }
+        } }, confirmButton = { TextButton(onClick = { onSubmit(values.toMap(), null, form.id) }, enabled = !busy) { Text(stringResource(R.string.sources_login)) } },
         dismissButton = { TextButton(onClick = onCancel) { Text(stringResource(android.R.string.cancel)) } })
 }

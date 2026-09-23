@@ -3,18 +3,20 @@ package hnovel.content
 import hnovel.rules.RequestOptionsException
 import hnovel.rules.RequestOptionsJson
 import kotlinx.serialization.json.*
+import java.util.UUID
 
 data class LoginField(val name: String, val type: String, val action: String? = null,
     val default: String = "", val choices: List<String> = emptyList(), val label: String = name,
-    val viewName: String? = null)
-data class LoginForm(val fields: List<LoginField>, val browserUrl: String?, val values: Map<String, String> = emptyMap()) {
+    val viewName: String? = null, val id: String = UUID.randomUUID().toString())
+data class LoginForm(val fields: List<LoginField>, val browserUrl: String?, val values: Map<String, String> = emptyMap(),
+    val id: String = UUID.randomUUID().toString()) {
     internal fun withValues(saved: Map<String, String>) = copy(values = fields.filter { it.type != "button" }.associate { field ->
         field.name to (saved[field.name]?.takeIf { field.choices.isEmpty() || it in field.choices } ?: field.default)
     })
 
     internal fun validate(values: Map<String, String>, allowAdditional: Boolean = false) {
         val inputs = fields.filter { it.type != "button" }.associateBy { it.name }
-        if (values.size > 32 || values.entries.sumOf { it.key.length.toLong() + it.value.length } > 16384)
+        if (values.size > 128 || values.entries.sumOf { it.key.length.toLong() + it.value.length } > 16384)
             throw SourceContentException(ContentError.Limit, "loginUi.values")
         values.forEach { (name, value) ->
             val field = inputs[name] ?: if (allowAdditional) return@forEach
@@ -28,9 +30,13 @@ data class LoginForm(val fields: List<LoginField>, val browserUrl: String?, val 
         fun parse(ui: String, loginUrl: String, extended: Boolean = false): LoginForm {
             val rows = if (ui.isBlank() && ui.length <= 65536) JsonArray(emptyList()) else try {
                 RequestOptionsJson.parse(ui) as? JsonArray
-            } catch (_: RequestOptionsException) { null }
+            } catch (failure: RequestOptionsException) {
+                if (failure.limitExceeded) throw SourceContentException(ContentError.Limit, "loginUi")
+                null
+            }
                 ?: throw SourceContentException(ContentError.InvalidRule, "loginUi")
-            if (rows.size > 32) throw SourceContentException(ContentError.Limit, "loginUi")
+            if (rows.size > 128) throw SourceContentException(ContentError.Limit, "loginUi")
+            val occurrences = mutableMapOf<String, Int>()
             val fields = rows.mapIndexed { index, value ->
                 fun invalid(key: String): Nothing = throw SourceContentException(ContentError.InvalidRule, "loginUi[$index].$key")
                 val row = value as? JsonObject ?: invalid("row")
@@ -55,9 +61,21 @@ data class LoginForm(val fields: List<LoginField>, val browserUrl: String?, val 
                     type in setOf("toggle", "select") && choices.isEmpty()) invalid("chars")
                 val default = string("default") ?: choices.firstOrNull().orEmpty()
                 if (default.length > 4096 || choices.isNotEmpty() && default !in choices) invalid("default")
-                LoginField(name, type, string("action"), default, choices, viewName = string("viewName"))
+                val action = string("action")
+                // Buttons are identified by their action, inputs by their binding and action.
+                // Labels and row position cannot redirect an existing control to another action.
+                val identity = JsonArray(listOf(type, if (type == "button") "" else name, action).map { it?.let(::JsonPrimitive) ?: JsonNull })
+                val key = UUID.nameUUIDFromBytes(identity.toString().toByteArray(Charsets.UTF_8)).toString()
+                val occurrence = occurrences.getOrDefault(key, 0)
+                occurrences[key] = occurrence + 1
+                LoginField(name, type, action, default, choices, viewName = string("viewName"), id = "$key:$occurrence")
             }
-            if (fields.map { it.name }.distinct().size != fields.size) throw SourceContentException(ContentError.InvalidRule, "loginUi.name")
+            // Reference inputs share a name-keyed map. Compatible duplicate bindings share one
+            // value; conflicting defaults or options are rejected instead of last-row overwrite.
+            fields.filter { it.type != "button" }.groupBy { it.name }.values.forEach { bindings ->
+                if (bindings.map { Triple(it.type, it.default, it.choices) }.distinct().size != 1)
+                    throw SourceContentException(ContentError.InvalidRule, "loginUi.name")
+            }
             val browser = loginUrl.trim().takeIf { it.startsWith("http://", true) || it.startsWith("https://", true) }
             return LoginForm(fields, browser).withValues(emptyMap()).also { it.validate(it.values) }
         }

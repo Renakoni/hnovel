@@ -117,8 +117,14 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         return rendered.also { cachedLoginForm = it }
     }
 
-    suspend fun login(values: Map<String, String>, action: String? = null): Unit = operation("loginUrl", timeoutMillis = 300000) {
+    suspend fun login(values: Map<String, String>, action: String? = null, formId: String? = null): Unit = operation("loginUrl", timeoutMillis = 300000) {
+        if (formId != null && cachedLoginForm?.id != formId)
+            throw SourceContentException(ContentError.Unavailable, "loginUi")
         val form = (cachedLoginForm ?: loadLoginForm()).withValues(loginValues())
+        // Trusted callers without a UI snapshot retain the unique-name API. UI submissions
+        // always carry a form ID and can only address an opaque control ID from that form.
+        val fieldAction = action?.let { id -> form.fields.singleOrNull { if (formId == null) it.name == id else it.id == id }?.action
+            ?: throw SourceContentException(ContentError.InvalidRule, "loginUi.action") }
         form.validate(values)
         val submitted = loginValues() + form.values + values
         form.validate(submitted, allowAdditional = true)
@@ -144,7 +150,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             return@operation
         }
         val code = if (action == null) "if(typeof login!=='function')throw new Error('login missing');login();true;"
-            else form.fields.single { it.name == action }.action ?: throw SourceContentException(ContentError.InvalidRule, "loginUi.action")
+            else fieldAction!!
         if (code.startsWith("http://", true) || code.startsWith("https://", true)) {
             val response = request(context, code, "loginUi.action", browser = BrowserOptions(interactive = true))
             checkStatus(response.status, "loginUi.action", response.kind == ResponseKind.BrowserDocument)
