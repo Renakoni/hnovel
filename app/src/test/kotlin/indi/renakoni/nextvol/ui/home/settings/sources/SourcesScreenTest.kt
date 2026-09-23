@@ -131,6 +131,24 @@ class SourcesScreenTest {
         } finally { directory.deleteRecursively() }
     }
 
+    @Test fun invalidPermissionLineIsShownAndCannotBeConfirmedUntilCorrected() {
+        val directory = java.nio.file.Files.createTempDirectory("invalid-source-permissions").toFile()
+        try {
+            val importer = hnovel.imports.SourceDefinitionImporter(hnovel.imports.SourceDefinitionStore(directory.toPath()))
+            val preview = importer.preview("""{"bookSourceUrl":"https://source.invalid/","bookSourceName":"Source","bookSourceType":0}""")
+            activity.get().setContent { MaterialTheme { SourcesScreen(previewState(preview), model, onDiagnostics = {}) {} } }
+            compose.onNodeWithText("Advanced options").performClick()
+            val field = compose.onNodeWithText("Allowed site origins, one per line")
+            field.performScrollTo().performTextReplacement("https://source.invalid/\n\nhttps://210.140")
+            compose.onNodeWithText("Invalid site address on line(s): 3").performScrollTo().assertExists()
+            compose.onNodeWithText("Apply selected").assertIsNotEnabled()
+            verify(exactly = 0) { model.commit(any(), any(), any()) }
+            field.performScrollTo().performTextReplacement("https://source.invalid/\n\nhttps://210.140.92.183:8443")
+            compose.onNodeWithText("Apply selected").assertIsEnabled().performClick()
+            verify(exactly = 1) { model.commit(setOf(0), mapOf(0 to "https://source.invalid/\n\nhttps://210.140.92.183:8443"), false) }
+        } finally { directory.deleteRecursively() }
+    }
+
     @Test fun filtersKeepSelectionAndPermissionDraftsUntilExplicitConfirmation() {
         val directory = java.nio.file.Files.createTempDirectory("filtered-source-preview").toFile()
         try {

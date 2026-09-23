@@ -32,6 +32,9 @@ internal fun SourceImportPreview(state: SourceManagementState, model: SourcesVie
         mutableStateOf(emptyMap())
     }
     val candidates = if (advanced) preview.candidates else preview.candidates.deduplicated()
+    val invalidLines = selected.associateWith {
+        SourcesViewModel.invalidPermissionLines(permissions[it] ?: state.previewOrigins[it].orEmpty())
+    }
     val visible = candidates.filter { when (filter) { 1 -> it.existing == null; 2 -> it.existing != null; else -> true } }
     fun select(candidate: SourceCandidate, checked: Boolean) {
         selected = if (!checked) selected - candidate.index
@@ -102,6 +105,10 @@ internal fun SourceImportPreview(state: SourceManagementState, model: SourcesVie
                                 }
                             }
                         }
+                        val errors = invalidLines[candidate.index].orEmpty()
+                        if (errors.isNotEmpty() && !advanced) Text(
+                            stringResource(R.string.sources_invalid_permission_lines, errors.joinToString(", ")),
+                            color = MaterialTheme.colorScheme.error)
                         if (checked && advanced) {
                             val draft = permissions[candidate.index] ?: state.previewOrigins[candidate.index].orEmpty()
                             val origins = remember(candidate) { SourceOriginCandidates.discover(Json.parseToJsonElement(candidate.rawJson).jsonObject) }
@@ -112,7 +119,10 @@ internal fun SourceImportPreview(state: SourceManagementState, model: SourcesVie
                                 }
                             }
                             OutlinedTextField(draft, { permissions = permissions + (candidate.index to it) },
-                                Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.sources_permissions)) }, enabled = !state.busy)
+                                Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.sources_permissions)) }, enabled = !state.busy,
+                                isError = errors.isNotEmpty(), supportingText = if (errors.isEmpty()) null else ({
+                                    Text(stringResource(R.string.sources_invalid_permission_lines, errors.joinToString(", ")))
+                                }))
                         }
                     }
                 }
@@ -127,7 +137,7 @@ internal fun SourceImportPreview(state: SourceManagementState, model: SourcesVie
         }
         SourceSelectionBar(stringResource(R.string.sources_selected_count, selected.size, candidates.size),
             secondary = stringResource(android.R.string.cancel), onSecondary = { if (state.busy) model.cancel() else model.dismissPreview() },
-            action = stringResource(R.string.sources_apply), actionEnabled = !state.busy && selected.isNotEmpty(),
+            action = stringResource(R.string.sources_apply), actionEnabled = !state.busy && selected.isNotEmpty() && invalidLines.values.all { it.isEmpty() },
             onAction = { model.commit(selected.toSet(), selected.associateWith { permissions[it] ?: state.previewOrigins[it].orEmpty() }, approveIdentity) })
     }
 }
