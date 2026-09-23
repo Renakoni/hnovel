@@ -129,20 +129,23 @@ private fun ExploreRowSection(
             modifier = Modifier
                 .padding(vertical = 4.dp)
                 .fillMaxWidth()
-                .height(46.dp)
+                .heightIn(min = 48.dp)
                 .padding(horizontal = 16.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
                 modifier = Modifier.weight(2f),
                 text = row.title.ifBlank { stringResource(R.string.discovery_unnamed_entry) },
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.W600,
-                color = MaterialTheme.colorScheme.onSurface
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
             )
             if (row.more != null) {
                 IconButton(
-                    modifier = Modifier.size(40.dp),
+                    modifier = Modifier.size(48.dp),
                     onClick = {
                         onClickExpand(row)
                     }
