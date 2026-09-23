@@ -1,0 +1,36 @@
+name: Restore variant build cache
+description: Reuse release or benchmark task outputs without duplicating the Gradle dependency cache
+inputs:
+  variant:
+    description: App variant whose task outputs should be cached
+    required: true
+outputs:
+  cache-hit:
+    description: Whether this commit already has a saved cache
+    value: ${{ steps.restore.outputs.cache-hit }}
+  key:
+    description: Key to save after a successful APK build
+    value: ${{ steps.restore.outputs.cache-primary-key }}
+  path:
+    description: Local Gradle task cache directory
+    value: ${{ runner.temp }}/hnovel-task-cache/${{ inputs.variant }}
+runs:
+  using: composite
+  steps:
+    - id: restore
+      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      with:
+        path: ${{ runner.temp }}/hnovel-task-cache/${{ inputs.variant }}
+        key: gradle-tasks-linux-${{ inputs.variant }}-v1-${{ github.sha }}
+        restore-keys: gradle-tasks-linux-${{ inputs.variant }}-v1-
+    - name: Select task cache and retain shared main outputs
+      shell: bash
+      env:
+        TASK_CACHE: ${{ runner.temp }}/hnovel-task-cache/${{ inputs.variant }}
+      run: |
+        mkdir -p "$TASK_CACHE"
+        shared_cache="${GRADLE_USER_HOME:-$HOME/.gradle}/caches/build-cache-1"
+        if [[ -d "$shared_cache" ]]; then
+          cp -a --update=none "$shared_cache/." "$TASK_CACHE/"
+        fi
+        echo "CI_GRADLE_BUILD_CACHE_DIR=$TASK_CACHE" >> "$GITHUB_ENV"

@@ -1,7 +1,7 @@
 package indi.renakoni.nextvol.ui.home.reading.stats
 
 import android.text.format.DateUtils
-import androidx.compose.compiler.plugins.kotlin.lower.fastForEach
+import androidx.compose.ui.util.fastForEach
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
