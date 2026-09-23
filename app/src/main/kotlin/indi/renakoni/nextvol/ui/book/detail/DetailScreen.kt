@@ -291,7 +291,7 @@ fun DetailScreen(
         ) {
             if (selectingChapters) TopAppBar(
                 title = { Text(stringResource(R.string.chapters_selected, selectedIds.size),
-                    style = typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    style = typography.displayLarge, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 navigationIcon = {
                     IconButton(onClick = exitSelection, enabled = !savingUnread) {
                         Icon(painterResource(R.drawable.close_24px), stringResource(R.string.cancel))

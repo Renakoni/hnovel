@@ -39,7 +39,7 @@ internal fun SourceScopeTitle(state: DiscoveryPageState, onScope: (SourceCategor
     if (expanded) ModalBottomSheet(onDismissRequest = { expanded = false }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {
             item { Text(stringResource(R.string.source_range_title), Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
-                style = MaterialTheme.typography.titleLarge) }
+                style = MaterialTheme.typography.displayMedium) }
             items(listOf(null) + SourceCategory.entries) { category ->
                 ListItem(headlineContent = { Text(stringResource(category?.title ?: R.string.source_range_all)) },
                     trailingContent = {
@@ -98,7 +98,7 @@ internal fun SourceTabs(state: DiscoveryPageState, onSelect: (Identifier) -> Uni
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {
             item { Text(stringResource(R.string.source_pages_title), Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
-                style = MaterialTheme.typography.titleLarge) }
+                style = MaterialTheme.typography.displayMedium) }
             items(state.pageCount) { page ->
                 val start = page * SOURCE_PAGE_SIZE
                 val end = minOf(start + SOURCE_PAGE_SIZE, state.sources.size)

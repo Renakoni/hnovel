@@ -134,7 +134,7 @@ fun ChapterSelectionBottomSheet(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(painterResource(R.drawable.read_more_24px), contentDescription = null)
-                Text(stringResource(R.string.select_chapter), style = typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.select_chapter), style = typography.displayMedium)
             }
             TextField(
                 value = query,

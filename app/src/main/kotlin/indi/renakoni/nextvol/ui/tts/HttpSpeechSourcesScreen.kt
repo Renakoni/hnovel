@@ -47,7 +47,8 @@ fun HttpSpeechSourcesScreen(
     var url by remember { mutableStateOf("") }
     var header by remember { mutableStateOf("") }
     Scaffold(topBar = {
-        TopAppBar(title = { Text(stringResource(R.string.tts_online_sources)) }, navigationIcon = {
+        TopAppBar(title = { Text(stringResource(R.string.tts_online_sources), style = MaterialTheme.typography.displayLarge,
+            maxLines = 1, overflow = TextOverflow.Ellipsis) }, navigationIcon = {
             IconButton(onClick = onBack) { Icon(painterResource(R.drawable.arrow_back_24px), stringResource(R.string.sources_back)) }
         }, actions = {
             if (state.busy) CircularProgressIndicator(Modifier.padding(horizontal = 16.dp).size(20.dp), strokeWidth = 2.dp)
