@@ -33,17 +33,28 @@ logcat_pid=$!
 # Launcher and window readiness checks below must still succeed before testing.
 timeout 15s adb logcat -d -v threadtime > "$diagnostics/boot-logcat.txt" 2>&1 ||
   echo 'Boot logcat capture failed; continuing with emulator readiness checks.' >&2
+# The API 24 Google image's old Messaging app can crash during boot with a
+# RejectedExecutionException, leaving a system-owned dialog over every test.
+# Disable only that unused image package, before tests, to prevent it restarting.
+api=$(timeout 15s adb shell getprop ro.build.version.sdk | tr -d '\r')
+if [[ "$api" == 24 ]]; then
+  messaging=$(timeout 15s adb shell pm list packages com.google.android.apps.messaging | tr -d '\r')
+  if [[ "$messaging" == 'package:com.google.android.apps.messaging' ]]; then
+    timeout 15s adb shell pm disable-user --user 0 com.google.android.apps.messaging
+    timeout 15s adb shell am force-stop com.google.android.apps.messaging
+  fi
+fi
 launcher=$(timeout 15s adb shell pm list packages com.google.android.apps.nexuslauncher | tr -d '\r')
 if [[ "$launcher" == 'package:com.google.android.apps.nexuslauncher' ]]; then
   timeout 15s adb shell am force-stop com.google.android.apps.nexuslauncher
 fi
 for attempt in {1..5}; do
   timeout 15s adb shell dumpsys window windows > "$diagnostics/windows-before-tests.txt" 2>&1
-  if ! grep -Fq 'Application Not Responding: com.google.android.apps.nexuslauncher' "$diagnostics/windows-before-tests.txt"; then
+  if ! grep -Eq 'Application (Error|Not Responding): com\.google\.android\.apps\.(nexuslauncher|messaging)([[:space:]}]|$)' "$diagnostics/windows-before-tests.txt"; then
     "$@"
     exit 0
   fi
   sleep 1
 done
-echo 'NexusLauncher ANR dialog is still covering the emulator; tests were not started.' >&2
+echo 'A known emulator system-app error dialog is still covering the emulator; tests were not started.' >&2
 exit 1

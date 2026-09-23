@@ -89,9 +89,12 @@ image, with no snapshots or online SDK tools. Boot/ADB readiness has two
 startup gets a second attempt with fresh data; assertions, App crashes, and tests
 are never rerun automatically. Missing tools/KVM fail before launch.
 
-`emulator-tests.sh` retains the NexusLauncher ANR readiness check and streams
-crash/system/event logcat to `runtime-events.txt` throughout testing. It also
-collects final diagnostics without replacing the test exit status. A missing
+`emulator-tests.sh` retains the NexusLauncher ANR readiness check and disables
+only API 24's unused preinstalled Google Messaging package, whose boot crash can
+leave a system error dialog over the tests. Remaining dialogs from these packages
+block test startup. It streams crash/system/event logcat to `runtime-events.txt`
+throughout testing and collects final diagnostics without replacing the test exit
+status. A missing
 JUnit/native report alone is not proof of an App crash: correlate these logs
 with instrumentation output and the job timeout/cancellation reason. Native
 environment reports remain required on API 35.
