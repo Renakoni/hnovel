@@ -11,7 +11,8 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
     private val session: SourceSession, val limits: ExecutionLimits,
     private val baseUrl: String = "", private val keyword: String = "", private val page: Int = 1,
     private val allowInteraction: Boolean = false, private val speakText: String? = null,
-    private val speakSpeed: Int = 10) : AutoCloseable {
+    private val speakSpeed: Int = 10, currentRequest: BrokerRequest? = null) : AutoCloseable {
+    private val currentRequest = currentRequest?.let { it.copy(headers = it.headers.toMap()) }
     private val lifetime = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var requests = 0
     private var closed = false
@@ -167,6 +168,18 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
                     require(args.size == 1)
                     val url = (args[0] as? JsonArray)?.firstOrNull() ?: args[0]
                     JsonPrimitive(fetch(compiled(requestNumber, url.jsonPrimitive.content, sourceHeaders)).text())
+                }
+                "java.getStrResponse" -> {
+                    // Only the current request's default execution is supported. Never take a URL
+                    // or re-run loginCheckJs from this data-only host call.
+                    require(args.size <= 2 && args.all { it == JsonNull })
+                    val request = checkNotNull(currentRequest) { "No current request" }
+                    if (request.browser?.interactive == true && !allowInteraction) {
+                        interactionRequired = true
+                        error("Foreground source login required")
+                    }
+                    fetch(request.copy(id = "refetch-$requestNumber", retry = 0, cache = CacheMode.Disabled),
+                        limits.scriptDataLimit).scriptSnapshot(false)
                 }
                 "java.connect" -> {
                     require(args.size in 1..2)

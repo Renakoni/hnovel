@@ -46,7 +46,7 @@ private class ScriptBridge(private val bridge: HostBridge, private val rules: Sc
                     (args.getOrNull(if (name == "java.setContent") 0 else 1) as? ScriptDomElement)?.element?.ruleNode())
                 else if (pureTool) ScriptTools.call(name.removePrefix("java."), arguments) else requests.call(cx, bridge, name, arguments)
                 if (Thread.currentThread().isInterrupted) throw ScriptCancelled()
-                val networkResponse = name in setOf("java.ajaxAll", "java.connect", "java.startBrowserAwait") ||
+                val networkResponse = name in setOf("java.ajaxAll", "java.connect", "java.startBrowserAwait", "java.getStrResponse") ||
                     name in setOf("java.get", "java.head", "java.post") && args.size >= 2
                 if (networkResponse) ScriptResponses.validate(result, maxChars)
                 val converted = if (networkResponse) null else JsonScriptData(cx, scope, maxChars).convert(result)
@@ -56,7 +56,7 @@ private class ScriptBridge(private val bridge: HostBridge, private val rules: Sc
                     name == "java.getElement" || name == "java.getElements" -> rules.elementView(cx, scope, result)
                     name == "java.ajaxAll" -> realm.arrayIn(scope, result.jsonArray.map { ScriptResponses.create(cx, scope, it.jsonObject, false) }.toTypedArray())
                     name == "java.startBrowserAwait" -> ScriptResponses.create(cx, scope, result.jsonObject, true)
-                    name == "java.connect" -> ScriptResponses.create(cx, scope, result.jsonObject, false)
+                    name in setOf("java.connect", "java.getStrResponse") -> ScriptResponses.create(cx, scope, result.jsonObject, false)
                     name in setOf("java.get", "java.head", "java.post") && args.size >= 2 -> ScriptResponses.create(cx, scope, result.jsonObject, true)
                     else -> converted
                 }
@@ -99,7 +99,7 @@ private class ScriptBridge(private val bridge: HostBridge, private val rules: Sc
         val javaBridge = objectFor("java", listOf("ajax", "ajaxAll", "connect", "get", "head", "post", "getCookie", "androidId",
             "getString", "getStringList", "getElement", "getElements", "importScript", "cacheFile", "downloadFile",
             "readFile", "readTxtFile", "deleteFile", "toURL", "webView", "webViewGetSource", "webViewGetOverrideUrl",
-            "startBrowser", "startBrowserAwait", "getVerificationCode", "getWebViewUA", "getUrl") + ScriptTools.methods + ScriptCryptoObjects.factories + fonts.methods + resources.methods)
+            "startBrowser", "startBrowserAwait", "getVerificationCode", "getWebViewUA", "getStrResponse", "getUrl") + ScriptTools.methods + ScriptCryptoObjects.factories + fonts.methods + resources.methods)
         method(javaBridge, "setContent") { cx, activeScope, args ->
             call(cx, activeScope, "java.setContent", args)
             javaBridge

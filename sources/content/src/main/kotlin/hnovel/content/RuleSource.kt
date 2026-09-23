@@ -573,7 +573,8 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
     }
     private suspend fun fetch(context: RuleEvaluation, url: String, field: String, browser: BrowserOptions? = null,
         acceptErrorResponse: Boolean = false): PageDocument {
-        val response = request(context, url, field, browser = browser)
+        val request = prepareRequest(context, url, field, ResourceKind.Document, browser)
+        val response = executeRequest(request, field)
         val inline = response.protocol == "data"
         context.baseUrl = if (inline) url else response.finalUrl
         if (spec.loginCheck.isBlank()) {
@@ -582,12 +583,16 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         }
         // The pinned hook receives and returns StrResponse, including retry responses from java.connect.
         val snapshot = response.scriptSnapshot(binary = false)
-        val checked = context.script("""
-            result=host.call('response.view',JSON.parse(result));
-            result=eval(${JsonPrimitive(scriptBody(spec.loginCheck))});
-            JSON.stringify({body:result.getBody(),url:result.getUrl(),status:result.code(),
-                browserDocument:typeof result.isBrowserDocument==='function' && result.isBrowserDocument()});
-        """.trimIndent(), RuleValue.Text(snapshot.toString()), "loginCheckJs").text()
+        // Only this hook may explicitly re-execute the request it checks; the refetch does not run the hook again.
+        context.currentRequest = request
+        val checked = try {
+            context.script("""
+                result=host.call('response.view',JSON.parse(result));
+                result=eval(${JsonPrimitive(scriptBody(spec.loginCheck))});
+                JSON.stringify({body:result.getBody(),url:result.getUrl(),status:result.code(),
+                    browserDocument:typeof result.isBrowserDocument==='function' && result.isBrowserDocument()});
+            """.trimIndent(), RuleValue.Text(snapshot.toString()), "loginCheckJs").text()
+        } finally { context.currentRequest = null }
         val value = Json.parseToJsonElement(checked).jsonObject
         if (!acceptErrorResponse) checkStatus(value.getValue("status").jsonPrimitive.int, "loginCheckJs", value["browserDocument"]?.jsonPrimitive?.boolean == true)
         val finalUrl = sourceLink(response.finalUrl, value.getValue("url").jsonPrimitive.content)
