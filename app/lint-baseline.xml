@@ -1,10 +1,3 @@
 <?xml version='1.0' encoding='utf-8'?>
 <issues format="6" by="lint 9.2.1" type="baseline" client="gradle" dependencies="false" name="AGP (9.2.1)" variant="all" version="9.2.1">
-    <!-- Reviewed existing locations only; owned by #325. Remove with the corresponding fix. -->
-    <issue id="GestureBackNavigation" message="`onBackPressed` is no longer called for back gestures; migrate to AndroidX's backward compatible `OnBackPressedDispatcher`" errorLine1="    @Deprecated(&quot;Platform callback&quot;) override fun onBackPressed() {" errorLine2="                                                  ~~~~~~~~~~~~~">
-        <location file="src/main/kotlin/indi/renakoni/nextvol/sourcebrowser/NativeSourceBrowserActivity.kt" line="21" column="51" />
-    </issue>
-    <issue id="GestureBackNavigation" message="`onBackPressed` is no longer called for back gestures; migrate to AndroidX's backward compatible `OnBackPressedDispatcher`" errorLine1="    @Deprecated(&quot;Platform callback&quot;) override fun onBackPressed() {" errorLine2="                                                  ~~~~~~~~~~~~~">
-        <location file="src/main/kotlin/indi/renakoni/nextvol/sourcebrowser/SourceBrowserActivity.kt" line="22" column="51" />
-    </issue>
 </issues>
