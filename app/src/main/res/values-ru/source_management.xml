@@ -94,4 +94,5 @@
     <string name="sources_up_to_date">Обновлений нет.</string>
     <string name="sources_saved">Изменения источника сохранены.</string>
     <string name="sources_removed">Источник удалён. Сохранённые книги и история чтения остались.</string>
+    <string name="sources_invalid_permission_lines">Недопустимый адрес сайта, строки: %1$s</string>
 </resources>

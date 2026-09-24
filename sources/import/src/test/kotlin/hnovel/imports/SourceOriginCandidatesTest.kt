@@ -6,6 +6,17 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SourceOriginCandidatesTest {
+    @Test fun urlPrefixesDoNotCreateUnsubmittableDraftsWhileCompleteHostsSurvive() {
+        val raw = buildJsonObject {
+            put("jsLib", """url.startsWith("https://210.140"); "https://210.140.92.183:8443/path"; "https://[2001:db8::1]:9443/"; "https://{{host}}/"; "https://books.example/"""")
+        }
+        assertEquals(listOf(
+            OriginCandidate("https://210.140.92.183:8443", ResourceKind.Script),
+            OriginCandidate("https://[2001:db8::1]:9443", ResourceKind.Script),
+            OriginCandidate("https://books.example:443", ResourceKind.Script)
+        ), SourceOriginCandidates.discover(raw))
+    }
+
     @Test fun candidatesRetainPurposeAndStripPathsQueriesAndCredentials() {
         val raw = buildJsonObject {
             put("bookSourceUrl", "https://books.invalid/source?token=secret")

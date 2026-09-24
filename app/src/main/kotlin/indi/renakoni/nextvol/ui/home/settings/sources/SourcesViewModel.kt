@@ -22,7 +22,6 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.serialization.json.*
 import java.io.File
-import java.net.URI
 import java.util.UUID
 import javax.inject.Inject
 
@@ -390,10 +389,9 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
         if (active != null) CoroutineScope(Dispatchers.IO).launch { login.cancel(active) }
     }
     companion object {
-        fun origin(url: String): String {
-            val uri = URI(url.trim())
-            require(uri.scheme?.lowercase() in setOf("http", "https") && uri.host != null && uri.userInfo == null)
-            return URI(uri.scheme.lowercase(), null, uri.host, uri.port, "/", null, null).toString()
+        fun origin(url: String): String = requireNotNull(sourcePermissionOrigin(url))
+        fun invalidPermissionLines(text: String): List<Int> = text.lines().mapIndexedNotNull { index, line ->
+            (index + 1).takeIf { line.isNotBlank() && sourcePermissionOrigin(line) == null }
         }
         fun grants(text: String): List<NetworkGrant> = text.lines().filter { it.isNotBlank() }.map { NetworkGrant(origin(it)) }
             .distinctBy { it.origin }.also { require(it.size <= 32) }
