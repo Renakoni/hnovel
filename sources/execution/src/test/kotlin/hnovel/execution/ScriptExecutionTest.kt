@@ -15,6 +15,33 @@ import java.util.concurrent.TimeUnit
 class ScriptExecutionTest {
     @get:Rule val directory = TemporaryFolder()
 
+    @Test fun sourceVariableAliasUsesTheSameStorageAndScopeAsSetVariable() = runBlocking {
+        val authority = ExecutionAuthority()
+        SourceBroker(directory.root.toPath()).use { sessions ->
+            val first = authority.issue("a", "legado", "1", "fixture")
+            val session = sessions.open(SourceScope("fixture", "a", "legado"), emptyList())
+            SourceExecutionBroker(first, authority, session, ExecutionLimits()).use { bridge ->
+                assertEquals(ExecutionResult.Success("[null,\"one\",null,\"two\",null,\"\"]"), runScript(first, bridge,
+                    "[source.setVariable('one'),source.getVariable(),source.putVariable('two'),source.getVariable(),source.putVariable(null),source.getVariable()]"))
+                assertEquals(ExecutionResult.Success("null"), runScript(first, bridge, "source.putVariable('kept')"))
+                assertEquals(StorageResult.Value("kept"), session.read(StorageRequest(StorageArea.Config, "variable")))
+                assertEquals(ExecutionResult.Success("[\"\",0]"), runScript(first, bridge, "[source.bookSourceName,source.lastUpdateTime]"))
+            }
+            for (scope in listOf(SourceScope("fixture", "b", "legado"), SourceScope("fixture", "a", "extension"), SourceScope("other", "a", "legado"))) {
+                val id = authority.issue(scope.sourceId, scope.profile, "1", scope.namespace)
+                SourceExecutionBroker(id, authority, sessions.open(scope, emptyList()), ExecutionLimits()).use { bridge ->
+                    assertEquals(ExecutionResult.Success("\"\""), runScript(id, bridge, "source.getVariable()"))
+                    assertEquals(ExecutionResult.Success("null"), runScript(id, bridge, "source.putVariable('other')"))
+                }
+            }
+            SourceExecutionBroker(first, authority, session, ExecutionLimits()).use { bridge ->
+                assertEquals(ExecutionResult.Success("\"kept\""), runScript(first, bridge, "source.getVariable()"))
+                authority.revoke(first)
+                assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied), runScript(first, bridge, "source.bookSourceName"))
+            }
+        }
+    }
+
     @Test fun imageVerificationRequiresForegroundAndReturnsOnlyNonblankInput() = runBlocking {
         val authority = ExecutionAuthority()
         var calls = 0
@@ -114,6 +141,21 @@ class ScriptExecutionTest {
             ExecutionTask.Script("[source.id,result*2]", JsonPrimitive(21))))
         assertEquals(ExecutionResult.Failure(FailureCode.Timeout), worker.execute(id, ExecutionTask.Script("while(true){}")))
         assertEquals(ExecutionResult.Success("1"), worker.execute(id, ExecutionTask.Script("1")))
+    }
+
+    @Test(timeout = 40000) fun childWorkerWaitConsumesItsDeadlineAndNextExecutionRecovers() {
+        val authority = ExecutionAuthority()
+        val id = authority.issue("source-wait", "legado", "1")
+        val worker = IsolatedExecutor(authority = authority)
+        assertEquals(ExecutionResult.Success("true"), worker.execute(id, ExecutionTask.Script("""
+            var start = Packages.java.lang.System.currentTimeMillis();
+            Packages.java.lang.Thread.sleep(30);
+            Packages.java.lang.System.currentTimeMillis() - start >= 25;
+        """.trimIndent()), ExecutionLimits(timeoutMillis = 15000)))
+        assertEquals(ExecutionResult.Failure(FailureCode.Timeout), worker.execute(id,
+            ExecutionTask.Script("try { Packages.java.lang.Thread.sleep(60000) } catch(e) { 'caught' }"),
+            ExecutionLimits(timeoutMillis = 2000)))
+        assertEquals(ExecutionResult.Success("42"), worker.execute(id, ExecutionTask.Script("42"), ExecutionLimits(timeoutMillis = 15000)))
     }
 
     @Test fun scriptUsesRealBrokerForAjaxAndScopedStorage() = runBlocking<Unit> {

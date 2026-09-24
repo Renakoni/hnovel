@@ -131,6 +131,24 @@ class SourcesScreenTest {
         } finally { directory.deleteRecursively() }
     }
 
+    @Test fun invalidPermissionLineIsShownAndCannotBeConfirmedUntilCorrected() {
+        val directory = java.nio.file.Files.createTempDirectory("invalid-source-permissions").toFile()
+        try {
+            val importer = hnovel.imports.SourceDefinitionImporter(hnovel.imports.SourceDefinitionStore(directory.toPath()))
+            val preview = importer.preview("""{"bookSourceUrl":"https://source.invalid/","bookSourceName":"Source","bookSourceType":0}""")
+            activity.get().setContent { MaterialTheme { SourcesScreen(previewState(preview), model, onDiagnostics = {}) {} } }
+            compose.onNodeWithText("Advanced options").performClick()
+            val field = compose.onNodeWithText("Allowed site origins, one per line")
+            field.performScrollTo().performTextReplacement("https://source.invalid/\n\nhttps://210.140")
+            compose.onNodeWithText("Invalid site address on line(s): 3").performScrollTo().assertExists()
+            compose.onNodeWithText("Apply selected").assertIsNotEnabled()
+            verify(exactly = 0) { model.commit(any(), any(), any()) }
+            field.performScrollTo().performTextReplacement("https://source.invalid/\n\nhttps://210.140.92.183:8443")
+            compose.onNodeWithText("Apply selected").assertIsEnabled().performClick()
+            verify(exactly = 1) { model.commit(setOf(0), mapOf(0 to "https://source.invalid/\n\nhttps://210.140.92.183:8443"), false) }
+        } finally { directory.deleteRecursively() }
+    }
+
     @Test fun filtersKeepSelectionAndPermissionDraftsUntilExplicitConfirmation() {
         val directory = java.nio.file.Files.createTempDirectory("filtered-source-preview").toFile()
         try {
@@ -386,8 +404,8 @@ class SourcesScreenTest {
             LoginField("remember", "toggle", choices = listOf("no", "yes"), label = "Remember")), null,
             mapOf("user" to "alice", "password" to "", "region" to "east", "remember" to "no"))
         var submitted: Map<String, String>? = null
-        activity.get().setContent { MaterialTheme { SourceLoginDialog(form, false, { values, action ->
-            org.junit.Assert.assertNull(action); submitted = values
+        activity.get().setContent { MaterialTheme { SourceLoginDialog(form, false, { values, action, formId ->
+            org.junit.Assert.assertNull(action); org.junit.Assert.assertEquals(form.id, formId); submitted = values
         }, {}) } }
         compose.onNodeWithText("Account").performTextReplacement("carol")
         compose.onNodeWithText("Region: east").performScrollTo().performClick()
@@ -395,6 +413,22 @@ class SourcesScreenTest {
         compose.onNodeWithText("Remember: no").performScrollTo().performClick()
         compose.onAllNodesWithText("Sign in").filter(hasClickAction()).onFirst().performClick()
         org.junit.Assert.assertEquals(mapOf("user" to "carol", "password" to "", "region" to "west", "remember" to "yes"), submitted)
+    }
+
+    @Test fun largePanelDisplaysItsLastRowAndDispatchesBothSameNamedButtonsById() {
+        val rows = List(59) { "{name:'setting$it'}" } + listOf(
+            "{name:'same',type:'button',action:'one()'}", "{name:'same',type:'button',action:'two()'}")
+        val form = LoginForm.parse(rows.joinToString(",", "[", "]"), "")
+        val actions = mutableListOf<String?>()
+        activity.get().setContent { MaterialTheme { SourceLoginDialog(form, false, { values, action, formId ->
+            org.junit.Assert.assertEquals(form.id, formId)
+            org.junit.Assert.assertEquals(59, values.size)
+            actions += action
+        }, {}) } }
+        compose.onNodeWithText("setting58").performScrollTo().assertIsDisplayed()
+        compose.onAllNodesWithText("same")[0].performScrollTo().performClick()
+        compose.onAllNodesWithText("same")[1].performScrollTo().performClick()
+        org.junit.Assert.assertEquals(form.fields.takeLast(2).map { it.id }, actions)
     }
 
     @Test fun builtinAndPluginRowsOpenTheirOwnBasicSettings() {
@@ -558,10 +592,13 @@ class SourcesScreenTest {
         compose.onNodeWithText("Sign out").performScrollTo().performClick()
         verify(exactly = 1) { model.logout(id) }
         compose.onNodeWithText("Sign in again").performScrollTo().performClick()
+        verify(exactly = 1) { model.relogin(id) }
+        compose.onNodeWithText("Open source panel").performScrollTo().performClick()
         verify(exactly = 1) { model.beginLogin(id) }
         compose.runOnIdle { state = state.copy(busy = true) }
         compose.onNodeWithText("Sign out").assertIsNotEnabled()
         compose.onNodeWithText("Sign in again").assertIsNotEnabled()
+        compose.onNodeWithText("Open source panel").assertIsNotEnabled()
         compose.runOnIdle { state = state.copy(busy = false, loginStatus = LoginStatus.SessionSaved, accountName = null) }
         compose.onNodeWithText("Session saved").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Sign-in submitted").assertDoesNotExist()

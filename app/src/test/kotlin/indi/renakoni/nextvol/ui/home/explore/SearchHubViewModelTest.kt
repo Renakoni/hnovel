@@ -68,9 +68,11 @@ class SearchHubViewModelTest {
     }
     private class Paged : Stream(), PagedSearchProvider {
         val requests = mutableListOf<Pair<String, Int>>()
+        val queries = mutableListOf<String?>()
         var load: suspend (String, Int) -> SearchPage = { _, _ -> SearchPage(emptyList(), null) }
-        override suspend fun searchPage(type: SearchType, keyword: String, page: Int): SearchPage {
+        override suspend fun searchPage(type: SearchType, keyword: String, page: Int, query: String?): SearchPage {
             requests += keyword to page
+            queries += query
             return load(keyword, page)
         }
     }
@@ -162,6 +164,14 @@ class SearchHubViewModelTest {
         assertFalse(model.state.value.hasMore)
         assertTrue(model.state.value.books.first().information.first().isOk)
         verify(exactly = 0) { books.getBookInformationFlow(any<String>(), any()) }
+        // Load-more pages continue one query; submitting the same keyword again starts another.
+        model.search("Title")
+        advanceUntilIdle()
+        assertEquals(3, a.queries.size)
+        assertTrue(a.queries.all { it != null })
+        assertEquals(a.queries[0], a.queries[1])
+        assertNotEquals(a.queries[1], a.queries[2])
+        assertEquals(a.queries[0], b.queries[0])
     }
 
     @Test fun repeatedPageEndsPaginationAndMatchingBooksRankAheadOfUnrelatedTitles() = runTest(dispatcher) {

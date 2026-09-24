@@ -78,3 +78,5 @@ they do not enable Java class access or change script permissions and budgets.
 imports an offline fixture through the production source store and opens its
 catalogue in a minified APK, including after a process restart. CI runs this on
 API 35 in addition to the JVM and debug Binder tests.
+
+`Packages.java.lang.Thread.sleep(milliseconds)` accepts one finite, nonnegative integer JS number (up to `Number.MAX_SAFE_INTEGER`) and returns null. Zero is a budget/cancellation checkpoint; negative, fractional, missing or nonnumeric arguments throw a catchable script error. Waiting counts toward the current invocation and rule deadlines, checks them at most every 10 ms, and exits on interruption. A timeout/cancellation cannot be swallowed by script `try/catch`. Retained library methods use the new invocation’s deadline; worker process termination remains the outer limit. `Packages.java.lang.System.currentTimeMillis()` accepts no arguments and returns host wall-clock epoch milliseconds, which can change with clock adjustments. These exports do not expose other Thread/System members, reflection or process control.

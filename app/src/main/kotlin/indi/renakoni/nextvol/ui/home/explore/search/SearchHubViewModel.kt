@@ -70,6 +70,8 @@ class SearchHubViewModel internal constructor(
     private var versions = emptyMap<Identifier, DiscoveryVersion>()
     private val results = linkedMapOf<String, SearchHubBook>()
     private var work: Job? = null
+    // Identifies one result list; load-more pages reuse it and every reset starts a new one.
+    private var query = java.util.UUID.randomUUID().toString()
     private var epoch = 0L
     private var active = false
     private val detailsGate = Semaphore(4)
@@ -133,6 +135,7 @@ class SearchHubViewModel internal constructor(
     private fun reset(next: SearchHubState) {
         cancelWork()
         results.clear()
+        query = java.util.UUID.randomUUID().toString()
         mutable.value = next.copy(books = emptyList(), sources = next.sources.map { SearchHubSource(it.id, it.name, it.category) },
             searching = false, stopped = false, limited = false, completed = 0, total = 0, revision = next.revision + 1)
     }
@@ -181,7 +184,7 @@ class SearchHubViewModel internal constructor(
             completed = snapshot.scopedSources.size - targets.size, total = snapshot.scopedSources.size)
         work = viewModelScope.launch {
             try {
-                coordinator.search(snapshot.submittedKeyword, targets.map { SearchRequest(it.id, it.page) }).collect { batch ->
+                coordinator.search(snapshot.submittedKeyword, targets.map { SearchRequest(it.id, it.page) }, query).collect { batch ->
                     val id = batch.request.source
                     if (!active || token != epoch || registry.sources.value.firstOrNull { it.metadata.id == id }
                             ?.version(accounts.changes.value) != sourceVersions[id]) return@collect
