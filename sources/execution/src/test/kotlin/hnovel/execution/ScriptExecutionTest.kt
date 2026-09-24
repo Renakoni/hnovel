@@ -15,6 +15,33 @@ import java.util.concurrent.TimeUnit
 class ScriptExecutionTest {
     @get:Rule val directory = TemporaryFolder()
 
+    @Test fun sourceVariableAliasUsesTheSameStorageAndScopeAsSetVariable() = runBlocking {
+        val authority = ExecutionAuthority()
+        SourceBroker(directory.root.toPath()).use { sessions ->
+            val first = authority.issue("a", "legado", "1", "fixture")
+            val session = sessions.open(SourceScope("fixture", "a", "legado"), emptyList())
+            SourceExecutionBroker(first, authority, session, ExecutionLimits()).use { bridge ->
+                assertEquals(ExecutionResult.Success("[null,\"one\",null,\"two\",null,\"\"]"), runScript(first, bridge,
+                    "[source.setVariable('one'),source.getVariable(),source.putVariable('two'),source.getVariable(),source.putVariable(null),source.getVariable()]"))
+                assertEquals(ExecutionResult.Success("null"), runScript(first, bridge, "source.putVariable('kept')"))
+                assertEquals(StorageResult.Value("kept"), session.read(StorageRequest(StorageArea.Config, "variable")))
+                assertEquals(ExecutionResult.Success("[\"\",0]"), runScript(first, bridge, "[source.bookSourceName,source.lastUpdateTime]"))
+            }
+            for (scope in listOf(SourceScope("fixture", "b", "legado"), SourceScope("fixture", "a", "extension"), SourceScope("other", "a", "legado"))) {
+                val id = authority.issue(scope.sourceId, scope.profile, "1", scope.namespace)
+                SourceExecutionBroker(id, authority, sessions.open(scope, emptyList()), ExecutionLimits()).use { bridge ->
+                    assertEquals(ExecutionResult.Success("\"\""), runScript(id, bridge, "source.getVariable()"))
+                    assertEquals(ExecutionResult.Success("null"), runScript(id, bridge, "source.putVariable('other')"))
+                }
+            }
+            SourceExecutionBroker(first, authority, session, ExecutionLimits()).use { bridge ->
+                assertEquals(ExecutionResult.Success("\"kept\""), runScript(first, bridge, "source.getVariable()"))
+                authority.revoke(first)
+                assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied), runScript(first, bridge, "source.bookSourceName"))
+            }
+        }
+    }
+
     @Test fun imageVerificationRequiresForegroundAndReturnsOnlyNonblankInput() = runBlocking {
         val authority = ExecutionAuthority()
         var calls = 0

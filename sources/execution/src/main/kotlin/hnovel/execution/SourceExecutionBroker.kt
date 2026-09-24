@@ -11,7 +11,8 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
     private val session: SourceSession, val limits: ExecutionLimits,
     private val baseUrl: String = "", private val keyword: String = "", private val page: Int = 1,
     private val allowInteraction: Boolean = false, private val speakText: String? = null,
-    private val speakSpeed: Int = 10) : AutoCloseable {
+    private val speakSpeed: Int = 10, private val sourceName: String = "", private val sourceLastUpdateTime: Long = 0,
+    private val requestUserAgent: String? = null) : AutoCloseable {
     private val lifetime = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var requests = 0
     private var closed = false
@@ -56,16 +57,22 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
         require(args.size == 3)
         val operation = args[0].jsonPrimitive.content
         require(operation in setOf("java.ajax", "java.ajaxAll", "java.connect", "java.cacheFile", "java.downloadFile", "java.importScript",
-            "java.webView", "java.webViewGetSource", "java.webViewGetOverrideUrl", "java.startBrowser", "java.startBrowserAwait", "java.getVerificationCode", "browser.refetch"))
+            "java.webView", "java.webViewGetSource", "java.webViewGetOverrideUrl", "java.startBrowser", "java.startBrowserAwait", "java.getVerificationCode", "browser.refetch", "java.getUserAgent"))
         return callWithHeaders(operation, args[1].jsonArray, headerMap(args[2]))
     }
 
     private suspend fun callWithHeaders(name: String, args: List<JsonElement>, sourceHeaders: Map<String, String>): JsonElement {
         // BookSource.getKey only returns its URL. Per-image text replacement can read it
         // hundreds of times without making any requests or accessing persistent storage.
-        if (name == "source.getKey") return authorized {
+        if (name in setOf("source.getKey", "source.getBookSourceName", "source.getLastUpdateTime", "java.getUserAgent", "request.userAgent")) return authorized {
             require(args.isEmpty())
-            JsonPrimitive(session.sourceUrl.ifBlank { baseUrl })
+            when (name) {
+                "source.getBookSourceName" -> JsonPrimitive(sourceName)
+                "source.getLastUpdateTime" -> JsonPrimitive(sourceLastUpdateTime)
+                "request.userAgent" -> requestUserAgent?.let(::JsonPrimitive) ?: JsonNull
+                "java.getUserAgent" -> JsonPrimitive(requestUserAgent ?: session.requestUserAgent(baseUrl.ifBlank { session.sourceUrl }, sourceHeaders))
+                else -> JsonPrimitive(session.sourceUrl.ifBlank { baseUrl })
+            }
         }
         val requestNumber = reserveRequest()
         return ownedWork {
@@ -227,8 +234,8 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
                     check(stored is StorageResult.Value) { "Storage read failed" }
                     stored.value?.let(::JsonPrimitive) ?: if (!name.startsWith("cache.")) JsonPrimitive("") else JsonNull
                 }
-                "cache.put", "cache.putFile", "source.put", "cache.delete", "source.setVariable" -> authorized {
-                    val variable = name == "source.setVariable"
+                "cache.put", "cache.putFile", "source.put", "cache.delete", "source.setVariable", "source.putVariable" -> authorized {
+                    val variable = name in setOf("source.setVariable", "source.putVariable")
                     val deletion = name == "cache.delete"
                     require(args.size == (if (variable || deletion) 1 else 2) || name in setOf("cache.put", "cache.putFile") && args.size == 3)
                     val key = if (variable) "variable"

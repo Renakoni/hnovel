@@ -171,6 +171,13 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         return BrokerResult.Failure(RequestStage.Connect, FailureCode.Certificate, certificate = problem)
     }
 
+    /** Resolve the same header precedence as an HTTP request without sending one. */
+    @Synchronized fun requestUserAgent(url: String, explicit: Map<String, String> = emptyMap()): String {
+        checkOpen()
+        val address = requireNotNull(url.toHttpUrlOrNull())
+        return headers(address, explicit, policy, includeCookies = false)["User-Agent"] ?: "okhttp/${OkHttp.VERSION}"
+    }
+
     suspend fun webViewUserAgent(): String {
         checkOpen()
         val value = browser?.defaultUserAgent()
