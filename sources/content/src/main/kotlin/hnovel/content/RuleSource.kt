@@ -69,12 +69,28 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
     }
 
     private var cachedLoginForm: LoginForm? = null
+    private data class LoginReadingSnapshot(val book: RuleBook, val chapter: RuleChapter?)
+    private var loginReading: LoginReadingSnapshot? = null
 
     /** A panel owns its form and execution ticket, while sharing the current account storage. */
-    fun openLoginSession(): RuleSource {
+    fun openLoginSession(reading: LoginReadingContext? = null): RuleSource {
         if (!authority.accepts(identity)) throw SourceContentException(ContentError.Unavailable, "login")
+        val snapshot = reading?.let { position ->
+            val record = store.read(position.bookId)?.takeIf { it.revision == identity.revision }
+                ?: throw SourceContentException(ContentError.Unavailable, "login.book")
+            val chapters = record.chapters.filterNot { it.isVolume }
+            val index = chapters.indexOfFirst { it.id == position.chapterId }
+            if (position.chapterId != null && index < 0)
+                throw SourceContentException(ContentError.Unavailable, "login.chapter")
+            // Reader progress is normalized, not Legado's character offset (durChapterPos).
+            val metadata = record.book.state.metadata + mapOf(
+                "readingProgress" to JsonPrimitive(position.readingProgress)) + if (index < 0) emptyMap() else mapOf(
+                "durChapterIndex" to JsonPrimitive(index), "durChapterTitle" to JsonPrimitive(chapters[index].title))
+            LoginReadingSnapshot(record.book.copy(state = record.book.state.copy(metadata = JsonObject(metadata))),
+                chapters.getOrNull(index))
+        }
         val ticket = authority.issue(identity.sourceId, identity.profile, identity.revision, identity.namespace, identity.accountGeneration)
-        return RuleSource(definition, ticket, authority, session, runner, trace, discoveryEnabled)
+        return RuleSource(definition, ticket, authority, session, runner, trace, discoveryEnabled).also { it.loginReading = snapshot }
     }
 
     suspend fun loginForm(): LoginForm = operation("loginUi") {
@@ -98,12 +114,14 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             check(session.write(StorageRequest(StorageArea.Account, StorageRequestKey.LOGIN_INFO, merged)) is StorageResult.Value)
     }
 
-    private fun loginContext(values: Map<String, String>, interactive: Boolean): RuleEvaluation = evaluation(interactive = interactive).also {
+    private fun loginContext(values: Map<String, String>, interactive: Boolean): RuleEvaluation =
+        evaluation(loginReading?.book, loginReading?.chapter, interactive = interactive).also {
         // Reuse the existing bounded interaction envelope; the login form owns this draft.
         // No exploration catalogue is evaluated and no Android objects cross the worker boundary.
         it.discovery = buildJsonObject {
             put("sessionId", "login"); put("values", JsonObject(values.mapValues { JsonPrimitive(it.value) }))
-            put("interactive", interactive); put("noBook", true)
+            put("interactive", interactive); put("noBook", loginReading == null)
+            put("noChapter", loginReading?.chapter == null); put("readingPanel", loginReading != null)
         }
     }
 
@@ -140,7 +158,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         return rendered.also { cachedLoginForm = it }
     }
 
-    suspend fun login(values: Map<String, String>, action: String? = null, formId: String? = null): Unit = operation("loginUrl", timeoutMillis = 300000) {
+    suspend fun login(values: Map<String, String>, action: String? = null, formId: String? = null): LoginActionResult = operation("loginUrl", timeoutMillis = 300000) {
         if (formId != null && cachedLoginForm?.id != formId)
             throw SourceContentException(ContentError.Unavailable, "loginUi")
         val form = (cachedLoginForm ?: loadLoginForm()).withValues(loginValues())
@@ -170,7 +188,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
                 check(session.write(StorageRequest(StorageArea.Account, "login/status", "session")) is StorageResult.Value)
                 if (pending != null) check(session.write(StorageRequest(StorageArea.Account, StorageRequestKey.BROWSER_PENDING_URL)) is StorageResult.Value)
             }
-            return@operation
+            return@operation LoginActionResult()
         }
         val code = if (action == null) "if(typeof login!=='function')throw new Error('login missing');login();true;"
             else fieldAction!!
@@ -182,10 +200,20 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val state = context.discovery!!
         if (state["saveSeconds"]?.let { it != JsonNull } == true) throw SourceContentException(ContentError.InvalidRule, "loginUi.infoMap.save")
         val actions = (state["actions"] as? JsonArray).orEmpty()
+        val refreshTargets = mutableSetOf<LoginRefreshTarget>()
         for (item in actions) {
             val command = item.jsonObject
             when (command.string("kind")) {
                 "refresh" -> Unit
+                "refreshBookInfo", "refreshBookToc", "refreshContent" -> {
+                    if (loginReading == null || command.getValue("args").jsonArray.isNotEmpty())
+                        throw SourceContentException(ContentError.InvalidRule, "loginUi.action.refresh")
+                    refreshTargets += when (command.string("kind")) {
+                        "refreshBookInfo" -> LoginRefreshTarget.BookInformation
+                        "refreshBookToc" -> LoginRefreshTarget.Directory
+                        else -> LoginRefreshTarget.Content
+                    }
+                }
                 "showBrowser" -> {
                     val args = command.getValue("args").jsonArray
                     if (args.size !in 1..4) throw SourceContentException(ContentError.InvalidRule, "loginUi.action.browser")
@@ -204,6 +232,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         if (changed != submitted) saveLoginValues(changed.filter { (key, value) -> submitted[key] != value })
         if (actions.any { it.jsonObject.string("kind") == "refresh" }) cachedLoginForm = null
         if (action == null) authority.authorized(identity) { check(session.write(StorageRequest(StorageArea.Account, "login/status", "authenticated")) is StorageResult.Value) }
+        LoginActionResult(refreshTargets.toSet())
     }
 
     /** Pages called with the same [query] share `cache.*Memory`; without one, memory lasts for this page only. */

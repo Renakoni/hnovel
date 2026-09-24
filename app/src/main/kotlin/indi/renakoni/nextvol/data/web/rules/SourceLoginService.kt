@@ -1,6 +1,8 @@
 package indi.renakoni.nextvol.data.web.rules
 
 import hnovel.content.LoginForm
+import hnovel.content.LoginActionResult
+import hnovel.content.LoginReadingContext
 import hnovel.content.RuleSource
 import hnovel.content.SourceContentException
 import hnovel.content.ContentError
@@ -13,8 +15,9 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 data class LoginAttempt internal constructor(val source: Identifier, val generation: Long, val revision: String,
-    internal val rules: RuleSource) {
+    internal val rules: RuleSource, val reading: LoginReadingContext? = null) {
     internal val lifetime = Job()
+    internal val submission = kotlinx.coroutines.sync.Mutex()
 }
 enum class LoginIntent { Panel, Relogin }
 /** Saved facts only. Submitting a login script does not confirm server-side authentication. */
@@ -31,15 +34,19 @@ class SourceLoginService @Inject constructor(private val sources: ImportedRuleSo
         val target = sources.loginTarget(source)
         savedStatus((target.session.read(StorageRequest(StorageArea.Account, "login/status")) as? StorageResult.Value)?.value)
     }
-    suspend fun begin(source: Identifier, intent: LoginIntent = LoginIntent.Panel): LoginAttempt {
+    suspend fun begin(source: Identifier, intent: LoginIntent = LoginIntent.Panel, reading: LoginReadingContext? = null): LoginAttempt {
         val target = if (intent == LoginIntent.Relogin) sources.rotateAccount(source) else sources.loginTarget(source)
-        return LoginAttempt(source, target.generation, target.revision, target.rules.openLoginSession())
+        return LoginAttempt(source, target.generation, target.revision, target.rules.openLoginSession(reading), reading)
     }
-    suspend fun submit(attempt: LoginAttempt, values: Map<String, String>, action: String? = null, formId: String? = null) {
+    suspend fun submit(attempt: LoginAttempt, values: Map<String, String>, action: String? = null, formId: String? = null): LoginActionResult {
         val target = target(attempt)
+        if (!attempt.submission.tryLock()) throw SourceContentException(ContentError.Unavailable, "login.busy")
         try {
-            recover(attempt) { target(attempt).rules.login(values.toMap(), action, formId) }
-            target(attempt)
+            // A source button can have remote side effects before a later request fails.
+            // Consent/recovery must never replay the entire user action.
+            return recover(attempt, retry = false) {
+                target(attempt).rules.login(values.toMap(), action, formId).also { target(attempt) }
+            }
         } catch (cancelled: CancellationException) {
             withContext(NonCancellable) { cancel(attempt) }
             throw cancelled
@@ -50,7 +57,7 @@ class SourceLoginService @Inject constructor(private val sources: ImportedRuleSo
                 target.session.write(StorageRequest(StorageArea.Account, "login/status", "required"))
             }
             throw failure
-        }
+        } finally { attempt.submission.unlock() }
     }
     suspend fun cancel(attempt: LoginAttempt) {
         attempt.rules.close()
@@ -58,13 +65,16 @@ class SourceLoginService @Inject constructor(private val sources: ImportedRuleSo
     }
     suspend fun logout(source: Identifier) { sources.rotateAccount(source) }
 
-    private suspend fun <T> recover(attempt: LoginAttempt, block: suspend () -> T): T = coroutineScope {
+    internal suspend fun <T> withAttempt(attempt: LoginAttempt, block: suspend () -> T): T =
+        recover(attempt, retry = false) { block().also { target(attempt) } }
+
+    private suspend fun <T> recover(attempt: LoginAttempt, retry: Boolean = true, block: suspend () -> T): T = coroutineScope {
         val request = currentCoroutineContext().job
         val cancellation = attempt.lifetime.invokeOnCompletion { request.cancel() }
         try {
             target(attempt)
             val coordinator = verification
-            if (coordinator == null) block() else {
+            if (coordinator == null || !retry) block() else {
                 val name = sources.installedSources().firstOrNull { ImportedRuleSources.id(it.definition) == attempt.source }
                     ?.definition?.displayName ?: attempt.source.id
                 coordinator.execute(VerificationOwner(attempt.source, attempt.revision, attempt.generation), name, block)
