@@ -103,8 +103,22 @@ class RuleDiscoverySession internal constructor(private val source: RuleSource, 
         source.discoveryPage(context(page = page, draft = values + filters, noBook = false), url)
     }
 
+    fun openPages(url: String, filters: Map<String, String>): RuleListSession {
+        val draft = values + filters
+        return source.listSession(source.spec.explore, "ruleExplore") { page, next, memory ->
+            source.operation("ruleExplore") {
+                if (!source.canDiscover || source.spec.explore.isEmpty())
+                    throw SourceContentException(ContentError.MissingCapability, "ruleExplore")
+                validateValues(draft)
+                source.listPage(context(page = page, draft = draft, noBook = false, memory = memory),
+                    next ?: url, "exploreUrl", source.spec.explore, "ruleExplore")
+            }
+        }
+    }
+
     private fun context(page: Int = 1, interactive: Boolean = false, draft: Map<String, String> = values,
-        event: String? = null, longClick: Boolean = false, noBook: Boolean = true): RuleEvaluation {
+        event: String? = null, longClick: Boolean = false, noBook: Boolean = true,
+        memory: hnovel.execution.ScriptMemory = hnovel.execution.ScriptMemory()): RuleEvaluation {
         if (!initialized) {
             source.discoveryState("info")?.let { saved ->
                 val stored = Json.parseToJsonElement(saved).jsonObject
@@ -113,7 +127,7 @@ class RuleDiscoverySession internal constructor(private val source: RuleSource, 
             }
             initialized = true
         }
-        return source.evaluation(page = page, interactive = interactive).also { context ->
+        return source.evaluation(page = page, interactive = interactive, memory = memory).also { context ->
             context.discovery = buildJsonObject {
                 put("sessionId", id); put("values", jsonValues(values + draft)); put("interactive", interactive)
                 put("event", event?.let(::JsonPrimitive) ?: JsonNull); put("longClick", longClick); put("noBook", noBook)
