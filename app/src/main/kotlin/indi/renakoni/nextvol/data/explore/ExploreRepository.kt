@@ -46,7 +46,7 @@ class ExploreRepository @Inject constructor(private val registry: WebSourceRegis
 class SourceSearch internal constructor(private val runtime: SourceRuntime, val types: List<SearchType>) {
     internal val hasPages get() = runtime.hasSearchPages
 
-    internal fun page(type: SearchType, keyword: String, page: Int) = runtime.searchPage(type, keyword, page).map { result ->
+    internal fun page(type: SearchType, keyword: String, page: Int, query: String? = null) = runtime.searchPage(type, keyword, page, query).map { result ->
         result.copy(books = result.books.map { item ->
             val book = SourceBookId(runtime.id, item.bookId)
             SearchResult.MultipleBook(book.storageKey, item.information?.takeIf { it.id == item.bookId }?.let(book::bind))

@@ -12,7 +12,8 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
     private val baseUrl: String = "", private val keyword: String = "", private val page: Int = 1,
     private val allowInteraction: Boolean = false, private val speakText: String? = null,
     private val speakSpeed: Int = 10, private val sourceName: String = "", private val sourceLastUpdateTime: Long = 0,
-    private val requestUserAgent: String? = null, currentRequest: BrokerRequest? = null) : AutoCloseable {
+    private val requestUserAgent: String? = null, currentRequest: BrokerRequest? = null,
+    private val memory: ScriptMemory = ScriptMemory()) : AutoCloseable {
     private val currentRequest = currentRequest?.let { it.copy(headers = it.headers.toMap()) }
     private val lifetime = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var requests = 0
@@ -73,6 +74,21 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
                 "request.userAgent" -> requestUserAgent?.let(::JsonPrimitive) ?: JsonNull
                 "java.getUserAgent" -> JsonPrimitive(requestUserAgent ?: session.requestUserAgent(baseUrl.ifBlank { session.sourceUrl }, sourceHeaders))
                 else -> JsonPrimitive(session.sourceUrl.ifBlank { baseUrl })
+            }
+        }
+        // Memory values stay in this host object: no network, storage or request budget is used.
+        if (name in setOf("cache.putMemory", "cache.getFromMemory", "cache.deleteMemory")) return authorized {
+            require(args.size == if (name == "cache.putMemory") 2 else 1)
+            val key = args[0].jsonPrimitive.content
+            when (name) {
+                "cache.getFromMemory" -> memory.get(key)?.let(::JsonPrimitive) ?: JsonNull
+                "cache.putMemory" -> {
+                    // Like cache.put, primitives are stored as text and null removes the key.
+                    val value = args[1]
+                    if (value == JsonNull) memory.delete(key) else memory.put(key, value.jsonPrimitive.content)
+                    JsonNull
+                }
+                else -> { memory.delete(key); JsonNull }
             }
         }
         val requestNumber = reserveRequest()

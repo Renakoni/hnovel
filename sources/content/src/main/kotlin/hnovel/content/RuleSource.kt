@@ -13,6 +13,7 @@ import kotlinx.serialization.json.*
 private const val DIRECTORY_MAX_CHAPTERS = 50_000
 private const val DIRECTORY_MAX_PAGES = 2048
 private const val DIRECTORY_TIMEOUT_MILLIS = 600_000L
+private const val MAX_SEARCH_MEMORIES = 8
 
 /** One registered revision/account. Source retirement revokes its ticket; it never chooses another source. */
 class RuleSource(val definition: SourceDefinition, private val identity: ExecutionIdentity,
@@ -23,6 +24,10 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
     private val store = RuleBookStore(session, authority, identity)
     private val serial = Mutex()
     private var prefetchedDirectoryId: String? = null
+    // Search memory belongs to a caller's query. This instance is replaced for another account or revision.
+    private val searchMemory = object : LinkedHashMap<String, ScriptMemory>(8, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ScriptMemory>) = size > MAX_SEARCH_MEMORIES
+    }
     val canSearch get() = spec.searchUrl.isNotBlank()
     val canLogin get() = spec.loginUrl.isNotBlank() || spec.loginUi.isNotBlank()
     private val discoveryCapabilities by lazy { RuleDiscoveryClassifier.capabilities(spec) }
@@ -201,9 +206,11 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         if (action == null) authority.authorized(identity) { check(session.write(StorageRequest(StorageArea.Account, "login/status", "authenticated")) is StorageResult.Value) }
     }
 
-    suspend fun search(keyword: String, page: Int = 1): List<RuleBook> = operation("ruleSearch") {
+    /** Pages called with the same [query] share `cache.*Memory`; without one, memory lasts for this page only. */
+    suspend fun search(keyword: String, page: Int = 1, query: String? = null): List<RuleBook> = operation("ruleSearch") {
         if (!canSearch) throw SourceContentException(ContentError.MissingCapability, "searchUrl")
-        val context = evaluation(keyword = keyword, page = page)
+        val memory = query?.let { synchronized(searchMemory) { searchMemory.getOrPut("$it\n$keyword") { ScriptMemory() } } }
+        val context = evaluation(keyword = keyword, page = page, memory = memory ?: ScriptMemory())
         val document = fetch(context, spec.searchUrl, "searchUrl",
             acceptErrorResponse = spec.search.string("bookList").isScriptRule())
         booksFromPage(context, document, spec.search, "ruleSearch")
@@ -540,12 +547,12 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         return if (old?.informationLoaded == true && old.revision == identity.revision) old else information(id, old)
     }
     internal fun evaluation(book: RuleBook? = null, chapter: RuleChapter? = null, keyword: String = "", page: Int = 1,
-        interactive: Boolean = false, maxRuleCalls: Int = 65536): RuleEvaluation {
+        interactive: Boolean = false, maxRuleCalls: Int = 65536, memory: ScriptMemory = ScriptMemory()): RuleEvaluation {
         val result = RuleEvaluation(identity, authority, session, runner, spec.library, book?.id, chapter?.id,
             book?.state ?: ScriptState(), chapter?.state ?: ScriptState(), book?.id ?: spec.baseUrl, keyword, page,
             headerRule = spec.header, interactive = interactive, trace = trace, sourceLoginUrl = spec.loginUrl,
             sourceComment = spec.comment, verification = ::verification, maxRuleCalls = maxRuleCalls,
-            sourceName = definition.displayName, sourceLastUpdateTime = spec.lastUpdateTime)
+            sourceName = definition.displayName, sourceLastUpdateTime = spec.lastUpdateTime, memory = memory)
         book?.let {
             result.bookField("bookUrl", it.id)
             if ("name" !in result.book.metadata) result.bookField("name", it.title)

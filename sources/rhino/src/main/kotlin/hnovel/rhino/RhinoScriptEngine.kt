@@ -124,7 +124,7 @@ private class ScriptBridge(private val bridge: HostBridge, private val rules: Sc
             require(args.size == 1)
             args[0]
         }
-        val cache = objectFor("cache", listOf("get", "put", "delete"))
+        val cache = objectFor("cache", listOf("get", "put", "delete", "putMemory", "getFromMemory", "deleteMemory"))
         for (name in listOf("getFile", "putFile")) method(cache, name) { cx, activeScope, args ->
             require(if (name == "getFile") args.size == 1 else args.size in 2..3)
             val strings = if (name == "getFile") 1 else 2
