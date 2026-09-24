@@ -19,6 +19,7 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
     private val maxRuleCalls: Int = 65536, private val sourceName: String = "", private val sourceLastUpdateTime: Long = 0) {
     var discovery: JsonObject? = null
     var requestUserAgent: String? = null
+    var currentRequest: hnovel.network.BrokerRequest? = null
     var nextChapterUrl: String? = null
     private val limits = ExecutionLimits(timeoutMillis = if (interactive) 60000 else 30000, maxOutputBytes = 196608,
         maxRequests = 64, maxDataBytes = 16 * 1024 * 1024)
@@ -90,7 +91,7 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
         var responseLimitExceeded = false
         val result = SourceExecutionBroker(identity, authority, session, limits, baseUrl, keyword, page,
             allowInteraction = interactive, sourceName = sourceName, sourceLastUpdateTime = sourceLastUpdateTime,
-            requestUserAgent = requestUserAgent.takeUnless { field == "header" }).use {
+            requestUserAgent = requestUserAgent.takeUnless { field == "header" }, currentRequest = currentRequest).use {
             val executed = try { runner.execute(identity, task, limits, it) }
             catch (cancelled: java.util.concurrent.CancellationException) { throw cancelled }
             catch (failure: Exception) {
