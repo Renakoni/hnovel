@@ -587,7 +587,7 @@ class RuleSourceTest {
     }
 
     @Test fun ruleBrowserCallsInheritHeadersAndRefreshThemAfterVerification() = runBlocking {
-        for (dynamic in listOf(false, true)) {
+        for (inline in listOf(false, true)) for (dynamic in listOf(false, true)) {
             val browserPaths = mutableListOf<String>()
             val tokens = java.util.concurrent.atomic.AtomicInteger()
             val generation = java.util.concurrent.atomic.AtomicReference("before")
@@ -606,13 +606,16 @@ class RuleSourceTest {
                             .setBody("${generation.get()}-${tokens.incrementAndGet()}")
                         seen += request.path!!
                         val token = if (dynamic) "${generation.get()}-${tokens.get()}" else "static"
-                        val accepted = request.getHeader("Authorization") == token && request.getHeader("User-Agent") == "source-agent" &&
-                            request.getHeader("Cookie") == "source=login"
+                        val explicit = inline && request.path in listOf("/start", "/rendered", "/await")
+                        val agent = if (explicit) "inline-agent" else "source-agent"
+                        val accepted = request.getHeader("Authorization") == token && request.getHeader("User-Agent") == agent &&
+                            request.getHeader("Cookie") == "source=login" && (!explicit || request.getHeader("X-Inline") == "kept")
                         if (!accepted) missing += request.path!!
                         return okhttp3.mockwebserver.MockResponse().setBody(if (accepted) "accepted" else "missing header")
                     }
                 }
                 val url = fixture.server.url("/").toString()
+                val options = if (inline) """, {"headers":{"user-agent":"inline-agent","X-Inline":"kept"}}""" else ""
                 fixture.source(customize = { raw -> JsonObject(raw + mapOf(
                     "header" to JsonPrimitive(if (dynamic)
                         "@js:JSON.stringify({Authorization:java.ajax('/token'),'User-Agent':'source-agent',Cookie:'source=login'})"
@@ -623,9 +626,9 @@ class RuleSourceTest {
                             if(java.webViewGetSource(null,'${url}source','','')!=='accepted')throw 'source header';
                             if(java.webViewGetOverrideUrl(null,'${url}override','','')!=='accepted')throw 'override header';
                             if(java.getVerificationCode('${url}captcha')!=='accepted')throw 'captcha header';
-                            java.startBrowser('/start','verify');
-                            if(java.startBrowserAwait('/rendered','verify',false).body()!=='accepted')throw 'rendered header';
-                            if(java.startBrowserAwait('/await','verify').body()!=='accepted')throw 'refetch header';
+                            java.startBrowser(${JsonPrimitive("/start$options")},'verify');
+                            if(java.startBrowserAwait(${JsonPrimitive("/rendered$options")},'verify',false).body()!=='accepted')throw 'rendered header';
+                            if(java.startBrowserAwait(${JsonPrimitive("/await$options")},'verify').body()!=='accepted')throw 'refetch header';
                         }
                     """.trimIndent())
                 )) }).use { source -> source.login(emptyMap()) }
