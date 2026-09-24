@@ -134,7 +134,7 @@ private class ScriptBridge(private val bridge: HostBridge, private val rules: Sc
             }.toTypedArray()
             call(cx, activeScope, "cache.$name", values)
         }
-        objectFor("cookie", listOf("getCookie", "getKey", "setCookie", "replaceCookie", "removeCookie"))
+        objectFor("cookie", listOf("getCookie", "getKey", "setCookie", "replaceCookie", "removeCookie", "setWebCookie"))
         val source = objectFor("source", listOf("get", "put", "getVariable", "setVariable", "putVariable", "getKey", "getBookSourceName", "getLastUpdateTime", "getLoginInfo", "getLoginInfoMap",
             "putLoginInfo", "removeLoginInfo", "getLoginHeader", "getLoginHeaderMap", "putLoginHeader", "removeLoginHeader"))
         source.defineProperty("id", frame.sourceId, ScriptableObject.READONLY)

@@ -42,6 +42,45 @@ class NetworkBridgeTest {
         }
     }
 
+    @Test fun cookieOverloadMatchesThePinnedReferenceAndWebWritesUseTheOwnedBrowser() = runBlocking {
+        val url = "https://www.example.org/"
+        val writes = mutableListOf<String>()
+        var delayed: RequestCommitGuard? = null
+        val browser = object : BrowserExecutor {
+            override suspend fun execute(session: SourceSession, request: BrokerRequest, options: BrowserOptions,
+                guard: RequestCommitGuard, route: SourceNetworkRoute): BrokerResult {
+                assertEquals(SourceScope("fixture", "a", "legado"), session.scope)
+                assertEquals(url, request.url)
+                assertTrue(request.headers.isEmpty())
+                assertFalse(options.interactive)
+                assertTrue(options.nativeWebsite)
+                delayed = guard
+                guard.commit { writes += checkNotNull(options.webCookie) }
+                return BrokerResult.Success(BrokerResponse(0, url, emptyMap(), byteArrayOf(), "UTF-8", 0, kind = ResponseKind.BrowserDocument))
+            }
+        }
+        SourceBroker(folder.root.toPath(), okhttp3.Dns { error("Cookie operations must not resolve DNS") }, browser = browser).use { sessions ->
+            val session = sessions.open(SourceScope("fixture", "a", "legado"), listOf(NetworkGrant(url)))
+            session.configureSource(url, true)
+            session.setCookie(url, "sid=token=part; visible=yes")
+            SourceExecutionBroker(id, authority, session, ExecutionLimits(maxRequests = 32), url).use { bridge ->
+                // E JsExtensions.getCookie delegates null to getCookie, otherwise to getKey;
+                // CookieStore.getKey returns an empty string for a missing name.
+                assertEquals(ExecutionResult.Success("[\"sid=token=part; visible=yes\",\"sid=token=part; visible=yes\",\"token=part\",\"\"]"),
+                    script(bridge, "[java.getCookie('$url'),java.getCookie('$url',null),java.getCookie('$url','sid'),java.getCookie('$url','absent')]"))
+                session.write(StorageRequest(StorageArea.Account, StorageRequestKey.LOGIN_HEADERS, """{"Cookie":"http=only"}"""))
+                assertEquals(ExecutionResult.Success("true"), script(bridge, "cookie.setWebCookie('$url','sid=web');true"))
+                assertEquals(listOf("sid=web"), writes)
+                assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied), script(bridge,
+                    "cookie.setWebCookie('https://accounts.example.org/','sid=denied')"))
+                assertEquals(1, writes.size)
+                session.clearAccount()
+                assertThrows(IllegalStateException::class.java) { delayed!!.commit { writes += "late" } }
+                assertTrue(runCatching { bridge.call("cookie.setWebCookie", listOf(JsonPrimitive(url), JsonPrimitive("late=yes"))) }.isFailure)
+            }
+        }
+    }
+
     @Test fun toastFeedbackPreservesBrowserHandoffAndRejectsRetiredDisplay(): Unit = runBlocking {
         val messages = mutableListOf<Pair<String, Boolean>>()
         var delayed: RequestCommitGuard? = null

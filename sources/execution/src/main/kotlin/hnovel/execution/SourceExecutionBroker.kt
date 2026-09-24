@@ -173,14 +173,25 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
                     }
                     if (info && !removing) JsonPrimitive(true) else JsonNull
                 }
+                "cookie.setWebCookie" -> {
+                    require(args.size == 2 && args.all { it is JsonPrimitive && it.isString })
+                    val value = args[1].jsonPrimitive.content
+                    require(value.length <= 65536)
+                    fetch(BrokerRequest("cookie-$requestNumber", args[0].jsonPrimitive.content,
+                        browser = BrowserOptions(nativeWebsite = true, webCookie = value)))
+                    JsonNull
+                }
                 "cookie.getCookie", "java.getCookie", "cookie.getKey", "cookie.setCookie", "cookie.replaceCookie", "cookie.removeCookie" -> authorized {
                     val required = if (name in setOf("cookie.getKey", "cookie.setCookie", "cookie.replaceCookie")) 2 else 1
-                    require(args.size == required)
+                    require(args.size == required || name == "java.getCookie" && args.size == 2)
                     val url = args[0].jsonPrimitive.content
                     when (name) {
-                        "cookie.getCookie", "java.getCookie" -> JsonPrimitive(session.cookie(url))
-                        "cookie.getKey" -> JsonPrimitive(session.cookie(url).split(';').map { it.trim().split('=', limit = 2) }
-                            .firstOrNull { it.size == 2 && it[0] == args[1].jsonPrimitive.content }?.get(1).orEmpty())
+                        "cookie.getCookie", "java.getCookie", "cookie.getKey" -> {
+                            val key = args.getOrNull(1)?.takeUnless { it == JsonNull }?.jsonPrimitive?.also { require(it.isString) }?.content
+                            val value = session.cookie(url)
+                            JsonPrimitive(if (key == null) value else value.split(';').map { it.trim().split('=', limit = 2) }
+                                .firstOrNull { it.size == 2 && it[0] == key }?.get(1).orEmpty())
+                        }
                         "cookie.removeCookie" -> { session.removeCookie(url); JsonNull }
                         else -> { session.setCookie(url, args[1].jsonPrimitive.content, name == "cookie.setCookie"); JsonNull }
                     }
