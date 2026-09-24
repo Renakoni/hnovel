@@ -40,7 +40,7 @@ class SourceLoginVerificationTest {
                 coEvery { installedSources() } returns emptyList()
             }
             val login = SourceLoginService(sources, SourceSessionManager(ExecutionAuthority()), coordinator)
-            val attempt = LoginAttempt(id, 0, "revision")
+            val attempt = LoginAttempt(id, 0, "revision", rules)
             val request = async(ForegroundSourceRequest()) {
                 if (submit) login.submit(attempt, mapOf("user" to "fixture", "password" to "synthetic-secret"))
                 else login.form(attempt)

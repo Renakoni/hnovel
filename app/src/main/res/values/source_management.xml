@@ -4,6 +4,7 @@
     <string name="sources_account_section">Account</string>
     <string name="sources_account_name">Account: %1$s</string>
     <string name="sources_login_again">Sign in again</string>
+    <string name="sources_open_panel">Open source panel</string>
     <string name="sources_account_required">Sign-in required</string>
     <string name="sources_account_loading">Reading account status…</string>
     <string name="sources_account_unknown">Account status unavailable</string>

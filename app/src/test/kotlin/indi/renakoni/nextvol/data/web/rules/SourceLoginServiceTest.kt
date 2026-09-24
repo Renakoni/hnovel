@@ -46,7 +46,7 @@ class SourceLoginServiceTest {
         assertNull(name(JsonObject(mapOf("user" to JsonPrimitive("x".repeat(129)))).toString()))
     }
 
-    @Test fun nativeVerificationKeepsItsAccountWhileFreshLoginResetsItBeforeOpening() = runBlocking {
+    @Test fun nativePanelAndVerificationKeepTheirAccountWhileExplicitReloginResetsIt() = runBlocking {
         val root = Files.createTempDirectory("native-login").toFile()
         val context = object : ContextWrapper(RuntimeEnvironment.getApplication()) { override fun getFilesDir() = root }
         val visited = mutableListOf<String>()
@@ -77,16 +77,85 @@ class SourceLoginServiceTest {
                 assertEquals(listOf(url), visited)
                 assertEquals(StorageResult.Value(null), original.session.read(StorageRequest(StorageArea.Account, StorageRequestKey.BROWSER_PENDING_URL)))
                 original.session.setCookie(fixture.server.url("/").toString(), "old=account")
-                val fresh = login.begin(id)
-                assertFalse(fresh.retireOnCancel)
+                val panel = login.begin(id)
+                assertEquals(original.generation, panel.generation)
+                login.cancel(panel)
+                assertEquals("old=account", original.session.cookie(fixture.server.url("/").toString()))
+                assertTrue(runCatching { login.submit(panel, emptyMap()) }.isFailure)
+                val fresh = login.begin(id, LoginIntent.Relogin)
                 assertNotEquals(original.generation, fresh.generation)
                 assertTrue(original.session.closed)
                 assertEquals("", sources.loginTarget(id).session.cookie(fixture.server.url("/").toString()))
+                assertTrue(runCatching { login.submit(second, emptyMap()) }.isFailure)
                 login.submit(fresh, emptyMap())
                 assertEquals(listOf(url, fixture.server.url("/login").toString()), visited)
                 login.logout(id)
                 assertTrue(original.session.closed)
                 assertNotEquals(original.generation, sources.loginTarget(id).generation)
+            } finally { sources.stop(); root.deleteRecursively() }
+        }
+    }
+
+    @Test fun cancellingAnOperationPanelRetiresOnlyItsTicketAndPreservesSavedAccount() = runBlocking {
+        val root = Files.createTempDirectory("panel-account").toFile()
+        val context = object : ContextWrapper(RuntimeEnvironment.getApplication()) { override fun getFilesDir() = root }
+        RuleSourceFixture().use { fixture ->
+            val registry = WebSourceRegistry(fixture.authority)
+            val accounts = SourceSessionManager(fixture.authority)
+            var holdSubmission = false
+            val entered = CompletableDeferred<hnovel.execution.SourceExecutionBroker>()
+            val runner = hnovel.content.RuleTaskRunner { identity, task, limits, bridge ->
+                if (holdSubmission) { entered.complete(bridge); awaitCancellation() }
+                fixture.runner.execute(identity, task, limits, bridge)
+            }
+            val sources = ImportedRuleSources(context, registry, fixture.authority, accounts, runner)
+            val login = SourceLoginService(sources, accounts)
+            try {
+                val raw = JsonObject(fixture.raw() + mapOf(
+                    "loginUrl" to JsonPrimitive("function login(){}"),
+                    "loginUi" to JsonPrimitive("""[{"name":"user"},{"name":"preference","type":"button","action":"source.put('theme','dark')"}]""")
+                ))
+                val saved = sources.importer.commit(sources.importer.preview(raw.toString()), listOf(ImportSelection(0, ImportDecision.Add)))
+                val id = sources.activate(saved.items.single().reference!!, listOf(NetworkGrant(fixture.server.url("/").toString(), true)))
+                val original = sources.loginTarget(id)
+                val info = """{"user":"alice"}"""
+                original.session.write(StorageRequest(StorageArea.Account, StorageRequestKey.LOGIN_INFO, info))
+                original.session.write(StorageRequest(StorageArea.Account, "login/status", "session"))
+                original.session.setCookie(fixture.server.url("/").toString(), "sid=alice")
+                val panel = login.begin(id)
+                assertEquals(mapOf("user" to "alice"), login.form(panel).values)
+                login.submit(panel, mapOf("user" to "alice"), "preference")
+                assertEquals(LoginStatus.SessionSaved, login.status(id))
+                login.cancel(panel)
+                assertEquals(original.generation, accounts.current(id).generation)
+                assertEquals(StorageResult.Value(info), original.session.read(StorageRequest(StorageArea.Account, StorageRequestKey.LOGIN_INFO)))
+                assertEquals("sid=alice", original.session.cookie(fixture.server.url("/").toString()))
+                assertEquals(StorageResult.Value("dark"), original.session.read(StorageRequest(StorageArea.Config, "value:theme")))
+                assertTrue(runCatching { login.submit(panel, mapOf("user" to "late")) }.isFailure)
+                assertFalse(original.session.closed)
+                val next = login.begin(id)
+                assertEquals("alice", login.form(next).values["user"])
+                holdSubmission = true
+                val running = async { runCatching { login.submit(next, mapOf("user" to "alice")) } }
+                val delayed = withTimeout(10000) { entered.await() }
+                login.cancel(next)
+                assertTrue(withTimeout(10000) { running.await() }.isFailure)
+                assertTrue(runCatching { delayed.call("source.putLoginInfo", listOf(JsonPrimitive("""{"user":"late"}"""))) }.isFailure)
+                assertEquals(original.generation, accounts.current(id).generation)
+                holdSubmission = false
+                val outdated = login.begin(id)
+                val definition = sources.installedSources().single().definition
+                val revision = JsonObject(raw + ("bookSourceName" to JsonPrimitive("Revised panel")))
+                val updated = sources.importer.commit(sources.importer.preview(revision.toString()),
+                    listOf(ImportSelection(0, ImportDecision.Replace(definition.reference()))))
+                SourceRevisionUpdates(context, sources, accounts, runner, fixture.authority).apply(id,
+                    updated.items.single().reference!!, listOf(NetworkGrant(fixture.server.url("/").toString(), true)))
+                assertTrue(runCatching { login.form(outdated) }.isFailure)
+                assertTrue(runCatching { login.submit(outdated, mapOf("user" to "late")) }.isFailure)
+                val beforeLogout = login.begin(id)
+                login.logout(id)
+                assertTrue(runCatching { login.submit(beforeLogout, mapOf("user" to "late")) }.isFailure)
+                assertEquals(LoginStatus.LoggedOut, login.status(id))
             } finally { sources.stop(); root.deleteRecursively() }
         }
     }

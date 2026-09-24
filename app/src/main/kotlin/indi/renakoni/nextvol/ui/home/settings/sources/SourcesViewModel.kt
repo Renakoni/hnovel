@@ -323,20 +323,25 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
         mutable.update { it.copy(selected = null, message = R.string.sources_removed) }
     }
     fun beginLogin(id: Identifier) = launch { openLogin(id) }
-    private suspend fun openLogin(id: Identifier) {
+    fun relogin(id: Identifier) = launch { openLogin(id, LoginIntent.Relogin) }
+    private suspend fun openLogin(id: Identifier, intent: LoginIntent = LoginIntent.Panel) {
         val definition = sources.installedSources().single { ImportedRuleSources.id(it.definition) == id }.definition
         val declaration = RuleSettingsPresentation.read(definition)
         if (!declaration.loginDeclared || declaration.loginErrorField != null)
             throw SourceContentException(hnovel.content.ContentError.InvalidRule, declaration.loginErrorField ?: "loginUi")
         check(registry.resolve(id) is SourceResolution.Ready) { "Source is not initialized" }
-        // Keep a handle even if cancellation arrives just after the account has rotated.
-        val active = withContext(NonCancellable) { login.begin(id).also { attempt = it } }
+        // Retire the previous panel even when the account itself is retained.
+        val active = withContext(NonCancellable) {
+            attempt?.let { login.cancel(it) }
+            login.begin(id, intent).also { attempt = it }
+        }
         var form: LoginForm? = null
         try {
             val loaded = login.form(active).also { form = it }
             currentCoroutineContext().ensureActive()
             if (loaded.browserUrl != null && loaded.fields.isEmpty()) {
                 login.submit(active, emptyMap())
+                login.cancel(active)
                 attempt = null
                 mutable.update { it.copy(loginForm = null) }
             } else mutable.update { it.copy(loginForm = loaded) }
@@ -354,7 +359,7 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
         try {
             login.submit(active, values, action, formId)
             val form = if (action == null) null else login.form(active)
-            if (action == null) attempt = null
+            if (action == null) { login.cancel(active); attempt = null }
             mutable.update { it.copy(loginForm = form) }
         } finally {
             withContext(NonCancellable) { refreshStoredSettings(active.source, submittedForm) }

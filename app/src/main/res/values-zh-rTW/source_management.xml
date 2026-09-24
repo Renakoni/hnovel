@@ -4,6 +4,7 @@
     <string name="sources_account_section">帳號</string>
     <string name="sources_account_name">帳號：%1$s</string>
     <string name="sources_login_again">重新登入</string>
+    <string name="sources_open_panel">開啟書源面板</string>
     <string name="sources_account_required">需要重新登入</string>
     <string name="sources_account_loading">正在讀取帳號狀態…</string>
     <string name="sources_account_unknown">無法讀取帳號狀態</string>

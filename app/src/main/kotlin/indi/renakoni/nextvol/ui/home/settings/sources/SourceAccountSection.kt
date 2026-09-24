@@ -20,7 +20,7 @@ import hnovel.network.BrowserChallengeKind
 /** Presents the saved status; neither cookies nor account labels establish authentication. */
 @Composable
 internal fun SourceAccountSection(status: LoginStatus?, accountName: String?, available: Boolean, loginAvailable: Boolean, busy: Boolean,
-    verification: VerificationPrompt?, onLogin: () -> Unit, onLogout: () -> Unit, onRetry: () -> Unit,
+    verification: VerificationPrompt?, onLogin: () -> Unit, onRelogin: () -> Unit, onLogout: () -> Unit, onRetry: () -> Unit,
     onVerify: () -> Unit) {
     val hasSession = status == LoginStatus.LoginSubmitted || status == LoginStatus.SessionSaved
     val working = busy || verification?.opening == true
@@ -82,11 +82,17 @@ internal fun SourceAccountSection(status: LoginStatus?, accountName: String?, av
                 if (hasSession) {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(onClick = onLogout, enabled = !busy) { Text(stringResource(R.string.sources_logout)) }
-                        if (loginAvailable) TextButton(onClick = onLogin, enabled = !busy) { Text(stringResource(R.string.sources_login_again)) }
+                        if (loginAvailable) {
+                            OutlinedButton(onClick = onLogin, enabled = !busy) { Text(stringResource(R.string.sources_open_panel)) }
+                            TextButton(onClick = onRelogin, enabled = !busy) { Text(stringResource(R.string.sources_login_again)) }
+                        }
                     }
                 } else if (loginAvailable) {
-                    Button(onClick = onLogin, enabled = !busy) {
+                    Button(onClick = if (status == LoginStatus.Required) onRelogin else onLogin, enabled = !busy) {
                         Text(stringResource(if (status == LoginStatus.Required) R.string.sources_login_again else R.string.sources_login))
+                    }
+                    if (status == LoginStatus.Required) TextButton(onClick = onLogin, enabled = !busy) {
+                        Text(stringResource(R.string.sources_open_panel))
                     }
                 }
             } else Text(stringResource(R.string.sources_account_unavailable), style = MaterialTheme.typography.bodyMedium)
