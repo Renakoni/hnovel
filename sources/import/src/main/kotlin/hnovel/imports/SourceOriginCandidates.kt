@@ -1,7 +1,7 @@
 package hnovel.imports
 
 import hnovel.network.ResourceKind
-import hnovel.network.sourceOrigin
+import hnovel.network.sourcePermissionOrigin
 import kotlinx.serialization.json.*
 
 /** Inspect already-validated definition data only. A literal reference is a candidate, never a grant. */
@@ -27,9 +27,7 @@ object SourceOriginCandidates {
                 is JsonPrimitive -> if (value.isString) {
                     for (match in absolute.findAll(value.content.replace("\\/", "/"))) {
                         if (found.size >= 32) break
-                        val origin = sourceOrigin(match.value) ?: continue
-                        // Unresolved template authorities are not actionable website candidates.
-                        if (origin.any { it in "{}$,*|!" } || sourceOrigin(origin) != origin) continue
+                        val origin = sourcePermissionOrigin(match.value) ?: continue
                         found += OriginCandidate(origin, kind)
                     }
                 }

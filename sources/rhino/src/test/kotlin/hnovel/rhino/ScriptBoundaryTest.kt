@@ -23,7 +23,7 @@ class ScriptBoundaryTest {
             "Java.type('java.lang.Class')", "getClass(java)", "java.getClass().getClassLoader()",
             "book.getClass().forName('java.lang.Runtime')", "new java.io.File('/unused')",
             "new Packages.java.net.Socket('127.0.0.1',1)", "new JavaAdapter(java.lang.Runnable,{run:function(){}})",
-            "java.ajax.constructor('return Packages.java.lang.System')()"
+            "java.ajax.constructor('return Packages.java.lang.System.exit(0)')()"
         )
         for (script in attempts) {
             assertTrue(script, engine.evaluate(script, frame) is ScriptResult.Failure)

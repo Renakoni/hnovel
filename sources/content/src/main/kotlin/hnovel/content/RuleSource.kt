@@ -65,14 +65,32 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
 
     private var cachedLoginForm: LoginForm? = null
 
+    /** A panel owns its form and execution ticket, while sharing the current account storage. */
+    fun openLoginSession(): RuleSource {
+        if (!authority.accepts(identity)) throw SourceContentException(ContentError.Unavailable, "login")
+        val ticket = authority.issue(identity.sourceId, identity.profile, identity.revision, identity.namespace, identity.accountGeneration)
+        return RuleSource(definition, ticket, authority, session, runner, trace, discoveryEnabled)
+    }
+
     suspend fun loginForm(): LoginForm = operation("loginUi") {
         (cachedLoginForm ?: loadLoginForm()).withValues(loginValues())
     }
 
-    private fun loginValues(): Map<String, String> {
+    private fun loginInfo(): String? {
         val stored = session.read(StorageRequest(StorageArea.Account, StorageRequestKey.LOGIN_INFO)) as? StorageResult.Value
             ?: throw SourceContentException(ContentError.Storage, "loginUi.values")
-        return stored.value?.let { Json.parseToJsonElement(it).jsonObject.mapValues { it.value.jsonPrimitive.content } }.orEmpty()
+        return stored.value
+    }
+
+    private fun loginValues(): Map<String, String> = LoginInfo.stringFields(loginInfo()).orEmpty()
+        .filter { (key, value) -> key.length <= 128 && value.jsonPrimitive.content.length <= 4096 }
+        .mapValues { it.value.jsonPrimitive.content }
+
+    private fun saveLoginValues(values: Map<String, String>) = authority.authorized(identity) {
+        val original = loginInfo()
+        val merged = LoginInfo.merge(original, values)
+        if (merged != original)
+            check(session.write(StorageRequest(StorageArea.Account, StorageRequestKey.LOGIN_INFO, merged)) is StorageResult.Value)
     }
 
     private fun loginContext(values: Map<String, String>, interactive: Boolean): RuleEvaluation = evaluation(interactive = interactive).also {
@@ -95,7 +113,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
 
     private suspend fun loadLoginForm(): LoginForm {
         val extended = definition.profile == EXTENSION_PROFILE
-        val context = loginContext(loginValues(), interactive = false)
+        val context = loginContext(loginValues().entries.take(128).associate { it.toPair() }, interactive = false)
         val raw = spec.loginUi.trim()
         val ui = if (raw.startsWith("@js:", true) || raw.startsWith("<js>", true)) {
             if (!extended) throw SourceContentException(ContentError.InvalidRule, "loginUi")
@@ -117,13 +135,19 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         return rendered.also { cachedLoginForm = it }
     }
 
-    suspend fun login(values: Map<String, String>, action: String? = null): Unit = operation("loginUrl", timeoutMillis = 300000) {
+    suspend fun login(values: Map<String, String>, action: String? = null, formId: String? = null): Unit = operation("loginUrl", timeoutMillis = 300000) {
+        if (formId != null && cachedLoginForm?.id != formId)
+            throw SourceContentException(ContentError.Unavailable, "loginUi")
         val form = (cachedLoginForm ?: loadLoginForm()).withValues(loginValues())
+        // Trusted callers without a UI snapshot retain the unique-name API. UI submissions
+        // always carry a form ID and can only address an opaque control ID from that form.
+        val fieldAction = action?.let { id -> form.fields.singleOrNull { if (formId == null) it.name == id else it.id == id }?.action
+            ?: throw SourceContentException(ContentError.InvalidRule, "loginUi.action") }
         form.validate(values)
-        val submitted = loginValues() + form.values + values
+        val submitted = form.values + values
         form.validate(submitted, allowAdditional = true)
         val info = JsonObject(submitted.mapValues { JsonPrimitive(it.value) }).toString()
-        authority.authorized(identity) { check(session.write(StorageRequest(StorageArea.Account, StorageRequestKey.LOGIN_INFO, info)) is StorageResult.Value) }
+        saveLoginValues(submitted)
         val context = loginContext(submitted, interactive = true)
         if (form.browserUrl != null && action == null) {
             val pending = if (spec.browserRead) (session.read(StorageRequest(StorageArea.Account,
@@ -144,7 +168,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             return@operation
         }
         val code = if (action == null) "if(typeof login!=='function')throw new Error('login missing');login();true;"
-            else form.fields.single { it.name == action }.action ?: throw SourceContentException(ContentError.InvalidRule, "loginUi.action")
+            else fieldAction!!
         if (code.startsWith("http://", true) || code.startsWith("https://", true)) {
             val response = request(context, code, "loginUi.action", browser = BrowserOptions(interactive = true))
             checkStatus(response.status, "loginUi.action", response.kind == ResponseKind.BrowserDocument)
@@ -172,9 +196,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         }
         val changed = state.getValue("values").jsonObject.mapValues { it.value.jsonPrimitive.content }
         form.validate(changed, allowAdditional = true)
-        if (changed != submitted) authority.authorized(identity) {
-            check(session.write(StorageRequest(StorageArea.Account, StorageRequestKey.LOGIN_INFO, state.getValue("values").toString())) is StorageResult.Value)
-        }
+        if (changed != submitted) saveLoginValues(changed.filter { (key, value) -> submitted[key] != value })
         if (actions.any { it.jsonObject.string("kind") == "refresh" }) cachedLoginForm = null
         if (action == null) authority.authorized(identity) { check(session.write(StorageRequest(StorageArea.Account, "login/status", "authenticated")) is StorageResult.Value) }
     }
@@ -522,7 +544,8 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val result = RuleEvaluation(identity, authority, session, runner, spec.library, book?.id, chapter?.id,
             book?.state ?: ScriptState(), chapter?.state ?: ScriptState(), book?.id ?: spec.baseUrl, keyword, page,
             headerRule = spec.header, interactive = interactive, trace = trace, sourceLoginUrl = spec.loginUrl,
-            sourceComment = spec.comment, verification = ::verification, maxRuleCalls = maxRuleCalls)
+            sourceComment = spec.comment, verification = ::verification, maxRuleCalls = maxRuleCalls,
+            sourceName = definition.displayName, sourceLastUpdateTime = spec.lastUpdateTime)
         book?.let {
             result.bookField("bookUrl", it.id)
             if ("name" !in result.book.metadata) result.bookField("name", it.title)
@@ -535,7 +558,14 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         return result
     }
     private suspend fun request(context: RuleEvaluation, url: String, field: String, kind: ResourceKind = ResourceKind.Document,
-        browser: BrowserOptions? = null): BrokerResponse = executeRequest(prepareRequest(context, url, field, kind, browser), field)
+        browser: BrowserOptions? = null): BrokerResponse = send(context, prepareRequest(context, url, field, kind, browser), field)
+
+    /** Executes a prepared rule request and records the User-Agent its response was fetched with. */
+    private suspend fun send(context: RuleEvaluation, request: BrokerRequest, field: String): BrokerResponse {
+        val response = executeRequest(request, field)
+        context.requestUserAgent = if (response.protocol == "data") null else session.requestUserAgent(response.finalUrl, request.headers)
+        return response
+    }
 
     private suspend fun prepareRequest(context: RuleEvaluation, url: String, field: String, kind: ResourceKind,
         browser: BrowserOptions? = null): BrokerRequest {
@@ -574,7 +604,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
     private suspend fun fetch(context: RuleEvaluation, url: String, field: String, browser: BrowserOptions? = null,
         acceptErrorResponse: Boolean = false): PageDocument {
         val request = prepareRequest(context, url, field, ResourceKind.Document, browser)
-        val response = executeRequest(request, field)
+        val response = send(context, request, field)
         val inline = response.protocol == "data"
         context.baseUrl = if (inline) url else response.finalUrl
         if (spec.loginCheck.isBlank()) {

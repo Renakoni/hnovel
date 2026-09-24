@@ -29,7 +29,7 @@ class SourceLoginVerificationTest {
             val failure = SourceContentException(ContentError.Certificate, "login", verification = verification)
             val rules = mockk<RuleSource>()
             var calls = 0
-            if (submit) coEvery { rules.login(any(), any()) } coAnswers { if (++calls == 1) throw failure }
+            if (submit) coEvery { rules.login(any(), any(), any()) } coAnswers { if (++calls == 1) throw failure }
             else coEvery { rules.loginForm() } coAnswers {
                 if (++calls == 1) throw failure
                 LoginForm(emptyList(), null)
@@ -40,7 +40,7 @@ class SourceLoginVerificationTest {
                 coEvery { installedSources() } returns emptyList()
             }
             val login = SourceLoginService(sources, SourceSessionManager(ExecutionAuthority()), coordinator)
-            val attempt = LoginAttempt(id, 0, "revision")
+            val attempt = LoginAttempt(id, 0, "revision", rules)
             val request = async(ForegroundSourceRequest()) {
                 if (submit) login.submit(attempt, mapOf("user" to "fixture", "password" to "synthetic-secret"))
                 else login.form(attempt)

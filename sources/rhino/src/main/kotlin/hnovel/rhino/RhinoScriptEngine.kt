@@ -15,6 +15,7 @@ private class RequestRejected(value: Any) : JavaScriptException(value, "request-
 
 internal val bridgeLimitKey = Any()
 internal val scriptLibraryKey = Any()
+internal val scriptDeadlineKey = Any()
 
 private class ScriptBridge(private val bridge: HostBridge, private val rules: ScriptRuleHelpers, private val requests: ScriptRequestTemplates, archives: ArchiveDecoder) {
     private val resources = ScriptResources(bridge, requests, archives)
@@ -99,7 +100,7 @@ private class ScriptBridge(private val bridge: HostBridge, private val rules: Sc
         val javaBridge = objectFor("java", listOf("ajax", "ajaxAll", "connect", "get", "head", "post", "getCookie", "androidId",
             "getString", "getStringList", "getElement", "getElements", "importScript", "cacheFile", "downloadFile",
             "readFile", "readTxtFile", "deleteFile", "toURL", "webView", "webViewGetSource", "webViewGetOverrideUrl",
-            "startBrowser", "startBrowserAwait", "getVerificationCode", "getWebViewUA", "getStrResponse", "getUrl") + ScriptTools.methods + ScriptCryptoObjects.factories + fonts.methods + resources.methods)
+            "startBrowser", "startBrowserAwait", "getVerificationCode", "getWebViewUA", "getUserAgent", "getStrResponse", "getUrl") + ScriptTools.methods + ScriptCryptoObjects.factories + fonts.methods + resources.methods)
         method(javaBridge, "setContent") { cx, activeScope, args ->
             call(cx, activeScope, "java.setContent", args)
             javaBridge
@@ -134,13 +135,17 @@ private class ScriptBridge(private val bridge: HostBridge, private val rules: Sc
             call(cx, activeScope, "cache.$name", values)
         }
         objectFor("cookie", listOf("getCookie", "getKey", "setCookie", "replaceCookie", "removeCookie"))
-        val source = objectFor("source", listOf("get", "put", "getVariable", "setVariable", "getKey", "getLoginInfo", "getLoginInfoMap",
+        val source = objectFor("source", listOf("get", "put", "getVariable", "setVariable", "putVariable", "getKey", "getBookSourceName", "getLastUpdateTime", "getLoginInfo", "getLoginInfoMap",
             "putLoginInfo", "removeLoginInfo", "getLoginHeader", "getLoginHeaderMap", "putLoginHeader", "removeLoginHeader"))
         source.defineProperty("id", frame.sourceId, ScriptableObject.READONLY)
         source.defineProperty("profile", frame.profile, ScriptableObject.READONLY)
         for (name in listOf("key", "bookSourceUrl")) source.defineProperty(name, java.util.function.Supplier<Any?> {
             call(Context.getCurrentContext(), scope, "source.getKey", emptyArray())
         }, null, ScriptableObject.PERMANENT)
+        for ((name, getter) in listOf("bookSourceName" to "getBookSourceName", "lastUpdateTime" to "getLastUpdateTime"))
+            source.defineProperty(name, java.util.function.Supplier<Any?> {
+                call(Context.getCurrentContext(), scope, "source.$getter", emptyArray())
+            }, null, ScriptableObject.PERMANENT)
         // Definitions can explicitly eval this prelude from search/discovery. Reading it does not
         // initiate login, and the worker never receives a mutable Android Source object.
         source.defineProperty("loginUrl", frame.sourceLoginUrl, ScriptableObject.READONLY or ScriptableObject.PERMANENT)
@@ -238,6 +243,7 @@ class RhinoScriptEngine(private val bridge: HostBridge, private val limits: Scri
                 val realm = library?.realm ?: ScriptRealm(context)
                 ScriptRealm.install(context, realm)
                 context.putThreadLocal(bridgeLimitKey, limits.maxBridgeChars)
+                context.putThreadLocal(scriptDeadlineKey, ::checkDeadline)
                 if (library?.realm == null) {
                     ScriptParsers.install(context, realm.global)
                     ScriptJavaPackages.install(context, realm.global)
