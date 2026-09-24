@@ -110,7 +110,9 @@ exit "$TEST_EXIT"
         self.assertNotEqual(0, result.returncode)
         self.assertIn('two attempts', result.stderr)
         self.assertFalse((self.root / 'ran').exists())
-        self.assertEqual(2, len((self.root / 'launches').read_text().splitlines()))
+        # The mocked clock can end a window before the background emulator records its
+        # launch, so count the synchronous per-attempt ADB start instead.
+        self.assertEqual(2, (self.root / 'adb-calls').read_text().splitlines().count('start-server'))
 
     def test_failed_adb_start_retries_before_launching_the_emulator(self):
         result = self.run_case('adb-recovers')

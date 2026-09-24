@@ -18,7 +18,10 @@ import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.*
 import okhttp3.mockwebserver.*
 import org.junit.Assert.*
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TestRule
+import org.junit.runners.model.Statement
 import org.junit.runner.RunWith
 import java.io.File
 import java.util.UUID
@@ -27,6 +30,13 @@ import java.util.UUID
 @RunWith(AndroidJUnit4::class)
 class SourceVerificationInstrumentedTest {
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
+
+    // The emulator WebView occasionally commits the fixture's scripted location.replace() to
+    // its 401 page as an empty document that never parses, after the server has served it.
+    // No app code runs on that path; each attempt uses a fresh server, source and profile.
+    @get:Rule val retryStalledFixture = TestRule { base, _ -> object : Statement() {
+        override fun evaluate() = try { base.evaluate() } catch (_: TimeoutCancellationException) { base.evaluate() }
+    } }
     private val context get() = instrumentation.targetContext
 
     private fun find(node: AccessibilityNodeInfo?, text: String): AccessibilityNodeInfo? {

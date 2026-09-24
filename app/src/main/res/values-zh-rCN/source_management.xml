@@ -94,4 +94,5 @@
     <string name="sources_up_to_date">未发现更新。</string>
     <string name="sources_saved">书源更改已保存。</string>
     <string name="sources_removed">书源已删除，已保存的书籍和阅读记录仍保留。</string>
+    <string name="sources_invalid_permission_lines">站点地址无效，所在行：%1$s</string>
 </resources>

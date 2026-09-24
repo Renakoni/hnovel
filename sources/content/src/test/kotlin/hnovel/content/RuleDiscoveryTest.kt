@@ -8,6 +8,26 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RuleDiscoveryTest {
+    @Test fun catalogueNoticeWaitUsesTheOriginalLibraryCallingConventionWithoutFetching() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            fixture.source { definition(it, """
+                @js:sleepToast('Catalogue ready');
+                [{title:'Latest',url:'/latest'}, {title:'Popular',url:'/popular'}];
+            """.trimIndent(), buildJsonObject { put("jsLib", """
+                function sleep(seconds) { return Packages.java.lang.Thread.sleep(1000*seconds); }
+                function sleepToast(text, seconds) {
+                    let {java} = this;
+                    java.log(text); java.longToast(text);
+                    if (seconds === undefined) seconds = 0.01;
+                    this.sleep(seconds);
+                }
+            """.trimIndent()) }) }.use { source ->
+                assertEquals(listOf("Latest", "Popular"), source.openDiscovery("notice").catalog().rows.map { it.title })
+            }
+            assertEquals(0, fixture.server.requestCount)
+        }
+    }
+
     @Test fun lenientCataloguesDiscardNullPlaceholdersIncludingTrailingCommas() = runBlocking {
         RuleSourceFixture().use { fixture ->
             fixture.source { definition(it, "[null,{title:'Latest',url:'/search'},null,]") }.use { source ->

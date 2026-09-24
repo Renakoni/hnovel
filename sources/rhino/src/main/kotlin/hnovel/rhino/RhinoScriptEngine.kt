@@ -15,6 +15,7 @@ private class RequestRejected(value: Any) : JavaScriptException(value, "request-
 
 internal val bridgeLimitKey = Any()
 internal val scriptLibraryKey = Any()
+internal val scriptDeadlineKey = Any()
 
 private class ScriptBridge(private val bridge: HostBridge, private val rules: ScriptRuleHelpers, private val requests: ScriptRequestTemplates, archives: ArchiveDecoder) {
     private val resources = ScriptResources(bridge, requests, archives)
@@ -238,6 +239,7 @@ class RhinoScriptEngine(private val bridge: HostBridge, private val limits: Scri
                 val realm = library?.realm ?: ScriptRealm(context)
                 ScriptRealm.install(context, realm)
                 context.putThreadLocal(bridgeLimitKey, limits.maxBridgeChars)
+                context.putThreadLocal(scriptDeadlineKey, ::checkDeadline)
                 if (library?.realm == null) {
                     ScriptParsers.install(context, realm.global)
                     ScriptJavaPackages.install(context, realm.global)

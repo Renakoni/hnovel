@@ -94,4 +94,5 @@
     <string name="sources_up_to_date">No changes found.</string>
     <string name="sources_saved">Source changes saved.</string>
     <string name="sources_removed">Source removed. Saved books and reading records remain.</string>
+    <string name="sources_invalid_permission_lines">Invalid site address on line(s): %1$s</string>
 </resources>
