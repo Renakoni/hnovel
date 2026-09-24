@@ -42,7 +42,7 @@ jobs:
       - name: Run tests on the fixed Android emulator
         env:
           API_LEVEL: ${{ matrix.api }}
-          TEST_CLASSES: ",indi.renakoni.nextvol.EpubShareInstrumentedTest,indi.renakoni.nextvol.reader.ReaderSpacingInstrumentedTest,indi.renakoni.nextvol.reader.ReaderLayoutInstrumentedTest,indi.renakoni.nextvol.data.download.DownloadPersistenceInstrumentedTest,indi.renakoni.nextvol.data.localbook.LocalBookImportInstrumentedTest,indi.renakoni.nextvol.defaultplugin.wenku8.Wenku8NetworkInstrumentedTest,indi.renakoni.nextvol.tts.SystemSpeechInstrumentedTest,indi.renakoni.nextvol.tts.ReadAloudBackgroundInstrumentedTest,indi.renakoni.nextvol.tts.HttpSpeechInstrumentedTest${{ matrix.native_tests }}"
+          TEST_CLASSES: ",indi.renakoni.nextvol.sourceexecution.ReadingPanelInstrumentedTest,indi.renakoni.nextvol.EpubShareInstrumentedTest,indi.renakoni.nextvol.reader.ReaderSpacingInstrumentedTest,indi.renakoni.nextvol.reader.ReaderLayoutInstrumentedTest,indi.renakoni.nextvol.data.download.DownloadPersistenceInstrumentedTest,indi.renakoni.nextvol.data.localbook.LocalBookImportInstrumentedTest,indi.renakoni.nextvol.defaultplugin.wenku8.Wenku8NetworkInstrumentedTest,indi.renakoni.nextvol.tts.SystemSpeechInstrumentedTest,indi.renakoni.nextvol.tts.ReadAloudBackgroundInstrumentedTest,indi.renakoni.nextvol.tts.HttpSpeechInstrumentedTest${{ matrix.native_tests }}"
         run: |
           bash .github/scripts/run-static-emulator.sh "$API_LEVEL" bash -c '
             status=0
