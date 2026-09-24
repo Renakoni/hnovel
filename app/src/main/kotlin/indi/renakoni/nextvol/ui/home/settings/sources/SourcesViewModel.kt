@@ -348,11 +348,11 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
             withContext(NonCancellable) { refreshStoredSettings(id, form) }
         }
     }
-    fun submitLogin(values: Map<String, String>, action: String? = null) = launch {
+    fun submitLogin(values: Map<String, String>, action: String? = null, formId: String? = null) = launch {
         val active = checkNotNull(attempt)
         val submittedForm = state.value.loginForm
         try {
-            login.submit(active, values, action)
+            login.submit(active, values, action, formId)
             val form = if (action == null) null else login.form(active)
             if (action == null) attempt = null
             mutable.update { it.copy(loginForm = form) }

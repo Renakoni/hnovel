@@ -40,10 +40,10 @@ class SourceLoginService @Inject constructor(private val sources: ImportedRuleSo
         // Closing a native window still keeps its current (possibly partial) website session.
         return LoginAttempt(source, target.generation, target.revision, retireOnCancel = !native)
     }
-    suspend fun submit(attempt: LoginAttempt, values: Map<String, String>, action: String? = null) {
+    suspend fun submit(attempt: LoginAttempt, values: Map<String, String>, action: String? = null, formId: String? = null) {
         val target = target(attempt)
         try {
-            recover(attempt) { target(attempt).rules.login(values.toMap(), action) }
+            recover(attempt) { target(attempt).rules.login(values.toMap(), action, formId) }
             target(attempt)
         } catch (cancelled: CancellationException) {
             withContext(NonCancellable) { cancel(attempt) }

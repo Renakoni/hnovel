@@ -54,6 +54,50 @@ class RuleLoginFormTest {
         }
     }
 
+    @Test fun sameNamedButtonsDispatchTheirOwnActionAndRefreshRejectsOldSubmissions() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            fixture.source(profile = EXTENSION_PROFILE) { raw -> JsonObject(raw + mapOf(
+                "loginUrl" to JsonPrimitive("function login(){source.put('chosen','login');}"),
+                "loginUi" to JsonPrimitive("""@js:
+                    var rows=[{name:'user',default:'alice'},
+                      {name:'same',type:'button',action:"source.put('chosen','one');"},
+                      {name:'same',type:'button',action:"source.put('chosen','two');"},
+                      {name:'expand',type:'button',action:"source.put('expanded',source.get('expanded')==='yes'?'no':'yes');java.reLoginView();"}];
+                    if(source.get('expanded')==='yes') {
+                      rows.reverse(); rows[1].name='new label';
+                      for(var i=0;i<57;i++)rows.push({name:'setting'+i});
+                    }
+                    JSON.stringify(rows);
+                """.trimIndent())
+            )) }.use { source ->
+                suspend fun chosen() = source.evaluation().script("source.get('chosen')", hnovel.rules.RuleValue.Empty, "fixture").text()
+                val original = source.loginForm()
+                val buttons = original.fields.filter { it.name == "same" }
+                source.login(original.values, buttons[0].id, original.id)
+                assertEquals("one", chosen())
+                source.login(original.values, buttons[1].id, original.id)
+                assertEquals("two", chosen())
+                source.login(original.values, original.fields.single { it.name == "expand" }.id, original.id)
+                val stale = runCatching { source.login(mapOf("user" to "stale"), buttons[0].id, original.id) }.exceptionOrNull() as SourceContentException
+                assertEquals(ContentError.Unavailable, stale.code)
+                val expanded = source.loginForm()
+                assertEquals(61, expanded.fields.size)
+                assertEquals("alice", expanded.values["user"])
+                assertTrue(expanded.fields.any { it.id == buttons[1].id && it.name == "new label" })
+                assertTrue(runCatching { source.login(original.values, null, original.id) }.isFailure)
+                source.login(expanded.values, buttons[0].id, expanded.id)
+                assertEquals("one", chosen())
+                source.login(expanded.values, expanded.fields.single { it.name == "expand" }.id, expanded.id)
+                assertEquals(4, source.loginForm().fields.size)
+                assertTrue(runCatching { source.login(expanded.values, buttons[1].id, expanded.id) }.isFailure)
+                assertEquals("one", chosen())
+                assertTrue(runCatching { source.login(original.values, "same") }.isFailure)
+                source.login(original.values, "expand")
+                assertEquals(61, source.loginForm().fields.size)
+            }
+        }
+    }
+
     @Test fun directAndRedirectedBrowserLoginKeepTheDeniedOriginWithoutItsQuery() = runBlocking {
         val deniedUrl = "https://login.invalid/verify?token=synthetic-secret"
         var navigations = 0
@@ -129,7 +173,7 @@ class RuleLoginFormTest {
                     }.toString())
                 )) }.use { source ->
                     val form = source.loginForm()
-                    val failure = runCatching { source.login(form.values, "verify") }.exceptionOrNull() as SourceContentException
+                    val failure = runCatching { source.login(form.values, form.fields.single { it.name == "verify" }.id, form.id) }.exceptionOrNull() as SourceContentException
                     assertEquals(ContentError.LoginRequired, failure.code)
                     assertEquals(if (scripted) "loginUi.action.browser" else "loginUi.action", failure.field)
                     assertEquals("before", source.loginForm().values["user"])
@@ -160,7 +204,7 @@ class RuleLoginFormTest {
                 val form = source.loginForm()
                 assertEquals("Account", form.fields.first().label)
                 assertEquals(mapOf("user" to "alice", "password" to "", "region" to "west", "remember" to "no"), form.values)
-                source.login(form.values, "change")
+                source.login(form.values, form.fields.single { it.name == "change" }.id, form.id)
                 val changed = source.loginForm()
                 assertEquals("bob", changed.values["user"])
                 source.login(changed.values)
@@ -198,14 +242,14 @@ class RuleLoginFormTest {
                 "loginUrl" to JsonPrimitive("function login(){}"),
                 "loginUi" to JsonPrimitive("""[{"name":"region","type":"select","chars":["east","west"]},
                     {"name":"fail","type":"button","action":"java.upLoginData({region:'west'});throw 'synthetic-secret';"},
-                    {"name":"oversize","type":"button","action":"var values={};for(var i=0;i<33;i++)values['extra'+i]='x';java.upLoginData(values);"}]""")
+                    {"name":"oversize","type":"button","action":"var values={};for(var i=0;i<129;i++)values['extra'+i]='x';java.upLoginData(values);"}]""")
             )) }.use { source ->
                 val initial = source.loginForm()
                 assertTrue(runCatching { source.login(mapOf("region" to "invalid")) }.isFailure)
-                val failure = runCatching { source.login(initial.values, "fail") }.exceptionOrNull()!!
+                val failure = runCatching { source.login(initial.values, initial.fields.single { it.name == "fail" }.id, initial.id) }.exceptionOrNull()!!
                 assertFalse(failure.toString().contains("synthetic-secret"))
                 assertEquals("east", source.loginForm().values["region"])
-                assertTrue(runCatching { source.login(initial.values, "oversize") }.isFailure)
+                assertTrue(runCatching { source.login(initial.values, initial.fields.single { it.name == "oversize" }.id, initial.id) }.isFailure)
                 assertEquals("1", source.evaluation().script("String(Object.keys(JSON.parse(source.getLoginInfo())).length)", hnovel.rules.RuleValue.Empty, "fixture").text())
             }
         }

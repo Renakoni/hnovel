@@ -29,7 +29,7 @@ class SourceLoginVerificationTest {
             val failure = SourceContentException(ContentError.Certificate, "login", verification = verification)
             val rules = mockk<RuleSource>()
             var calls = 0
-            if (submit) coEvery { rules.login(any(), any()) } coAnswers { if (++calls == 1) throw failure }
+            if (submit) coEvery { rules.login(any(), any(), any()) } coAnswers { if (++calls == 1) throw failure }
             else coEvery { rules.loginForm() } coAnswers {
                 if (++calls == 1) throw failure
                 LoginForm(emptyList(), null)

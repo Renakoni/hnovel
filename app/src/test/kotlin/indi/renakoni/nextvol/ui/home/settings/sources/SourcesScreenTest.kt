@@ -404,8 +404,8 @@ class SourcesScreenTest {
             LoginField("remember", "toggle", choices = listOf("no", "yes"), label = "Remember")), null,
             mapOf("user" to "alice", "password" to "", "region" to "east", "remember" to "no"))
         var submitted: Map<String, String>? = null
-        activity.get().setContent { MaterialTheme { SourceLoginDialog(form, false, { values, action ->
-            org.junit.Assert.assertNull(action); submitted = values
+        activity.get().setContent { MaterialTheme { SourceLoginDialog(form, false, { values, action, formId ->
+            org.junit.Assert.assertNull(action); org.junit.Assert.assertEquals(form.id, formId); submitted = values
         }, {}) } }
         compose.onNodeWithText("Account").performTextReplacement("carol")
         compose.onNodeWithText("Region: east").performScrollTo().performClick()
@@ -413,6 +413,22 @@ class SourcesScreenTest {
         compose.onNodeWithText("Remember: no").performScrollTo().performClick()
         compose.onAllNodesWithText("Sign in").filter(hasClickAction()).onFirst().performClick()
         org.junit.Assert.assertEquals(mapOf("user" to "carol", "password" to "", "region" to "west", "remember" to "yes"), submitted)
+    }
+
+    @Test fun largePanelDisplaysItsLastRowAndDispatchesBothSameNamedButtonsById() {
+        val rows = List(59) { "{name:'setting$it'}" } + listOf(
+            "{name:'same',type:'button',action:'one()'}", "{name:'same',type:'button',action:'two()'}")
+        val form = LoginForm.parse(rows.joinToString(",", "[", "]"), "")
+        val actions = mutableListOf<String?>()
+        activity.get().setContent { MaterialTheme { SourceLoginDialog(form, false, { values, action, formId ->
+            org.junit.Assert.assertEquals(form.id, formId)
+            org.junit.Assert.assertEquals(59, values.size)
+            actions += action
+        }, {}) } }
+        compose.onNodeWithText("setting58").performScrollTo().assertIsDisplayed()
+        compose.onAllNodesWithText("same")[0].performScrollTo().performClick()
+        compose.onAllNodesWithText("same")[1].performScrollTo().performClick()
+        org.junit.Assert.assertEquals(form.fields.takeLast(2).map { it.id }, actions)
     }
 
     @Test fun builtinAndPluginRowsOpenTheirOwnBasicSettings() {
