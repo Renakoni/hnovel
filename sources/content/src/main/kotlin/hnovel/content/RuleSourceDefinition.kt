@@ -10,6 +10,7 @@ import java.security.MessageDigest
 internal class RuleSourceDefinition(val stored: SourceDefinition) {
     private val root = Json.parseToJsonElement(stored.rawJson).jsonObject
     val baseUrl = root.string("bookSourceUrl")
+    val lastUpdateTime = (root["lastUpdateTime"] as? JsonPrimitive)?.longOrNull ?: 0L
     val library = root.string("jsLib").takeIf { it.isNotBlank() }
     val searchUrl = root.string("searchUrl")
     val exploreUrl = root.string("exploreUrl")

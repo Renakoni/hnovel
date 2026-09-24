@@ -7,7 +7,7 @@ import javax.crypto.Cipher
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
-/** Rhino's own importer, with explicit data operations and no reflective Java bindings. */
+/** Rhino's own importer, with explicit data/time operations and no reflective Java bindings. */
 internal object ScriptJavaPackages {
     private class JavaString(private val text: String) : NativeObject(), CharSequence {
         override val length get() = text.length
@@ -141,6 +141,34 @@ internal object ScriptJavaPackages {
         val uuid = realm.objectIn(scope)
         method(uuid, "randomUUID") { _, _, args -> require(args.isEmpty()); java.util.UUID.randomUUID().toString() }
         export("java.util.UUID", uuid)
+        val system = realm.objectIn(scope)
+        method(system, "currentTimeMillis") { _, _, args ->
+            require(args.isEmpty())
+            System.currentTimeMillis()
+        }
+        export("java.lang.System", system)
+        val thread = realm.objectIn(scope)
+        method(thread, "sleep") { context, _, args ->
+            require(args.size == 1 && args[0] is Number)
+            val millis = (args[0] as Number).toDouble()
+            require(millis.isFinite() && millis >= 0 && millis <= 9_007_199_254_740_991.0 && millis == millis.toLong().toDouble())
+            // Resolve the current invocation's deadline even when a library retained this method.
+            @Suppress("UNCHECKED_CAST")
+            val checkDeadline = context.getThreadLocal(scriptDeadlineKey) as () -> Unit
+            val started = System.nanoTime()
+            while (true) {
+                checkDeadline()
+                val remaining = millis.toLong() - (System.nanoTime() - started) / 1_000_000
+                if (remaining <= 0) break
+                try { Thread.sleep(minOf(remaining, 10)) }
+                catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    checkDeadline()
+                }
+            }
+            null
+        }
+        export("java.lang.Thread", thread)
         val hutoolBase64 = realm.objectIn(scope)
         method(hutoolBase64, "encode") { _, _, a ->
             require(a.size == 1)

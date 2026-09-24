@@ -234,7 +234,8 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                                     entry?.status in setOf(SourceStatus.Registered, SourceStatus.Ready),
                                     settings.loginErrorField == null && settings.loginDeclared && SourceCapability.Login in capabilities,
                                     state.busy, state.verification,
-                                    onLogin = { model.beginLogin(state.selected!!) }, onLogout = { model.logout(state.selected!!) },
+                                    onLogin = { model.beginLogin(state.selected!!) }, onRelogin = { model.relogin(state.selected!!) },
+                                    onLogout = { model.logout(state.selected!!) },
                                     onRetry = { model.select(state.selected) }, onVerify = model::verifyPending)
                             }
                         }

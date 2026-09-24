@@ -1,7 +1,6 @@
 package hnovel.rhino
 
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.*
 import org.junit.Assert.*
 import org.junit.Test
 import java.util.Base64
@@ -12,6 +11,61 @@ import javax.crypto.spec.SecretKeySpec
 class ScriptJavaPackagesTest {
     private val frame = ScriptFrame("java-packages", "legado")
     private val engine = RhinoScriptEngine(HostBridge { _, _ -> error("Data operations need no host authority") })
+
+    @Test fun shortWaitAndWallClockAreObservableThroughJavaImporter() {
+        val before = System.currentTimeMillis()
+        val result = engine.evaluate("""
+            var j = new JavaImporter(Packages.java.lang);
+            with (j) {
+                var start = System.currentTimeMillis();
+                Thread.sleep(40);
+                [start, System.currentTimeMillis() - start, Thread.sleep(0)];
+            }
+        """.trimIndent(), frame) as ScriptResult.Success
+        val values = Json.parseToJsonElement(result.json).jsonArray
+        assertTrue(values[0].jsonPrimitive.long in before..System.currentTimeMillis())
+        assertTrue(values[1].jsonPrimitive.long >= 35)
+        assertEquals(kotlinx.serialization.json.JsonNull, values[2])
+    }
+
+    @Test fun invalidWaitAndClockArgumentsAreCatchableScriptErrors() {
+        for (arguments in listOf("", "-1", "0.5", "NaN", "Infinity", "null", "'1'", "true", "{}", "1, 2", "1e30")) {
+            assertEquals(arguments, ScriptResult.Success("\"invalid\""), engine.evaluate(
+                "try { Packages.java.lang.Thread.sleep($arguments); 'accepted'; } catch (e) { 'invalid'; }", frame))
+        }
+        assertEquals(ScriptResult.Success("\"invalid\""), engine.evaluate(
+            "try { Packages.java.lang.System.currentTimeMillis(1); } catch (e) { 'invalid'; }", frame))
+    }
+
+    @Test(timeout = 5000) fun waitsHonorDeadlinesEvenWhenRetainedOrCaught() {
+        val small = RhinoScriptEngine(HostBridge.None, ScriptLimits(timeoutMillis = 100))
+        assertEquals(FailureCode.Timeout, (small.evaluate(
+            "try { Packages.java.lang.Thread.sleep(1000000); } catch(e) { 'caught'; }", frame) as ScriptResult.Failure).code)
+        ScriptLibrary(frame.sourceId, frame.profile, "var saved = {};").use { library ->
+            assertEquals(ScriptResult.Success("1"), engine.evaluate("saved.sleep = Packages.java.lang.Thread.sleep; 1", frame, library))
+            assertEquals(FailureCode.Timeout, (small.evaluate("saved.sleep(1000000)", frame, library) as ScriptResult.Failure).code)
+        }
+    }
+
+    @Test(timeout = 5000) fun interruptEndsAnActiveWaitAndTheEngineRemainsUsable() {
+        val entered = java.util.concurrent.CountDownLatch(1)
+        val waitingEngine = RhinoScriptEngine(HostBridge { _, _ -> entered.countDown(); JsonPrimitive(true) })
+        val result = java.util.concurrent.atomic.AtomicReference<ScriptResult>()
+        val thread = Thread { result.set(waitingEngine.evaluate(
+            "host.call('entered'); Packages.java.lang.Thread.sleep(4000); 1", frame)) }
+        thread.start()
+        try {
+            assertTrue(entered.await(2, java.util.concurrent.TimeUnit.SECONDS))
+            val until = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(2)
+            while (thread.state != Thread.State.TIMED_WAITING && thread.isAlive && System.nanoTime() < until) Thread.yield()
+            assertEquals(Thread.State.TIMED_WAITING, thread.state)
+            thread.interrupt()
+            thread.join(1000)
+            assertFalse(thread.isAlive)
+            assertEquals(FailureCode.Cancelled, (result.get() as ScriptResult.Failure).code)
+            assertEquals(ScriptResult.Success("42"), waitingEngine.evaluate("42", frame))
+        } finally { thread.interrupt(); thread.join(1000) }
+    }
 
     @Test fun dataExportsResolveThroughTheNativeImporter() {
         val result = engine.evaluate("""

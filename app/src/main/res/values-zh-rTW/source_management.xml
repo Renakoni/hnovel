@@ -4,6 +4,7 @@
     <string name="sources_account_section">帳號</string>
     <string name="sources_account_name">帳號：%1$s</string>
     <string name="sources_login_again">重新登入</string>
+    <string name="sources_open_panel">開啟書源面板</string>
     <string name="sources_account_required">需要重新登入</string>
     <string name="sources_account_loading">正在讀取帳號狀態…</string>
     <string name="sources_account_unknown">無法讀取帳號狀態</string>
@@ -94,4 +95,5 @@
     <string name="sources_up_to_date">未發現更新。</string>
     <string name="sources_saved">書源變更已儲存。</string>
     <string name="sources_removed">書源已刪除，已儲存的書籍與閱讀記錄仍保留。</string>
+    <string name="sources_invalid_permission_lines">站點位址無效，所在行：%1$s</string>
 </resources>

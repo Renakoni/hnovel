@@ -4,6 +4,7 @@
     <string name="sources_account_section">账户</string>
     <string name="sources_account_name">账户：%1$s</string>
     <string name="sources_login_again">重新登录</string>
+    <string name="sources_open_panel">打开书源面板</string>
     <string name="sources_account_required">需要重新登录</string>
     <string name="sources_account_loading">正在读取账户状态…</string>
     <string name="sources_account_unknown">无法读取账户状态</string>
@@ -94,4 +95,5 @@
     <string name="sources_up_to_date">未发现更新。</string>
     <string name="sources_saved">书源更改已保存。</string>
     <string name="sources_removed">书源已删除，已保存的书籍和阅读记录仍保留。</string>
+    <string name="sources_invalid_permission_lines">站点地址无效，所在行：%1$s</string>
 </resources>

@@ -22,7 +22,6 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.serialization.json.*
 import java.io.File
-import java.net.URI
 import java.util.UUID
 import javax.inject.Inject
 
@@ -324,20 +323,25 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
         mutable.update { it.copy(selected = null, message = R.string.sources_removed) }
     }
     fun beginLogin(id: Identifier) = launch { openLogin(id) }
-    private suspend fun openLogin(id: Identifier) {
+    fun relogin(id: Identifier) = launch { openLogin(id, LoginIntent.Relogin) }
+    private suspend fun openLogin(id: Identifier, intent: LoginIntent = LoginIntent.Panel) {
         val definition = sources.installedSources().single { ImportedRuleSources.id(it.definition) == id }.definition
         val declaration = RuleSettingsPresentation.read(definition)
         if (!declaration.loginDeclared || declaration.loginErrorField != null)
             throw SourceContentException(hnovel.content.ContentError.InvalidRule, declaration.loginErrorField ?: "loginUi")
         check(registry.resolve(id) is SourceResolution.Ready) { "Source is not initialized" }
-        // Keep a handle even if cancellation arrives just after the account has rotated.
-        val active = withContext(NonCancellable) { login.begin(id).also { attempt = it } }
+        // Retire the previous panel even when the account itself is retained.
+        val active = withContext(NonCancellable) {
+            attempt?.let { login.cancel(it) }
+            login.begin(id, intent).also { attempt = it }
+        }
         var form: LoginForm? = null
         try {
             val loaded = login.form(active).also { form = it }
             currentCoroutineContext().ensureActive()
             if (loaded.browserUrl != null && loaded.fields.isEmpty()) {
                 login.submit(active, emptyMap())
+                login.cancel(active)
                 attempt = null
                 mutable.update { it.copy(loginForm = null) }
             } else mutable.update { it.copy(loginForm = loaded) }
@@ -349,13 +353,13 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
             withContext(NonCancellable) { refreshStoredSettings(id, form) }
         }
     }
-    fun submitLogin(values: Map<String, String>, action: String? = null) = launch {
+    fun submitLogin(values: Map<String, String>, action: String? = null, formId: String? = null) = launch {
         val active = checkNotNull(attempt)
         val submittedForm = state.value.loginForm
         try {
-            login.submit(active, values, action)
+            login.submit(active, values, action, formId)
             val form = if (action == null) null else login.form(active)
-            if (action == null) attempt = null
+            if (action == null) { login.cancel(active); attempt = null }
             mutable.update { it.copy(loginForm = form) }
         } finally {
             withContext(NonCancellable) { refreshStoredSettings(active.source, submittedForm) }
@@ -390,10 +394,9 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
         if (active != null) CoroutineScope(Dispatchers.IO).launch { login.cancel(active) }
     }
     companion object {
-        fun origin(url: String): String {
-            val uri = URI(url.trim())
-            require(uri.scheme?.lowercase() in setOf("http", "https") && uri.host != null && uri.userInfo == null)
-            return URI(uri.scheme.lowercase(), null, uri.host, uri.port, "/", null, null).toString()
+        fun origin(url: String): String = requireNotNull(sourcePermissionOrigin(url))
+        fun invalidPermissionLines(text: String): List<Int> = text.lines().mapIndexedNotNull { index, line ->
+            (index + 1).takeIf { line.isNotBlank() && sourcePermissionOrigin(line) == null }
         }
         fun grants(text: String): List<NetworkGrant> = text.lines().filter { it.isNotBlank() }.map { NetworkGrant(origin(it)) }
             .distinctBy { it.origin }.also { require(it.size <= 32) }
