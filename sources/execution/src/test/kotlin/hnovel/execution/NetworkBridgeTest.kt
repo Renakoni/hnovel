@@ -2,6 +2,10 @@ package hnovel.execution
 
 import hnovel.network.*
 import hnovel.rhino.HostBridge
+import hnovel.rules.ScriptArgumentType.Array
+import hnovel.rules.ScriptArgumentType.Object
+import hnovel.rules.ScriptArgumentType.String
+import hnovel.rules.ScriptHostCall
 import kotlinx.coroutines.*
 import kotlinx.serialization.json.*
 import okhttp3.mockwebserver.*
@@ -71,7 +75,7 @@ class NetworkBridgeTest {
                 session.write(StorageRequest(StorageArea.Account, StorageRequestKey.LOGIN_HEADERS, """{"Cookie":"http=only"}"""))
                 assertEquals(ExecutionResult.Success("true"), script(bridge, "cookie.setWebCookie('$url','sid=web');true"))
                 assertEquals(listOf("sid=web"), writes)
-                assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied), script(bridge,
+                assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied, hostCall = ScriptHostCall("cookie.setWebCookie", 2, listOf(String, String))), script(bridge,
                     "cookie.setWebCookie('https://accounts.example.org/','sid=denied')"))
                 assertEquals(1, writes.size)
                 session.clearAccount()
@@ -98,7 +102,7 @@ class NetworkBridgeTest {
                 assertEquals(ExecutionResult.Success("[\"undefined\",\"undefined\"]"), script(broker,
                     "[typeof java.toast('short'),typeof java.longToast('long')]"))
                 assertEquals(listOf("short" to false, "long" to true), messages)
-                assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied), script(broker,
+                assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied, hostCall = ScriptHostCall("java.startBrowserAwait", 2, listOf(String, String))), script(broker,
                     "java.toast('verify');java.startBrowserAwait('https://fixture.invalid/','verification')"))
                 assertTrue(broker.interactionRequired)
                 authority.revoke(id)
@@ -207,7 +211,7 @@ class NetworkBridgeTest {
                 val session = sessions.open(SourceScope("fixture", "a", "legado"), listOf(NetworkGrant(base, true)))
                 SourceExecutionBroker(id, authority, session, ExecutionLimits(maxDataBytes = 4096), base).use { broker ->
                     repeat(2) { server.enqueue(MockResponse().setBody("x".repeat(3000))) }
-                    assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied), script(broker, "java.ajaxAll(['/1','/2'])"))
+                    assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied, hostCall = ScriptHostCall("java.ajaxAll", 1, listOf(Array))), script(broker, "java.ajaxAll(['/1','/2'])"))
                     assertTrue(broker.responseLimitExceeded)
                     assertNull(broker.requestFailure)
                     server.enqueue(MockResponse().setBody("ok"))
@@ -258,11 +262,11 @@ class NetworkBridgeTest {
                 val session = sessions.open(SourceScope("fixture", "a", "legado"), listOf(NetworkGrant(base, true)))
                 SourceExecutionBroker(id, authority, session, ExecutionLimits(), base).use { broker ->
                     server.enqueue(MockResponse().setBody("x".repeat(hnovel.rhino.ScriptLimits.DEFAULT_BRIDGE_CHARS + 1)))
-                    assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied), script(broker, "java.get('$base',{})"))
+                    assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied, hostCall = ScriptHostCall("java.get", 2, listOf(String, Object))), script(broker, "java.get('$base',{})"))
                     server.enqueue(MockResponse().setBody("x".repeat(20000)).addHeader("X-Large", "y".repeat(50000)))
-                    assertEquals(ExecutionResult.Failure(FailureCode.OutputLimit), script(broker, "java.get('$base',{})"))
+                    assertEquals(ExecutionResult.Failure(FailureCode.OutputLimit, hostCall = ScriptHostCall("java.get", 2, listOf(String, Object))), script(broker, "java.get('$base',{})"))
                     repeat(2) { server.enqueue(MockResponse().setBody("x".repeat(35000))) }
-                    assertEquals(ExecutionResult.Failure(FailureCode.OutputLimit), script(broker, "java.ajaxAll(['$base','$base'])"))
+                    assertEquals(ExecutionResult.Failure(FailureCode.OutputLimit, hostCall = ScriptHostCall("java.ajaxAll", 1, listOf(Array))), script(broker, "java.ajaxAll(['$base','$base'])"))
                     server.enqueue(MockResponse().setBody("next"))
                     assertEquals(ExecutionResult.Success("\"next\""), script(broker, "java.connect('$base').body()"))
                 }
@@ -345,7 +349,7 @@ class NetworkBridgeTest {
                 val base = server.url("/").toString()
                 val session = sessions.open(SourceScope("fixture", "a", "legado"), listOf(NetworkGrant(base, true)))
                 SourceExecutionBroker(id, authority, session, ExecutionLimits(maxRequests = 1), base).use { broker ->
-                    assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied), script(broker, "java.ajaxAll(['/first','/second'])"))
+                    assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied, hostCall = ScriptHostCall("java.ajaxAll", 1, listOf(Array))), script(broker, "java.ajaxAll(['/first','/second'])"))
                 }
                 assertEquals(0, server.requestCount)
                 SourceExecutionBroker(id, authority, session, ExecutionLimits(maxRequests = 2), base).use { broker ->

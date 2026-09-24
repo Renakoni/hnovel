@@ -4,8 +4,8 @@ import org.mozilla.javascript.*
 import java.util.IdentityHashMap
 import kotlinx.serialization.json.*
 
-internal class ResultTooLarge : RuntimeException()
-internal class UnsupportedResult : RuntimeException()
+internal class ResultTooLarge(var hostCall: hnovel.rules.ScriptHostCall? = null) : RuntimeException()
+internal class UnsupportedResult(var hostCall: hnovel.rules.ScriptHostCall? = null) : RuntimeException()
 internal class SerializationCancelled : RuntimeException()
 
 /** Checks the actual wire representation as it is produced, including keys and JSON escapes. */

@@ -7,7 +7,13 @@ import com.github.michaelbull.result.Err
 import com.github.michaelbull.result.Ok
 import com.github.michaelbull.result.Result
 import hnovel.execution.ExecutionAuthority
+import hnovel.execution.ExecutionResult
+import hnovel.execution.FailureCode
+import hnovel.rules.ScriptHostCall
+import hnovel.rules.ScriptArgumentType
 import indi.renakoni.nextvol.data.web.*
+import indi.renakoni.nextvol.data.web.rules.RuleDiscoveryProvider
+import io.mockk.*
 import io.nightfish.lightnovelreader.api.Route
 import io.nightfish.lightnovelreader.api.identifier.Identifier
 import io.nightfish.lightnovelreader.api.web.WebBookDataSource
@@ -66,6 +72,33 @@ class DiscoveryResultsViewModelTest {
             return Ok(DiscoveryPage(listOf(DiscoveryBook(request.cursor ?: "1", request.filters["sort"].orEmpty())),
                 if (request.cursor == null) "2" else null))
         }
+    }
+
+    @Test fun resultDiagnosticsBelongToTheFailedLoadAndClearOnSuccess() = runTest(dispatcher) {
+        val detail = ExecutionResult.Failure(FailureCode.BridgeDenied, hostCall =
+            ScriptHostCall("cookie.getCookie", 2, List(2) { ScriptArgumentType.String }))
+        var failed = true
+        val provider = mockk<RuleDiscoveryProvider>(relaxed = true)
+        every { provider.hasCategories } returns true
+        every { provider.openSession(any(), any(), any()) } returns provider
+        every { provider.filters(any()) } returns emptyList()
+        every { provider.diagnosticFailure } answers { detail.takeIf { failed } }
+        every { provider.failureField } answers { "ruleExplore.name".takeIf { failed } }
+        coEvery { provider.catalog(any()) } returns Ok(DiscoveryCatalog(listOf(DiscoveryCategory("category", "Category", "tag"))))
+        coEvery { provider.page(any()) } coAnswers {
+            if (failed) Err(DiscoveryError.InvalidRules) else Ok(DiscoveryPage(emptyList(), null))
+        }
+        add(provider)
+        val model = model()
+        advanceUntilIdle()
+        assertEquals(detail, model.state.value.errorDiagnostic)
+        assertEquals("ruleExplore.name", model.state.value.errorField)
+        failed = false
+        model.refresh()
+        advanceUntilIdle()
+        assertNull(model.state.value.error)
+        assertNull(model.state.value.errorDiagnostic)
+        assertNull(model.state.value.errorField)
     }
 
     @Test fun paginationRetryKeepsBooksAndCursorAndOtherSessionFiltersStayIndependent() = runTest(dispatcher) {

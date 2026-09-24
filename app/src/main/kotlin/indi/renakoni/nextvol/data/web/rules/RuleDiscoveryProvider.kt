@@ -24,6 +24,10 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
         private set
     override var permissionFailure: DiscoveryPermission? = null
         private set
+    var diagnosticFailure: hnovel.execution.ExecutionResult.Failure? = null
+        private set
+    private val previewDiagnostics = mutableMapOf<String, hnovel.execution.ExecutionResult.Failure>()
+    fun previewDiagnostic(id: String) = previewDiagnostics[id]
     private var current: RuleDiscoveryCatalog? = null
     override fun openSession(id: String, values: Map<String, String>, environment: DiscoveryEnvironment) =
         RuleDiscoveryProvider(source, source.openDiscovery(id, values, RuleDiscoveryEnvironment(environment.themeMode,
@@ -38,6 +42,7 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
     override suspend fun categories() = catalog().map { it.categories }
     override suspend fun feed() = feedUpdates().last()
     override fun feedUpdates() = flow<Result<List<DiscoverySection>, DiscoveryError>> {
+        previewDiagnostics.clear()
         val definition = request { session.catalog(homepage = true) }
             .getOrElse { emit(Err(it)); return@flow }
         current = definition
@@ -48,10 +53,11 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
             val preview = request { session.page(category.url, 1, catalog.values).take(6).map(::book) }
             val failure = preview.getError()?.let { DiscoveryPreviewFailure(it, failureField, permissionFailure) }
                 ?: if (preview.get().isNullOrEmpty()) DiscoveryPreviewFailure(DiscoveryError.InvalidResponse, "ruleExplore.bookList") else null
+            diagnosticFailure?.let { previewDiagnostics[category.id] = it }
             sections += DiscoverySection(category.id, category.title, preview.get().orEmpty(), category.url,
                 category.id.takeIf { definition.homepage == null }, failure)
             // A failed preview belongs to its entry, not to the successful catalogue snapshot.
-            failureField = null; permissionFailure = null
+            failureField = null; permissionFailure = null; diagnosticFailure = null
             // Recovery belongs to the current module, so a later challenge does not replay earlier previews.
             emit(Ok(sections.toList()))
         }
@@ -104,12 +110,13 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
 
     private fun book(book: RuleBook) = DiscoveryBook(book.id, book.title, book.author, book.coverUrl)
     private suspend fun <T> request(retry: Boolean = true, block: suspend () -> T): Result<T, DiscoveryError> = try {
-        failureField = null; permissionFailure = null
+        failureField = null; permissionFailure = null; diagnosticFailure = null
         Ok(if (recovery == null || !retry) block() else recovery.execute(block))
     }
     catch (cancelled: CancellationException) { throw cancelled }
     catch (failure: SourceContentException) {
         failureField = failure.field
+        diagnosticFailure = failure.diagnostic
         permissionFailure = failure.denial?.let { DiscoveryPermission(it.origin, it.kind.name) }
         Err(when (failure.code) {
         ContentError.MissingCapability -> DiscoveryError.Unsupported

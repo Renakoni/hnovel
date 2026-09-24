@@ -6,5 +6,5 @@ import kotlinx.serialization.Serializable
 @Serializable
 enum class ScriptDependency(val binding: String) {
     JavaImporter("JavaImporter"), Packages("Packages"), ImportClass("importClass"),
-    ImportPackage("importPackage"), JavaAdapter("JavaAdapter")
+    ImportPackage("importPackage"), JavaAdapter("JavaAdapter"), Sleep("sleep")
 }

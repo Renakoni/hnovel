@@ -44,9 +44,9 @@ internal fun DiscoveryEmpty(message: String, onManageSources: () -> Unit) {
 
 @Composable
 internal fun DiscoveryFailure(error: DiscoveryError, retry: (() -> Unit)?, manage: () -> Unit, back: (() -> Unit)?, field: String? = null,
-    permission: DiscoveryPermission? = null) {
+    permission: DiscoveryPermission? = null, diagnostic: hnovel.execution.ExecutionResult.Failure? = null) {
     val message = indi.renakoni.nextvol.data.web.sourceFailureMessage(error)
-    var details by remember(error, field, permission) { mutableStateOf(false) }
+    var details by remember(error, field, permission, diagnostic) { mutableStateOf(false) }
     val canRetry = retry != null && error != DiscoveryError.Unavailable && error != DiscoveryError.Unsupported &&
         error != DiscoveryError.InvalidRequest
     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -74,6 +74,8 @@ internal fun DiscoveryFailure(error: DiscoveryError, retry: (() -> Unit)?, manag
                     Text(stringResource(message))
                     Text(stringResource(R.string.discovery_error_type, error.name), style = MaterialTheme.typography.bodySmall)
                     field?.let { Text(stringResource(R.string.discovery_rule_field, it), style = MaterialTheme.typography.bodySmall) }
+                    diagnostic?.let { Text(kotlinx.serialization.json.Json.encodeToString(
+                        hnovel.execution.ExecutionResult.Failure.serializer(), it), style = MaterialTheme.typography.bodySmall) }
                     if (error == DiscoveryError.PermissionDenied) permission?.let { SourcePermissionLabel(it.origin, it.resourceKind) }
                 }
             }
