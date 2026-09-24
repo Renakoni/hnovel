@@ -170,28 +170,28 @@ class ScriptExecutionTest {
                 val session = sessions.open(SourceScope("fixture", "a", "legado"), listOf(NetworkGrant(base, true)))
                 val rule = JsonPrimitive("""/verify, {"headers":{"X-Explicit":"kept"}}""")
                 SourceExecutionBroker(id, authority, session, ExecutionLimits(), base).use { bridge ->
-                    assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied), runScript(id, bridge, "java.startBrowser($rule,'verify')"))
+                    assertEquals(FailureCode.BridgeDenied, (runScript(id, bridge, "java.startBrowser($rule,'verify')") as ExecutionResult.Failure).code)
                     assertTrue(bridge.interactionRequired)
                 }
                 SourceExecutionBroker(id, authority, session, ExecutionLimits(), base, allowInteraction = true).use { bridge ->
                     for (options in listOf("""{"unknown":true}""", """{"js":"1+1"}""", """{"serverID":"remote"}""", """{"method":"TRACE"}""")) {
                         val invalid = JsonPrimitive("/verify, $options")
-                        assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied), runScript(id, bridge, "java.startBrowserAwait($invalid,'verify',false)"))
+                        assertEquals(FailureCode.BridgeDenied, (runScript(id, bridge, "java.startBrowserAwait($invalid,'verify',false)") as ExecutionResult.Failure).code)
                     }
                     val denied = JsonPrimitive("""https://ungranted.invalid/login, {"headers":{"X-Explicit":"kept"}}""")
-                    assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied), runScript(id, bridge, "java.startBrowserAwait($denied,'verify',false)"))
+                    assertEquals(FailureCode.BridgeDenied, (runScript(id, bridge, "java.startBrowserAwait($denied,'verify',false)") as ExecutionResult.Failure).code)
                     assertEquals(hnovel.network.FailureCode.OriginDenied, bridge.requestFailure?.code)
                 }
                 val privateId = authority.issue("private", "legado", "1", "fixture")
                 val privateBase = server.url("/").newBuilder().host("127.0.0.1").build().toString()
                 val privateSession = sessions.open(SourceScope("fixture", "private", "legado"), listOf(NetworkGrant(privateBase)))
                 SourceExecutionBroker(privateId, authority, privateSession, ExecutionLimits(), privateBase, allowInteraction = true).use { bridge ->
-                    assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied), runScript(privateId, bridge, "java.startBrowser($rule,'verify')"))
+                    assertEquals(FailureCode.BridgeDenied, (runScript(privateId, bridge, "java.startBrowser($rule,'verify')") as ExecutionResult.Failure).code)
                     assertEquals(hnovel.network.FailureCode.AddressDenied, bridge.requestFailure?.code)
                 }
                 assertEquals(0, opened)
                 SourceExecutionBroker(id, authority, session, ExecutionLimits(maxRequests = 1), base, allowInteraction = true).use { bridge ->
-                    assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied), runScript(id, bridge, "java.startBrowserAwait($rule,'verify')"))
+                    assertEquals(FailureCode.BridgeDenied, (runScript(id, bridge, "java.startBrowserAwait($rule,'verify')") as ExecutionResult.Failure).code)
                     assertTrue(bridge.requestLimitExceeded)
                 }
                 assertEquals(1, opened)
