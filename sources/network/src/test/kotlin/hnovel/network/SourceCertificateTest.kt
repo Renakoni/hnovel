@@ -15,6 +15,7 @@ import java.security.cert.CertificateException
 import java.security.cert.X509Certificate
 import java.util.concurrent.TimeUnit
 import javax.net.ssl.SSLEngine
+import javax.net.ssl.SSLSocketFactory
 import javax.net.ssl.X509ExtendedTrustManager
 
 class SourceCertificateTest {
@@ -26,9 +27,24 @@ class SourceCertificateTest {
         .commonName(host).addSubjectAlternativeName(host)
         .apply { if (host == "localhost") addSubjectAlternativeName("127.0.0.1") }
         .validityInterval(System.currentTimeMillis() - 172800000, System.currentTimeMillis() - 86400000).build()
-    private fun server(certificate: HeldCertificate = certificate(), port: Int = 0) = MockWebServer().apply {
-        useHttps(HandshakeCertificates.Builder().heldCertificate(certificate).build().sslSocketFactory(), false)
-        start(InetAddress.getByName("127.0.0.1"), port)
+    private fun tls(certificate: HeldCertificate) = HandshakeCertificates.Builder().heldCertificate(certificate).build().sslSocketFactory()
+    private fun server(certificate: HeldCertificate = certificate(), factory: SSLSocketFactory = tls(certificate)) = MockWebServer().apply {
+        useHttps(factory, false)
+        start(InetAddress.getByName("127.0.0.1"), 0)
+    }
+
+    /** Changes the served certificate for new handshakes without releasing the origin's port. */
+    private class SwitchingSocketFactory(@Volatile var delegate: SSLSocketFactory) : SSLSocketFactory() {
+        override fun getDefaultCipherSuites(): Array<String> = delegate.defaultCipherSuites
+        override fun getSupportedCipherSuites(): Array<String> = delegate.supportedCipherSuites
+        override fun createSocket(socket: Socket, host: String?, port: Int, autoClose: Boolean): Socket =
+            delegate.createSocket(socket, host, port, autoClose)
+        override fun createSocket(host: String, port: Int): Socket = delegate.createSocket(host, port)
+        override fun createSocket(host: String, port: Int, local: InetAddress, localPort: Int): Socket =
+            delegate.createSocket(host, port, local, localPort)
+        override fun createSocket(host: InetAddress, port: Int): Socket = delegate.createSocket(host, port)
+        override fun createSocket(host: InetAddress, port: Int, local: InetAddress, localPort: Int): Socket =
+            delegate.createSocket(host, port, local, localPort)
     }
     private fun url(server: MockWebServer, path: String = "/") = server.url(path).newBuilder().host("localhost").build()
     private fun grant(server: MockWebServer) = NetworkGrant(url(server).toString(), allowPrivateAddresses = true)
@@ -146,24 +162,22 @@ class SourceCertificateTest {
     }
 
     @Test fun changedCertificateAtTheSameOriginNeedsFreshConsent() = runBlocking {
-        val first = server()
-        val port = first.port
-        val grants = listOf(grant(first))
-        broker().use { broker ->
+        // Rebinding a released port can race with other test processes; keep the origin bound.
+        val tls = SwitchingSocketFactory(tls(certificate()))
+        server(factory = tls).use { server -> broker().use { broker ->
+            val grants = listOf(grant(server))
             val session = broker.open(scope, grants)
-            val previous = problem(session.execute(request(first)))
+            val previous = problem(session.execute(request(server)))
             session.approveCertificate(previous)
             session.close()
-            first.close()
-            server(port = port).use { second ->
-                val restored = broker.open(scope, grants)
-                val changed = problem(restored.execute(request(second)))
-                assertEquals(previous.origin, changed.origin)
-                assertNotEquals(previous.fingerprint, changed.fingerprint)
-                assertTrue(runCatching { restored.approveCertificate(previous) }.isFailure)
-                assertEquals(0, second.requestCount)
-            }
-        }
+            tls.delegate = tls(certificate())
+            val restored = broker.open(scope, grants)
+            val changed = problem(restored.execute(request(server)))
+            assertEquals(previous.origin, changed.origin)
+            assertNotEquals(previous.fingerprint, changed.fingerprint)
+            assertTrue(runCatching { restored.approveCertificate(previous) }.isFailure)
+            assertEquals(0, server.requestCount)
+        } }
     }
 
     @Test fun revocationCancelsAnActiveBodyAndDoesNotReuseItsConnectionOrCache() = runBlocking {
