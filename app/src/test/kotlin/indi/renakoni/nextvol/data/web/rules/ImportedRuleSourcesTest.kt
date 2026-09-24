@@ -9,6 +9,9 @@ import com.github.michaelbull.result.get
 import hnovel.content.RuleSourceFixture
 import hnovel.imports.*
 import hnovel.network.NetworkGrant
+import hnovel.network.StorageArea
+import hnovel.network.StorageRequest
+import hnovel.network.StorageResult
 import indi.renakoni.nextvol.data.book.*
 import indi.renakoni.nextvol.data.bookshelf.BookshelfRepository
 import indi.renakoni.nextvol.data.content.ContentComponentRegistry
@@ -146,9 +149,17 @@ class ImportedRuleSourcesTest {
             try {
                 val id = install(service, fixture.raw(), fixture.server.url("/").toString())
                 val old = (registry.resolve(id) as SourceResolution.Ready).runtime
+                val retired = service.loginTarget(id).session
+                retired.write(StorageRequest(StorageArea.Cache, "value:token", "synthetic-account-a", ttlMillis = 0))
+                retired.write(StorageRequest(StorageArea.Cache, "file:favorites", "[1,2]", ttlMillis = 0))
+                retired.write(StorageRequest(StorageArea.Config, "value:theme", "dark"))
                 val login = accounts.begin(id)
                 withTimeout(5000) { registry.sources.first { sources -> sources.any { it.metadata.id == id && it.metadata.accountGeneration == login.generation } } }
                 assertFalse(old.isAvailable)
+                val replacement = service.loginTarget(id).session
+                assertEquals(StorageResult.Value(null), replacement.read(StorageRequest(StorageArea.Cache, "value:token")))
+                assertEquals(StorageResult.Value(null), replacement.read(StorageRequest(StorageArea.Cache, "file:favorites")))
+                assertTrue(runCatching { retired.write(StorageRequest(StorageArea.Cache, "value:token", "late")) }.isFailure)
                 service.stop()
                 registry = WebSourceRegistry(fixture.authority)
                 accounts = SourceSessionManager(fixture.authority, epochs)
@@ -156,6 +167,10 @@ class ImportedRuleSourcesTest {
                 service.restore()
                 val restored = (registry.resolve(id) as SourceResolution.Ready).runtime
                 assertEquals(login.generation, restored.metadata.accountGeneration)
+                val restarted = service.loginTarget(id).session
+                assertEquals(StorageResult.Value(null), restarted.read(StorageRequest(StorageArea.Cache, "value:token")))
+                assertEquals(StorageResult.Value(null), restarted.read(StorageRequest(StorageArea.Cache, "file:favorites")))
+                assertEquals(StorageResult.Value("dark"), restarted.read(StorageRequest(StorageArea.Config, "value:theme")))
                 assertEquals("Same title", restored.getBookInformation(fixture.server.url("/book/one").toString()).get()!!.title)
                 service.remove(id)
                 service.stop()

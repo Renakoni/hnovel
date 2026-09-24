@@ -64,8 +64,13 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
     private var lastStart = 0L
     @Volatile private var sourcePacing = SourceRequestPacer(null)
     private var cache = ResponseCache(limits)
-    private val valuesCache = ValueCache(limits, SourceStorage(root, scope.components(false) + "cache",
-        limits.copy(maxStorageBytes = limits.maxCacheBytes.toLong()), cipher))
+    private val valuesCache = run {
+        val cacheLimits = limits.copy(maxStorageBytes = limits.maxCacheBytes.toLong())
+        // Old script values have no account owner. Never import them into the current account;
+        // deletion is best effort because the account-owned partition never reads them.
+        SourceStorage(root, scope.components(false) + "cache", cacheLimits, cipher).clear()
+        ValueCache(limits, SourceStorage(root, scope.components(true) + "cache", cacheLimits, cipher))
+    }
     private val config = SourceStorage(root, scope.components(false) + "config", limits, cipher)
     private val bookState by lazy { SourceStorage(root, scope.components(false) + "books",
         limits.copy(maxStorageBytes = limits.maxBookStorageBytes, maxStorageEntries = limits.maxBookStorageEntries), cipher) }
@@ -199,7 +204,7 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         cookies.inherit(previous.cookies)
     }
 
-    /** Retain source caches when credentials or a runtime binding change. */
+    /** Retain HTTP response bodies; script values have their own account-owned storage. */
     @Synchronized fun inheritCaches(previous: SourceSession) {
         require(scope.components(false) == previous.scope.components(false))
         checkOpen()
@@ -242,8 +247,9 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
             val accountCleared = account.clear() is StorageResult.Value
             val cookiesCleared = cookieStorage.clear() is StorageResult.Value
             val certificatesCleared = certificates.clear() is StorageResult.Value
+            val valuesCleared = valuesCache.clear() is StorageResult.Value
             cookies.restoreMemory(emptyList())
-            if (accountCleared && cookiesCleared && certificatesCleared) null else IllegalStateException("Account cleanup failed")
+            if (accountCleared && cookiesCleared && certificatesCleared && valuesCleared) null else IllegalStateException("Account cleanup failed")
         }
         // Browser cancellation may finish on another thread that checks this session.
         // Do not hold the session monitor while waiting for its process to stop.
@@ -598,12 +604,14 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
     }
 }
 
-/** Source-owned script values survive process restarts; zero TTL has no deadline. */
+/** Account-owned script values survive process restarts; zero TTL has no deadline. */
 internal class ValueCache(private val limits: BrokerLimits, private val storage: SourceStorage,
     private val nowMillis: () -> Long = System::currentTimeMillis) {
     @Serializable private data class Entry(val value: String, val deadline: Long)
 
     @Synchronized fun read(key: String): StorageResult = access { entries -> StorageResult.Value(entries[key]?.value) }
+
+    @Synchronized fun clear(): StorageResult = storage.clear()
 
     @Synchronized fun write(request: StorageRequest): StorageResult = access { entries ->
         if (request.value == null) entries.remove(request.key)

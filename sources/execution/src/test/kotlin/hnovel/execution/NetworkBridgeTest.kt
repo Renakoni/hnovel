@@ -16,6 +16,32 @@ class NetworkBridgeTest {
     private val authority = ExecutionAuthority()
     private val id = authority.issue("a", "legado", "1", "fixture")
 
+    @Test fun scriptValueAndFileCachesCannotCarryAnAccountIntoItsReplacement() = runBlocking {
+        val scope = SourceScope("fixture", "a", "legado")
+        SourceBroker(folder.root.toPath()).use { sessions ->
+            val session = sessions.open(scope, emptyList())
+            SourceExecutionBroker(id, authority, session, ExecutionLimits()).use { old ->
+                assertEquals(ExecutionResult.Success("\"ready\""), script(old,
+                    "cache.put('token','synthetic-a',0);cache.putFile('favorites','[1,2]',0);source.put('theme','dark');'ready'"))
+                session.clearAccount()
+                val fresh = sessions.open(scope.copy(accountGeneration = 1), emptyList())
+                val ticket = authority.issue("a", "legado", "1", "fixture", 1)
+                SourceExecutionBroker(ticket, authority, fresh, ExecutionLimits()).use { next ->
+                    assertEquals(JsonNull, next.call("cache.get", listOf(JsonPrimitive("token"))))
+                    assertEquals(JsonNull, next.call("cache.getFile", listOf(JsonPrimitive("favorites"))))
+                    assertEquals(JsonPrimitive("dark"), next.call("source.get", listOf(JsonPrimitive("theme"))))
+                    assertTrue(runCatching { old.call("cache.put", listOf(JsonPrimitive("token"), JsonPrimitive("late"))) }.isFailure)
+                    next.call("cache.put", listOf(JsonPrimitive("token"), JsonPrimitive("synthetic-b"), JsonPrimitive(0)))
+                }
+            }
+        }
+        SourceBroker(folder.root.toPath()).use { sessions ->
+            val session = sessions.open(scope.copy(accountGeneration = 1), emptyList())
+            assertEquals(StorageResult.Value("synthetic-b"), session.read(StorageRequest(StorageArea.Cache, "value:token")))
+            assertEquals(StorageResult.Value(null), session.read(StorageRequest(StorageArea.Cache, "file:favorites")))
+        }
+    }
+
     @Test fun toastFeedbackPreservesBrowserHandoffAndRejectsRetiredDisplay(): Unit = runBlocking {
         val messages = mutableListOf<Pair<String, Boolean>>()
         var delayed: RequestCommitGuard? = null
