@@ -20,6 +20,20 @@ The Application skips Hilt and host/plugin initialization in isolated UIDs. Both
 
 `SourceExecutionBroker` binds namespace, source, profile and account generation to one existing host session, plus the invocation request budget and request context. It implements synchronous `java.ajax`, `java.connect`, `java.ajaxAll`, `java.get/head/post`, source configuration/cache operations and a source-specific installation identifier. connect uses the URL compiler and optional JSON headers; get/head/post use direct absolute URLs and do not follow redirects, matching their pinned Jsoup entry points. ajaxAll reserves/compiles the whole batch before dispatch, preserves input order, caps concurrent response processing at four, and cancels the batch on failure. Each body and the aggregate response have byte budgets; cache hits also enforce the per-request body cap and redirect mode. These go through the existing network/storage policies. It is owned by the invocation and cancelled on retirement; closing it does not erase the shared source session. Request dispatch and local Cookie/cache/storage commits are serialized with identity revocation, so a revoked execution cannot commit a late response. Already-dispatched HTTP requests cannot be recalled from a remote server.
 
+Login information remains account data under the existing Android storage cipher.
+`putLoginInfo`/`getLoginInfo` preserve text exactly, up to 64 KiB of UTF-8. Text
+starting with `{` or `[` must be valid JSON with at most 64 nested containers;
+rejected writes retain the previous value. `getLoginInfoMap` returns only top-level
+string fields of an object, or null for opaque text and other JSON roots. It does
+not stringify numbers, arrays or nested business data. Forms fill only declared
+inputs with suitable strings (128-character keys and 4,096-character values);
+dynamic form drafts expose at most 128 such fields. Form edits merge into the
+saved object, preserving unrelated fields; submitting inputs over opaque text
+creates an object, while an empty submission preserves that text. These rules do
+not establish authentication or change account summaries. Login headers remain
+separate HTTP string maps, limited to 32 entries and 16,384 characters, with valid
+header names and values.
+
 `ExecutionTask.Rule` carries typed input, desired output kind, field/offset and source/book/chapter variable snapshots. Selection, replacement and Rhino stages all run in the worker. Intermediate JSON objects and arrays retain their structure. java.get/put access the request's RuleContext: chapter overrides book, book overrides source, and writes are local to this invocation. Success serializes ExecutedRule(value, writes); the host decides whether/how to persist writes. Failures retain a redacted stage/field/offset/code rather than converting a failed rule into empty content. The execution module exposes source-rules as an API dependency because these public DTOs contain rule types. This is an execution entry point; production search/reader routing and nested java.getString/getElement helpers are separate remaining work.
 
 Resource controls apply to selectors and scripts alike. JVM workers use a 64 MiB maximum Java heap, a 1 MiB thread stack and exit on OOM; the host still imposes the wall deadline. Android checks managed allocated heap plus Debug native allocated heap before/after calls and every 25 ms, including idle retained scopes; exceeding 96 MiB kills the worker. OOM likewise kills it without serializing/reusing damaged state, and Binder death returns ProcessExited. This is a sampled allocation budget, not a hard RSS/virtual-memory cap: an allocation may overshoot between samples, mappings are not fully measured, and OS process termination remains the fallback. Rhino separately caps interpreter recursion at 1000 frames. Neither ClassShutter nor the sampling monitor alone proves isolation.

@@ -13,6 +13,47 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RuleLoginFormTest {
+    @Test fun nestedBusinessDataOnlyFillsDeclaredStringInputsAndSurvivesFormActions() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            fixture.source(profile = EXTENSION_PROFILE) { raw -> JsonObject(raw + mapOf(
+                "loginUrl" to JsonPrimitive("function login(){}"),
+                "loginUi" to JsonPrimitive("""[{"name":"user"},{"name":"id","default":"fallback"},
+                    {"name":"update","type":"button","action":"java.upLoginData({user:'bob'});"}]""")
+            )) }.use { source ->
+                val novel = """ {"user":"alice","id":7,"liked":true,"tags":["one"],"pollData":{"votes":[1,2]},"note":"business"} """
+                suspend fun script(code: String) = source.evaluation().script(code, hnovel.rules.RuleValue.Empty, "fixture").text()
+                assertEquals("true", script("source.putLoginInfo(${JsonPrimitive(novel)})"))
+                assertEquals(novel, script("source.getLoginInfo()"))
+                assertEquals("alice", script("source.getLoginInfoMap().get('user')"))
+                val form = source.loginForm()
+                assertEquals(mapOf("user" to "alice", "id" to "fallback"), form.values)
+                assertTrue(runCatching { source.login(mapOf("note" to "injected")) }.isFailure)
+                assertEquals(novel, script("source.getLoginInfo()"))
+                source.login(form.values, "update")
+                val saved = Json.parseToJsonElement(script("source.getLoginInfo()")).jsonObject
+                assertEquals("bob", saved.getValue("user").jsonPrimitive.content)
+                assertEquals(Json.parseToJsonElement(novel).jsonObject["pollData"], saved["pollData"])
+                assertEquals(JsonPrimitive("business"), saved["note"])
+                assertEquals(JsonPrimitive(true), saved["liked"])
+                assertEquals("bob", source.loginForm().values["user"])
+            }
+        }
+    }
+
+    @Test fun opaqueOrLargeBusinessFieldsDoNotPreventOpeningAnOrdinaryForm() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            fixture.source { raw -> JsonObject(raw + mapOf(
+                "loginUrl" to JsonPrimitive("function login(){}"),
+                "loginUi" to JsonPrimitive("""[{"name":"user"}]""")
+            )) }.use { source ->
+                for (text in listOf("opaque", "[1,true]", JsonObject(mapOf("user" to JsonPrimitive("x".repeat(5000)))).toString())) {
+                    source.evaluation().script("source.putLoginInfo(${JsonPrimitive(text)})", hnovel.rules.RuleValue.Empty, "fixture")
+                    assertEquals(mapOf("user" to ""), source.loginForm().values)
+                }
+            }
+        }
+    }
+
     @Test fun directAndRedirectedBrowserLoginKeepTheDeniedOriginWithoutItsQuery() = runBlocking {
         val deniedUrl = "https://login.invalid/verify?token=synthetic-secret"
         var navigations = 0

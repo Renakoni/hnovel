@@ -69,10 +69,21 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         (cachedLoginForm ?: loadLoginForm()).withValues(loginValues())
     }
 
-    private fun loginValues(): Map<String, String> {
+    private fun loginInfo(): String? {
         val stored = session.read(StorageRequest(StorageArea.Account, StorageRequestKey.LOGIN_INFO)) as? StorageResult.Value
             ?: throw SourceContentException(ContentError.Storage, "loginUi.values")
-        return stored.value?.let { Json.parseToJsonElement(it).jsonObject.mapValues { it.value.jsonPrimitive.content } }.orEmpty()
+        return stored.value
+    }
+
+    private fun loginValues(): Map<String, String> = LoginInfo.stringFields(loginInfo()).orEmpty()
+        .filter { (key, value) -> key.length <= 128 && value.jsonPrimitive.content.length <= 4096 }
+        .mapValues { it.value.jsonPrimitive.content }
+
+    private fun saveLoginValues(values: Map<String, String>) = authority.authorized(identity) {
+        val original = loginInfo()
+        val merged = LoginInfo.merge(original, values)
+        if (merged != original)
+            check(session.write(StorageRequest(StorageArea.Account, StorageRequestKey.LOGIN_INFO, merged)) is StorageResult.Value)
     }
 
     private fun loginContext(values: Map<String, String>, interactive: Boolean): RuleEvaluation = evaluation(interactive = interactive).also {
@@ -95,7 +106,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
 
     private suspend fun loadLoginForm(): LoginForm {
         val extended = definition.profile == EXTENSION_PROFILE
-        val context = loginContext(loginValues(), interactive = false)
+        val context = loginContext(loginValues().entries.take(128).associate { it.toPair() }, interactive = false)
         val raw = spec.loginUi.trim()
         val ui = if (raw.startsWith("@js:", true) || raw.startsWith("<js>", true)) {
             if (!extended) throw SourceContentException(ContentError.InvalidRule, "loginUi")
@@ -120,10 +131,10 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
     suspend fun login(values: Map<String, String>, action: String? = null): Unit = operation("loginUrl", timeoutMillis = 300000) {
         val form = (cachedLoginForm ?: loadLoginForm()).withValues(loginValues())
         form.validate(values)
-        val submitted = loginValues() + form.values + values
+        val submitted = form.values + values
         form.validate(submitted, allowAdditional = true)
         val info = JsonObject(submitted.mapValues { JsonPrimitive(it.value) }).toString()
-        authority.authorized(identity) { check(session.write(StorageRequest(StorageArea.Account, StorageRequestKey.LOGIN_INFO, info)) is StorageResult.Value) }
+        saveLoginValues(submitted)
         val context = loginContext(submitted, interactive = true)
         if (form.browserUrl != null && action == null) {
             val pending = if (spec.browserRead) (session.read(StorageRequest(StorageArea.Account,
@@ -172,9 +183,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         }
         val changed = state.getValue("values").jsonObject.mapValues { it.value.jsonPrimitive.content }
         form.validate(changed, allowAdditional = true)
-        if (changed != submitted) authority.authorized(identity) {
-            check(session.write(StorageRequest(StorageArea.Account, StorageRequestKey.LOGIN_INFO, state.getValue("values").toString())) is StorageResult.Value)
-        }
+        if (changed != submitted) saveLoginValues(changed.filter { (key, value) -> submitted[key] != value })
         if (actions.any { it.jsonObject.string("kind") == "refresh" }) cachedLoginForm = null
         if (action == null) authority.authorized(identity) { check(session.write(StorageRequest(StorageArea.Account, "login/status", "authenticated")) is StorageResult.Value) }
     }
