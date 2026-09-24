@@ -106,6 +106,11 @@ class SourceRuntime internal constructor(
     suspend fun getBookInformation(bookId: String, priority: WebDataSourcePriority = WebDataSourcePriority.Default, refresh: Boolean = false) =
         execute { cached.getBookInformation(bookId, priority, refresh) }
 
+    /** Only the imported-rule adapter can propose a remote alias; source identity stays host-owned. */
+    internal suspend fun canonicalBookId(bookId: String): String = execute {
+        (source as? indi.renakoni.nextvol.data.web.rules.RuleWebBookDataSource)?.canonicalBookId(bookId) ?: bookId
+    }
+
     suspend fun getBookVolumes(bookId: String, priority: WebDataSourcePriority = WebDataSourcePriority.Default, refresh: Boolean = false) =
         execute { cached.getBookVolumes(bookId, priority, refresh) }
 

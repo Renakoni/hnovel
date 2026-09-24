@@ -39,6 +39,59 @@ import java.util.UUID
 @RunWith(AndroidJUnit4::class)
 @OptIn(coil3.annotation.DelicateCoilApi::class)
 class DownloadPersistenceInstrumentedTest {
+    @Test fun canonicalSeriesRetainsSingleWorkProgressAndImagesAfterReopen() = runBlocking {
+        withTimeout(30_000) {
+            val base = InstrumentationRegistry.getInstrumentation().targetContext
+            val root = File(base.filesDir, "canonical-fixture-${UUID.randomUUID()}").apply { mkdirs() }
+            val context = object : ContextWrapper(base) { override fun getFilesDir() = File(root, "files").apply { mkdirs() } }
+            fun open() = Room.databaseBuilder(context, NextVolDatabase::class.java, File(root, "library.db").path).build()
+            var db = open()
+            val decoder = ContentJsonDecoder(ContentComponentRegistry())
+            var store = BookDownloadStore(context, db, decoder)
+            val single = SourceBookId(Identifier("fixture", "canonical"), "novel/1")
+            val series = SourceBookId(single.sourceId, "series/10")
+            val singleChapter = SourceChapterId(single, single.remoteId)
+            val targetChapter = SourceChapterId(series, single.remoteId)
+            val raw = BookVolumes(single.remoteId, listOf(Volume("default", "", listOf(ChapterInformation(single.remoteId, "First")))))
+            val canonicalVolumes = series.bind(BookVolumes(series.remoteId, listOf(Volume("default", "Series",
+                listOf(ChapterInformation(single.remoteId, "First"), ChapterInformation("novel/2", "Second"))))))
+            val image = SourceImage(single, "https://fixture.invalid/illustration.png")
+            val png = ByteArrayOutputStream().also {
+                Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888).compress(Bitmap.CompressFormat.PNG, 100, it)
+            }.toByteArray()
+            val body = singleChapter.bind(ChapterContent(single.remoteId, "First", ContentBuilder().simpleText("Saved").image(Uri.parse(image.uri)).build()))
+            var loader: ImageLoader? = null
+            try {
+                val aliases = BookAliasStore(db)
+                val local = LocalBookDataSource(db.bookInformationDao(), db.bookVolumesDao(), db.chapterContentDao(), db.userReadingDataDao(), aliases)
+                local.updateBookVolumes(single.bind(raw))
+                local.updateUserReadingData(single.storageKey) { it.copyWithUpdatedChapterReadingProgress(singleChapter.storageKey, 0.7f)
+                    .copy(lastReadChapterId = singleChapter.storageKey, totalReadTime = 30) }
+                val attempt = store.begin(single, 0, "single")
+                store.target(attempt, single.bind(raw), "fixture", "")
+                store.saveImage(attempt, image.uri, false, png)
+                store.saveChapter(attempt, body, "old-signature", listOf(image.uri))
+                val information = series.bind(BookInformation(series.remoteId, "Series", author = "Author", description = "",
+                    publishingHouse = "", wordCount = WordCount(1), lastUpdated = java.time.LocalDateTime.MIN, isComplete = false))
+                store.mergeIdentity(single, series, canonicalVolumes) { aliases.merge(single, series, information, canonicalVolumes) }
+                try { store.finish(attempt, true); fail("Old ownership must be retired") } catch (_: CancellationException) { }
+                store.clearReadingCache()
+                db.close(); db = open(); store = BookDownloadStore(context, db, decoder)
+                assertEquals(series, BookAliasStore(db).resolve(single))
+                val reading = db.userReadingDataDao().getEntity(series.storageKey)!!
+                assertEquals(targetChapter.storageKey, reading.lastReadChapterId)
+                assertEquals(0.7f, reading.maxChapterReadingProgressMap[targetChapter.storageKey]!!, 0f)
+                assertEquals(body.content, db.chapterContentDao().get(targetChapter.storageKey)!!.content)
+                assertNotEquals(BookDownloadPhase.Complete, store.state(series, canonicalVolumes, "fixture", false).phase)
+                assertArrayEquals(png, store.image(image)!!.readBytes())
+                loader = ImageLoader.Builder(context).components { add(SourceImageInterceptor(WebSourceRegistry(), context, store)) }.build()
+                val decoded = loader.execute(ImageRequest.Builder(context).data(image.copy(book = series)).build())
+                assertTrue(decoded.toString(), decoded is SuccessResult)
+                assertEquals(2, (decoded as SuccessResult).image.width)
+            } finally { loader?.shutdown(); db.close(); root.deleteRecursively() }
+        }
+    }
+
     @Test fun downloadedTextAndImagesSurviveCacheClearAndReopen() = runBlocking {
         withTimeout(30_000) {
             val base = InstrumentationRegistry.getInstrumentation().targetContext
@@ -63,7 +116,7 @@ class DownloadPersistenceInstrumentedTest {
                 val image = SourceImage(book, "https://fixture.invalid/image.png")
                 val body = chapterId.bind(ChapterContent("1", "Chapter",
                     ContentBuilder().simpleText("Offline body").image(Uri.parse(image.uri)).build()))
-                val local = LocalBookDataSource(db.bookInformationDao(), db.bookVolumesDao(), db.chapterContentDao(), db.userReadingDataDao())
+                val local = LocalBookDataSource(db.bookInformationDao(), db.bookVolumesDao(), db.chapterContentDao(), db.userReadingDataDao(), indi.renakoni.nextvol.data.book.BookAliasStore(db))
                 local.updateBookVolumes(volumes)
                 val attempt = store.begin(book, 0, "first")
                 store.target(attempt, volumes, "1", "")

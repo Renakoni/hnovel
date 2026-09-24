@@ -67,8 +67,11 @@ internal class RuleWebBookDataSource(override val id: Identifier, private val so
             emit(SearchResult.Error(SourceContentException(ContentError.Limit, "ruleSearch")))
         }
     }
+    internal suspend fun canonicalBookId(id: String) = source.canonicalBookId(id)
+
     override suspend fun getBookInformation(id: String) = request {
-        source.information(id).information()
+        // The legacy source API keeps the caller's remote ID; migration is a separate host operation.
+        source.information(id).information().copy(id = id)
     }
     override suspend fun getBookVolumes(id: String) = request {
         val volumes = mutableListOf<Volume>()

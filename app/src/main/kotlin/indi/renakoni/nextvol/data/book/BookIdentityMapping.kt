@@ -46,3 +46,24 @@ internal fun SourceBookId.remoteContent(content: ChapterContent): ChapterContent
     prevChapter = content.prevChapter?.takeIf(String::isNotEmpty)?.let { BookIdentity.chapter(it, this).remoteId },
     nextChapter = content.nextChapter?.takeIf(String::isNotEmpty)?.let { BookIdentity.chapter(it, this).remoteId },
 )
+
+/** Rebind a known alias only within one source; chapter identity remains the remote novel URL. */
+internal fun BookVolumes.rebind(from: SourceBookId, to: SourceBookId): BookVolumes {
+    require(from.sourceId == to.sourceId && bookId == from.storageKey)
+    return to.bind(BookVolumes(to.remoteId, volumes.map(from::remoteVolume)))
+}
+
+internal fun ChapterContent.rebind(from: SourceBookId, to: SourceBookId): ChapterContent {
+    require(from.sourceId == to.sourceId)
+    val remote = from.remoteContent(this)
+    return SourceChapterId(to, remote.id).bind(remote)
+}
+
+internal fun UserReadingData.rebind(from: SourceBookId, to: SourceBookId): UserReadingData {
+    require(from.sourceId == to.sourceId && id == from.storageKey)
+    fun chapter(id: String) = SourceChapterId(to, BookIdentity.chapter(id, from).remoteId).storageKey
+    return copy(id = to.storageKey,
+        lastReadChapterId = lastReadChapterId?.takeIf(String::isNotEmpty)?.let(::chapter),
+        currentChapterReadingProgressMap = currentChapterReadingProgressMap.mapKeys { chapter(it.key) },
+        maxChapterReadingProgressMap = maxChapterReadingProgressMap.mapKeys { chapter(it.key) })
+}

@@ -66,6 +66,52 @@ class BookDownloadStore @Inject constructor(@ApplicationContext private val cont
         lock.withLock { dao.get(book.storageKey)?.revision }
     }
 
+    /** Keep files until the identity transaction commits; old download attempts lose ownership. */
+    internal suspend fun mergeIdentity(from: SourceBookId, to: SourceBookId, volumes: BookVolumes,
+        commit: suspend () -> Unit) = withContext(Dispatchers.IO) { lock.withLock {
+        require(from.sourceId == to.sourceId && volumes.bookId == to.storageKey)
+        migrateLegacy()
+        val previous = dao.get(from.storageKey)
+        val existing = dao.get(to.storageKey)
+        val generation = existing?.generation ?: generation()
+        val chapterIds = volumes.volumes.flatMap { it.chapters }.map { it.id }.toSet()
+        val retained = dao.chapters(from.storageKey).mapNotNull { chapter ->
+            val id = SourceChapterId(to, BookIdentity.chapter(chapter.id, from).remoteId).storageKey
+            if (id in chapterIds) chapter.copy(id = id, bookId = to.storageKey) else null
+        }
+        if (previous != null) {
+            for (uri in retained.flatMap { Json.decodeFromString<List<String>>(it.images) }.distinct()) {
+                currentCoroutineContext().ensureActive()
+                val source = imageFile(from, previous.generation, uri, false)
+                val destination = imageFile(to, generation, uri, false)
+                if (!source.isFile || destination.isFile) continue
+                check(destination.parentFile!!.isDirectory || destination.parentFile!!.mkdirs())
+                val atomic = AtomicFile(destination)
+                val output = atomic.startWrite()
+                try {
+                    source.inputStream().use { it.copyTo(output) }
+                    atomic.finishWrite(output)
+                } catch (failure: Exception) {
+                    atomic.failWrite(output)
+                    throw failure
+                }
+                // A migration preserves offline bytes, not proof of the new directory's version.
+                check(staleMarker(destination).isFile || staleMarker(destination).createNewFile())
+            }
+        }
+        database.withTransaction {
+            commit()
+            if (previous != null) {
+                if (existing == null) dao.put(BookDownloadEntity(to.storageKey, generation = generation))
+                retained.forEach { chapter ->
+                    if (dao.chapter(chapter.id) == null) dao.put(chapter)
+                }
+                dao.deleteChapters(listOf(from.storageKey))
+                dao.deleteBooks(listOf(from.storageKey))
+            }
+        }
+    } }
+
     internal fun chapterImages(chapter: ChapterContent): List<String> = buildList {
         decoder.getDataFromJsonObject(chapter.content) { if (it is ImageComponentData) add(it.uri.toString()) }
     }.distinct()
@@ -75,13 +121,15 @@ class BookDownloadStore @Inject constructor(@ApplicationContext private val cont
 
     suspend fun image(image: SourceImage): File? = withContext(Dispatchers.IO) { lock.withLock {
         migrateLegacy()
-        val owner = dao.get(image.book.storageKey) ?: return@withLock null
-        imageFile(image.book, owner.generation, image.uri, image.cover).takeIf { it.isFile }
+        val canonical = database.bookAliasDao().get(image.book.storageKey)?.let(SourceBookId::fromStorageKey) ?: image.book
+        val owner = dao.get(canonical.storageKey) ?: return@withLock null
+        imageFile(canonical, owner.generation, image.uri, image.cover).takeIf { it.isFile }
     } }
 
     suspend fun begin(book: SourceBookId, generation: Long, id: String): Attempt = withContext(Dispatchers.IO) { lock.withLock {
         migrateLegacy()
         currentCoroutineContext().ensureActive()
+        if (database.bookAliasDao().get(book.storageKey) != null) throw CancellationException("Book identity changed")
         if (generation != this@BookDownloadStore.generation()) throw CancellationException("Download was cleared")
         val previous = dao.get(book.storageKey) ?: BookDownloadEntity(book.storageKey, generation = generation)
         dao.put(previous.copy(phase = "updating", generation = generation, attempt = id))

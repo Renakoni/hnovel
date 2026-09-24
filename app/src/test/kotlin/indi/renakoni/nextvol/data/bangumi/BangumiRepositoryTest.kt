@@ -61,7 +61,7 @@ class BangumiRepositoryTest {
         val context = RuntimeEnvironment.getApplication()
         database = Room.inMemoryDatabaseBuilder(context, NextVolDatabase::class.java)
             .setQueryCallback(RoomDatabase.QueryCallback { sql, _ -> queries += sql }, Executor { it.run() }).build()
-        local = LocalBookDataSource(database.bookInformationDao(), database.bookVolumesDao(), database.chapterContentDao(), database.userReadingDataDao())
+        local = LocalBookDataSource(database.bookInformationDao(), database.bookVolumesDao(), database.chapterContentDao(), database.userReadingDataDao(), indi.renakoni.nextvol.data.book.BookAliasStore(database))
         accounts = BangumiAccountStore(context, StorageCipher.Plain)
         accounts.disconnect()
         accounts.connect(BangumiUser(17, "test"), "test-only-token")

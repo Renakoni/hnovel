@@ -12,6 +12,7 @@ import androidx.work.await
 import androidx.work.workDataOf
 import com.github.michaelbull.result.Ok
 import com.github.michaelbull.result.Result
+import com.github.michaelbull.result.andThen
 import com.github.michaelbull.result.map
 import com.github.michaelbull.result.onErr
 import com.github.michaelbull.result.onOk
@@ -35,6 +36,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.distinctUntilChanged
 import javax.inject.Inject
@@ -121,9 +123,18 @@ class BookRepository @Inject constructor(
     /** Remote-only refresh reports failure even when a local copy exists (background checks). */
     suspend fun refreshBookInformation(book: SourceBookId, priority: WebDataSourcePriority = WebDataSourcePriority.Low, fresh: Boolean = false): Result<BookInformation, WebRequestError> {
         if (LocalBookStore.isLocal(book)) return localBooks.readInformation(book)
-        return sourceRegistry.request(book) { it.getBookInformation(book.remoteId, priority, refresh = fresh) }.map(book::bind)
+        val requested = canonicalBook(book)
+        return sourceRegistry.request(requested) { runtime -> runtime.execute {
+            runtime.getBookInformation(requested.remoteId, priority, refresh = fresh).andThen { remote ->
+                runtime.persistCanonicalBook(requested, localBookDataSource, downloads).map { canonical ->
+                    val information = requested.bind(remote)
+                    if (canonical == requested) localBookDataSource.updateBookInformation(information)
+                    if (canonical != requested) localBookDataSource.getBookInformation(book.storageKey) ?: information.copy(id = book.storageKey)
+                    else information.copy(id = book.storageKey)
+                }
+            }
+        } }
             .onOk { remote ->
-                localBookDataSource.updateBookInformation(remote)
                 val bookshelfBookMetadata = bookshelfRepository.getBookshelfBookMetadata(book.storageKey) ?: return@onOk
                 if (bookshelfBookMetadata.lastUpdate.isBefore(remote.lastUpdated))
                     bookshelfBookMetadata.bookShelfIds.forEach {
@@ -229,22 +240,26 @@ class BookRepository @Inject constructor(
 
     internal fun exportCatalog(volumes: BookVolumes) = textProcessingRepository.processBookVolumes { volumes }
 
-    fun downloadChanges(bookId: String) = downloads.observe(BookIdentity.book(bookId))
+    internal suspend fun canonicalBook(book: SourceBookId): SourceBookId = localBookDataSource.aliases.resolve(book)
 
-    suspend fun downloadState(bookId: String, active: Boolean = false) = BookIdentity.book(bookId).let { book ->
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    fun downloadChanges(bookId: String) = localBookDataSource.aliases.observe(BookIdentity.book(bookId))
+        .flatMapLatest { downloads.observe(it) }
+
+    suspend fun downloadState(bookId: String, active: Boolean = false) = canonicalBook(BookIdentity.book(bookId)).let { book ->
         downloads.state(book, localBookDataSource.getBookVolumes(book.storageKey), sourceRevision(book), active)
     }
 
     /** Download refresh must report remote failures even when the reader can keep showing local content. */
     internal suspend fun downloadDirectory(book: SourceBookId): Result<BookVolumes, WebRequestError> =
         if (LocalBookStore.isLocal(book)) localBooks.readVolumes(book)
-        else sourceRegistry.request(book) { it.getBookVolumes(book.remoteId, WebDataSourcePriority.Low, refresh = true) }.map(book::bind)
-            .onOk { if (it.volumes.any { volume -> volume.chapters.isNotEmpty() }) localBookDataSource.updateBookVolumes(it) }
+        else chapterRepository.refreshBookVolumes(book, WebDataSourcePriority.Low, fresh = true)
 
     internal suspend fun downloadChapter(book: SourceBookId, chapterId: String): Result<ChapterContent, WebRequestError> {
         val chapter = BookIdentity.chapter(chapterId, book)
         if (LocalBookStore.isLocal(book)) return localBooks.readChapter(chapter)
-        return sourceRegistry.request(book) { it.getChapterContent(chapter.remoteId, book.remoteId, WebDataSourcePriority.Low, refresh = true) }
+        val canonical = canonicalBook(book)
+        return sourceRegistry.request(canonical) { it.getChapterContent(chapter.remoteId, canonical.remoteId, WebDataSourcePriority.Low, refresh = true) }
             .map(chapter::bind)
     }
 

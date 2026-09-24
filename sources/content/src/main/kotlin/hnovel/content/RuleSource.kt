@@ -230,8 +230,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             RuleValue.Text(document.url), "bookUrlPattern", OutputKind.Elements).items().isNotEmpty()
         if (rule.isBlank() || isBookUrl) {
             val id = sourceLink(document.url, document.url)
-            val record = information(id, BookRecord(identity.revision, RuleBook(id, state = context.book)), document)
-            store.write(record)
+            val record = saveInformation(id, BookRecord(identity.revision, RuleBook(id, state = context.book)), document)
             return listOf(record.book)
         }
         val items = context.value(rule.removePrefix("-").removePrefix("+"), document.input(), "$field.bookList", OutputKind.Elements).items()
@@ -254,28 +253,40 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         return ordered
     }
 
+    suspend fun canonicalBookId(bookId: String): String = operation("bookAlias") {
+        store.canonicalId(sourceLink(spec.baseUrl, bookId))
+    }
+
     suspend fun information(bookId: String): RuleBook = operation("ruleBookInfo", timeoutMillis = DIRECTORY_TIMEOUT_MILLIS) {
         prefetchedDirectoryId = null
-        val id = sourceLink(spec.baseUrl, bookId)
+        val id = store.canonicalId(sourceLink(spec.baseUrl, bookId))
         val old = store.read(id)
-        var refreshed = information(id, old)
+        val refreshed = saveInformation(id, old, inferUpdate = true)
+        refreshed.book
+    }
+
+    private suspend fun saveInformation(id: String, old: BookRecord?, supplied: PageDocument? = null,
+        inferUpdate: Boolean = false): BookRecord {
+        var refreshed = information(id, old, supplied)
         // Sources without an update marker still participate in host background update checks.
-        val inferUpdate = refreshed.book.latestChapter.isBlank() && refreshed.book.updateTime.isBlank()
-        if (inferUpdate) {
+        // A script-provided bookUrl is an alias proposal, not permission to move unreadable content.
+        val loadDirectory = refreshed.book.id != id ||
+            (inferUpdate && refreshed.book.latestChapter.isBlank() && refreshed.book.updateTime.isBlank())
+        if (loadDirectory) {
             refreshed = directory(refreshed)
             if (old?.chapters?.map { it.id } != refreshed.chapters.map { it.id })
                 refreshed = refreshed.copy(book = refreshed.book.copy(observedUpdate = System.currentTimeMillis()))
         }
-        store.write(refreshed)
-        prefetchedDirectoryId = if (inferUpdate) id else null
-        refreshed.book
+        store.write(refreshed, id)
+        prefetchedDirectoryId = if (loadDirectory) refreshed.book.id else null
+        return refreshed
     }
 
     suspend fun directory(bookId: String): List<RuleChapter> = operation("ruleToc", timeoutMillis = DIRECTORY_TIMEOUT_MILLIS) {
-        val id = sourceLink(spec.baseUrl, bookId)
-        val prefetched = prefetchedDirectoryId == id
-        prefetchedDirectoryId = null
+        val id = store.canonicalId(sourceLink(spec.baseUrl, bookId))
         val book = record(id)
+        val prefetched = prefetchedDirectoryId == book.book.id
+        prefetchedDirectoryId = null
         if (prefetched) book.chapters else directory(book).also(store::write).chapters
     }
 
@@ -393,10 +404,14 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         var book = bookFields(context, input, spec.information, "ruleBookInfo", initial)
         if (book.title.isBlank()) throw SourceContentException(ContentError.EmptyContent, "ruleBookInfo.name")
         val toc = context.url(spec.information.string("tocUrl"), input, "ruleBookInfo.tocUrl")
-        val tocUrl = sourceLink(document.url, toc.ifBlank { id })
+        val proposedId = context.book.metadata["bookUrl"]?.let { (it as? JsonPrimitive)?.contentOrNull }
+            ?: throw SourceContentException(ContentError.InvalidRule, "ruleBookInfo.bookUrl")
+        val canonicalId = store.canonicalId(sourceLink(document.url, proposedId))
+        val tocUrl = sourceLink(document.url, toc.ifBlank { canonicalId })
+        context.bookField("bookUrl", canonicalId)
         context.bookField("tocUrl", tocUrl)
         val changed = old?.informationLoaded != true || initial.latestChapter != book.latestChapter || initial.updateTime != book.updateTime
-        book = book.copy(tocUrl = tocUrl, state = context.book,
+        book = book.copy(id = canonicalId, tocUrl = tocUrl, state = context.book,
             observedUpdate = if (changed) System.currentTimeMillis() else initial.observedUpdate)
         return BookRecord(identity.revision, book, true, document, old?.takeIf { it.revision == identity.revision }?.chapters.orEmpty())
     }
@@ -544,7 +559,8 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
 
     private suspend fun record(id: String): BookRecord {
         val old = store.read(id)
-        return if (old?.informationLoaded == true && old.revision == identity.revision) old else information(id, old)
+        return if (old?.informationLoaded == true && old.revision == identity.revision) old
+            else saveInformation(store.canonicalId(id), old)
     }
     internal fun evaluation(book: RuleBook? = null, chapter: RuleChapter? = null, keyword: String = "", page: Int = 1,
         interactive: Boolean = false, maxRuleCalls: Int = 65536, memory: ScriptMemory = ScriptMemory()): RuleEvaluation {

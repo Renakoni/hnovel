@@ -1,7 +1,13 @@
 package indi.renakoni.nextvol.data.web
 
 import android.app.Application
+import android.content.ContextWrapper
+import hnovel.content.RuleTaskRunner
+import hnovel.execution.ExecutionAuthority
 import hnovel.imports.*
+import hnovel.network.NetworkGrant
+import indi.renakoni.nextvol.data.web.rules.ImportedRuleSources
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.*
 import org.junit.Assert.*
 import org.junit.Rule
@@ -40,6 +46,48 @@ class SourceCatalogTest {
             if (entries.isNotEmpty()) assertEquals(JsonArray(entries.map(::raw)),
                 Json.parseToJsonElement(catalog.definitions(entries.map { it.key }.toSet())))
         }
+    }
+
+    @Test fun everyAddableCategorySourceActivatesAndRestoresWithoutChangingOrdinaryBookIdentity() = runBlocking {
+        val root = folder.newFolder()
+        val context = object : ContextWrapper(RuntimeEnvironment.getApplication()) {
+            override fun getFilesDir() = root
+        }
+        val authority = ExecutionAuthority()
+        val registry = WebSourceRegistry(authority)
+        val accounts = SourceSessionManager(authority)
+        val runner = RuleTaskRunner { _, _, _, _ -> error("Restoring a source must not execute its scripts") }
+        var sources = ImportedRuleSources(context, registry, authority, accounts, runner)
+        try {
+            val preview = sources.importer.preview(catalog.definitions(catalog.entries.map { it.key }.toSet()), AUTO_PROFILE)
+            assertTrue(preview.issues.toString(), preview.issues.isEmpty())
+            val committed = sources.importer.commit(preview, preview.candidates.map { ImportSelection(it.index, ImportDecision.Add) })
+            assertNull(committed.error)
+            assertTrue(committed.items.all { it.error == null })
+            // Registration needs a grant, but this test must never contact any bundled website.
+            val grants = listOf(NetworkGrant("https://catalog-fixture.invalid"))
+            val ids = sources.activateBatch(committed.items.associate { checkNotNull(it.reference) to grants }, enableNew = true)
+            assertEquals(catalog.entries.size, ids.size)
+            val installed = sources.installedSources().associate { it.definition.sourceId to it.definition.contentDigest }
+            repeat(2) {
+                assertFalse(sources.restorationFailed)
+                assertEquals(installed, sources.installedSources().associate { it.definition.sourceId to it.definition.contentDigest })
+                assertEquals(ids.toSet(), registry.sources.value.map { it.metadata.id }.toSet())
+                for (entry in catalog.entries) {
+                    val definition = sources.installedSources().single { it.definition.importKey == entry.key }.definition
+                    val resolution = registry.resolve(ImportedRuleSources.id(definition))
+                    assertTrue(entry.name, resolution is SourceResolution.Ready)
+                    val runtime = (resolution as SourceResolution.Ready).runtime
+                    assertEquals(entry.category, runtime.metadata.category)
+                    assertEquals("https://catalog-fixture.invalid/book", runtime.canonicalBookId("https://catalog-fixture.invalid/book"))
+                }
+                if (it == 0) {
+                    sources.stop()
+                    sources = ImportedRuleSources(context, registry, authority, accounts, runner)
+                    sources.restore()
+                }
+            }
+        } finally { sources.stop() }
     }
 
     @Test fun withdrawnSourcesRetainInstalledClassificationButCannotBeAddedFromTheCatalog() {

@@ -35,6 +35,7 @@ class MarkChaptersUnreadTest {
         database = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), NextVolDatabase::class.java).build()
         repository = BookReadingDataRepository(LocalBookDataSource(
             database.bookInformationDao(), database.bookVolumesDao(), database.chapterContentDao(), database.userReadingDataDao(),
+            BookAliasStore(database),
         ))
         runBlocking {
             repository.updateUserReadingData(book.storageKey) {

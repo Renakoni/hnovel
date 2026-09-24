@@ -14,10 +14,18 @@ import indi.renakoni.nextvol.data.web.WebSourceRegistry
 import io.mockk.mockk
 
 internal class BookRepositoryFixture {
-    val local = mockk<LocalBookDataSource>()
+    private val aliases = mockk<BookAliasStore> {
+        coEvery { resolve(any()) } coAnswers { firstArg() }
+        coEvery { withResolved<Any?>(any(), any()) } coAnswers { secondArg<suspend (SourceBookId) -> Any?>().invoke(firstArg()) }
+    }
+    val local = mockk<LocalBookDataSource> {
+        every { aliases } returns this@BookRepositoryFixture.aliases
+    }
     val remote = mockk<ProxyWebBookDataSource>()
     var activeRemote = remote
     private val runtime = mockk<SourceRuntime> {
+        coEvery { execute<Any?>(any()) } coAnswers { firstArg<suspend () -> Any?>().invoke() }
+        coEvery { canonicalBookId(any()) } coAnswers { firstArg() }
         coEvery { getBookInformation(any(), any(), any()) } coAnswers { activeRemote.getBookInformation(firstArg(), secondArg()) }
         coEvery { getBookVolumes(any(), any(), any()) } coAnswers { activeRemote.getBookVolumes(firstArg(), secondArg()) }
         coEvery { getChapterContent(any(), any(), any(), any()) } coAnswers { activeRemote.getChapterContent(firstArg(), secondArg(), thirdArg()) }
@@ -33,7 +41,7 @@ internal class BookRepositoryFixture {
     val downloads = mockk<BookDownloadStore>(relaxed = true)
     val localBooks = mockk<indi.renakoni.nextvol.data.localbook.LocalBookStore>()
 
-    fun chapterRepository() = ChapterRepository(registry, local, text, localBooks)
+    fun chapterRepository() = ChapterRepository(registry, local, text, localBooks, downloads)
 
     fun repository() = BookRepository(
         local, bookshelves, text, workManager,

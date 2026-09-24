@@ -43,11 +43,22 @@ class CacheBookWork @AssistedInject constructor(
     }
 
     override suspend fun doWork(): Result {
-        val book = inputData.sourceBook() ?: return bookWorkFailure("invalid_book_identity")
-        return downloads.withBookOperation(book) { cacheBook(book) }
+        val requested = inputData.sourceBook() ?: return bookWorkFailure("invalid_book_identity")
+        // Detail resolution may promote a standalone work into a series. Do that before owning files.
+        val information = bookRepository.refreshBookInformation(requested, fresh = true)
+        val book = bookRepository.canonicalBook(requested)
+        if (information.isErr) return downloads.withBookOperation(book) {
+            try {
+                val attempt = downloads.begin(book, inputData.getLong("downloadGeneration", 0), id.toString())
+                downloads.finish(attempt, success = false)
+            } catch (_: CancellationException) { currentCoroutineContext().ensureActive() }
+            bookWorkFailure(bookWorkFailureReason(information.component2()), book)
+        }
+        return downloads.withBookOperation(book) { cacheBook(book, information.component1()!!) }
     }
 
-    private suspend fun cacheBook(book: indi.renakoni.nextvol.data.book.SourceBookId): Result {
+    private suspend fun cacheBook(book: indi.renakoni.nextvol.data.book.SourceBookId,
+        information: io.nightfish.lightnovelreader.api.book.BookInformation): Result {
         val item = MutableDownloadItem(DownloadType.CACHE, book.storageKey,
             bookRepository.getBookInformationFlow(book.storageKey))
         downloadProgressRepository.addExportItem(item)
@@ -62,7 +73,6 @@ class CacheBookWork @AssistedInject constructor(
                 val volumes = bookRepository.downloadDirectory(book).bind()
                 val chapters = volumes.volumes.flatMap { it.chapters }.distinctBy { it.id }
                 check(chapters.isNotEmpty()) { "Source returned an empty directory" }
-                val information = bookRepository.refreshBookInformation(book, fresh = true).bind()
                 val cover = information.coverUri.toString()
                 val unchanged = downloads.target(active, volumes, revision, cover)
                 val fetchedImages = mutableSetOf<String>()

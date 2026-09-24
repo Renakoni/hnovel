@@ -1,7 +1,11 @@
 package indi.renakoni.nextvol.data.book
 
 import com.github.michaelbull.result.Err
+import com.github.michaelbull.result.Ok
 import com.github.michaelbull.result.Result
+import com.github.michaelbull.result.coroutines.coroutineBinding
+import indi.renakoni.nextvol.data.download.BookDownloadStore
+import indi.renakoni.nextvol.data.local.LocalBookDataSource
 import indi.renakoni.nextvol.data.web.SourceResolution
 import indi.renakoni.nextvol.data.web.SourceRuntime
 import indi.renakoni.nextvol.data.web.SourceUnavailableException
@@ -11,6 +15,34 @@ import io.nightfish.lightnovelreader.api.error.WebRequestErrorKind
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import java.io.IOException
+
+/** Run after a successful detail/TOC/content parse, before any host write. */
+internal suspend fun SourceRuntime.persistCanonicalBook(
+    book: SourceBookId, local: LocalBookDataSource, downloads: BookDownloadStore,
+): Result<SourceBookId, WebRequestError> = execute {
+    val canonical = SourceBookId(book.sourceId, canonicalBookId(book.remoteId))
+    if (canonical == book) return@execute Ok(local.aliases.resolve(book))
+    try {
+        coroutineBinding {
+            val information = canonical.bind(getBookInformation(canonical.remoteId).bind())
+            val volumes = canonical.bind(getBookVolumes(canonical.remoteId).bind())
+            checkAvailable()
+            downloads.mergeIdentity(book, canonical, volumes) {
+                checkAvailable()
+                local.aliases.merge(book, canonical, information, volumes)
+                checkAvailable()
+            }
+            canonical
+        }
+    } catch (failure: CancellationException) {
+        throw failure
+    } catch (failure: Exception) {
+        if (failure !is IllegalStateException && failure !is IllegalArgumentException && failure !is IOException) throw failure
+        Err(WebRequestError("Book identity could not be merged",
+            "The original reading data was retained. Refresh the source directory before retrying.", failure))
+    }
+}
 
 /** Missing sources retain their local namespace; requests never fall back to another source. */
 internal suspend fun <T> WebSourceRegistry.request(

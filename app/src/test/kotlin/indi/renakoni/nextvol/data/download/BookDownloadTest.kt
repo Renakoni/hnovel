@@ -96,13 +96,13 @@ class BookDownloadTest {
     private fun openLibrary() {
         db = Room.databaseBuilder(context, NextVolDatabase::class.java, directory.root.resolve("library.db").path)
             .addMigrations(NextVolDatabase.MIGRATION_17_18, NextVolDatabase.MIGRATION_18_19,
-                NextVolDatabase.MIGRATION_19_20, NextVolDatabase.MIGRATION_20_21, NextVolDatabase.MIGRATION_21_22, NextVolDatabase.MIGRATION_22_23).allowMainThreadQueries().build()
-        local = LocalBookDataSource(db.bookInformationDao(), db.bookVolumesDao(), db.chapterContentDao(), db.userReadingDataDao())
+                NextVolDatabase.MIGRATION_19_20, NextVolDatabase.MIGRATION_20_21, NextVolDatabase.MIGRATION_21_22, NextVolDatabase.MIGRATION_22_23, NextVolDatabase.MIGRATION_23_24).allowMainThreadQueries().build()
+        local = LocalBookDataSource(db.bookInformationDao(), db.bookVolumesDao(), db.chapterContentDao(), db.userReadingDataDao(), indi.renakoni.nextvol.data.book.BookAliasStore(db))
         downloads = BookDownloadStore(context, db, decoder)
-        val shelves = BookshelfRepository(db.bookshelfDao(), mockk(relaxed = true), registry, downloads)
+        val shelves = BookshelfRepository(db.bookshelfDao(), mockk(relaxed = true), registry, downloads, local.aliases)
         val text = TextProcessingRepository(mockk { every { enabled } returns false },
             mockk { every { enabled } returns false }, ContentComponentRegistry())
-        books = BookRepository(local, shelves, text, mockk(relaxed = true), ChapterRepository(registry, local, text, mockk()),
+        books = BookRepository(local, shelves, text, mockk(relaxed = true), ChapterRepository(registry, local, text, mockk(), downloads),
             BookReadingDataRepository(local), registry, downloads, mockk())
     }
 
@@ -183,6 +183,16 @@ class BookDownloadTest {
         source.directoryFailed = false
         source.chapters = emptyList()
         assertTrue(download() is ListenableWorker.Result.Failure)
+        assertEquals(3, local.getBookVolumes(a.storageKey)!!.volumes.single().chapters.size)
+    }
+
+    @Test fun failedIdentityPreflightRetainsOfflineDataButMarksTheUpdateFailed() = runBlocking {
+        val source = register(a)
+        assertEquals(ListenableWorker.Result.success(), download())
+        source.informationFailed = true
+        assertTrue(download() is ListenableWorker.Result.Failure)
+        assertEquals(BookDownloadPhase.Failed, state().phase)
+        assertNotNull(chapter(a, "1"))
         assertEquals(3, local.getBookVolumes(a.storageKey)!!.volumes.single().chapters.size)
     }
 
@@ -333,10 +343,10 @@ class BookDownloadTest {
         db.userDataDao().insert(UserDataPath.CompletedDownloadBookList.path, "fixture", "CompletedDownloadItemList", "CACHE|${a.storageKey}")
         db.openHelper.writableDatabase.apply {
             execSQL("DROP TABLE downloaded_chapter"); execSQL("DROP TABLE book_download"); execSQL("DROP TABLE local_book_file_manifest"); execSQL("DROP TABLE imported_book")
-            execSQL("DROP TABLE bangumi_binding"); execSQL("DROP TABLE bangumi_sync_record"); version = 17
+            execSQL("DROP TABLE bangumi_binding"); execSQL("DROP TABLE bangumi_sync_record"); execSQL("DROP TABLE book_alias"); version = 17
         }
         db.close(); openLibrary()
-        assertEquals(23, db.openHelper.writableDatabase.version)
+        assertEquals(24, db.openHelper.writableDatabase.version)
         val blocked = File(context.filesDir, "book-downloads").apply { writeText("not a directory") }
         try { downloads.prepare(); fail("Image copy must fail before ownership is committed") }
         catch (_: java.io.IOException) { }
@@ -518,6 +528,7 @@ class BookDownloadTest {
         var withImages = false
         var imageFailed = false
         var directoryFailed = false
+        var informationFailed = false
         var failedChapter: String? = null
         var chapterPause: (suspend () -> Unit)? = null
         var directoryCalls = 0
@@ -530,7 +541,8 @@ class BookDownloadTest {
             ContentBuilder().simpleText("${book.sourceId.id}:$id").apply {
                 if (withImages) image(Uri.parse(IMAGE))
             }.build())
-        override suspend fun getBookInformation(id: String) = Ok(information())
+        override suspend fun getBookInformation(id: String): com.github.michaelbull.result.Result<BookInformation, WebRequestError> =
+            if (informationFailed) Err(WebRequestError("Network", "Unavailable")) else Ok(information())
         override suspend fun getBookVolumes(id: String): com.github.michaelbull.result.Result<BookVolumes, WebRequestError> {
             directoryCalls++
             return if (directoryFailed) Err(WebRequestError("Network", "Unavailable")) else Ok(directory())

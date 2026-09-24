@@ -3,12 +3,14 @@ package indi.renakoni.nextvol.data.book
 import android.util.Log
 import com.github.michaelbull.result.Ok
 import com.github.michaelbull.result.Result
+import com.github.michaelbull.result.andThen
 import com.github.michaelbull.result.map
 import com.github.michaelbull.result.onErr
 import com.github.michaelbull.result.onOk
 import indi.renakoni.nextvol.BuildConfig
 import indi.renakoni.nextvol.data.local.LocalBookDataSource
 import indi.renakoni.nextvol.data.localbook.LocalBookStore
+import indi.renakoni.nextvol.data.download.BookDownloadStore
 import indi.renakoni.nextvol.data.text.TextProcessingRepository
 import indi.renakoni.nextvol.data.web.WebSourceRegistry
 import io.nightfish.lightnovelreader.api.book.BookVolumes
@@ -27,6 +29,7 @@ class ChapterRepository @Inject constructor(
     private val localBookDataSource: LocalBookDataSource,
     private val textProcessingRepository: TextProcessingRepository,
     private val localBooks: LocalBookStore,
+    private val downloads: BookDownloadStore,
 ) : ChapterSource {
     companion object {
         private const val TAG = "BookRepository"
@@ -47,10 +50,7 @@ class ChapterRepository @Inject constructor(
             emit(Ok(it))
             if (BuildConfig.BENCHMARK) return@flow
         }
-        sourceRegistry.request(book) { it.getBookVolumes(book.remoteId, priority) }.map(book::bind)
-            .onOk { remote ->
-                localBookDataSource.updateBookVolumes(remote)
-            }.onErr {
+        refreshBookVolumes(book, priority).onErr {
                 Log.e(TAG, "Source request failed for ${book.fileKey}: ${it.kind}")
             }
             .also {
@@ -60,6 +60,20 @@ class ChapterRepository @Inject constructor(
         result.map {
             textProcessingRepository.processBookVolumes { it }
         }
+    }
+
+    internal suspend fun refreshBookVolumes(book: SourceBookId, priority: WebDataSourcePriority, fresh: Boolean = false): Result<BookVolumes, WebRequestError> {
+        val requested = localBookDataSource.aliases.resolve(book)
+        return sourceRegistry.request(requested) { runtime -> runtime.execute {
+            runtime.getBookVolumes(requested.remoteId, priority, refresh = fresh).andThen { remote ->
+                runtime.persistCanonicalBook(requested, localBookDataSource, downloads).map { canonical ->
+                    val volumes = requested.bind(remote)
+                    if (canonical == requested && (!fresh || volumes.volumes.any { it.chapters.isNotEmpty() }))
+                        localBookDataSource.updateBookVolumes(volumes)
+                    volumes.rebind(requested, book)
+                }
+            }
+        } }
     }
 
     override fun getChapterContentFlow(
@@ -77,10 +91,7 @@ class ChapterRepository @Inject constructor(
             emit(Ok(it))
             if (BuildConfig.BENCHMARK) return@flow
         }
-        sourceRegistry.request(chapter.book) { it.getChapterContent(chapter.remoteId, chapter.book.remoteId, priority) }.map(chapter::bind)
-            .onOk { remote ->
-                localBookDataSource.updateChapterContent(remote)
-            }.onErr {
+        refreshChapter(chapter, priority).onErr {
                 Log.e(TAG, "Source request failed for ${chapter.book.fileKey}: ${it.kind}")
             }
             .also {
@@ -99,11 +110,19 @@ class ChapterRepository @Inject constructor(
     ) {
         val chapter = BookIdentity.chapter(chapterId, BookIdentity.book(bookId))
         if (LocalBookStore.isLocal(chapter.book)) return
-        sourceRegistry.request(chapter.book) { it.getChapterContent(chapter.remoteId, chapter.book.remoteId, priority) }.map(chapter::bind)
-            .onOk { remote ->
-                localBookDataSource.updateChapterContent(remote)
-            }.onErr {
+        refreshChapter(chapter, priority).onErr {
                 Log.e(TAG, "Source request failed for ${chapter.book.fileKey}: ${it.kind}")
             }
+    }
+
+    private suspend fun refreshChapter(chapter: SourceChapterId, priority: WebDataSourcePriority): Result<ChapterContent, WebRequestError> {
+        val requested = localBookDataSource.aliases.resolve(chapter.book)
+        return sourceRegistry.request(requested) { runtime -> runtime.execute {
+            runtime.getChapterContent(chapter.remoteId, requested.remoteId, priority).andThen { remote ->
+                runtime.persistCanonicalBook(requested, localBookDataSource, downloads).map {
+                    chapter.bind(remote).also { localBookDataSource.updateChapterContent(it) }
+                }
+            }
+        } }
     }
 }

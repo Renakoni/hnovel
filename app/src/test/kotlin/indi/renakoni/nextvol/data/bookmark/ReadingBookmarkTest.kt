@@ -54,7 +54,7 @@ class ReadingBookmarkTest {
         chapterTitle = "Chapter", componentIndex = 0, offset = offset,
         fingerprint = "a".repeat(64), preview = "Recognizable text", progress = .4f)
     private fun open() = Room.databaseBuilder(context, NextVolDatabase::class.java, name)
-        .allowMainThreadQueries().addMigrations(NextVolDatabase.MIGRATION_21_22, NextVolDatabase.MIGRATION_22_23).build()
+        .allowMainThreadQueries().addMigrations(NextVolDatabase.MIGRATION_21_22, NextVolDatabase.MIGRATION_22_23, NextVolDatabase.MIGRATION_23_24).build()
     private fun backup(): LocalDataManager {
         val coordinator = StatisticsWriteCoordinator()
         val stats = StatsRepository(db.bookRecordDao(), db.dailyCountDao(), mockk(), coordinator)

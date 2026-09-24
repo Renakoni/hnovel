@@ -32,6 +32,7 @@ data class LocalData(
     val readingBookmarks: List<indi.renakoni.nextvol.data.bookmark.ReadingBookmark> = emptyList(),
     val bookDownloadEntities: List<BookDownloadEntity> = emptyList(),
     val downloadedChapterEntities: List<DownloadedChapterEntity> = emptyList(),
+    val bookAliases: List<indi.renakoni.nextvol.data.local.room.entity.BookAliasEntity> = emptyList(),
 ) {
     companion object {
         fun empty() = LocalData(
