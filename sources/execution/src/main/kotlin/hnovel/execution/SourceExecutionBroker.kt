@@ -44,6 +44,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
         is ExecutionTask.Script -> baseUrl == task.baseUrl && keyword == task.key && page == task.page &&
             speakText == task.speakText && speakSpeed == task.speakSpeed
         is ExecutionTask.Rule -> speakText == null && baseUrl == task.baseUrl && keyword == task.key && page == task.page
+        is ExecutionTask.BookOverviews -> speakText == null && baseUrl == task.baseUrl
         else -> true
     }
 

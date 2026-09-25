@@ -281,8 +281,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
     // Fixed row selectors are independent. Dynamic rules may write variables used by later rows or URLs.
     private fun canDeferBookFields(fields: JsonObject) = listOf("name", "author", "kind", "wordCount",
         "lastChapter", "intro", "coverUrl", "updateTime", "bookUrl").all { name ->
-        val rule = fields.string(name)
-        listOf("@js:", "<js>", "{{", "@put:", "@get:").none { rule.contains(it, ignoreCase = true) }
+        ExecutionTask.BookOverviews.supports(fields.string(name))
     }
 
     private suspend fun booksFromPage(context: RuleEvaluation, document: PageDocument, fields: JsonObject,
@@ -308,11 +307,24 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val lightweight = overview && canDeferBookFields(fields)
         val books = mutableListOf<RuleBook>()
         val previews = mutableMapOf<String, BookPreview>()
-        for (item in if (lightweight && rule.startsWith('-')) items.asReversed() else items) {
+        val candidates = if (lightweight && rule.startsWith('-')) items.asReversed() else items
+        var batchStart = 0
+        var batch = emptyList<Pair<String, String>>()
+        for ((index, item) in candidates.withIndex()) {
             val row = context.fork()
-            val parsed = bookFields(row, item, fields, field, RuleBook(""), overview = lightweight)
+            if (lightweight && index >= batchStart + batch.size) {
+                batchStart = index
+                val count = minOf(ExecutionTask.BookOverviews.MAX_ROWS, previewLimit?.minus(books.size) ?: Int.MAX_VALUE,
+                    candidates.size - index)
+                batch = context.overviews(candidates.subList(index, index + count), fields.string("name"), fields.string("bookUrl"), field)
+            }
+            val parsed = if (lightweight) {
+                val title = batch[index - batchStart].first
+                row.bookField("name", title)
+                RuleBook("", title = title, state = row.book)
+            } else bookFields(row, item, fields, field, RuleBook(""))
             if (parsed.title.isBlank()) continue
-            val rawUrl = row.url(fields.string("bookUrl"), item, "$field.bookUrl")
+            val rawUrl = if (lightweight) batch[index - batchStart].second else row.url(fields.string("bookUrl"), item, "$field.bookUrl")
             val id = sourceLink(document.url, rawUrl.ifBlank { document.url })
             if (lightweight && id in previews) continue
             row.bookId = id; row.bookField("bookUrl", id)

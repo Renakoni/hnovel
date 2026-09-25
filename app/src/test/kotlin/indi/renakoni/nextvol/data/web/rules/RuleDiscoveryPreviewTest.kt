@@ -54,15 +54,19 @@ class RuleDiscoveryPreviewTest {
         RuleSourceFixture().use { fixture ->
             pages(fixture)
             val fields = mutableListOf<String>()
-            fixture.beforeRun = { task, _ -> if (task is ExecutionTask.Rule) fields += task.location.field }
+            val batches = mutableListOf<ExecutionTask.BookOverviews>()
+            fixture.beforeRun = { task, _ ->
+                if (task is ExecutionTask.Rule) fields += task.location.field
+                if (task is ExecutionTask.BookOverviews) batches += task
+            }
             var firstId = ""
             fixture.source { definition(it) }.use { source ->
                 val section = RuleDiscoveryProvider(source).feed().get()!!.single()
                 assertEquals((1..6).map { "Book $it" }, section.books.map { it.title })
                 assertEquals((1..6).map { fixture.server.url("/book/$it").toString() }, section.books.map { it.remoteId })
                 assertEquals(1, fixture.server.requestCount)
-                assertEquals(6, fields.count { it == "ruleExplore.name" })
-                assertEquals(6, fields.count { it == "ruleExplore.bookUrl" })
+                assertEquals(6, batches.single().inputs.size)
+                assertFalse(fields.any { it == "ruleExplore.name" || it == "ruleExplore.bookUrl" })
                 assertTrue(section.books.all { it.author.isEmpty() && it.coverUrl.isEmpty() })
                 assertFalse(fields.any { it in listOf("ruleExplore.author", "ruleExplore.kind", "ruleExplore.intro", "ruleExplore.coverUrl") })
                 firstId = section.books.first().remoteId
@@ -114,7 +118,11 @@ class RuleDiscoveryPreviewTest {
                 }
             }
             val fields = mutableListOf<String>()
-            fixture.beforeRun = { task, _ -> if (task is ExecutionTask.Rule) fields += task.location.field }
+            val batches = mutableListOf<ExecutionTask.BookOverviews>()
+            fixture.beforeRun = { task, _ ->
+                if (task is ExecutionTask.Rule) fields += task.location.field
+                if (task is ExecutionTask.BookOverviews) batches += task
+            }
             fixture.source { definition(it) }.use { source ->
                 val provider = RuleDiscoveryProvider(source)
                 val request = DiscoveryRequest("/search?page={{page}}")
@@ -124,8 +132,9 @@ class RuleDiscoveryPreviewTest {
                 val second = provider.page(request.copy(cursor = first.nextCursor)).get()!!
                 assertEquals((31..60).map { "Book $it" }, second.books.map { it.title })
                 assertTrue((first.books + second.books).all { it.author.isEmpty() && it.coverUrl.isEmpty() })
-                assertEquals(60, fields.count { it == "ruleExplore.name" })
-                assertEquals(60, fields.count { it == "ruleExplore.bookUrl" })
+                assertEquals(60, batches.sumOf { it.inputs.size })
+                assertEquals(8, batches.size)
+                assertFalse(fields.any { it == "ruleExplore.name" || it == "ruleExplore.bookUrl" })
                 assertFalse(fields.any { it in listOf("ruleExplore.author", "ruleExplore.kind", "ruleExplore.intro", "ruleExplore.coverUrl") })
                 val end = provider.page(request.copy(cursor = second.nextCursor)).get()!!
                 assertTrue(end.books.isEmpty())
@@ -151,6 +160,24 @@ class RuleDiscoveryPreviewTest {
                 assertEquals("JSON author", information.author)
                 assertEquals(listOf("JSON kind"), information.tags)
                 assertEquals("JSON intro", information.description)
+            }
+        }
+    }
+
+    @Test fun listScriptStateAndFallbackTitleSurviveBatchedFieldsAndDetailRestore(): Unit = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            pages(fixture, (1..10).joinToString("") { row(it, "") })
+            var listCalls = 0
+            fixture.beforeRun = { task, _ -> if (task is ExecutionTask.Rule && task.location.field == "ruleExplore.bookList") listCalls++ }
+            fixture.source { definition(it, mapOf("bookList" to JsonPrimitive(
+                "@js:book.name='Inherited title';book.putVariable('shared','from-list');java.getElements('li')"))) }.use { source ->
+                val books = RuleDiscoveryProvider(source).feed().get()!!.single().books
+                assertEquals(List(6) { "Inherited title" }, books.map { it.title })
+                assertEquals(1, listCalls)
+                val detail = source.information(books.first().remoteId)
+                assertEquals("from-list", detail.state.variables["shared"])
+                assertEquals("Author 1", detail.author)
+                assertEquals(1, listCalls)
             }
         }
     }
