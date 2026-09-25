@@ -8,12 +8,51 @@ class ScriptResponseTest {
     @Test fun browserDocumentsKeepTheirUrlAndDoNotInventRawHttpMetadata() {
         val document = JsonObject(data + mapOf("kind" to JsonPrimitive("BrowserDocument"), "status" to JsonPrimitive(0)))
         val engine = RhinoScriptEngine(HostBridge { _, _ -> document })
-        for (call in listOf("java.connect('url')", "java.startBrowserAwait('url','verify',false)")) {
+        for (call in listOf("java.connect('url')", "java.get('url',{})")) {
             assertEquals(ScriptResult.Success("[\"chapter\",\"https://fixture.invalid/final\",0,true,null,false]"),
                 engine.evaluate("var r=$call;[r.body(),r.getUrl(),r.code(),r.isBrowserDocument(),r.raw(),r.isSuccessful()]", frame))
         }
         assertEquals(ScriptResult.Success("\"https://fixture.invalid/request\""), engine.evaluate("java.getUrl()",
             frame.copy(baseUrl = "https://fixture.invalid/request")))
+    }
+
+    @Test fun completedBrowserAwaitAllowsTheLoginSuccessBranchWithoutInventingRawHttp() {
+        val document = JsonObject(data + mapOf("kind" to JsonPrimitive("BrowserDocument"), "status" to JsonPrimitive(0)))
+        val calls = mutableListOf<String>()
+        val engine = RhinoScriptEngine(HostBridge { name, _ ->
+            calls += name
+            document
+        })
+        assertEquals(ScriptResult.Success("[true,200,true,null,null,\"chapter\",\"https://fixture.invalid/final\",true]"),
+            engine.evaluate("""
+                var resp = java.startBrowserAwait('url', 'Login', false);
+                var saved = false;
+                if (resp.code() === 200) saved = true;
+                [saved, resp.statusCode(), resp.isSuccessful(), resp.raw(), resp.getRaw(),
+                    resp.body(), resp.url(), resp.isBrowserDocument()]
+            """.trimIndent(), frame))
+        assertEquals(listOf("java.startBrowserAwait"), calls)
+    }
+
+    @Test fun browserFailureCannotReachTheLoginSaveBranch() {
+        val calls = mutableListOf<String>()
+        val engine = RhinoScriptEngine(HostBridge { name, _ ->
+            calls += name
+            error("Browser failed")
+        })
+        val result = engine.evaluate("""
+            var response = java.startBrowserAwait('url', 'Login', false);
+            if (response.code() === 200) cache.put('login-ready', 'saved', 0);
+        """.trimIndent(), frame)
+        assertEquals(FailureCode.BridgeDenied, (result as ScriptResult.Failure).code)
+        assertEquals(listOf("java.startBrowserAwait"), calls)
+    }
+
+    @Test fun browserAwaitPreservesObservableHttpFailures() {
+        val response = JsonObject(data + ("status" to JsonPrimitive(401)))
+        val engine = RhinoScriptEngine(HostBridge { _, _ -> response })
+        assertEquals(ScriptResult.Success("401"),
+            engine.evaluate("java.startBrowserAwait('url','Login',false).statusCode()", frame))
     }
 
     @Test fun retainedResponseAndDerivedViewsChargeTheWholeOwnerAndDiscardOnOverflow() {

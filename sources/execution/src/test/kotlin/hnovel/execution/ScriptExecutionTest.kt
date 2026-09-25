@@ -15,6 +15,41 @@ import java.util.concurrent.TimeUnit
 class ScriptExecutionTest {
     @get:Rule val directory = TemporaryFolder()
 
+    @Test fun completedNativeLoginPersistsTheScriptSuccessBranchAcrossSessions() = runBlocking {
+        val authority = ExecutionAuthority()
+        val scope = SourceScope("fixture", "login", "legado")
+        val browser = BrowserExecutor { session, request, options, guard, _ ->
+            assertTrue(options.interactive)
+            guard.commit { session.setCookie(request.url, "sid=fixture-session") }
+            BrokerResult.Success(BrokerResponse(0, request.url, emptyMap(), "signed in".toByteArray(),
+                "UTF-8", 0, protocol = "", kind = ResponseKind.BrowserDocument))
+        }
+        MockWebServer().use { server ->
+            server.start()
+            val url = server.url("/login").toString()
+            val grants = listOf(NetworkGrant(server.url("/").toString(), true))
+            SourceBroker(directory.root.toPath(), browser = browser).use { sessions ->
+                val identity = authority.issue(scope.sourceId, scope.profile, "1", scope.namespace)
+                val session = sessions.open(scope, grants)
+                SourceExecutionBroker(identity, authority, session, ExecutionLimits(), allowInteraction = true).use { bridge ->
+                    assertEquals(ExecutionResult.Success("true"), runScript(identity, bridge, """
+                        var response = java.startBrowserAwait(${JsonPrimitive(url)}, 'Login', false);
+                        if (response.code() === 200) cache.put('login-ready', 'saved', 0);
+                        response.code() === 200 && cookie.getCookie(${JsonPrimitive(url)}).indexOf('sid=fixture-session') >= 0
+                    """.trimIndent()))
+                    assertEquals(0, server.requestCount)
+                }
+            }
+            SourceBroker(directory.root.toPath()).use { sessions ->
+                val restored = sessions.open(scope, grants)
+                assertEquals("sid=fixture-session", restored.cookie(url))
+                assertEquals(StorageResult.Value("saved"), restored.read(StorageRequest(StorageArea.Cache, "value:login-ready")))
+                assertEquals(StorageResult.Value(null), sessions.open(scope.copy(sourceId = "other"), grants)
+                    .read(StorageRequest(StorageArea.Cache, "value:login-ready")))
+            }
+        }
+    }
+
     @Test fun sourceVariableAliasUsesTheSameStorageAndScopeAsSetVariable() = runBlocking {
         val authority = ExecutionAuthority()
         SourceBroker(directory.root.toPath()).use { sessions ->

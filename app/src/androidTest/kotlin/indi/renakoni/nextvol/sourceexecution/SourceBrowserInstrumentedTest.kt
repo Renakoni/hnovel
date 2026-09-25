@@ -22,6 +22,62 @@ import java.util.concurrent.ConcurrentLinkedQueue
 class SourceBrowserInstrumentedTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
 
+    @Test fun nativeBrowserCompletionResumesTheLoginSuccessBranch(): Unit = runBlocking {
+        ActivityScenario.launch(BrowserTestHostActivity::class.java).use { MockWebServer().use { server ->
+            server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest) = MockResponse().setHeader("Content-Type", "text/html")
+                    .addHeader("Set-Cookie", "auth=completion-fixture; Path=/; Max-Age=600; HttpOnly")
+                    .setBody("<html><head><link rel='icon' href='data:,'></head><body>Native login ready</body></html>")
+            }
+            server.start()
+            val root = File(context.cacheDir, "login-completion-${System.nanoTime()}")
+            val authority = ExecutionAuthority()
+            val executor = AndroidIsolatedExecutor(context, authority)
+            try { SourceBroker(root.toPath(), browser = AndroidSourceBrowser(context)).use { broker ->
+                val baseUrl = server.url("/").toString()
+                val session = broker.open(SourceScope("login-completion", root.name, "legado"),
+                    listOf(NetworkGrant(baseUrl, true)))
+                session.configureSource(baseUrl, true, browserRead = true)
+                val identity = authority.issue(root.name, "legado", "1", "login-completion")
+                val limits = ExecutionLimits(timeoutMillis = 60000)
+                try { SourceExecutionBroker(identity, authority, session, limits, baseUrl, allowInteraction = true).use { bridge ->
+                    val pending = async { executor.execute(identity, ExecutionTask.Script("""
+                        var response = java.startBrowserAwait('/login', 'Login completion fixture', false);
+                        if (response.code() === 200) cache.put('login-ready', 'saved', 0);
+                        response.isBrowserDocument() && response.raw() === null &&
+                            cache.get('login-ready') === 'saved' &&
+                            cookie.getCookie(baseUrl).indexOf('auth=completion-fixture') >= 0
+                    """.trimIndent(), baseUrl = baseUrl), limits, bridge) }
+                    val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+                    automation.serviceInfo = automation.serviceInfo.apply {
+                        flags = flags or android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS or
+                            android.accessibilityservice.AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
+                    }
+                    fun find(node: android.view.accessibility.AccessibilityNodeInfo?, text: String): android.view.accessibility.AccessibilityNodeInfo? {
+                        node ?: return null
+                        if (node.isVisibleToUser && (node.text?.contains(text) == true ||
+                                node.contentDescription?.contains(text) == true || node.viewIdResourceName == text)) return node
+                        for (index in 0 until node.childCount) find(node.getChild(index), text)?.let { return it }
+                        return null
+                    }
+                    withTimeout(30000) {
+                        while (automation.windows.none {
+                            find(it.root?.takeIf { node -> node.packageName == context.packageName }, "Native login ready") != null
+                        }) delay(100)
+                    }
+                    val done = "android:id/button1"
+                    withTimeout(10000) {
+                        while (automation.windows.none {
+                            find(it.root?.takeIf { node -> node.packageName == context.packageName }, done)
+                                ?.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK) == true
+                        }) delay(100)
+                    }
+                    assertEquals(ExecutionResult.Success("true"), withTimeout(15000) { pending.await() })
+                } } finally { session.clearAccount() }
+            } } finally { executor.close(); root.deleteRecursively() }
+        } }
+    }
+
     @Test fun scriptMessagesAndChapterContextCrossTheIsolatedBridge(): Unit = runBlocking {
         val root = File(context.cacheDir, "source-feedback-${System.nanoTime()}")
         val authority = ExecutionAuthority()

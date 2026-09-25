@@ -30,7 +30,7 @@ internal object ScriptResponses {
         }
     }
 
-    fun create(context: Context, scope: Scriptable, data: JsonObject, jsoup: Boolean): ScriptableObject {
+    fun create(context: Context, scope: Scriptable, data: JsonObject, jsoup: Boolean, browserCompleted: Boolean = false): ScriptableObject {
         val realm = ScriptRealm.current(context)
         val response = realm.objectIn(scope)
         val body = data["body"]?.let { require(it.jsonPrimitive.isString); it.jsonPrimitive.content }
@@ -55,15 +55,15 @@ internal object ScriptResponses {
         }
         fun constant(name: String, value: Any?) = method(response, name) { require(it.isEmpty()); value }
         if (data["kind"]?.jsonPrimitive?.content == "BrowserDocument") {
-            // DOM extraction has no observable raw HTTP response. Keep that distinction
-            // across the Legado bridge instead of inventing a successful status/protocol.
+            // startBrowserAwait's completed interaction uses Legado's success code, not an
+            // observed HTTP status. Ordinary DOM extraction remains unknown; neither has raw HTTP.
             val text = body ?: String(java.util.Base64.getDecoder().decode(data.getValue("bytes").jsonPrimitive.content), Charsets.UTF_8)
             constant("body", text); constant("getBody", text)
             constant("url", url); constant("getUrl", url)
-            constant("code", 0); constant("statusCode", 0)
+            constant("code", if (browserCompleted) 200 else 0); constant("statusCode", if (browserCompleted) 200 else 0)
             constant("isBrowserDocument", true)
             constant("raw", null); constant("getRaw", null)
-            constant("message", ""); constant("isSuccessful", false)
+            constant("message", ""); constant("isSuccessful", browserCompleted)
             return response
         }
         if (jsoup) {
