@@ -62,9 +62,10 @@ class ChapterRepository @Inject constructor(
         }
     }
 
-    internal suspend fun refreshBookVolumes(book: SourceBookId, priority: WebDataSourcePriority, fresh: Boolean = false): Result<BookVolumes, WebRequestError> {
+    internal suspend fun refreshBookVolumes(book: SourceBookId, priority: WebDataSourcePriority, fresh: Boolean = false,
+        expectedRuntime: indi.renakoni.nextvol.data.web.SourceRuntime? = null): Result<BookVolumes, WebRequestError> {
         val requested = localBookDataSource.aliases.resolve(book)
-        return sourceRegistry.request(requested) { runtime -> runtime.execute {
+        return sourceRegistry.request(requested, expectedRuntime) { runtime -> runtime.execute {
             runtime.getBookVolumes(requested.remoteId, priority, refresh = fresh).andThen { remote ->
                 runtime.persistCanonicalBook(requested, localBookDataSource, downloads).map { canonical ->
                     val volumes = requested.bind(remote)
@@ -115,10 +116,11 @@ class ChapterRepository @Inject constructor(
             }
     }
 
-    private suspend fun refreshChapter(chapter: SourceChapterId, priority: WebDataSourcePriority): Result<ChapterContent, WebRequestError> {
+    internal suspend fun refreshChapter(chapter: SourceChapterId, priority: WebDataSourcePriority, fresh: Boolean = false,
+        expectedRuntime: indi.renakoni.nextvol.data.web.SourceRuntime? = null): Result<ChapterContent, WebRequestError> {
         val requested = localBookDataSource.aliases.resolve(chapter.book)
-        return sourceRegistry.request(requested) { runtime -> runtime.execute {
-            runtime.getChapterContent(chapter.remoteId, requested.remoteId, priority).andThen { remote ->
+        return sourceRegistry.request(requested, expectedRuntime) { runtime -> runtime.execute {
+            runtime.getChapterContent(chapter.remoteId, requested.remoteId, priority, refresh = fresh).andThen { remote ->
                 runtime.persistCanonicalBook(requested, localBookDataSource, downloads).map {
                     chapter.bind(remote).also { localBookDataSource.updateChapterContent(it) }
                 }
