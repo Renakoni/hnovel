@@ -74,6 +74,23 @@ class DiscoveryFailureTest {
         compose.onNodeWithText("Retry").assertIsDisplayed()
     }
 
+    @Test fun structuredHostCallFactsAppearOnlyInDetailsAndMatchTheExportShape() {
+        val failure = hnovel.execution.ExecutionResult.Failure(hnovel.execution.FailureCode.BridgeDenied,
+            hnovel.rules.RuleError(hnovel.rules.RuleStage.Script, hnovel.rules.RuleLocation("exploreUrl"), "BridgeDenied"),
+            hostCall = hnovel.rules.ScriptHostCall("cookie.getCookie", 2, List(2) { hnovel.rules.ScriptArgumentType.String }))
+        val exported = kotlinx.serialization.json.Json.encodeToString(hnovel.execution.ExecutionResult.Failure.serializer(), failure)
+        activity.get().setContent { MaterialTheme {
+            DiscoveryFailure(DiscoveryError.InvalidRules, {}, {}, back = null, field = "exploreUrl", diagnostic = failure)
+        } }
+        compose.onNodeWithText(exported).assertDoesNotExist()
+        compose.onNodeWithText("Retry").assertIsDisplayed()
+        compose.onNodeWithText("Error details").performClick()
+        compose.onNodeWithText(exported).assertExists()
+        compose.onNodeWithText("Close").performClick()
+        compose.onNodeWithText(exported).assertDoesNotExist()
+        compose.onNodeWithText("Retry").assertIsDisplayed()
+    }
+
     @Test fun permissionExplanationAndTargetRemainVisibleBeforeOpeningManagement() {
         var managed = 0
         activity.get().setContent { MaterialTheme {

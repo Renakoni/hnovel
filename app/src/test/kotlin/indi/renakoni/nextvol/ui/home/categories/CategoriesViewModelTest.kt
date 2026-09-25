@@ -8,7 +8,12 @@ import com.github.michaelbull.result.Err
 import com.github.michaelbull.result.Ok
 import com.github.michaelbull.result.Result
 import hnovel.execution.ExecutionAuthority
+import hnovel.execution.ExecutionResult
+import hnovel.execution.FailureCode
+import hnovel.rules.ScriptDependency
 import indi.renakoni.nextvol.data.web.*
+import indi.renakoni.nextvol.data.web.rules.RuleDiscoveryProvider
+import io.mockk.*
 import indi.renakoni.nextvol.ui.home.discovery.DiscoveryCommand
 import indi.renakoni.nextvol.ui.home.discovery.DiscoveryScroll
 import io.nightfish.lightnovelreader.api.Route
@@ -64,6 +69,31 @@ class CategoriesViewModelTest {
             calls++
             return Ok(listOf(DiscoveryCategory("same", "Same category", "tag")))
         }
+    }
+
+    @Test fun catalogDiagnosticsReachThePageAndClearAfterRefresh() = runTest(dispatcher) {
+        val detail = ExecutionResult.Failure(FailureCode.UnsupportedDependency, dependency = ScriptDependency.Sleep)
+        var failed = true
+        val provider = mockk<RuleDiscoveryProvider>(relaxed = true)
+        every { provider.hasCategories } returns true
+        every { provider.openSession(any(), any(), any()) } returns provider
+        every { provider.diagnosticFailure } answers { detail.takeIf { failed } }
+        every { provider.failureField } answers { "exploreUrl".takeIf { failed } }
+        coEvery { provider.catalog(any()) } coAnswers {
+            if (failed) Err(DiscoveryError.InvalidRules) else Ok(DiscoveryCatalog(emptyList()))
+        }
+        val id = add("diagnostic", provider)
+        val model = model()
+        advanceUntilIdle()
+        assertEquals(detail, model.state.value.content.getValue(id).errorDiagnostic)
+        assertEquals("exploreUrl", model.state.value.content.getValue(id).errorField)
+        failed = false
+        model.refresh()
+        advanceUntilIdle()
+        val page = model.state.value.content.getValue(id)
+        assertNull(page.error)
+        assertNull(page.errorDiagnostic)
+        assertNull(page.errorField)
     }
 
     private class BrowserCategories(private val refresh: Boolean = false) : Categories() {

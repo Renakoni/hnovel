@@ -64,7 +64,7 @@ internal object WorkerRuleEvaluator {
                 location = if (scriptFailure?.inLibrary == true) RuleLocation("jsLib") else result.error.location,
                 code = "UnsupportedDependency.${dependency.name}") }
                 ?: if (scriptFailure?.code == hnovel.rhino.FailureCode.RequestSyntax) result.error.copy(stage = RuleStage.Parse) else result.error,
-                scriptFailure?.dependency)
+                scriptFailure?.dependency, scriptFailure?.hostCall)
         }
     }
 

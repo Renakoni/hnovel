@@ -64,7 +64,7 @@ fun ExecutionTask.libraryCode(): String? = when (this) {
 @Serializable sealed interface ExecutionResult {
  @Serializable data class Success(val output: String): ExecutionResult
  @Serializable data class Failure(val code: FailureCode, val ruleError: RuleError? = null,
-  val dependency: ScriptDependency? = null): ExecutionResult
+  val dependency: ScriptDependency? = null, val hostCall: ScriptHostCall? = null): ExecutionResult
 }
 @Serializable enum class FailureCode { Timeout, ProcessExited, InvalidIdentity, OutputLimit, InvalidTask, Cancelled, Revoked, Busy, InputLimit, ScriptSyntax, ScriptRuntime, BridgeDenied, RuleRuntime, RequestSyntax, UnsupportedDependency }
 
@@ -257,7 +257,7 @@ class WorkerRuntime(private val archives: hnovel.rhino.ArchiveDecoder = hnovel.r
       hnovel.rhino.FailureCode.ResultTooLarge -> FailureCode.OutputLimit
       else -> FailureCode.ScriptRuntime
      }, evaluated.dependency?.let { RuleError(RuleStage.Script,
-      RuleLocation(if (evaluated.inLibrary) "jsLib" else "script"), "UnsupportedDependency.${it.name}") }, evaluated.dependency)
+      RuleLocation(if (evaluated.inLibrary) "jsLib" else "script"), "UnsupportedDependency.${it.name}") }, evaluated.dependency, evaluated.hostCall)
     }
    }
   }

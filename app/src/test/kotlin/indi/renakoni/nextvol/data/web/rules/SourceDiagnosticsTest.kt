@@ -20,6 +20,76 @@ import java.nio.file.Files
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [27], application = Application::class)
 class SourceDiagnosticsTest {
+    @Test fun knownCallShapesAndUnknownScriptErrorsShareTheExportedFailureFacts(): Unit = runBlocking {
+        val root = Files.createTempDirectory("call-diagnostic").toFile()
+        val context = object : ContextWrapper(RuntimeEnvironment.getApplication()) {
+            override fun getFilesDir() = File(root, "files")
+            override fun getCacheDir() = File(root, "cache")
+        }
+        RuleSourceFixture().use { fixture ->
+            val registry = WebSourceRegistry(fixture.authority)
+            val accounts = SourceSessionManager(fixture.authority)
+            val sources = ImportedRuleSources(context, registry, fixture.authority, accounts, fixture.runner)
+            val diagnostics = SourceDiagnostics(context, sources, fixture.runner, fixture.authority, accounts, registry, StorageCipher.Plain)
+            val scripts = listOf(
+                "cookie.getCookie('PRIVATE_SITE','PRIVATE_COOKIE')",
+                "source.putLoginInfo({nested:{token:'PRIVATE_TOKEN'}})",
+                "sleep(1)",
+                "throw new Error('PRIVATE_COOKIE cookie.getCookie')",
+                "source.putLoginInfo(JSON.stringify({nested:{token:'PRIVATE_TOKEN'}}));java.getCookie(source.key,'PRIVATE_COOKIE');[{title:'Books',url:'/search'}]"
+            )
+            try {
+                for ((index, script) in scripts.withIndex()) {
+                    val raw = JsonObject(fixture.raw("case$index") + mapOf(
+                        "exploreUrl" to JsonPrimitive("@js:$script"), "ruleExplore" to fixture.raw().getValue("ruleSearch")))
+                    val preview = sources.importer.preview(raw.toString())
+                    val committed = sources.importer.commit(preview, listOf(ImportSelection(0, ImportDecision.Add)))
+                    val id = sources.activate(committed.items.single().reference!!, listOf(NetworkGrant(fixture.server.url("/").toString(), true)))
+                    val report = diagnostics.run(id, DiagnosticStage.Discovery, "", "", "")
+                    assertFalse(report.export().contains("PRIVATE"))
+                    assertFalse(report.export().contains(script))
+                    if (index == 4) {
+                        assertEquals("Success", report.result)
+                        assertNull(report.failure)
+                    } else {
+                        assertEquals("exploreUrl", report.field)
+                        assertEquals(report.events.last().failure, report.failure)
+                        assertEquals(report.failure, Json.decodeFromString<SourceDiagnosticReport>(report.export()).failure)
+                        when (index) {
+                            0 -> assertEquals(hnovel.rules.ScriptHostCall("cookie.getCookie", 2, List(2) { hnovel.rules.ScriptArgumentType.String }), report.failure!!.hostCall)
+                            1 -> assertEquals(hnovel.rules.ScriptHostCall("source.putLoginInfo", 1, listOf(hnovel.rules.ScriptArgumentType.Object)), report.failure!!.hostCall)
+                            2 -> assertEquals(hnovel.rules.ScriptDependency.Sleep, report.failure!!.dependency)
+                            3 -> assertNull(report.failure!!.hostCall)
+                        }
+                    }
+                }
+                for ((index, field) in listOf("loginCheckJs", "ruleSearch.name", "ruleContent.content").withIndex()) {
+                    val original = fixture.raw("stage$index")
+                    val script = JsonPrimitive("@js:source.putLoginInfo({token:'PRIVATE_TOKEN'})")
+                    val raw = if (field == "loginCheckJs") JsonObject(original + (field to script)) else {
+                        val group = field.substringBefore('.')
+                        JsonObject(original + (group to JsonObject(original.getValue(group).jsonObject +
+                            (field.substringAfter('.') to script))))
+                    }
+                    val preview = sources.importer.preview(raw.toString())
+                    val committed = sources.importer.commit(preview, listOf(ImportSelection(0, ImportDecision.Add)))
+                    val id = sources.activate(committed.items.single().reference!!, listOf(NetworkGrant(fixture.server.url("/").toString(), true)))
+                    val stage = if (index == 2) DiagnosticStage.Content else DiagnosticStage.Search
+                    val report = diagnostics.run(id, stage, "fixture", fixture.server.url("/book/one").toString(),
+                        fixture.server.url("/c/1").toString())
+                    assertEquals(stage, report.stage)
+                    assertEquals(field, report.field)
+                    assertEquals(field, report.failure!!.ruleError!!.location.field)
+                    assertEquals("source.putLoginInfo", report.failure!!.hostCall!!.method)
+                    assertEquals(report.failure, report.events.last().failure)
+                    assertFalse(report.export().contains("PRIVATE"))
+                }
+                // Invalid import-permission lines are import input, not a failed java.importScript call.
+                assertEquals(listOf(1), indi.renakoni.nextvol.ui.home.settings.sources.SourcesViewModel.invalidPermissionLines("PRIVATE_SITE"))
+            } finally { sources.stop(); root.deleteRecursively() }
+        }
+    }
+
     @Test fun missingLibraryDependencyReachesTheExportWithoutSourceCode(): Unit = runBlocking {
         val root = Files.createTempDirectory("dependency-diagnostic").toFile()
         val context = object : ContextWrapper(RuntimeEnvironment.getApplication()) {

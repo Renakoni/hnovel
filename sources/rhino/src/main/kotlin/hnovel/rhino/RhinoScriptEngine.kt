@@ -10,8 +10,8 @@ fun interface HostBridge {
     companion object { val None = HostBridge { _, _ -> error("No host broker") } }
 }
 
-private class BridgeRejected(value: Any) : JavaScriptException(value, "host-bridge", 1)
-private class RequestRejected(value: Any) : JavaScriptException(value, "request-options", 1)
+private class BridgeRejected(value: Any, val hostCall: ScriptHostCall?) : JavaScriptException(value, "host-bridge", 1)
+private class RequestRejected(value: Any, val hostCall: ScriptHostCall?) : JavaScriptException(value, "request-options", 1)
 
 internal val bridgeLimitKey = Any()
 internal val scriptLibraryKey = Any()
@@ -20,6 +20,22 @@ internal val scriptDeadlineKey = Any()
 private class ScriptBridge(private val bridge: HostBridge, private val rules: ScriptRuleHelpers, private val requests: ScriptRequestTemplates, archives: ArchiveDecoder) {
     private val resources = ScriptResources(bridge, requests, archives)
     private val fonts = ScriptFonts(resources::download)
+    private val knownMethods = mutableSetOf("java.setContent", "java.put", "java.toast", "java.longToast",
+        "cache.getFile", "cache.putFile", "request.prepare", "request.speech", "request.headers", "response.view")
+
+    private fun describe(name: String, args: Array<out Any?>): ScriptHostCall? =
+        if (name !in knownMethods) null else ScriptHostCall(name, args.size, args.take(8).map { value -> when (value) {
+            null -> ScriptArgumentType.Null
+            is Undefined -> ScriptArgumentType.Undefined
+            is Boolean -> ScriptArgumentType.Boolean
+            is Number -> ScriptArgumentType.Number
+            is CharSequence -> ScriptArgumentType.String
+            is NativeArray -> ScriptArgumentType.Array
+            is org.mozilla.javascript.Function -> ScriptArgumentType.Function
+            is Scriptable -> ScriptArgumentType.Object
+            else -> ScriptArgumentType.Unknown
+        } })
+
     fun call(cx: Context, scope: Scriptable, name: String, args: Array<out Any>): Any? {
             val maxChars = cx.getThreadLocal(bridgeLimitKey) as Int
             if (name.length > 256) throw ResultTooLarge()
@@ -62,13 +78,13 @@ private class ScriptBridge(private val bridge: HostBridge, private val rules: Sc
                     else -> converted
                 }
             }
-                catch (_: ArchiveSizeLimitExceeded) { throw ResultTooLarge() }
-                catch (large: ResultTooLarge) { throw large }
-                catch (unsupported: UnsupportedResult) { throw unsupported }
+                catch (_: ArchiveSizeLimitExceeded) { throw ResultTooLarge(describe(name, args)) }
+                catch (large: ResultTooLarge) { if (large.hostCall == null) large.hostCall = describe(name, args); throw large }
+                catch (unsupported: UnsupportedResult) { if (unsupported.hostCall == null) unsupported.hostCall = describe(name, args); throw unsupported }
                 catch (cancelled: java.util.concurrent.CancellationException) { throw ScriptCancelled() }
                 catch (_: RequestOptionsException) {
                     if (Thread.currentThread().isInterrupted) throw ScriptCancelled()
-                    throw RequestRejected(realm.errorIn(scope, "invalid request options"))
+                    throw RequestRejected(realm.errorIn(scope, "invalid request options"), describe(name, args))
                 }
                 catch (rejected: RequestRejected) { throw rejected }
                 // request.prepare can evaluate nested source code. Preserve its script/bridge
@@ -77,7 +93,7 @@ private class ScriptBridge(private val bridge: HostBridge, private val rules: Sc
                 catch (_: Exception) {
                     if (Thread.currentThread().isInterrupted) throw ScriptCancelled()
                     if (pureTool || name.removePrefix("java.") in ScriptCryptoObjects.factories) throw JavaScriptException(realm.errorIn(scope, "invalid tool argument"), "script-tool", 1)
-                    throw BridgeRejected(realm.errorIn(scope, "host bridge denied"))
+                    throw BridgeRejected(realm.errorIn(scope, "host bridge denied"), describe(name, args))
                 }
     }
 
@@ -88,6 +104,7 @@ private class ScriptBridge(private val bridge: HostBridge, private val rules: Sc
         }
         fun objectFor(name: String, methods: List<String>): ScriptableObject {
             val target = realm.objectIn(scope)
+            knownMethods += methods.map { "$name.$it" }
             methods.forEach { member -> method(target, member) { cx, activeScope, args -> call(cx, activeScope, "$name.$member", args) } }
             scope.put(name, scope, target)
             return target
@@ -184,7 +201,7 @@ sealed interface ScriptResult {
         override fun toString() = "ScriptSuccess(chars=${json.length})"
     }
     data class Failure(val code: FailureCode, val message: String, val dependency: ScriptDependency? = null,
-        val inLibrary: Boolean = false) : ScriptResult
+        val inLibrary: Boolean = false, val hostCall: ScriptHostCall? = null) : ScriptResult
 }
 enum class FailureCode { Timeout, Cancelled, Syntax, Runtime, ResultTooLarge, UnsupportedResult, BridgeDenied, RequestSyntax, UnsupportedDependency }
 
@@ -325,14 +342,14 @@ class RhinoScriptEngine(private val bridge: HostBridge, private val limits: Scri
         } catch (_: ScriptBudgetExceeded) { ScriptResult.Failure(FailureCode.Timeout, "execution budget exceeded") }
           catch (_: ScriptCancelled) { ScriptResult.Failure(FailureCode.Cancelled, "script cancelled") }
           catch (_: SerializationCancelled) { ScriptResult.Failure(FailureCode.Cancelled, "script cancelled") }
-          catch (_: ResultTooLarge) { ScriptResult.Failure(FailureCode.ResultTooLarge, "result too large") }
-          catch (_: UnsupportedResult) { ScriptResult.Failure(FailureCode.UnsupportedResult, "result is not JSON data") }
+          catch (failure: ResultTooLarge) { ScriptResult.Failure(FailureCode.ResultTooLarge, "result too large", hostCall = failure.hostCall) }
+          catch (failure: UnsupportedResult) { ScriptResult.Failure(FailureCode.UnsupportedResult, "result is not JSON data", hostCall = failure.hostCall) }
           catch (_: WrappedException) { ScriptResult.Failure(FailureCode.BridgeDenied, "host bridge denied") }
           catch (_: ScriptSyntaxError) { ScriptResult.Failure(FailureCode.Syntax, "syntax error") }
           catch (_: EvaluatorException) { ScriptResult.Failure(FailureCode.Runtime, "script failed") }
           catch (_: StackOverflowError) { ScriptResult.Failure(FailureCode.Runtime, "script stack exhausted") }
-          catch (_: BridgeRejected) { ScriptResult.Failure(FailureCode.BridgeDenied, "host bridge denied") }
-          catch (_: RequestRejected) { ScriptResult.Failure(FailureCode.RequestSyntax, "invalid request options") }
+          catch (failure: BridgeRejected) { ScriptResult.Failure(FailureCode.BridgeDenied, "host bridge denied", hostCall = failure.hostCall) }
+          catch (failure: RequestRejected) { ScriptResult.Failure(FailureCode.RequestSyntax, "invalid request options", hostCall = failure.hostCall) }
           catch (_: JavaScriptException) { ScriptResult.Failure(FailureCode.Runtime, "script failed") }
           catch (error: EcmaError) {
               // Classify only engine-generated missing bindings. Source-created Errors, ordinary

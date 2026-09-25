@@ -25,6 +25,8 @@ import hnovel.rules.RuleError
 import hnovel.rules.RuleLocation
 import hnovel.rules.RuleStage
 import hnovel.rules.RuleValue
+import hnovel.rules.ScriptHostCall
+import hnovel.rules.ScriptArgumentType
 import hnovel.rules.OutputKind
 import hnovel.network.SourceBroker
 import hnovel.network.SourceScope
@@ -376,11 +378,11 @@ class IsolatedExecutionInstrumentedTest {
         try {
             for (bytes in listOf(zip("chapter" to 65537), zip("chapter" to 40000, "other" to 40000))) {
                 val hex = bytes.joinToString("") { "%02x".format(it.toInt() and 255) }
-                assertEquals(ExecutionResult.Failure(FailureCode.OutputLimit), executor.execute(id,
+                assertEquals(ExecutionResult.Failure(FailureCode.OutputLimit, hostCall = ScriptHostCall("java.getZipStringContent", 2, List(2) { ScriptArgumentType.String })), executor.execute(id,
                     ExecutionTask.Script("java.getZipStringContent('$hex','chapter')"), limits))
             }
             val invalid = zip("../chapter" to 1).joinToString("") { "%02x".format(it.toInt() and 255) }
-            assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied), executor.execute(id,
+            assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied, hostCall = ScriptHostCall("java.getZipStringContent", 2, List(2) { ScriptArgumentType.String })), executor.execute(id,
                 ExecutionTask.Script("java.getZipStringContent('$invalid','chapter')"), limits))
             assertEquals(ExecutionResult.Success("42"), executor.execute(id, ExecutionTask.Script("21*2"), limits))
         } finally { executor.close() }

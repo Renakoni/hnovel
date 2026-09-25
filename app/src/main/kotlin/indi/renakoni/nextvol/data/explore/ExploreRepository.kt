@@ -68,7 +68,8 @@ class SourceSearch internal constructor(private val runtime: SourceRuntime, val 
     }
 }
 
-data class SourceSearchFailure(val error: DiscoveryError, val field: String? = null, val permission: DiscoveryPermission? = null)
+data class SourceSearchFailure(val error: DiscoveryError, val field: String? = null, val permission: DiscoveryPermission? = null,
+    val diagnostic: hnovel.execution.ExecutionResult.Failure? = null)
 
 /** Render typed failures without displaying exception messages, URLs or source credentials. */
 internal fun searchFailure(failure: Throwable): SourceSearchFailure = when (failure) {
@@ -88,7 +89,7 @@ internal fun searchFailure(failure: Throwable): SourceSearchFailure = when (fail
         ContentError.Network -> DiscoveryError.Network
         ContentError.Unavailable -> DiscoveryError.Unavailable
         else -> DiscoveryError.InvalidRules
-    }, failure.field, failure.denial?.let { DiscoveryPermission(it.origin, it.kind.name) })
+    }, failure.field, failure.denial?.let { DiscoveryPermission(it.origin, it.kind.name) }, failure.diagnostic)
     is java.io.IOException -> SourceSearchFailure(DiscoveryError.Network)
     else -> SourceSearchFailure(DiscoveryError.Unavailable)
 }
