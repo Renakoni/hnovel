@@ -82,6 +82,10 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
         }
     }
 
+    suspend fun discoveryReadPlan(urls: List<String>, header: String, rules: List<String>): Boolean =
+        execute(ExecutionTask.DiscoveryReadPlan(urls, header, rules), "discovery.previewPlan",
+            (urls + rules + header).sumOf { it.length }).value.text() == "true"
+
     private suspend fun execute(task: ExecutionTask, field: String, inputChars: Int): ExecutedRule {
         currentCoroutineContext().ensureActive()
         if (!authority.accepts(identity)) throw SourceContentException(ContentError.Unavailable, field)

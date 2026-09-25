@@ -108,6 +108,17 @@ class RuleDiscoverySession internal constructor(private val source: RuleSource, 
 
     suspend fun preview(url: String, filters: Map<String, String>): RuleListPage = pages(url, filters, 6).page(1)
 
+    suspend fun concurrentPreviews(urls: List<String>, filters: Map<String, String>): List<RuleListSession>? {
+        if (!source.canReadPreviewsConcurrently(urls)) return null
+        val draft = values + filters
+        validateValues(draft)
+        val prepared = source.prepareConcurrentPreviews(urls) { context(draft = draft, noBook = false) } ?: return null
+        return prepared.map { load -> source.listSession(source.spec.explore, "ruleExplore") { page, _, _ ->
+            if (page != 1) throw SourceContentException(ContentError.InvalidRule, "ruleExplore.page")
+            load()
+        } }
+    }
+
     private fun pages(url: String, filters: Map<String, String>, previewLimit: Int? = null): RuleListSession {
         val draft = values + filters
         return source.listSession(source.spec.explore, "ruleExplore") { page, next, memory ->
