@@ -398,7 +398,10 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
                 val book = bookFields(row, document.input(), spec.information, "ruleBookInfo", RuleBook(id), overview = true)
                 if (book.title.isBlank()) throw SourceContentException(ContentError.EmptyContent, "ruleBookInfo.name")
                 val old = store.read(id)
-                if (old?.informationLoaded != true || old.revision != identity.revision) store.write(BookRecord(identity.revision, book))
+                if (old?.informationLoaded != true || old.revision != identity.revision) {
+                    val record = BookRecord(identity.revision, book)
+                    if (record != old) store.write(record)
+                }
                 return listOf(book)
             }
             val record = saveInformation(id, BookRecord(identity.revision, RuleBook(id, state = context.book)), document)
@@ -439,7 +442,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         store.write(ordered.mapNotNull { book ->
             val old = store.read(book.id)
             if (old?.informationLoaded != true || old.revision != identity.revision)
-                BookRecord(identity.revision, book, preview = previews[book.id]) else null
+                BookRecord(identity.revision, book, preview = previews[book.id]).takeUnless { it == old } else null
         })
         return ordered
     }
