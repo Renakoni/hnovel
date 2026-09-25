@@ -211,6 +211,12 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         cache = previous.cache
     }
 
+    /** Host-only saved-session fact; never exposes cookie names, values or authentication claims. */
+    @Synchronized fun hasSavedCookies(): Boolean {
+        checkOpen()
+        return cookies.snapshot().any { it.second.persistent && it.second.expiresAt > System.currentTimeMillis() }
+    }
+
     @Synchronized fun cookie(url: String): String { checkOpen(); val parsed = url.toHttpUrlOrNull() ?: error("Invalid cookie URL")
         policy.check(parsed); return cookies.header(parsed, null) }
     @Synchronized fun setCookie(url: String, value: String, replace: Boolean = false) {
@@ -365,8 +371,18 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
                         val result = browser?.execute(this@SourceSession, snapshot.copy(browser = null, headers = browserHeaders,
                             maxResponseBytes = maxBytes), snapshot.browser, guard, transport)
                             ?: BrokerResult.Failure(RequestStage.Parse, FailureCode.BrowserRequired)
-                        if (result is BrokerResult.Success && result.response.body.size > maxBytes)
-                            BrokerResult.Failure(RequestStage.Response, FailureCode.ResponseTooLarge) else result
+                        if (result is BrokerResult.Success) {
+                            if (result.response.body.size > maxBytes)
+                                throw BrokerFailure(RequestStage.Response, FailureCode.ResponseTooLarge)
+                            // A completed foreground browser saved a session, not proof of authentication.
+                            // Script-named login actions must report the same fact as browser-only forms.
+                            if (snapshot.browser.interactive && (result.response.kind == ResponseKind.BrowserDocument ||
+                                    result.response.status in 200..299)) guard.commit {
+                                checkOpen()
+                                check(account.write("login/status", "session") is StorageResult.Value)
+                            }
+                        }
+                        result
                     } else permits.withPermit { stage = RequestStage.Connect; perform(snapshot, guard, policy, paceSource, transport, browserDefault) }
                 }
             } catch (_: TimeoutCancellationException) {
