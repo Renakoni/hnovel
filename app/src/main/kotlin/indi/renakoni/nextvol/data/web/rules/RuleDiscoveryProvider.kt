@@ -5,6 +5,7 @@ import hnovel.content.*
 import indi.renakoni.nextvol.data.web.DISCOVERY_SEARCH_PREFIX
 import io.nightfish.lightnovelreader.api.web.discovery.*
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -19,7 +20,7 @@ import kotlinx.serialization.json.jsonObject
 internal class RuleDiscoveryProvider(private val source: RuleSource,
     private val session: RuleDiscoverySession = source.openDiscovery(java.util.UUID.randomUUID().toString()),
     private val recovery: RuleRequestRecovery? = null) : DiscoveryPreviewProvider {
-    companion object { internal const val PREVIEW_CONCURRENCY = 2 }
+    companion object { internal const val PREVIEW_CONCURRENCY = 4 }
     override val hasFeed get() = source.canFeed && (current?.takeIf {
         // Empty/login/transient responses cannot prove that the source is category-only.
         it.homepage != null || it.rows.any { row -> row.type == "url" && row.url.isNotBlank() }
@@ -73,8 +74,15 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
                 entries.forEachIndexed { index, category ->
                     val section = sections[index]
                     launch {
-                        permits.withPermit {
-                            results.send(index to preview(section, category.url, catalog.values) { concurrent[index].page(1) })
+                        try {
+                            permits.withPermit {
+                                results.send(index to preview(section, category.url, catalog.values) { concurrent[index].page(1) })
+                            }
+                        } catch (cancelled: CancellationException) {
+                            // Session/route retirement can cancel one read without cancelling this collector.
+                            // Do not leave the parent waiting for a result that this child can no longer send.
+                            this@coroutineScope.cancel(cancelled)
+                            throw cancelled
                         }
                     }
                 }

@@ -3,6 +3,10 @@ package indi.renakoni.nextvol.data.web.rules
 import android.app.Application
 import com.github.michaelbull.result.get
 import hnovel.content.RuleSourceFixture
+import hnovel.content.RuleDiscoverySession
+import hnovel.content.RuleListSession
+import io.mockk.coEvery
+import io.mockk.mockk
 import io.nightfish.lightnovelreader.api.web.discovery.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
@@ -27,6 +31,20 @@ class RuleDiscoveryConcurrencyTest {
         "ruleExplore" to buildJsonObject { put("bookList", "li"); put("name", "h2@text"); put("bookUrl", "a@href") }
     ))
     private fun html(path: String) = (1..30).joinToString("") { "<li><h2>$path $it</h2><a href='/book/$it'>Read</a></li>" }
+
+    @Test fun aCancelledSourceReadEndsTheFeedInsteadOfWaitingForAMissingResult() = runBlocking {
+        RuleSourceFixture().use { fixture -> fixture.source { definition(it, listOf("/one", "/two")) }.use { source ->
+            val catalog = source.openDiscovery("catalog").catalog(homepage = true)
+            val first = mockk<RuleListSession> { coEvery { page(1) } throws CancellationException("Source retired") }
+            val second = mockk<RuleListSession> { coEvery { page(1) } coAnswers { awaitCancellation() } }
+            val session = mockk<RuleDiscoverySession> {
+                coEvery { catalog(homepage = true) } returns catalog
+                coEvery { concurrentPreviews(any(), any()) } returns listOf(first, second)
+            }
+            val failed = withTimeout(2000) { runCatching { RuleDiscoveryProvider(source, session).feed() }.exceptionOrNull() }
+            assertTrue(failed is CancellationException && failed !is TimeoutCancellationException)
+        } }
+    }
 
     @Test fun blockedFirstModuleDoesNotHoldOthersAndCompletionKeepsTheOriginalSlots() = runBlocking {
         RuleSourceFixture().use { fixture ->
