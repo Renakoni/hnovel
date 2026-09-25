@@ -32,7 +32,7 @@ class SourceLoginService @Inject constructor(private val sources: ImportedRuleSo
     suspend fun form(attempt: LoginAttempt): LoginForm = recover(attempt) { target(attempt).rules.loginForm().also { target(attempt) } }
     suspend fun status(source: Identifier): LoginStatus = withContext(Dispatchers.IO) {
         val target = sources.loginTarget(source)
-        savedStatus((target.session.read(StorageRequest(StorageArea.Account, "login/status")) as? StorageResult.Value)?.value)
+        savedStatus(storedStatus(target.session))
     }
     suspend fun begin(source: Identifier, intent: LoginIntent = LoginIntent.Panel, reading: LoginReadingContext? = null): LoginAttempt {
         val target = if (intent == LoginIntent.Relogin) sources.rotateAccount(source) else sources.loginTarget(source)
@@ -90,6 +90,12 @@ class SourceLoginService @Inject constructor(private val sources: ImportedRuleSo
         return current.copy(rules = attempt.rules)
     }
     internal companion object {
+        fun storedStatus(session: SourceSession): String? {
+            val stored = session.read(StorageRequest(StorageArea.Account, "login/status")) as? StorageResult.Value
+                ?: error("Stored source settings are unavailable")
+            return stored.value ?: "session".takeIf { session.hasSavedCookies() }
+        }
+
         // Conservative display convention, not a new login schema. Ambiguous forms have no label.
         private val accountNames = setOf("user", "username", "account", "email", "账号", "帐号", "账户", "用户名", "邮箱")
         fun accountNameField(form: LoginForm?): String? = form?.fields?.filter {
