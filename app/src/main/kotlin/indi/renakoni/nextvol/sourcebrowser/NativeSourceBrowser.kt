@@ -44,7 +44,7 @@ internal class NativeSourceBrowser(private val context: Context, private val net
 
     companion object {
         // All instances share the one manifest process, including instrumentation hosts.
-        internal const val PAGE_LIMIT = 2
+        internal const val PAGE_LIMIT = 4
         private val slots = NativeBrowserSlots(PAGE_LIMIT)
         private var connection: Connection? = null
         private suspend fun disconnect() {

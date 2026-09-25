@@ -72,8 +72,12 @@ class NativeBrowserPoolInstrumentedTest {
         fixture { session, server ->
             val entered = CountDownLatch(2)
             val release = CountDownLatch(1)
+            val paths = java.util.concurrent.ConcurrentLinkedQueue<String>()
             server.dispatcher = object : Dispatcher() {
                 override fun dispatch(request: RecordedRequest): MockResponse {
+                    // A page cancelled before its HTML arrives can request the default icon.
+                    if (request.path == "/favicon.ico") return MockResponse().setResponseCode(204)
+                    paths += request.path.orEmpty()
                     entered.countDown(); check(release.await(25, TimeUnit.SECONDS))
                     return MockResponse().setBody(html(request.path!!))
                 }
@@ -87,7 +91,7 @@ class NativeBrowserPoolInstrumentedTest {
             } finally { release.countDown() }
             assertTrue(withTimeout(10000) { second.await() }.text().contains("/survivor"))
             assertTrue(first.isCancelled)
-            assertEquals(2, server.requestCount)
+            assertEquals(listOf("/cancelled", "/survivor"), paths.sorted())
         }
     }
 
