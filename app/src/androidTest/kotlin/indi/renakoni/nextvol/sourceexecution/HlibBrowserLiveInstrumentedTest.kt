@@ -83,17 +83,18 @@ class HlibBrowserLiveInstrumentedTest {
                         val discovery = runtime.discovery!!.forSession("live-progressive-feed")
                         assertNotNull(discovery.homepageCatalog().get())
                         val started = android.os.SystemClock.elapsedRealtime()
-                        val sizes = mutableListOf<Int>()
+                        val completed = mutableListOf<Int>()
                         kotlinx.coroutines.withTimeout(600000) {
                             discovery.feedUpdates().collect { result ->
                                 val sections = result.get()
                                 assertNotNull("Homepage request failed", sections)
-                                assertTrue(sections!!.all { section -> section.books.isNotEmpty() })
-                                sizes += sections.size
-                                report("feed sections=${sections.size} elapsedMillis=${android.os.SystemClock.elapsedRealtime() - started}")
+                                assertEquals(listOf("日榜", "周榜", "月榜", "文章"), sections!!.map { it.title })
+                                assertTrue(sections.all { it.previewFailure == null && (it.previewLoading || it.books.isNotEmpty()) })
+                                completed += sections.count { !it.previewLoading }
+                                report("feed completed=${completed.last()} elapsedMillis=${android.os.SystemClock.elapsedRealtime() - started}")
                             }
                         }
-                        assertEquals(listOf(1, 2, 3, 4), sizes)
+                        assertEquals(listOf(0, 1, 2, 3, 4), completed)
                     }
                 }
             } finally { indi.renakoni.nextvol.sourcebrowser.VerificationTestHostActivity.coordinator = null }

@@ -13,6 +13,7 @@
     <string name="discovery_load_more">Загрузить ещё</string>
     <string name="discovery_no_books">Нет книг, соответствующих фильтрам.</string>
     <string name="discovery_preview_empty">В этом списке пока нет книг.</string>
+    <string name="discovery_preview_loading">Загрузка книг…</string>
     <string name="discovery_unsupported">Источник не поддерживает этот способ просмотра.</string>
     <string name="discovery_login_required">Войдите в аккаунт этого источника в управлении источниками и повторите попытку.</string>
     <string name="discovery_permission">Источнику нужно разрешение на доступ к сети. Проверьте разрешённые сайты в управлении источниками.</string>

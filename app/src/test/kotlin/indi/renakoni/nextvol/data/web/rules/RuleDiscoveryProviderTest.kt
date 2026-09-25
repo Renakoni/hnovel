@@ -196,8 +196,12 @@ class RuleDiscoveryProviderTest {
                     assertNull(provider.failureField)
                     assertNull(provider.permissionFailure)
                 }
-                assertEquals(listOf(1, 2), snapshots.map { it.size })
+                assertEquals(listOf(2, 2, 2), snapshots.map { it.size })
+                assertTrue(snapshots.first().all { it.previewLoading && it.previewFailure == null })
+                assertFalse(snapshots[1].first().previewLoading)
+                assertTrue(snapshots[1].last().previewLoading)
                 val feed = snapshots.last()
+                assertTrue(feed.none { it.previewLoading })
                 assertEquals(listOf("Broken", "Working"), feed.map { it.title })
                 assertEquals(DiscoveryError.PermissionDenied, feed.first().previewFailure?.error)
                 assertEquals(DiscoveryPermission("https://ungranted.test:443", "Document"), feed.first().previewFailure?.permission)
@@ -224,6 +228,42 @@ class RuleDiscoveryProviderTest {
                 assertTrue(feed.last().books.isNotEmpty())
                 assertTrue(provider.page(DiscoveryRequest(feed.last().more!!)).get()!!.books.isNotEmpty())
                 assertEquals(3, fixture.documents.get())
+            }
+        }
+    }
+
+    @Test fun retryFetchesOnlyTheFailedPreviewAndStillUsesTheSixBookLimit() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            val paths = java.util.concurrent.CopyOnWriteArrayList<String>()
+            var broken = true
+            fixture.server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
+                override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest): okhttp3.mockwebserver.MockResponse {
+                    paths += request.path!!
+                    if (broken && request.path == "/weekly") return okhttp3.mockwebserver.MockResponse().setResponseCode(503)
+                    return okhttp3.mockwebserver.MockResponse().setBody((1..30).joinToString("") {
+                        "<li><h2>Book $it</h2><a href='/book/$it'>Read</a></li>"
+                    })
+                }
+            }
+            fixture.source { raw -> JsonObject(definition(raw) + ("homepageModules" to JsonPrimitive("""[
+                {"key":"daily","type":"card","title":"Daily","url":"/daily"},
+                {"key":"weekly","type":"card","title":"Weekly","url":"/weekly"},
+                {"key":"monthly","type":"card","title":"Monthly","url":"/monthly"}
+            ]"""))) }.use { source ->
+                val provider = RuleDiscoveryProvider(source)
+                val feed = provider.feed().get()!!
+                assertNotNull(feed[1].previewFailure)
+                assertEquals(listOf(6, 0, 6), feed.map { it.books.size })
+                broken = false
+                val recovered = provider.preview(feed[1].id).get()!!
+                assertEquals(feed[1].more, recovered.more)
+                assertNull(recovered.previewFailure)
+                assertFalse(recovered.previewLoading)
+                assertEquals(6, recovered.books.size)
+                assertEquals(listOf("/daily", "/weekly", "/monthly", "/weekly"), paths)
+                assertEquals(DiscoveryError.InvalidRequest, provider.preview("unknown").getError())
+                assertNull(provider.failureField)
+                assertNotNull(feed[1].previewFailure)
             }
         }
     }
@@ -258,7 +298,7 @@ class RuleDiscoveryProviderTest {
             val provider = RuleDiscoveryProvider(source, session, RuleRequestRecovery(coordinator, owner, "Fixture"))
             val sizes = mutableListOf<Int>()
             withContext(ForegroundSourceRequest()) { provider.feedUpdates().collect { sizes += it.get()!!.size } }
-            assertEquals(listOf(1, 2), sizes)
+            assertEquals(listOf(2, 2, 2), sizes)
             coVerify(exactly = 1) { session.preview("/search?module=1", any()) }
             coVerify(exactly = 2) { session.preview("/search?module=2", any()) }
             coVerify(exactly = 1) { verification.complete() }
@@ -275,7 +315,25 @@ class RuleDiscoveryProviderTest {
             assertEquals(listOf("First", "Second"), first.map { it.title })
             assertEquals(listOf("/search?module=1", "/search?module=2"), first.map { it.more })
             assertTrue(first.all { it.books.isEmpty() && it.previewFailure == null })
+            assertTrue(first.all { it.previewLoading })
             assertEquals(0, fixture.documents.get())
+        } }
+    }
+
+    @Test fun stoppingAfterFirstCompletedPreviewDoesNotFetchLaterModules() = runBlocking {
+        RuleSourceFixture().use { fixture -> fixture.source { raw -> JsonObject(definition(raw) +
+            ("homepageModules" to JsonPrimitive("""[
+                {"key":"first","type":"card","title":"First","url":"/search?module=1"},
+                {"key":"second","type":"card","title":"Second","url":"/search?module=2"}
+            ]"""))) }.use { source ->
+            val snapshot = RuleDiscoveryProvider(source).feedUpdates().first { result ->
+                result.get().orEmpty().any { it.books.isNotEmpty() }
+            }.get()!!
+            assertEquals(listOf("First", "Second"), snapshot.map { it.title })
+            assertFalse(snapshot.first().previewLoading)
+            assertTrue(snapshot.last().previewLoading)
+            assertEquals(1, fixture.documents.get())
+            assertEquals("/search?module=1", fixture.server.takeRequest().path)
         } }
     }
 
@@ -290,11 +348,12 @@ class RuleDiscoveryProviderTest {
             val updates = mutableListOf<Result<List<DiscoverySection>, DiscoveryError>>()
             provider.feedUpdates().collect {
                 updates += it
-                fixture.status = if (updates.size == 1) 503 else 200
+                fixture.status = if (updates.size == 2) 503 else 200
             }
-            assertEquals(listOf(1, 2, 3), updates.map { it.get()!!.size })
-            assertEquals(listOf("First"), updates.first().get()!!.map { it.title })
-            val failed = updates[1].get()!!.last()
+            assertEquals(listOf(3, 3, 3, 3), updates.map { it.get()!!.size })
+            assertEquals(listOf("First", "Second", "Third"), updates.first().get()!!.map { it.title })
+            assertEquals(listOf(3, 2, 1, 0), updates.map { it.get()!!.count { section -> section.previewLoading } })
+            val failed = updates[2].get()!![1]
             assertEquals(DiscoveryError.Network, failed.previewFailure?.error)
             assertEquals("/search?module=2", failed.more)
             assertTrue(failed.books.isEmpty())
@@ -307,9 +366,9 @@ class RuleDiscoveryProviderTest {
             assertEquals(3, fixture.documents.get())
             val complete = mutableListOf<List<DiscoverySection>>()
             provider.feedUpdates().collect { complete += it.get()!! }
-            assertEquals(listOf(1, 2, 3), complete.map { it.size })
+            assertEquals(listOf(3, 3, 3, 3), complete.map { it.size })
             assertTrue(complete.last().all { it.previewFailure == null && it.books.isNotEmpty() })
-            assertEquals(1, updates.first().get()!!.size)
+            assertTrue(updates.first().get()!!.all { it.previewLoading && it.books.isEmpty() })
         } }
     }
 

@@ -9,7 +9,17 @@ import kotlinx.coroutines.flow.flow
 /** Source-local data only. The host binds book IDs and targets to the owning runtime. */
 data class DiscoveryBook(val remoteId: String, val title: String, val author: String = "", val coverUrl: String = "")
 data class DiscoverySection(val id: String, val title: String, val books: List<DiscoveryBook>,
-    val more: String? = null, val categoryId: String? = null, val previewFailure: DiscoveryPreviewFailure? = null)
+    val more: String? = null, val categoryId: String? = null, val previewFailure: DiscoveryPreviewFailure? = null,
+    val previewLoading: Boolean) {
+    // Retain the constructor and copy entrypoints used by already compiled providers.
+    constructor(id: String, title: String, books: List<DiscoveryBook>, more: String? = null,
+        categoryId: String? = null, previewFailure: DiscoveryPreviewFailure? = null) :
+        this(id, title, books, more, categoryId, previewFailure, false)
+    fun copy(id: String = this.id, title: String = this.title, books: List<DiscoveryBook> = this.books,
+        more: String? = this.more, categoryId: String? = this.categoryId,
+        previewFailure: DiscoveryPreviewFailure? = this.previewFailure) =
+        DiscoverySection(id, title, books, more, categoryId, previewFailure, previewLoading)
+}
 /** A preview can fail while its catalogue entry and other sections remain usable. */
 data class DiscoveryPreviewFailure(val error: DiscoveryError, val field: String? = null, val permission: DiscoveryPermission? = null)
 data class DiscoveryCategory(val id: String, val title: String, val target: String)
@@ -72,4 +82,10 @@ interface DiscoveryProvider {
     suspend fun homepageCatalog(refresh: Boolean = false): Result<DiscoveryCatalog, DiscoveryError> = catalog(refresh)
     suspend fun interact(id: String, value: String? = null, longClick: Boolean = false): Result<DiscoveryUpdate, DiscoveryError> = Err(DiscoveryError.Unsupported)
     suspend fun openBrowser(action: DiscoveryAction.Browser): Result<Unit, DiscoveryError> = Err(DiscoveryError.Unsupported)
+}
+
+/** Optional independent retry of a known feed entry, including while other previews load.
+ * Preview failures belong to the returned section, not the provider's page-level error fields. */
+interface DiscoveryPreviewProvider : DiscoveryProvider {
+    suspend fun preview(id: String): Result<DiscoverySection, DiscoveryError>
 }
