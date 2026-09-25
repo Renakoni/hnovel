@@ -54,7 +54,7 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
         val entries = RuleDiscoveryClassifier.feed(definition)
         val sections = mutableListOf<DiscoverySection>()
         for (category in entries) {
-            val preview = request { session.openPages(category.url, catalog.values).page(1) }
+            val preview = request { session.preview(category.url, catalog.values) }
             val page = preview.get()
             val failure = preview.getError()?.let { DiscoveryPreviewFailure(it, failureField, permissionFailure) }
                 ?: if (page?.books.isNullOrEmpty() && page?.nextCursor == null)
@@ -121,7 +121,7 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
             else -> null
         }
 
-    private fun book(book: RuleBook) = DiscoveryBook(book.id, book.title, book.author, book.coverUrl)
+    private fun book(book: RuleBook) = DiscoveryBook(book.id, book.title)
     private suspend fun <T> request(retry: Boolean = true, block: suspend () -> T): Result<T, DiscoveryError> = try {
         failureField = null; permissionFailure = null; diagnosticFailure = null
         Ok(if (recovery == null || !retry) block() else recovery.execute(block))

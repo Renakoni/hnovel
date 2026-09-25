@@ -62,6 +62,7 @@ data class RuleContent(val id: String, val title: String, val parts: List<Conten
     val previous: String?, val next: String?)
 
 @Serializable internal data class PageDocument(val body: String, val url: String, val inline: Boolean = false, val ruleUrl: String = url)
+@Serializable internal data class BookPreview(val input: hnovel.rules.RuleValue, val baseUrl: String, val accountGeneration: Long)
 @Serializable internal data class BookRecord(val revision: String, val book: RuleBook,
     val informationLoaded: Boolean = false, val document: PageDocument? = null,
-    val chapters: List<RuleChapter> = emptyList())
+    val chapters: List<RuleChapter> = emptyList(), val preview: BookPreview? = null)

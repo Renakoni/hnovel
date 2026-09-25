@@ -103,7 +103,11 @@ class RuleDiscoverySession internal constructor(private val source: RuleSource, 
         source.discoveryPage(context(page = page, draft = values + filters, noBook = false), url)
     }
 
-    fun openPages(url: String, filters: Map<String, String>): RuleListSession {
+    fun openPages(url: String, filters: Map<String, String>): RuleListSession = pages(url, filters)
+
+    suspend fun preview(url: String, filters: Map<String, String>): RuleListPage = pages(url, filters, 6).page(1)
+
+    private fun pages(url: String, filters: Map<String, String>, previewLimit: Int? = null): RuleListSession {
         val draft = values + filters
         return source.listSession(source.spec.explore, "ruleExplore") { page, next, memory ->
             source.operation("ruleExplore") {
@@ -111,7 +115,7 @@ class RuleDiscoverySession internal constructor(private val source: RuleSource, 
                     throw SourceContentException(ContentError.MissingCapability, "ruleExplore")
                 validateValues(draft)
                 source.listPage(context(page = page, draft = draft, noBook = false, memory = memory),
-                    next ?: url, "exploreUrl", source.spec.explore, "ruleExplore")
+                    next ?: url, "exploreUrl", source.spec.explore, "ruleExplore", overview = true, previewLimit = previewLimit)
             }
         }
     }

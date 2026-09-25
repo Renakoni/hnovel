@@ -53,7 +53,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
 
     internal suspend fun discoveryPage(context: RuleEvaluation, url: String): List<RuleBook> =
         booksFromPage(context, fetch(context, url, "exploreUrl",
-            acceptErrorResponse = spec.explore.string("bookList").isScriptRule()), spec.explore, "ruleExplore")
+            acceptErrorResponse = spec.explore.string("bookList").isScriptRule()), spec.explore, "ruleExplore", overview = true)
 
     internal fun listSession(fields: JsonObject, field: String,
         load: suspend (Int, String?, ScriptMemory) -> RuleListResult) =
@@ -62,9 +62,9 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         }, load)
 
     internal suspend fun listPage(context: RuleEvaluation, url: String, urlField: String,
-        fields: JsonObject, field: String): RuleListResult {
+        fields: JsonObject, field: String, overview: Boolean = false, previewLimit: Int? = null): RuleListResult {
         val document = fetch(context, url, urlField, acceptErrorResponse = fields.string("bookList").isScriptRule())
-        val books = booksFromPage(context, document, fields, field)
+        val books = booksFromPage(context, document, fields, field, overview, previewLimit)
         val rule = fields.string("nextPageUrl")
         // Ordinary URL rules intentionally fall back to the current URL on empty output.
         // Optional continuations must distinguish that empty output from a real repeated link.
@@ -278,32 +278,55 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         discoveryPage(context, url)
     }
 
+    // Fixed row selectors are independent. Dynamic rules may write variables used by later rows or URLs.
+    private fun canDeferBookFields(fields: JsonObject) = listOf("name", "author", "kind", "wordCount",
+        "lastChapter", "intro", "coverUrl", "updateTime", "bookUrl").all { name ->
+        val rule = fields.string(name)
+        listOf("@js:", "<js>", "{{", "@put:", "@get:").none { rule.contains(it, ignoreCase = true) }
+    }
+
     private suspend fun booksFromPage(context: RuleEvaluation, document: PageDocument, fields: JsonObject,
-        field: String): List<RuleBook> {
+        field: String, overview: Boolean = false, previewLimit: Int? = null): List<RuleBook> {
         val rule = fields.string("bookList")
         val isBookUrl = spec.bookUrlPattern.isNotBlank() && context.value(":\\A(?:${spec.bookUrlPattern})\\z",
             RuleValue.Text(document.url), "bookUrlPattern", OutputKind.Elements).items().isNotEmpty()
         if (rule.isBlank() || isBookUrl) {
             val id = sourceLink(document.url, document.url)
+            if (overview && spec.information.string("init").isBlank() && canDeferBookFields(spec.information)) {
+                val row = context.fork(bookId = id)
+                row.bookField("bookUrl", id)
+                val book = bookFields(row, document.input(), spec.information, "ruleBookInfo", RuleBook(id), overview = true)
+                if (book.title.isBlank()) throw SourceContentException(ContentError.EmptyContent, "ruleBookInfo.name")
+                val old = store.read(id)
+                if (old?.informationLoaded != true || old.revision != identity.revision) store.write(BookRecord(identity.revision, book))
+                return listOf(book)
+            }
             val record = saveInformation(id, BookRecord(identity.revision, RuleBook(id, state = context.book)), document)
             return listOf(record.book)
         }
         val items = context.value(rule.removePrefix("-").removePrefix("+"), document.input(), "$field.bookList", OutputKind.Elements).items()
+        val lightweight = overview && canDeferBookFields(fields)
         val books = mutableListOf<RuleBook>()
-        for (item in items) {
+        val previews = mutableMapOf<String, BookPreview>()
+        for (item in if (lightweight && rule.startsWith('-')) items.asReversed() else items) {
             val row = context.fork()
-            val parsed = bookFields(row, item, fields, field, RuleBook(""))
+            val parsed = bookFields(row, item, fields, field, RuleBook(""), overview = lightweight)
             if (parsed.title.isBlank()) continue
             val rawUrl = row.url(fields.string("bookUrl"), item, "$field.bookUrl")
             val id = sourceLink(document.url, rawUrl.ifBlank { document.url })
+            if (lightweight && id in previews) continue
             row.bookId = id; row.bookField("bookUrl", id)
             books += parsed.copy(id = id, tocUrl = id, state = row.book)
+            if (lightweight) {
+                previews[id] = BookPreview(item, context.baseUrl, identity.accountGeneration)
+                if (previewLimit != null && books.size >= previewLimit) break
+            }
         }
-        val ordered = (if (rule.startsWith('-')) books.reversed() else books).distinctBy { it.id }
+        val ordered = (if (!lightweight && rule.startsWith('-')) books.reversed() else books).distinctBy { it.id }
         store.write(ordered.mapNotNull { book ->
             val old = store.read(book.id)
             if (old?.informationLoaded != true || old.revision != identity.revision)
-                BookRecord(identity.revision, book) else null
+                BookRecord(identity.revision, book, preview = previews[book.id]) else null
         })
         return ordered
     }
@@ -450,7 +473,13 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
     }
 
     private suspend fun information(id: String, old: BookRecord?, supplied: PageDocument? = null): BookRecord {
-        val initial = old?.book?.let { if (old.revision == identity.revision) it else it.copy(state = ScriptState()) } ?: RuleBook(id)
+        var initial = old?.book?.let { if (old.revision == identity.revision) it else it.copy(state = ScriptState()) } ?: RuleBook(id)
+        val preview = old?.preview?.takeIf { old.revision == identity.revision && it.accountGeneration == identity.accountGeneration }
+        if (preview != null) {
+            val listing = evaluation(initial)
+            listing.baseUrl = preview.baseUrl
+            initial = bookFields(listing, preview.input, spec.explore, "ruleExplore", initial)
+        }
         val context = evaluation(initial)
         val document = supplied ?: fetch(context, id, "ruleBookInfo")
         context.baseUrl = document.ruleUrl
@@ -471,7 +500,8 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         return BookRecord(identity.revision, book, true, document, old?.takeIf { it.revision == identity.revision }?.chapters.orEmpty())
     }
 
-    private suspend fun bookFields(context: RuleEvaluation, input: RuleValue, rules: JsonObject, prefix: String, seed: RuleBook): RuleBook {
+    private suspend fun bookFields(context: RuleEvaluation, input: RuleValue, rules: JsonObject, prefix: String, seed: RuleBook,
+        overview: Boolean = false): RuleBook {
         val priorTitle = context.book.metadata["name"]?.jsonPrimitive?.content ?: seed.title
         val priorAuthor = context.book.metadata["author"]?.jsonPrimitive?.content ?: seed.author
         // BookList creates an empty SearchBook before evaluating its first field.
@@ -495,7 +525,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             return value
         }
         val title = field("name", seed.title)
-        if (prefix != "ruleBookInfo" && title.isBlank()) return seed.copy(title = title, state = context.book)
+        if (overview || prefix != "ruleBookInfo" && title.isBlank()) return seed.copy(title = title, state = context.book)
         val author = field("author", seed.author)
         val preserveNames = prefix == "ruleBookInfo" && rules.string("canReName").isBlank()
         val finalTitle = if (preserveNames && priorTitle.isNotBlank()) priorTitle else title
