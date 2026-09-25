@@ -191,7 +191,7 @@ data class ScriptLimits(val instructionLimit: Int? = null, val maxResultChars: I
     val maxScriptChars: Int = 256 * 1024, val maxBridgeChars: Int = DEFAULT_BRIDGE_CHARS,
     val maxInterpreterStackDepth: Int = 1000, val timeoutMillis: Long = 5000) {
     init { require((instructionLimit == null || instructionLimit > 0) && maxResultChars > 0 && maxScriptChars > 0 && maxBridgeChars > 0 &&
-        maxInterpreterStackDepth in 1..1000 && timeoutMillis in 1..60000) }
+        maxInterpreterStackDepth in 1..1000 && timeoutMillis in 1..300000) }
     companion object { const val DEFAULT_BRIDGE_CHARS = 64 * 1024 }
 }
 

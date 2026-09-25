@@ -20,10 +20,12 @@ class RuleSourceFixture(browser: BrowserExecutor? = null, private val trace: Con
     var cycle = false
     var status = 200
     var afterRun: suspend (ExecutionTask) -> Unit = {}
+    var beforeRun: (ExecutionTask, ExecutionLimits) -> Unit = { _, _ -> }
     var imageBytes = byteArrayOf(1, 2, 3)
     var extraChapter = false
     var duplicateToc = false
     val runner = RuleTaskRunner { identity, task, limits, bridge ->
+        beforeRun(task, limits)
         val scripts = task.libraryCode()?.takeIf(SourceLibraryDefinition::isUrlMap)?.let { bridge.loadLibrary(it) }
         val wire = ExecutionWire.encode(identity, task, limits, scripts).toString(Charsets.UTF_8)
         val result = ExecutionWire.decodeResult(worker.executeSerialized(wire, HostBridge { name, args ->
