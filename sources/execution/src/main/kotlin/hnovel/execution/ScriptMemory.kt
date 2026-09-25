@@ -7,6 +7,11 @@ class ScriptMemory(private val maxEntries: Int = 64, private val maxChars: Int =
 
     @Synchronized fun get(key: String): String? = values[key]
 
+    /** A page commits its memory only after parsing succeeds; failed retries keep the prior draft. */
+    @Synchronized fun copy(): ScriptMemory = ScriptMemory(maxEntries, maxChars).also { copy ->
+        values.forEach { (key, value) -> copy.put(key, value) }
+    }
+
     /** Rejects a write that would exceed the owner's bounds; existing values stay unchanged. */
     @Synchronized fun put(key: String, value: String) {
         require(key.length <= 256) { "Memory key too long" }

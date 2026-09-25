@@ -32,6 +32,7 @@ data class DiscoveryPageContent(
     val errorPermission: DiscoveryPermission? = null,
     val sections: List<SourceDiscoverySection> = emptyList(),
     val resetId: Long = 0,
+    val errorDiagnostic: hnovel.execution.ExecutionResult.Failure? = null,
 )
 
 data class DiscoveryPageState(
@@ -196,7 +197,7 @@ abstract class DiscoveryPageViewModel(
         pending = viewModelScope.launch(foreground) {
             val result = discoveryRequest { discovery.interact(id, value, longClick) }
             if (serial != token || !active || state.value.selected != source) return@launch
-            result.onErr { put(source, state.value.content.getValue(source).copy(acting = false, error = it, errorField = discovery.failureField, errorPermission = discovery.permissionFailure)) }
+            result.onErr { put(source, state.value.content.getValue(source).copy(acting = false, error = it, errorField = discovery.failureField, errorPermission = discovery.permissionFailure, errorDiagnostic = discovery.diagnosticFailure)) }
                 .onOk { update ->
                     put(source, applyCatalog(state.value.content.getValue(source), update.catalog))
                     // Record invalidation before an emitted action can stop/cancel this page's work.
@@ -221,7 +222,7 @@ abstract class DiscoveryPageViewModel(
         val token = Any()
         browserToken = token
         browser?.cancel()
-        put(command.source, state.value.content.getValue(command.source).copy(loading = false, acting = true, error = null, errorField = null, errorPermission = null))
+        put(command.source, state.value.content.getValue(command.source).copy(loading = false, acting = true, error = null, errorField = null, errorPermission = null, errorDiagnostic = null))
         browser = viewModelScope.launch {
             val result = discoveryRequest { discovery.openBrowser(action) }
             // Its Activity covers this destination. Completion may precede onStart, after UI
@@ -229,7 +230,7 @@ abstract class DiscoveryPageViewModel(
             if (browserToken !== token) return@launch
             browserToken = null
             browser = null
-            result.onErr { put(command.source, state.value.content.getValue(command.source).copy(acting = false, error = it, errorField = discovery.failureField, errorPermission = discovery.permissionFailure)) }
+            result.onErr { put(command.source, state.value.content.getValue(command.source).copy(acting = false, error = it, errorField = discovery.failureField, errorPermission = discovery.permissionFailure, errorDiagnostic = discovery.diagnosticFailure)) }
                 .onOk { refresh() }
         }
     }
@@ -288,7 +289,7 @@ abstract class DiscoveryPageViewModel(
 
     private fun applyCatalog(previous: DiscoveryPageContent, catalog: SourceDiscoveryCatalog) = previous.copy(
         categories = catalog.categories, filters = catalog.filters, values = catalog.values, buttons = catalog.buttons,
-        loaded = true, loading = false, acting = false, error = null, errorField = null, errorPermission = null)
+        loaded = true, loading = false, acting = false, error = null, errorField = null, errorPermission = null, errorDiagnostic = null)
 
     protected open fun feedUpdates(discovery: SourceDiscovery) = discovery.feedUpdates()
 
@@ -323,14 +324,14 @@ abstract class DiscoveryPageViewModel(
                     }
                     failure?.let { return@discoveryRequest Err(it) }
                 }
-                Ok(content.copy(loaded = true, loading = false, acting = false, error = null, errorField = null, errorPermission = null))
+                Ok(content.copy(loaded = true, loading = false, acting = false, error = null, errorField = null, errorPermission = null, errorDiagnostic = null))
             }
             // A retained verification window may fail before this page resumes. Its result
             // still belongs here; navigation/cancellation already invalidate serial.
             if (serial != token || state.value.selected != id) return@launch
             val current = state.value.content[id] ?: previous
             result.onOk { refreshCatalog -= id; put(id, it.copy(scroll = current.scroll)) }
-                .onErr { put(id, current.copy(error = it, loading = false, errorField = sessions[id]?.failureField, errorPermission = sessions[id]?.permissionFailure)) }
+                .onErr { put(id, current.copy(error = it, loading = false, errorField = sessions[id]?.failureField, errorPermission = sessions[id]?.permissionFailure, errorDiagnostic = sessions[id]?.diagnosticFailure)) }
         }
     }
 }

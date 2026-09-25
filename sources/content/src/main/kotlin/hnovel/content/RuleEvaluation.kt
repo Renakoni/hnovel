@@ -22,7 +22,8 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
     var requestUserAgent: String? = null
     var currentRequest: hnovel.network.BrokerRequest? = null
     var nextChapterUrl: String? = null
-    private val limits = ExecutionLimits(timeoutMillis = if (interactive) 60000 else 30000, maxOutputBytes = 196608,
+    // Human login/verification shares the enclosing login operation's five-minute budget.
+    private val limits = ExecutionLimits(timeoutMillis = if (interactive) 300000 else 30000, maxOutputBytes = 196608,
         maxRequests = 64, maxDataBytes = 16 * 1024 * 1024)
 
     fun fork(bookId: String? = this.bookId, chapterId: String? = this.chapterId) =
@@ -100,7 +101,8 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
                 if (it.requestFailure != null || it.requestLimitExceeded || it.responseLimitExceeded) ExecutionResult.Failure(FailureCode.BridgeDenied) else throw failure
             }
             executed.also { _ ->
-                if (it.interactionRequired) throw SourceContentException(ContentError.LoginRequired, field)
+                if (it.interactionRequired) throw SourceContentException(ContentError.LoginRequired, field,
+                    diagnostic = executed as? ExecutionResult.Failure)
                 networkFailure = it.requestFailure
                 requestLimitExceeded = it.requestLimitExceeded
                 responseLimitExceeded = it.responseLimitExceeded
@@ -115,7 +117,7 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
                 if (requestLimitExceeded) "RequestLimit" else if (responseLimitExceeded) "ResponseLimit" else networkFailure?.code?.name ?: result.code.name
             else (result as? ExecutionResult.Failure)?.code?.name ?: "Success",
             (result as? ExecutionResult.Failure)?.ruleError?.code,
-            (result as? ExecutionResult.Failure)?.ruleError?.location?.offset))
+            (result as? ExecutionResult.Failure)?.ruleError?.location?.offset, failure))
         currentCoroutineContext().ensureActive()
         if (!authority.accepts(identity)) throw SourceContentException(ContentError.Unavailable, field)
         return when (result) {
@@ -126,7 +128,7 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
                 FailureCode.UnsupportedDependency -> ContentError.UnsupportedDependency
                 else -> ContentError.InvalidRule
             }, failureField, networkFailure?.denial.takeIf { result.code == FailureCode.BridgeDenied }, dependency,
-                networkFailure?.takeIf { result.code == FailureCode.BridgeDenied && !requestLimitExceeded && !responseLimitExceeded }?.let(verification))
+                networkFailure?.takeIf { result.code == FailureCode.BridgeDenied && !requestLimitExceeded && !responseLimitExceeded }?.let(verification), result)
             is ExecutionResult.Success -> Json.decodeFromString(ExecutedRule.serializer(), result.output)
         }
     }

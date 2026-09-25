@@ -13,6 +13,39 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RuleLoginFormTest {
+    @Test fun foregroundLoginGetsFiveMinutesButSearchAndNetworkRequestsKeepTheirBudgets() = runBlocking {
+        var browserCalls = 0
+        val browser = BrowserExecutor { _, request, options, _, _ ->
+            assertTrue(options.interactive)
+            assertEquals(60000L, request.timeoutMillis)
+            browserCalls++
+            hnovel.network.BrokerResult.Success(hnovel.network.BrokerResponse(0, request.url, emptyMap(),
+                "signed in".toByteArray(), "UTF-8", 0, protocol = "", kind = hnovel.network.ResponseKind.BrowserDocument))
+        }
+        RuleSourceFixture(browser).use { fixture ->
+            val budgets = mutableListOf<Long>()
+            fixture.beforeRun = { _, limits -> budgets += limits.timeoutMillis }
+            fixture.source { raw -> JsonObject(raw + ("loginUrl" to JsonPrimitive("""
+                function login() {
+                    var page = java.startBrowserAwait('/login', 'Login', false);
+                    if (page.body() !== 'signed in') throw new Error('browser result missing');
+                    java.ajax('/search');
+                }
+            """.trimIndent()))) }.use { source ->
+                source.loginForm()
+                budgets.clear()
+                source.login(emptyMap())
+                assertEquals(1, browserCalls)
+                assertTrue(budgets.isNotEmpty())
+                assertTrue(budgets.toString(), budgets.all { it == 300000L })
+                budgets.clear()
+                source.search("book", 1)
+                assertTrue(budgets.isNotEmpty())
+                assertTrue(budgets.toString(), budgets.all { it == 30000L })
+            }
+        }
+    }
+
     @Test fun nestedBusinessDataOnlyFillsDeclaredStringInputsAndSurvivesFormActions() = runBlocking {
         RuleSourceFixture().use { fixture ->
             fixture.source(profile = EXTENSION_PROFILE) { raw -> JsonObject(raw + mapOf(

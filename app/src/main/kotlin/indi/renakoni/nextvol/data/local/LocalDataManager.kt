@@ -118,6 +118,7 @@ class LocalDataManager @Inject constructor(
 
         var localBookFiles = emptyList<indi.renakoni.nextvol.data.localbook.LocalBookFileManifest>()
         var readingBookmarks = emptyList<indi.renakoni.nextvol.data.bookmark.ReadingBookmark>()
+        var bookAliases = emptyList<indi.renakoni.nextvol.data.local.room.entity.BookAliasEntity>()
         return runCatching {
             statisticsWriteCoordinator.withLock { database.withTransaction {
                 exportOptionLocalData.solve()
@@ -130,6 +131,7 @@ class LocalDataManager @Inject constructor(
                     addAll(readingBookmarks.map { it.bookId })
                 }
                 val references = localFileReferences(localIds, includeLegacyDirectory = !localBookCache)
+                bookAliases = database.bookAliasDao().all().filter { it.canonicalId in localIds || it.id in localIds }
                 localBookFiles = references.localBookFiles
                 exportOptionLocalData.bookInformationEntities.addAll(references.bookInformationEntities.filter { info ->
                     exportOptionLocalData.bookInformationEntities.none { it.id == info.id }
@@ -142,6 +144,7 @@ class LocalDataManager @Inject constructor(
         }.andThen {
             Ok(
                 LocalData(
+                    bookAliases = bookAliases,
                     localBookFiles = localBookFiles,
                     readingBookmarks = readingBookmarks,
                     bookInformationEntities = exportOptionLocalData.bookInformationEntities,
@@ -203,6 +206,7 @@ class LocalDataManager @Inject constructor(
                 ) {
                     caller.ensureActive()
                     if (overwrite) clearLibraryRows()
+                    restoreAliases(parts)
                     for (part in parts) {
                         caller.ensureActive()
                         importRows(part)
@@ -228,6 +232,30 @@ class LocalDataManager @Inject constructor(
 
     suspend fun importLocalDataToDatabase(localData: LocalData): Result<Unit, Throwable> =
         importAppLocalData(AppLocalData(localDataList = listOf(localData), globalLocalData = LocalData.empty()))
+
+    /** The caller holds the statistics/download locks and the entire restore transaction. */
+    private suspend fun restoreAliases(parts: List<LocalData>) {
+        val dao = database.bookAliasDao()
+        val existing = dao.all().associateBy { it.id }
+        val incoming = parts.flatMap { it.bookAliases }
+        val combined = (existing.values + incoming).groupBy { it.id }
+        require(combined.values.all { rows -> rows.map { it.canonicalId }.distinct().size == 1 }) { "Conflicting book aliases" }
+        require(combined.values.all { it.first().canonicalId !in combined }) { "Chained book aliases are not supported" }
+        val importedRows = parts.flatMap { part ->
+            part.bookInformationEntities.map { it.id } + part.userReadingDataEntities.map { it.id } +
+                part.volumeEntities.map { it.bookId } + part.bookDownloadEntities.map { it.bookId } +
+                part.bookshelfBookMetadataEntities.map { it.id } + part.bookshelfEntities.flatMap { it.allBookIds + it.pinnedBookIds + it.updatedBookIds }
+        }
+        require(importedRows.none { it in combined }) { "Backup contains obsolete book identities; refresh them before merging" }
+        for (alias in incoming.distinctBy { it.id }) {
+            if (alias.id in existing) continue
+            require(bookBookInformationDao.getEntity(alias.id) == null && userReadingDataDao.getEntity(alias.id) == null &&
+                database.bookDownloadDao().get(alias.id) == null && bookshelfDao.getBookshelfBookMetadata(alias.id) == null) {
+                "Existing standalone data must be reconciled before merging an alias backup"
+            }
+            dao.insert(alias)
+        }
+    }
 
     /** The caller holds the statistics/download locks and the entire restore transaction. */
     private suspend fun importRows(localData: LocalData) {
@@ -298,6 +326,7 @@ class LocalDataManager @Inject constructor(
     }
 
     private suspend fun clearLibraryRows() {
+        database.bookAliasDao().clear()
         database.localBookFileManifestDao().clearUnowned()
         database.readingBookmarkDao().clear()
         bookBookInformationDao.clear()

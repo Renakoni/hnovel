@@ -2,6 +2,8 @@ package hnovel.execution
 
 import hnovel.network.*
 import hnovel.rhino.HostBridge
+import hnovel.rules.ScriptArgumentType
+import hnovel.rules.ScriptHostCall
 import kotlinx.coroutines.*
 import kotlinx.serialization.json.*
 import okhttp3.mockwebserver.*
@@ -185,7 +187,7 @@ class ResourceBridgeTest {
                 SourceExecutionBroker(id,authority,first,ExecutionLimits(),base).use { broker ->
                     path=broker.call("java.downloadFile",listOf(JsonPrimitive("4142"),JsonPrimitive("${base}data,{\"type\":\"txt\"}"))).jsonPrimitive.content
                     assertEquals(ExecutionResult.Success("\"AB\""),script(broker,"java.readTxtFile(${JsonPrimitive(path)})",base))
-                    assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied),script(broker,"java.readFile('../../host.db')",base))
+                    assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied, hostCall = ScriptHostCall("java.readFile", 1, listOf(ScriptArgumentType.String))),script(broker,"java.readFile('../../host.db')",base))
                 }
                 for (scope in listOf(SourceScope("fixture","b","legado"),SourceScope("fixture","a","legado",1))) {
                     val session=sessions.open(scope,listOf(NetworkGrant(base,true)))

@@ -2,6 +2,8 @@ package hnovel.execution
 
 import hnovel.network.*
 import hnovel.rhino.HostBridge
+import hnovel.rules.ScriptArgumentType.String
+import hnovel.rules.ScriptHostCall
 import kotlinx.coroutines.*
 import kotlinx.serialization.json.*
 import okhttp3.mockwebserver.MockResponse
@@ -14,6 +16,48 @@ import java.util.concurrent.TimeUnit
 
 class ScriptExecutionTest {
     @get:Rule val directory = TemporaryFolder()
+
+    @Test fun foregroundBudgetKeepsHttpAndRemoteLibrariesWithinNetworkLimits() = runBlocking {
+        val authority = ExecutionAuthority()
+        val requests = mutableListOf<Long>()
+        val browser = BrowserExecutor { _, request, _, _, _ ->
+            requests += request.timeoutMillis
+            BrokerResult.Success(BrokerResponse(0, request.url, emptyMap(), "page".toByteArray(),
+                "UTF-8", 0, protocol = "", kind = ResponseKind.BrowserDocument))
+        }
+        MockWebServer().use { server ->
+            server.start()
+            SourceBroker(directory.root.toPath(), browser = browser).use { sessions ->
+                for (budget in listOf(5000L, 300000L)) {
+                    val id = authority.issue("budget-$budget", "legado", "1", "fixture")
+                    val session = sessions.open(SourceScope("fixture", id.sourceId, "legado"),
+                        listOf(NetworkGrant(server.url("/").toString(), true)))
+                    SourceExecutionBroker(id, authority, session, ExecutionLimits(timeoutMillis = budget),
+                        server.url("/").toString(), allowInteraction = true).use { bridge ->
+                        server.enqueue(MockResponse().setBody("function answer(){return 7;}"))
+                        val library = JsonObject(mapOf("login" to JsonPrimitive(server.url("/library.js").toString()))).toString()
+                        assertEquals(listOf("function answer(){return 7;}"), bridge.loadLibrary(library))
+                        server.enqueue(MockResponse().setBody("http"))
+                        assertEquals(ExecutionResult.Success("\"page:http\""), runScript(id, bridge,
+                            "java.startBrowserAwait('/login','Login',false).body()+':'+java.ajax('/http')"))
+                    }
+                }
+                assertEquals(listOf(5000L, 60000L), requests)
+                assertEquals(4, server.requestCount)
+            }
+        }
+    }
+
+    @Test fun foregroundBudgetRemainsBoundedAndDoesNotChangeDefaults() {
+        assertEquals(5000L, ExecutionLimits().timeoutMillis)
+        assertEquals(5000L, hnovel.rhino.ScriptLimits().timeoutMillis)
+        assertEquals(300000L, ExecutionLimits(timeoutMillis = 300000).timeoutMillis)
+        assertEquals(300000L, hnovel.rhino.ScriptLimits(timeoutMillis = 300000).timeoutMillis)
+        for (invalid in listOf(0L, 300001L)) {
+            assertThrows(IllegalArgumentException::class.java) { ExecutionLimits(timeoutMillis = invalid) }
+            assertThrows(IllegalArgumentException::class.java) { hnovel.rhino.ScriptLimits(timeoutMillis = invalid) }
+        }
+    }
 
     @Test fun completedNativeLoginPersistsTheScriptSuccessBranchAcrossSessions() = runBlocking {
         val authority = ExecutionAuthority()
@@ -72,7 +116,7 @@ class ScriptExecutionTest {
             SourceExecutionBroker(first, authority, session, ExecutionLimits()).use { bridge ->
                 assertEquals(ExecutionResult.Success("\"kept\""), runScript(first, bridge, "source.getVariable()"))
                 authority.revoke(first)
-                assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied), runScript(first, bridge, "source.bookSourceName"))
+                assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied, hostCall = ScriptHostCall("source.getBookSourceName", 0, emptyList())), runScript(first, bridge, "source.bookSourceName"))
             }
         }
     }
@@ -95,14 +139,14 @@ class ScriptExecutionTest {
                 val base = server.url("/").toString()
                 val session = broker.open(SourceScope("verification", "A", "legado"), listOf(NetworkGrant(base, true)))
                 SourceExecutionBroker(id, authority, session, ExecutionLimits(), base).use { bridge ->
-                    assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied), runScript(id, bridge, "java.getVerificationCode('/captcha.png')"))
+                    assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied, hostCall = ScriptHostCall("java.getVerificationCode", 1, listOf(String))), runScript(id, bridge, "java.getVerificationCode('/captcha.png')"))
                     assertTrue(bridge.interactionRequired)
                     assertEquals(0, calls)
                 }
                 SourceExecutionBroker(id, authority, session, ExecutionLimits(), base, allowInteraction = true).use { bridge ->
                     assertEquals(ExecutionResult.Success("\" A7c \""), runScript(id, bridge, "java.getVerificationCode('/captcha.png')"))
                     answer = " "
-                    assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied), runScript(id, bridge, "java.getVerificationCode('/captcha.png')"))
+                    assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied, hostCall = ScriptHostCall("java.getVerificationCode", 1, listOf(String))), runScript(id, bridge, "java.getVerificationCode('/captcha.png')"))
                     assertEquals(2, calls)
                     authority.revoke(id)
                     assertTrue(runCatching { bridge.call("java.getVerificationCode", listOf(JsonPrimitive(base + "captcha.png"))) }.isFailure)
@@ -129,7 +173,7 @@ class ScriptExecutionTest {
                 val session = sessions.open(SourceScope("fixture", "a", "legado"), listOf(NetworkGrant(server.url("/").toString(), true)))
                 val url = JsonPrimitive(server.url("/verify").toString())
                 SourceExecutionBroker(id, authority, session, ExecutionLimits()).use { bridge ->
-                    assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied), runScript(id, bridge, "java.startBrowser($url,'verify')"))
+                    assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied, hostCall = ScriptHostCall("java.startBrowser", 2, listOf(String, String))), runScript(id, bridge, "java.startBrowser($url,'verify')"))
                     assertTrue(bridge.interactionRequired)
                     assertTrue(opened.isEmpty())
                 }
@@ -145,7 +189,7 @@ class ScriptExecutionTest {
                 }
                 SourceExecutionBroker(id, authority, session, ExecutionLimits(maxRequests = 1), allowInteraction = true).use { bridge ->
                     server.enqueue(MockResponse().setBody("must not refetch"))
-                    assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied), runScript(id, bridge,
+                    assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied, hostCall = ScriptHostCall("java.startBrowserAwait", 2, listOf(String, String))), runScript(id, bridge,
                         "java.startBrowserAwait($url,'verify').body()"))
                     assertEquals(1, server.requestCount)
                     assertEquals(3, opened.size)
@@ -286,7 +330,7 @@ class ScriptExecutionTest {
                     val result = runScript(id, bridge, "source.put('chapter',java.ajax('/chapter')); source.get('chapter')")
                     assertEquals(ExecutionResult.Success("\"chapter text\""), result)
                     assertEquals("/chapter", server.takeRequest(3, TimeUnit.SECONDS)?.path)
-                    assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied), runScript(id, bridge, "java.ajax('https://not-granted.invalid/')"))
+                    assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied, hostCall = ScriptHostCall("java.ajax", 1, listOf(String))), runScript(id, bridge, "java.ajax('https://not-granted.invalid/')"))
                 }
                 val b = authority.issue("b", "legado", "1", "fixture")
                 val other = sessions.open(SourceScope("fixture", "b", "legado"), emptyList())
@@ -305,9 +349,9 @@ class ScriptExecutionTest {
             val session = sessions.open(SourceScope("fixture", "a", "legado"), emptyList())
             SourceExecutionBroker(id, authority, session, ExecutionLimits(maxRequests = 1)).use { bridge ->
                 bridge.call("source.put", listOf(JsonPrimitive("key"), JsonPrimitive("before")))
-                assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied), runScript(id, bridge, "source.put('key','exhausted')"))
+                assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied, hostCall = ScriptHostCall("source.put", 2, listOf(String, String))), runScript(id, bridge, "source.put('key','exhausted')"))
                 authority.revoke(id)
-                assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied), runScript(id, bridge, "source.put('key','revoked')"))
+                assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied, hostCall = ScriptHostCall("source.put", 2, listOf(String, String))), runScript(id, bridge, "source.put('key','revoked')"))
                 assertEquals(StorageResult.Value("before"), session.read(StorageRequest(StorageArea.Config, "value:key")))
             }
         }
@@ -331,11 +375,11 @@ class ScriptExecutionTest {
                         java.ajax('/chapter')
                     """.trimIndent()))
                     assertEquals(1, server.requestCount)
-                    assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied), runScript(id, bridge, "java.ajax('/second')"))
+                    assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied, hostCall = ScriptHostCall("java.ajax", 1, listOf(String))), runScript(id, bridge, "java.ajax('/second')"))
                     assertTrue(bridge.requestLimitExceeded)
                     assertEquals(1, server.requestCount)
                     authority.revoke(id)
-                    assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied), runScript(id, bridge, "source.getKey()"))
+                    assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied, hostCall = ScriptHostCall("source.getKey", 0, emptyList())), runScript(id, bridge, "source.getKey()"))
                 }
             }
         }

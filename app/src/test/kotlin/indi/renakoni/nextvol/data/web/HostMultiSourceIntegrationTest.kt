@@ -102,12 +102,12 @@ class HostMultiSourceIntegrationTest {
             directory.root.resolve("library.db").absolutePath).allowMainThreadQueries().build()
         manager = WebBookDataSourceManager(WebSourceRegistry())
         downloads = BookDownloadStore(context, db, decoder)
-        local = LocalBookDataSource(db.bookInformationDao(), db.bookVolumesDao(), db.chapterContentDao(), db.userReadingDataDao())
-        shelves = BookshelfRepository(db.bookshelfDao(), workManager, manager.registry, downloads)
+        local = LocalBookDataSource(db.bookInformationDao(), db.bookVolumesDao(), db.chapterContentDao(), db.userReadingDataDao(), indi.renakoni.nextvol.data.book.BookAliasStore(db))
+        shelves = BookshelfRepository(db.bookshelfDao(), workManager, manager.registry, downloads, local.aliases)
         // Disable optional display transformations; storage and content decoding use production adapters.
         val text = TextProcessingRepository(mockk { every { enabled } returns false },
             mockk { every { enabled } returns false }, ContentComponentRegistry())
-        books = BookRepository(local, shelves, text, workManager, ChapterRepository(manager.registry, local, text, mockk()),
+        books = BookRepository(local, shelves, text, workManager, ChapterRepository(manager.registry, local, text, mockk(), downloads),
             BookReadingDataRepository(local), manager.registry, downloads, mockk())
         val coordinator = StatisticsWriteCoordinator()
         stats = StatsRepository(db.bookRecordDao(), db.dailyCountDao(), books, coordinator)

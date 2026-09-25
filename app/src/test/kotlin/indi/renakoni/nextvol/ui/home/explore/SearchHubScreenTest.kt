@@ -111,6 +111,17 @@ class SearchHubScreenTest {
         compose.onNodeWithText("Searchable sources: 1000").assertIsDisplayed()
     }
 
+    @Test fun filteredEmptyPageShowsLoadMoreInsteadOfTerminalNoResults() {
+        state = SearchHubState(query = "book", submittedKeyword = "book",
+            sources = listOf(source.copy(pending = false, nextPage = 2)))
+        render()
+        compose.onNodeWithText(activity.get().getString(R.string.search_load_more)).assertIsDisplayed()
+        compose.onNodeWithText(activity.get().getString(R.string.search_no_results)).assertDoesNotExist()
+        compose.runOnIdle { state = state.copy(sources = listOf(source.copy(pending = false))) }
+        compose.onNodeWithText(activity.get().getString(R.string.search_no_results)).assertIsDisplayed()
+        compose.onNodeWithText(activity.get().getString(R.string.search_load_more)).assertDoesNotExist()
+    }
+
     @Test fun booksAreVerticalSourceBoundRowsAndEmptySourcesHaveNoPlaceholder() {
         val other = source.copy(id = Identifier("fixture", "empty"), name = "Empty source")
         val info = BookInformation("book", "A book", author = "An author", description = "A short description",

@@ -2,6 +2,9 @@ package hnovel.execution
 
 import hnovel.network.*
 import hnovel.rhino.HostBridge
+import hnovel.rules.ScriptArgumentType.Null
+import hnovel.rules.ScriptArgumentType.String
+import hnovel.rules.ScriptHostCall
 import kotlinx.coroutines.*
 import kotlinx.serialization.json.*
 import okhttp3.mockwebserver.*
@@ -23,18 +26,18 @@ class RequestRefetchBrokerTest {
             SourceBroker(directory.root.toPath()).use { broker ->
                 val session = broker.open(SourceScope("default", "a", "legado"), listOf(NetworkGrant(server.url("/").toString(), true)))
                 SourceExecutionBroker(id, authority, session, ExecutionLimits()).use { bridge ->
-                    assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied), script(id, bridge, "java.getStrResponse(null,null)"))
+                    assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied, hostCall = ScriptHostCall("java.getStrResponse", 2, listOf(Null, Null))), script(id, bridge, "java.getStrResponse(null,null)"))
                 }
                 SourceExecutionBroker(id, authority, session, ExecutionLimits(), currentRequest = BrokerRequest("current", server.url("/").toString())).use { bridge ->
-                    assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied), script(id, bridge, "java.getStrResponse('replacement URL',null)"))
+                    assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied, hostCall = ScriptHostCall("java.getStrResponse", 2, listOf(String, Null))), script(id, bridge, "java.getStrResponse('replacement URL',null)"))
                 }
                 SourceExecutionBroker(id, authority, session, ExecutionLimits(), currentRequest = BrokerRequest("current", server.url("/").toString(),
                     browser = BrowserOptions(interactive = true))).use { bridge ->
-                    assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied), script(id, bridge, "java.getStrResponse(null,null)"))
+                    assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied, hostCall = ScriptHostCall("java.getStrResponse", 2, listOf(Null, Null))), script(id, bridge, "java.getStrResponse(null,null)"))
                     assertTrue(bridge.interactionRequired)
                 }
                 SourceExecutionBroker(id, authority, session, ExecutionLimits(maxRequests = 0), currentRequest = BrokerRequest("current", server.url("/").toString())).use { bridge ->
-                    assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied), script(id, bridge, "java.getStrResponse(null,null)"))
+                    assertEquals(ExecutionResult.Failure(FailureCode.BridgeDenied, hostCall = ScriptHostCall("java.getStrResponse", 2, listOf(Null, Null))), script(id, bridge, "java.getStrResponse(null,null)"))
                     assertTrue(bridge.requestLimitExceeded)
                 }
                 assertEquals(0, server.requestCount)

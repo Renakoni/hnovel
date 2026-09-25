@@ -166,7 +166,8 @@ class ExportBookToEPUBWork @AssistedInject constructor(
     )
 
     override suspend fun doWork(): Result {
-        val book = inputData.sourceBook() ?: return bookWorkFailure("invalid_book_identity")
+        val requested = inputData.sourceBook() ?: return bookWorkFailure("invalid_book_identity")
+        var book = requested
         val type = runCatching { ExportType.valueOf(inputData.getString("exportType").orEmpty()) }.getOrNull()
             ?: return bookWorkFailure("invalid_export_type", book)
         val selected = inputData.getString("selectedVolume").orEmpty().split(',').filter(String::isNotEmpty).toSet()
@@ -200,7 +201,12 @@ class ExportBookToEPUBWork @AssistedInject constructor(
             downloadProgressRepository.addExportItem(item)
 
             withContext(Dispatchers.IO) {
-                val prepared = downloads.withBookOperation(book) { prepare(book, type, tempDir) }
+                // A missing offline snapshot can discover a series while resolving details or TOC.
+                bookRepository.exportInformation(book).value()
+                bookRepository.exportVolumes(book).value()
+                book = bookRepository.canonicalBook(book)
+                val canonicalSelection = selected.map { BookIdentity.volumeKey(book, BookIdentity.volumeRemoteId(it, requested)) }.toSet()
+                val prepared = downloads.withBookOperation(book) { prepare(book, type, tempDir, canonicalSelection) }
                 stage = "build"
                 failureReason = "build_failed"
                 val outputs = tempDir.resolve("outputs").apply { check(mkdirs()) }
@@ -293,10 +299,9 @@ class ExportBookToEPUBWork @AssistedInject constructor(
         throw IOException("Source data unavailable")
     }
 
-    private suspend fun prepare(book: SourceBookId, type: ExportType, directory: File): PreparedBook {
+    private suspend fun prepare(book: SourceBookId, type: ExportType, directory: File, selected: Set<String>): PreparedBook {
         val information = bookRepository.exportInformation(book).value()
         val catalog = bookRepository.exportVolumes(book).value()
-        val selected = inputData.getString("selectedVolume").orEmpty().split(',').filter(String::isNotEmpty).toSet()
         val volumes = catalog.volumes.withIndex().filter { type == ExportType.BOOK || it.value.volumeId in selected }
         planned = if (type == ExportType.BOOK) 1 else volumes.size
         failureReason = "missing_volume"

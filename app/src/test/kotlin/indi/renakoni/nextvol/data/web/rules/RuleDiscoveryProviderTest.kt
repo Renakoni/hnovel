@@ -6,6 +6,8 @@ import com.github.michaelbull.result.*
 import hnovel.content.RuleSourceFixture
 import hnovel.content.DiscoveryCatalogFixtures
 import hnovel.content.RuleDiscoverySession
+import hnovel.content.RuleListSession
+import hnovel.content.RuleListPage
 import hnovel.content.SourceContentException
 import hnovel.content.ContentError
 import hnovel.content.SourceVerification
@@ -35,6 +37,49 @@ import org.robolectric.annotation.Config
 @Config(sdk = [27], application = Application::class)
 class RuleDiscoveryProviderTest {
     @get:Rule val directory = TemporaryFolder()
+
+    @Test fun safeCallDiagnosticsFollowTheirPreviewAndResultSessionAndClearAfterRecovery() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            var fail = true
+            fixture.server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
+                override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest) = okhttp3.mockwebserver.MockResponse()
+                    .setBody("<li><h2>${if (fail) "fail" else "Recovered"}</h2><a href='/book/one'>Read</a></li>")
+            }
+            val rule = fixture.source { raw -> JsonObject(raw + mapOf(
+                "exploreUrl" to JsonPrimitive("热门推荐::/search"),
+                "ruleExplore" to JsonObject(raw.getValue("ruleSearch").jsonObject + ("name" to
+                    JsonPrimitive("h2@text@js:if(result==='fail')cookie.getCookie(baseUrl,'PRIVATE_COOKIE');result")))
+            )) }
+            val id = Identifier("rules", rule.definition.sourceId)
+            val registry = WebSourceRegistry()
+            registry.register(RuleWebBookDataSource(id, rule), SourceMetadata(WebDataSourceItem(id, "Fixture", "Tests"),
+                setOf(SourceCapability.Categories, SourceCapability.Explore)))
+            try {
+                val discovery = (registry.resolve(id) as SourceResolution.Ready).runtime.discovery!!.forSession("diagnostics")
+                val section = discovery.feed().get()!!.single()
+                assertEquals(DiscoveryError.PermissionDenied, section.previewFailure!!.error)
+                val detail = section.diagnosticFailure!!
+                assertEquals(hnovel.rules.ScriptHostCall("cookie.getCookie", 2,
+                    List(2) { hnovel.rules.ScriptArgumentType.String }), detail.hostCall)
+                assertEquals("ruleExplore.name", detail.ruleError!!.location.field)
+                assertNull(discovery.diagnosticFailure)
+                val results = discovery.open(section.more!!)
+                assertEquals(DiscoveryError.PermissionDenied, results.loadMore().getError())
+                assertEquals(detail, results.diagnosticFailure)
+                val search = indi.renakoni.nextvol.data.explore.searchFailure(
+                    SourceContentException(ContentError.InvalidRule, "ruleExplore.name", diagnostic = detail))
+                assertEquals(detail, search.diagnostic)
+                assertFalse(detail.toString().contains("PRIVATE"))
+                fail = false
+                assertEquals("Recovered", results.loadMore().get()!!.books.single().title)
+                assertNull(results.diagnosticFailure)
+                val restored = discovery.feed().get()!!.single()
+                assertNull(restored.previewFailure)
+                assertNull(restored.diagnosticFailure)
+                assertEquals("Recovered", restored.books.single().title)
+            } finally { registry.unregister(id) }
+        }
+    }
 
     @Test fun resolvedGenreOnlyCatalogLeavesDiscoveryButFailuresAndEmptyResponsesKeepItsTab() = runBlocking {
         RuleSourceFixture().use { fixture ->
@@ -200,12 +245,16 @@ class RuleDiscoveryProviderTest {
             }
             val session = mockk<RuleDiscoverySession>()
             coEvery { session.catalog(homepage = true) } returns catalog
-            coEvery { session.page("/search?module=1", 1, any()) } returns books
+            val firstPages = mockk<RuleListSession>()
+            val secondPages = mockk<RuleListSession>()
+            every { session.openPages("/search?module=1", any()) } returns firstPages
+            every { session.openPages("/search?module=2", any()) } returns secondPages
+            coEvery { firstPages.page(1) } returns RuleListPage(books, "2", 2)
             var attempts = 0
-            coEvery { session.page("/search?module=2", 1, any()) } coAnswers {
+            coEvery { secondPages.page(1) } coAnswers {
                 if (++attempts == 1) throw SourceContentException(ContentError.BrowserRequired,
                     "ruleExplore", verification = verification)
-                books
+                RuleListPage(books, "2", 2)
             }
             val owner = VerificationOwner(Identifier("rules", "progressive"), "revision", 0)
             val listings = MutableStateFlow(listOf(SourceListing(SourceMetadata(
@@ -215,8 +264,8 @@ class RuleDiscoveryProviderTest {
             val sizes = mutableListOf<Int>()
             withContext(ForegroundSourceRequest()) { provider.feedUpdates().collect { sizes += it.get()!!.size } }
             assertEquals(listOf(1, 2), sizes)
-            coVerify(exactly = 1) { session.page("/search?module=1", 1, any()) }
-            coVerify(exactly = 2) { session.page("/search?module=2", 1, any()) }
+            coVerify(exactly = 1) { firstPages.page(1) }
+            coVerify(exactly = 2) { secondPages.page(1) }
             coVerify(exactly = 1) { verification.complete() }
         } }
     }

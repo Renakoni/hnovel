@@ -55,6 +55,32 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         booksFromPage(context, fetch(context, url, "exploreUrl",
             acceptErrorResponse = spec.explore.string("bookList").isScriptRule()), spec.explore, "ruleExplore")
 
+    internal fun listSession(fields: JsonObject, field: String,
+        load: suspend (Int, String?, ScriptMemory) -> RuleListResult) =
+        RuleListSession(field, fields.string("nextPageUrl").isNotBlank(), trace, {
+            if (!authority.accepts(identity)) throw SourceContentException(ContentError.Unavailable, field)
+        }, load)
+
+    internal suspend fun listPage(context: RuleEvaluation, url: String, urlField: String,
+        fields: JsonObject, field: String): RuleListResult {
+        val document = fetch(context, url, urlField, acceptErrorResponse = fields.string("bookList").isScriptRule())
+        val books = booksFromPage(context, document, fields, field)
+        val rule = fields.string("nextPageUrl")
+        // Ordinary URL rules intentionally fall back to the current URL on empty output.
+        // Optional continuations must distinguish that empty output from a real repeated link.
+        val next = if (rule.isBlank()) null else context.text(rule, document.input(), "$field.nextPageUrl").trim()
+            .takeIf { it.isNotBlank() && it != "null" }?.let { sourceLink(document.url, it) }
+        return RuleListResult(books, document.url, next)
+    }
+
+    fun openSearchPages(keyword: String): RuleListSession = listSession(spec.search, "ruleSearch") { page, url, memory ->
+        operation("ruleSearch") {
+            if (!canSearch) throw SourceContentException(ContentError.MissingCapability, "searchUrl")
+            listPage(evaluation(keyword = keyword, page = page, memory = memory), url ?: spec.searchUrl,
+                "searchUrl", spec.search, "ruleSearch")
+        }
+    }
+
     suspend fun openDiscoveryBrowser(url: String, html: String? = null, script: String = "", title: String = ""): Unit =
         operation("discovery.browser", timeoutMillis = 300000) {
             val context = evaluation(interactive = true)
@@ -69,12 +95,28 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
     }
 
     private var cachedLoginForm: LoginForm? = null
+    private data class LoginReadingSnapshot(val book: RuleBook, val chapter: RuleChapter?)
+    private var loginReading: LoginReadingSnapshot? = null
 
     /** A panel owns its form and execution ticket, while sharing the current account storage. */
-    fun openLoginSession(): RuleSource {
+    fun openLoginSession(reading: LoginReadingContext? = null): RuleSource {
         if (!authority.accepts(identity)) throw SourceContentException(ContentError.Unavailable, "login")
+        val snapshot = reading?.let { position ->
+            val record = store.read(position.bookId)?.takeIf { it.revision == identity.revision }
+                ?: throw SourceContentException(ContentError.Unavailable, "login.book")
+            val chapters = record.chapters.filterNot { it.isVolume }
+            val index = chapters.indexOfFirst { it.id == position.chapterId }
+            if (position.chapterId != null && index < 0)
+                throw SourceContentException(ContentError.Unavailable, "login.chapter")
+            // Reader progress is normalized, not Legado's character offset (durChapterPos).
+            val metadata = record.book.state.metadata + mapOf(
+                "readingProgress" to JsonPrimitive(position.readingProgress)) + if (index < 0) emptyMap() else mapOf(
+                "durChapterIndex" to JsonPrimitive(index), "durChapterTitle" to JsonPrimitive(chapters[index].title))
+            LoginReadingSnapshot(record.book.copy(state = record.book.state.copy(metadata = JsonObject(metadata))),
+                chapters.getOrNull(index))
+        }
         val ticket = authority.issue(identity.sourceId, identity.profile, identity.revision, identity.namespace, identity.accountGeneration)
-        return RuleSource(definition, ticket, authority, session, runner, trace, discoveryEnabled)
+        return RuleSource(definition, ticket, authority, session, runner, trace, discoveryEnabled).also { it.loginReading = snapshot }
     }
 
     suspend fun loginForm(): LoginForm = operation("loginUi") {
@@ -98,12 +140,14 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             check(session.write(StorageRequest(StorageArea.Account, StorageRequestKey.LOGIN_INFO, merged)) is StorageResult.Value)
     }
 
-    private fun loginContext(values: Map<String, String>, interactive: Boolean): RuleEvaluation = evaluation(interactive = interactive).also {
+    private fun loginContext(values: Map<String, String>, interactive: Boolean): RuleEvaluation =
+        evaluation(loginReading?.book, loginReading?.chapter, interactive = interactive).also {
         // Reuse the existing bounded interaction envelope; the login form owns this draft.
         // No exploration catalogue is evaluated and no Android objects cross the worker boundary.
         it.discovery = buildJsonObject {
             put("sessionId", "login"); put("values", JsonObject(values.mapValues { JsonPrimitive(it.value) }))
-            put("interactive", interactive); put("noBook", true)
+            put("interactive", interactive); put("noBook", loginReading == null)
+            put("noChapter", loginReading?.chapter == null); put("readingPanel", loginReading != null)
         }
     }
 
@@ -140,7 +184,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         return rendered.also { cachedLoginForm = it }
     }
 
-    suspend fun login(values: Map<String, String>, action: String? = null, formId: String? = null): Unit = operation("loginUrl", timeoutMillis = 300000) {
+    suspend fun login(values: Map<String, String>, action: String? = null, formId: String? = null): LoginActionResult = operation("loginUrl", timeoutMillis = 300000) {
         if (formId != null && cachedLoginForm?.id != formId)
             throw SourceContentException(ContentError.Unavailable, "loginUi")
         val form = (cachedLoginForm ?: loadLoginForm()).withValues(loginValues())
@@ -170,7 +214,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
                 check(session.write(StorageRequest(StorageArea.Account, "login/status", "session")) is StorageResult.Value)
                 if (pending != null) check(session.write(StorageRequest(StorageArea.Account, StorageRequestKey.BROWSER_PENDING_URL)) is StorageResult.Value)
             }
-            return@operation
+            return@operation LoginActionResult()
         }
         val code = if (action == null) "if(typeof login!=='function')throw new Error('login missing');login();true;"
             else fieldAction!!
@@ -182,10 +226,20 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val state = context.discovery!!
         if (state["saveSeconds"]?.let { it != JsonNull } == true) throw SourceContentException(ContentError.InvalidRule, "loginUi.infoMap.save")
         val actions = (state["actions"] as? JsonArray).orEmpty()
+        val refreshTargets = mutableSetOf<LoginRefreshTarget>()
         for (item in actions) {
             val command = item.jsonObject
             when (command.string("kind")) {
                 "refresh" -> Unit
+                "refreshBookInfo", "refreshBookToc", "refreshContent" -> {
+                    if (loginReading == null || command.getValue("args").jsonArray.isNotEmpty())
+                        throw SourceContentException(ContentError.InvalidRule, "loginUi.action.refresh")
+                    refreshTargets += when (command.string("kind")) {
+                        "refreshBookInfo" -> LoginRefreshTarget.BookInformation
+                        "refreshBookToc" -> LoginRefreshTarget.Directory
+                        else -> LoginRefreshTarget.Content
+                    }
+                }
                 "showBrowser" -> {
                     val args = command.getValue("args").jsonArray
                     if (args.size !in 1..4) throw SourceContentException(ContentError.InvalidRule, "loginUi.action.browser")
@@ -204,6 +258,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         if (changed != submitted) saveLoginValues(changed.filter { (key, value) -> submitted[key] != value })
         if (actions.any { it.jsonObject.string("kind") == "refresh" }) cachedLoginForm = null
         if (action == null) authority.authorized(identity) { check(session.write(StorageRequest(StorageArea.Account, "login/status", "authenticated")) is StorageResult.Value) }
+        LoginActionResult(refreshTargets.toSet())
     }
 
     /** Pages called with the same [query] share `cache.*Memory`; without one, memory lasts for this page only. */
@@ -230,8 +285,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             RuleValue.Text(document.url), "bookUrlPattern", OutputKind.Elements).items().isNotEmpty()
         if (rule.isBlank() || isBookUrl) {
             val id = sourceLink(document.url, document.url)
-            val record = information(id, BookRecord(identity.revision, RuleBook(id, state = context.book)), document)
-            store.write(record)
+            val record = saveInformation(id, BookRecord(identity.revision, RuleBook(id, state = context.book)), document)
             return listOf(record.book)
         }
         val items = context.value(rule.removePrefix("-").removePrefix("+"), document.input(), "$field.bookList", OutputKind.Elements).items()
@@ -254,28 +308,40 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         return ordered
     }
 
+    suspend fun canonicalBookId(bookId: String): String = operation("bookAlias") {
+        store.canonicalId(sourceLink(spec.baseUrl, bookId))
+    }
+
     suspend fun information(bookId: String): RuleBook = operation("ruleBookInfo", timeoutMillis = DIRECTORY_TIMEOUT_MILLIS) {
         prefetchedDirectoryId = null
-        val id = sourceLink(spec.baseUrl, bookId)
+        val id = store.canonicalId(sourceLink(spec.baseUrl, bookId))
         val old = store.read(id)
-        var refreshed = information(id, old)
+        val refreshed = saveInformation(id, old, inferUpdate = true)
+        refreshed.book
+    }
+
+    private suspend fun saveInformation(id: String, old: BookRecord?, supplied: PageDocument? = null,
+        inferUpdate: Boolean = false): BookRecord {
+        var refreshed = information(id, old, supplied)
         // Sources without an update marker still participate in host background update checks.
-        val inferUpdate = refreshed.book.latestChapter.isBlank() && refreshed.book.updateTime.isBlank()
-        if (inferUpdate) {
+        // A script-provided bookUrl is an alias proposal, not permission to move unreadable content.
+        val loadDirectory = refreshed.book.id != id ||
+            (inferUpdate && refreshed.book.latestChapter.isBlank() && refreshed.book.updateTime.isBlank())
+        if (loadDirectory) {
             refreshed = directory(refreshed)
             if (old?.chapters?.map { it.id } != refreshed.chapters.map { it.id })
                 refreshed = refreshed.copy(book = refreshed.book.copy(observedUpdate = System.currentTimeMillis()))
         }
-        store.write(refreshed)
-        prefetchedDirectoryId = if (inferUpdate) id else null
-        refreshed.book
+        store.write(refreshed, id)
+        prefetchedDirectoryId = if (loadDirectory) refreshed.book.id else null
+        return refreshed
     }
 
     suspend fun directory(bookId: String): List<RuleChapter> = operation("ruleToc", timeoutMillis = DIRECTORY_TIMEOUT_MILLIS) {
-        val id = sourceLink(spec.baseUrl, bookId)
-        val prefetched = prefetchedDirectoryId == id
-        prefetchedDirectoryId = null
+        val id = store.canonicalId(sourceLink(spec.baseUrl, bookId))
         val book = record(id)
+        val prefetched = prefetchedDirectoryId == book.book.id
+        prefetchedDirectoryId = null
         if (prefetched) book.chapters else directory(book).also(store::write).chapters
     }
 
@@ -393,10 +459,14 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         var book = bookFields(context, input, spec.information, "ruleBookInfo", initial)
         if (book.title.isBlank()) throw SourceContentException(ContentError.EmptyContent, "ruleBookInfo.name")
         val toc = context.url(spec.information.string("tocUrl"), input, "ruleBookInfo.tocUrl")
-        val tocUrl = sourceLink(document.url, toc.ifBlank { id })
+        val proposedId = context.book.metadata["bookUrl"]?.let { (it as? JsonPrimitive)?.contentOrNull }
+            ?: throw SourceContentException(ContentError.InvalidRule, "ruleBookInfo.bookUrl")
+        val canonicalId = store.canonicalId(sourceLink(document.url, proposedId))
+        val tocUrl = sourceLink(document.url, toc.ifBlank { canonicalId })
+        context.bookField("bookUrl", canonicalId)
         context.bookField("tocUrl", tocUrl)
         val changed = old?.informationLoaded != true || initial.latestChapter != book.latestChapter || initial.updateTime != book.updateTime
-        book = book.copy(tocUrl = tocUrl, state = context.book,
+        book = book.copy(id = canonicalId, tocUrl = tocUrl, state = context.book,
             observedUpdate = if (changed) System.currentTimeMillis() else initial.observedUpdate)
         return BookRecord(identity.revision, book, true, document, old?.takeIf { it.revision == identity.revision }?.chapters.orEmpty())
     }
@@ -544,7 +614,8 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
 
     private suspend fun record(id: String): BookRecord {
         val old = store.read(id)
-        return if (old?.informationLoaded == true && old.revision == identity.revision) old else information(id, old)
+        return if (old?.informationLoaded == true && old.revision == identity.revision) old
+            else saveInformation(store.canonicalId(id), old)
     }
     internal fun evaluation(book: RuleBook? = null, chapter: RuleChapter? = null, keyword: String = "", page: Int = 1,
         interactive: Boolean = false, maxRuleCalls: Int = 65536, memory: ScriptMemory = ScriptMemory()): RuleEvaluation {

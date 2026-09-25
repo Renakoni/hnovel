@@ -1,6 +1,7 @@
 package indi.renakoni.nextvol.data.bookshelf
 
 import indi.renakoni.nextvol.data.book.BookIdentity
+import indi.renakoni.nextvol.data.book.BookAliasStore
 import indi.renakoni.nextvol.data.download.BookDownloadStore
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
@@ -17,6 +18,7 @@ import io.nightfish.lightnovelreader.api.bookshelf.BookshelfRepositoryApi
 import io.nightfish.lightnovelreader.api.bookshelf.BookshelfSortType
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.flatMapLatest
 import java.time.LocalDateTime
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -26,6 +28,7 @@ class BookshelfRepository @Inject constructor(
     private val bookshelfDao: BookshelfDao, private val workManager: WorkManager,
     private val sourceRegistry: indi.renakoni.nextvol.data.web.WebSourceRegistry,
     private val downloads: BookDownloadStore,
+    private val aliases: BookAliasStore,
 ) : BookshelfRepositoryApi {
     override suspend fun getAllBookshelfIds(): List<Int> = bookshelfDao.getAllBookshelfIds()
 
@@ -92,7 +95,10 @@ class BookshelfRepository @Inject constructor(
                 )
             }
 
-    override suspend fun addBookshelf(bookshelf: Bookshelf) {
+    private suspend fun key(id: String) = aliases.resolve(BookIdentity.book(id)).storageKey
+    private suspend fun keys(ids: List<String>) = ids.map { key(it) }.distinct()
+
+    override suspend fun addBookshelf(bookshelf: Bookshelf) = aliases.transaction {
         bookshelfDao.insertBookshelf(
             BookshelfEntity(
                 bookshelf.id,
@@ -101,14 +107,14 @@ class BookshelfRepository @Inject constructor(
                 bookshelf.sortReversed,
                 bookshelf.autoCache,
                 bookshelf.systemUpdateReminder,
-                bookshelf.allBookIds.map(BookIdentity::bookKey),
-                bookshelf.pinnedBookIds.map(BookIdentity::bookKey),
-                bookshelf.updatedBookIds.map(BookIdentity::bookKey),
+                keys(bookshelf.allBookIds),
+                keys(bookshelf.pinnedBookIds),
+                keys(bookshelf.updatedBookIds),
             )
         )
     }
 
-    override suspend fun deleteBookshelf(bookshelfId: Int) {
+    override suspend fun deleteBookshelf(bookshelfId: Int) = aliases.transaction {
         bookshelfDao.getBookshelf(bookshelfId)?.let { bookshelf ->
             bookshelf.allBookIds.forEach { bookId ->
                 clearBookshelfIdFromBookshelfBookMetadata(bookshelfId, bookId)
@@ -117,9 +123,9 @@ class BookshelfRepository @Inject constructor(
         bookshelfDao.deleteBookshelf(bookshelfId)
     }
 
-    override suspend fun addBookIntoBookShelf(bookshelfId: Int, bookInformation: BookInformation) {
-        val bookId = BookIdentity.bookKey(bookInformation.id)
-        val bookshelf = bookshelfDao.getBookshelf(bookshelfId) ?: return
+    override suspend fun addBookIntoBookShelf(bookshelfId: Int, bookInformation: BookInformation) = aliases.transaction {
+        val bookId = key(bookInformation.id)
+        val bookshelf = bookshelfDao.getBookshelf(bookshelfId) ?: return@transaction
         bookshelfDao.addBookshelfMetadata(
             id = bookId,
             lastUpdate = bookInformation.lastUpdated,
@@ -150,9 +156,9 @@ class BookshelfRepository @Inject constructor(
         }
     }
 
-    override suspend fun addUpdatedBooksIntoBookShelf(bookShelfId: Int, bookId: String) {
-        val key = BookIdentity.bookKey(bookId)
-        val bookshelf = bookshelfDao.getBookshelf(bookShelfId) ?: return
+    override suspend fun addUpdatedBooksIntoBookShelf(bookShelfId: Int, bookId: String) = aliases.transaction {
+        val key = key(bookId)
+        val bookshelf = bookshelfDao.getBookshelf(bookShelfId) ?: return@transaction
         (bookshelf.updatedBookIds + listOf(key)).let {
             bookshelfDao.insertBookshelf(
                 bookshelf.copy(
@@ -162,7 +168,7 @@ class BookshelfRepository @Inject constructor(
         }
     }
 
-    override suspend fun updateBookshelf(bookshelfId: Int, updater: (Bookshelf) -> Bookshelf) {
+    override suspend fun updateBookshelf(bookshelfId: Int, updater: (Bookshelf) -> Bookshelf): Unit = aliases.transaction {
         this.getBookshelf(bookshelfId)?.let { oldBookshelf ->
             updater(oldBookshelf).let { newBookshelf ->
                 bookshelfDao.insertBookshelf(
@@ -173,9 +179,9 @@ class BookshelfRepository @Inject constructor(
                         newBookshelf.sortReversed,
                         newBookshelf.autoCache,
                         newBookshelf.systemUpdateReminder,
-                        newBookshelf.allBookIds.map(BookIdentity::bookKey),
-                        newBookshelf.pinnedBookIds.map(BookIdentity::bookKey),
-                        newBookshelf.updatedBookIds.map(BookIdentity::bookKey),
+                        keys(newBookshelf.allBookIds),
+                        keys(newBookshelf.pinnedBookIds),
+                        keys(newBookshelf.updatedBookIds),
                     )
                 )
             }
@@ -193,14 +199,17 @@ class BookshelfRepository @Inject constructor(
         bookshelfDao.getAllBookshelfBookIdsFlow()
 
     override suspend fun getBookshelfBookMetadata(id: String): BookshelfBookMetadata? =
-        bookshelfDao.getBookshelfBookMetadata(BookIdentity.bookKey(id))
+        aliases.withResolved(BookIdentity.book(id)) { bookshelfDao.getBookshelfBookMetadata(it.storageKey) }
 
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     override fun getBookshelfBookMetadataFlow(id: String): Flow<BookshelfBookMetadata?> =
-        bookshelfDao.getBookshelfBookMetadataEntityFlow(BookIdentity.bookKey(id)).map {
+        aliases.observe(BookIdentity.book(id)).flatMapLatest { canonical ->
+        bookshelfDao.getBookshelfBookMetadataEntityFlow(canonical.storageKey).map {
             it ?: return@map null
             BookshelfBookMetadata(
                 it.id, it.lastUpdate, it.bookShelfIds
             )
+        }
         }
 
     private suspend fun clearBookshelfIdFromBookshelfBookMetadata(
@@ -220,8 +229,8 @@ class BookshelfRepository @Inject constructor(
         }
     }
 
-    override suspend fun deleteBookFromBookshelf(bookshelfId: Int, bookId: String) {
-        val key = BookIdentity.bookKey(bookId)
+    override suspend fun deleteBookFromBookshelf(bookshelfId: Int, bookId: String) = aliases.transaction {
+        val key = key(bookId)
         clearBookshelfIdFromBookshelfBookMetadata(bookshelfId, key)
         updateBookshelf(bookshelfId) { oldBookshelf ->
             oldBookshelf.copy(
@@ -234,8 +243,8 @@ class BookshelfRepository @Inject constructor(
         }
     }
 
-    override suspend fun deleteBookFromBookshelfUpdatedBookIds(bookshelfId: Int, bookId: String) {
-        val key = BookIdentity.bookKey(bookId)
+    override suspend fun deleteBookFromBookshelfUpdatedBookIds(bookshelfId: Int, bookId: String) = aliases.transaction {
+        val key = key(bookId)
         updateBookshelf(bookshelfId) { oldBookshelf ->
             oldBookshelf.copy(
                 updatedBookIds = oldBookshelf.updatedBookIds.toMutableList()
@@ -246,8 +255,8 @@ class BookshelfRepository @Inject constructor(
     override suspend fun updateBookshelfBookMetadataLastUpdateTime(
         bookId: String,
         time: LocalDateTime
-    ) {
-        val key = BookIdentity.bookKey(bookId)
+    ) = aliases.transaction {
+        val key = key(bookId)
         bookshelfDao.insertBookshelfBookMetadata(
             key,
             time,

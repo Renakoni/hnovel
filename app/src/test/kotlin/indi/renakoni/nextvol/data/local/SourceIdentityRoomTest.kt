@@ -71,9 +71,9 @@ class SourceIdentityRoomTest {
         Dispatchers.setMain(UnconfinedTestDispatcher())
         db = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), NextVolDatabase::class.java)
             .allowMainThreadQueries().build()
-        local = LocalBookDataSource(db.bookInformationDao(), db.bookVolumesDao(), db.chapterContentDao(), db.userReadingDataDao())
+        local = LocalBookDataSource(db.bookInformationDao(), db.bookVolumesDao(), db.chapterContentDao(), db.userReadingDataDao(), BookAliasStore(db))
         downloads = BookDownloadStore(RuntimeEnvironment.getApplication(), db, ContentJsonDecoder(ContentComponentRegistry()))
-        shelves = BookshelfRepository(db.bookshelfDao(), mockk(), indi.renakoni.nextvol.data.web.WebSourceRegistry(), downloads)
+        shelves = BookshelfRepository(db.bookshelfDao(), mockk(), indi.renakoni.nextvol.data.web.WebSourceRegistry(), downloads, local.aliases)
         val coordinator = StatisticsWriteCoordinator()
         stats = StatsRepository(db.bookRecordDao(), db.dailyCountDao(), mockk(), coordinator)
         backup = LocalDataManager(db, db.bookInformationDao(), db.bookRecordDao(), db.dailyCountDao(),
@@ -253,6 +253,31 @@ class SourceIdentityRoomTest {
         assertEquals(1, stats.getTotalReadingSummary().totalMinutes)
         assertEquals(2, stats.getTotalReadingSummary().totalReadCount)
         assertEquals(listOf(a.storageKey, b.storageKey).joinToString(","), db.userDataDao().get(UserDataPath.ReadingBooks.path))
+    }
+
+    @Test fun canonicalAliasesSurviveBackupRoundTripAndRejectCrossSourceMappings() = runBlocking {
+        save(a, "Single")
+        val oldBackup = backup.exportAppLocalData().get()!!
+        val volumes = other.bind(BookVolumes(other.remoteId, listOf(Volume("default", "",
+            listOf(ChapterInformation("9", "First"), ChapterInformation("10", "Second"))))))
+        local.aliases.merge(a, other, info(other, "Series"), volumes)
+        val exported = backup.exportAppLocalData().get()!!
+        val restored = Cbor.decodeFromByteArray<AppLocalData>(Cbor.encodeToByteArray(exported))
+        assertEquals(1, restored.localDataList.single().bookAliases.size)
+        try { backup.importAppLocalData(oldBackup); fail("An old backup cannot resurrect alias rows") }
+        catch (_: IllegalArgumentException) { }
+        assertNull(db.bookInformationDao().get(a.storageKey))
+        backup.cleanDatabaseWithoutGlobalUserData()
+        assertEquals(a, local.aliases.resolve(a))
+        assertTrue(backup.importAppLocalData(restored).isOk)
+        assertEquals(other, local.aliases.resolve(a))
+        assertEquals("Series", local.getBookInformation(a.storageKey)!!.title)
+        assertEquals(SourceChapterId(a, "9").storageKey, local.getUserReadingData(a.storageKey).lastReadChapterId)
+        val invalid = restored.copy(localDataList = listOf(restored.localDataList.single().copy(bookAliases = listOf(
+            indi.renakoni.nextvol.data.local.room.entity.BookAliasEntity(a.storageKey, b.storageKey)))))
+        try { backup.importAppLocalData(invalid, overwrite = true); fail("Cross-source aliases must be rejected") }
+        catch (_: IllegalArgumentException) { }
+        assertEquals(other, local.aliases.resolve(a))
     }
 
     @Test fun preNextVolBackupRestoresSourceAssociationsAndDownloadOwnership() = runBlocking {

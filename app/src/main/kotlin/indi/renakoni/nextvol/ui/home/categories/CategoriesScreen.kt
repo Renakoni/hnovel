@@ -58,7 +58,7 @@ fun CategoriesScreen(
             } else {
                 SourceTabs(state, onSelect, onPage)
                 val id = state.selected
-                content.error?.let { DiscoveryFailure(it, onRefresh, onManageSources, onBack, content.errorField, content.errorPermission) }
+                content.error?.let { DiscoveryFailure(it, onRefresh, onManageSources, onBack, content.errorField, content.errorPermission, content.errorDiagnostic) }
                 if (id != null) key(id, content.resetId) {
                     val list = rememberLazyListState(content.scroll.index, content.scroll.offset)
                     LaunchedEffect(list) {

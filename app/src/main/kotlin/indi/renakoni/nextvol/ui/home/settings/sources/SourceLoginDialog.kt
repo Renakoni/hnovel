@@ -18,10 +18,12 @@ import indi.renakoni.nextvol.R
 /** Renders validated source fields. Scripts and account lifetime remain outside Compose. */
 @Composable
 internal fun SourceLoginDialog(form: LoginForm, busy: Boolean,
-    onSubmit: (Map<String, String>, String?, String) -> Unit, onCancel: () -> Unit) {
+    onSubmit: (Map<String, String>, String?, String) -> Unit, onCancel: () -> Unit,
+    title: String = stringResource(R.string.sources_login), message: String? = null) {
     val values = remember(form) { mutableStateMapOf<String, String>().apply { putAll(form.values) } }
-    AlertDialog(onDismissRequest = onCancel, title = { Text(stringResource(R.string.sources_login)) },
+    AlertDialog(onDismissRequest = onCancel, title = { Text(title) },
         text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            message?.let { Text(it) }
             if (form.browserUrl != null) Text(stringResource(R.string.sources_browser_login))
             form.fields.forEach { field -> key(field.id) {
                 fun change(value: String) {

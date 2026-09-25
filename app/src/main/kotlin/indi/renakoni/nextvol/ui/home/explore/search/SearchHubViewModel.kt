@@ -216,7 +216,7 @@ class SearchHubViewModel internal constructor(
             completed = state.value.completed + if (batch.complete) 1 else 0,
             sources = state.value.sources.map {
                 if (it.id == source.id && batch.complete) it.copy(pending = false, failure = batch.failure,
-                    nextPage = batch.nextPage?.takeIf { added && !limited }) else it
+                    nextPage = batch.nextPage?.takeIf { (added || batch.books.isEmpty()) && !limited }) else it
             })
     }
 

@@ -123,6 +123,8 @@ internal class ReaderReadingRecords(
         }
     }
 
+    suspend fun awaitProgress() { progressJob?.join() }
+
     fun updateTotalReadingTime(bookId: String, seconds: Int) {
         scope.launch(ioDispatcher) {
             totalReadingTimeMutex.withLock {

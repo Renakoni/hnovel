@@ -11,7 +11,7 @@ import org.junit.Assert.*
 import java.nio.file.Files
 import java.util.concurrent.atomic.AtomicInteger
 
-class RuleSourceFixture(browser: BrowserExecutor? = null) : AutoCloseable {
+class RuleSourceFixture(browser: BrowserExecutor? = null, private val trace: ContentTrace = ContentTrace.None) : AutoCloseable {
     val server = MockWebServer()
     val authority = ExecutionAuthority()
     val broker = SourceBroker(Files.createTempDirectory("rule-source-broker"), browser = browser)
@@ -20,10 +20,12 @@ class RuleSourceFixture(browser: BrowserExecutor? = null) : AutoCloseable {
     var cycle = false
     var status = 200
     var afterRun: suspend (ExecutionTask) -> Unit = {}
+    var beforeRun: (ExecutionTask, ExecutionLimits) -> Unit = { _, _ -> }
     var imageBytes = byteArrayOf(1, 2, 3)
     var extraChapter = false
     var duplicateToc = false
     val runner = RuleTaskRunner { identity, task, limits, bridge ->
+        beforeRun(task, limits)
         val scripts = task.libraryCode()?.takeIf(SourceLibraryDefinition::isUrlMap)?.let { bridge.loadLibrary(it) }
         val wire = ExecutionWire.encode(identity, task, limits, scripts).toString(Charsets.UTF_8)
         val result = ExecutionWire.decodeResult(worker.executeSerialized(wire, HostBridge { name, args ->
@@ -90,7 +92,7 @@ class RuleSourceFixture(browser: BrowserExecutor? = null) : AutoCloseable {
         val session = broker.open(SourceScope("rules", definition.sourceId, definition.profile),
             listOf(NetworkGrant(server.url("/").toString(), allowPrivateAddresses = true)))
         val identity = authority.issue(definition.sourceId, definition.profile, definition.contentDigest, "rules")
-        return RuleSource(definition, identity, authority, session, runner)
+        return RuleSource(definition, identity, authority, session, runner, trace)
     }
     override fun close() { worker.close(); broker.close(); server.close() }
 }

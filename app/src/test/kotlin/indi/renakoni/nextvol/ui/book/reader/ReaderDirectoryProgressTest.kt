@@ -124,4 +124,42 @@ class ReaderDirectoryProgressTest {
             verify(exactly = 1) { chapters.getBookVolumesFlow("book", any()) }
         }
     }
+
+    @Test fun sourceRefreshPublishesDirectoryAndSavesProgressBeforeReloadingOnlyTheCurrentChapter() = runBlocking {
+        val book = indi.renakoni.nextvol.data.book.SourceBookId(io.nightfish.lightnovelreader.api.identifier.Identifier("rules", "panel"), "A")
+        val chapter = indi.renakoni.nextvol.data.book.SourceChapterId(book, "one").storageKey
+        val chapters = mockk<ChapterSource> {
+            every { getBookVolumesFlow(any(), any()) } returns flowOf(Ok(BookVolumes(book.storageKey, emptyList())))
+        }
+        val data = AtomicReference(UserReadingData(book.storageKey))
+        val readingData = mockk<BookReadingDataAccess>(relaxed = true)
+        coEvery { readingData.updateChapterProgress(any(), any(), any(), any()) } coAnswers {
+            data.set(arg<(UserReadingData) -> UserReadingData>(3)(data.get())); true
+        }
+        val contentState = object : ContentUiState by mockk(relaxed = true) {
+            override val bookId = book.storageKey
+            override val readingChapterId = chapter
+            override val readingProgress = .4f
+            override val readingChapterContent: Result<ChapterContentUiState, WebRequestError>? =
+                Ok(ChapterContentUiState(chapter, "Current", emptyList(), null, null))
+        }
+        val controller = mockk<ReaderModeController>(relaxed = true) { every { uiState } returns contentState }
+        every { controller.changeChapter(chapter) } answers { assertEquals(.4f, data.get().currentChapterReadingProgressMap[chapter]) }
+        val factory = mockk<ReaderModeFactory> { every { create(any(), any(), any(), any()) } returns controller }
+        val dao = mockk<UserDataDao>(relaxed = true) { every { getFlow(any()) } returns flowOf(null) }
+        coEvery { dao.get(any()) } returns null
+        val reader = ReaderViewModel(mockk(relaxed = true), chapters, readingData, UserDataRepository(dao), factory, mockk())
+        store.put("reader", reader)
+        scheduler.runCurrent()
+        reader.bookId = book.storageKey
+        val volumes = BookVolumes(book.storageKey, listOf(Volume("v", "Updated", listOf(ChapterInformation(chapter, "Current")))))
+        val update = indi.renakoni.nextvol.data.book.ReadingPanelUpdate(volumes, contentChanged = true)
+        reader.applySourcePanelRefresh(book.storageKey, chapter, update)
+        scheduler.runCurrent()
+        assertEquals(Ok(volumes), reader.uiState.bookVolumes)
+        reader.applySourcePanelRefresh(book.copy(remoteId = "B").storageKey, chapter, update)
+        reader.applySourcePanelRefresh(book.storageKey, "other-chapter", update)
+        verify(exactly = 1) { controller.changeChapter(chapter) }
+        assertEquals(Ok(volumes), reader.uiState.bookVolumes)
+    }
 }

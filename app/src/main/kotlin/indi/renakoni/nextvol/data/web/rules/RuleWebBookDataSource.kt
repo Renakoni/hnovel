@@ -37,28 +37,30 @@ internal class RuleWebBookDataSource(override val id: Identifier, private val so
     override suspend fun isOffLine() = false
     override val discoveryProvider = RuleDiscoveryProvider(source, recovery = recovery)
     override val searchProvider: SearchProvider = object : SearchProvider, PagedSearchProvider {
+        private val queries = object : LinkedHashMap<Pair<String, String>, RuleListSession>(8, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Pair<String, String>, RuleListSession>) = size > 8
+        }
         override val searchTypes = if (source.canSearch) listOf(SearchType("keyword", LocalString(R.string.sources_search_type), LocalString(R.string.sources_search_hint))) else emptyList()
         override suspend fun searchPage(type: SearchType, keyword: String, page: Int, query: String?): SearchPage {
-            if (page !in 1..64) throw SourceContentException(ContentError.Limit, "ruleSearch")
-            val books = request { source.search(keyword, page, query) }.getOrElse {
+            val pager = if (query == null) source.openSearchPages(keyword) else synchronized(queries) {
+                queries.getOrPut(query to keyword) { source.openSearchPages(keyword) }
+            }
+            val result = request { pager.page(page) }.getOrElse {
                 throw (it.throwable ?: SourceContentException(ContentError.Unavailable, "ruleSearch"))
             }
-            return SearchPage(books.map { SearchResult.MultipleBook(it.id, it.information()) },
-                if (books.isEmpty()) null else page + 1)
+            return SearchPage(result.books.map { SearchResult.MultipleBook(it.id, it.information()) }, result.nextPage)
         }
         override fun search(searchType: SearchType, keyword: String) = flow {
             val seen = mutableSetOf<String>()
-            val query = java.util.UUID.randomUUID().toString()
+            val pager = source.openSearchPages(keyword)
             for (page in 1..64) {
-                val result = request { source.search(keyword, page, query) }
+                val result = request { pager.page(page) }
                 result.onErr { emit(SearchResult.Error(it.throwable ?: IllegalStateException(it.message))) }
                 if (result.isErr) return@flow
-                var added = false
-                result.onOk { books -> books.filter { seen.add(it.id) }.forEach {
-                    added = true
+                result.onOk { data -> data.books.filter { seen.add(it.id) }.forEach {
                     emit(SearchResult.MultipleBook(it.id, it.information()))
                 } }
-                if (!added) {
+                if (result.getOrElse { return@flow }.nextPage == null) {
                     if (seen.isEmpty()) emit(SearchResult.Empty())
                     emit(SearchResult.End())
                     return@flow
@@ -67,8 +69,11 @@ internal class RuleWebBookDataSource(override val id: Identifier, private val so
             emit(SearchResult.Error(SourceContentException(ContentError.Limit, "ruleSearch")))
         }
     }
+    internal suspend fun canonicalBookId(id: String) = source.canonicalBookId(id)
+
     override suspend fun getBookInformation(id: String) = request {
-        source.information(id).information()
+        // The legacy source API keeps the caller's remote ID; migration is a separate host operation.
+        source.information(id).information().copy(id = id)
     }
     override suspend fun getBookVolumes(id: String) = request {
         val volumes = mutableListOf<Volume>()
