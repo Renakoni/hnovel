@@ -135,7 +135,7 @@ internal class NativeSourceBrowser(private val context: Context, private val net
                 val snapshots = Json.decodeFromString<List<NativeCookieSnapshot>>(arguments)
                 require(snapshots.size <= 4)
                 guard.commit {
-                    check(alive.get() && !session.closed && route.available)
+                    check(alive.get() && work.isActive && !session.closed && route.available)
                     snapshots.filter { session.permissionFailure(it.url) == null }.forEach {
                         session.updateNativeBrowserCookies(it.url, it.cookies, it.completeMetadata, cookieVersion.get())
                     }
