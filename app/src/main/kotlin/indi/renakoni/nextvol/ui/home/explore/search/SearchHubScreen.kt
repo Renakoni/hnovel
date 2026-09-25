@@ -142,7 +142,7 @@ fun SearchHubScreen(
                     LazyColumn(Modifier.weight(1f).testTag("search_results"), state = resultsList,
                         contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp)) {
                         if (state.scopedSources.isEmpty()) item { SearchEmptyScope(onManageSources) }
-                        else if (state.books.isEmpty() && !state.searching && !state.stopped) item {
+                        else if (state.books.isEmpty() && !state.hasMore && !state.searching && !state.stopped) item {
                             if (state.failures.isEmpty()) SearchMessage(stringResource(R.string.search_no_results), stringResource(R.string.search_empty_description))
                             else SearchMessage(stringResource(R.string.search_incomplete_title), stringResource(R.string.search_incomplete_description))
                         }
