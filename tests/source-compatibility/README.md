@@ -50,3 +50,44 @@ identify the source hash, commit and APK hash and separately record import, disc
 login, actual standalone/series work, ordered body/images, restart/progress and logout.
 Leave untested stages incomplete. E/MD3 source inspection and the pinned selector
 reference suite are not full E/MD3 device-lifecycle comparisons.
+
+## Live Pixiv acceptance — 2026-09-25
+
+This record uses the original v284 input with SHA-256
+`9b5fde27e9a6f425a5067a52b2f8ec8082b258a27e968dd637a9d87df45b65d1`.
+The debug application was built from integration commit `4d57caec` plus the fixes
+recorded in `974b5511` (#427), `9e905d49` (#428), `ec4dafc2` (#429),
+`f44f3eb5` (#430), `cbdbcdc0` (#431), and `47ecb510` (#432). Its APK SHA-256 is
+`e0e988cdb003f83a9bcb4dbad184f996444445fd9709b8972148b9a633300059`.
+Private probes used the production isolated runner, encrypted account store and
+application database. No account credentials, private source JSON, page bodies,
+screenshots or probe files are included here.
+
+| Stage | Observed result |
+| --- | --- |
+| Original import | Both novel definitions were imported through the normal UI; the manga definition was skipped. |
+| Original discovery | Main catalogue returned 30 navigation rows, not 30 books. |
+| Login persistence | Saved session and CSRF cache restored after replacement installation without entering credentials again. |
+| Original live search | Returned 62 works: 38 series candidates and 24 standalone candidates. |
+| Original series sample | Details, 9-chapter directory, first chapter with 7,697 text characters, and cover image request succeeded. |
+| Original standalone sample | Details, single-chapter directory, 2,732 text characters, and cover image request succeeded. |
+| Body images | Neither selected chapter contained inline images. Real cover requests passed; text/image ordering remains covered by the synthetic lifecycle fixture, not by these two live chapters. |
+| Process restart | After an explicit Android force-stop, the saved session, actual Room reading position and real search restored successfully. |
+| Backup source | Its original login/settings panel executed successfully. Its discovery rule exists but is disabled by default; it is not a missing-rule case. |
+| Account settings | The original warm settings page became readable after the transport decoding fix. Removing only its cached header object reproduced a separate original-script failure. |
+| Corrected settings script | Only the null-header fallback and the Cookie/User-Agent typo were corrected in both installed novel definitions through the production revision service. Original revisions were retained and the account generation did not change. The cold account settings page then loaded, and returning preserved the session. The original input file is unchanged. |
+| Logout | The isolated synthetic device lifecycle verifies logout/account retirement; a live logout followed by reauthentication was not performed, to leave the user's working session intact. |
+
+All original-source search/reading/restart results above were captured **before**
+applying the two settings-script corrections. They must not be described as proof
+that the unmodified source's cold account-settings action is correct.
+
+The integrated JVM reports contain 102 network, 158 Rhino, 118 execution and 180
+content tests with no failures or skips. Four targeted device regressions passed:
+native login completion, waiting beyond one minute, cancellation/owner isolation,
+and the synthetic reading/progress/logout lifecycle. These are separate from the
+private real-site observations. No full E/MD3 device comparison was performed.
+
+Issue #388 and its draft PR remain open pending the unperformed live logout and
+reauthentication check. This record does not convert partial acceptance into a
+completed lifecycle claim.
