@@ -265,17 +265,17 @@ class RuleDiscoveryProviderTest {
         } }
     }
 
-    @Test fun stoppingAfterFirstHomepageSnapshotDoesNotFetchLaterModules() = runBlocking {
+    @Test fun firstHomepageSnapshotShowsAllEntriesWithoutStartingPreviewRequests() = runBlocking {
         RuleSourceFixture().use { fixture -> fixture.source { raw -> JsonObject(definition(raw) +
             ("homepageModules" to JsonPrimitive("""[
                 {"key":"first","type":"card","title":"First","url":"/search?module=1"},
                 {"key":"second","type":"card","title":"Second","url":"/search?module=2"}
             ]"""))) }.use { source ->
             val first = RuleDiscoveryProvider(source).feedUpdates().first().get()!!
-            assertEquals(listOf("First"), first.map { it.title })
-            assertEquals(1, first.single().books.size)
-            assertEquals(1, fixture.documents.get())
-            assertEquals("/search?module=1", fixture.server.takeRequest().path)
+            assertEquals(listOf("First", "Second"), first.map { it.title })
+            assertEquals(listOf("/search?module=1", "/search?module=2"), first.map { it.more })
+            assertTrue(first.all { it.books.isEmpty() && it.previewFailure == null })
+            assertEquals(0, fixture.documents.get())
         } }
     }
 
