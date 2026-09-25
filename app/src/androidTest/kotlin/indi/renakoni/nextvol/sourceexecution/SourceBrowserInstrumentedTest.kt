@@ -22,6 +22,61 @@ import java.util.concurrent.ConcurrentLinkedQueue
 class SourceBrowserInstrumentedTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
 
+    @Test fun nativeLoginCanWaitBeyondOneMinuteThenResumeTheIsolatedScript(): Unit = runBlocking {
+        ActivityScenario.launch(BrowserTestHostActivity::class.java).use { MockWebServer().use { server ->
+            server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest) = MockResponse().setHeader("Content-Type", "text/html")
+                    .addHeader("Set-Cookie", "auth=budget-fixture; Path=/; Max-Age=600; HttpOnly")
+                    .setBody("<html><head><link rel='icon' href='data:,'></head><body>Login budget fixture</body></html>")
+            }
+            server.start()
+            val root = File(context.cacheDir, "login-budget-${System.nanoTime()}")
+            val authority = ExecutionAuthority()
+            val executor = AndroidIsolatedExecutor(context, authority)
+            try { SourceBroker(root.toPath(), browser = AndroidSourceBrowser(context)).use { broker ->
+                val baseUrl = server.url("/").toString()
+                val session = broker.open(SourceScope("login-budget", root.name, "legado"),
+                    listOf(NetworkGrant(baseUrl, true)))
+                session.configureSource(baseUrl, true, browserRead = true)
+                val identity = authority.issue(root.name, "legado", "1", "login-budget")
+                val limits = ExecutionLimits(timeoutMillis = 300000)
+                try { SourceExecutionBroker(identity, authority, session, limits, baseUrl, allowInteraction = true).use { bridge ->
+                    val pending = async { executor.execute(identity, ExecutionTask.Script("""
+                        var page = java.startBrowserAwait('/login', 'Login budget fixture', false);
+                        page.body().indexOf('Login budget fixture') >= 0 &&
+                            cookie.getCookie(baseUrl).indexOf('auth=budget-fixture') >= 0
+                    """.trimIndent(), baseUrl = baseUrl), limits, bridge) }
+                    val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+                    automation.serviceInfo = automation.serviceInfo.apply {
+                        flags = flags or android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS or
+                            android.accessibilityservice.AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
+                    }
+                    fun find(node: android.view.accessibility.AccessibilityNodeInfo?, id: String): android.view.accessibility.AccessibilityNodeInfo? {
+                        node ?: return null
+                        if (node.isVisibleToUser && node.viewIdResourceName == id) return node
+                        for (index in 0 until node.childCount) find(node.getChild(index), id)?.let { return it }
+                        return null
+                    }
+                    val done = "android:id/button1"
+                    withTimeout(30000) {
+                        while (automation.windows.none {
+                            find(it.root?.takeIf { node -> node.packageName == context.packageName }, done) != null
+                        }) delay(100)
+                    }
+                    delay(65000)
+                    assertFalse("Human input must not be cut off at the old 60-second script limit", pending.isCompleted)
+                    withTimeout(10000) {
+                        while (automation.windows.none {
+                            find(it.root?.takeIf { node -> node.packageName == context.packageName }, done)
+                                ?.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK) == true
+                        }) delay(100)
+                    }
+                    assertEquals(ExecutionResult.Success("true"), withTimeout(15000) { pending.await() })
+                } } finally { session.clearAccount() }
+            } } finally { executor.close(); root.deleteRecursively() }
+        } }
+    }
+
     @Test fun scriptMessagesAndChapterContextCrossTheIsolatedBridge(): Unit = runBlocking {
         val root = File(context.cacheDir, "source-feedback-${System.nanoTime()}")
         val authority = ExecutionAuthority()

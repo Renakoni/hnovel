@@ -15,6 +15,8 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
     private val requestUserAgent: String? = null, currentRequest: BrokerRequest? = null,
     private val memory: ScriptMemory = ScriptMemory()) : AutoCloseable {
     private val currentRequest = currentRequest?.let { it.copy(headers = it.headers.toMap()) }
+    // Waiting for a person must not increase a single HTTP request's network budget.
+    private val requestTimeoutMillis = limits.timeoutMillis.coerceAtMost(60000)
     private val lifetime = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var requests = 0
     private var closed = false
@@ -308,7 +310,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
     }
 
     private suspend fun fetch(request: BrokerRequest, maxResponseBytes: Int = limits.maxDataBytes ?: BridgeWire.MAX_BYTES): BrokerResponse {
-        val result = session.execute(request.copy(timeoutMillis = limits.timeoutMillis, maxResponseBytes = minOf(maxResponseBytes, BrokerLimits.DEFAULT_MAX_RESPONSE_BYTES)), RequestCommitGuard { action -> authorized(action) })
+        val result = session.execute(request.copy(timeoutMillis = requestTimeoutMillis, maxResponseBytes = minOf(maxResponseBytes, BrokerLimits.DEFAULT_MAX_RESPONSE_BYTES)), RequestCommitGuard { action -> authorized(action) })
         if (result is BrokerResult.Failure) requestFailure = result
         check(result is BrokerResult.Success) { "Broker request failed" }
         return result.response
@@ -471,7 +473,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
             check(cached is StorageResult.Value) { "Library cache unavailable" }
             val entry = cached.value?.let { Json.parseToJsonElement(it).jsonObject } ?: run {
                 val response = session.execute(BrokerRequest("library-$requestNumber", url,
-                    timeoutMillis = limits.timeoutMillis, kind = ResourceKind.Script), RequestCommitGuard { action -> authorized(action) })
+                    timeoutMillis = requestTimeoutMillis, kind = ResourceKind.Script), RequestCommitGuard { action -> authorized(action) })
                 if (response is BrokerResult.Failure) requestFailure = response
                 check(response is BrokerResult.Success && response.response.status in 200..299) { "Library download failed" }
                 val code = response.response.text()

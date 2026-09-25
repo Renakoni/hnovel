@@ -15,6 +15,48 @@ import java.util.concurrent.TimeUnit
 class ScriptExecutionTest {
     @get:Rule val directory = TemporaryFolder()
 
+    @Test fun foregroundBudgetKeepsHttpAndRemoteLibrariesWithinNetworkLimits() = runBlocking {
+        val authority = ExecutionAuthority()
+        val requests = mutableListOf<Long>()
+        val browser = BrowserExecutor { _, request, _, _, _ ->
+            requests += request.timeoutMillis
+            BrokerResult.Success(BrokerResponse(0, request.url, emptyMap(), "page".toByteArray(),
+                "UTF-8", 0, protocol = "", kind = ResponseKind.BrowserDocument))
+        }
+        MockWebServer().use { server ->
+            server.start()
+            SourceBroker(directory.root.toPath(), browser = browser).use { sessions ->
+                for (budget in listOf(5000L, 300000L)) {
+                    val id = authority.issue("budget-$budget", "legado", "1", "fixture")
+                    val session = sessions.open(SourceScope("fixture", id.sourceId, "legado"),
+                        listOf(NetworkGrant(server.url("/").toString(), true)))
+                    SourceExecutionBroker(id, authority, session, ExecutionLimits(timeoutMillis = budget),
+                        server.url("/").toString(), allowInteraction = true).use { bridge ->
+                        server.enqueue(MockResponse().setBody("function answer(){return 7;}"))
+                        val library = JsonObject(mapOf("login" to JsonPrimitive(server.url("/library.js").toString()))).toString()
+                        assertEquals(listOf("function answer(){return 7;}"), bridge.loadLibrary(library))
+                        server.enqueue(MockResponse().setBody("http"))
+                        assertEquals(ExecutionResult.Success("\"page:http\""), runScript(id, bridge,
+                            "java.startBrowserAwait('/login','Login',false).body()+':'+java.ajax('/http')"))
+                    }
+                }
+                assertEquals(listOf(5000L, 60000L), requests)
+                assertEquals(4, server.requestCount)
+            }
+        }
+    }
+
+    @Test fun foregroundBudgetRemainsBoundedAndDoesNotChangeDefaults() {
+        assertEquals(5000L, ExecutionLimits().timeoutMillis)
+        assertEquals(5000L, hnovel.rhino.ScriptLimits().timeoutMillis)
+        assertEquals(300000L, ExecutionLimits(timeoutMillis = 300000).timeoutMillis)
+        assertEquals(300000L, hnovel.rhino.ScriptLimits(timeoutMillis = 300000).timeoutMillis)
+        for (invalid in listOf(0L, 300001L)) {
+            assertThrows(IllegalArgumentException::class.java) { ExecutionLimits(timeoutMillis = invalid) }
+            assertThrows(IllegalArgumentException::class.java) { hnovel.rhino.ScriptLimits(timeoutMillis = invalid) }
+        }
+    }
+
     @Test fun sourceVariableAliasUsesTheSameStorageAndScopeAsSetVariable() = runBlocking {
         val authority = ExecutionAuthority()
         SourceBroker(directory.root.toPath()).use { sessions ->

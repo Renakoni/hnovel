@@ -22,7 +22,8 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
     var requestUserAgent: String? = null
     var currentRequest: hnovel.network.BrokerRequest? = null
     var nextChapterUrl: String? = null
-    private val limits = ExecutionLimits(timeoutMillis = if (interactive) 60000 else 30000, maxOutputBytes = 196608,
+    // Human login/verification shares the enclosing login operation's five-minute budget.
+    private val limits = ExecutionLimits(timeoutMillis = if (interactive) 300000 else 30000, maxOutputBytes = 196608,
         maxRequests = 64, maxDataBytes = 16 * 1024 * 1024)
 
     fun fork(bookId: String? = this.bookId, chapterId: String? = this.chapterId) =
