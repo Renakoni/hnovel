@@ -8,6 +8,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.data.book.SourceBookId
 import indi.renakoni.nextvol.data.web.*
 import indi.renakoni.nextvol.ui.home.discovery.*
@@ -44,6 +45,19 @@ class ExploreHomeScreenTest {
     private fun content(id: Identifier) = DiscoveryPageContent(loaded = true, sections = listOf(
         SourceDiscoverySection("list", "Recommended", listOf(SourceDiscoveryBook(SourceBookId(id, "same"), "Same book", "", "")),
             SourceDiscoveryTarget(id, "all"))))
+
+    @Test fun discoveryEmptyPageIsOnlyTerminalWhenItsCursorEnds() {
+        var state by mutableStateOf(DiscoveryResultsState(title = "Results", loaded = true, hasMore = true))
+        activity.get().setContent { MaterialTheme {
+            DiscoveryResultsScreen(state, onFilter = { _, _ -> }, onLoadMore = {}, onRefresh = {},
+                onScroll = {}, onBook = {}, onManageSources = {}, onSettings = {}, onBack = {})
+        } }
+        compose.onNodeWithText(activity.get().getString(R.string.discovery_load_more)).assertIsDisplayed()
+        compose.onNodeWithText(activity.get().getString(R.string.discovery_no_books)).assertDoesNotExist()
+        compose.runOnIdle { state = state.copy(hasMore = false) }
+        compose.onNodeWithText(activity.get().getString(R.string.discovery_no_books)).assertIsDisplayed()
+        compose.onNodeWithText(activity.get().getString(R.string.discovery_load_more)).assertDoesNotExist()
+    }
 
     @Test fun sourceTabsAreTheOnlyTabsAndBooksAndMoreKeepTheirOwningSource() {
         val a = Identifier("fixture", "Source A")

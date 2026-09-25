@@ -366,16 +366,22 @@ class SourceBrowserInstrumentedTest {
         }
     }
 
-    @Test fun postLoginStillAllowsExplicitConfirmation(): Unit = runBlocking {
+    @Test fun inlineBrowserPostCrossesWorkerAndAllowsExplicitConfirmation(): Unit = runBlocking {
         ActivityScenario.launch(BrowserTestHostActivity::class.java).use { MockWebServer().use { server ->
             server.enqueue(MockResponse().setHeader("Content-Type", "text/html")
                 .setBody("<html><head><link rel='icon' href='data:,'></head><body>Signed in</body></html>"))
             server.start()
             val root = File(context.cacheDir, "browser-confirm-${System.nanoTime()}")
+            val authority = ExecutionAuthority()
+            val executor = AndroidIsolatedExecutor(context, authority)
             try { SourceBroker(root.toPath(), browser = AndroidSourceBrowser(context)).use { broker ->
                 val session = broker.open(SourceScope("confirm", "A", "legado"), listOf(NetworkGrant(server.url("/").toString(), true)))
-                val pending = async { session.execute(BrokerRequest("login", server.url("/").toString(),
-                    method = "POST", body = "user=fixture", browser = BrowserOptions(interactive = true))) }
+                val identity = authority.issue("A", "legado", "1", "confirm")
+                val limits = ExecutionLimits(timeoutMillis = 60000)
+                val rule = kotlinx.serialization.json.JsonPrimitive("""${server.url("/")}, {"method":"POST","body":"user=fixture","headers":{"User-Agent":"inline-agent","X-Inline":"kept"}}""")
+                val pending = async { SourceExecutionBroker(identity, authority, session, limits, allowInteraction = true).use { bridge ->
+                    executor.execute(identity, ExecutionTask.Script("java.startBrowserAwait($rule,'Fixture login',false).body()"), limits, bridge)
+                } }
                 val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
                 automation.serviceInfo = automation.serviceInfo.apply {
                     flags = flags or android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
@@ -401,10 +407,15 @@ class SourceBrowserInstrumentedTest {
                     }) delay(100)
                 }
                 val result = withTimeout(10000) { pending.await() }
-                assertTrue(result is BrokerResult.Success)
-                assertEquals(200, (result as BrokerResult.Success).response.status)
-                assertTrue(result.response.text().contains("Signed in"))
-            } } finally { root.deleteRecursively() }
+                assertTrue(result.toString(), result is ExecutionResult.Success)
+                assertTrue((result as ExecutionResult.Success).output.contains("Signed in"))
+                val request = server.takeRequest(1, java.util.concurrent.TimeUnit.SECONDS)!!
+                assertEquals("POST", request.method)
+                assertEquals("user=fixture", request.body.readUtf8())
+                assertEquals("inline-agent", request.getHeader("User-Agent"))
+                assertEquals("kept", request.getHeader("X-Inline"))
+                assertEquals(1, server.requestCount)
+            } } finally { executor.close(); root.deleteRecursively() }
         } }
     }
 

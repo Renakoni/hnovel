@@ -21,19 +21,28 @@ import java.io.IOException
 internal suspend fun SourceRuntime.persistCanonicalBook(
     book: SourceBookId, local: LocalBookDataSource, downloads: BookDownloadStore,
 ): Result<SourceBookId, WebRequestError> = execute {
-    val canonical = SourceBookId(book.sourceId, canonicalBookId(book.remoteId))
+    var canonical = SourceBookId(book.sourceId, canonicalBookId(book.remoteId))
     if (canonical == book) return@execute Ok(local.aliases.resolve(book))
     try {
         coroutineBinding {
-            val information = canonical.bind(getBookInformation(canonical.remoteId).bind())
-            val volumes = canonical.bind(getBookVolumes(canonical.remoteId).bind())
-            checkAvailable()
-            downloads.mergeIdentity(book, canonical, volumes) {
+            repeat(16) {
+                val information = canonical.bind(getBookInformation(canonical.remoteId).bind())
+                val volumes = canonical.bind(getBookVolumes(canonical.remoteId).bind())
+                // Parsing the target can propose another identity. Persist only its final details.
+                val resolved = SourceBookId(book.sourceId, canonicalBookId(canonical.remoteId))
+                if (resolved != canonical) {
+                    canonical = resolved
+                    return@repeat
+                }
                 checkAvailable()
-                local.aliases.merge(book, canonical, information, volumes)
-                checkAvailable()
+                downloads.mergeIdentity(book, canonical, volumes) {
+                    checkAvailable()
+                    local.aliases.merge(book, canonical, information, volumes)
+                    checkAvailable()
+                }
+                return@coroutineBinding canonical
             }
-            canonical
+            error("Book identity did not stabilize")
         }
     } catch (failure: CancellationException) {
         throw failure

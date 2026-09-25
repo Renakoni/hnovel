@@ -107,6 +107,50 @@ inherited, or `const result` in the caller survives both success and failure. Th
 locals remain inside that evaluation. The existing ContextFactory, instruction/depth
 budgets, explicit variable writes, and host authority remain shared and bounded.
 
+## List continuation (#385)
+
+Existing definitions retain integer `page` templates and stop on empty results. No
+bundled definition, category, grant, or external plugin API is changed. A legacy
+empty list cannot prove whether the server ended or a script filtered every row;
+the host does not guess another request or manufacture a remote cursor.
+
+`ruleSearch.nextPageUrl` / `ruleExplore.nextPageUrl` is an **opt-in host extension**,
+not a field in the pinned upstream `SearchRule` / `BookList` contract. It extracts a
+single URL as text against the original response after book extraction, in
+the same worker and broker. For example, `a.next@href` follows a server-provided
+link. JSON APIs can use a rule script to construct the next URL from an actual
+response cursor. Relative links resolve against the response URL; blank/null output
+means terminal, including a nonempty last page. Existing URL rules retain their
+current-URL fallback; this optional continuation deliberately does not use it.
+A real next URL continues even if every current row was filtered. URLs, redirects,
+request options, credentials, and new origins remain subject to the existing broker
+checks; this extension does not authorize a new endpoint.
+Homepage previews do not automatically walk empty pages, but an empty preview with
+a real continuation is not a response failure; its result-list action remains usable.
+Result/search screens retain load-more rather than showing terminal no-results text.
+
+Each result/filter snapshot and search query owns its continuation and transient
+script memory. Discovery exposes the next URL as an opaque cursor; the host-only
+paged search adapter keeps its integer API and retains that URL in its query
+session. Callers need a query ID for cursor-backed search. Refresh/new navigation
+creates a new session. Account/revision retirement also rejects cached pages.
+Only the most recent eight query/target snapshots are retained per adapter; an
+evicted opaque cursor cannot be reconstructed and requires a fresh first page.
+Process/navigation restoration reloads from the first page, not a saved cursor.
+
+Repeated URLs or all-duplicate books end a session. Filtered empty pages with
+changing cursors still obey the 64-page bound and existing per-operation request
+budgets. The last allowed result is retained; an attempted page 65 reports a limit
+before fetching. Pagination trace events contain only the stage, count, and
+`Continue`, `FilteredEmpty`, `End`, `RepeatedCursor`, or `RepeatedBooks`, never
+remote cursors or response bodies. Failed loads leave the continuation unchanged
+and roll back page-local memory; login/network/permission failures remain errors.
+
+The original Pixiv sample fixes `lastId=0` in some latest-list URLs and does not
+declare this extension. The host can stop repeated results but cannot repair that
+upstream omission or guarantee progress after an indistinguishable filtered empty
+legacy page. Offline paging regressions are not authenticated live-site evidence.
+
 ## Finite rows and action protocol
 
 URL rows and the `text`, `toggle`, `select`, and `button` extension types are recognized.

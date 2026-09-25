@@ -25,6 +25,10 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
     override var permissionFailure: DiscoveryPermission? = null
         private set
     private var current: RuleDiscoveryCatalog? = null
+    private data class PageKey(val target: String, val filters: Map<String, String>)
+    private val pages = object : LinkedHashMap<PageKey, RuleListSession>(8, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<PageKey, RuleListSession>) = size > 8
+    }
     override fun openSession(id: String, values: Map<String, String>, environment: DiscoveryEnvironment) =
         RuleDiscoveryProvider(source, source.openDiscovery(id, values, RuleDiscoveryEnvironment(environment.themeMode,
             Json.parseToJsonElement(environment.themeJson).jsonObject, Json.parseToJsonElement(environment.readingJson).jsonObject)), recovery)
@@ -45,10 +49,12 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
         val entries = RuleDiscoveryClassifier.feed(definition)
         val sections = mutableListOf<DiscoverySection>()
         for (category in entries) {
-            val preview = request { session.page(category.url, 1, catalog.values).take(6).map(::book) }
+            val preview = request { session.openPages(category.url, catalog.values).page(1) }
+            val page = preview.get()
             val failure = preview.getError()?.let { DiscoveryPreviewFailure(it, failureField, permissionFailure) }
-                ?: if (preview.get().isNullOrEmpty()) DiscoveryPreviewFailure(DiscoveryError.InvalidResponse, "ruleExplore.bookList") else null
-            sections += DiscoverySection(category.id, category.title, preview.get().orEmpty(), category.url,
+                ?: if (page?.books.isNullOrEmpty() && page?.nextCursor == null)
+                    DiscoveryPreviewFailure(DiscoveryError.InvalidResponse, "ruleExplore.bookList") else null
+            sections += DiscoverySection(category.id, category.title, page?.books.orEmpty().take(6).map(::book), category.url,
                 category.id.takeIf { definition.homepage == null }, failure)
             // A failed preview belongs to its entry, not to the successful catalogue snapshot.
             failureField = null; permissionFailure = null
@@ -63,13 +69,20 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
     override fun filters(target: String) = if (target.startsWith(DISCOVERY_SEARCH_PREFIX)) emptyList() else
         current?.rows.orEmpty().filter { row -> row.targetPrefixes.isEmpty() || row.targetPrefixes.any(target::startsWith) }.mapNotNull(::filter)
 
-    override suspend fun page(request: DiscoveryRequest) = request {
-        val page = request.cursor?.toIntOrNull() ?: if (request.cursor == null) 1
-            else throw SourceContentException(ContentError.InvalidRule, "ruleExplore.page")
-        if (page !in 1..64) throw SourceContentException(ContentError.Limit, "ruleExplore.page")
-        val books = if (request.target.startsWith(DISCOVERY_SEARCH_PREFIX)) source.search(request.target.removePrefix(DISCOVERY_SEARCH_PREFIX), page)
-            else session.page(request.target, page, request.filters)
-        DiscoveryPage(books.map(::book), if (books.isEmpty()) null else (page + 1).toString())
+    override suspend fun page(request: DiscoveryRequest): Result<DiscoveryPage, DiscoveryError> {
+        val key = PageKey(request.target, request.filters.toMap())
+        val pager = synchronized(pages) {
+            if (request.cursor == null) pages.remove(key)
+            pages.getOrPut(key) {
+                if (request.target.startsWith(DISCOVERY_SEARCH_PREFIX))
+                    source.openSearchPages(request.target.removePrefix(DISCOVERY_SEARCH_PREFIX))
+                else session.openPages(request.target, key.filters)
+            }
+        }
+        return request {
+            val page = pager.page(request.cursor)
+            DiscoveryPage(page.books.map(::book), page.nextCursor)
+        }
     }
 
     override suspend fun interact(id: String, value: String?, longClick: Boolean) = request(retry = false) {

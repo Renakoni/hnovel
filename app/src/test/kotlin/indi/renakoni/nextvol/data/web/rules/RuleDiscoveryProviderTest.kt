@@ -6,6 +6,8 @@ import com.github.michaelbull.result.*
 import hnovel.content.RuleSourceFixture
 import hnovel.content.DiscoveryCatalogFixtures
 import hnovel.content.RuleDiscoverySession
+import hnovel.content.RuleListSession
+import hnovel.content.RuleListPage
 import hnovel.content.SourceContentException
 import hnovel.content.ContentError
 import hnovel.content.SourceVerification
@@ -200,12 +202,16 @@ class RuleDiscoveryProviderTest {
             }
             val session = mockk<RuleDiscoverySession>()
             coEvery { session.catalog(homepage = true) } returns catalog
-            coEvery { session.page("/search?module=1", 1, any()) } returns books
+            val firstPages = mockk<RuleListSession>()
+            val secondPages = mockk<RuleListSession>()
+            every { session.openPages("/search?module=1", any()) } returns firstPages
+            every { session.openPages("/search?module=2", any()) } returns secondPages
+            coEvery { firstPages.page(1) } returns RuleListPage(books, "2", 2)
             var attempts = 0
-            coEvery { session.page("/search?module=2", 1, any()) } coAnswers {
+            coEvery { secondPages.page(1) } coAnswers {
                 if (++attempts == 1) throw SourceContentException(ContentError.BrowserRequired,
                     "ruleExplore", verification = verification)
-                books
+                RuleListPage(books, "2", 2)
             }
             val owner = VerificationOwner(Identifier("rules", "progressive"), "revision", 0)
             val listings = MutableStateFlow(listOf(SourceListing(SourceMetadata(
@@ -215,8 +221,8 @@ class RuleDiscoveryProviderTest {
             val sizes = mutableListOf<Int>()
             withContext(ForegroundSourceRequest()) { provider.feedUpdates().collect { sizes += it.get()!!.size } }
             assertEquals(listOf(1, 2), sizes)
-            coVerify(exactly = 1) { session.page("/search?module=1", 1, any()) }
-            coVerify(exactly = 2) { session.page("/search?module=2", 1, any()) }
+            coVerify(exactly = 1) { firstPages.page(1) }
+            coVerify(exactly = 2) { secondPages.page(1) }
             coVerify(exactly = 1) { verification.complete() }
         } }
     }
