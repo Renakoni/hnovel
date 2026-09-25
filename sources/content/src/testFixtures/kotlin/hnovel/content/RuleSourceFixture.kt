@@ -12,10 +12,10 @@ import java.nio.file.Files
 import java.util.concurrent.atomic.AtomicInteger
 
 class RuleSourceFixture(browser: BrowserExecutor? = null, private val trace: ContentTrace = ContentTrace.None,
-    route: SourceRouteProvider? = null) : AutoCloseable {
+    route: SourceRouteProvider? = null, cipher: StorageCipher = StorageCipher.Plain) : AutoCloseable {
     val server = MockWebServer()
     val authority = ExecutionAuthority()
-    val broker = SourceBroker(Files.createTempDirectory("rule-source-broker"), browser = browser, route = route)
+    val broker = SourceBroker(Files.createTempDirectory("rule-source-broker"), browser = browser, route = route, cipher = cipher)
     val worker = WorkerRuntime()
     val documents = AtomicInteger()
     var cycle = false

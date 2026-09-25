@@ -97,6 +97,23 @@ class DiscoveryPerformanceInstrumentedTest {
             val networkMillis = AtomicLong()
             val executionSpans = ConcurrentLinkedQueue<Pair<Long, Long>>()
             val networkSpans = ConcurrentLinkedQueue<Pair<Long, Long>>()
+            val saves = AtomicInteger()
+            val saveNanos = AtomicLong()
+            val opens = AtomicInteger()
+            val openNanos = AtomicLong()
+            val cipher = object : StorageCipher {
+                private val delegate = AndroidSourceStorageCipher()
+                override fun seal(bytes: ByteArray, identity: String): ByteArray {
+                    val start = SystemClock.elapsedRealtimeNanos()
+                    try { return delegate.seal(bytes, identity) }
+                    finally { saves.incrementAndGet(); saveNanos.addAndGet(SystemClock.elapsedRealtimeNanos() - start) }
+                }
+                override fun open(bytes: ByteArray, identity: String): ByteArray {
+                    val start = SystemClock.elapsedRealtimeNanos()
+                    try { return delegate.open(bytes, identity) }
+                    finally { opens.incrementAndGet(); openNanos.addAndGet(SystemClock.elapsedRealtimeNanos() - start) }
+                }
+            }
             val runner = RuleTaskRunner { owner, task, limits, bridge ->
                 val field = (task as? ExecutionTask.Rule)?.location?.field ?: task.javaClass.simpleName
                 calls.computeIfAbsent(field) { AtomicInteger() }.incrementAndGet()
@@ -142,7 +159,7 @@ class DiscoveryPerformanceInstrumentedTest {
                 assertTrue(preview.issues.toString(), preview.issues.isEmpty())
                 assertNull(importer.commit(preview, listOf(ImportSelection(0, ImportDecision.Add))).error)
                 val definition = definitions.list().single()
-                SourceBroker(File(root, "broker").toPath(), cipher = AndroidSourceStorageCipher(),
+                SourceBroker(File(root, "broker").toPath(), cipher = cipher,
                     browser = AndroidSourceBrowser(context)).use { broker ->
                     val session = broker.open(SourceScope("discovery-performance", definition.sourceId, definition.profile),
                         listOf(NetworkGrant(server.url("/").toString(), allowPrivateAddresses = true)))
@@ -160,6 +177,7 @@ class DiscoveryPerformanceInstrumentedTest {
                             }
                             calls.clear(); taskNanos.clear(); executionNanos.set(0); networkMillis.set(0)
                             executionSpans.clear(); networkSpans.clear(); maximumRequests.set(0)
+                            saves.set(0); saveNanos.set(0); opens.set(0); openNanos.set(0)
                             val requestsBefore = server.requestCount
                             val provider = RuleDiscoveryProvider(source, source.openDiscovery("iteration-$iteration"))
                             val ready = linkedMapOf<String, Double>()
@@ -215,6 +233,8 @@ class DiscoveryPerformanceInstrumentedTest {
                                 put("networkSpanMs", unionMillis(networkSpans))
                                 put("observedSpanMs", unionMillis(executionSpans + networkSpans))
                                 put("maxConcurrentRequests", maximumRequests.get())
+                                put("storageSeals", saves.get()); put("storageSealMs", saveNanos.get() / 1_000_000.0)
+                                put("storageOpens", opens.get()); put("storageOpenMs", openNanos.get() / 1_000_000.0)
                             }
                             instrumentation.sendStatus(0, Bundle().apply { putString("discoveryPerformance", report.toString()) })
                         }
