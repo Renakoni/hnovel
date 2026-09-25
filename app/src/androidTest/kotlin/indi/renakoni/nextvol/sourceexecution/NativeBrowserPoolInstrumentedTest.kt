@@ -94,13 +94,26 @@ class NativeBrowserPoolInstrumentedTest {
     @Test fun overlappingPagesCannotReplayOldCookieSeedsAndExplicitHostUpdatesStillApply() = runBlocking {
         fixture { session, server ->
             val changed = CountDownLatch(1)
+            val lateCookie = CountDownLatch(1)
+            val resetEntered = CountDownLatch(1)
             val release = CountDownLatch(1)
             server.dispatcher = object : Dispatcher() {
                 override fun dispatch(request: RecordedRequest): MockResponse = when (request.path) {
                     "/change" -> MockResponse().setHeader("Set-Cookie", "shared=website; Path=/; HttpOnly")
-                        .setHeader("Content-Type", "text/html").setBody(html("<script>fetch('/signal')</script><img src='/hold'>"))
+                        .setHeader("Content-Type", "text/html").setBody(html("<script>fetch('/signal')</script><img src='/hold' onload=\"fetch('/late-signal')\">"))
                     "/signal" -> { changed.countDown(); MockResponse().setBody("ok") }
-                    "/hold" -> { check(release.await(25, TimeUnit.SECONDS)); MockResponse().setResponseCode(404) }
+                    "/late-signal" -> { lateCookie.countDown(); MockResponse().setBody("ok") }
+                    "/hold" -> {
+                        check(release.await(25, TimeUnit.SECONDS))
+                        MockResponse().setHeader("Set-Cookie", "shared=stale; Path=/; HttpOnly")
+                            .setHeader("Content-Type", "image/svg+xml")
+                            .setBody("<svg xmlns='http://www.w3.org/2000/svg' width='1' height='1'/>")
+                    }
+                    "/reset" -> {
+                        resetEntered.countDown()
+                        check(lateCookie.await(20, TimeUnit.SECONDS))
+                        MockResponse().setBody(html(request.getHeader("Cookie").orEmpty()))
+                    }
                     else -> MockResponse().setBody(html(request.getHeader("Cookie").orEmpty()))
                 }
             }
@@ -112,10 +125,61 @@ class NativeBrowserPoolInstrumentedTest {
                 assertFalse(changing.isCompleted)
                 assertTrue(withTimeout(10000) { read(session, server, "/check") }.text().contains("shared=website"))
                 session.setCookie(url, "shared=seed")
-                assertTrue(withTimeout(10000) { read(session, server, "/reset") }.text().contains("shared=seed"))
+                val reset = async { read(session, server, "/reset") }
+                // A wrongly shared reset reaches the server before the old response changes cookies.
+                // Correct admission keeps it queued until the old batch below is released.
+                withContext(Dispatchers.IO) { resetEntered.await(2, TimeUnit.SECONDS) }
+                release.countDown()
+                assertTrue(withTimeout(10000) { reset.await() }.text().contains("shared=seed"))
             } finally { release.countDown() }
             withTimeout(10000) { changing.await() }
             assertTrue(session.cookie(url).contains("shared=seed"))
+        }
+    }
+
+    @Test fun cancellingTheLastSharedPageAlsoStopsItsServiceWorker() = runBlocking {
+        fixture { session, server ->
+            val release = CountDownLatch(1)
+            val pulses = AtomicInteger()
+            server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse = when (request.path) {
+                    "/start" -> MockResponse().setHeader("Content-Type", "text/html").setBody(html(
+                        "<script>navigator.serviceWorker.register('/worker.js')</script><img src='/hold'>"))
+                    "/worker.js" -> MockResponse().setHeader("Content-Type", "application/javascript")
+                        .setBody("self.addEventListener('activate',e=>e.waitUntil(self.clients.claim()));setInterval(()=>fetch('/pulse'),150)")
+                    "/pulse" -> { pulses.incrementAndGet(); MockResponse().setBody("ok") }
+                    "/hold" -> { check(release.await(25, TimeUnit.SECONDS)); MockResponse().setResponseCode(404) }
+                    else -> MockResponse().setBody(html("new page"))
+                }
+            }
+            val pending = async { read(session, server, "/start") }
+            try {
+                withTimeout(15000) { while (pulses.get() < 2) delay(50) }
+                withTimeout(7000) { pending.cancelAndJoin() }
+                delay(500)
+                val stopped = pulses.get()
+                delay(700)
+                assertEquals(stopped, pulses.get())
+                assertTrue(read(session, server, "/next").text().contains("new page"))
+            } finally { release.countDown() }
+        }
+    }
+
+    @Test fun sharedPagesPreserveImageLoadGeneratedContentAndLegitimateEmptyPages() = runBlocking {
+        fixture { session, server ->
+            server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse = when (request.path) {
+                    "/dynamic" -> MockResponse().setHeader("Content-Type", "text/html").setBody(html(
+                        "<ul></ul><img src='/image.svg' onload=\"var li=document.createElement('li');li.textContent='late book';document.querySelector('ul').appendChild(li)\">"))
+                    "/image.svg" -> MockResponse().setHeader("Content-Type", "image/svg+xml")
+                        .setBody("<svg xmlns='http://www.w3.org/2000/svg' width='1' height='1'><rect width='1' height='1'/></svg>")
+                    else -> MockResponse().setHeader("Content-Type", "text/html").setBody(html("<ul></ul>"))
+                }
+            }
+            val dynamic = async { read(session, server, "/dynamic") }
+            val empty = async { read(session, server, "/empty") }
+            assertTrue(dynamic.await().text().contains("<li>late book</li>"))
+            assertTrue(empty.await().text().contains("<ul></ul>"))
         }
     }
 
@@ -154,8 +218,12 @@ class NativeBrowserPoolInstrumentedTest {
             try {
                 try {
                     withContext(Dispatchers.IO) { assertTrue(loaded.await(20, TimeUnit.SECONDS)) }
-                    val memory = ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand(
-                        "dumpsys meminfo -s ${context.packageName}")).bufferedReader().use { it.readText() }
+                    val packages = listOfNotNull(context.packageName,
+                        androidx.webkit.WebViewCompat.getCurrentWebViewPackage(context)?.packageName).distinct()
+                    val memory = packages.joinToString("\n") { name ->
+                        "PACKAGE_SCOPE $name\n" + ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand(
+                            "dumpsys meminfo -s --package $name")).bufferedReader().use { it.readText() }
+                    }
                     File(context.filesDir, "native-pool-memory-$iteration.txt").writeText(memory)
                 } finally { release.countDown() }
                 withTimeout(15000) { reads.awaitAll() }

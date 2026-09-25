@@ -225,6 +225,7 @@ class NativeSourceBrowserService : Service() {
 
     @SuppressLint("SetJavaScriptEnabled")
     private inner class Page(val job: BrowserJob, private val host: IBrowserHost) {
+        private val startedAt = SystemClock.elapsedRealtime()
         val view = WebView(this@NativeSourceBrowserService)
         private val finished = AtomicBoolean()
         private var evaluating = false
@@ -232,7 +233,13 @@ class NativeSourceBrowserService : Service() {
         @Volatile private var httpError = false
         @Volatile private var httpChallenge: BrowserChallengeKind? = null
 
+        private fun trace(stage: String) {
+            if (BuildConfig.DEBUG) android.util.Log.d("NativePageTrace",
+                "job=${job.jobId} stage=$stage elapsedMs=${SystemClock.elapsedRealtime() - startedAt} navigation=$navigation")
+        }
+
         fun open() {
+            trace("Open")
             // WebView must re-check each new TLS handshake against this account's current exceptions.
             view.clearSslPreferences()
             CookieManager.getInstance().apply {
@@ -303,9 +310,14 @@ class NativeSourceBrowserService : Service() {
                 }
                 override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
                     navigation++
+                    trace("Navigation")
+                }
+                override fun onPageCommitVisible(view: WebView, url: String) {
+                    trace("CommitVisible")
                 }
                 override fun onPageFinished(view: WebView, url: String) {
                     if (url != view.url) return
+                    trace("PageFinished")
                     if (!job.options.interactive || job.options.script.isNotBlank())
                         handler.postDelayed({ evaluate() }, 1000 + job.options.delayMillis)
                 }
@@ -351,6 +363,7 @@ class NativeSourceBrowserService : Service() {
 
         fun evaluate() {
             if (finished.get() || evaluating || pages[job.jobId] !== this) return
+            trace("Evaluate")
             evaluating = true
             val version = navigation
             val script = job.options.script.ifBlank { "document.documentElement.outerHTML" }
@@ -423,6 +436,7 @@ class NativeSourceBrowserService : Service() {
 
         fun finish(result: BrokerResult) {
             if (!finished.compareAndSet(false, true)) return
+            trace(if (result is BrokerResult.Success) "Success" else "Failure")
             view.stopLoading()
             CookieManager.getInstance().flush()
             val completed = if (result is BrokerResult.Success) try {

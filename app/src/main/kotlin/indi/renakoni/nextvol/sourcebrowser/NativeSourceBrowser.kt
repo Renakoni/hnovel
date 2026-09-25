@@ -17,7 +17,9 @@ internal class NativeSourceBrowser(private val context: Context, private val net
         val died = CompletableDeferred<Unit>()
         var pendingStorage: RetainedLocalStorage? = null
         var restoredStorage = false
+        var cookieVersion = -1L
         @Volatile var failed = false
+        val leases = java.util.concurrent.atomic.AtomicInteger()
         @Volatile private var remote: IBrowserService? = null
         private fun retire() { runCatching { remote?.shutdown() } }
         val invalidation = route?.onInvalidated(::retire)
@@ -155,14 +157,17 @@ internal class NativeSourceBrowser(private val context: Context, private val net
         val jobId = java.util.UUID.randomUUID().toString()
         val parallel = options.sharedNativePage
         var lease: NativeBrowserSlots.Lease? = null
+        var leaseConnection: Connection? = null
+        var seed: NativeBrowserCookieSeed? = null
         lateinit var bound: Connection
         var remote: IBrowserService? = null
         var started = false
         var completed = false
         try {
             lease = slots.acquire(shared = {
+                seed = session.nativeBrowserCookieSeed(request.url)
                 parallel && connection?.let { it.session === session && it.route === route &&
-                    !it.failed && !it.died.isCompleted && it.restoredStorage } == true
+                    !it.failed && !it.died.isCompleted && it.restoredStorage && it.cookieVersion == seed?.version } == true
             }) { exclusive ->
                 if (!exclusive) bound = checkNotNull(connection)
                 else try {
@@ -198,17 +203,23 @@ internal class NativeSourceBrowser(private val context: Context, private val net
                     withContext(NonCancellable) { disconnect() }
                     throw failure
                 }
+                // Host cookie changes start a new exclusive batch. A late website response
+                // from the old batch cannot contaminate a newer page's cookie snapshot.
+                if (exclusive) seed = session.nativeBrowserCookieSeed(request.url)
+                bound.cookieVersion = checkNotNull(seed).version
+                bound.leases.incrementAndGet()
+                leaseConnection = bound
             }
             if (parallel) lease.single()
             val service = withTimeout(15000) { bound.ready.await() }.also { remote = it }
             session.awaitBrowserAdmission()
             current()
             if (!route.available) return@withContext routeUnavailable()
-            val seed = session.nativeBrowserCookieSeed(request.url)
-            cookieVersion.set(seed.version)
+            val selectedSeed = checkNotNull(seed)
+            cookieVersion.set(selectedSeed.version)
             started = true
             service.start(Json.encodeToString(BrowserJob(request, options, owner, session.enabledCookieJar,
-                network?.networkHandle, session.certificateExceptions(), seed.cookies, jobId, seed.version)), host)
+                network?.networkHandle, session.certificateExceptions(), selectedSeed.cookies, jobId, selectedSeed.version)), host)
             val response = select {
                 result.onAwait { it }
                 bound.died.onAwait { BrokerResult.Failure(RequestStage.Response, FailureCode.Network) }
@@ -252,14 +263,22 @@ internal class NativeSourceBrowser(private val context: Context, private val net
             work.cancel()
             try {
                 if (started && !completed) withContext(NonCancellable) {
+                    // Retire cancelled pages' process-wide workers after the other current pages finish.
+                    // New admissions wait for the retirement; an existing sibling keeps its browser.
+                    bound.failed = true
                     // The service confirms this page is destroyed before its slot can be reused.
                     if (!runCatching { remote?.cancel(jobId) == true }.getOrDefault(false)) {
-                        bound.failed = true
                         runCatching { remote?.shutdown() }
                         withTimeout(5000) { bound.died.await() }
                     }
                 }
-            } finally { lease?.close() }
+            } finally {
+                try {
+                    val owned = leaseConnection
+                    if (owned != null && owned.leases.decrementAndGet() == 0 && owned.failed)
+                        withContext(NonCancellable) { disconnect() }
+                } finally { lease?.close() }
+            }
         }
     }
 
