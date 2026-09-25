@@ -26,10 +26,24 @@ class BookReadingDataRepository @Inject constructor(
         bookId: String, chapterId: String, revision: Long,
         update: (UserReadingData) -> UserReadingData,
     ): Boolean = progressMutex.withLock {
-        val chapter = BookIdentity.chapter(chapterId, BookIdentity.book(bookId)).storageKey
-        if ((chapterResetRevisions[chapter] ?: 0L) > revision) return@withLock false
-        localBookDataSource.updateUserReadingData(bookId, update)
-        true
+        val chapter = BookIdentity.chapter(chapterId, BookIdentity.book(bookId))
+        if ((chapterResetRevisions[chapter.storageKey] ?: 0L) > revision) return@withLock false
+        if (revision >= this.revision.get()) {
+            localBookDataSource.updateUserReadingData(bookId, update)
+            return@withLock true
+        }
+        localBookDataSource.aliases.withResolved(chapter.book) { canonical ->
+            val reset = chapterResetRevisions.any { (key, resetRevision) ->
+                if (resetRevision <= revision) return@any false
+                val saved = SourceChapterId.fromStorageKey(key)
+                saved.remoteId == chapter.remoteId &&
+                    saved.book.sourceId == canonical.sourceId && localBookDataSource.aliases.resolve(saved.book) == canonical
+            }
+            if (reset) false else {
+                localBookDataSource.updateUserReadingData(bookId, update)
+                true
+            }
+        }
     }
 
     suspend fun markChaptersUnread(bookId: String, chapterIds: Set<String>, catalogIds: Set<String>) {

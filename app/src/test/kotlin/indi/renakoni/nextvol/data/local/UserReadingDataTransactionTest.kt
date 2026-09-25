@@ -39,6 +39,7 @@ class UserReadingDataTransactionTest {
         source = LocalBookDataSource(
             database.bookInformationDao(), database.bookVolumesDao(),
             database.chapterContentDao(), database.userReadingDataDao(),
+            indi.renakoni.nextvol.data.book.BookAliasStore(database),
         )
     }
 

@@ -46,6 +46,7 @@ import io.nightfish.lightnovelreader.api.content.builder.simpleText
 
 @Database(
     entities = [
+        indi.renakoni.nextvol.data.local.room.entity.BookAliasEntity::class,
         indi.renakoni.nextvol.data.bookmark.ReadingBookmark::class,
         BookInformationEntity::class,
         VolumeEntity::class,
@@ -65,10 +66,11 @@ import io.nightfish.lightnovelreader.api.content.builder.simpleText
         indi.renakoni.nextvol.data.bangumi.BangumiBindingEntity::class,
         indi.renakoni.nextvol.data.bangumi.BangumiSyncRecord::class
     ],
-    version = 23,
+    version = 24,
     exportSchema = false
 )
 abstract class NextVolDatabase : RoomDatabase() {
+    abstract fun bookAliasDao(): indi.renakoni.nextvol.data.local.room.dao.BookAliasDao
     abstract fun bangumiBindingDao(): indi.renakoni.nextvol.data.bangumi.BangumiBindingDao
     abstract fun readingBookmarkDao(): indi.renakoni.nextvol.data.bookmark.ReadingBookmarkDao
     abstract fun bookInformationDao(): BookInformationDao
@@ -117,7 +119,8 @@ abstract class NextVolDatabase : RoomDatabase() {
                             MIGRATION_19_20,
                             MIGRATION_20_21,
                             MIGRATION_21_22,
-                            MIGRATION_22_23
+                            MIGRATION_22_23,
+                            MIGRATION_23_24
                         )
                         .allowMainThreadQueries()
                         .build()
@@ -920,6 +923,12 @@ abstract class NextVolDatabase : RoomDatabase() {
                 db.execSQL("CREATE TABLE IF NOT EXISTS downloaded_chapter (id TEXT NOT NULL PRIMARY KEY, " +
                     "bookId TEXT NOT NULL, signature TEXT NOT NULL, images TEXT NOT NULL)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_downloaded_chapter_bookId ON downloaded_chapter (bookId)")
+            }
+        }
+
+        internal val MIGRATION_23_24 = object : Migration(23, 24) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS book_alias (id TEXT NOT NULL PRIMARY KEY, canonicalId TEXT NOT NULL)")
             }
         }
 

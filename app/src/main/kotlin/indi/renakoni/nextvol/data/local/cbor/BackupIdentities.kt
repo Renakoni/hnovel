@@ -9,6 +9,13 @@ import kotlinx.serialization.json.Json
 
 /** Validate identity ownership before any import writes, including metadata-only backups. */
 internal fun LocalData.validateIdentities() {
+    val aliasIds = bookAliases.map { it.id }.toSet()
+    require(aliasIds.size == bookAliases.size) { "Duplicate book aliases" }
+    bookAliases.forEach { alias ->
+        val from = SourceBookId.fromStorageKey(alias.id)
+        val to = SourceBookId.fromStorageKey(alias.canonicalId)
+        require(from.sourceId == to.sourceId && to.storageKey !in aliasIds) { "Invalid book alias ownership" }
+    }
     localBookFiles.forEach { it.validate() }
     readingBookmarks.forEach { it.validate() }
     val downloadedBooks = bookDownloadEntities.map { SourceBookId.fromStorageKey(it.bookId) }.toSet()

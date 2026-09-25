@@ -55,6 +55,8 @@ class Wenku8ChapterPersistenceTest {
         }
         val parser = Wenku8WebsiteDataSource("https://fixture.invalid", api)
         val runtime = mockk<SourceRuntime> {
+            coEvery { execute<Any?>(any()) } coAnswers { firstArg<suspend () -> Any?>().invoke() }
+            coEvery { canonicalBookId(any()) } coAnswers { firstArg() }
             coEvery { getChapterContent(any(), any(), any(), any()) } coAnswers {
                 parser.getChapterContent(firstArg(), secondArg())
             }
@@ -68,13 +70,13 @@ class Wenku8ChapterPersistenceTest {
         val path = temporary.root.resolve("chapters.db").absolutePath
         fun database() = Room.databaseBuilder(RuntimeEnvironment.getApplication(), NextVolDatabase::class.java, path)
             .allowMainThreadQueries().build()
-        fun local(db: NextVolDatabase) = LocalBookDataSource(db.bookInformationDao(), db.bookVolumesDao(), db.chapterContentDao(), db.userReadingDataDao())
+        fun local(db: NextVolDatabase) = LocalBookDataSource(db.bookInformationDao(), db.bookVolumesDao(), db.chapterContentDao(), db.userReadingDataDao(), indi.renakoni.nextvol.data.book.BookAliasStore(db))
         fun key(id: String) = BookIdentity.chapter(id, BookIdentity.book("1234")).storageKey
 
         var db = database()
         try {
             var storage = local(db)
-            var repository = ChapterRepository(registry, storage, text, mockk())
+            var repository = ChapterRepository(registry, storage, text, mockk(), mockk())
             val third = repository.getChapterContentFlow("3", "1234").last().get()!!
             assertTrue(third.content.toString().contains("BODY_3"))
             offline = true
@@ -83,7 +85,7 @@ class Wenku8ChapterPersistenceTest {
             db.close()
             db = database()
             storage = local(db)
-            repository = ChapterRepository(registry, storage, text, mockk())
+            repository = ChapterRepository(registry, storage, text, mockk(), mockk())
             offline = false
             for (id in listOf("4", "5")) {
                 val chapter = repository.getChapterContentFlow(id, "1234").last().get()!!

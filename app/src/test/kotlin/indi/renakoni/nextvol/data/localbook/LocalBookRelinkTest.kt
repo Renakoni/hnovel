@@ -65,7 +65,7 @@ class LocalBookRelinkTest {
             override fun getFilesDir() = File(temporary.root, name).apply { mkdirs() }
         }
         val db = Room.databaseBuilder(context, NextVolDatabase::class.java, File(temporary.root, "$name.db").path)
-            .allowMainThreadQueries().addMigrations(NextVolDatabase.MIGRATION_22_23).build().also(databases::add)
+            .allowMainThreadQueries().addMigrations(NextVolDatabase.MIGRATION_22_23, NextVolDatabase.MIGRATION_23_24).build().also(databases::add)
         val store = LocalBookStore(context, db)
         val coordinator = StatisticsWriteCoordinator()
         val backup = LocalDataManager(db, db.bookInformationDao(), db.bookRecordDao(), db.dailyCountDao(),
@@ -344,11 +344,12 @@ class LocalBookRelinkTest {
             execSQL("CREATE TABLE imported_book (bookId TEXT NOT NULL PRIMARY KEY)")
             execSQL("INSERT INTO imported_book SELECT bookId FROM imported_book_new")
             execSQL("DROP TABLE imported_book_new")
+            execSQL("DROP TABLE book_alias")
             version = 22
         }
         library.db.close()
         val reopened = Library("library")
-        assertEquals(23, reopened.db.openHelper.writableDatabase.version)
+        assertEquals(24, reopened.db.openHelper.writableDatabase.version)
         assertTrue(reopened.store.contains(book))
         assertTrue(reopened.db.localBookFileManifestDao().all().isEmpty())
         assertEquals(81, reopened.db.userReadingDataDao().getEntity(book.storageKey)!!.totalReadTime)
