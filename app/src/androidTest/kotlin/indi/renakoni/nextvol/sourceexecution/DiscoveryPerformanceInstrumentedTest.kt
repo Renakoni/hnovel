@@ -20,6 +20,7 @@ import indi.renakoni.nextvol.sourcebrowser.AndroidSourceBrowser
 import io.nightfish.lightnovelreader.api.web.discovery.DiscoverySection
 import io.nightfish.lightnovelreader.api.web.discovery.DiscoveryRequest
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.*
 import okhttp3.mockwebserver.Dispatcher
@@ -49,9 +50,12 @@ class DiscoveryPerformanceInstrumentedTest {
         val modes = (args.getString("discoveryModes") ?: "http,native").split(',')
         require(modes.isNotEmpty() && modes.all { it == "http" || it == "native" })
         val view = args.getString("discoveryView") ?: "feed"
-        require(view in listOf("feed", "list"))
-        val expectedTitles = if (view == "feed") titles else titles.take(1)
-        val booksPerSection = if (view == "feed") 6 else entries
+        require(view in listOf("feed", "list", "handoff", "resume"))
+        val fullList = view == "list" || view == "handoff"
+        val expectedTitles = if (fullList) titles.take(1) else titles
+        val booksPerSection = if (fullList) entries else 6
+        val responseDelay = (args.getString("discoveryDelayMillis") ?: "0").toLong().also { require(it in 0..3000) }
+        val expectedRequests = (args.getString("discoveryExpectedRequests") ?: expectedTitles.size.toString()).toInt()
         val context = instrumentation.targetContext
         for (mode in modes) MockWebServer().use { server ->
             server.dispatcher = object : Dispatcher() {
@@ -74,6 +78,7 @@ class DiscoveryPerformanceInstrumentedTest {
                     }
                     return MockResponse().setHeader("Content-Type", "text/html; charset=utf-8")
                         .setHeader("Cache-Control", "no-store")
+                        .setBodyDelay(responseDelay, java.util.concurrent.TimeUnit.MILLISECONDS)
                         .setBody("<html><head><link rel='icon' href='data:,'></head><body>$body</body></html>")
                 }
             }
@@ -134,6 +139,14 @@ class DiscoveryPerformanceInstrumentedTest {
                     try { RuleSource(definition, identity, authority, session, runner, trace).use { source ->
                         var completed = emptyList<DiscoverySection>()
                         for (iteration in 0..repeats) {
+                            if (view == "handoff" || view == "resume") {
+                                val home = RuleDiscoveryProvider(source, source.openDiscovery("home-$iteration"))
+                                assertNotNull(home.homepageCatalog(refresh = true).get())
+                                var partial = emptyList<DiscoverySection>()
+                                home.feedUpdates().take(2).collect { partial = it.get() ?: error("Preview failed") }
+                                assertEquals(6, partial.first().books.size)
+                                assertTrue(partial.drop(1).all { it.books.isEmpty() })
+                            }
                             calls.clear(); taskNanos.clear(); executionNanos.set(0); networkMillis.set(0)
                             val requestsBefore = server.requestCount
                             val provider = RuleDiscoveryProvider(source, source.openDiscovery("iteration-$iteration"))
@@ -141,7 +154,8 @@ class DiscoveryPerformanceInstrumentedTest {
                             var structureReadyMillis: Double? = null
                             val started = SystemClock.elapsedRealtimeNanos()
                             withTimeout(180_000) {
-                                if (view == "list") {
+                                if (view == "feed") assertNotNull(provider.homepageCatalog(refresh = true).get())
+                                if (fullList) {
                                     val result = provider.page(DiscoveryRequest("/list/0?page={{page}}"))
                                     val page = result.get() ?: error("Discovery list failed: ${result.getError()}")
                                     ready[titles.first()] = (SystemClock.elapsedRealtimeNanos() - started) / 1_000_000.0
@@ -168,10 +182,11 @@ class DiscoveryPerformanceInstrumentedTest {
                                 assertEquals((1..booksPerSection).map { server.url("/book/$sectionIndex/$it").toString() }, section.books.map { it.remoteId })
                             }
                             assertEquals(expectedTitles.size, ready.size)
-                            assertEquals(expectedTitles.size, server.requestCount - requestsBefore)
+                            assertEquals(expectedRequests, server.requestCount - requestsBefore)
                             val report = buildJsonObject {
                                 put("label", args.getString("discoveryLabel") ?: "local")
                                 put("view", view)
+                                put("responseDelayMs", responseDelay)
                                 put("mode", mode); put("iteration", iteration); put("sample", if (iteration == 0) "first" else "repeat")
                                 put("booksPerPage", entries); put("previewBooks", completed.sumOf { it.books.size })
                                 put("firstBooksMs", ready.values.min()); put("allBooksMs", totalMillis)

@@ -28,6 +28,7 @@ class RuleDiscoverySession internal constructor(private val source: RuleSource, 
 
     suspend fun catalog(refresh: Boolean = false, homepage: Boolean = false): RuleDiscoveryCatalog = source.operation("exploreUrl") {
         if (!source.canDiscover) throw SourceContentException(ContentError.MissingCapability, "exploreUrl")
+        if (refresh) source.clearDiscoveryPreviews()
         if (!refresh && homepageOnly == homepage) current?.let { return@operation it }
         val modules = RuleDiscoveryCatalogParser.homepageModules(source.spec.homepageModules)
         val context = context()

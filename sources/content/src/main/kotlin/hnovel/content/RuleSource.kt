@@ -22,6 +22,8 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
     private val discoveryEnabled: Boolean = definition.enabledExplore) : AutoCloseable {
     internal val spec = RuleSourceDefinition(definition)
     private val store = RuleBookStore(session, authority, identity)
+    private val previewDocuments = DiscoveryPreviewDocuments()
+    internal fun clearDiscoveryPreviews() = previewDocuments.clear()
     private val serial = Mutex()
     private var prefetchedDirectoryId: String? = null
     // Search memory belongs to a caller's query. This instance is replaced for another account or revision.
@@ -63,14 +65,46 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
 
     internal suspend fun listPage(context: RuleEvaluation, url: String, urlField: String,
         fields: JsonObject, field: String, overview: Boolean = false, previewLimit: Int? = null): RuleListResult {
-        val document = fetch(context, url, urlField, acceptErrorResponse = fields.string("bookList").isScriptRule())
+        val reusable = overview && context.page == 1 && spec.loginCheck.isBlank() && canDeferBookFields(fields)
+        val request = if (reusable) prepareRequest(context, url, urlField, ResourceKind.Document) else null
+        val key = request?.let { previewKey(context, it) }
+        val cached = key?.let(previewDocuments::get)
+        val document = cached?.document?.also {
+            context.baseUrl = it.ruleUrl
+            context.requestUserAgent = cached.userAgent
+            trace.record(ContentTraceEvent("cache", urlField, 0, result = "PreviewReuse"))
+        } ?: fetch(context, url, urlField, acceptErrorResponse = fields.string("bookList").isScriptRule(), prepared = request, route = key?.route)
+        val responseKey = if (previewLimit != null && cached == null && request != null && key != null)
+            previewKey(context, request)?.takeIf { it.route === key.route } else null
         val books = booksFromPage(context, document, fields, field, overview, previewLimit)
         val rule = fields.string("nextPageUrl")
         // Ordinary URL rules intentionally fall back to the current URL on empty output.
         // Optional continuations must distinguish that empty output from a real repeated link.
         val next = if (rule.isBlank()) null else context.text(rule, document.input(), "$field.nextPageUrl").trim()
             .takeIf { it.isNotBlank() && it != "null" }?.let { sourceLink(document.url, it) }
+        if (responseKey != null && request != null && books.isNotEmpty() &&
+            document.successfulResponse && document.url == request.url) {
+            // A response may establish cookies, but later rule side effects must not rebind its identity.
+            currentCoroutineContext().ensureActive()
+            authority.authorized(identity) {
+                if (previewKey(context, request) == responseKey)
+                    previewDocuments.put(responseKey, document, context.requestUserAgent)
+            }
+        }
         return RuleListResult(books, document.url, next)
+    }
+
+    private fun previewKey(context: RuleEvaluation, request: BrokerRequest): DiscoveryPreviewDocuments.Key? {
+        if (request.method != "GET" || request.body != null || request.cache != CacheMode.Disabled ||
+            request.kind != ResourceKind.Document || request.responseAsHex ||
+            request.browser?.let { it.interactive || it.html != null || it.webCookie != null || it.script.isNotBlank() ||
+                it.sourceRegex.isNotBlank() || it.overrideUrl || it.verificationCode } == true ||
+            session.permissionFailureDetail(request.url) != null) return null
+        val route = session.responseRoute() ?: return null
+        val cookies = runCatching { session.nativeBrowserCookies(request.url).sorted() }.getOrNull() ?: return null
+        val headers = runCatching { session.responseHeaders(request) }.getOrNull() ?: return null
+        val environment = context.discovery?.let { JsonObject(it - "sessionId") }
+        return DiscoveryPreviewDocuments.Key(request.copy(headers = request.headers.toMap()), route, cookies, headers, environment)
     }
 
     fun openSearchPages(keyword: String): RuleListSession = listSession(spec.search, "ruleSearch") { page, url, memory ->
@@ -682,8 +716,8 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         browser: BrowserOptions? = null): BrokerResponse = send(context, prepareRequest(context, url, field, kind, browser), field)
 
     /** Executes a prepared rule request and records the User-Agent its response was fetched with. */
-    private suspend fun send(context: RuleEvaluation, request: BrokerRequest, field: String): BrokerResponse {
-        val response = executeRequest(request, field)
+    private suspend fun send(context: RuleEvaluation, request: BrokerRequest, field: String, route: SourceNetworkRoute? = null): BrokerResponse {
+        val response = executeRequest(request, field, route = route)
         context.requestUserAgent = if (response.protocol == "data") null else session.requestUserAgent(response.finalUrl, request.headers)
         return response
     }
@@ -700,10 +734,12 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         return request.copy(browser = browser ?: request.browser)
     }
 
-    private suspend fun executeRequest(request: BrokerRequest, field: String, publicImage: Boolean = false): BrokerResponse {
+    private suspend fun executeRequest(request: BrokerRequest, field: String, publicImage: Boolean = false,
+        route: SourceNetworkRoute? = null): BrokerResponse {
         val started = System.nanoTime()
         val guard = RequestCommitGuard { authority.authorized(identity, it) }
         val result = if (publicImage) session.loadImage(request, guard)
+            else if (route != null) session.executeOnRoute(request, guard, route)
             else session.execute(if (request.kind == ResourceKind.Image) request.copy(cache = CacheMode.Disabled) else request, guard)
         trace.record(ContentTraceEvent("network", field, (System.nanoTime() - started) / 1_000_000,
             request.body?.length ?: 0, (result as? BrokerResult.Success)?.response?.body?.size ?: 0,
@@ -723,14 +759,15 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         return response
     }
     private suspend fun fetch(context: RuleEvaluation, url: String, field: String, browser: BrowserOptions? = null,
-        acceptErrorResponse: Boolean = false): PageDocument {
-        val request = prepareRequest(context, url, field, ResourceKind.Document, browser)
-        val response = send(context, request, field)
+        acceptErrorResponse: Boolean = false, prepared: BrokerRequest? = null, route: SourceNetworkRoute? = null): PageDocument {
+        val request = prepared ?: prepareRequest(context, url, field, ResourceKind.Document, browser)
+        val response = send(context, request, field, route)
         val inline = response.protocol == "data"
         context.baseUrl = if (inline) url else response.finalUrl
         if (spec.loginCheck.isBlank()) {
             if (!acceptErrorResponse) checkStatus(response.status, field, response.kind == ResponseKind.BrowserDocument)
-            return PageDocument(response.text(), response.finalUrl, inline, context.baseUrl)
+            return PageDocument(response.text(), response.finalUrl, inline, context.baseUrl,
+                response.status in 200..299 || response.status == 0 && response.kind == ResponseKind.BrowserDocument)
         }
         // The pinned hook receives and returns StrResponse, including retry responses from java.connect.
         val snapshot = response.scriptSnapshot(binary = false)
@@ -808,6 +845,8 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
     // request only; nested timeout jobs must not compete with their parent for its last permit.
     internal suspend fun <T : Any> operation(field: String, timeoutMillis: Long = 60000, block: suspend () -> T): T = withContext(Dispatchers.IO) { serial.withLock {
         if (!authority.accepts(identity)) throw SourceContentException(ContentError.Unavailable, field)
+        if (field.startsWith("login") || field.startsWith("browser.") || field in setOf("discovery.action", "discovery.browser"))
+            previewDocuments.clear()
         try { withTimeoutOrNull(timeoutMillis) { block().also { currentCoroutineContext().ensureActive()
             if (!authority.accepts(identity)) throw SourceContentException(ContentError.Unavailable, field) } }
             ?: throw SourceContentException(ContentError.Limit, field) }
@@ -815,7 +854,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         catch (failure: SourceContentException) { throw failure }
         catch (_: Exception) { throw SourceContentException(if (!authority.accepts(identity)) ContentError.Unavailable else ContentError.InvalidRule, field) }
     } }
-    override fun close() { authority.revoke(identity) }
+    override fun close() { authority.revoke(identity); previewDocuments.clear() }
 }
 
 private fun PageDocument.input() = RuleValue.Text(body)
