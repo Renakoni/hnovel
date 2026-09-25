@@ -76,7 +76,7 @@ screenshots or probe files are included here.
 | Backup source | Its original login/settings panel executed successfully. Its discovery rule exists but is disabled by default; it is not a missing-rule case. |
 | Account settings | The original warm settings page became readable after the transport decoding fix. Removing only its cached header object reproduced a separate original-script failure. |
 | Corrected settings script | Only the null-header fallback and the Cookie/User-Agent typo were corrected in both installed novel definitions through the production revision service. Original revisions were retained and the account generation did not change. The cold account settings page then loaded, and returning preserved the session. The original input file is unchanged. |
-| Logout | The isolated synthetic device lifecycle verifies logout/account retirement; a live logout followed by reauthentication was not performed, to leave the user's working session intact. |
+| Logout and reauthentication | A follow-up on the settings-corrected definitions passed real logout, fresh website authentication, browser completion, and restoration after an explicit force-stop. Details and source boundaries are recorded below. |
 
 All original-source search/reading/restart results above were captured **before**
 applying the two settings-script corrections. They must not be described as proof
@@ -88,6 +88,36 @@ native login completion, waiting beyond one minute, cancellation/owner isolation
 and the synthetic reading/progress/logout lifecycle. These are separate from the
 private real-site observations. No full E/MD3 device comparison was performed.
 
-Issue #388 and its draft PR remain open pending the unperformed live logout and
-reauthentication check. This record does not convert partial acceptance into a
-completed lifecycle claim.
+### Live logout and reauthentication follow-up
+
+The follow-up used the same application APK and the installed definitions with
+the two settings-script corrections described above. It does not replace the
+original-input results or claim that the unmodified cold settings script works.
+The original input and application hashes were checked again and are unchanged.
+
+- Before logout, real search, standalone/series details, directories, bodies,
+  covers, the backup panel and the existing database reading position passed
+  again. Existing reading positions were not overwritten.
+- Production logout advanced the persisted account generation and cleared the
+  Pixiv site/login cookies, source credential caches and private account/cache
+  markers. The old login panel was rejected, while the backup source's account
+  generation remained unchanged. The application displayed logged out.
+- The normal application flow opened a fresh website login form. Authentication
+  with the same test user succeeded; returning through the browser's completion
+  button made the application display session saved. No old credentials were
+  copied back to recreate the account.
+- After an explicit Android force-stop, two private device tests passed: the new
+  session and CSRF cache restored without the retired private markers, real
+  search returned works (61 in this check), and the pre-logout database reading
+  position and chapter were unchanged. Live result counts are observations, not
+  a fixed acceptance threshold.
+- The real account settings page opened again after reauthentication. Returning
+  to source details preserved the saved session. The working login and reading
+  data were retained; the temporary test package and local checkpoint files were
+  removed.
+
+The real reauthentication check uses one test user across different account
+generations. Different-user isolation and mixed text/image ordering are still
+covered by the synthetic device lifecycle, not mislabeled as real-site results.
+Together with the preceding original-input observations, this completes the
+required #388 acceptance stages within the stated source and test boundaries.
