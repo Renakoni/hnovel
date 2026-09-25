@@ -6,8 +6,6 @@ import hnovel.network.*
 import indi.renakoni.nextvol.data.web.AndroidSourceNetworks
 import kotlinx.coroutines.*
 import kotlinx.coroutines.selects.select
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
@@ -19,6 +17,7 @@ internal class NativeSourceBrowser(private val context: Context, private val net
         val died = CompletableDeferred<Unit>()
         var pendingStorage: RetainedLocalStorage? = null
         var restoredStorage = false
+        @Volatile var failed = false
         @Volatile private var remote: IBrowserService? = null
         private fun retire() { runCatching { remote?.shutdown() } }
         val invalidation = route?.onInvalidated(::retire)
@@ -43,7 +42,8 @@ internal class NativeSourceBrowser(private val context: Context, private val net
 
     companion object {
         // All instances share the one manifest process, including instrumentation hosts.
-        private val serial = Mutex()
+        internal const val PAGE_LIMIT = 2
+        private val slots = NativeBrowserSlots(PAGE_LIMIT)
         private var connection: Connection? = null
         private suspend fun disconnect() {
             val old = connection ?: return
@@ -108,23 +108,25 @@ internal class NativeSourceBrowser(private val context: Context, private val net
     }
 
     suspend fun execute(session: SourceSession, request: BrokerRequest, options: BrowserOptions,
-        guard: RequestCommitGuard, route: SourceNetworkRoute): BrokerResult = withContext(Dispatchers.IO) { serial.withLock {
+        guard: RequestCommitGuard, route: SourceNetworkRoute): BrokerResult = withContext(Dispatchers.IO) {
         val files = NativeBrowserFiles(context)
         if (!files.supported)
-            return@withLock BrokerResult.Failure(RequestStage.Parse, FailureCode.BrowserRequired)
+            return@withContext BrokerResult.Failure(RequestStage.Parse, FailureCode.BrowserRequired)
         fun routeUnavailable() = BrokerResult.Failure(RequestStage.Connect, FailureCode.RouteUnavailable)
-        if (!route.available) return@withLock routeUnavailable()
+        if (!route.available) return@withContext routeUnavailable()
         val network = if (route.mode == SourceNetworkMode.BypassVpn)
-            networks.boundNetwork(route) ?: return@withLock routeUnavailable() else null
+            networks.boundNetwork(route) ?: return@withContext routeUnavailable() else null
         if (options.html != null || request.method != "GET" || !request.followRedirects || request.responseAsHex ||
             request.cache == CacheMode.Only ||
             request.headers.keys.any { it.equals("Cookie", true) })
-            return@withLock BrokerResult.Failure(RequestStage.Parse, FailureCode.InvalidRequest)
-        fun current() { check(!session.closed); guard.commit {} }
+            return@withContext BrokerResult.Failure(RequestStage.Parse, FailureCode.InvalidRequest)
+        val alive = java.util.concurrent.atomic.AtomicBoolean(true)
+        fun current() { check(alive.get() && !session.closed); guard.commit {} }
         current()
         val owner = nativeBrowserProfile(session.scope)
         val retention = NativeBrowserRetention(context.noBackupFilesDir, session.scope)
         val result = CompletableDeferred<BrokerResult>()
+        val cookieVersion = java.util.concurrent.atomic.AtomicLong(-1)
         val work = CoroutineScope(currentCoroutineContext() + SupervisorJob(currentCoroutineContext()[Job]))
         val host = object : IBrowserHost.Stub() {
             override fun call(operation: String, arguments: String): ParcelFileDescriptor {
@@ -133,9 +135,9 @@ internal class NativeSourceBrowser(private val context: Context, private val net
                 val snapshots = Json.decodeFromString<List<NativeCookieSnapshot>>(arguments)
                 require(snapshots.size <= 4)
                 guard.commit {
-                    check(!session.closed && route.available)
+                    check(alive.get() && !session.closed && route.available)
                     snapshots.filter { session.permissionFailure(it.url) == null }.forEach {
-                        session.updateNativeBrowserCookies(it.url, it.cookies, it.completeMetadata)
+                        session.updateNativeBrowserCookies(it.url, it.cookies, it.completeMetadata, cookieVersion.get())
                     }
                 }
                 return BrowserWire.pipe("true")
@@ -150,64 +152,89 @@ internal class NativeSourceBrowser(private val context: Context, private val net
                 }.invokeOnCompletion { output.close() }
             }
         }
+        val jobId = java.util.UUID.randomUUID().toString()
+        val parallel = options.sharedNativePage
+        var lease: NativeBrowserSlots.Lease? = null
+        lateinit var bound: Connection
+        var remote: IBrowserService? = null
+        var started = false
         var completed = false
         try {
-            fenceUnknownProcess(owner)
-            if (connection?.session !== session || connection?.route !== route || connection?.died?.isCompleted == true) disconnect()
-            current()
-            if (!route.available) return@withLock routeUnavailable()
-            val bound = connection ?: run {
-                val stored = try { retention.read() } catch (_: Exception) { throw LocalStorageFailure() }
-                check(stored == null || stored.generation <= session.scope.accountGeneration) { "Native account retired" }
-                val pending = stored?.takeIf { it.generation == session.scope.accountGeneration && it.values != null }
-                if (session.scope.accountGeneration > 0 && (stored != null || session.localStorageRetention.origins.isNotEmpty()) &&
-                    (stored == null || stored.generation < session.scope.accountGeneration)) guard.commit {
-                    check(!session.closed)
-                    // Fence late cleanup even when an earlier handoff failed or an account was skipped.
-                    try { retention.write(RetainedLocalStorage(session.scope.accountGeneration)) }
-                    catch (_: Exception) { throw LocalStorageFailure() }
+            lease = slots.acquire(shared = {
+                parallel && connection?.let { it.session === session && it.route === route &&
+                    !it.failed && !it.died.isCompleted && it.restoredStorage } == true
+            }) { exclusive ->
+                if (!exclusive) bound = checkNotNull(connection)
+                else try {
+                    fenceUnknownProcess(owner)
+                    if (connection?.session !== session || connection?.route !== route ||
+                        connection?.failed == true || connection?.died?.isCompleted == true) disconnect()
+                    current()
+                    check(route.available)
+                    bound = connection ?: run {
+                        val stored = try { retention.read() } catch (_: Exception) { throw LocalStorageFailure() }
+                        check(stored == null || stored.generation <= session.scope.accountGeneration) { "Native account retired" }
+                        val pending = stored?.takeIf { it.generation == session.scope.accountGeneration && it.values != null }
+                        if (session.scope.accountGeneration > 0 && (stored != null || session.localStorageRetention.origins.isNotEmpty()) &&
+                            (stored == null || stored.generation < session.scope.accountGeneration)) guard.commit {
+                            check(!session.closed)
+                            // Fence late cleanup even when an earlier handoff failed or an account was skipped.
+                            try { retention.write(RetainedLocalStorage(session.scope.accountGeneration)) }
+                            catch (_: Exception) { throw LocalStorageFailure() }
+                        }
+                        // Recover a crash after the handoff was saved but before the retired profile was removed.
+                        if (pending != null) files.clear(nativeBrowserProfile(session.scope.copy(accountGeneration = pending.generation - 1)))
+                        files.prepare(owner)
+                        bind(owner, route, session).also { it.pendingStorage = pending }
+                    }
+                    withTimeout(15000) { bound.ready.await() }
+                    if (!bound.restoredStorage) {
+                        val selected = session.localStorageRetention.select(bound.pendingStorage?.values.orEmpty())
+                        if (selected.isNotEmpty()) localStorage(bound,
+                            LocalStorageJob(owner, session.localStorageRetention, selected, network?.networkHandle), ::current)
+                        bound.restoredStorage = true
+                    }
+                } catch (failure: Throwable) {
+                    withContext(NonCancellable) { disconnect() }
+                    throw failure
                 }
-                // Recover a crash after the handoff was saved but before the retired profile was removed.
-                if (pending != null) files.clear(nativeBrowserProfile(session.scope.copy(accountGeneration = pending.generation - 1)))
-                files.prepare(owner)
-                bind(owner, route, session).also { it.pendingStorage = pending }
             }
-            val remote = withTimeout(15000) { bound.ready.await() }
-            if (!bound.restoredStorage) {
-                val selected = session.localStorageRetention.select(bound.pendingStorage?.values.orEmpty())
-                if (selected.isNotEmpty()) localStorage(bound,
-                    LocalStorageJob(owner, session.localStorageRetention, selected, network?.networkHandle), ::current)
-                bound.restoredStorage = true
-            }
+            if (parallel) lease.single()
+            val service = withTimeout(15000) { bound.ready.await() }.also { remote = it }
             session.awaitBrowserAdmission()
             current()
-            if (!route.available) return@withLock routeUnavailable()
-            remote.start(Json.encodeToString(BrowserJob(request, options, owner, session.enabledCookieJar,
-                network?.networkHandle, session.certificateExceptions(), session.nativeBrowserCookies(request.url))), host)
+            if (!route.available) return@withContext routeUnavailable()
+            val seed = session.nativeBrowserCookieSeed(request.url)
+            cookieVersion.set(seed.version)
+            started = true
+            service.start(Json.encodeToString(BrowserJob(request, options, owner, session.enabledCookieJar,
+                network?.networkHandle, session.certificateExceptions(), seed.cookies, jobId, seed.version)), host)
             val response = select {
                 result.onAwait { it }
                 bound.died.onAwait { BrokerResult.Failure(RequestStage.Response, FailureCode.Network) }
             }
+            completed = true
+            if (response is BrokerResult.Failure && response.stage == RequestStage.Connect) bound.failed = true
             current()
-            if (!route.available) return@withLock routeUnavailable()
+            if (!route.available) return@withContext routeUnavailable()
             if (response is BrokerResult.Success && bound.pendingStorage != null) {
                 guard.commit {
                     check(!session.closed)
-                    try { retention.write(RetainedLocalStorage(session.scope.accountGeneration)) }
-                    catch (_: Exception) { throw LocalStorageFailure() }
-                    bound.pendingStorage = null
+                    if (bound.pendingStorage != null) {
+                        try { retention.write(RetainedLocalStorage(session.scope.accountGeneration)) }
+                        catch (_: Exception) { throw LocalStorageFailure() }
+                        bound.pendingStorage = null
+                    }
                 }
             }
             if (response is BrokerResult.Failure && response.code == FailureCode.BrowserRequired && !options.interactive) guard.commit {
                 check(session.write(StorageRequest(StorageArea.Account, StorageRequestKey.BROWSER_PENDING_URL, request.url)) is StorageResult.Value)
             }
-            // A failed startup must not leave a half-initialized process for the next request.
-            completed = response !is BrokerResult.Failure || response.stage != RequestStage.Connect
             val certificate = (response as? BrokerResult.Failure)?.certificate
             if (response is BrokerResult.Failure && response.code == FailureCode.Certificate && certificate != null) {
                 var failure: BrokerResult.Failure? = null
                 guard.commit { failure = session.browserCertificateFailure(certificate) }
-                return@withLock checkNotNull(failure)
+                return@withContext checkNotNull(failure)
             }
             if (response is BrokerResult.Failure && response.challenge != null && !options.interactive)
                 response.copy(verificationRequest = request.copy(browser = options))
@@ -221,14 +248,22 @@ internal class NativeSourceBrowser(private val context: Context, private val net
         catch (failure: Exception) {
             if (!route.available) routeUnavailable() else throw failure
         } finally {
+            alive.set(false)
             work.cancel()
-            // Normal task completion retains Chromium's in-memory session cookies. Cancellation
-            // stops the owner process before another request can use or retire its directory.
-            if (!completed) withContext(NonCancellable) { disconnect() }
+            try {
+                if (started && !completed) withContext(NonCancellable) {
+                    // The service confirms this page is destroyed before its slot can be reused.
+                    if (!runCatching { remote?.cancel(jobId) == true }.getOrDefault(false)) {
+                        bound.failed = true
+                        runCatching { remote?.shutdown() }
+                        withTimeout(5000) { bound.died.await() }
+                    }
+                }
+            } finally { lease?.close() }
         }
-    } }
+    }
 
-    fun clearAccount(scope: SourceScope, selection: LocalStorageRetention) = runBlocking(Dispatchers.IO) { serial.withLock {
+    fun clearAccount(scope: SourceScope, selection: LocalStorageRetention) = runBlocking(Dispatchers.IO) { slots.exclusive {
         val owner = nativeBrowserProfile(scope)
         val files = NativeBrowserFiles(context)
         val retention = NativeBrowserRetention(context.noBackupFilesDir, scope)

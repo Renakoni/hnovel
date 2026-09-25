@@ -19,7 +19,7 @@ import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** One disposable Chromium process at a time, including API 24's process-wide browser directory. */
+/** The disposable broker browser stays serial; the native browser owns its separate page admission. */
 @Singleton
 class AndroidSourceBrowser @Inject constructor(@ApplicationContext private val context: Context,
     networks: AndroidSourceNetworks = AndroidSourceNetworks(context)) : BrowserExecutor {
@@ -45,7 +45,7 @@ class AndroidSourceBrowser @Inject constructor(@ApplicationContext private val c
     }
 
     override suspend fun execute(session: SourceSession, request: BrokerRequest, options: BrowserOptions,
-        guard: RequestCommitGuard, route: SourceNetworkRoute): BrokerResult = serial.withLock { withContext(Dispatchers.IO) {
+        guard: RequestCommitGuard, route: SourceNetworkRoute): BrokerResult = withContext(Dispatchers.IO) {
         require(options.title.length <= 1024 && options.script.length <= 65536 && options.sourceRegex.length <= 2048 &&
             options.delayMillis in 0..30000 && (options.html?.length ?: 0) <= 196608 && (options.webCookie?.length ?: 0) <= 65536)
         require(!options.verificationCode || options.interactive)
@@ -59,6 +59,11 @@ class AndroidSourceBrowser @Inject constructor(@ApplicationContext private val c
                 return@withContext BrokerResult.Failure(RequestStage.Connect, FailureCode.RouteUnsupported)
             return@withContext native.execute(session, request, options, guard, route)
         }
+        serial.withLock { executeBrokerBrowser(session, request, options, guard, route) }
+    }
+
+    private suspend fun executeBrokerBrowser(session: SourceSession, request: BrokerRequest, options: BrowserOptions,
+        guard: RequestCommitGuard, route: SourceNetworkRoute): BrokerResult {
         val connected = CompletableDeferred<IBrowserService>()
         val died = CompletableDeferred<Unit>()
         val result = CompletableDeferred<BrokerResult>()
@@ -138,7 +143,7 @@ class AndroidSourceBrowser @Inject constructor(@ApplicationContext private val c
         }
         var remote: IBrowserService? = null
         var bound = false
-        try {
+        return try {
             current()
             val flags = Context.BIND_AUTO_CREATE or
                 if (options.interactive && Build.VERSION.SDK_INT >= 34) Context.BIND_ALLOW_ACTIVITY_STARTS else 0
@@ -161,5 +166,5 @@ class AndroidSourceBrowser @Inject constructor(@ApplicationContext private val c
                 check(directory.deleteRecursively())
             }
         }
-    } }
+    }
 }
