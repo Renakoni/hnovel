@@ -174,6 +174,29 @@ class SearchHubViewModelTest {
         assertEquals(a.queries[0], b.queries[0])
     }
 
+    @Test fun filteredEmptyPagesRetainAnExplicitContinuationUntilTheProviderEnds() = runTest(dispatcher) {
+        val provider = Paged().apply { load = { _, page -> when (page) {
+            1 -> SearchPage(emptyList(), 2)
+            2 -> SearchPage(listOf(item("final", "Title")), 3)
+            else -> SearchPage(emptyList(), null)
+        } } }
+        add("a", provider)
+        val model = model()
+        runCurrent()
+        model.search("Title")
+        advanceUntilIdle()
+        assertTrue(model.state.value.books.isEmpty())
+        assertTrue(model.state.value.hasMore)
+        model.loadMore()
+        advanceUntilIdle()
+        assertEquals(1, model.state.value.books.size)
+        assertTrue(model.state.value.hasMore)
+        model.loadMore()
+        advanceUntilIdle()
+        assertFalse(model.state.value.hasMore)
+        assertEquals(listOf("Title" to 1, "Title" to 2, "Title" to 3), provider.requests)
+    }
+
     @Test fun repeatedPageEndsPaginationAndMatchingBooksRankAheadOfUnrelatedTitles() = runTest(dispatcher) {
         val provider = Paged().apply { load = { _, page -> SearchPage(listOf(item("other", "Other"), item("match", "Title")), page + 1) } }
         add("a", provider)

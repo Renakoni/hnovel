@@ -40,7 +40,7 @@ import java.time.LocalDateTime
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [27], application = Application::class)
 class CanonicalRuleHostTest {
-    private class Library(val fixture: RuleSourceFixture) : AutoCloseable {
+    private class Library(val fixture: RuleSourceFixture, redirectSeries: Boolean = false) : AutoCloseable {
         private val root = Files.createTempDirectory("canonical-host").toFile()
         private val context = object : ContextWrapper(RuntimeEnvironment.getApplication()) {
             override fun getFilesDir() = root
@@ -50,6 +50,7 @@ class CanonicalRuleHostTest {
         val first = book("/novel/1")
         val second = book("/novel/2")
         val series = book("/series/10")
+        val movedSeries = book("/series/20")
         var status = 200
         var includeFirst = true
         val registry = WebSourceRegistry(fixture.authority)
@@ -75,6 +76,8 @@ class CanonicalRuleHostTest {
                         "/series/10" -> "<h1>Series</h1>" +
                             (if (includeFirst) "<li><a href='/novel/1'>First</a></li>" else "") +
                             "<li><a href='/novel/2'>Second</a></li>"
+                        "/series/20" -> "<h1>Moved series</h1><li><a href='/novel/1'>First</a></li>" +
+                            "<li><a href='/novel/2'>Second</a></li>"
                         else -> return MockResponse().setResponseCode(404)
                     }
                     return MockResponse().setHeader("Content-Type", "text/html").setBody(body)
@@ -82,7 +85,9 @@ class CanonicalRuleHostTest {
             }
             val source = fixture.source { raw -> JsonObject(raw + mapOf(
                 "ruleBookInfo" to buildJsonObject {
-                    put("init", "@js:book.bookUrl = '${series.remoteId}'; result")
+                    put("init", if (redirectSeries)
+                        "@js:book.bookUrl = book.bookUrl == '${first.remoteId}' ? '${series.remoteId}' : '${movedSeries.remoteId}'; result"
+                        else "@js:book.bookUrl = '${series.remoteId}'; result")
                     put("name", "h1@text"); put("canReName", "true")
                     put("tocUrl", "@js:book.bookUrl"); put("updateTime", "@js:'published'")
                 },
@@ -150,6 +155,22 @@ class CanonicalRuleHostTest {
             assertEquals(series, BookAliasStore(db).resolve(first))
             assertEquals(60, db.userReadingDataDao().getEntity(series.storageKey)!!.totalReadTime)
             assertNotNull(db.chapterContentDao().get(targetChapter))
+        } } }
+    }
+
+    @Test fun canonicalDetailsCanProposeAnotherIdentityBeforeHostPersistence() = runBlocking {
+        RuleSourceFixture().use { fixture -> Library(fixture, redirectSeries = true).use { library -> with(library) {
+            save(first)
+            assertTrue(books.refreshBookInformation(first).isOk)
+            assertEquals(movedSeries, aliases.resolve(first))
+            assertEquals("Moved series", local.getBookInformation(first.storageKey)!!.title)
+            assertTrue(books.refreshBookInformation(movedSeries).isOk)
+            assertTrue(books.refreshBookInformation(series).isOk)
+            assertEquals(listOf(movedSeries.storageKey), db.bookInformationDao().getAllEntities().map { it.id })
+            assertEquals(movedSeries, aliases.resolve(series))
+            assertEquals(30, local.getUserReadingData(movedSeries.storageKey).totalReadTime)
+            assertEquals(SourceChapterId(movedSeries, first.remoteId).storageKey,
+                local.getUserReadingData(movedSeries.storageKey).lastReadChapterId)
         } } }
     }
 

@@ -119,6 +119,87 @@ class ScriptExecutionTest {
         }
     }
 
+    @Test fun browserCallsCompileInlineOptionsBeforeOpeningAndRefetching() = runBlocking {
+        val authority = ExecutionAuthority()
+        val opened = mutableListOf<BrokerRequest>()
+        val browser = BrowserExecutor { _, request, options, guard, _ ->
+            assertTrue(options.interactive)
+            guard.commit { opened += request }
+            BrokerResult.Success(BrokerResponse(200, request.url, emptyMap(), "rendered".toByteArray(), "UTF-8", 0))
+        }
+        MockWebServer().use { server ->
+            server.start()
+            SourceBroker(directory.root.toPath(), browser = browser).use { sessions ->
+                val id = authority.issue("a", "legado", "1", "fixture")
+                val session = sessions.open(SourceScope("fixture", "a", "legado"), listOf(NetworkGrant(server.url("/").toString(), true)))
+                val rule = JsonPrimitive("""../verify, {"headers":{"User-Agent":"inline-agent","X-Explicit":"kept"}}""")
+                SourceExecutionBroker(id, authority, session, ExecutionLimits(), server.url("/root/").toString(), allowInteraction = true).use { bridge ->
+                    assertEquals(ExecutionResult.Success("\"opened\""), runScript(id, bridge, "java.startBrowser($rule,'open');'opened'"))
+                    assertEquals(ExecutionResult.Success("\"rendered\""), runScript(id, bridge, "java.startBrowserAwait($rule,'rendered',false).body()"))
+                    assertEquals(0, server.requestCount)
+                    server.enqueue(MockResponse().setBody("refetched"))
+                    assertEquals(ExecutionResult.Success("\"refetched\""), runScript(id, bridge, "java.startBrowserAwait($rule,'refetch').body()"))
+                    val refetched = server.takeRequest(1, TimeUnit.SECONDS)!!
+                    assertEquals("/verify", refetched.path)
+                    assertEquals("inline-agent", refetched.getHeader("User-Agent"))
+                    assertEquals("kept", refetched.getHeader("X-Explicit"))
+                    assertEquals(1, server.requestCount)
+                    assertEquals(3, opened.size)
+                    opened.forEach { request ->
+                        assertEquals(server.url("/verify").toString(), request.url)
+                        assertEquals("inline-agent", request.headers["User-Agent"])
+                        assertEquals("kept", request.headers["X-Explicit"])
+                    }
+                }
+            }
+        }
+    }
+
+    @Test fun browserOptionsDoNotBypassForegroundPermissionsOrRequestLimits() = runBlocking {
+        val authority = ExecutionAuthority()
+        var opened = 0
+        val browser = BrowserExecutor { _, request, _, guard, _ ->
+            guard.commit { opened++ }
+            BrokerResult.Success(BrokerResponse(200, request.url, emptyMap(), "rendered".toByteArray(), "UTF-8", 0))
+        }
+        MockWebServer().use { server ->
+            server.start()
+            SourceBroker(directory.root.toPath(), browser = browser).use { sessions ->
+                val id = authority.issue("a", "legado", "1", "fixture")
+                val base = server.url("/").toString()
+                val session = sessions.open(SourceScope("fixture", "a", "legado"), listOf(NetworkGrant(base, true)))
+                val rule = JsonPrimitive("""/verify, {"headers":{"X-Explicit":"kept"}}""")
+                SourceExecutionBroker(id, authority, session, ExecutionLimits(), base).use { bridge ->
+                    assertEquals(FailureCode.BridgeDenied, (runScript(id, bridge, "java.startBrowser($rule,'verify')") as ExecutionResult.Failure).code)
+                    assertTrue(bridge.interactionRequired)
+                }
+                SourceExecutionBroker(id, authority, session, ExecutionLimits(), base, allowInteraction = true).use { bridge ->
+                    for (options in listOf("""{"unknown":true}""", """{"js":"1+1"}""", """{"serverID":"remote"}""", """{"method":"TRACE"}""")) {
+                        val invalid = JsonPrimitive("/verify, $options")
+                        assertEquals(FailureCode.BridgeDenied, (runScript(id, bridge, "java.startBrowserAwait($invalid,'verify',false)") as ExecutionResult.Failure).code)
+                    }
+                    val denied = JsonPrimitive("""https://ungranted.invalid/login, {"headers":{"X-Explicit":"kept"}}""")
+                    assertEquals(FailureCode.BridgeDenied, (runScript(id, bridge, "java.startBrowserAwait($denied,'verify',false)") as ExecutionResult.Failure).code)
+                    assertEquals(hnovel.network.FailureCode.OriginDenied, bridge.requestFailure?.code)
+                }
+                val privateId = authority.issue("private", "legado", "1", "fixture")
+                val privateBase = server.url("/").newBuilder().host("127.0.0.1").build().toString()
+                val privateSession = sessions.open(SourceScope("fixture", "private", "legado"), listOf(NetworkGrant(privateBase)))
+                SourceExecutionBroker(privateId, authority, privateSession, ExecutionLimits(), privateBase, allowInteraction = true).use { bridge ->
+                    assertEquals(FailureCode.BridgeDenied, (runScript(privateId, bridge, "java.startBrowser($rule,'verify')") as ExecutionResult.Failure).code)
+                    assertEquals(hnovel.network.FailureCode.AddressDenied, bridge.requestFailure?.code)
+                }
+                assertEquals(0, opened)
+                SourceExecutionBroker(id, authority, session, ExecutionLimits(maxRequests = 1), base, allowInteraction = true).use { bridge ->
+                    assertEquals(FailureCode.BridgeDenied, (runScript(id, bridge, "java.startBrowserAwait($rule,'verify')") as ExecutionResult.Failure).code)
+                    assertTrue(bridge.requestLimitExceeded)
+                }
+                assertEquals(1, opened)
+                assertEquals(0, server.requestCount)
+            }
+        }
+    }
+
     @Test fun deeplyNestedWorkerPayloadIsRejectedBeforeHostParsing() {
         assertThrows(IllegalArgumentException::class.java) {
             BridgeWire.arguments(("[".repeat(10000) + "]".repeat(10000)).toByteArray())

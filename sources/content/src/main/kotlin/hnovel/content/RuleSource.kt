@@ -55,6 +55,32 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         booksFromPage(context, fetch(context, url, "exploreUrl",
             acceptErrorResponse = spec.explore.string("bookList").isScriptRule()), spec.explore, "ruleExplore")
 
+    internal fun listSession(fields: JsonObject, field: String,
+        load: suspend (Int, String?, ScriptMemory) -> RuleListResult) =
+        RuleListSession(field, fields.string("nextPageUrl").isNotBlank(), trace, {
+            if (!authority.accepts(identity)) throw SourceContentException(ContentError.Unavailable, field)
+        }, load)
+
+    internal suspend fun listPage(context: RuleEvaluation, url: String, urlField: String,
+        fields: JsonObject, field: String): RuleListResult {
+        val document = fetch(context, url, urlField, acceptErrorResponse = fields.string("bookList").isScriptRule())
+        val books = booksFromPage(context, document, fields, field)
+        val rule = fields.string("nextPageUrl")
+        // Ordinary URL rules intentionally fall back to the current URL on empty output.
+        // Optional continuations must distinguish that empty output from a real repeated link.
+        val next = if (rule.isBlank()) null else context.text(rule, document.input(), "$field.nextPageUrl").trim()
+            .takeIf { it.isNotBlank() && it != "null" }?.let { sourceLink(document.url, it) }
+        return RuleListResult(books, document.url, next)
+    }
+
+    fun openSearchPages(keyword: String): RuleListSession = listSession(spec.search, "ruleSearch") { page, url, memory ->
+        operation("ruleSearch") {
+            if (!canSearch) throw SourceContentException(ContentError.MissingCapability, "searchUrl")
+            listPage(evaluation(keyword = keyword, page = page, memory = memory), url ?: spec.searchUrl,
+                "searchUrl", spec.search, "ruleSearch")
+        }
+    }
+
     suspend fun openDiscoveryBrowser(url: String, html: String? = null, script: String = "", title: String = ""): Unit =
         operation("discovery.browser", timeoutMillis = 300000) {
             val context = evaluation(interactive = true)
