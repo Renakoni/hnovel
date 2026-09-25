@@ -19,6 +19,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
     private val requestTimeoutMillis = limits.timeoutMillis.coerceAtMost(60000)
     private val lifetime = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var requests = 0
+    private val storageReads = mutableSetOf<Pair<StorageArea, String>>()
     private var closed = false
     var interactionRequired = false
         private set
@@ -92,6 +93,22 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
                 }
                 else -> { memory.delete(key); JsonNull }
             }
+        }
+        // List rules repeatedly consult the same settings. Charge each storage key once,
+        // but read it again so writes, removals and TTL expiry remain visible.
+        if (name in setOf("cache.get", "cache.getFile", "source.get", "source.getVariable")) return authorized {
+            require(args.size == if (name == "source.getVariable") 0 else 1)
+            val key = if (name == "source.getVariable") "variable"
+                else (if (name == "cache.getFile") "file:" else "value:") + args[0].jsonPrimitive.content
+            val area = if (name.startsWith("cache.")) StorageArea.Cache else StorageArea.Config
+            val storageKey = area to key
+            if (storageKey !in storageReads) {
+                reserveRequest()
+                storageReads += storageKey
+            }
+            val stored = session.read(StorageRequest(area, key))
+            check(stored is StorageResult.Value) { "Storage read failed" }
+            stored.value?.let(::JsonPrimitive) ?: if (!name.startsWith("cache.")) JsonPrimitive("") else JsonNull
         }
         val requestNumber = reserveRequest()
         return ownedWork {
@@ -267,15 +284,6 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
                         method = name.substringAfter('.').uppercase(), headers = headerMap(args[if (post) 2 else 1]),
                         body = if (post) args[1].jsonPrimitive.content else null, followRedirects = false, kind = ResourceKind.Api)
                     fetch(request, limits.scriptDataLimit).scriptSnapshot(true)
-                }
-                "cache.get", "cache.getFile", "source.get", "source.getVariable" -> authorized {
-                    require(args.size == if (name == "source.getVariable") 0 else 1)
-                    val key = if (name == "source.getVariable") "variable"
-                        else (if (name == "cache.getFile") "file:" else "value:") + args[0].jsonPrimitive.content
-                    val area = if (name.startsWith("cache.")) StorageArea.Cache else StorageArea.Config
-                    val stored = session.read(StorageRequest(area, key))
-                    check(stored is StorageResult.Value) { "Storage read failed" }
-                    stored.value?.let(::JsonPrimitive) ?: if (!name.startsWith("cache.")) JsonPrimitive("") else JsonNull
                 }
                 "cache.put", "cache.putFile", "source.put", "cache.delete", "source.setVariable", "source.putVariable" -> authorized {
                     val variable = name in setOf("source.setVariable", "source.putVariable")

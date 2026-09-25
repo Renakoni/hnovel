@@ -24,10 +24,20 @@ class NetworkFailureTest {
         }
     }
 
+    @Test fun repeatedSettingsReadsDoNotBlockSearch() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            fixture.source(customize = { JsonObject(it + ("searchUrl" to JsonPrimitive(
+                "@js:for(var i=0;i<128;i++)source.get('fixture');'/search'"))) }).use { source ->
+                assertEquals(1, source.search("title").size)
+                assertEquals(1, fixture.server.requestCount)
+            }
+        }
+    }
+
     @Test fun exhaustedHostCallsAreReportedAsLimitsWithoutRequestingLogin() = runBlocking {
         RuleSourceFixture().use { fixture ->
             fixture.source(customize = { JsonObject(it + ("searchUrl" to JsonPrimitive(
-                "@js:for(var i=0;i<65;i++)source.get('fixture');'/search'"))) }).use { source ->
+                "@js:for(var i=0;i<65;i++)source.get('fixture'+i);'/search'"))) }).use { source ->
                 val failure = runCatching { source.search("title") }.exceptionOrNull() as SourceContentException
                 assertEquals(ContentError.Limit, failure.code)
                 assertEquals("searchUrl", failure.field)
