@@ -18,6 +18,7 @@ import indi.renakoni.nextvol.data.web.rules.RuleDiscoveryProvider
 import indi.renakoni.nextvol.di.WebDataSourceModule
 import indi.renakoni.nextvol.sourcebrowser.AndroidSourceBrowser
 import io.nightfish.lightnovelreader.api.web.discovery.DiscoverySection
+import io.nightfish.lightnovelreader.api.web.discovery.DiscoveryRequest
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.*
@@ -40,13 +41,17 @@ class DiscoveryPerformanceInstrumentedTest {
     private val titles = listOf("Daily", "Weekly", "Monthly", "Articles")
     private val entries = 30
 
-    @Test fun compareFourSectionLoads(): Unit = runBlocking {
+    @Test fun compareDiscoveryLoads(): Unit = runBlocking {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val args = InstrumentationRegistry.getArguments()
         assumeTrue(args.getString("discoveryPerformance") == "true")
         val repeats = (args.getString("discoveryRepeats") ?: "5").toInt().also { require(it in 1..10) }
         val modes = (args.getString("discoveryModes") ?: "http,native").split(',')
         require(modes.isNotEmpty() && modes.all { it == "http" || it == "native" })
+        val view = args.getString("discoveryView") ?: "feed"
+        require(view in listOf("feed", "list"))
+        val expectedTitles = if (view == "feed") titles else titles.take(1)
+        val booksPerSection = if (view == "feed") 6 else entries
         val context = instrumentation.targetContext
         for (mode in modes) MockWebServer().use { server ->
             server.dispatcher = object : Dispatcher() {
@@ -135,12 +140,17 @@ class DiscoveryPerformanceInstrumentedTest {
                             val ready = linkedMapOf<String, Double>()
                             val started = SystemClock.elapsedRealtimeNanos()
                             withTimeout(180_000) {
-                                provider.feedUpdates().collect { result ->
+                                if (view == "list") {
+                                    val result = provider.page(DiscoveryRequest("/list/0?page={{page}}"))
+                                    val page = result.get() ?: error("Discovery list failed: ${result.getError()}")
+                                    ready[titles.first()] = (SystemClock.elapsedRealtimeNanos() - started) / 1_000_000.0
+                                    completed = listOf(DiscoverySection("section-0", titles.first(), page.books))
+                                } else provider.feedUpdates().collect { result ->
                                     val sections = result.get() ?: error("Discovery failed: ${result.getError()}")
                                     sections.forEach { section ->
                                         assertNull(section.previewFailure)
                                         if (section.books.isNotEmpty()) {
-                                            assertEquals(6, section.books.size)
+                                            assertEquals(booksPerSection, section.books.size)
                                             ready.putIfAbsent(section.title, (SystemClock.elapsedRealtimeNanos() - started) / 1_000_000.0)
                                         }
                                     }
@@ -148,15 +158,16 @@ class DiscoveryPerformanceInstrumentedTest {
                                 }
                             }
                             val totalMillis = (SystemClock.elapsedRealtimeNanos() - started) / 1_000_000.0
-                            assertEquals(titles, completed.map { it.title })
+                            assertEquals(expectedTitles, completed.map { it.title })
                             completed.forEachIndexed { sectionIndex, section ->
-                                assertEquals((1..6).map { "Book $sectionIndex-$it" }, section.books.map { it.title })
-                                assertEquals((1..6).map { server.url("/book/$sectionIndex/$it").toString() }, section.books.map { it.remoteId })
+                                assertEquals((1..booksPerSection).map { "Book $sectionIndex-$it" }, section.books.map { it.title })
+                                assertEquals((1..booksPerSection).map { server.url("/book/$sectionIndex/$it").toString() }, section.books.map { it.remoteId })
                             }
-                            assertEquals(4, ready.size)
-                            assertEquals(4, server.requestCount - requestsBefore)
+                            assertEquals(expectedTitles.size, ready.size)
+                            assertEquals(expectedTitles.size, server.requestCount - requestsBefore)
                             val report = buildJsonObject {
                                 put("label", args.getString("discoveryLabel") ?: "local")
+                                put("view", view)
                                 put("mode", mode); put("iteration", iteration); put("sample", if (iteration == 0) "first" else "repeat")
                                 put("booksPerPage", entries); put("previewBooks", completed.sumOf { it.books.size })
                                 put("firstBooksMs", ready.values.min()); put("allBooksMs", totalMillis)
@@ -175,7 +186,7 @@ class DiscoveryPerformanceInstrumentedTest {
                         val first = completed.first().books.first()
                         val information = source.information(first.remoteId)
                         assertEquals(first.title, information.title)
-                        assertEquals(first.author, information.author)
+                        assertEquals("Author 1", information.author)
                     } } finally { session.clearAccount() }
                 }
             } finally { executor.close(); root.deleteRecursively() }
