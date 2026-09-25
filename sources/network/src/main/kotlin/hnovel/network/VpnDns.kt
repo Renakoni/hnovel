@@ -28,14 +28,16 @@ internal class VpnDns(private val system: Dns, private val public: Dns) : Dns {
 }
 
 /** Bootstrap addresses avoid recursively asking the VPN for the resolver's own Fake-IP. */
-private class PublicDns : Dns {
-    // Mainland novel APIs may return unusable overseas CDN addresses through global resolvers.
-    // Prefer regional answers for the Fake-IP fallback; ordinary DNS still uses the system route.
-    private val resolvers = linkedMapOf(
-        "https://dns.alidns.com/resolve" to listOf("223.5.5.5", "223.6.6.6"),
-        "https://doh.pub/dns-query" to listOf("1.12.12.12", "120.53.53.53"),
-        "https://dns.google/resolve" to listOf("8.8.8.8", "8.8.4.4"),
-        "https://cloudflare-dns.com/dns-query" to listOf("1.1.1.1", "1.0.0.1"))
+internal class PublicDns(private val resolvers: Map<String, List<String>> = DEFAULT_RESOLVERS) : Dns {
+    companion object {
+        // A VPN alias may represent a domain blocked by regional resolvers. Resolve it
+        // globally first; ordinary DNS and address/certificate validation stay unchanged.
+        internal val DEFAULT_RESOLVERS = linkedMapOf(
+            "https://dns.google/resolve" to listOf("8.8.8.8", "8.8.4.4"),
+            "https://cloudflare-dns.com/dns-query" to listOf("1.1.1.1", "1.0.0.1"),
+            "https://dns.alidns.com/resolve" to listOf("223.5.5.5", "223.6.6.6"),
+            "https://doh.pub/dns-query" to listOf("1.12.12.12", "120.53.53.53"))
+    }
     private val client = OkHttpClient.Builder().proxy(Proxy.NO_PROXY)
         .dns { host -> resolvers.entries.single { it.key.toHttpUrl().host == host }.value.map(InetAddress::getByName) }
         .connectTimeout(5, TimeUnit.SECONDS).readTimeout(5, TimeUnit.SECONDS).callTimeout(8, TimeUnit.SECONDS)

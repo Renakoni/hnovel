@@ -2,6 +2,8 @@ package hnovel.network
 
 import okhttp3.Dns
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
 import org.junit.Assert.*
 import org.junit.Test
 import java.net.InetAddress
@@ -9,6 +11,26 @@ import java.net.UnknownHostException
 
 class VpnDnsTest {
     private fun address(value: String) = InetAddress.getByName(value)
+
+    @Test fun vpnAliasesPreferGlobalResolversBeforeRegionalFallbacks() {
+        val endpoints = PublicDns.DEFAULT_RESOLVERS.keys.map { it.toHttpUrl() }
+        assertEquals(listOf("dns.google", "cloudflare-dns.com", "dns.alidns.com", "doh.pub"), endpoints.map { it.host })
+        assertTrue(endpoints.all { it.isHttps })
+    }
+
+    @Test fun failedPrimaryResolverFallsBackWithoutReturningTheVpnAlias() {
+        MockWebServer().use { server ->
+            server.start()
+            val primary = server.url("/resolve").newBuilder().host("primary.example").build().toString()
+            val fallback = server.url("/resolve").newBuilder().host("fallback.example").build().toString()
+            val resolver = PublicDns(linkedMapOf(primary to listOf("127.0.0.1"), fallback to listOf("127.0.0.1")))
+            server.enqueue(MockResponse().setResponseCode(503))
+            server.enqueue(MockResponse().setBody("""{"Answer":[{"type":1,"data":"93.184.216.34"}]}"""))
+            assertEquals(listOf(address("93.184.216.34")), resolver.lookup("novel.example"))
+            assertTrue(server.takeRequest().getHeader("Host")!!.startsWith("primary.example:"))
+            assertTrue(server.takeRequest().getHeader("Host")!!.startsWith("fallback.example:"))
+        }
+    }
 
     @Test fun fakeIpUsesPublicDestinationWhileOrdinaryDnsStaysOnTheSystem() {
         var lookups = 0
