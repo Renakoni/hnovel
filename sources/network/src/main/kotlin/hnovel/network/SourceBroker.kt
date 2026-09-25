@@ -536,6 +536,9 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         if (headers.build().names().any { it.lowercase() in setOf("host", "content-length", "transfer-encoding", "proxy-authorization", "proxy-connection") }) {
             throw BrokerFailure(RequestStage.Permission, FailureCode.InvalidRequest)
         }
+        // Source-provided Accept-Encoding disables OkHttp's transparent gzip decoder.
+        // Negotiate only transport-supported encodings; preserve explicit uncompressed requests.
+        if (headers["Accept-Encoding"]?.trim()?.equals("identity", true) != true) headers.removeAll("Accept-Encoding")
         // Chromium owns its persistent cookie store; the mediated browser reads the jar
         // through its host bridge. Do not inject an HTTP jar snapshot as a native Cookie header.
         if (!includeCookies) return headers.build()
