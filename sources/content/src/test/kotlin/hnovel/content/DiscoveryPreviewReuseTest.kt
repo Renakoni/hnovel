@@ -104,6 +104,22 @@ class DiscoveryPreviewReuseTest {
         }
     }
 
+    @Test fun nativeOwnedCookiesInvalidateResponsesWithoutBeingSeededBackIntoChromium() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            pages(fixture)
+            fixture.source { definition(it) }.use { source ->
+                val owner = session(fixture, source)
+                val url = fixture.server.url("/").toString()
+                source.openDiscovery("home").preview("/search", emptyMap())
+                owner.updateNativeBrowserCookies(url, listOf("account=next; Path=/; HttpOnly"))
+                assertTrue(owner.nativeBrowserCookies(url).isEmpty())
+                assertTrue(owner.responseCookies(url).any { it.startsWith("account=next;") })
+                assertEquals(30, source.openDiscovery("full").openPages("/search", emptyMap()).page(1).books.size)
+                assertEquals(2, fixture.server.requestCount)
+            }
+        }
+    }
+
     @Test fun accountAndRevisionReplacementCannotInheritPreviewDocuments() = runBlocking {
         for (account in listOf(false, true)) RuleSourceFixture().use { fixture ->
             pages(fixture)

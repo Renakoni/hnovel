@@ -101,7 +101,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
                 it.sourceRegex.isNotBlank() || it.overrideUrl || it.verificationCode } == true ||
             session.permissionFailureDetail(request.url) != null) return null
         val route = session.responseRoute() ?: return null
-        val cookies = runCatching { session.nativeBrowserCookies(request.url).sorted() }.getOrNull() ?: return null
+        val cookies = runCatching { session.responseCookies(request.url).sorted() }.getOrNull() ?: return null
         val headers = runCatching { session.responseHeaders(request) }.getOrNull() ?: return null
         val environment = context.discovery?.let { JsonObject(it - "sessionId") }
         return DiscoveryPreviewDocuments.Key(request.copy(headers = request.headers.toMap()), route, cookies, headers, environment)

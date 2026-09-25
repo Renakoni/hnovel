@@ -233,6 +233,13 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         return cookies.browserSnapshot(parsed)
     }
 
+    /** Response identity includes Chromium-owned cookies, which must never be seeded back into it. */
+    @Synchronized fun responseCookies(url: String): List<String> {
+        checkOpen(); val parsed = url.toHttpUrlOrNull() ?: error("Invalid cookie URL")
+        policy.check(parsed)
+        return cookies.responseSnapshot(parsed)
+    }
+
     @Synchronized fun updateNativeBrowserCookies(url: String, values: List<String>, completeMetadata: Boolean = true) {
         checkOpen(); val parsed = url.toHttpUrlOrNull() ?: error("Invalid cookie URL")
         policy.check(parsed)
