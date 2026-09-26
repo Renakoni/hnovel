@@ -260,7 +260,9 @@ class RuleDiscoveryProviderTest {
                 assertNull(recovered.previewFailure)
                 assertFalse(recovered.previewLoading)
                 assertEquals(6, recovered.books.size)
-                assertEquals(listOf("/daily", "/weekly", "/monthly", "/weekly"), paths)
+                assertEquals(4, paths.size)
+                assertEquals(listOf("/daily", "/monthly", "/weekly"), paths.take(3).sorted())
+                assertEquals("/weekly", paths.last())
                 assertEquals(DiscoveryError.InvalidRequest, provider.preview("unknown").getError())
                 assertNull(provider.failureField)
                 assertNotNull(feed[1].previewFailure)
@@ -322,8 +324,9 @@ class RuleDiscoveryProviderTest {
         } }
     }
 
-    @Test fun stoppingAfterFirstCompletedPreviewDoesNotFetchLaterModules() = runBlocking {
+    @Test fun stoppingAStatefulFeedAfterFirstPreviewDoesNotFetchLaterModules() = runBlocking {
         RuleSourceFixture().use { fixture -> fixture.source { raw -> JsonObject(definition(raw) +
+            ("header" to JsonPrimitive("@js:JSON.stringify({'X-State':source.get('preview-state')})")) +
             ("homepageModules" to JsonPrimitive("""[
                 {"key":"first","type":"card","title":"First","url":"/search?module=1"},
                 {"key":"second","type":"card","title":"Second","url":"/search?module=2"}
@@ -341,6 +344,7 @@ class RuleDiscoveryProviderTest {
 
     @Test fun homepageSnapshotsAreImmutableAndLaterFailureKeepsEarlierSuccess() = runBlocking {
         RuleSourceFixture().use { fixture -> fixture.source { raw -> JsonObject(definition(raw) +
+            ("header" to JsonPrimitive("@js:JSON.stringify({'X-State':source.get('preview-state')})")) +
             ("homepageModules" to JsonPrimitive("""[
                 {"key":"first","type":"card","title":"First","url":"/search?module=1"},
                 {"key":"second","type":"card","title":"Second","url":"/search?module=2"},

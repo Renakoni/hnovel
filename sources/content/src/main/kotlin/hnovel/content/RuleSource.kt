@@ -67,8 +67,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
     internal suspend fun listPage(context: RuleEvaluation, url: String, urlField: String,
         fields: JsonObject, field: String, overview: Boolean = false, previewLimit: Int? = null): RuleListResult {
         val plan = prepareList(context, url, urlField, fields, field, overview, previewLimit)
-        val (document, responseKey) = plan.read()
-        return plan.finish(document, responseKey)
+        return plan.read().invoke()
     }
 
     private data class ListPagePlan(val context: RuleEvaluation, val url: String, val urlField: String,
@@ -83,17 +82,22 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         return ListPagePlan(context, url, urlField, fields, field, overview, previewLimit, request, key, previewDocuments.generation(), concurrent)
     }
 
-    private suspend fun ListPagePlan.read(): Pair<PageDocument, DiscoveryPreviewDocuments.Key?> {
+    /** Only the transport runs outside the source lock. Login hooks and parsing share one turn. */
+    private suspend fun ListPagePlan.read(): suspend () -> RuleListResult {
         val cached = key?.takeIf { generation == previewDocuments.generation() && previewKey(context, request) == it }
             ?.let(previewDocuments::get)
-        val document = cached?.document?.also {
-            context.baseUrl = it.ruleUrl
-            context.requestUserAgent = cached.userAgent
-            trace.record(ContentTraceEvent("cache", urlField, 0, result = "PreviewReuse"))
-        } ?: fetch(context, url, urlField, acceptErrorResponse = fields.string("bookList").isScriptRule(), prepared = request, route = key?.route)
+        val response = if (cached == null) send(context, request, urlField, key?.route) else null
         val responseKey = if (previewLimit != null && cached == null && key != null)
             previewKey(context, request)?.takeIf { it.route === key.route && (!concurrent || it == key) } else null
-        return document to responseKey
+        return {
+            val document = cached?.document?.also {
+                context.baseUrl = it.ruleUrl
+                context.requestUserAgent = cached.userAgent
+                trace.record(ContentTraceEvent("cache", urlField, 0, result = "PreviewReuse"))
+            } ?: responseDocument(context, url, urlField, request, requireNotNull(response),
+                acceptErrorResponse = fields.string("bookList").isScriptRule())
+            finish(document, responseKey)
+        }
     }
 
     private suspend fun ListPagePlan.finish(document: PageDocument, responseKey: DiscoveryPreviewDocuments.Key?): RuleListResult {
@@ -116,12 +120,10 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
     }
 
     internal suspend fun canReadPreviewsConcurrently(urls: List<String>): Boolean = operation("discovery.previewPlan") {
-        if (spec.library != null || spec.loginCheck.isNotBlank() || !canDeferBookFields(spec.explore) ||
-            spec.information.string("init").isNotBlank() || !ExecutionTask.BookOverviews.supports(spec.bookUrlPattern)) return@operation false
         previewPlan?.takeIf { it.first == urls }?.let { return@operation it.second }
-        val rules = listOf(spec.explore.string("bookList").removePrefix("-").removePrefix("+"), spec.explore.string("nextPageUrl")) +
-            spec.information.values.map { (it as? JsonPrimitive)?.content.orEmpty() }
-        val result = try { evaluation().discoveryReadPlan(urls, spec.header, rules) }
+        // Request inputs are snapshotted before dispatch. Response scripts need not be pure:
+        // their hook, row state and library evaluation still run together under serial.
+        val result = try { evaluation().discoveryReadPlan(urls, spec.header, emptyList()) }
         catch (failure: SourceContentException) {
             if (failure.code == ContentError.Unavailable) throw failure
             false
@@ -135,10 +137,16 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
     internal suspend fun prepareConcurrentPreviews(urls: List<String>, context: () -> RuleEvaluation): List<suspend () -> RuleListResult>? =
         operation("ruleExplore") {
             if (!canDiscover || spec.explore.isEmpty()) throw SourceContentException(ContentError.MissingCapability, "ruleExplore")
+            var missingCacheRead = false
             val plans = urls.map { url ->
-                try { Result.success(prepareList(context(), url, "exploreUrl", spec.explore, "ruleExplore", overview = true, previewLimit = 6, concurrent = true)) }
+                val evaluation = context()
+                try { Result.success(prepareList(evaluation, url, "exploreUrl", spec.explore, "ruleExplore", overview = true, previewLimit = 6, concurrent = true)) }
                 catch (failure: SourceContentException) { Result.failure(failure) }
+                finally { missingCacheRead = missingCacheRead || evaluation.missingCacheRead }
             }
+            // A preceding login hook may initialize a missing account ID. Do not freeze its
+            // absence into every URL in a cold-start group. Recheck on the next preview load.
+            if (missingCacheRead) return@operation emptyList()
             if (plans.any { it.getOrNull()?.request?.let { request ->
                 request.method != "GET" || request.body != null || request.responseAsHex || request.cache != CacheMode.Disabled ||
                     request.browser?.let { options -> options.interactive || options.html != null || options.webCookie != null ||
@@ -152,8 +160,8 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
                         else {
                             first = false
                             val plan = prepared.getOrThrow()
-                            val (document, responseKey) = plan.read()
-                            operation("ruleExplore") { plan.finish(document, responseKey) }
+                            val finish = plan.read()
+                            operation("ruleExplore") { finish() }
                         }
                     } }
                 }
@@ -832,6 +840,11 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         acceptErrorResponse: Boolean = false, prepared: BrokerRequest? = null, route: SourceNetworkRoute? = null): PageDocument {
         val request = prepared ?: prepareRequest(context, url, field, ResourceKind.Document, browser)
         val response = send(context, request, field, route)
+        return responseDocument(context, url, field, request, response, acceptErrorResponse)
+    }
+
+    private suspend fun responseDocument(context: RuleEvaluation, url: String, field: String, request: BrokerRequest,
+        response: BrokerResponse, acceptErrorResponse: Boolean): PageDocument {
         val inline = response.protocol == "data"
         context.baseUrl = if (inline) url else response.finalUrl
         if (spec.loginCheck.isBlank()) {
