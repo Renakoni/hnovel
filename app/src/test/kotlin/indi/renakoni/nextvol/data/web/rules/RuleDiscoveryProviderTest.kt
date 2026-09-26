@@ -284,6 +284,7 @@ class RuleDiscoveryProviderTest {
             }
             val session = mockk<RuleDiscoverySession>()
             coEvery { session.catalog(homepage = true) } returns catalog
+            coEvery { session.concurrentPreviews(any(), any()) } returns null
             coEvery { session.preview("/search?module=1", any()) } returns RuleListPage(books, "2", 2)
             var attempts = 0
             coEvery { session.preview("/search?module=2", any()) } coAnswers {

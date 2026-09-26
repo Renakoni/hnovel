@@ -192,11 +192,11 @@ class DiscoveryPreviewReuseTest {
         fun key(i: Int) = DiscoveryPreviewDocuments.Key(BrokerRequest("content", "https://fixture.test/$i"), route,
             emptyList(), emptyMap(), null)
         val document = PageDocument(html, "https://fixture.test/list", successfulResponse = true)
-        repeat(5) { cache.put(key(it), document, null, now = 0) }
+        repeat(5) { cache.put(key(it), document, null, generation = 0, now = 0) }
         assertNull(cache.get(key(0), now = 1))
         assertNotNull(cache.get(key(1), now = 59_999_999_999))
         assertNull(cache.get(key(1), now = 60_000_000_000))
-        cache.put(key(5), document.copy(body = "x".repeat(256 * 1024 + 1)), null, now = 0)
+        cache.put(key(5), document.copy(body = "x".repeat(256 * 1024 + 1)), null, generation = 0, now = 0)
         assertNull(cache.get(key(5), now = 1))
         route.invalidate()
         assertNull(cache.get(key(2), now = 1))

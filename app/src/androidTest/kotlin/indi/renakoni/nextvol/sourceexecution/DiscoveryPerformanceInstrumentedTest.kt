@@ -20,7 +20,6 @@ import indi.renakoni.nextvol.sourcebrowser.AndroidSourceBrowser
 import io.nightfish.lightnovelreader.api.web.discovery.DiscoverySection
 import io.nightfish.lightnovelreader.api.web.discovery.DiscoveryRequest
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.*
 import okhttp3.mockwebserver.Dispatcher
@@ -33,6 +32,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 
@@ -58,6 +58,8 @@ class DiscoveryPerformanceInstrumentedTest {
         val expectedRequests = (args.getString("discoveryExpectedRequests") ?: expectedTitles.size.toString()).toInt()
         val context = instrumentation.targetContext
         for (mode in modes) MockWebServer().use { server ->
+            val activeRequests = AtomicInteger()
+            val maximumRequests = AtomicInteger()
             server.dispatcher = object : Dispatcher() {
                 override fun dispatch(request: RecordedRequest): MockResponse {
                     val path = request.path.orEmpty().substringBefore('?')
@@ -76,9 +78,11 @@ class DiscoveryPerformanceInstrumentedTest {
                         }
                         else -> return MockResponse().setResponseCode(404)
                     }
+                    maximumRequests.accumulateAndGet(activeRequests.incrementAndGet(), ::maxOf)
+                    try { if (responseDelay > 0) Thread.sleep(responseDelay) }
+                    finally { activeRequests.decrementAndGet() }
                     return MockResponse().setHeader("Content-Type", "text/html; charset=utf-8")
                         .setHeader("Cache-Control", "no-store")
-                        .setBodyDelay(responseDelay, java.util.concurrent.TimeUnit.MILLISECONDS)
                         .setBody("<html><head><link rel='icon' href='data:,'></head><body>$body</body></html>")
                 }
             }
@@ -91,6 +95,8 @@ class DiscoveryPerformanceInstrumentedTest {
             val taskNanos = ConcurrentHashMap<String, AtomicLong>()
             val executionNanos = AtomicLong()
             val networkMillis = AtomicLong()
+            val executionSpans = ConcurrentLinkedQueue<Pair<Long, Long>>()
+            val networkSpans = ConcurrentLinkedQueue<Pair<Long, Long>>()
             val runner = RuleTaskRunner { owner, task, limits, bridge ->
                 val field = (task as? ExecutionTask.Rule)?.location?.field ?: task.javaClass.simpleName
                 calls.computeIfAbsent(field) { AtomicInteger() }.incrementAndGet()
@@ -98,12 +104,17 @@ class DiscoveryPerformanceInstrumentedTest {
                 try { taskRunner.execute(owner, task, limits, bridge) }
                 finally {
                     val elapsed = SystemClock.elapsedRealtimeNanos() - started
+                    executionSpans.add(started to started + elapsed)
                     executionNanos.addAndGet(elapsed)
                     taskNanos.computeIfAbsent(field) { AtomicLong() }.addAndGet(elapsed)
                 }
             }
             val trace = ContentTrace { event ->
-                if (event.kind == "network") networkMillis.addAndGet(event.elapsedMillis)
+                if (event.kind == "network") {
+                    networkMillis.addAndGet(event.elapsedMillis)
+                    val ended = SystemClock.elapsedRealtimeNanos()
+                    networkSpans.add(ended - event.elapsedMillis * 1_000_000 to ended)
+                }
             }
             try {
                 val definitions = SourceDefinitionStore(File(root, "definitions").toPath())
@@ -142,12 +153,13 @@ class DiscoveryPerformanceInstrumentedTest {
                             if (view == "handoff" || view == "resume") {
                                 val home = RuleDiscoveryProvider(source, source.openDiscovery("home-$iteration"))
                                 assertNotNull(home.homepageCatalog(refresh = true).get())
-                                var partial = emptyList<DiscoverySection>()
-                                home.feedUpdates().take(2).collect { partial = it.get() ?: error("Preview failed") }
-                                assertEquals(6, partial.first().books.size)
-                                assertTrue(partial.drop(1).all { it.books.isEmpty() })
+                                // Prepare one known page even when the regular feed finishes out of order.
+                                val partial = home.preview("homepage:section-0").get() ?: error("Preview failed")
+                                assertNull(partial.previewFailure)
+                                assertEquals(6, partial.books.size)
                             }
                             calls.clear(); taskNanos.clear(); executionNanos.set(0); networkMillis.set(0)
+                            executionSpans.clear(); networkSpans.clear(); maximumRequests.set(0)
                             val requestsBefore = server.requestCount
                             val provider = RuleDiscoveryProvider(source, source.openDiscovery("iteration-$iteration"))
                             val ready = linkedMapOf<String, Double>()
@@ -198,7 +210,11 @@ class DiscoveryPerformanceInstrumentedTest {
                                 put("taskMillis", buildJsonObject { taskNanos.toSortedMap().forEach { (field, nanos) -> put(field, nanos.get() / 1_000_000.0) } })
                                 put("executionMs", executionNanos.get() / 1_000_000.0)
                                 put("networkMs", networkMillis.get())
-                                put("unattributedMs", totalMillis - executionNanos.get() / 1_000_000.0 - networkMillis.get())
+                                // Inclusive task totals may overlap. Only unions describe wall-clock coverage.
+                                put("executionSpanMs", unionMillis(executionSpans))
+                                put("networkSpanMs", unionMillis(networkSpans))
+                                put("observedSpanMs", unionMillis(executionSpans + networkSpans))
+                                put("maxConcurrentRequests", maximumRequests.get())
                             }
                             instrumentation.sendStatus(0, Bundle().apply { putString("discoveryPerformance", report.toString()) })
                         }
@@ -211,5 +227,15 @@ class DiscoveryPerformanceInstrumentedTest {
                 }
             } finally { executor.close(); root.deleteRecursively() }
         }
+    }
+
+    private fun unionMillis(spans: Collection<Pair<Long, Long>>): Double {
+        var covered = 0L
+        var end = 0L
+        for ((start, finish) in spans.sortedBy { it.first }) {
+            covered += (finish - maxOf(start, end)).coerceAtLeast(0)
+            end = maxOf(end, finish)
+        }
+        return covered / 1_000_000.0
     }
 }
