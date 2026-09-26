@@ -6,6 +6,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
@@ -17,6 +18,8 @@ import io.mockk.coVerify
 import io.mockk.verify
 import hnovel.imports.ImportOrigin
 import hnovel.imports.SourceDefinition
+import hnovel.imports.SourceDefinitionImporter
+import hnovel.imports.SourceDefinitionStore
 import hnovel.content.LoginField
 import hnovel.content.LoginForm
 import indi.renakoni.nextvol.data.web.*
@@ -33,6 +36,8 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import org.junit.After
 import org.junit.Before
 import org.junit.Rule
@@ -371,6 +376,49 @@ class SourcesScreenTest {
         verify(exactly = 1) { model.setEnabled(id, true) }
         compose.runOnIdle { state = state.copy(installed = listOf(installed.copy(definition = definition.copy(rawJson = "{}")))) }
         compose.onNodeWithContentDescription("Show in Discover and Categories").assertDoesNotExist()
+    }
+
+    @Test @Config(qualifiers = "en-rUS-w360dp-h640dp")
+    fun cancellingUpdatePreviewDoesNotResetDetailScroll() {
+        val directory = java.nio.file.Files.createTempDirectory("source-update-scroll").toFile()
+        try {
+            val raw = buildJsonObject {
+                put("bookSourceUrl", "https://fixture.invalid/")
+                put("bookSourceName", "Scrollable source")
+                put("bookSourceType", 0)
+                put("variableComment", (1..40).joinToString("\n") { "Configuration guidance line $it" })
+            }.toString()
+            val definition = SourceDefinition("scrollable", "legado", "fixture", "https://fixture.invalid/",
+                "Scrollable source", false, false, ImportOrigin(ImportOrigin.Kind.Paste), "digest", 1, raw)
+            val id = ImportedRuleSources.id(definition)
+            val preview = SourceDefinitionImporter(SourceDefinitionStore(directory.toPath())).preview(raw)
+            var state by mutableStateOf(SourceManagementState(
+                installed = listOf(InstalledRuleSource(definition, emptyList(), null)), selected = id))
+            every { model.checkUpdate(id) } answers {
+                state = state.copy(preview = preview, updateTarget = id,
+                    previewOrigins = mapOf(0 to "https://fixture.invalid:443"))
+            }
+            every { model.dismissPreview() } answers {
+                state = state.copy(preview = null, updateTarget = null, previewOrigins = emptyMap())
+            }
+            activity.get().setContent { MaterialTheme { SourcesScreen(state, model, onDiagnostics = {}) {} } }
+            compose.onNodeWithText("Advanced options").performScrollTo().performClick()
+            val checkUpdate = activity.get().getString(indi.renakoni.nextvol.R.string.sources_check_update)
+            compose.onNodeWithText(checkUpdate).performScrollTo().assertIsDisplayed()
+            fun scrollPosition() = compose.onNode(SemanticsMatcher.keyIsDefined(SemanticsActions.ScrollToIndex))
+                .fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].value()
+            org.junit.Assert.assertTrue("Fixture must start scrolled", scrollPosition() > 0f)
+            compose.onNodeWithText(checkUpdate).performClick()
+            compose.mainClock.advanceTimeBy(400)
+            compose.waitForIdle()
+            compose.onNodeWithText(activity.get().getString(indi.renakoni.nextvol.R.string.sources_preview)).assertIsDisplayed()
+            compose.onNodeWithContentDescription("Back").performClick()
+            compose.mainClock.advanceTimeBy(400)
+            compose.waitForIdle()
+            org.junit.Assert.assertTrue("Returning from update preview must not jump to the top", scrollPosition() > 0f)
+            verify(exactly = 1) { model.checkUpdate(id) }
+            verify(exactly = 1) { model.dismissPreview() }
+        } finally { directory.deleteRecursively() }
     }
 
     private fun previewState(preview: hnovel.imports.ImportPreview) = SourceManagementState(preview = preview,

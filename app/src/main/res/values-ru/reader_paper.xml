@@ -8,5 +8,6 @@
     <string name="reader_paper_mist">Серая</string>
     <string name="reader_paper_black">Чёрная</string>
     <string name="reader_paper_ink">Тушь</string>
-    <string name="reader_paper_sample">Аа</string>
+    <string name="reader_paper_sample">Тихая страница.\nНовая история.</string>
+    <string name="reader_paper_preview_title">Глава первая</string>
 </resources>

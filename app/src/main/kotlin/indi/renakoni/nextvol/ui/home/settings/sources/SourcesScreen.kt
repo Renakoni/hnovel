@@ -105,7 +105,8 @@ private fun SourceSettingsLifecycle(model: SourcesViewModel, entry: NavBackStack
     }
 }
 
-private data class SourcesPage(val state: SourceManagementState, val adding: Boolean, val category: SourceCategory?) {
+private data class SourcesPage(val state: SourceManagementState, val adding: Boolean, val category: SourceCategory?,
+    val listState: LazyListState) {
     val key get() = when {
         state.preview != null -> "preview"
         state.selected != null -> "source:${state.selected}"
@@ -144,6 +145,8 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
     var deleting by remember { mutableStateOf(false) }
     var rollback by remember { mutableStateOf(false) }
     val managementListState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
+    val listState = if (state.selected == null) managementListState
+        else rememberSaveable(state.selected, saver = LazyListState.Saver) { LazyListState() }
     var observedGroupRevision by rememberSaveable { mutableLongStateOf(state.groupRevision) }
     LaunchedEffect(state.groupRevision) {
         if (observedGroupRevision != state.groupRevision) {
@@ -198,7 +201,7 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
             action = stringResource(R.string.source_group_move),
             onAction = { groupingSources = selectedSources }, actionEnabled = selectedSources.isNotEmpty() && !state.busy,
             secondaryEnabled = !state.busy)
-    }) { padding -> AnimatedContent(targetState = SourcesPage(state, adding, category),
+    }) { padding -> AnimatedContent(targetState = SourcesPage(state, adding, category, listState),
             modifier = Modifier.fillMaxSize(), contentKey = { it.key }, label = "source-settings-page",
             transitionSpec = {
                 val direction = if (targetState.depth >= initialState.depth) 1 else -1
@@ -208,8 +211,6 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
         val state = page.state
         val installed = state.installed.find { ImportedRuleSources.id(it.definition) == state.selected }
         val selectedEntry = state.registry.find { it.metadata.id == state.selected }
-        val listState = if (state.selected == null) managementListState
-            else rememberSaveable(state.selected, saver = LazyListState.Saver) { LazyListState() }
         if (state.preview != null) {
             SourceImportPreview(state, model, Modifier.padding(padding))
         } else if (page.adding && state.selected == null) {
@@ -221,7 +222,7 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                 else SourceCatalogSelectionScreen(state, selectedCategory, chosen, { chosen = it },
                     onContinue = { model.previewCatalog(chosen.toSet()) }, onCancel = model::cancel, modifier = Modifier.padding(padding))
             }
-        } else LazyColumn(Modifier.fillMaxSize().padding(padding), state = listState, contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        } else LazyColumn(Modifier.fillMaxSize().padding(padding), state = page.listState, contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (state.busy && state.showProgress) item { LinearProgressIndicator(Modifier.fillMaxWidth()); TextButton(onClick = model::cancel) { Text(stringResource(android.R.string.cancel)) } }
             state.message?.let { message -> item { Text(stringResource(message), color = MaterialTheme.colorScheme.primary) } }
             if (state.selected == ZLibrarySources.ID) {
