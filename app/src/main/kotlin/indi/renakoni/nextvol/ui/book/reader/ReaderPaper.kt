@@ -73,6 +73,7 @@ internal val ReaderSettings.usesBackgroundImage: Boolean
     get() = enableBackgroundImage && ReaderPaper.fromId(paperId) == ReaderPaper.Default
 
 internal val LocalReaderSpeechHighlight = compositionLocalOf { Color.Unspecified }
+internal val LocalReaderAppTheme = compositionLocalOf<AppTheme?> { null }
 
 /** Keep the paper's accent quiet while protecting the existing text contrast. */
 internal fun readerSpeechHighlight(background: Color, text: Color, accent: Color, image: Boolean = false): Color {
@@ -108,7 +109,7 @@ internal fun ReaderPaperTheme(
     manageSystemBars: Boolean = false,
     content: @Composable () -> Unit,
 ) {
-    val appTheme = LocalAppTheme.current
+    val appTheme = LocalReaderAppTheme.current ?: LocalAppTheme.current
     val colors = ReaderPaper.fromId(settings.paperId).colors
     val scheme = remember(colors) { colors?.colorScheme() } ?: MaterialTheme.colorScheme
     val theme = remember(colors, scheme, appTheme) {
@@ -142,7 +143,7 @@ internal fun ReaderPaperTheme(
         }
     }
     MaterialTheme(colorScheme = scheme) {
-        CompositionLocalProvider(LocalAppTheme provides theme, LocalReaderStyle provides readerStyle,
+        CompositionLocalProvider(LocalReaderAppTheme provides appTheme, LocalAppTheme provides theme, LocalReaderStyle provides readerStyle,
             LocalReaderSpeechHighlight provides speechHighlight, content = content)
     }
 }

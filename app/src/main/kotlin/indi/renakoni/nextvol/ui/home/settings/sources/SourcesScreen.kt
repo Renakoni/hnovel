@@ -3,6 +3,13 @@ package indi.renakoni.nextvol.ui.home.settings.sources
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.ui.semantics.Role
@@ -98,6 +105,22 @@ private fun SourceSettingsLifecycle(model: SourcesViewModel, entry: NavBackStack
     }
 }
 
+private data class SourcesPage(val state: SourceManagementState, val adding: Boolean, val category: SourceCategory?) {
+    val key get() = when {
+        state.preview != null -> "preview"
+        state.selected != null -> "source:${state.selected}"
+        adding -> category?.name ?: "add"
+        else -> "list"
+    }
+    val depth get() = when {
+        state.preview != null -> 3
+        state.selected != null -> 1
+        adding && category != null -> 2
+        adding -> 1
+        else -> 0
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
@@ -120,7 +143,7 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
     val addStates = rememberSaveableStateHolder()
     var deleting by remember { mutableStateOf(false) }
     var rollback by remember { mutableStateOf(false) }
-    val listState = rememberSaveable(state.selected, saver = LazyListState.Saver) { LazyListState() }
+    val managementListState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
     var observedGroupRevision by rememberSaveable { mutableLongStateOf(state.groupRevision) }
     LaunchedEffect(state.groupRevision) {
         if (observedGroupRevision != state.groupRevision) {
@@ -175,11 +198,22 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
             action = stringResource(R.string.source_group_move),
             onAction = { groupingSources = selectedSources }, actionEnabled = selectedSources.isNotEmpty() && !state.busy,
             secondaryEnabled = !state.busy)
-    }) { padding ->
+    }) { padding -> AnimatedContent(targetState = SourcesPage(state, adding, category),
+            modifier = Modifier.fillMaxSize(), contentKey = { it.key }, label = "source-settings-page",
+            transitionSpec = {
+                val direction = if (targetState.depth >= initialState.depth) 1 else -1
+                (fadeIn(tween(180)) + slideInHorizontally(tween(220)) { it / 12 * direction }) togetherWith
+                    (fadeOut(tween(120)) + slideOutHorizontally(tween(180)) { -it / 12 * direction })
+            }) { page ->
+        val state = page.state
+        val installed = state.installed.find { ImportedRuleSources.id(it.definition) == state.selected }
+        val selectedEntry = state.registry.find { it.metadata.id == state.selected }
+        val listState = if (state.selected == null) managementListState
+            else rememberSaveable(state.selected, saver = LazyListState.Saver) { LazyListState() }
         if (state.preview != null) {
             SourceImportPreview(state, model, Modifier.padding(padding))
-        } else if (adding && state.selected == null) {
-            val selectedCategory = category
+        } else if (page.adding && state.selected == null) {
+            val selectedCategory = page.category
             addStates.SaveableStateProvider(selectedCategory?.name ?: "add") {
                 if (selectedCategory == null) SourceCatalogAddScreen(state, addTab, { addTab = it }, url, { url = it },
                     onPreviewUrl = { model.previewUrl(url, AUTO_PROFILE) }, onFile = { file.launch(arrayOf("*/*")) },
@@ -387,7 +421,7 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                 }
             }
         }
-    }
+    } }
     if (managingGroups || groupingSources != null) {
         val members = groupingSources.orEmpty().map { Identifier("rules", it) }.toSet()
         SourceGroupsDialog(state.groups, state.installed, state.busy, groupingSources != null, state.message, state.groupRevision,

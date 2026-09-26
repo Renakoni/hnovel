@@ -8,5 +8,6 @@
     <string name="reader_paper_mist">Mist</string>
     <string name="reader_paper_black">Black</string>
     <string name="reader_paper_ink">Ink</string>
-    <string name="reader_paper_sample">Aa</string>
+    <string name="reader_paper_sample">A quiet page.\nA new story unfolds.</string>
+    <string name="reader_paper_preview_title">Chapter one</string>
 </resources>

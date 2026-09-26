@@ -50,6 +50,28 @@ class SourceCatalogScreenTest {
     }
     @After fun destroy() { activity.pause().stop().destroy() }
 
+    @Test fun addAndBackKeepBothPagesDuringTheTransitionThenRemoveTheOldPage() {
+        activity.get().setContent { MaterialTheme { SourcesScreen(state, model, onDiagnostics = {}) {} } }
+        compose.mainClock.autoAdvance = false
+        try {
+            compose.onNodeWithText("Add book source").performClick()
+            compose.mainClock.advanceTimeBy(80)
+            compose.onNodeWithText("Manage groups").assertExists()
+            compose.onNodeWithText(activity.get().getString(indi.renakoni.nextvol.R.string.sources_url)).assertExists()
+            compose.mainClock.advanceTimeBy(300)
+            compose.onNodeWithText("Manage groups").assertDoesNotExist()
+            compose.onNodeWithContentDescription("Back").performClick()
+            compose.mainClock.advanceTimeByFrame()
+            compose.waitForIdle()
+            compose.mainClock.advanceTimeBy(80)
+            compose.onNodeWithText("Manage groups").assertExists()
+            compose.onNodeWithText(activity.get().getString(indi.renakoni.nextvol.R.string.sources_url)).assertExists()
+            compose.mainClock.advanceTimeBy(300)
+            compose.onNodeWithText("Manage groups").assertIsDisplayed()
+            compose.onNodeWithText(activity.get().getString(indi.renakoni.nextvol.R.string.sources_url)).assertDoesNotExist()
+        } finally { compose.mainClock.autoAdvance = true }
+    }
+
     @Test fun categorySelectionSurvivesBackNavigationAndRecreationAndSkipsInstalledSources() {
         val contentRule = object : ComposeContentTestRule, ComposeTestRule by compose {
             override fun setContent(composable: @Composable () -> Unit) { activity.get().setContent(content = composable) }
