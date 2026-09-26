@@ -9,7 +9,7 @@ import org.mozilla.javascript.Token
 import org.mozilla.javascript.ast.*
 
 /** A conservative syntax check in the isolated worker, never execution of a source on the host.
- * Local expressions and fixed selectors cannot observe another preview's script writes. */
+ * Request cache reads are snapshotted before dispatch; this does not permit parallel script execution. */
 internal object WorkerDiscoveryReadPlan {
     fun evaluate(task: ExecutionTask.DiscoveryReadPlan, limits: ExecutionLimits): ExecutionResult {
         val accepted = task.urls.size in 1..64 && task.rules.size <= 64 &&
@@ -46,7 +46,7 @@ internal object WorkerDiscoveryReadPlan {
         if (it.script) script(it.text, selectors = true) else ExecutionTask.BookOverviews.supports(it.text)
     }
 
-    private val reserved = setOf("baseUrl", "result", "key", "page", "infoMap", "java", "JSON", "String", "Number",
+    private val reserved = setOf("baseUrl", "result", "key", "page", "infoMap", "java", "cache", "JSON", "String", "Number",
         "parseInt", "parseFloat", "encodeURIComponent", "decodeURIComponent", "undefined")
     private val properties = setOf("constructor", "prototype", "__proto__", "get", "set", "save")
     private val operators = setOf(Token.ADD, Token.SUB, Token.MUL, Token.DIV, Token.MOD, Token.EQ, Token.NE,
@@ -102,6 +102,8 @@ internal object WorkerDiscoveryReadPlan {
                         val owner = (target.target as? Name)?.identifier
                         val method = target.property.identifier
                         when {
+                            owner == "cache" -> !selectors && method == "get" && node.arguments.size == 1 &&
+                                node.arguments.single() is StringLiteral
                             owner == "java" -> if (method == "getWebViewUA") node.arguments.isEmpty()
                                 else selectors && method in setOf("getElements", "getString") && node.arguments.size == 1 &&
                                     (node.arguments.single() as? StringLiteral)?.value?.let(ExecutionTask.BookOverviews::supports) == true

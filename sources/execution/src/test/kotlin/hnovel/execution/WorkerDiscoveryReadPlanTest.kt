@@ -37,6 +37,15 @@ class WorkerDiscoveryReadPlanTest {
         }
     }
 
+    @Test fun fixedAccountCacheReadsCanBeSnapshottedButWritesAndDynamicCallsCannot() {
+        assertTrue(accepts(urls = listOf("/user/{{cache.get(\"pixivUid\")}}/novels/bookmarks?offset={{(page-1)*24}}")))
+        for (code in listOf("cache.put('account','other')", "cache.delete('account')",
+            "cache.get(page)", "cache.getFromMemory('account')", "var cache={};cache.get('account')")) {
+            assertFalse(code, accepts(urls = listOf("/user/{{$code}}")))
+        }
+        assertFalse(accepts(rules = listOf("@js:cache.get('account')")))
+    }
+
     @Test fun nestedDynamicSelectorsAndTemplateWritesAreRejected() {
         for (selector in listOf("li@js:java.put('x','y')", "{{java.ajax('/next')}}", "@put:{x:'li'}li", "@get:{x}")) {
             val literal = Json.encodeToString(kotlinx.serialization.serializer<String>(), selector)

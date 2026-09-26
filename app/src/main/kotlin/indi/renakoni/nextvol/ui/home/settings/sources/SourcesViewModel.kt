@@ -68,6 +68,10 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
     private val foreground = ForegroundSourceRequest()
     fun setActive(value: Boolean, retainBrowser: Boolean = false) = foreground.setActive(value, retainBrowser)
 
+    fun consumeSavedMessage() {
+        mutable.update { if (it.message == R.string.sources_saved) it.copy(message = null) else it }
+    }
+
     init {
         viewModelScope.launch { registry.sources.collect { list -> mutable.update { it.copy(registry = list) } } }
         viewModelScope.launch { verification.prompts.collect { prompts ->

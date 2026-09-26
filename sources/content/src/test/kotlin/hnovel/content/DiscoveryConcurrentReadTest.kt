@@ -64,7 +64,7 @@ class DiscoveryConcurrentReadTest {
         }
     }
 
-    @Test fun generatedPostsAndSharedRuleStateFallBackBeforeAnyRequest() = runBlocking {
+    @Test fun generatedPostsAndStatefulRequestScriptsFallBackBeforeAnyRequest() = runBlocking {
         RuleSourceFixture().use { fixture ->
             fixture.source { definition(it) }.use { source ->
                 val session = source.openDiscovery("post")
@@ -72,15 +72,32 @@ class DiscoveryConcurrentReadTest {
                 assertEquals(0, fixture.server.requestCount)
             }
             for (extra in listOf(
-                mapOf("loginCheckJs" to JsonPrimitive("result")),
-                mapOf("jsLib" to JsonPrimitive("var helper=1")),
-                mapOf("ruleExplore" to buildJsonObject { put("bookList", "@js:java.put('x','y');java.getElements('li')"); put("name", "h2@text"); put("bookUrl", "a@href") }),
-                mapOf("ruleBookInfo" to buildJsonObject { put("name", "@js:java.get('x')") })
+                mapOf("header" to JsonPrimitive("@js:JSON.stringify({'X-State':java.get('x')})")),
+                mapOf("header" to JsonPrimitive("@js:source.put('x','y');'{}'")),
+                mapOf("header" to JsonPrimitive("@js:java.ajax('/token');'{}'"))
             )) fixture.source { definition(it, extra) }.use { source ->
                 assertNull(source.openDiscovery("stateful").concurrentPreviews(listOf("/one", "/two"), emptyMap()))
                 assertEquals(0, fixture.server.requestCount)
             }
         }
+    }
+
+    @Test fun emptyCachedRequestInputsKeepTheGroupSequential() = runBlocking {
+        RuleSourceFixture().use { fixture -> fixture.source { raw -> JsonObject(definition(raw) +
+            ("exploreUrl" to JsonPrimitive("@js:cache.put('account','');'Books::/list'"))) }.use { source ->
+            val discovery = source.openDiscovery("empty-account")
+            discovery.catalog()
+            assertNull(discovery.concurrentPreviews(listOf("/user/{{cache.get('account')}}", "/other"), emptyMap()))
+            assertEquals(0, fixture.server.requestCount)
+        } }
+    }
+
+    @Test fun missingCachedInputsStillFallBackWhenRequestPreparationFails() = runBlocking {
+        RuleSourceFixture().use { fixture -> fixture.source { definition(it) }.use { source ->
+            val discovery = source.openDiscovery("missing-account")
+            assertNull(discovery.concurrentPreviews(listOf("/user/{{cache.get('account').trim()}}", "/other"), emptyMap()))
+            assertEquals(0, fixture.server.requestCount)
+        } }
     }
 
     @Test fun refreshWhileReadingCannotRepopulateThePreviewCache() = runBlocking {

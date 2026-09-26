@@ -46,7 +46,7 @@ class RuleDiscoveryConcurrencyTest {
         } }
     }
 
-    @Test fun blockedFirstModuleDoesNotHoldOthersAndCompletionKeepsTheOriginalSlots() = runBlocking {
+    @Test fun blockedScriptSourceModuleDoesNotHoldOthersAndLoginStateStaysInItsOwnSlot() = runBlocking {
         RuleSourceFixture().use { fixture ->
             val release = CountDownLatch(1)
             val firstEntered = CountDownLatch(1)
@@ -62,7 +62,14 @@ class RuleDiscoveryConcurrencyTest {
                     } finally { active.decrementAndGet() }
                 }
             }
-            fixture.source { definition(it) }.use { source ->
+            fixture.source { raw -> JsonObject(definition(raw) + mapOf(
+                "jsLib" to JsonPrimitive("function previewUrl(value){return value}"),
+                "loginCheckJs" to JsonPrimitive("java.put('preview-url',previewUrl(baseUrl));result"),
+                "ruleExplore" to buildJsonObject {
+                    put("bookList", "@js:if(java.get('preview-url')!==baseUrl)throw 'wrong preview';java.getElements('li')")
+                    put("name", "h2@text"); put("bookUrl", "a@href")
+                }
+            )) }.use { source ->
                 val updates = Channel<List<DiscoverySection>>(Channel.UNLIMITED)
                 val pending = launch { RuleDiscoveryProvider(source).feedUpdates().collect { updates.send(requireNotNull(it.get())) } }
                 try {
@@ -77,6 +84,35 @@ class RuleDiscoveryConcurrencyTest {
                 } finally { release.countDown() }
                 pending.join()
                 assertTrue(updates.receive().all { it.books.size == 6 && !it.previewLoading })
+            }
+        }
+    }
+
+    @Test fun localFailureAndReadySectionPublishBeforeASlowScriptSourceSection() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            val entered = CountDownLatch(1)
+            val release = CountDownLatch(1)
+            fixture.server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse {
+                    if (request.path == "/slow") {
+                        entered.countDown(); check(release.await(10, TimeUnit.SECONDS))
+                    } else check(entered.await(5, TimeUnit.SECONDS))
+                    return MockResponse().setBody(html(request.path!!))
+                }
+            }
+            fixture.source { raw -> JsonObject(definition(raw, listOf(
+                "/slow", "/invalid,{\"method\":\"INVALID\"}", "/ready")) +
+                ("jsLib" to JsonPrimitive("var helper=1"))) }.use { source ->
+                val updates = Channel<List<DiscoverySection>>(Channel.UNLIMITED)
+                val pending = launch { RuleDiscoveryProvider(source).feedUpdates().collect { updates.send(requireNotNull(it.get())) } }
+                try {
+                    var snapshot = withTimeout(10000) { updates.receive() }
+                    withTimeout(10000) { while (snapshot.drop(1).any { it.previewLoading }) snapshot = updates.receive() }
+                    assertTrue(snapshot.first().previewLoading)
+                    assertNotNull(snapshot[1].previewFailure)
+                    assertEquals(6, snapshot[2].books.size)
+                    assertEquals(2, fixture.server.requestCount)
+                } finally { release.countDown(); pending.cancelAndJoin() }
             }
         }
     }

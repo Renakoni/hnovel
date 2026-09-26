@@ -11,9 +11,9 @@ import hnovel.network.NetworkGrant
 import indi.renakoni.nextvol.data.web.*
 import indi.renakoni.nextvol.ui.home.discovery.discoverySources
 import io.nightfish.lightnovelreader.api.web.discovery.DiscoverySection
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.*
 import kotlinx.serialization.json.*
+import okhttp3.mockwebserver.*
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -22,6 +22,8 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [27], application = Application::class)
@@ -89,8 +91,8 @@ class DiscoveryRoutingTest {
                 assertEquals(categories.drop(1).map { it.id }, feed.map { it.categoryId })
                 assertEquals(categories.drop(1).map { it.target }, feed.map { it.more })
                 assertEquals(2, fixture.documents.get())
-                assertEquals("/search?sort=new&page=1", fixture.server.takeRequest().path)
-                assertEquals("/search?sort=rank&page=1", fixture.server.takeRequest().path)
+                assertEquals(setOf("/search?sort=new&page=1", "/search?sort=rank&page=1"),
+                    List(2) { fixture.server.takeRequest(1, TimeUnit.SECONDS)?.path }.toSet())
             }
         }
     }
@@ -133,15 +135,28 @@ class DiscoveryRoutingTest {
         }
     }
 
-    @Test fun cancellingInferredPreviewsDoesNotFetchTheNextList() = runBlocking {
+    @Test fun cancellingInferredPreviewsStopsQueuedListsWhileRequestsAreInFlight() = runBlocking {
         RuleSourceFixture().use { fixture ->
-            fixture.source { raw -> definition(raw, "最近更新::/search?recent&&热门榜::/search?popular") }.use { source ->
-                val first = RuleDiscoveryProvider(source).feedUpdates().first { result ->
-                    result.get().orEmpty().any { it.books.isNotEmpty() }
-                }.get()!!
-                assertEquals("最近更新", first.first().title)
-                assertTrue(first.last().previewLoading)
-                assertEquals(1, fixture.documents.get())
+            val concurrency = RuleDiscoveryProvider.PREVIEW_CONCURRENCY
+            val entered = CountDownLatch(concurrency)
+            val release = CountDownLatch(1)
+            val dispatcher = fixture.server.dispatcher
+            fixture.server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse {
+                    entered.countDown()
+                    check(release.await(15, TimeUnit.SECONDS))
+                    return dispatcher.dispatch(request)
+                }
+            }
+            fixture.source { raw -> definition(raw, (0 until concurrency + 2).joinToString("&&") {
+                "最近更新 $it::/search?list=$it"
+            }) }.use { source ->
+                val pending = launch(Dispatchers.Default) { RuleDiscoveryProvider(source).feedUpdates().collect {} }
+                try {
+                    assertTrue(withContext(Dispatchers.IO) { entered.await(10, TimeUnit.SECONDS) })
+                    withTimeout(10000) { pending.cancelAndJoin() }
+                    assertEquals(concurrency, fixture.server.requestCount)
+                } finally { release.countDown(); pending.cancelAndJoin() }
             }
         }
     }
