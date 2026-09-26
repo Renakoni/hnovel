@@ -163,63 +163,84 @@ internal class NativeSourceBrowser(private val context: Context, private val net
         var remote: IBrowserService? = null
         var started = false
         var completed = false
-        try {
-            lease = slots.acquire(shared = {
-                seed = session.nativeBrowserCookieSeed(request.url)
-                parallel && connection?.let { it.session === session && it.route === route &&
-                    !it.failed && !it.died.isCompleted && it.restoredStorage && it.cookieVersion == seed?.version } == true
-            }) { exclusive ->
-                if (!exclusive) bound = checkNotNull(connection)
-                else try {
-                    fenceUnknownProcess(owner)
-                    if (connection?.session !== session || connection?.route !== route ||
-                        connection?.failed == true || connection?.died?.isCompleted == true) disconnect()
-                    current()
-                    check(route.available)
-                    bound = connection ?: run {
-                        val stored = try { retention.read() } catch (_: Exception) { throw LocalStorageFailure() }
-                        check(stored == null || stored.generation <= session.scope.accountGeneration) { "Native account retired" }
-                        val pending = stored?.takeIf { it.generation == session.scope.accountGeneration && it.values != null }
-                        if (session.scope.accountGeneration > 0 && (stored != null || session.localStorageRetention.origins.isNotEmpty()) &&
-                            (stored == null || stored.generation < session.scope.accountGeneration)) guard.commit {
-                            check(!session.closed)
-                            // Fence late cleanup even when an earlier handoff failed or an account was skipped.
-                            try { retention.write(RetainedLocalStorage(session.scope.accountGeneration)) }
-                            catch (_: Exception) { throw LocalStorageFailure() }
-                        }
-                        // Recover a crash after the handoff was saved but before the retired profile was removed.
-                        if (pending != null) files.clear(nativeBrowserProfile(session.scope.copy(accountGeneration = pending.generation - 1)))
-                        files.prepare(owner)
-                        bind(owner, route, session).also { it.pendingStorage = pending }
-                    }
-                    withTimeout(15000) { bound.ready.await() }
-                    if (!bound.restoredStorage) {
-                        val selected = session.localStorageRetention.select(bound.pendingStorage?.values.orEmpty())
-                        if (selected.isNotEmpty()) localStorage(bound,
-                            LocalStorageJob(owner, session.localStorageRetention, selected, network?.networkHandle), ::current)
-                        bound.restoredStorage = true
-                    }
-                } catch (failure: Throwable) {
+        suspend fun releaseLease() {
+            val owned = leaseConnection.also { leaseConnection = null }
+            val acquired = lease.also { lease = null }
+            try {
+                if (owned != null && owned.leases.decrementAndGet() == 0 && owned.failed)
                     withContext(NonCancellable) { disconnect() }
-                    throw failure
+            } finally { acquired?.close() }
+        }
+        try {
+            while (!started) {
+                val acquired = slots.acquire(shared = {
+                    seed = session.nativeBrowserCookieSeed(request.url)
+                    parallel && connection?.let { it.session === session && it.route === route &&
+                        !it.failed && !it.died.isCompleted && it.restoredStorage && it.cookieVersion == seed?.version } == true
+                }) { exclusive ->
+                    if (!exclusive) bound = checkNotNull(connection)
+                    else try {
+                        fenceUnknownProcess(owner)
+                        if (connection?.session !== session || connection?.route !== route ||
+                            connection?.failed == true || connection?.died?.isCompleted == true) disconnect()
+                        current()
+                        check(route.available)
+                        bound = connection ?: run {
+                            val stored = try { retention.read() } catch (_: Exception) { throw LocalStorageFailure() }
+                            check(stored == null || stored.generation <= session.scope.accountGeneration) { "Native account retired" }
+                            val pending = stored?.takeIf { it.generation == session.scope.accountGeneration && it.values != null }
+                            if (session.scope.accountGeneration > 0 && (stored != null || session.localStorageRetention.origins.isNotEmpty()) &&
+                                (stored == null || stored.generation < session.scope.accountGeneration)) guard.commit {
+                                check(!session.closed)
+                                // Fence late cleanup even when an earlier handoff failed or an account was skipped.
+                                try { retention.write(RetainedLocalStorage(session.scope.accountGeneration)) }
+                                catch (_: Exception) { throw LocalStorageFailure() }
+                            }
+                            // Recover a crash after the handoff was saved but before the retired profile was removed.
+                            if (pending != null) files.clear(nativeBrowserProfile(session.scope.copy(accountGeneration = pending.generation - 1)))
+                            files.prepare(owner)
+                            bind(owner, route, session).also { it.pendingStorage = pending }
+                        }
+                        withTimeout(15000) { bound.ready.await() }
+                        if (!bound.restoredStorage) {
+                            val selected = session.localStorageRetention.select(bound.pendingStorage?.values.orEmpty())
+                            if (selected.isNotEmpty()) localStorage(bound,
+                                LocalStorageJob(owner, session.localStorageRetention, selected, network?.networkHandle), ::current)
+                            bound.restoredStorage = true
+                        }
+                    } catch (failure: Throwable) {
+                        withContext(NonCancellable) { disconnect() }
+                        throw failure
+                    }
+                    // Host cookie changes start a new exclusive batch. A late website response
+                    // from the old batch cannot contaminate a newer page's cookie snapshot.
+                    if (exclusive) seed = session.nativeBrowserCookieSeed(request.url)
+                    bound.cookieVersion = checkNotNull(seed).version
+                    bound.leases.incrementAndGet()
+                    leaseConnection = bound
                 }
-                // Host cookie changes start a new exclusive batch. A late website response
-                // from the old batch cannot contaminate a newer page's cookie snapshot.
-                if (exclusive) seed = session.nativeBrowserCookieSeed(request.url)
-                bound.cookieVersion = checkNotNull(seed).version
-                bound.leases.incrementAndGet()
-                leaseConnection = bound
+                lease = acquired
+                if (parallel) acquired.single()
+                val service = withTimeout(15000) { bound.ready.await() }.also { remote = it }
+                session.awaitBrowserAdmission()
+                current()
+                if (!route.available) return@withContext routeUnavailable()
+                val selectedSeed = checkNotNull(seed)
+                guard.commit {
+                    synchronized(session) {
+                        check(alive.get() && !session.closed && route.available)
+                        if (session.nativeBrowserCookieSeed(request.url).version == selectedSeed.version) {
+                            cookieVersion.set(selectedSeed.version)
+                            started = true
+                            service.start(Json.encodeToString(BrowserJob(request, options, owner, session.enabledCookieJar,
+                                network?.networkHandle, session.certificateExceptions(), selectedSeed.cookies, jobId, selectedSeed.version)), host)
+                        }
+                    }
+                }
+                // Pacing may have outlived this cookie batch. Reacquire admission so a new
+                // seed cannot be injected while older sibling pages are still running.
+                if (!started) releaseLease()
             }
-            if (parallel) lease.single()
-            val service = withTimeout(15000) { bound.ready.await() }.also { remote = it }
-            session.awaitBrowserAdmission()
-            current()
-            if (!route.available) return@withContext routeUnavailable()
-            val selectedSeed = checkNotNull(seed)
-            cookieVersion.set(selectedSeed.version)
-            started = true
-            service.start(Json.encodeToString(BrowserJob(request, options, owner, session.enabledCookieJar,
-                network?.networkHandle, session.certificateExceptions(), selectedSeed.cookies, jobId, selectedSeed.version)), host)
             val response = select {
                 result.onAwait { it }
                 bound.died.onAwait { BrokerResult.Failure(RequestStage.Response, FailureCode.Network) }
@@ -272,13 +293,7 @@ internal class NativeSourceBrowser(private val context: Context, private val net
                         withTimeout(5000) { bound.died.await() }
                     }
                 }
-            } finally {
-                try {
-                    val owned = leaseConnection
-                    if (owned != null && owned.leases.decrementAndGet() == 0 && owned.failed)
-                        withContext(NonCancellable) { disconnect() }
-                } finally { lease?.close() }
-            }
+            } finally { releaseLease() }
         }
     }
 
