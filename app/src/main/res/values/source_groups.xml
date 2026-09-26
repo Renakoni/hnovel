@@ -19,5 +19,5 @@
     <string name="source_group_deselect_visible">Deselect visible</string>
     <string name="source_group_selected">Selected: %1$d</string>
     <string name="source_groups_saved">Groups updated</string>
-    <string name="source_groups_import_help">New sources are ungrouped. Organize them after adding.</string>
+    <string name="source_groups_import_help">Catalog sources are grouped by category. Sources imported from a link or file start ungrouped.</string>
 </resources>

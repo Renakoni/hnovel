@@ -132,15 +132,13 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
     var adding by rememberSaveable { mutableStateOf(false) }
     var addTab by rememberSaveable { mutableIntStateOf(0) }
     var category by rememberSaveable { mutableStateOf<SourceCategory?>(null) }
-    var managementCategory by rememberSaveable { mutableStateOf<SourceCategory?>(null) }
     var managementGroup by rememberSaveable { mutableStateOf<String?>(null) }
     var managingGroups by rememberSaveable { mutableStateOf(false) }
     var selecting by rememberSaveable { mutableStateOf(false) }
     var selectedSources by rememberSaveable { mutableStateOf(emptyList<String>()) }
     var groupingSources by rememberSaveable { mutableStateOf<List<String>?>(null) }
     val visibleSources = state.installed.filter {
-        (managementCategory == null || it.preferences.category == managementCategory) &&
-            (managementGroup == null || it.preferences.groupId.orEmpty() == managementGroup)
+        managementGroup == null || it.preferences.groupId.orEmpty() == managementGroup
     }
     var chosen by rememberSaveable { mutableStateOf(emptyList<String>()) }
     var url by rememberSaveable { mutableStateOf("") }
@@ -364,11 +362,8 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                         })
                 }
                 item {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        SectionHeader(Modifier.weight(1f), text = if (state.installed.isEmpty()) stringResource(R.string.sources_imported_group)
-                            else stringResource(R.string.source_catalog_installed, state.installed.size))
-                        if (state.installed.isNotEmpty()) SourceManagementFilter(managementCategory) { managementCategory = it }
-                    }
+                    SectionHeader(text = if (state.installed.isEmpty()) stringResource(R.string.sources_imported_group)
+                        else stringResource(R.string.source_catalog_installed, state.installed.size))
                 }
                 item(key = "source-user-groups") {
                     SourceGroupFilters(state.groups, state.installed, managementGroup) { managementGroup = it }
@@ -385,12 +380,7 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                     }
                 }
                 if (visibleSources.isEmpty()) item {
-                    Column {
-                        Text(stringResource(R.string.source_catalog_empty), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        if (managementCategory != null) TextButton(onClick = { category = managementCategory; adding = true }) {
-                            Text(stringResource(R.string.sources_add), color = MaterialTheme.colorScheme.onSurface)
-                        }
-                    }
+                    Text(stringResource(R.string.source_catalog_empty), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 items(visibleSources, key = { it.definition.sourceId }) { source ->
                     val id = ImportedRuleSources.id(source.definition)

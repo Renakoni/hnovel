@@ -31,7 +31,7 @@ import javax.inject.Singleton
 
 /** Owns installed definitions, user preferences and runtime bindings. Import preview/commit grants no authority. */
 @Singleton
-class ImportedRuleSources @Inject constructor(@ApplicationContext context: Context,
+class ImportedRuleSources @Inject constructor(@ApplicationContext private val context: Context,
     private val registry: WebSourceRegistry, private val authority: ExecutionAuthority,
     private val accounts: SourceSessionManager, private val runner: RuleTaskRunner,
     private val storageCipher: hnovel.network.StorageCipher = hnovel.network.StorageCipher.Plain,
@@ -164,23 +164,34 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext context: Conte
     }
 
     /** One definition read and one durable write for a selected collection. */
-    suspend fun activateBatch(references: Map<DefinitionReference, List<NetworkGrant>>, enableNew: Boolean = false): List<Identifier> = withContext(Dispatchers.IO) {
+    suspend fun activateBatch(references: Map<DefinitionReference, List<NetworkGrant>>, enableNew: Boolean = false,
+        groupByCatalog: Boolean = false): List<Identifier> = withContext(Dispatchers.IO) {
         restore()
         lock.withLock {
             check(!restorationFailed)
             val current = definitions.list().associateBy { it.reference() }
+            val nextGroups = groups.toMutableList()
             val additions = references.map { (reference, origins) ->
                 val definition = checkNotNull(current[reference]) { "Definition preview is no longer current" }
                 require(origins.size <= 32 && id(definition) !in active)
                 val hasExploreUrl = Json.parseToJsonElement(definition.rawJson).jsonObject["exploreUrl"]
                     ?.jsonPrimitive?.content?.isNotBlank() == true
+                val category = catalog.entry(definition)?.category
+                val groupId = if (groupByCatalog && category != null) {
+                    val id = "catalog:${category.name}"
+                    val name = context.getString(category.title)
+                    (nextGroups.firstOrNull { it.id == id }
+                        ?: nextGroups.firstOrNull { it.name.equals(name, ignoreCase = true) }
+                        ?: SourceGroup(id, name).also { nextGroups.add(it) }).id
+                } else null
                 InstalledSource(definition, origins.map { it.copy(headers = it.headers.toMap()) },
                     preferences = if (enableNew) SourcePreferences(true, definition.enabledExplore || hasExploreUrl,
-                        enabledSetByUser = true, category = catalog.entry(definition)?.category)
-                    else SourcePreferences(definition.enabled, definition.enabledExplore, category = catalog.entry(definition)?.category))
+                        enabledSetByUser = true, category = category, groupId = groupId)
+                    else SourcePreferences(definition.enabled, definition.enabledExplore, category = category, groupId = groupId))
             }
             // Save once for a collection; opening one definition must not rewrite thousands of others.
-            save(active.values.map { it.installed } + additions)
+            save(active.values.map { it.installed } + additions, nextGroups)
+            groups = nextGroups
             additions.mapNotNull { installed ->
                 val identity = id(installed.definition)
                 val binding = restoreBinding(installed)

@@ -34,6 +34,44 @@ import java.nio.file.Files
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [27], application = Application::class)
 class SourcesViewModelTest {
+    @Test fun catalogConfirmationAssignsEachSelectedSourceToItsOwnCategory(): Unit = runBlocking {
+        Dispatchers.setMain(Dispatchers.Unconfined)
+        val root = Files.createTempDirectory("catalog-groups").toFile()
+        val context = object : ContextWrapper(RuntimeEnvironment.getApplication()) {
+            override fun getFilesDir() = File(root, "files")
+            override fun getCacheDir() = File(root, "cache")
+        }
+        RuleSourceFixture().use { fixture ->
+            val registry = WebSourceRegistry(fixture.authority)
+            val accounts = SourceSessionManager(fixture.authority)
+            val sources = ImportedRuleSources(context, registry, fixture.authority, accounts, fixture.runner)
+            val model = SourcesViewModel(context, sources,
+                SourceRevisionUpdates(context, sources, accounts, fixture.runner, fixture.authority),
+                SourceLoginService(sources, accounts), registry,
+                ZLibrarySources(context, registry, hnovel.network.StorageCipher.Plain))
+            suspend fun idle() = withTimeout(10000) { model.state.first { !it.busy } }
+            try {
+                val catalog = idle().catalog
+                val chosen = catalog.filter { it.category == SourceCategory.Literature }.take(2) +
+                    catalog.first { it.category == SourceCategory.Female }
+                model.previewCatalog(chosen.map { it.key }.toSet())
+                val preview = idle()
+                assertTrue(preview.catalogPreview)
+                assertTrue(sources.sourceGroups().isEmpty())
+                model.commit(preview.preview!!.candidates.map { it.index }.toSet(), preview.previewOrigins, false)
+                val saved = idle()
+                assertNull(saved.preview)
+                assertEquals(3, saved.installed.size)
+                assertEquals(2, saved.groups.size)
+                saved.installed.forEach { source ->
+                    val category = chosen.single { it.key == source.definition.importKey }.category
+                    assertEquals(context.getString(category.title), saved.groups.single { it.id == source.preferences.groupId }.name)
+                }
+                assertEquals(0, fixture.server.requestCount)
+            } finally { model.cancel(); sources.stop(); Dispatchers.resetMain(); root.deleteRecursively() }
+        }
+    }
+
     @Test fun defaultImportDraftsActivateNovelsAndInvalidManualLinesCommitNothing(): Unit = runBlocking {
         Dispatchers.setMain(Dispatchers.Unconfined)
         val root = Files.createTempDirectory("source-import-origins").toFile()

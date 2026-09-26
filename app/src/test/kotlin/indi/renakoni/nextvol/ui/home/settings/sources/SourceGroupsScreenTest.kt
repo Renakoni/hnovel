@@ -47,6 +47,17 @@ class SourceGroupsScreenTest {
     }
     @After fun destroy() { activity.pause().stop().destroy() }
 
+    @Test fun managementOnlyOffersActualGroupsNotTheEntireCatalog() {
+        activity.get().setContent { MaterialTheme { SourcesScreen(initial.copy(groups = emptyList(),
+            installed = listOf(source("One"))), model, onDiagnostics = {}) {} } }
+        compose.onNode(hasText("Ungrouped") and isSelectable()).assertIsDisplayed()
+        compose.onAllNodesWithText("All").assertCountEquals(1)
+        compose.onNodeWithText("All ▾").assertDoesNotExist()
+        indi.renakoni.nextvol.data.web.SourceCategory.entries.forEach { category ->
+            compose.onNodeWithText(activity.get().getString(category.title)).assertDoesNotExist()
+        }
+    }
+
     @Test fun groupManagementIsBesideAddAndCreatesAnEmptyGroupWithoutImporting() {
         activity.get().setContent { MaterialTheme { SourcesScreen(initial, model, onDiagnostics = {}) {} } }
         compose.onNodeWithText("Add book source").assertIsDisplayed()
@@ -120,7 +131,7 @@ class SourceGroupsScreenTest {
         activity.get().setContent { MaterialTheme { SourcesScreen(initial, model, onDiagnostics = {}) {} } }
         compose.onNodeWithText("Add book source").performClick()
         compose.onNodeWithText("Manage groups").assertDoesNotExist()
-        compose.onNodeWithText("New sources are ungrouped. Organize them after adding.").assertIsDisplayed()
+        compose.onNodeWithText("Catalog sources are grouped by category. Sources imported from a link or file start ungrouped.").assertIsDisplayed()
     }
 
     @Test fun failedSaveKeepsTheNameAndRepeatedSuccessClosesTheEditor() {
