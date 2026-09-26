@@ -23,7 +23,7 @@ jobs:
         api: [24, 35]
         include:
           - api: 35
-            native_tests: ",indi.renakoni.nextvol.sourceexecution.NativeBrowserInstrumentedTest,indi.renakoni.nextvol.sourceexecution.NativeBrowserStorageInstrumentedTest,indi.renakoni.nextvol.sourceexecution.NativeBrowserRouteInstrumentedTest,indi.renakoni.nextvol.sourceexecution.NativeBrowserEnvironmentInstrumentedTest,indi.renakoni.nextvol.sourceexecution.BrowserEnvironmentInstrumentedTest,indi.renakoni.nextvol.sourceexecution.SourceVerificationInstrumentedTest"
+            native_tests: ",indi.renakoni.nextvol.sourceexecution.NativeBrowserInstrumentedTest,indi.renakoni.nextvol.sourceexecution.NativeBrowserPoolInstrumentedTest,indi.renakoni.nextvol.sourceexecution.NativeBrowserStorageInstrumentedTest,indi.renakoni.nextvol.sourceexecution.NativeBrowserRouteInstrumentedTest,indi.renakoni.nextvol.sourceexecution.NativeBrowserEnvironmentInstrumentedTest,indi.renakoni.nextvol.sourceexecution.BrowserEnvironmentInstrumentedTest,indi.renakoni.nextvol.sourceexecution.SourceVerificationInstrumentedTest"
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Prepare fixed Android environment
