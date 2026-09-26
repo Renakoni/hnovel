@@ -280,6 +280,7 @@ class RuleDiscoveryProviderTest {
             val verification = mockk<SourceVerification> {
                 every { kind } returns hnovel.network.BrowserChallengeKind.Cloudflare
                 every { certificate } returns null
+                every { origin } returns fixture.server.url("/").toString()
                 coEvery { complete() } returns Unit
             }
             val session = mockk<RuleDiscoverySession>()
