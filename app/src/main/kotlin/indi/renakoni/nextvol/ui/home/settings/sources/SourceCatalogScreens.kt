@@ -7,7 +7,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -142,22 +142,6 @@ private fun SourceImportProgress(onCancel: () -> Unit) {
 @Composable
 internal fun sourceButtonColors() = ButtonDefaults.buttonColors(
     containerColor = MaterialTheme.colorScheme.surfaceContainerHigh, contentColor = MaterialTheme.colorScheme.onSurface)
-
-@Composable
-internal fun SourceManagementFilter(category: SourceCategory?, onCategory: (SourceCategory?) -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
-    Box {
-        TextButton(onClick = { expanded = true }) {
-            Text(stringResource(category?.title ?: R.string.sources_filter_all) + " ▾", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            (listOf(null) + SourceCategory.entries).forEach { choice ->
-                DropdownMenuItem(text = { Text(stringResource(choice?.title ?: R.string.sources_filter_all)) },
-                    onClick = { onCategory(choice); expanded = false })
-            }
-        }
-    }
-}
 
 @Composable
 internal fun SourceSelectionBar(summary: String, secondary: String, onSecondary: () -> Unit,

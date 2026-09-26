@@ -242,7 +242,8 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
                 } catch (cancelled: CancellationException) { throw cancelled }
                 catch (_: Exception) { failed = true }
             }
-            if (additions.isNotEmpty() && sources.activateBatch(additions, enableNew = true).size != additions.size) failed = true
+            if (additions.isNotEmpty() && sources.activateBatch(additions, enableNew = true,
+                    groupByCatalog = snapshot.catalogPreview).size != additions.size) failed = true
         } finally {
             // Import definitions are already committed. Retrying requires a fresh preview of that state.
             withContext(NonCancellable) {

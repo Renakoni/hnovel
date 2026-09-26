@@ -37,6 +37,85 @@ class SourceGroupsTest {
             preview.candidates.single().existing?.let(ImportDecision::Replace) ?: ImportDecision.Add))).items.single().reference!!
     }
 
+    @Test fun catalogGroupsAreCreatedOnDemandAndReusedAfterRenameAndRestart() = runBlocking {
+        val context = host()
+        val catalog = SourceCatalog(context)
+        val literature = catalog.entries.filter { it.category == SourceCategory.Literature }.take(3)
+        val female = catalog.entries.first { it.category == SourceCategory.Female }
+        RuleSourceFixture().use { fixture ->
+            val accounts = SourceSessionManager(fixture.authority)
+            var sources = ImportedRuleSources(context, WebSourceRegistry(fixture.authority), fixture.authority, accounts, fixture.runner)
+            suspend fun add(entries: List<CatalogSource>, grouped: Boolean = true) {
+                val preview = sources.importer.preview(catalog.definitions(entries.map { it.key }.toSet()), AUTO_PROFILE)
+                val committed = sources.importer.commit(preview, preview.candidates.map { ImportSelection(it.index, ImportDecision.Add) })
+                sources.activateBatch(committed.items.associate { checkNotNull(it.reference) to emptyList<NetworkGrant>() },
+                    enableNew = true, groupByCatalog = grouped)
+            }
+            try {
+                add(literature.take(2) + female)
+                assertEquals(setOf(context.getString(SourceCategory.Literature.title), context.getString(SourceCategory.Female.title)),
+                    sources.sourceGroups().map { it.name }.toSet())
+                val group = sources.sourceGroups().single { it.name == context.getString(SourceCategory.Literature.title) }
+                assertEquals(2, sources.installedSources().count { it.preferences.groupId == group.id })
+                sources.renameGroup(group.id, "My classics")
+                sources.stop()
+                sources = ImportedRuleSources(context, WebSourceRegistry(fixture.authority), fixture.authority, accounts, fixture.runner)
+                add(literature.takeLast(1))
+                assertEquals(2, sources.sourceGroups().size)
+                assertEquals("My classics", sources.sourceGroups().single { it.id == group.id }.name)
+                assertEquals(3, sources.installedSources().count { it.preferences.groupId == group.id })
+                val manual = catalog.entries.first { it.category == SourceCategory.Anime }
+                add(listOf(manual), grouped = false)
+                assertNull(sources.installedSources().single { it.definition.importKey == manual.key }.preferences.groupId)
+                assertEquals(2, sources.sourceGroups().size)
+            } finally { sources.stop() }
+        }
+    }
+
+    @Test fun catalogImportReusesAnExistingSameNameGroupWithoutMovingOtherSources() = runBlocking {
+        val context = host()
+        RuleSourceFixture().use { fixture ->
+            val sources = ImportedRuleSources(context, WebSourceRegistry(fixture.authority), fixture.authority,
+                SourceSessionManager(fixture.authority), fixture.runner)
+            try {
+                val existing = sources.activate(commit(sources, fixture.raw()), emptyList())
+                sources.createGroup(context.getString(SourceCategory.Literature.title))
+                val group = sources.sourceGroups().single()
+                val catalog = SourceCatalog(context)
+                val entry = catalog.entries.first { it.category == SourceCategory.Literature }
+                val preview = sources.importer.preview(catalog.definitions(setOf(entry.key)), AUTO_PROFILE)
+                val reference = sources.importer.commit(preview, listOf(ImportSelection(0, ImportDecision.Add))).items.single().reference!!
+                sources.activateBatch(mapOf(reference to emptyList()), groupByCatalog = true)
+                assertEquals(listOf(group), sources.sourceGroups())
+                assertEquals(group.id, sources.installedSources().single { it.definition.importKey == entry.key }.preferences.groupId)
+                assertNull(sources.installedSources().single { ImportedRuleSources.id(it.definition) == existing }.preferences.groupId)
+            } finally { sources.stop() }
+        }
+    }
+
+    @Test fun failedCatalogBatchDoesNotLeaveEmptyGroupsOrPartialMemberships() = runBlocking {
+        val context = host()
+        RuleSourceFixture().use { fixture ->
+            val sources = ImportedRuleSources(context, WebSourceRegistry(fixture.authority), fixture.authority,
+                SourceSessionManager(fixture.authority), fixture.runner)
+            try {
+                sources.createGroup("Existing")
+                val before = File(context.filesDir, "rule-sources/active.json").readText()
+                val catalog = SourceCatalog(context)
+                val entries = catalog.entries.filter { it.category == SourceCategory.Literature }.take(2)
+                val preview = sources.importer.preview(catalog.definitions(entries.map { it.key }.toSet()), AUTO_PROFILE)
+                val committed = sources.importer.commit(preview, preview.candidates.map { ImportSelection(it.index, ImportDecision.Add) })
+                val references = committed.items.mapIndexed { index, item ->
+                    checkNotNull(item.reference) to if (index == 0) emptyList() else List(33) { NetworkGrant("https://fixture.invalid") }
+                }.toMap()
+                assertTrue(runCatching { sources.activateBatch(references, groupByCatalog = true) }.isFailure)
+                assertEquals(listOf("Existing"), sources.sourceGroups().map { it.name })
+                assertTrue(sources.installedSources().isEmpty())
+                assertEquals(before, File(context.filesDir, "rule-sources/active.json").readText())
+            } finally { sources.stop() }
+        }
+    }
+
     @Test fun pasteFileAndUrlImportsIgnoreAuthorGroupsAndStartUngrouped() = runBlocking {
         val context = host()
         RuleSourceFixture().use { fixture ->

@@ -19,5 +19,5 @@
     <string name="source_group_deselect_visible">取消当前列表选择</string>
     <string name="source_group_selected">已选择 %1$d 个书源</string>
     <string name="source_groups_saved">分组已更新</string>
-    <string name="source_groups_import_help">新导入的书源默认放入「未分组」，可在添加后整理。</string>
+    <string name="source_groups_import_help">从分类目录添加的书源会归入对应分组；通过链接或文件导入的书源默认放入「未分组」。</string>
 </resources>
