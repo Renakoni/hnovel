@@ -82,4 +82,4 @@ internal class SourceStorage(root: Path, namespace: List<String>, private val li
 }
 
 internal fun hash(value: String): String = MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8))
-    .joinToString("") { "%02x".format(it) }
+    .toHexString()
