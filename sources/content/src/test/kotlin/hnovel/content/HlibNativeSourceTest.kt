@@ -13,6 +13,41 @@ class HlibNativeSourceTest {
         javaClass.getResourceAsStream("/hlib-native.json")!!.bufferedReader().use { it.readText() }
     ).jsonObject + ("bookSourceUrl" to JsonPrimitive(base)))
 
+    @Test fun homepageAndRankingListsOnlyEvaluateTitlesAndLinks(): Unit = runBlocking {
+        val requests = mutableListOf<BrokerRequest>()
+        val browser = BrowserExecutor { _, request, _, _, _ ->
+            requests += request
+            val rows = (1..30).joinToString("") {
+                "<li class='list-group-item'><a href='/s/book-$it'>Book $it</a>" +
+                    "<a href='/u/writer'><span class='text-body'>Writer</span></a><p class='short'>Intro</p></li>"
+            }
+            BrokerResult.Success(BrokerResponse(0, request.url, emptyMap(),
+                "<html><div class='container'><ul>$rows</ul></div></html>".toByteArray(), "UTF-8", 0,
+                kind = ResponseKind.BrowserDocument))
+        }
+        RuleSourceFixture(object : BrowserExecutor by browser {
+            override suspend fun defaultUserAgent() = "Fixture WebView"
+        }).use { fixture -> fixture.source { raw(fixture.server.url("/").toString().trimEnd('/')) }.use { source ->
+            val fields = mutableListOf<String>()
+            fixture.beforeRun = { task, _ -> if (task is hnovel.execution.ExecutionTask.Rule) fields += task.location.field }
+            val discovery = source.openDiscovery("overview")
+            val home = discovery.catalog(homepage = true)
+            val preview = discovery.preview(home.homepage!!.first().url, emptyMap()).books
+            assertEquals((1..6).map { "Book $it" }, preview.map { it.title })
+            assertTrue(preview.all { it.author.isEmpty() })
+            assertEquals(6, fields.count { it == "ruleExplore.name" })
+            assertEquals(6, fields.count { it == "ruleExplore.bookUrl" })
+            fields.clear()
+            val ranking = discovery.openPages(home.homepage.first().url, emptyMap()).page(1).books
+            assertEquals((1..30).map { "Book $it" }, ranking.map { it.title })
+            assertEquals(30, fields.count { it == "ruleExplore.name" })
+            assertEquals(30, fields.count { it == "ruleExplore.bookUrl" })
+            assertFalse(fields.any { it == "ruleExplore.author" || it == "ruleExplore.intro" })
+            assertEquals(2, requests.size)
+            assertEquals(0, fixture.server.requestCount)
+        } }
+    }
+
     @Test fun publicNavbarDoesNotRequestLoginAndEveryReadUsesTheBrowser() = runBlocking {
         val requests = mutableListOf<BrokerRequest>()
         val browser = BrowserExecutor { _, request, options, _, _ ->
