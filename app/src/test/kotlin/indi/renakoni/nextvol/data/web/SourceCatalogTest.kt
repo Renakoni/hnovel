@@ -33,8 +33,8 @@ class SourceCatalogTest {
     }
 
     @Test fun catalogEntriesUseTheirBundledDefinitionsAndPassTheProductionImporter() {
-        assertEquals(listOf(7, 3, 6, 14, 9, 6, 29), SourceCategory.entries.map { category -> catalog.entries.count { it.category == category } })
-        assertEquals(74, catalog.entries.map { it.key }.toSet().size)
+        assertEquals(listOf(7, 3, 6, 14, 9, 7, 29), SourceCategory.entries.map { category -> catalog.entries.count { it.category == category } })
+        assertEquals(75, catalog.entries.map { it.key }.toSet().size)
         val store = SourceDefinitionStore(folder.newFolder().toPath())
         val importer = SourceDefinitionImporter(store)
         val preview = importer.preview(catalog.definitions(catalog.entries.map { it.key }.toSet()), AUTO_PROFILE)
@@ -46,6 +46,23 @@ class SourceCatalogTest {
             if (entries.isNotEmpty()) assertEquals(JsonArray(entries.map(::raw)),
                 Json.parseToJsonElement(catalog.definitions(entries.map { it.key }.toSet())))
         }
+    }
+
+    @Test fun pixivNovelUsesItsOriginalIdentityInTheAdultCategoryWithoutBundledCredentials() {
+        val pixiv = catalog.entries.single { it.key == "https://www.pixiv.net/novel" }
+        assertEquals(SourceCategory.Adult, pixiv.category)
+        assertEquals("Pixiv 小说", pixiv.name)
+        val definition = raw(pixiv)
+        assertEquals(pixiv.key, definition.getValue("bookSourceUrl").jsonPrimitive.content)
+        assertEquals(0, definition.getValue("bookSourceType").jsonPrimitive.int)
+        assertTrue(definition.getValue("bookSourceComment").jsonPrimitive.content.contains("https://github.com/DowneyRem/PixivSource"))
+        for (field in listOf("searchUrl", "exploreUrl", "loginUrl", "loginUi", "loginCheckJs")) {
+            assertTrue(field, definition.getValue(field).jsonPrimitive.content.isNotBlank())
+        }
+        assertEquals(buildJsonObject { put("Referer", "https://www.pixiv.net") },
+            Json.parseToJsonElement(definition.getValue("header").jsonPrimitive.content))
+        assertTrue(definition.keys.none { it in setOf("loginInfo", "loginHeader", "cookies", "token") })
+        assertTrue(allEntries().none { it.key in setOf("https://www.pixiv.net", "https://www.pixiv.net/manga") })
     }
 
     @Test fun everyAddableCategorySourceActivatesAndRestoresWithoutChangingOrdinaryBookIdentity() = runBlocking {
@@ -92,7 +109,7 @@ class SourceCatalogTest {
 
     @Test fun withdrawnSourcesRetainInstalledClassificationButCannotBeAddedFromTheCatalog() {
         val entries = allEntries()
-        assertEquals(92, entries.size)
+        assertEquals(93, entries.size)
         val importer = SourceDefinitionImporter(SourceDefinitionStore(folder.newFolder().toPath()))
         val preview = importer.preview(JsonArray(entries.map(::raw)).toString(), AUTO_PROFILE)
         assertTrue(preview.issues.toString(), preview.issues.isEmpty())
