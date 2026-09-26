@@ -138,15 +138,19 @@ class DiscoveryPerformanceInstrumentedTest {
                             val requestsBefore = server.requestCount
                             val provider = RuleDiscoveryProvider(source, source.openDiscovery("iteration-$iteration"))
                             val ready = linkedMapOf<String, Double>()
+                            var structureReadyMillis: Double? = null
                             val started = SystemClock.elapsedRealtimeNanos()
                             withTimeout(180_000) {
                                 if (view == "list") {
                                     val result = provider.page(DiscoveryRequest("/list/0?page={{page}}"))
                                     val page = result.get() ?: error("Discovery list failed: ${result.getError()}")
                                     ready[titles.first()] = (SystemClock.elapsedRealtimeNanos() - started) / 1_000_000.0
+                                    structureReadyMillis = ready.values.first()
                                     completed = listOf(DiscoverySection("section-0", titles.first(), page.books))
                                 } else provider.feedUpdates().collect { result ->
                                     val sections = result.get() ?: error("Discovery failed: ${result.getError()}")
+                                    if (structureReadyMillis == null && sections.map { it.title } == expectedTitles)
+                                        structureReadyMillis = (SystemClock.elapsedRealtimeNanos() - started) / 1_000_000.0
                                     sections.forEach { section ->
                                         assertNull(section.previewFailure)
                                         if (section.books.isNotEmpty()) {
@@ -171,6 +175,7 @@ class DiscoveryPerformanceInstrumentedTest {
                                 put("mode", mode); put("iteration", iteration); put("sample", if (iteration == 0) "first" else "repeat")
                                 put("booksPerPage", entries); put("previewBooks", completed.sumOf { it.books.size })
                                 put("firstBooksMs", ready.values.min()); put("allBooksMs", totalMillis)
+                                put("structureReadyMs", requireNotNull(structureReadyMillis))
                                 put("sectionReadyMs", buildJsonObject { ready.forEach { (name, elapsed) -> put(name, elapsed) } })
                                 put("requests", server.requestCount - requestsBefore)
                                 put("ruleTasks", calls.values.sumOf { it.get() })
