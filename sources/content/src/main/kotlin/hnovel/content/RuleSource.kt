@@ -477,10 +477,11 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         // BookList creates an empty SearchBook before evaluating its first field.
         context.bookField("name", priorTitle)
         suspend fun field(name: String, prior: String, metadata: String = name): String {
+            val rule = rules.string(name)
             val extracted = try {
-                if (name == "kind") context.value(rules.string(name), input, "$prefix.$name", OutputKind.TextList)
+                if (name == "kind" && rule.isNotBlank()) context.value(rule, input, "$prefix.$name", OutputKind.TextList)
                     .items().joinToString(",") { it.text() }
-                else context.text(rules.string(name), input, "$prefix.$name")
+                else context.text(rule, input, "$prefix.$name")
             } catch (failure: SourceContentException) {
                 // BookList/BookInfo tolerate optional metadata errors. Keep the trace, and
                 // still surface cancellation, limits, missing dependencies and login/permissions.
