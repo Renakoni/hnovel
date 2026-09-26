@@ -31,6 +31,7 @@ case "$*" in
     if [[ "$EMULATOR_CASE" == stream-fails ]]; then exit 23; fi
     exec /bin/sleep 60 ;;
   'wait-for-device')
+    if [[ "$EMULATOR_CASE" == boot-diagnostics-never-ready ]]; then exit 17; fi
     if [[ "$EMULATOR_CASE" == report-offline || "$EMULATOR_CASE" == report-recovers && ! -f "$EMULATOR_CASE_ROOT/reconnected" ]]; then exit 17; fi ;;
   'reconnect offline')
     if [[ "$EMULATOR_CASE" == report-reconnect-fails ]]; then exit 23; fi
@@ -50,6 +51,7 @@ case "$*" in
     echo package:/system/framework/framework-res.apk ;;
   'shell getprop ro.build.version.sdk')
     if [[ "$EMULATOR_CASE" == api-query-fails ]]; then exit 17; fi
+    if [[ "$EMULATOR_CASE" == boot-diagnostics-never-ready || "$EMULATOR_CASE" == boot-diagnostics-recovers && ! -f "$EMULATOR_CASE_ROOT/reconnected" ]]; then exit 17; fi
     if [[ "$EMULATOR_CASE" == messaging-* ]]; then echo 24; else echo 35; fi ;;
   'shell pm list packages com.google.android.apps.messaging')
     if [[ "$EMULATOR_CASE" != messaging-missing ]]; then echo package:com.google.android.apps.messaging; fi ;;
@@ -228,6 +230,26 @@ exit "$EMULATOR_TEST_EXIT"
 
     def test_adb_still_offline_after_boot_logcat_failure_blocks_tests(self):
         self.assertEqual(17, self.run_case('boot-diagnostics-offline'))
+        self.assertFalse((self.root / 'ran').exists())
+
+    def test_adb_recovers_after_boot_logcat_disconnects(self):
+        self.assertEqual(0, self.run_case('boot-diagnostics-recovers'), self.result.stderr)
+        calls = (self.root / 'adb-calls').read_text().splitlines()
+        self.assertEqual(2, calls.count('shell getprop ro.build.version.sdk'))
+        self.assertEqual(1, calls.count('reconnect offline'))
+        self.assertEqual(1, calls.count('wait-for-device'))
+        self.assertEqual(['one argument', 'second'], (self.root / 'ran').read_text().splitlines())
+
+    def test_recovered_adb_does_not_retry_or_hide_a_test_failure(self):
+        self.assertEqual(42, self.run_case('boot-diagnostics-recovers', 42), self.result.stderr)
+        self.assertEqual(['one argument', 'second'], (self.root / 'ran').read_text().splitlines())
+
+    def test_adb_readiness_retries_are_bounded_before_tests(self):
+        self.assertEqual(17, self.run_case('boot-diagnostics-never-ready'), self.result.stderr)
+        calls = (self.root / 'adb-calls').read_text().splitlines()
+        self.assertEqual(3, calls.count('shell getprop ro.build.version.sdk'))
+        self.assertEqual(2, calls.count('reconnect offline'))
+        self.assertEqual(2, calls.count('wait-for-device'))
         self.assertFalse((self.root / 'ran').exists())
 
     def test_remaining_launcher_dialog_fails_before_tests(self):

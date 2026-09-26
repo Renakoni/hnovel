@@ -36,7 +36,21 @@ timeout 15s adb logcat -d -v threadtime > "$diagnostics/boot-logcat.txt" 2>&1 ||
 # The API 24 Google image's old Messaging app can crash during boot with a
 # RejectedExecutionException, leaving a system-owned dialog over every test.
 # Disable only that unused image package, before tests, to prevent it restarting.
-api=$(timeout 15s adb shell getprop ro.build.version.sdk | tr -d '\r')
+# Recover a transient diagnostic disconnect before running any test command.
+# A persistent failure remains fatal; never retry the instrumentation itself.
+for attempt in {1..3}; do
+  if api=$(timeout 15s adb shell getprop ro.build.version.sdk | tr -d '\r'); then
+    break
+  else
+    readiness_status=$?
+  fi
+  if [[ "$attempt" == 3 ]]; then
+    echo 'Device did not recover before emulator preparation; tests were not started.' >&2
+    exit "$readiness_status"
+  fi
+  timeout 15s adb reconnect offline || true
+  timeout 15s adb wait-for-device || true
+done
 if [[ "$api" == 24 ]]; then
   messaging=$(timeout 15s adb shell pm list packages com.google.android.apps.messaging | tr -d '\r')
   if [[ "$messaging" == 'package:com.google.android.apps.messaging' ]]; then
