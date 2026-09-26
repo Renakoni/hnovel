@@ -43,6 +43,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.android.controller.ActivityController
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import org.robolectric.shadows.ShadowToast
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [27], application = Application::class, qualifiers = "en-rUS")
@@ -57,6 +58,48 @@ class SourcesScreenTest {
         activity.setup()
     }
     @After fun destroy() { activity.pause().stop().destroy() }
+
+    @Test @Config(qualifiers = "en-rUS-w360dp-h800dp")
+    fun savedChangesCloseAddingAndShowOneShortToastWithoutReplayingOnReentry() {
+        ShadowToast.reset()
+        var state by mutableStateOf(SourceManagementState())
+        var visible by mutableStateOf(true)
+        every { model.consumeSavedMessage() } answers { state = state.copy(message = null) }
+        activity.get().setContent { MaterialTheme {
+            if (visible) SourcesScreen(state, model, onDiagnostics = {}) {}
+        } }
+        compose.onNodeWithText("Add book source").performClick()
+        compose.onNodeWithText("Download and preview").assertExists()
+        compose.runOnIdle { state = state.copy(message = indi.renakoni.nextvol.R.string.sources_saved) }
+        compose.onNodeWithText("Download and preview").assertDoesNotExist()
+        compose.onNodeWithText("Source changes saved.").assertDoesNotExist()
+        compose.runOnIdle {
+            org.junit.Assert.assertNull(state.message)
+            org.junit.Assert.assertEquals(1, ShadowToast.shownToastCount())
+            org.junit.Assert.assertEquals("Source changes saved.", ShadowToast.getTextOfLatestToast())
+            org.junit.Assert.assertEquals(android.widget.Toast.LENGTH_SHORT, ShadowToast.getLatestToast().duration)
+        }
+        compose.runOnIdle { visible = false }
+        compose.runOnIdle { visible = true }
+        compose.runOnIdle { org.junit.Assert.assertEquals(1, ShadowToast.shownToastCount()) }
+        compose.runOnIdle { state = state.copy(message = indi.renakoni.nextvol.R.string.sources_saved) }
+        compose.runOnIdle { org.junit.Assert.assertEquals(2, ShadowToast.shownToastCount()) }
+        verify(exactly = 2) { model.consumeSavedMessage() }
+    }
+
+    @Test fun failedAndPartialImportsStayVisibleWithoutBeingConsumedAsSuccess() {
+        ShadowToast.reset()
+        var state by mutableStateOf(SourceManagementState())
+        activity.get().setContent { MaterialTheme { SourcesScreen(state, model, onDiagnostics = {}) {} } }
+        for (message in listOf(indi.renakoni.nextvol.R.string.sources_import_partial,
+            indi.renakoni.nextvol.R.string.sources_action_failed)) {
+            compose.runOnIdle { state = state.copy(message = message) }
+            compose.onNodeWithText(activity.get().getString(message)).assertIsDisplayed()
+            compose.runOnIdle { org.junit.Assert.assertEquals(message, state.message) }
+        }
+        org.junit.Assert.assertEquals(0, ShadowToast.shownToastCount())
+        verify(exactly = 0) { model.consumeSavedMessage() }
+    }
 
     @Test @Config(qualifiers = "en-rUS-w360dp-h800dp")
     fun openingSettingsDoesNotInsertProgressButUpdatesStillDo() {
