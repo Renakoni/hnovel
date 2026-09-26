@@ -8,7 +8,7 @@ internal data class RuleDiscoveryCapabilities(val hasFeed: Boolean, val hasCateg
 
 /** Catalogue semantics only. Targets, list rules, ordering and page execution belong to the source. */
 object RuleDiscoveryClassifier {
-    private const val MAX_AUTOMATIC_PREVIEWS = 6
+    private const val MAX_AUTOMATIC_PREVIEWS = 8
 
     fun feed(catalog: RuleDiscoveryCatalog): List<RuleDiscoveryRow> {
         // An explicit empty homepage also opts out of inference. The complete catalogue remains tags.

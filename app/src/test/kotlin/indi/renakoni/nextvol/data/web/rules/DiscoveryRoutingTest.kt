@@ -124,13 +124,13 @@ class DiscoveryRoutingTest {
                 val catalog = provider.catalog().get()!!
                 assertEquals(326, catalog.categories.size)
                 val feed = provider.feed().get()!!
-                assertEquals(6, feed.size)
+                assertEquals(8, feed.size)
                 assertTrue(feed.all { it.books.isNotEmpty() })
-                assertEquals(catalog.categories.take(6).map { it.target }, feed.map { it.more })
-                assertEquals(6, fixture.documents.get())
+                assertEquals(catalog.categories.take(8).map { it.target }, feed.map { it.more })
+                assertEquals(8, fixture.documents.get())
                 val last = provider.page(io.nightfish.lightnovelreader.api.web.discovery.DiscoveryRequest(catalog.categories.last().target)).get()!!
                 assertTrue(last.books.isNotEmpty())
-                assertEquals(7, fixture.documents.get())
+                assertEquals(9, fixture.documents.get())
             }
         }
     }
