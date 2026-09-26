@@ -50,8 +50,11 @@ class RuleDiscoveryClassifierTest {
 
     @Test fun automaticPreviewsAreBoundedAndExplicitHomepageCanOverrideOrDisableInference() {
         val rows = List(326) { row("$it", "最近更新 $it", "/list/$it") }
-        assertEquals(rows.take(6), RuleDiscoveryClassifier.feed(RuleDiscoveryCatalog(rows, emptyMap())))
-        val explicit = List(8) { row("home:$it", "Editorial $it", "/editorial/$it") }
+        for (size in listOf(0, 1, 8, 9, 326)) {
+            assertEquals(rows.take(minOf(size, 8)),
+                RuleDiscoveryClassifier.feed(RuleDiscoveryCatalog(rows.take(size), emptyMap())))
+        }
+        val explicit = List(10) { row("home:$it", "Editorial $it", "/editorial/$it") }
         assertEquals(explicit, RuleDiscoveryClassifier.feed(RuleDiscoveryCatalog(rows, emptyMap(), explicit)))
         assertTrue(RuleDiscoveryClassifier.feed(RuleDiscoveryCatalog(rows, emptyMap(), emptyList())).isEmpty())
         assertEquals(326, rows.size)
