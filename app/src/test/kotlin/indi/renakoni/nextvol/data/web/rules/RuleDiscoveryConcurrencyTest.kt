@@ -2,14 +2,16 @@ package indi.renakoni.nextvol.data.web.rules
 
 import android.app.Application
 import com.github.michaelbull.result.get
-import hnovel.content.RuleSourceFixture
-import hnovel.content.RuleDiscoverySession
-import hnovel.content.RuleListSession
-import io.mockk.coEvery
-import io.mockk.mockk
+import hnovel.content.*
+import hnovel.network.BrowserChallengeKind
+import indi.renakoni.nextvol.data.web.*
+import io.mockk.*
+import io.nightfish.lightnovelreader.api.identifier.Identifier
+import io.nightfish.lightnovelreader.api.web.WebDataSourceItem
 import io.nightfish.lightnovelreader.api.web.discovery.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.serialization.json.*
 import okhttp3.mockwebserver.*
 import org.junit.Assert.*
@@ -32,6 +34,86 @@ class RuleDiscoveryConcurrencyTest {
     ))
     private fun html(path: String) = (1..30).joinToString("") { "<li><h2>$path $it</h2><a href='/book/$it'>Read</a></li>" }
 
+    @Test fun eightPreviewsStartBeforeAnyCompletesAndTheNinthWaits() = runBlocking {
+        RuleSourceFixture().use { fixture -> fixture.source { definition(it, (0..8).map { "/module-$it" }) }.use { source ->
+            val catalog = source.openDiscovery("catalog").catalog(homepage = true)
+            val entered = Channel<Int>(Channel.UNLIMITED)
+            val release = CompletableDeferred<Unit>()
+            val pages = (0..8).map { index -> mockk<RuleListSession> {
+                coEvery { page(1) } coAnswers {
+                    entered.send(index)
+                    release.await()
+                    RuleListPage(listOf(RuleBook("/book/$index", "Book $index")), null, null)
+                }
+            } }
+            val session = mockk<RuleDiscoverySession> {
+                coEvery { catalog(homepage = true) } returns catalog
+                coEvery { concurrentPreviews(any(), any()) } returns pages
+            }
+            val pending = async { RuleDiscoveryProvider(source, session).feed() }
+            try {
+                assertEquals((0..7).toSet(), withTimeout(3000) { List(8) { entered.receive() }.toSet() })
+                assertTrue(entered.tryReceive().isFailure)
+                release.complete(Unit)
+                assertTrue(withTimeout(3000) { requireNotNull(pending.await().get()) }.all { it.books.size == 1 && !it.previewLoading })
+                assertEquals(8, entered.receive())
+            } finally { pending.cancelAndJoin() }
+        } }
+    }
+
+    @Test fun automaticVerificationCannotExhaustPreviewSlotsAndManualRetryStillVerifies() = runBlocking {
+        verifyAutomaticFailures(concurrent = true)
+    }
+
+    @Test fun automaticVerificationDoesNotBlockTheSequentialFallback() = runBlocking {
+        verifyAutomaticFailures(concurrent = false)
+    }
+
+    private suspend fun verifyAutomaticFailures(concurrent: Boolean) = coroutineScope {
+        val owner = VerificationOwner(Identifier("rules", "fixture"), "revision", 0)
+        val listings = MutableStateFlow(listOf(SourceListing(SourceMetadata(
+            WebDataSourceItem(owner.source, "Fixture", ""), emptySet(), revision = owner.revision), SourceStatus.Ready)))
+        val coordinator = SourceVerificationCoordinator(mockk<WebSourceRegistry> { every { sources } returns listings })
+        var verified = false
+        val verification = mockk<SourceVerification> {
+            every { kind } returns BrowserChallengeKind.Cloudflare
+            every { certificate } returns null
+            every { origin } returns "https://first.test/"
+            coEvery { complete() } coAnswers { awaitCancellation() }
+        }
+        val failure = SourceContentException(ContentError.BrowserRequired, "exploreUrl", verification = verification)
+        RuleSourceFixture().use { fixture -> fixture.source { definition(it, (0..9).map { "/module-$it" }) }.use { source ->
+            val catalog = source.openDiscovery("catalog").catalog(homepage = true)
+            val ready = RuleListPage(listOf(RuleBook("/book/ready", "Ready")), null, null)
+            val pages = (0..9).map { index -> mockk<RuleListSession> {
+                coEvery { page(1) } coAnswers { if (index < 8) throw failure else ready }
+            } }
+            val session = mockk<RuleDiscoverySession> {
+                coEvery { catalog(homepage = true) } returns catalog
+                coEvery { concurrentPreviews(any(), any()) } returns if (concurrent) pages else null
+                (0..9).forEach { index ->
+                    coEvery { preview("/module-$index", any()) } coAnswers { if (index < 8 && !verified) throw failure else ready }
+                }
+            }
+            val provider = RuleDiscoveryProvider(source, session, RuleRequestRecovery(coordinator, owner, "Fixture"))
+            val pending = async(ForegroundSourceRequest()) { provider.feed() }
+            try {
+                val feed = withTimeout(3000) { requireNotNull(pending.await().get()) }
+                assertTrue(feed.all { !it.previewLoading })
+                assertTrue(feed.take(8).all { it.previewFailure != null })
+                assertTrue(feed.drop(8).all { it.books.size == 1 && it.previewFailure == null })
+                coVerify(exactly = 0) { verification.complete() }
+                assertTrue(coordinator.prompts.value.isNotEmpty())
+                assertTrue(coordinator.prompts.value.none { it.foreground })
+                coEvery { verification.complete() } coAnswers { verified = true }
+                val retried = withContext(ForegroundSourceRequest()) { requireNotNull(provider.preview(feed.first().id).get()) }
+                assertNull(retried.previewFailure)
+                assertEquals(1, retried.books.size)
+                coVerify(exactly = 1) { verification.complete() }
+            } finally { pending.cancelAndJoin() }
+        } }
+    }
+
     @Test fun aCancelledSourceReadEndsTheFeedInsteadOfWaitingForAMissingResult() = runBlocking {
         RuleSourceFixture().use { fixture -> fixture.source { definition(it, listOf("/one", "/two")) }.use { source ->
             val catalog = source.openDiscovery("catalog").catalog(homepage = true)
@@ -46,23 +128,39 @@ class RuleDiscoveryConcurrencyTest {
         } }
     }
 
-    @Test fun blockedScriptSourceModuleDoesNotHoldOthersAndLoginStateStaysInItsOwnSlot() = runBlocking {
+    @Test fun aCancelledBootstrapNeverStartsTheRemainingPreviews() = runBlocking {
+        RuleSourceFixture().use { fixture -> fixture.source { definition(it, listOf("/first", "/second", "/third")) }.use { source ->
+            val catalog = source.openDiscovery("catalog").catalog(homepage = true)
+            val session = mockk<RuleDiscoverySession> {
+                coEvery { catalog(homepage = true) } returns catalog
+                coEvery { concurrentPreviews(any(), any()) } returns null
+                coEvery { preview("/first", any()) } throws CancellationException("Source retired")
+            }
+            val failed = withTimeout(2000) { runCatching { RuleDiscoveryProvider(source, session).feed() }.exceptionOrNull() }
+            assertTrue(failed is CancellationException && failed !is TimeoutCancellationException)
+            coVerify(exactly = 1) { session.concurrentPreviews(any(), any()) }
+            coVerify(exactly = 0) { session.preview("/second", any()); session.preview("/third", any()) }
+        } }
+    }
+
+    @Test fun eightScriptSourceReadsOverlapAndLoginStateStaysInItsOwnSlot() = runBlocking {
         RuleSourceFixture().use { fixture ->
             val release = CountDownLatch(1)
-            val firstEntered = CountDownLatch(1)
+            val allEntered = CountDownLatch(8)
             val active = AtomicInteger()
             val maximum = AtomicInteger()
             fixture.server.dispatcher = object : Dispatcher() {
                 override fun dispatch(request: RecordedRequest): MockResponse {
                     maximum.accumulateAndGet(active.incrementAndGet(), ::maxOf)
                     try {
-                        if (request.path == "/one") { firstEntered.countDown(); check(release.await(10, TimeUnit.SECONDS)) }
-                        else check(firstEntered.await(5, TimeUnit.SECONDS))
+                        allEntered.countDown()
+                        check(allEntered.await(10, TimeUnit.SECONDS))
+                        if (request.path == "/one") check(release.await(10, TimeUnit.SECONDS))
                         return MockResponse().setBody(html(request.path!!))
                     } finally { active.decrementAndGet() }
                 }
             }
-            fixture.source { raw -> JsonObject(definition(raw) + mapOf(
+            fixture.source { raw -> JsonObject(definition(raw, listOf("/one") + (2..8).map { "/module-$it" }) + mapOf(
                 "jsLib" to JsonPrimitive("function previewUrl(value){return value}"),
                 "loginCheckJs" to JsonPrimitive("java.put('preview-url',previewUrl(baseUrl));result"),
                 "ruleExplore" to buildJsonObject {
@@ -76,11 +174,11 @@ class RuleDiscoveryConcurrencyTest {
                     var snapshot = withTimeout(10000) { updates.receive() }
                     assertTrue(snapshot.all { it.previewLoading && it.books.isEmpty() })
                     withTimeout(10000) { while (snapshot.drop(1).any { it.previewLoading }) snapshot = updates.receive() }
-                    assertEquals(listOf("Module 0", "Module 1", "Module 2", "Module 3"), snapshot.map { it.title })
+                    assertEquals((0..7).map { "Module $it" }, snapshot.map { it.title })
                     assertTrue(snapshot.first().previewLoading)
                     assertTrue(snapshot.drop(1).all { it.books.size == 6 && it.previewFailure == null })
-                    assertTrue(maximum.get() in 2..RuleDiscoveryProvider.PREVIEW_CONCURRENCY)
-                    assertEquals(4, fixture.server.requestCount)
+                    assertEquals(8, maximum.get())
+                    assertEquals(8, fixture.server.requestCount)
                 } finally { release.countDown() }
                 pending.join()
                 assertTrue(updates.receive().all { it.books.size == 6 && !it.previewLoading })
@@ -112,6 +210,36 @@ class RuleDiscoveryConcurrencyTest {
                     assertNotNull(snapshot[1].previewFailure)
                     assertEquals(6, snapshot[2].books.size)
                     assertEquals(2, fixture.server.requestCount)
+                } finally { release.countDown(); pending.cancelAndJoin() }
+            }
+        }
+    }
+
+    @Test fun coldAccountBootstrapRechecksConcurrencyBeforeLoadingRemainingSections() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            val entered = CountDownLatch(1)
+            val release = CountDownLatch(1)
+            fixture.server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse {
+                    if (request.path == "/user/42/slow") {
+                        entered.countDown(); check(release.await(15, TimeUnit.SECONDS))
+                    } else if (request.path == "/user/42/ready") check(entered.await(5, TimeUnit.SECONDS))
+                    return MockResponse().setBody(html(request.path!!))
+                }
+            }
+            fixture.source { raw -> JsonObject(definition(raw, listOf(
+                "/bootstrap", "/user/{{cache.get('account')}}/slow", "/user/{{cache.get('account')}}/ready")) +
+                ("loginCheckJs" to JsonPrimitive("cache.put('account','42');result"))) }.use { source ->
+                val updates = Channel<List<DiscoverySection>>(Channel.UNLIMITED)
+                val pending = launch { RuleDiscoveryProvider(source).feedUpdates().collect { updates.send(requireNotNull(it.get())) } }
+                try {
+                    var snapshot = withTimeout(10000) { updates.receive() }
+                    withTimeout(10000) { while (snapshot[2].previewLoading) snapshot = updates.receive() }
+                    assertEquals(6, snapshot[0].books.size)
+                    assertTrue(snapshot[1].previewLoading)
+                    assertEquals(6, snapshot[2].books.size)
+                    assertNull(snapshot[2].previewFailure)
+                    assertEquals(3, fixture.server.requestCount)
                 } finally { release.countDown(); pending.cancelAndJoin() }
             }
         }
