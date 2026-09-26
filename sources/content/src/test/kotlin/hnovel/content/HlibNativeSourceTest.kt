@@ -1,5 +1,6 @@
 package hnovel.content
 
+import hnovel.execution.ExecutionTask
 import hnovel.network.*
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.*
@@ -29,20 +30,28 @@ class HlibNativeSourceTest {
             override suspend fun defaultUserAgent() = "Fixture WebView"
         }).use { fixture -> fixture.source { raw(fixture.server.url("/").toString().trimEnd('/')) }.use { source ->
             val fields = mutableListOf<String>()
-            fixture.beforeRun = { task, _ -> if (task is hnovel.execution.ExecutionTask.Rule) fields += task.location.field }
+            val batches = mutableListOf<ExecutionTask.BookOverviews>()
+            fixture.beforeRun = { task, _ -> when (task) {
+                is ExecutionTask.Rule -> fields += task.location.field
+                is ExecutionTask.BookOverviews -> batches += task
+                else -> Unit
+            } }
+            fun assertOverviewBatches(sizes: List<Int>) {
+                assertEquals(sizes, batches.map { it.inputs.size })
+                assertTrue(batches.all { it.field == "ruleExplore" && it.nameRule.isNotBlank() && it.urlRule.isNotBlank() })
+                assertFalse(fields.any { it == "ruleExplore.author" || it == "ruleExplore.intro" })
+            }
             val discovery = source.openDiscovery("overview")
             val home = discovery.catalog(homepage = true)
             val preview = discovery.preview(home.homepage!!.first().url, emptyMap()).books
             assertEquals((1..6).map { "Book $it" }, preview.map { it.title })
             assertTrue(preview.all { it.author.isEmpty() })
-            assertEquals(6, fields.count { it == "ruleExplore.name" })
-            assertEquals(6, fields.count { it == "ruleExplore.bookUrl" })
+            assertOverviewBatches(listOf(6))
             fields.clear()
+            batches.clear()
             val ranking = discovery.openPages(home.homepage.first().url, emptyMap()).page(1).books
             assertEquals((1..30).map { "Book $it" }, ranking.map { it.title })
-            assertEquals(30, fields.count { it == "ruleExplore.name" })
-            assertEquals(30, fields.count { it == "ruleExplore.bookUrl" })
-            assertFalse(fields.any { it == "ruleExplore.author" || it == "ruleExplore.intro" })
+            assertOverviewBatches(listOf(8, 8, 8, 6))
             assertEquals(2, requests.size)
             assertEquals(0, fixture.server.requestCount)
         } }
