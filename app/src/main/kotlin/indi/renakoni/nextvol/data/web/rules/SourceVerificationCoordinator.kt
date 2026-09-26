@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -23,7 +24,8 @@ data class VerificationPrompt(val id: String, val owner: VerificationOwner, val 
 @Singleton
 class SourceVerificationCoordinator @Inject constructor(private val registry: WebSourceRegistry) {
     private data class Pending(val prompt: VerificationPrompt, val verification: SourceVerification,
-        val approval: CompletableDeferred<Boolean> = CompletableDeferred())
+        val approval: CompletableDeferred<Boolean> = CompletableDeferred(),
+        val retryAfterVerification: AtomicBoolean = AtomicBoolean())
     private val lock = Any()
     private val pending = linkedMapOf<String, Pending>()
     private val mutable = MutableStateFlow<List<VerificationPrompt>>(emptyList())
@@ -55,6 +57,13 @@ class SourceVerificationCoordinator @Inject constructor(private val registry: We
     }
 
     private suspend fun open(entry: Pending) = browser.withLock {
+        if (entry.retryAfterVerification.get()) {
+            if (!current(entry.prompt.owner)) throw SourceContentException(hnovel.content.ContentError.Unavailable, "browser.verification")
+            synchronized(lock) {
+                if (pending[entry.prompt.id]?.approval !== entry.approval) throw CancellationException("Verification dismissed")
+            }
+            return@withLock
+        }
         try { completeVerification(entry) }
         catch (failure: SourceContentException) {
             val verification = failure.verification
@@ -73,6 +82,15 @@ class SourceVerificationCoordinator @Inject constructor(private val registry: We
             completeVerification(certificate)
             replace(certificate, entry)
             completeVerification(entry)
+        }
+        if (entry.prompt.foreground && entry.prompt.kind != null && entry.prompt.certificate == null &&
+            entry.verification.origin != null) synchronized(lock) {
+            // Only requests already waiting for this account and origin retry the updated session.
+            // Their ordinary retry still proves success; a fresh challenge remains an error.
+            pending.values.filter { it.prompt.foreground && it.prompt.owner == entry.prompt.owner &&
+                it.prompt.kind == entry.prompt.kind && it.prompt.certificate == null &&
+                it.verification.origin == entry.verification.origin }
+                .forEach { it.retryAfterVerification.set(true) }
         }
     }
 
