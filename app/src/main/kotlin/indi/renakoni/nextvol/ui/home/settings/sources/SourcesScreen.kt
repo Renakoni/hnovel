@@ -1,5 +1,6 @@
 package indi.renakoni.nextvol.ui.home.settings.sources
 
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -24,6 +25,7 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -126,6 +128,7 @@ private data class SourcesPage(val state: SourceManagementState, val adding: Boo
 @Composable
 fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
     onDiagnostics: (Identifier) -> Unit, onSearch: (Identifier) -> Unit = {}, onBack: () -> Unit) {
+    val context = LocalContext.current
     var adding by rememberSaveable { mutableStateOf(false) }
     var addTab by rememberSaveable { mutableIntStateOf(0) }
     var category by rememberSaveable { mutableStateOf<SourceCategory?>(null) }
@@ -155,7 +158,11 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
         }
     }
     LaunchedEffect(state.message) {
-        if (state.message == R.string.sources_saved) { adding = false; category = null; chosen = emptyList() }
+        if (state.message == R.string.sources_saved) {
+            adding = false; category = null; chosen = emptyList()
+            Toast.makeText(context.applicationContext, R.string.sources_saved, Toast.LENGTH_SHORT).show()
+            model.consumeSavedMessage()
+        }
     }
     LaunchedEffect(state.installed) {
         chosen = chosen - state.installed.map { it.definition.importKey }.toSet()
@@ -224,7 +231,9 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
             }
         } else LazyColumn(Modifier.fillMaxSize().padding(padding), state = page.listState, contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (state.busy && state.showProgress) item { LinearProgressIndicator(Modifier.fillMaxWidth()); TextButton(onClick = model::cancel) { Text(stringResource(android.R.string.cancel)) } }
-            state.message?.let { message -> item { Text(stringResource(message), color = MaterialTheme.colorScheme.primary) } }
+            state.message?.takeUnless { it == R.string.sources_saved }?.let { message ->
+                item { Text(stringResource(message), color = MaterialTheme.colorScheme.primary) }
+            }
             if (state.selected == ZLibrarySources.ID) {
                 item(key = "zlibrary-settings") { ZLibrarySettingsEditor(state.zLibrary, state.busy, state.registry.find { it.metadata.id == ZLibrarySources.ID },
                     onEnabled = model::setZLibraryEnabled, onSave = model::saveZLibrary,
