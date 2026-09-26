@@ -83,11 +83,13 @@ class SourceVerificationCoordinator @Inject constructor(private val registry: We
             replace(certificate, entry)
             completeVerification(entry)
         }
-        if (entry.prompt.foreground && entry.prompt.kind != null && entry.prompt.certificate == null) synchronized(lock) {
-            // Only requests already waiting for this account retry the updated session.
+        if (entry.prompt.foreground && entry.prompt.kind != null && entry.prompt.certificate == null &&
+            entry.verification.origin != null) synchronized(lock) {
+            // Only requests already waiting for this account and origin retry the updated session.
             // Their ordinary retry still proves success; a fresh challenge remains an error.
             pending.values.filter { it.prompt.foreground && it.prompt.owner == entry.prompt.owner &&
-                it.prompt.kind == entry.prompt.kind && it.prompt.certificate == null }
+                it.prompt.kind == entry.prompt.kind && it.prompt.certificate == null &&
+                it.verification.origin == entry.verification.origin }
                 .forEach { it.retryAfterVerification.set(true) }
         }
     }

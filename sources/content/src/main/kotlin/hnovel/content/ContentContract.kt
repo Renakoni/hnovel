@@ -31,6 +31,8 @@ internal fun hnovel.network.FailureCode.contentError(): ContentError = when (thi
 /** Recovery is a host-owned action, never a script-provided URL or authority claim. */
 class SourceVerification internal constructor(val kind: hnovel.network.BrowserChallengeKind?,
     val certificate: hnovel.network.CertificateProblem? = null,
+    /** Exact HTTP origin; an unknown origin cannot share another request's verification. */
+    val origin: String? = null,
     private val action: suspend () -> Unit) {
     suspend fun complete() = action()
     override fun toString() = "SourceVerification(kind=$kind)"

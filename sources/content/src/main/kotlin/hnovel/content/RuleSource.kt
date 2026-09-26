@@ -870,7 +870,12 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val kind = failure.challenge ?: return null
         val request = failure.verificationRequest ?: return null
         if (failure.code != hnovel.network.FailureCode.BrowserRequired) return null
-        return SourceVerification(kind) {
+        val origin = runCatching {
+            val address = java.net.URL(request.url)
+            java.net.URL(address.protocol.lowercase(), address.host.lowercase(),
+                if (address.port == address.defaultPort) -1 else address.port, "/").toString()
+        }.getOrNull()
+        return SourceVerification(kind, origin = origin) {
             operation("browser.verification", timeoutMillis = 300000) {
                 // Recovery opens immediately and finishes when the original extraction is ready.
                 // Ordinary account/login windows keep their explicit completion behavior.
