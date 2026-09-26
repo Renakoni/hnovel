@@ -24,6 +24,22 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [27], application = Application::class)
 class SourceDiscoveryTest {
+    @Test fun previouslyCompiledSectionConstructorsAndCopiesRemainUsable() {
+        val fields = arrayOf(String::class.java, String::class.java, List::class.java,
+            String::class.java, String::class.java, DiscoveryPreviewFailure::class.java)
+        val constructor = DiscoverySection::class.java.getConstructor(*fields, Int::class.javaPrimitiveType,
+            Class.forName("kotlin.jvm.internal.DefaultConstructorMarker"))
+        val legacy = constructor.newInstance("legacy", "Legacy", emptyList<DiscoveryBook>(), null, null, null, 56, null)
+        assertFalse(legacy.previewLoading)
+        val loading = legacy.copy(previewLoading = true)
+        val copy = DiscoverySection::class.java.getDeclaredMethod("copy\$default", DiscoverySection::class.java,
+            *fields, Int::class.javaPrimitiveType, Any::class.java)
+        val renamed = copy.invoke(null, loading, null, "Renamed", null, null, null, null, 61, null) as DiscoverySection
+        assertEquals("Renamed", renamed.title)
+        assertEquals(loading.id, renamed.id)
+        assertTrue(renamed.previewLoading)
+    }
+
     @Test(timeout = 10000) fun snapshotStreamBindsBooksAndRemovalCancelsPendingProvider() = runBlocking {
         val registry = WebSourceRegistry()
         val cancelled = CompletableDeferred<Unit>()

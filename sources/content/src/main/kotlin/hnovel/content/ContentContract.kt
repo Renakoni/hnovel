@@ -31,6 +31,8 @@ internal fun hnovel.network.FailureCode.contentError(): ContentError = when (thi
 /** Recovery is a host-owned action, never a script-provided URL or authority claim. */
 class SourceVerification internal constructor(val kind: hnovel.network.BrowserChallengeKind?,
     val certificate: hnovel.network.CertificateProblem? = null,
+    /** Exact HTTP origin; an unknown origin cannot share another request's verification. */
+    val origin: String? = null,
     private val action: suspend () -> Unit) {
     suspend fun complete() = action()
     override fun toString() = "SourceVerification(kind=$kind)"
@@ -61,7 +63,9 @@ class SourceContentException(val code: ContentError, val field: String,
 data class RuleContent(val id: String, val title: String, val parts: List<ContentPart>,
     val previous: String?, val next: String?)
 
-@Serializable internal data class PageDocument(val body: String, val url: String, val inline: Boolean = false, val ruleUrl: String = url)
+@Serializable internal data class PageDocument(val body: String, val url: String, val inline: Boolean = false, val ruleUrl: String = url,
+    @kotlinx.serialization.Transient val successfulResponse: Boolean = false)
+@Serializable internal data class BookPreview(val input: hnovel.rules.RuleValue, val baseUrl: String, val accountGeneration: Long)
 @Serializable internal data class BookRecord(val revision: String, val book: RuleBook,
     val informationLoaded: Boolean = false, val document: PageDocument? = null,
-    val chapters: List<RuleChapter> = emptyList())
+    val chapters: List<RuleChapter> = emptyList(), val preview: BookPreview? = null)

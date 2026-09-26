@@ -49,6 +49,8 @@ data class SourceScope(val namespace: String, val sourceId: String, val profile:
     override fun toString() = "BrokerRequest(method=$method, kind=$kind)"
 }
 
+data class NativeBrowserCookieSeed(val version: Long, val cookies: List<String>)
+
 @Serializable data class BrokerResponse(val status: Int, val finalUrl: String, val headers: Map<String, List<String>>,
     val body: ByteArray, val charset: String, val redirects: Int, val fromCache: Boolean = false,
     val message: String = "", val protocol: String = "http/1.1", val sentAt: Long = 0, val receivedAt: Long = 0,

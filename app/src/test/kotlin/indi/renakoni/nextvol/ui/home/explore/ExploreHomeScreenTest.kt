@@ -200,20 +200,48 @@ class ExploreHomeScreenTest {
         assertEquals(1, opened)
     }
 
-    @Test fun previewFailureStaysWithItsEntryAndRetryOpensThatSourceList() {
+    @Test fun previewRetryStaysInItsEntryAndKeepsSuccessfulBooksAvailable() {
         val id = Identifier("fixture", "Partial source")
         val broken = SourceDiscoverySection("broken", "Broken preview", emptyList(), SourceDiscoveryTarget(id, "/broken"),
-            previewFailure = DiscoveryPreviewFailure(DiscoveryError.InvalidRules, "ruleExplore.bookList"))
-        val opened = mutableListOf<SourceDiscoverySection>()
-        val page = content(id).copy(sections = listOf(broken) + content(id).sections)
+            previewFailure = DiscoveryPreviewFailure(DiscoveryError.InvalidRules, "ruleExplore.bookList"), previewRetryAvailable = true)
+        val retried = mutableListOf<SourceDiscoverySection>()
+        var opened = 0
+        var refreshed = 0
+        var page by mutableStateOf(content(id).copy(sections = listOf(broken) + content(id).sections))
         activity.get().setContent { MaterialTheme {
             ExploreHomeScreen(DiscoveryPageState(listOf(listing(id)), id, mapOf(id to page)),
-                {}, { _, _ -> }, {}, { opened += it }, {}, {}, {}, { _, _ -> }, { _, _ -> }, {})
+                {}, { _, _ -> }, { refreshed++ }, { opened++ }, {}, {}, {}, { _, _ -> }, { _, _ -> }, {},
+                onRetryPreview = { retried += it; page = page.copy(sections = listOf(it.copy(previewFailure = null, previewLoading = true)) + content(id).sections) })
         } }
         compose.onNodeWithText("Broken preview").assertExists()
         compose.onNodeWithText("Retry").performClick()
-        assertEquals(listOf(broken), opened)
+        assertEquals(listOf(broken), retried)
+        assertEquals(0, opened)
+        assertEquals(0, refreshed)
+        compose.onNodeWithText("Loading books…").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Retry").assertDoesNotExist()
+        compose.onNodeWithText("This list has no books yet.").assertDoesNotExist()
         compose.onNode(hasClickAction() and hasText("Same book")).performScrollTo().assertExists()
+    }
+
+    @Test fun pendingPreviewKeepsItsEntryUsableAndDoesNotShowEmptyUntilItCompletes() {
+        val id = Identifier("fixture", "Pending source")
+        val section = SourceDiscoverySection("daily", "Daily", emptyList(), SourceDiscoveryTarget(id, "/daily"), previewLoading = true)
+        var page by mutableStateOf(DiscoveryPageContent(loading = true, sections = listOf(section)))
+        var opened: SourceDiscoverySection? = null
+        activity.get().setContent { MaterialTheme {
+            ExploreHomeScreen(DiscoveryPageState(listOf(listing(id)), id, mapOf(id to page)),
+                {}, { _, _ -> }, {}, { opened = it }, {}, {}, {}, { _, _ -> }, { _, _ -> }, {})
+        } }
+        compose.mainClock.autoAdvance = false
+        compose.mainClock.advanceTimeByFrame()
+        compose.onNodeWithText("Daily").assertIsDisplayed()
+        compose.onNodeWithText("This list has no books yet.").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Show more").performClick()
+        assertEquals(section, opened)
+        compose.runOnIdle { page = page.copy(loaded = true, loading = false, sections = listOf(section.copy(previewLoading = false))) }
+        compose.mainClock.advanceTimeByFrame()
+        compose.onNodeWithText("This list has no books yet.").assertIsDisplayed()
     }
 
     @Test fun successfulEmptyPreviewShowsItsStateAlongsideTheMoreAction() {
@@ -234,15 +262,15 @@ class ExploreHomeScreenTest {
     @Test fun multipleFailedPreviewsKeepDetailsSeparateAndSuccessfulBooksBrowsable() {
         val id = Identifier("fixture", "Partial source")
         val broken = SourceDiscoverySection("broken", "Broken preview", emptyList(), SourceDiscoveryTarget(id, "/broken"),
-            previewFailure = DiscoveryPreviewFailure(DiscoveryError.InvalidRules, "header"))
+            previewFailure = DiscoveryPreviewFailure(DiscoveryError.InvalidRules, "header"), previewRetryAvailable = true)
         val noTarget = broken.copy(id = "no-target", title = "Preview without a list", more = null,
-            previewFailure = DiscoveryPreviewFailure(DiscoveryError.Network, "ruleExplore.bookList"))
+            previewFailure = DiscoveryPreviewFailure(DiscoveryError.Network, "ruleExplore.bookList"), previewRetryAvailable = false)
         val page = content(id).copy(sections = listOf(broken, noTarget) + content(id).sections)
         val opened = mutableListOf<SourceDiscoverySection>()
         val books = mutableListOf<SourceBookId>()
         activity.get().setContent { MaterialTheme {
             ExploreHomeScreen(DiscoveryPageState(listOf(listing(id)), id, mapOf(id to page)),
-                {}, { _, _ -> }, {}, { opened += it }, { books += it }, {}, {}, { _, _ -> }, { _, _ -> }, {})
+                {}, { _, _ -> }, {}, {}, { books += it }, {}, {}, { _, _ -> }, { _, _ -> }, {}, onRetryPreview = { opened += it })
         } }
         compose.onNodeWithText("Source rule:", substring = true).assertDoesNotExist()
         compose.onNodeWithText("This list has no books yet.").assertDoesNotExist()

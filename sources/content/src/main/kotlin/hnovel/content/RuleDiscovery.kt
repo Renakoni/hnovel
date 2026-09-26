@@ -28,6 +28,7 @@ class RuleDiscoverySession internal constructor(private val source: RuleSource, 
 
     suspend fun catalog(refresh: Boolean = false, homepage: Boolean = false): RuleDiscoveryCatalog = source.operation("exploreUrl") {
         if (!source.canDiscover) throw SourceContentException(ContentError.MissingCapability, "exploreUrl")
+        if (refresh) source.clearDiscoveryPreviews()
         if (!refresh && homepageOnly == homepage) current?.let { return@operation it }
         val modules = RuleDiscoveryCatalogParser.homepageModules(source.spec.homepageModules)
         val context = context()
@@ -103,7 +104,22 @@ class RuleDiscoverySession internal constructor(private val source: RuleSource, 
         source.discoveryPage(context(page = page, draft = values + filters, noBook = false), url)
     }
 
-    fun openPages(url: String, filters: Map<String, String>): RuleListSession {
+    fun openPages(url: String, filters: Map<String, String>): RuleListSession = pages(url, filters)
+
+    suspend fun preview(url: String, filters: Map<String, String>): RuleListPage = pages(url, filters, 6).page(1)
+
+    suspend fun concurrentPreviews(urls: List<String>, filters: Map<String, String>): List<RuleListSession>? {
+        if (!source.canReadPreviewsConcurrently(urls)) return null
+        val draft = values + filters
+        validateValues(draft)
+        val prepared = source.prepareConcurrentPreviews(urls) { context(draft = draft, noBook = false) } ?: return null
+        return prepared.map { load -> source.listSession(source.spec.explore, "ruleExplore") { page, _, _ ->
+            if (page != 1) throw SourceContentException(ContentError.InvalidRule, "ruleExplore.page")
+            load()
+        } }
+    }
+
+    private fun pages(url: String, filters: Map<String, String>, previewLimit: Int? = null): RuleListSession {
         val draft = values + filters
         return source.listSession(source.spec.explore, "ruleExplore") { page, next, memory ->
             source.operation("ruleExplore") {
@@ -111,7 +127,7 @@ class RuleDiscoverySession internal constructor(private val source: RuleSource, 
                     throw SourceContentException(ContentError.MissingCapability, "ruleExplore")
                 validateValues(draft)
                 source.listPage(context(page = page, draft = draft, noBook = false, memory = memory),
-                    next ?: url, "exploreUrl", source.spec.explore, "ruleExplore")
+                    next ?: url, "exploreUrl", source.spec.explore, "ruleExplore", overview = true, previewLimit = previewLimit)
             }
         }
     }

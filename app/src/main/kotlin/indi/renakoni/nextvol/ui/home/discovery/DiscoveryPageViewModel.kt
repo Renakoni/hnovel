@@ -9,6 +9,7 @@ import io.nightfish.lightnovelreader.api.Route
 import io.nightfish.lightnovelreader.api.identifier.Identifier
 import io.nightfish.lightnovelreader.api.web.discovery.*
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -78,8 +79,11 @@ abstract class DiscoveryPageViewModel(
     private var browserToken: Any? = null
     private var serial = 0L
     private var actionEpoch = 0L
+    private val previewRetries = mutableMapOf<String, Pair<SourceDiscoverySection, Job>>()
+    private val previewOverrides = mutableMapOf<String, SourceDiscoverySection>()
     private val sessions = mutableMapOf<Identifier, SourceDiscovery>()
     private val refreshCatalog = mutableSetOf<Identifier>()
+    private val resumablePreviews = mutableSetOf<Identifier>()
     private val outgoing = Channel<DiscoveryCommand>(Channel.BUFFERED)
     val commands = outgoing.receiveAsFlow()
     private val pageId = saved.get<String>("$key.session") ?: UUID.randomUUID().toString().also { saved["$key.session"] = it }
@@ -117,6 +121,7 @@ abstract class DiscoveryPageViewModel(
                 // cancelLoad also clears loading flags; do not restore a snapshot captured before it.
                 val content = state.value.content.filterKeys { it in next && versions[it] == next[it] }
                 sessions.keys.retainAll(content.keys)
+                resumablePreviews.retainAll(content.keys)
                 refreshCatalog.retainAll(next.keys)
                 versions = next
                 mutableState.value = DiscoveryPageState(sources, selected, content, scope = scope, availableSources = available)
@@ -171,8 +176,34 @@ abstract class DiscoveryPageViewModel(
         val id = state.value.selected ?: return
         cancelLoad()
         refreshCatalog += id
+        resumablePreviews -= id
         put(id, (state.value.content[id] ?: newContent()).copy(loaded = false, loading = false, error = null))
         if (active) load()
+    }
+
+    fun retryPreview(section: SourceDiscoverySection) {
+        val source = state.value.selected ?: return
+        val page = state.value.content[source] ?: return
+        val discovery = sessions[source] ?: return
+        if (!active || page.acting || !section.previewRetryAvailable || section.previewLoading ||
+            section.previewFailure == null || section !in page.sections || section.id in previewRetries) return
+        val token = serial
+        fun replace(value: SourceDiscoverySection) {
+            previewOverrides[section.id] = value
+            state.value.content[source]?.let { current ->
+                put(source, current.copy(sections = current.sections.map { if (it.id == section.id) value else it }))
+            }
+        }
+        replace(section.copy(previewLoading = true, previewFailure = null, diagnosticFailure = null))
+        val job = viewModelScope.launch(foreground, start = CoroutineStart.LAZY) {
+            val result = discoveryRequest { preview(discovery, section.id) }
+            if (serial != token || state.value.selected != source) return@launch
+            replace(result.getOrElse { section.copy(previewLoading = false,
+                previewFailure = DiscoveryPreviewFailure(it), diagnosticFailure = null) })
+            previewRetries.remove(section.id)
+        }
+        previewRetries[section.id] = section to job
+        job.start()
     }
 
     fun environment(value: DiscoveryEnvironment) {
@@ -180,6 +211,7 @@ abstract class DiscoveryPageViewModel(
         environment = value
         cancelLoad()
         sessions.clear()
+        resumablePreviews.clear()
         mutableState.value = state.value.copy(content = state.value.content.mapValues { (_, page) -> page.copy(loaded = false, error = null) })
     }
 
@@ -191,6 +223,7 @@ abstract class DiscoveryPageViewModel(
         val discovery = sessions[source] ?: return
         if (!active || previous.loading || previous.acting) return
         cancelLoad()
+        resumablePreviews -= source
         val token = ++serial
         val epoch = actionEpoch
         put(source, previous.copy(acting = true, error = null))
@@ -215,10 +248,12 @@ abstract class DiscoveryPageViewModel(
         if (!accepts(command)) return
         val action = command.action as? DiscoveryAction.Browser ?: return
         val discovery = sessions[command.source] ?: return
+        resumablePreviews -= command.source
         // A queued catalogue refresh must not race the browser's page/session ownership.
         serial++
         pending?.cancel()
         pending = null
+        cancelPreviews()
         val token = Any()
         browserToken = token
         browser?.cancel()
@@ -275,12 +310,26 @@ abstract class DiscoveryPageViewModel(
         actionEpoch++
         pending?.cancel()
         pending = null
+        cancelPreviews()
         if (!retainBrowser) {
             browserToken = null
             browser?.cancel()
             browser = null
         }
-        state.value.selected?.let { id -> state.value.content[id]?.let { put(id, it.copy(loading = false, acting = browserToken != null)) } }
+        state.value.selected?.let { id -> state.value.content[id]?.let { page ->
+            if (page.loading && page.sections.any { it.previewFailure == null && it.books.isNotEmpty() })
+                resumablePreviews += id
+            put(id, page.copy(loading = false, acting = browserToken != null))
+        } }
+    }
+
+    private fun cancelPreviews() {
+        previewRetries.values.forEach { it.second.cancel() }
+        state.value.selected?.let { id -> state.value.content[id]?.let { page ->
+            put(id, page.copy(sections = page.sections.map { previewRetries[it.id]?.first ?: it }))
+        } }
+        previewRetries.clear()
+        previewOverrides.clear()
     }
 
     private fun put(id: Identifier, value: DiscoveryPageContent) {
@@ -292,6 +341,7 @@ abstract class DiscoveryPageViewModel(
         loaded = true, loading = false, acting = false, error = null, errorField = null, errorPermission = null, errorDiagnostic = null)
 
     protected open fun feedUpdates(discovery: SourceDiscovery) = discovery.feedUpdates()
+    protected open suspend fun preview(discovery: SourceDiscovery, id: String) = discovery.preview(id)
 
     private fun newContent() = DiscoveryPageContent(resetId = ++contentId)
 
@@ -299,6 +349,9 @@ abstract class DiscoveryPageViewModel(
         val id = state.value.selected ?: return
         val previous = state.value.content[id] ?: newContent()
         if (previous.loaded || previous.loading || previous.acting || previous.error != null) return
+        val retained = if (resumablePreviews.remove(id) && id !in refreshCatalog)
+            previous.sections.filter { it.previewFailure == null && it.books.isNotEmpty() }.associateBy { it.id }
+            else emptyMap()
         val token = ++serial
         put(id, previous.copy(loading = true))
         pending = viewModelScope.launch(foreground) {
@@ -316,7 +369,12 @@ abstract class DiscoveryPageViewModel(
                     var failure: DiscoveryError? = null
                     feedUpdates(discovery).collect { update ->
                         val sections = update.getOrElse { failure = it; return@collect }
-                        content = content.copy(sections = sections)
+                        content = content.copy(sections = sections.map { section ->
+                            previewOverrides[section.id] ?: retained[section.id]?.takeIf {
+                                section.previewLoading && section.books.isEmpty() && content.values == previous.values &&
+                                    it.title == section.title && it.more == section.more && it.categoryId == section.categoryId
+                            }?.let { section.copy(books = it.books) } ?: section
+                        })
                         if (serial == token && state.value.selected == id) {
                             put(id, content.copy(loaded = false, loading = true,
                                 scroll = state.value.content[id]?.scroll ?: content.scroll))
@@ -330,7 +388,8 @@ abstract class DiscoveryPageViewModel(
             // still belongs here; navigation/cancellation already invalidate serial.
             if (serial != token || state.value.selected != id) return@launch
             val current = state.value.content[id] ?: previous
-            result.onOk { refreshCatalog -= id; put(id, it.copy(scroll = current.scroll)) }
+            result.onOk { page -> refreshCatalog -= id; put(id, page.copy(scroll = current.scroll,
+                sections = page.sections.map { previewOverrides[it.id] ?: it })) }
                 .onErr { put(id, current.copy(error = it, loading = false, errorField = sessions[id]?.failureField, errorPermission = sessions[id]?.permissionFailure, errorDiagnostic = sessions[id]?.diagnosticFailure)) }
         }
     }

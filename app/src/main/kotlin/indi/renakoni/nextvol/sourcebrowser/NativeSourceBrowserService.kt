@@ -27,23 +27,41 @@ class NativeSourceBrowserService : Service() {
     private var profile: String? = null
     private var networkHandle: Long? = null
     private var networkReady = false
-    private var page: Page? = null
+    private val pages = linkedMapOf<String, Page?>()
+    private var exclusivePage: String? = null
+    private val pendingInitialization = mutableListOf<() -> Unit>()
+    private var initializationFailed = false
+    private var cookieVersion = -1L
+    private val seededCookies = mutableSetOf<String>()
+    private val cookieSeeds = linkedMapOf<String, () -> Unit>()
+    private var seedingCookies = false
     private val storageScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var storageTask: Job? = null
+    private var storagePending = false
     internal var activity: NativeSourceBrowserActivity? = null
-    internal val webView get() = page?.view
-    internal val title get() = page?.job?.options?.title.orEmpty()
+    private val interactivePage get() = pages.values.filterNotNull().firstOrNull { it.job.options.interactive }
+    internal val interactiveJobId get() = interactivePage?.job?.jobId
+    internal val webView get() = interactivePage?.view
+    internal val title get() = interactivePage?.job?.options?.title.orEmpty()
     companion object { internal var active: NativeSourceBrowserService? = null }
 
     override fun onBind(intent: Intent): IBinder = object : IBrowserService.Stub() {
         override fun start(payload: String, callback: IBrowserHost) {
             check(Binder.getCallingUid() == applicationInfo.uid && payload.length <= 393216)
             val job = Json.decodeFromString<BrowserJob>(payload)
+            require(job.jobId.isNotBlank() && job.jobId.length <= 64)
             handler.post {
+                var registered = false
                 try {
-                    check(page == null && storageTask == null)
-                    initialize(job.profile, job.networkHandle) { openPage(job, callback) }
-                } catch (failure: Exception) { failStart(callback, failure) }
+                    check(job.jobId !in pages && pages.size < NativeSourceBrowser.PAGE_LIMIT && storageTask == null && !storagePending)
+                    check(exclusivePage == null && (job.options.sharedNativePage || pages.isEmpty()))
+                    pages[job.jobId] = null
+                    registered = true
+                    if (!job.options.sharedNativePage) exclusivePage = job.jobId
+                    initialize(job.profile, job.networkHandle) {
+                        if (pages.containsKey(job.jobId)) openPage(job, callback)
+                    }
+                } catch (failure: Exception) { failStart(job.jobId.takeIf { registered }, callback, failure) }
             }
         }
         override fun localStorage(payload: ParcelFileDescriptor, callback: IBrowserHost) {
@@ -51,7 +69,8 @@ class NativeSourceBrowserService : Service() {
             val job = Json.decodeFromString<LocalStorageJob>(BrowserWire.read(payload, NativeBrowserRetention.MAX_BYTES))
             handler.post {
                 try {
-                    check(page == null && storageTask == null)
+                    check(pages.isEmpty() && storageTask == null && !storagePending)
+                    storagePending = true
                     initialize(job.profile, job.networkHandle) {
                         val task = storageScope.launch(start = CoroutineStart.LAZY) {
                             val result = try {
@@ -63,18 +82,33 @@ class NativeSourceBrowserService : Service() {
                             send(callback, result)
                         }
                         storageTask = task
+                        storagePending = false
                         task.start()
                     }
-                } catch (failure: Exception) { send(callback, LocalStorageResult(
-                    failure = (failure as? RouteFailure)?.code ?: FailureCode.StorageUnavailable)) }
+                } catch (failure: Exception) {
+                    storagePending = false
+                    send(callback, LocalStorageResult(failure = (failure as? RouteFailure)?.code ?: FailureCode.StorageUnavailable))
+                }
             }
+        }
+        override fun cancel(jobId: String): Boolean {
+            check(Binder.getCallingUid() == applicationInfo.uid && jobId.length <= 64)
+            val stopped = java.util.concurrent.CountDownLatch(1)
+            handler.post {
+                try {
+                    pages.remove(jobId)?.cancel()
+                    if (exclusivePage == jobId) exclusivePage = null
+                } finally { stopped.countDown() }
+            }
+            return stopped.await(5, java.util.concurrent.TimeUnit.SECONDS)
         }
         override fun shutdown() {
             check(Binder.getCallingUid() == applicationInfo.uid)
             handler.post {
                 storageScope.cancel()
                 if (profile != null) CookieManager.getInstance().flush()
-                page?.view?.destroy(); activity?.finish()
+                pages.values.filterNotNull().forEach { it.view.destroy() }
+                pages.clear(); activity?.finish()
                 Process.killProcess(Process.myPid())
             }
         }
@@ -84,8 +118,8 @@ class NativeSourceBrowserService : Service() {
 
     private fun initialize(owner: String, handle: Long?, ready: () -> Unit) {
         if (profile != null) {
-            check(profile == owner && networkHandle == handle && networkReady)
-            ready()
+            check(profile == owner && networkHandle == handle && !initializationFailed)
+            if (networkReady) ready() else pendingInitialization += ready
             return
         }
         bindNetwork(handle)
@@ -93,12 +127,67 @@ class NativeSourceBrowserService : Service() {
         if (BuildConfig.DEBUG) WebView.setWebContentsDebuggingEnabled(true)
         profile = owner
         networkHandle = handle
+        pendingInitialization += ready
         if (handle != null) {
-            if (!WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)) throw RouteFailure(FailureCode.RouteUnsupported)
-            // Binding covers sockets/DNS. The direct override also excludes a system HTTP proxy.
-            ProxyController.getInstance().setProxyOverride(ProxyConfig.Builder().addDirect().build(),
-                { handler.post(it) }) { networkReady = true; ready() }
-        } else { networkReady = true; ready() }
+            try {
+                if (!WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)) throw RouteFailure(FailureCode.RouteUnsupported)
+                // Binding covers sockets/DNS. The direct override also excludes a system HTTP proxy.
+                ProxyController.getInstance().setProxyOverride(ProxyConfig.Builder().addDirect().build(),
+                    { handler.post(it) }, ::initialized)
+            } catch (failure: Exception) {
+                initializationFailed = true; pendingInitialization.clear(); throw failure
+            }
+        } else initialized()
+    }
+
+    private fun initialized() {
+        networkReady = true
+        val pending = pendingInitialization.toList()
+        pendingInitialization.clear()
+        pending.forEach { it() }
+    }
+
+    /** Seed each host cookie once per host revision, before navigating any page that needs it.
+     * A second page must not restore an old seed over cookies just updated by the first website. */
+    private fun seedCookies(job: BrowserJob, alive: () -> Boolean, ready: () -> Unit, failed: () -> Unit) {
+        cookieSeeds[job.jobId] = {
+            var completed = false
+            fun done(success: Boolean) {
+                if (completed) return
+                completed = true
+                try { if (alive()) { if (success) ready() else failed() } }
+                finally { seedingCookies = false; nextCookieSeed() }
+            }
+            try {
+                require(job.cookieVersion >= 0 && job.cookies.size <= 256 && job.cookies.sumOf(String::length) <= 65536)
+                if (job.cookieVersion > cookieVersion) { cookieVersion = job.cookieVersion; seededCookies.clear() }
+                val url = checkNotNull(job.request.url.toHttpUrlOrNull())
+                val values = if (job.cookieVersion < cookieVersion) emptyList() else job.cookies.map { value ->
+                    val cookie = checkNotNull(Cookie.parse(url, value))
+                    "${cookie.name}\n${cookie.domain}\n${cookie.path}" to value
+                }.filter { it.first !in seededCookies }.distinctBy { it.first }
+                if (values.isEmpty()) done(true)
+                else {
+                    var pending = values.size
+                    var acceptedAll = true
+                    fun accepted(key: String, success: Boolean) {
+                        if (success) seededCookies += key else acceptedAll = false
+                        if (--pending == 0) done(acceptedAll)
+                    }
+                    values.forEach { (key, value) ->
+                        try { CookieManager.getInstance().setCookie(job.request.url, value) { accepted(key, it) } }
+                        catch (_: Exception) { accepted(key, false) }
+                    }
+                }
+            } catch (_: Exception) { done(false) }
+        }
+        nextCookieSeed()
+    }
+
+    private fun nextCookieSeed() {
+        if (seedingCookies || cookieSeeds.isEmpty()) return
+        seedingCookies = true
+        cookieSeeds.remove(cookieSeeds.keys.first())!!.invoke()
     }
 
     /** Called only in this dedicated process, before any Chromium initialization. */
@@ -113,23 +202,30 @@ class NativeSourceBrowserService : Service() {
 
     private fun openPage(job: BrowserJob, callback: IBrowserHost) {
         try {
-            check(networkReady && profile == job.profile && networkHandle == job.networkHandle && page == null)
+            check(networkReady && profile == job.profile && networkHandle == job.networkHandle && pages.containsKey(job.jobId))
             active = this
-            page = Page(job, callback).also { it.open() }
-        } catch (failure: Exception) { failStart(callback, failure) }
+            val page = Page(job, callback)
+            pages[job.jobId] = page
+            page.open()
+        } catch (failure: Exception) { failStart(job.jobId, callback, failure) }
     }
 
-    private fun failStart(callback: IBrowserHost, failure: Exception) {
-        page?.view?.destroy(); page = null
+    private fun failStart(jobId: String?, callback: IBrowserHost, failure: Exception) {
+        if (jobId != null) {
+            pages.remove(jobId)?.cancel()
+            if (exclusivePage == jobId) exclusivePage = null
+        }
         send(callback, BrokerResult.Failure(RequestStage.Connect,
             if (failure is RouteFailure) failure.code else FailureCode.Network))
     }
 
-    internal fun confirm() { page?.evaluate() }
-    internal fun cancel() { page?.finish(BrokerResult.Failure(RequestStage.Response, FailureCode.BrowserRequired)) }
+    internal fun confirm(jobId: String?) { if (jobId == interactiveJobId) interactivePage?.evaluate() }
+    internal fun cancel(jobId: String?) { if (jobId == interactiveJobId)
+        interactivePage?.finish(BrokerResult.Failure(RequestStage.Response, FailureCode.BrowserRequired)) }
 
     @SuppressLint("SetJavaScriptEnabled")
     private inner class Page(val job: BrowserJob, private val host: IBrowserHost) {
+        private val startedAt = SystemClock.elapsedRealtime()
         val view = WebView(this@NativeSourceBrowserService)
         private val finished = AtomicBoolean()
         private var evaluating = false
@@ -137,7 +233,13 @@ class NativeSourceBrowserService : Service() {
         @Volatile private var httpError = false
         @Volatile private var httpChallenge: BrowserChallengeKind? = null
 
+        private fun trace(stage: String) {
+            if (BuildConfig.DEBUG) android.util.Log.d("NativePageTrace",
+                "job=${job.jobId} stage=$stage elapsedMs=${SystemClock.elapsedRealtime() - startedAt} navigation=$navigation")
+        }
+
         fun open() {
+            trace("Open")
             // WebView must re-check each new TLS handshake against this account's current exceptions.
             view.clearSslPreferences()
             CookieManager.getInstance().apply {
@@ -208,9 +310,14 @@ class NativeSourceBrowserService : Service() {
                 }
                 override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
                     navigation++
+                    trace("Navigation")
+                }
+                override fun onPageCommitVisible(view: WebView, url: String) {
+                    trace("CommitVisible")
                 }
                 override fun onPageFinished(view: WebView, url: String) {
                     if (url != view.url) return
+                    trace("PageFinished")
                     if (!job.options.interactive || job.options.script.isNotBlank())
                         handler.postDelayed({ evaluate() }, 1000 + job.options.delayMillis)
                 }
@@ -247,23 +354,16 @@ class NativeSourceBrowserService : Service() {
                 if (finished.get()) return
                 view.loadUrl(job.request.url, job.request.headers)
                 if (job.options.interactive) startActivity(Intent(this@NativeSourceBrowserService,
-                    NativeSourceBrowserActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    NativeSourceBrowserActivity::class.java).putExtra("jobId", job.jobId).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             }
-            require(job.cookies.size <= 256 && job.cookies.sumOf(String::length) <= 65536)
-            var pending = job.cookies.size
-            if (pending == 0) navigate()
-            else job.cookies.forEach { cookie ->
-                CookieManager.getInstance().setCookie(job.request.url, cookie) { accepted ->
-                    if (!accepted) fail(FailureCode.StorageUnavailable)
-                    if (--pending == 0) navigate()
-                }
-            }
+            seedCookies(job, { !finished.get() }, ::navigate) { fail(FailureCode.StorageUnavailable) }
         }
 
         private fun matches(url: String) = job.options.sourceRegex.isNotBlank() && Regex(job.options.sourceRegex).containsMatchIn(url)
 
         fun evaluate() {
-            if (finished.get() || evaluating || page !== this) return
+            if (finished.get() || evaluating || pages[job.jobId] !== this) return
+            trace("Evaluate")
             evaluating = true
             val version = navigation
             val script = job.options.script.ifBlank { "document.documentElement.outerHTML" }
@@ -274,7 +374,7 @@ class NativeSourceBrowserService : Service() {
                 }catch(e){return null;}})()
             """.trimIndent()) { encoded ->
                 evaluating = false
-                if (finished.get() || page !== this) return@evaluateJavascript
+                if (finished.get() || pages[job.jobId] !== this) return@evaluateJavascript
                 if (version != navigation) { handler.postDelayed({ evaluate() }, 100); return@evaluateJavascript }
                 try {
                     val outer = Json.parseToJsonElement(encoded)
@@ -336,6 +436,7 @@ class NativeSourceBrowserService : Service() {
 
         fun finish(result: BrokerResult) {
             if (!finished.compareAndSet(false, true)) return
+            trace(if (result is BrokerResult.Success) "Success" else "Failure")
             view.stopLoading()
             CookieManager.getInstance().flush()
             val completed = if (result is BrokerResult.Success) try {
@@ -346,11 +447,21 @@ class NativeSourceBrowserService : Service() {
                 result
             } catch (_: Exception) { BrokerResult.Failure(RequestStage.Storage, FailureCode.StorageUnavailable) }
             else result
-            val currentActivity = activity
-            activity = null; page = null
+            dispose()
+            send(host, completed)
+        }
+
+        fun cancel() {
+            if (finished.compareAndSet(false, true)) { view.stopLoading(); dispose() }
+        }
+
+        private fun dispose() {
+            cookieSeeds.remove(job.jobId)
+            val currentActivity = if (job.options.interactive) activity.also { activity = null } else null
+            pages.remove(job.jobId)
+            if (exclusivePage == job.jobId) exclusivePage = null
             (view.parent as? android.view.ViewGroup)?.removeView(view)
             view.destroy(); currentActivity?.finish()
-            send(host, completed)
         }
     }
 

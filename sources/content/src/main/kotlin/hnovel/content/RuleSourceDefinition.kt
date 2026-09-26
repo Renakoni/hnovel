@@ -52,7 +52,7 @@ internal fun JsonObject.string(name: String) = when (val value = this[name]) {
     else -> value.toString()
 }
 internal fun digest(value: String) = MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8))
-    .joinToString("") { "%02x".format(it.toInt() and 255) }
+    .toHexString()
 
 /** Keep request options with their logical URL; their scripts are evaluated only before dispatch. */
 internal fun sourceLink(base: String, value: String): String {

@@ -227,16 +227,30 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         policy.check(parsed); cookies.setHeader(parsed, "", true) }
 
     /** Host-only cookie handoff; never exposed as a website JavascriptInterface. */
+    @Synchronized fun nativeBrowserCookieSeed(url: String): NativeBrowserCookieSeed {
+        checkOpen(); val parsed = url.toHttpUrlOrNull() ?: error("Invalid cookie URL")
+        policy.check(parsed)
+        return cookies.browserSeed(parsed)
+    }
+
     @Synchronized fun nativeBrowserCookies(url: String): List<String> {
         checkOpen(); val parsed = url.toHttpUrlOrNull() ?: error("Invalid cookie URL")
         policy.check(parsed)
         return cookies.browserSnapshot(parsed)
     }
 
-    @Synchronized fun updateNativeBrowserCookies(url: String, values: List<String>, completeMetadata: Boolean = true) {
+    /** Response identity includes Chromium-owned cookies, which must never be seeded back into it. */
+    @Synchronized fun responseCookies(url: String): List<String> {
         checkOpen(); val parsed = url.toHttpUrlOrNull() ?: error("Invalid cookie URL")
         policy.check(parsed)
-        cookies.replaceBrowserSnapshot(parsed, values, completeMetadata)
+        return cookies.responseSnapshot(parsed)
+    }
+
+    @Synchronized fun updateNativeBrowserCookies(url: String, values: List<String>, completeMetadata: Boolean = true,
+        expectedSeedVersion: Long? = null) {
+        checkOpen(); val parsed = url.toHttpUrlOrNull() ?: error("Invalid cookie URL")
+        policy.check(parsed)
+        cookies.replaceBrowserSnapshot(parsed, values, completeMetadata, expectedSeedVersion)
     }
 
     @Synchronized fun browserCookie(url: String, value: String? = null): String {
@@ -323,6 +337,21 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
 
     suspend fun execute(request: BrokerRequest, guard: RequestCommitGuard = RequestCommitGuard { it() }): BrokerResult =
         execute(request, guard, policy)
+
+    /** Host-owned response handoffs must remain on the same live route as their original read. */
+    fun responseRoute(): SourceNetworkRoute? = runCatching {
+        checkOpen(); routes.snapshot().takeIf { it.available }
+    }.getOrNull()
+
+    /** Host-only response identity, including account headers which are not in the rule request. */
+    @Synchronized fun responseHeaders(request: BrokerRequest): Map<String, String> {
+        checkOpen()
+        return headers(requireNotNull(request.url.toHttpUrlOrNull()), request.headers, policy, includeCookies = false).toMap()
+    }
+
+    /** Use the route already captured for an owned response handoff, including native browser reads. */
+    suspend fun executeOnRoute(request: BrokerRequest, guard: RequestCommitGuard, route: SourceNetworkRoute): BrokerResult =
+        execute(request, guard, policy, route = route)
 
     /** Host-only HTTP transport for synthetic/image verification documents; avoids browser re-entry. */
     suspend fun executeHttp(request: BrokerRequest, guard: RequestCommitGuard, route: SourceNetworkRoute? = null): BrokerResult {

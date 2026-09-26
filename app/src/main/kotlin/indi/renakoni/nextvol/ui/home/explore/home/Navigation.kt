@@ -26,7 +26,8 @@ fun NavGraphBuilder.exploreHomeDestination() {
             onManageSources = { nav.navigate(state.selected?.let { Route.Main.Settings.SourceDetail(it.namespace, it.id) } ?: Route.Main.Settings.Sources) },
             onInput = { id, value -> model.interact(id, value) },
             onAction = { id, longClick -> model.interact(id, longClick = longClick) },
-            onSettings = nav::navigateToSettingsDestination, onScope = model::selectScope, onPage = model::selectPage)
+            onSettings = nav::navigateToSettingsDestination, onScope = model::selectScope, onPage = model::selectPage,
+            onRetryPreview = model::retryPreview)
     }
 }
 

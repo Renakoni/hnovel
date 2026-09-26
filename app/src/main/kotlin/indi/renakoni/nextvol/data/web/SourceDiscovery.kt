@@ -3,6 +3,7 @@ package indi.renakoni.nextvol.data.web
 import com.github.michaelbull.result.Err
 import com.github.michaelbull.result.Ok
 import com.github.michaelbull.result.Result
+import com.github.michaelbull.result.andThen
 import com.github.michaelbull.result.map
 import indi.renakoni.nextvol.data.book.SourceBookId
 import io.nightfish.lightnovelreader.api.identifier.Identifier
@@ -19,7 +20,8 @@ data class SourceDiscoveryTarget(val sourceId: Identifier, val target: String)
 data class SourceDiscoveryBook(val id: SourceBookId, val title: String, val author: String, val coverUrl: String)
 data class SourceDiscoverySection(val id: String, val title: String, val books: List<SourceDiscoveryBook>,
     val more: SourceDiscoveryTarget?, val categoryId: String? = null, val previewFailure: DiscoveryPreviewFailure? = null,
-    val diagnosticFailure: hnovel.execution.ExecutionResult.Failure? = null)
+    val diagnosticFailure: hnovel.execution.ExecutionResult.Failure? = null, val previewLoading: Boolean = false,
+    val previewRetryAvailable: Boolean = false)
 data class SourceDiscoveryCategory(val id: String, val title: String, val target: SourceDiscoveryTarget)
 data class SourceDiscoveryPage(val books: List<SourceDiscoveryBook>, val nextCursor: String?)
 data class SourceDiscoveryCatalog(val categories: List<SourceDiscoveryCategory>, val filters: List<DiscoveryFilter>,
@@ -72,6 +74,14 @@ class SourceDiscovery internal constructor(private val runtime: SourceRuntime, p
         }
     }
 
+    suspend fun preview(id: String): Result<SourceDiscoverySection, DiscoveryError> = runtime.execute {
+        val previews = provider as? DiscoveryPreviewProvider ?: return@execute Err(DiscoveryError.Unsupported)
+        if (!hasFeed) return@execute Err(DiscoveryError.Unsupported)
+        previews.preview(id).andThen { section ->
+            if (section.id == id) Ok(bind(section)) else Err(DiscoveryError.InvalidResponse)
+        }
+    }
+
     suspend fun categories(): Result<List<SourceDiscoveryCategory>, DiscoveryError> = runtime.execute {
         if (!hasCategories) return@execute Err(DiscoveryError.Unsupported)
         provider.categories().map { categories -> categories.map {
@@ -102,7 +112,8 @@ class SourceDiscovery internal constructor(private val runtime: SourceRuntime, p
     private fun target(id: String) = SourceDiscoveryTarget(runtime.id, id)
     private fun bind(section: DiscoverySection) = SourceDiscoverySection(section.id, section.title,
         section.books.map(::bind), section.more?.let(::target), section.categoryId, section.previewFailure,
-        (provider as? indi.renakoni.nextvol.data.web.rules.RuleDiscoveryProvider)?.previewDiagnostic(section.id))
+        (provider as? indi.renakoni.nextvol.data.web.rules.RuleDiscoveryProvider)?.previewDiagnostic(section.id), section.previewLoading,
+        provider is DiscoveryPreviewProvider)
     private fun bind(catalog: DiscoveryCatalog) = SourceDiscoveryCatalog(catalog.categories.map {
         SourceDiscoveryCategory(it.id, it.title, target(it.target))
     }, catalog.filters.map { if (it is DiscoveryFilter.Choice) it.copy(options = it.options.toMap()) else it },

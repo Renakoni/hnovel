@@ -11,6 +11,8 @@ internal class SourceCookies(private val storage: SourceStorage) {
     @Serializable private data class SavedCookie(val origin: String, val cookie: String, val browserOwned: Boolean = false)
     private val cookies = linkedMapOf<String, Pair<String, Cookie>>()
     private val browserOnly = mutableSetOf<String>()
+    private var seedVersion = 0L
+    @Synchronized fun browserSeed(url: HttpUrl) = NativeBrowserCookieSeed(seedVersion, browserSnapshot(url))
 
     init {
         val stored = storage.read("cookies")
@@ -66,6 +68,7 @@ internal class SourceCookies(private val storage: SourceStorage) {
             is StorageResult.Value -> {
                 cookies.clear(); cookies.putAll(next)
                 browserOnly.clear(); browserOnly.addAll(nextBrowserOnly)
+                if (!fromBrowser) seedVersion++
             }
         }
     }
@@ -100,6 +103,7 @@ internal class SourceCookies(private val storage: SourceStorage) {
             if (value.isBlank()) {
                 val saved = encode(cookies.values)
                 check(storage.write("cookies", saved) is StorageResult.Value)
+                seedVersion++
             } else save(url, headers.build())
         } catch (failure: Exception) { restoreMemory(before); throw failure }
     }
@@ -109,13 +113,18 @@ internal class SourceCookies(private val storage: SourceStorage) {
     @Synchronized fun browserSnapshot(url: HttpUrl): List<String> = cookies.values.map { it.second }
         .filter { key(it) !in browserOnly && it.expiresAt > System.currentTimeMillis() && it.matches(url) }.map(Cookie::toString)
 
+    @Synchronized fun responseSnapshot(url: HttpUrl): List<String> = cookies.values.map { it.second }
+        .filter { it.expiresAt > System.currentTimeMillis() && browserMatches(it, url) }.map(Cookie::toString)
+
     private fun browserMatches(cookie: Cookie, url: HttpUrl): Boolean {
         val loopback = url.host in setOf("localhost", "127.0.0.1", "::1")
         return cookie.matches(if (cookie.secure && loopback) url.newBuilder().scheme("https").build() else url)
     }
 
     /** A trusted browser snapshot includes HttpOnly cookies and their original attributes. */
-    @Synchronized fun replaceBrowserSnapshot(url: HttpUrl, values: List<String>, completeMetadata: Boolean) {
+    @Synchronized fun replaceBrowserSnapshot(url: HttpUrl, values: List<String>, completeMetadata: Boolean,
+        expectedSeedVersion: Long? = null) {
+        if (expectedSeedVersion != null && expectedSeedVersion != seedVersion) return
         require(values.size <= 256 && values.sumOf(String::length) <= 65536)
         val parsed = values.mapNotNull { Cookie.parse(url, it) }
         // Chromium permits Secure cookies on trustworthy loopback HTTP origins. Validate

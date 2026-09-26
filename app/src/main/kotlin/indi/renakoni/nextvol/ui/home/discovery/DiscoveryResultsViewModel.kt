@@ -62,6 +62,7 @@ class DiscoveryResultsViewModel internal constructor(
     private var serial = 0L
     private var environment = DiscoveryEnvironment()
     private var draftValues = emptyMap<String, String>()
+    private var refreshCatalog = false
 
     init {
         viewModelScope.launch {
@@ -94,6 +95,7 @@ class DiscoveryResultsViewModel internal constructor(
     fun refresh() {
         cancelLoad()
         session = null
+        refreshCatalog = true
         mutableState.value = state.value.copy(books = emptyList(), loaded = false, hasMore = false,
             error = null, scroll = DiscoveryScroll(), resetId = state.value.resetId + 1)
         if (active) loadMore()
@@ -143,8 +145,10 @@ class DiscoveryResultsViewModel internal constructor(
                     // Source-search actions have no discovery filters. Catalogue JS would be unused
                     // and may persist infoMap; raw explore targets still need it even without a category ID.
                     if ((source.hasCategories || source.hasInteractions) && !target.startsWith(DISCOVERY_SEARCH_PREFIX)) {
-                        val catalog = (if (route.categoryId == null) source.homepageCatalog() else source.catalog())
+                        val catalog = (if (route.categoryId == null) source.homepageCatalog(refreshCatalog) else source.catalog(refreshCatalog))
                             .getOrElse { failureField = source.failureField; permissionFailure = source.permissionFailure; diagnosticFailure = source.diagnosticFailure; return@discoveryRequest Err(it) }
+                        if (token != serial) return@discoveryRequest Err(DiscoveryError.Unavailable)
+                        refreshCatalog = false
                         catalogValues = catalog.values
                         if (route.categoryId != null) target = catalog.categories.singleOrNull { it.id == route.categoryId }
                             ?.target?.target?.takeIf(String::isNotBlank) ?: return@discoveryRequest Err(DiscoveryError.InvalidRequest)

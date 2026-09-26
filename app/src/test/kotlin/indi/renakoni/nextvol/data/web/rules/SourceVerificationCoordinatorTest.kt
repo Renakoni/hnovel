@@ -23,9 +23,129 @@ class SourceVerificationCoordinatorTest {
     private val verification = mockk<SourceVerification> {
         every { kind } returns BrowserChallengeKind.Cloudflare
         every { certificate } returns null
+        every { origin } returns "https://first.test/"
         coEvery { complete() } returns Unit
     }
     private val failure = SourceContentException(ContentError.BrowserRequired, "searchUrl", verification = verification)
+
+    @Test fun parallelSectionsRetryAfterOneSharedVerificationWithoutOpeningFourWindows() = runTest {
+        val release = CompletableDeferred<Unit>()
+        var verified = false
+        coEvery { verification.complete() } coAnswers { release.await(); verified = true }
+        val ui = ForegroundSourceRequest()
+        val attempts = IntArray(4)
+        val sections = (0..3).map { index -> async(ui) {
+            coordinator.execute(owner, "Section $index") {
+                attempts[index]++
+                if (!verified) throw failure
+                "section-$index"
+            }
+        } }
+        runCurrent()
+        assertEquals(4, coordinator.prompts.value.size)
+        coVerify(exactly = 1) { verification.complete() }
+        release.complete(Unit)
+        assertEquals((0..3).map { "section-$it" }, sections.awaitAll())
+        assertEquals(listOf(2, 2, 2, 2), attempts.toList())
+        coVerify(exactly = 1) { verification.complete() }
+        assertTrue(coordinator.prompts.value.isEmpty())
+    }
+
+    @Test fun aQueuedSectionStillReportingAChallengeFailsLocallyWithoutAnotherWindow() = runTest {
+        val release = CompletableDeferred<Unit>()
+        var verified = false
+        coEvery { verification.complete() } coAnswers { release.await(); verified = true }
+        val ui = ForegroundSourceRequest()
+        val first = async(ui) { coordinator.execute(owner, "Ready") { if (!verified) throw failure; "ready" } }
+        var attempts = 0
+        val second = async(ui) { runCatching { coordinator.execute(owner, "Still challenged") { attempts++; throw failure } } }
+        runCurrent()
+        release.complete(Unit)
+        assertEquals("ready", first.await())
+        assertSame(failure, second.await().exceptionOrNull())
+        assertEquals(2, attempts)
+        coVerify(exactly = 1) { verification.complete() }
+        assertTrue(coordinator.prompts.value.isEmpty())
+    }
+
+    @Test fun aCompletedWindowDoesNotSkipOtherOriginsOrUnknownOrigins() = runTest {
+        for (secondOrigin in listOf("https://second.test/", null)) {
+            clearMocks(verification, answers = false)
+            every { verification.origin } returns if (secondOrigin == null) null else "https://first.test/"
+            val release = CompletableDeferred<Unit>()
+            var firstReady = false
+            var secondReady = false
+            coEvery { verification.complete() } coAnswers { release.await(); firstReady = true }
+            val secondVerification = mockk<SourceVerification> {
+                every { kind } returns BrowserChallengeKind.Cloudflare
+                every { certificate } returns null
+                every { origin } returns secondOrigin
+                coEvery { complete() } coAnswers { secondReady = true }
+            }
+            val secondFailure = SourceContentException(ContentError.BrowserRequired, "exploreUrl", verification = secondVerification)
+            val ui = ForegroundSourceRequest()
+            val first = async(ui) { coordinator.execute(owner, "First") { if (!firstReady) throw failure; "first" } }
+            val second = async(ui) { runCatching { coordinator.execute(owner, "Second") {
+                if (!secondReady) throw secondFailure
+                "second"
+            } } }
+            runCurrent()
+            release.complete(Unit)
+            assertEquals("first", first.await())
+            assertEquals("second", second.await().getOrThrow())
+            coVerify(exactly = 1) { verification.complete(); secondVerification.complete() }
+            assertTrue(coordinator.prompts.value.isEmpty())
+        }
+    }
+
+    @Test fun aCompletedWindowDoesNotSkipOtherAccountsOrChallengeKinds() = runTest {
+        val original = listings.value
+        for (otherAccount in listOf(false, true)) {
+            clearMocks(verification, answers = false)
+            val secondOwner = if (otherAccount) owner.copy(source = Identifier("rules", "other")) else owner
+            listings.value = original + if (otherAccount) listOf(SourceListing(SourceMetadata(
+                WebDataSourceItem(secondOwner.source, "Other", ""), emptySet(), revision = secondOwner.revision), SourceStatus.Ready)) else emptyList()
+            val release = CompletableDeferred<Unit>()
+            var firstReady = false
+            var secondReady = false
+            coEvery { verification.complete() } coAnswers { release.await(); firstReady = true }
+            val secondVerification = mockk<SourceVerification> {
+                every { kind } returns if (otherAccount) BrowserChallengeKind.Cloudflare else BrowserChallengeKind.Login
+                every { certificate } returns null
+                every { origin } returns "https://first.test/"
+                coEvery { complete() } coAnswers { secondReady = true }
+            }
+            val secondFailure = SourceContentException(ContentError.BrowserRequired, "exploreUrl", verification = secondVerification)
+            val ui = ForegroundSourceRequest()
+            val first = async(ui) { coordinator.execute(owner, "First") { if (!firstReady) throw failure; "first" } }
+            val second = async(ui) { coordinator.execute(secondOwner, "Second") { if (!secondReady) throw secondFailure; "second" } }
+            runCurrent()
+            release.complete(Unit)
+            assertEquals(listOf("first", "second"), awaitAll(first, second))
+            coVerify(exactly = 1) { verification.complete(); secondVerification.complete() }
+            assertTrue(coordinator.prompts.value.isEmpty())
+        }
+    }
+
+    @Test fun queuedCertificatesStillRequireTheirOwnExplicitConfirmation() = runTest {
+        every { verification.certificate } returns mockk<hnovel.network.CertificateProblem>()
+        val attempts = IntArray(2)
+        val ui = ForegroundSourceRequest()
+        val requests = (0..1).map { index -> async(ui) { coordinator.execute(owner, "Certificate $index") {
+            if (++attempts[index] == 1) throw failure
+            "accepted-$index"
+        } } }
+        runCurrent()
+        coordinator.approveCertificate(coordinator.prompts.value.single { it.confirmingCertificate }.id)
+        runCurrent()
+        assertEquals("accepted-0", requests[0].await())
+        assertFalse(requests[1].isCompleted)
+        coVerify(exactly = 1) { verification.complete() }
+        coordinator.approveCertificate(coordinator.prompts.value.single().id)
+        assertEquals("accepted-1", requests[1].await())
+        coVerify(exactly = 2) { verification.complete() }
+        assertTrue(coordinator.prompts.value.isEmpty())
+    }
 
     @Test fun foregroundAutomaticallyOpensAndRetriesOnce() = runTest {
         var calls = 0

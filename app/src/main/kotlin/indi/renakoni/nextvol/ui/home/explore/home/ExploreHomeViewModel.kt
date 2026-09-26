@@ -23,12 +23,16 @@ class ExploreHomeViewModel @Inject constructor(
     browsing: SourceBrowseSettings,
 ) : DiscoveryPageViewModel(registry, accounts, saved, SourceCapability.Explore, browsing) {
     override fun feedUpdates(discovery: SourceDiscovery) = discovery.feedUpdates().map { result -> result.map { sections ->
-        sections.map { section -> section.copy(books = section.books.map { book ->
-            val display = text.processExploreBooksRow(ExploreDisplayBook(
-                id = book.id.storageKey, title = book.title, author = book.author, coverUri = Uri.parse(book.coverUrl)))
-            book.copy(title = display.title, author = display.author, coverUrl = display.coverUri.toString())
-        }) }
+        sections.map(::display)
     } }
+
+    override suspend fun preview(discovery: SourceDiscovery, id: String) = discovery.preview(id).map(::display)
+
+    private fun display(section: SourceDiscoverySection) = section.copy(books = section.books.map { book ->
+        val display = text.processExploreBooksRow(ExploreDisplayBook(
+            id = book.id.storageKey, title = book.title, author = book.author, coverUri = Uri.parse(book.coverUrl)))
+        book.copy(title = display.title, author = display.author, coverUrl = display.coverUri.toString())
+    })
 
     fun more(section: SourceDiscoverySection): Route.Main.DiscoveryResults? {
         val id = state.value.selected ?: return null

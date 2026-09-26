@@ -16,9 +16,12 @@ import java.io.ByteArrayOutputStream
 @Serializable internal data class BrowserJob(val request: BrokerRequest, val options: BrowserOptions,
     val profile: String = "", val cookiesEnabled: Boolean = true, val networkHandle: Long? = null,
     val certificates: List<hnovel.network.CertificateExceptionSite> = emptyList(),
-    val cookies: List<String> = emptyList())
+    val cookies: List<String> = emptyList(), val jobId: String = "", val cookieVersion: Long = 0)
 
 @Serializable internal data class NativeCookieSnapshot(val url: String, val cookies: List<String>, val completeMetadata: Boolean)
+
+internal val BrowserOptions.sharedNativePage get() = !interactive && script.isBlank() && sourceRegex.isBlank() &&
+    webCookie == null && !overrideUrl && !verificationCode && html == null
 
 @Serializable private data class BrowserResultMessage(val result: BrokerResult, val body: String? = null)
 

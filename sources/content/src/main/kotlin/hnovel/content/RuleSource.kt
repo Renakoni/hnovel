@@ -22,7 +22,10 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
     private val discoveryEnabled: Boolean = definition.enabledExplore) : AutoCloseable {
     internal val spec = RuleSourceDefinition(definition)
     private val store = RuleBookStore(session, authority, identity)
+    private val previewDocuments = DiscoveryPreviewDocuments()
+    internal fun clearDiscoveryPreviews() = previewDocuments.clear()
     private val serial = Mutex()
+    private var previewPlan: Pair<List<String>, Boolean>? = null
     private var prefetchedDirectoryId: String? = null
     // Search memory belongs to a caller's query. This instance is replaced for another account or revision.
     private val searchMemory = object : LinkedHashMap<String, ScriptMemory>(8, 0.75f, true) {
@@ -53,7 +56,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
 
     internal suspend fun discoveryPage(context: RuleEvaluation, url: String): List<RuleBook> =
         booksFromPage(context, fetch(context, url, "exploreUrl",
-            acceptErrorResponse = spec.explore.string("bookList").isScriptRule()), spec.explore, "ruleExplore")
+            acceptErrorResponse = spec.explore.string("bookList").isScriptRule()), spec.explore, "ruleExplore", overview = true)
 
     internal fun listSession(fields: JsonObject, field: String,
         load: suspend (Int, String?, ScriptMemory) -> RuleListResult) =
@@ -62,15 +65,113 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         }, load)
 
     internal suspend fun listPage(context: RuleEvaluation, url: String, urlField: String,
-        fields: JsonObject, field: String): RuleListResult {
-        val document = fetch(context, url, urlField, acceptErrorResponse = fields.string("bookList").isScriptRule())
-        val books = booksFromPage(context, document, fields, field)
+        fields: JsonObject, field: String, overview: Boolean = false, previewLimit: Int? = null): RuleListResult {
+        val plan = prepareList(context, url, urlField, fields, field, overview, previewLimit)
+        val (document, responseKey) = plan.read()
+        return plan.finish(document, responseKey)
+    }
+
+    private data class ListPagePlan(val context: RuleEvaluation, val url: String, val urlField: String,
+        val fields: JsonObject, val field: String, val overview: Boolean, val previewLimit: Int?,
+        val request: BrokerRequest, val key: DiscoveryPreviewDocuments.Key?, val generation: Long, val concurrent: Boolean)
+
+    private suspend fun prepareList(context: RuleEvaluation, url: String, urlField: String,
+        fields: JsonObject, field: String, overview: Boolean, previewLimit: Int?, concurrent: Boolean = false): ListPagePlan {
+        val reusable = overview && context.page == 1 && spec.loginCheck.isBlank() && canDeferBookFields(fields)
+        val request = prepareRequest(context, url, urlField, ResourceKind.Document)
+        val key = if (reusable) previewKey(context, request) else null
+        return ListPagePlan(context, url, urlField, fields, field, overview, previewLimit, request, key, previewDocuments.generation(), concurrent)
+    }
+
+    private suspend fun ListPagePlan.read(): Pair<PageDocument, DiscoveryPreviewDocuments.Key?> {
+        val cached = key?.takeIf { generation == previewDocuments.generation() && previewKey(context, request) == it }
+            ?.let(previewDocuments::get)
+        val document = cached?.document?.also {
+            context.baseUrl = it.ruleUrl
+            context.requestUserAgent = cached.userAgent
+            trace.record(ContentTraceEvent("cache", urlField, 0, result = "PreviewReuse"))
+        } ?: fetch(context, url, urlField, acceptErrorResponse = fields.string("bookList").isScriptRule(), prepared = request, route = key?.route)
+        val responseKey = if (previewLimit != null && cached == null && key != null)
+            previewKey(context, request)?.takeIf { it.route === key.route && (!concurrent || it == key) } else null
+        return document to responseKey
+    }
+
+    private suspend fun ListPagePlan.finish(document: PageDocument, responseKey: DiscoveryPreviewDocuments.Key?): RuleListResult {
+        val books = booksFromPage(context, document, fields, field, overview, previewLimit)
         val rule = fields.string("nextPageUrl")
         // Ordinary URL rules intentionally fall back to the current URL on empty output.
         // Optional continuations must distinguish that empty output from a real repeated link.
         val next = if (rule.isBlank()) null else context.text(rule, document.input(), "$field.nextPageUrl").trim()
             .takeIf { it.isNotBlank() && it != "null" }?.let { sourceLink(document.url, it) }
+        if (responseKey != null && books.isNotEmpty() &&
+            document.successfulResponse && document.url == request.url) {
+            // A response may establish cookies, but later rule side effects must not rebind its identity.
+            currentCoroutineContext().ensureActive()
+            authority.authorized(identity) {
+                if (previewKey(context, request) == responseKey)
+                    previewDocuments.put(responseKey, document, context.requestUserAgent, generation)
+            }
+        }
         return RuleListResult(books, document.url, next)
+    }
+
+    internal suspend fun canReadPreviewsConcurrently(urls: List<String>): Boolean = operation("discovery.previewPlan") {
+        if (spec.library != null || spec.loginCheck.isNotBlank() || !canDeferBookFields(spec.explore) ||
+            spec.information.string("init").isNotBlank() || !ExecutionTask.BookOverviews.supports(spec.bookUrlPattern)) return@operation false
+        previewPlan?.takeIf { it.first == urls }?.let { return@operation it.second }
+        val rules = listOf(spec.explore.string("bookList").removePrefix("-").removePrefix("+"), spec.explore.string("nextPageUrl")) +
+            spec.information.values.map { (it as? JsonPrimitive)?.content.orEmpty() }
+        val result = try { evaluation().discoveryReadPlan(urls, spec.header, rules) }
+        catch (failure: SourceContentException) {
+            if (failure.code == ContentError.Unavailable) throw failure
+            false
+        }
+        previewPlan = urls.toList() to result
+        result
+    }
+
+    /** Prepare the complete independent group before any read. A generated POST or interactive
+     * request keeps the entire group sequential; already prepared read-only expressions have no writes. */
+    internal suspend fun prepareConcurrentPreviews(urls: List<String>, context: () -> RuleEvaluation): List<suspend () -> RuleListResult>? =
+        operation("ruleExplore") {
+            if (!canDiscover || spec.explore.isEmpty()) throw SourceContentException(ContentError.MissingCapability, "ruleExplore")
+            val plans = urls.map { url ->
+                try { Result.success(prepareList(context(), url, "exploreUrl", spec.explore, "ruleExplore", overview = true, previewLimit = 6, concurrent = true)) }
+                catch (failure: SourceContentException) { Result.failure(failure) }
+            }
+            if (plans.any { it.getOrNull()?.request?.let { request ->
+                request.method != "GET" || request.body != null || request.responseAsHex || request.cache != CacheMode.Disabled ||
+                    request.browser?.let { options -> options.interactive || options.html != null || options.webCookie != null ||
+                        options.script.isNotBlank() || options.sourceRegex.isNotBlank() || options.overrideUrl || options.verificationCode } == true
+            } == true }) return@operation emptyList()
+            plans.mapIndexed { index, prepared ->
+                var first = true
+                val load: suspend () -> RuleListResult = {
+                    withContext(Dispatchers.IO) { checkedOperation("ruleExplore", 60000) {
+                        if (!first) operation("ruleExplore") { listPage(context(), urls[index], "exploreUrl", spec.explore, "ruleExplore", true, 6) }
+                        else {
+                            first = false
+                            val plan = prepared.getOrThrow()
+                            val (document, responseKey) = plan.read()
+                            operation("ruleExplore") { plan.finish(document, responseKey) }
+                        }
+                    } }
+                }
+                load
+            }
+        }.takeIf { it.isNotEmpty() }
+
+    private fun previewKey(context: RuleEvaluation, request: BrokerRequest): DiscoveryPreviewDocuments.Key? {
+        if (request.method != "GET" || request.body != null || request.cache != CacheMode.Disabled ||
+            request.kind != ResourceKind.Document || request.responseAsHex ||
+            request.browser?.let { it.interactive || it.html != null || it.webCookie != null || it.script.isNotBlank() ||
+                it.sourceRegex.isNotBlank() || it.overrideUrl || it.verificationCode } == true ||
+            session.permissionFailureDetail(request.url) != null) return null
+        val route = session.responseRoute() ?: return null
+        val cookies = runCatching { session.responseCookies(request.url).sorted() }.getOrNull() ?: return null
+        val headers = runCatching { session.responseHeaders(request) }.getOrNull() ?: return null
+        val environment = context.discovery?.let { JsonObject(it - "sessionId") }
+        return DiscoveryPreviewDocuments.Key(request.copy(headers = request.headers.toMap()), route, cookies, headers, environment)
     }
 
     fun openSearchPages(keyword: String): RuleListSession = listSession(spec.search, "ruleSearch") { page, url, memory ->
@@ -278,32 +379,70 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         discoveryPage(context, url)
     }
 
+    // Fixed row selectors are independent. Dynamic rules may write variables used by later rows or URLs.
+    private fun canDeferBookFields(fields: JsonObject) = listOf("name", "author", "kind", "wordCount",
+        "lastChapter", "intro", "coverUrl", "updateTime", "bookUrl").all { name ->
+        ExecutionTask.BookOverviews.supports(fields.string(name))
+    }
+
     private suspend fun booksFromPage(context: RuleEvaluation, document: PageDocument, fields: JsonObject,
-        field: String): List<RuleBook> {
+        field: String, overview: Boolean = false, previewLimit: Int? = null): List<RuleBook> {
         val rule = fields.string("bookList")
         val isBookUrl = spec.bookUrlPattern.isNotBlank() && context.value(":\\A(?:${spec.bookUrlPattern})\\z",
             RuleValue.Text(document.url), "bookUrlPattern", OutputKind.Elements).items().isNotEmpty()
         if (rule.isBlank() || isBookUrl) {
             val id = sourceLink(document.url, document.url)
+            if (overview && spec.information.string("init").isBlank() && canDeferBookFields(spec.information)) {
+                val row = context.fork(bookId = id)
+                row.bookField("bookUrl", id)
+                val book = bookFields(row, document.input(), spec.information, "ruleBookInfo", RuleBook(id), overview = true)
+                if (book.title.isBlank()) throw SourceContentException(ContentError.EmptyContent, "ruleBookInfo.name")
+                val old = store.read(id)
+                if (old?.informationLoaded != true || old.revision != identity.revision) {
+                    val record = BookRecord(identity.revision, book)
+                    if (record != old) store.write(record)
+                }
+                return listOf(book)
+            }
             val record = saveInformation(id, BookRecord(identity.revision, RuleBook(id, state = context.book)), document)
             return listOf(record.book)
         }
         val items = context.value(rule.removePrefix("-").removePrefix("+"), document.input(), "$field.bookList", OutputKind.Elements).items()
+        val lightweight = overview && canDeferBookFields(fields)
         val books = mutableListOf<RuleBook>()
-        for (item in items) {
+        val previews = mutableMapOf<String, BookPreview>()
+        val candidates = if (lightweight && rule.startsWith('-')) items.asReversed() else items
+        var batchStart = 0
+        var batch = emptyList<Pair<String, String>>()
+        for ((index, item) in candidates.withIndex()) {
             val row = context.fork()
-            val parsed = bookFields(row, item, fields, field, RuleBook(""))
+            if (lightweight && index >= batchStart + batch.size) {
+                batchStart = index
+                val count = minOf(ExecutionTask.BookOverviews.MAX_ROWS, previewLimit?.minus(books.size) ?: Int.MAX_VALUE,
+                    candidates.size - index)
+                batch = context.overviews(candidates.subList(index, index + count), fields.string("name"), fields.string("bookUrl"), field)
+            }
+            val parsed = if (lightweight) {
+                val title = batch[index - batchStart].first
+                row.bookField("name", title)
+                RuleBook("", title = title, state = row.book)
+            } else bookFields(row, item, fields, field, RuleBook(""))
             if (parsed.title.isBlank()) continue
-            val rawUrl = row.url(fields.string("bookUrl"), item, "$field.bookUrl")
+            val rawUrl = if (lightweight) batch[index - batchStart].second else row.url(fields.string("bookUrl"), item, "$field.bookUrl")
             val id = sourceLink(document.url, rawUrl.ifBlank { document.url })
+            if (lightweight && id in previews) continue
             row.bookId = id; row.bookField("bookUrl", id)
             books += parsed.copy(id = id, tocUrl = id, state = row.book)
+            if (lightweight) {
+                previews[id] = BookPreview(item, context.baseUrl, identity.accountGeneration)
+                if (previewLimit != null && books.size >= previewLimit) break
+            }
         }
-        val ordered = (if (rule.startsWith('-')) books.reversed() else books).distinctBy { it.id }
+        val ordered = (if (!lightweight && rule.startsWith('-')) books.reversed() else books).distinctBy { it.id }
         store.write(ordered.mapNotNull { book ->
             val old = store.read(book.id)
             if (old?.informationLoaded != true || old.revision != identity.revision)
-                BookRecord(identity.revision, book) else null
+                BookRecord(identity.revision, book, preview = previews[book.id]).takeUnless { it == old } else null
         })
         return ordered
     }
@@ -450,7 +589,13 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
     }
 
     private suspend fun information(id: String, old: BookRecord?, supplied: PageDocument? = null): BookRecord {
-        val initial = old?.book?.let { if (old.revision == identity.revision) it else it.copy(state = ScriptState()) } ?: RuleBook(id)
+        var initial = old?.book?.let { if (old.revision == identity.revision) it else it.copy(state = ScriptState()) } ?: RuleBook(id)
+        val preview = old?.preview?.takeIf { old.revision == identity.revision && it.accountGeneration == identity.accountGeneration }
+        if (preview != null) {
+            val listing = evaluation(initial)
+            listing.baseUrl = preview.baseUrl
+            initial = bookFields(listing, preview.input, spec.explore, "ruleExplore", initial)
+        }
         val context = evaluation(initial)
         val document = supplied ?: fetch(context, id, "ruleBookInfo")
         context.baseUrl = document.ruleUrl
@@ -471,7 +616,8 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         return BookRecord(identity.revision, book, true, document, old?.takeIf { it.revision == identity.revision }?.chapters.orEmpty())
     }
 
-    private suspend fun bookFields(context: RuleEvaluation, input: RuleValue, rules: JsonObject, prefix: String, seed: RuleBook): RuleBook {
+    private suspend fun bookFields(context: RuleEvaluation, input: RuleValue, rules: JsonObject, prefix: String, seed: RuleBook,
+        overview: Boolean = false): RuleBook {
         val priorTitle = context.book.metadata["name"]?.jsonPrimitive?.content ?: seed.title
         val priorAuthor = context.book.metadata["author"]?.jsonPrimitive?.content ?: seed.author
         // BookList creates an empty SearchBook before evaluating its first field.
@@ -495,7 +641,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             return value
         }
         val title = field("name", seed.title)
-        if (prefix != "ruleBookInfo" && title.isBlank()) return seed.copy(title = title, state = context.book)
+        if (overview || prefix != "ruleBookInfo" && title.isBlank()) return seed.copy(title = title, state = context.book)
         val author = field("author", seed.author)
         val preserveNames = prefix == "ruleBookInfo" && rules.string("canReName").isBlank()
         val finalTitle = if (preserveNames && priorTitle.isNotBlank()) priorTitle else title
@@ -640,8 +786,8 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         browser: BrowserOptions? = null): BrokerResponse = send(context, prepareRequest(context, url, field, kind, browser), field)
 
     /** Executes a prepared rule request and records the User-Agent its response was fetched with. */
-    private suspend fun send(context: RuleEvaluation, request: BrokerRequest, field: String): BrokerResponse {
-        val response = executeRequest(request, field)
+    private suspend fun send(context: RuleEvaluation, request: BrokerRequest, field: String, route: SourceNetworkRoute? = null): BrokerResponse {
+        val response = executeRequest(request, field, route = route)
         context.requestUserAgent = if (response.protocol == "data") null else session.requestUserAgent(response.finalUrl, request.headers)
         return response
     }
@@ -658,10 +804,12 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         return request.copy(browser = browser ?: request.browser)
     }
 
-    private suspend fun executeRequest(request: BrokerRequest, field: String, publicImage: Boolean = false): BrokerResponse {
+    private suspend fun executeRequest(request: BrokerRequest, field: String, publicImage: Boolean = false,
+        route: SourceNetworkRoute? = null): BrokerResponse {
         val started = System.nanoTime()
         val guard = RequestCommitGuard { authority.authorized(identity, it) }
         val result = if (publicImage) session.loadImage(request, guard)
+            else if (route != null) session.executeOnRoute(request, guard, route)
             else session.execute(if (request.kind == ResourceKind.Image) request.copy(cache = CacheMode.Disabled) else request, guard)
         trace.record(ContentTraceEvent("network", field, (System.nanoTime() - started) / 1_000_000,
             request.body?.length ?: 0, (result as? BrokerResult.Success)?.response?.body?.size ?: 0,
@@ -681,14 +829,15 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         return response
     }
     private suspend fun fetch(context: RuleEvaluation, url: String, field: String, browser: BrowserOptions? = null,
-        acceptErrorResponse: Boolean = false): PageDocument {
-        val request = prepareRequest(context, url, field, ResourceKind.Document, browser)
-        val response = send(context, request, field)
+        acceptErrorResponse: Boolean = false, prepared: BrokerRequest? = null, route: SourceNetworkRoute? = null): PageDocument {
+        val request = prepared ?: prepareRequest(context, url, field, ResourceKind.Document, browser)
+        val response = send(context, request, field, route)
         val inline = response.protocol == "data"
         context.baseUrl = if (inline) url else response.finalUrl
         if (spec.loginCheck.isBlank()) {
             if (!acceptErrorResponse) checkStatus(response.status, field, response.kind == ResponseKind.BrowserDocument)
-            return PageDocument(response.text(), response.finalUrl, inline, context.baseUrl)
+            return PageDocument(response.text(), response.finalUrl, inline, context.baseUrl,
+                response.status in 200..299 || response.status == 0 && response.kind == ResponseKind.BrowserDocument)
         }
         // The pinned hook receives and returns StrResponse, including retry responses from java.connect.
         val snapshot = response.scriptSnapshot(binary = false)
@@ -721,7 +870,12 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val kind = failure.challenge ?: return null
         val request = failure.verificationRequest ?: return null
         if (failure.code != hnovel.network.FailureCode.BrowserRequired) return null
-        return SourceVerification(kind) {
+        val origin = runCatching {
+            val address = java.net.URL(request.url)
+            java.net.URL(address.protocol.lowercase(), address.host.lowercase(),
+                if (address.port == address.defaultPort) -1 else address.port, "/").toString()
+        }.getOrNull()
+        return SourceVerification(kind, origin = origin) {
             operation("browser.verification", timeoutMillis = 300000) {
                 // Recovery opens immediately and finishes when the original extraction is ready.
                 // Ordinary account/login windows keep their explicit completion behavior.
@@ -764,16 +918,21 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
     }
     // Host storage and orchestration use IO. The caller's priority dispatcher owns the outer
     // request only; nested timeout jobs must not compete with their parent for its last permit.
-    internal suspend fun <T : Any> operation(field: String, timeoutMillis: Long = 60000, block: suspend () -> T): T = withContext(Dispatchers.IO) { serial.withLock {
+    internal suspend fun <T : Any> operation(field: String, timeoutMillis: Long = 60000, block: suspend () -> T): T = withContext(Dispatchers.IO) {
+        serial.withLock { checkedOperation(field, timeoutMillis, block) }
+    }
+    private suspend fun <T : Any> checkedOperation(field: String, timeoutMillis: Long, block: suspend () -> T): T {
         if (!authority.accepts(identity)) throw SourceContentException(ContentError.Unavailable, field)
-        try { withTimeoutOrNull(timeoutMillis) { block().also { currentCoroutineContext().ensureActive()
+        if (field.startsWith("login") || field.startsWith("browser.") || field in setOf("discovery.action", "discovery.browser"))
+            previewDocuments.clear()
+        return try { withTimeoutOrNull(timeoutMillis) { block().also { currentCoroutineContext().ensureActive()
             if (!authority.accepts(identity)) throw SourceContentException(ContentError.Unavailable, field) } }
             ?: throw SourceContentException(ContentError.Limit, field) }
         catch (cancelled: CancellationException) { throw cancelled }
         catch (failure: SourceContentException) { throw failure }
         catch (_: Exception) { throw SourceContentException(if (!authority.accepts(identity)) ContentError.Unavailable else ContentError.InvalidRule, field) }
-    } }
-    override fun close() { authority.revoke(identity) }
+    }
+    override fun close() { authority.revoke(identity); previewDocuments.clear() }
 }
 
 private fun PageDocument.input() = RuleValue.Text(body)

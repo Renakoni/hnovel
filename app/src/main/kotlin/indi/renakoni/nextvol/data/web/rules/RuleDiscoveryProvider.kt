@@ -5,6 +5,12 @@ import hnovel.content.*
 import indi.renakoni.nextvol.data.web.DISCOVERY_SEARCH_PREFIX
 import io.nightfish.lightnovelreader.api.web.discovery.*
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.last
 import kotlinx.serialization.json.Json
@@ -13,7 +19,8 @@ import kotlinx.serialization.json.jsonObject
 /** One adapter per page. The source runtime still owns revision/account/network authority. */
 internal class RuleDiscoveryProvider(private val source: RuleSource,
     private val session: RuleDiscoverySession = source.openDiscovery(java.util.UUID.randomUUID().toString()),
-    private val recovery: RuleRequestRecovery? = null) : DiscoveryProvider {
+    private val recovery: RuleRequestRecovery? = null) : DiscoveryPreviewProvider {
+    companion object { internal const val PREVIEW_CONCURRENCY = 4 }
     override val hasFeed get() = source.canFeed && (current?.takeIf {
         // Empty/login/transient responses cannot prove that the source is category-only.
         it.homepage != null || it.rows.any { row -> row.type == "url" && row.url.isNotBlank() }
@@ -26,7 +33,7 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
         private set
     var diagnosticFailure: hnovel.execution.ExecutionResult.Failure? = null
         private set
-    private val previewDiagnostics = mutableMapOf<String, hnovel.execution.ExecutionResult.Failure>()
+    private val previewDiagnostics = java.util.concurrent.ConcurrentHashMap<String, hnovel.execution.ExecutionResult.Failure>()
     fun previewDiagnostic(id: String) = previewDiagnostics[id]
     private var current: RuleDiscoveryCatalog? = null
     private data class PageKey(val target: String, val filters: Map<String, String>)
@@ -52,24 +59,70 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
         current = definition
         val catalog = map(definition)
         val entries = RuleDiscoveryClassifier.feed(definition)
-        val sections = mutableListOf<DiscoverySection>()
-        for (category in entries) {
-            val preview = request { session.openPages(category.url, catalog.values).page(1) }
-            val page = preview.get()
-            val failure = preview.getError()?.let { DiscoveryPreviewFailure(it, failureField, permissionFailure) }
-                ?: if (page?.books.isNullOrEmpty() && page?.nextCursor == null)
-                    DiscoveryPreviewFailure(DiscoveryError.InvalidResponse, "ruleExplore.bookList") else null
-            diagnosticFailure?.let { previewDiagnostics[category.id] = it }
-            sections += DiscoverySection(category.id, category.title, page?.books.orEmpty().take(6).map(::book), category.url,
-                category.id.takeIf { definition.homepage == null }, failure)
-            // A failed preview belongs to its entry, not to the successful catalogue snapshot.
-            failureField = null; permissionFailure = null; diagnosticFailure = null
-            // Recovery belongs to the current module, so a later challenge does not replay earlier previews.
+        val sections = entries.map { category ->
+            DiscoverySection(category.id, category.title, emptyList(), category.url,
+                category.id.takeIf { definition.homepage == null }, previewLoading = true)
+        }.toMutableList()
+        if (sections.isNotEmpty()) emit(Ok(sections.toList()))
+        val concurrent = if (entries.size > 1) try {
+            session.concurrentPreviews(entries.map { it.url }, catalog.values)
+        } catch (_: SourceContentException) { null } else null
+        if (concurrent != null) coroutineScope {
+            val results = Channel<Pair<Int, DiscoverySection>>(PREVIEW_CONCURRENCY)
+            val permits = Semaphore(PREVIEW_CONCURRENCY)
+            try {
+                entries.forEachIndexed { index, category ->
+                    val section = sections[index]
+                    launch {
+                        try {
+                            permits.withPermit {
+                                results.send(index to preview(section, category.url, catalog.values) { concurrent[index].page(1) })
+                            }
+                        } catch (cancelled: CancellationException) {
+                            // Session/route retirement can cancel one read without cancelling this collector.
+                            // Do not leave the parent waiting for a result that this child can no longer send.
+                            this@coroutineScope.cancel(cancelled)
+                            throw cancelled
+                        }
+                    }
+                }
+                repeat(entries.size) {
+                    val (index, section) = results.receive()
+                    sections[index] = section
+                    emit(Ok(sections.toList()))
+                }
+            } finally { results.cancel() }
+        } else for ((index, category) in entries.withIndex()) {
+            sections[index] = preview(sections[index], category.url, catalog.values)
             emit(Ok(sections.toList()))
         }
         if (entries.isEmpty()) {
             if (hasFeed) { failureField = "exploreUrl"; emit(Err(DiscoveryError.InvalidResponse)) }
             else emit(Ok(emptyList()))
+        }
+    }
+
+    override suspend fun preview(id: String): Result<DiscoverySection, DiscoveryError> {
+        val definition = current ?: return Err(DiscoveryError.InvalidRequest)
+        val category = RuleDiscoveryClassifier.feed(definition).find { it.id == id }
+            ?: return Err(DiscoveryError.InvalidRequest)
+        return Ok(preview(DiscoverySection(category.id, category.title, emptyList(), category.url,
+            category.id.takeIf { definition.homepage == null }), category.url, definition.values))
+    }
+
+    private suspend fun preview(section: DiscoverySection, url: String, values: Map<String, String>,
+        load: suspend () -> RuleListPage = { session.preview(url, values) }): DiscoverySection {
+        previewDiagnostics.remove(section.id)
+        return try {
+            val page = if (recovery == null) load() else recovery.execute { load() }
+            section.copy(books = page.books.take(6).map(::book), previewLoading = false,
+                previewFailure = if (page.books.isEmpty() && page.nextCursor == null)
+                    DiscoveryPreviewFailure(DiscoveryError.InvalidResponse, "ruleExplore.bookList") else null)
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (failure: SourceContentException) {
+            failure.diagnostic?.let { previewDiagnostics[section.id] = it }
+            section.copy(previewLoading = false, previewFailure = DiscoveryPreviewFailure(failure.discoveryError(),
+                failure.field, failure.denial?.let { DiscoveryPermission(it.origin, it.kind.name) }))
         }
     }
     override fun filters(target: String) = if (target.startsWith(DISCOVERY_SEARCH_PREFIX)) emptyList() else
@@ -121,7 +174,7 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
             else -> null
         }
 
-    private fun book(book: RuleBook) = DiscoveryBook(book.id, book.title, book.author, book.coverUrl)
+    private fun book(book: RuleBook) = DiscoveryBook(book.id, book.title)
     private suspend fun <T> request(retry: Boolean = true, block: suspend () -> T): Result<T, DiscoveryError> = try {
         failureField = null; permissionFailure = null; diagnosticFailure = null
         Ok(if (recovery == null || !retry) block() else recovery.execute(block))
@@ -131,10 +184,13 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
         failureField = failure.field
         diagnosticFailure = failure.diagnostic
         permissionFailure = failure.denial?.let { DiscoveryPermission(it.origin, it.kind.name) }
-        Err(when (failure.code) {
+        Err(failure.discoveryError())
+    }
+
+    private fun SourceContentException.discoveryError() = when (code) {
         ContentError.MissingCapability -> DiscoveryError.Unsupported
         ContentError.LoginRequired -> DiscoveryError.AuthenticationRequired
-        ContentError.BrowserRequired -> if (failure.verification?.kind == hnovel.network.BrowserChallengeKind.Login)
+        ContentError.BrowserRequired -> if (verification?.kind == hnovel.network.BrowserChallengeKind.Login)
             DiscoveryError.AuthenticationRequired else DiscoveryError.VerificationRequired
         ContentError.PermissionDenied -> DiscoveryError.PermissionDenied
         ContentError.AddressDenied -> DiscoveryError.AddressDenied
@@ -146,5 +202,5 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
         ContentError.Unavailable -> DiscoveryError.Unavailable
         ContentError.Limit -> DiscoveryError.Limit
         else -> DiscoveryError.InvalidRules
-    }) }
+    }
 }

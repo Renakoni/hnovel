@@ -82,7 +82,7 @@ class DiscoveryRoutingTest {
                 assertEquals(0, fixture.documents.get())
                 val snapshots = mutableListOf<List<DiscoverySection>>()
                 provider.feedUpdates().collect { snapshots += it.get()!! }
-                assertEquals(listOf(1, 2), snapshots.map { it.size })
+                assertEquals(listOf(2, 2, 2), snapshots.map { it.size })
                 val feed = snapshots.last()
                 assertEquals(listOf("最近更新", "总排行榜"), feed.map { it.title })
                 assertTrue(feed.all { it.books.isNotEmpty() && it.more != null })
@@ -136,7 +136,11 @@ class DiscoveryRoutingTest {
     @Test fun cancellingInferredPreviewsDoesNotFetchTheNextList() = runBlocking {
         RuleSourceFixture().use { fixture ->
             fixture.source { raw -> definition(raw, "最近更新::/search?recent&&热门榜::/search?popular") }.use { source ->
-                assertEquals("最近更新", RuleDiscoveryProvider(source).feedUpdates().first().get()!!.single().title)
+                val first = RuleDiscoveryProvider(source).feedUpdates().first { result ->
+                    result.get().orEmpty().any { it.books.isNotEmpty() }
+                }.get()!!
+                assertEquals("最近更新", first.first().title)
+                assertTrue(first.last().previewLoading)
                 assertEquals(1, fixture.documents.get())
             }
         }

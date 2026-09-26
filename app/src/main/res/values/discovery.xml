@@ -13,6 +13,7 @@
     <string name="discovery_load_more">Load more</string>
     <string name="discovery_no_books">No books match these filters.</string>
     <string name="discovery_preview_empty">This list has no books yet.</string>
+    <string name="discovery_preview_loading">Loading books…</string>
     <string name="discovery_unsupported">This source does not provide this browsing capability.</string>
     <string name="discovery_login_required">Sign in to this source in source management, then retry.</string>
     <string name="discovery_permission">This source needs network permission. Check its allowed sites in source management.</string>

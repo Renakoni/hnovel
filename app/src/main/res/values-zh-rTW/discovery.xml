@@ -13,6 +13,7 @@
     <string name="discovery_load_more">載入更多</string>
     <string name="discovery_no_books">沒有符合篩選條件的書籍。</string>
     <string name="discovery_preview_empty">此書單暫無書籍。</string>
+    <string name="discovery_preview_loading">正在載入書目…</string>
     <string name="discovery_unsupported">此書源不支援這項瀏覽功能。</string>
     <string name="discovery_login_required">請到書源管理登入此書源後重試。</string>
     <string name="discovery_permission">此書源需要網路權限。請到書源管理檢查允許的網站。</string>

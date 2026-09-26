@@ -20,6 +20,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -49,6 +51,7 @@ fun ExploreHomeScreen(
     onSettings: () -> Unit,
     onScope: (SourceCategory?) -> Unit = {},
     onPage: (Int) -> Unit = {},
+    onRetryPreview: ((SourceDiscoverySection) -> Unit)? = null,
 ) {
     Scaffold(topBar = {
         TopAppBar(
@@ -80,7 +83,8 @@ fun ExploreHomeScreen(
                             .collect { onScroll(id, it) }
                     }
                     val titleHeight = with(LocalDensity.current) { (16.sp * 2.2f).toDp() }
-                    PullToRefreshBox(isRefreshing = content.loading || content.acting, onRefresh = onRefresh, modifier = Modifier.fillMaxSize()) {
+                    PullToRefreshBox(isRefreshing = content.acting || content.loading && content.sections.isEmpty(),
+                        onRefresh = onRefresh, modifier = Modifier.fillMaxSize()) {
                         // A keyed trailing spacer would anchor the empty list when the first feed arrives.
                         LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 80.dp)) {
                             content.error?.let { error -> item(key = "error") {
@@ -102,7 +106,7 @@ fun ExploreHomeScreen(
                             if (content.loaded && content.sections.isEmpty() && content.buttons.isEmpty() && content.filters.isEmpty())
                                 item { DiscoveryEmpty(stringResource(R.string.explore_empty), onManageSources) }
                             items(content.sections, key = { "section:" + it.id }) { section ->
-                                ExploreRowSection(Modifier, section, titleHeight, onMore, onBook, onManageSources)
+                                ExploreRowSection(Modifier, section, titleHeight, onMore, onBook, onManageSources, onRetryPreview)
                             }
                         }
                     }
@@ -120,7 +124,8 @@ private fun ExploreRowSection(
     titleHeight: androidx.compose.ui.unit.Dp,
     onClickExpand: (SourceDiscoverySection) -> Unit,
     onClickBook: (SourceBookId) -> Unit,
-    onManageSources: () -> Unit
+    onManageSources: () -> Unit,
+    onRetryPreview: ((SourceDiscoverySection) -> Unit)?,
 ) {
     Column(
         modifier = modifier
@@ -135,7 +140,7 @@ private fun ExploreRowSection(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
-                modifier = Modifier.weight(2f),
+                modifier = Modifier.weight(2f).semantics { heading() },
                 text = row.title.ifBlank { stringResource(R.string.discovery_unnamed_entry) },
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.W600,
@@ -158,19 +163,34 @@ private fun ExploreRowSection(
             }
         }
 
-        row.previewFailure?.let { failure ->
-            DiscoveryFailure(failure.error, if (row.more != null) ({ onClickExpand(row) }) else null, onManageSources, back = null,
-                field = failure.field, permission = failure.permission, diagnostic = row.diagnosticFailure)
-        }
         val lazyRowState = rememberLazyListState()
         val validBooks = remember(row.books) {
             row.books.filter { it.id.remoteId.isNotBlank() }.distinctBy { it.id }
         }
 
-        if (validBooks.isEmpty() && row.previewFailure == null) {
-            Text(stringResource(R.string.discovery_preview_empty),
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (row.previewLoading && validBooks.isNotEmpty()) {
+            LinearProgressIndicator(Modifier.padding(horizontal = 16.dp).fillMaxWidth())
+        }
+        if (row.previewFailure != null || validBooks.isEmpty()) {
+            Surface(modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 12.dp).fillMaxWidth(),
+                shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainerLow) {
+                when {
+                    row.previewLoading -> Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(stringResource(R.string.discovery_preview_loading), style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        LinearProgressIndicator(Modifier.fillMaxWidth())
+                    }
+                    row.previewFailure != null -> {
+                        val failure = row.previewFailure
+                        DiscoveryFailure(failure.error,
+                            if (row.previewRetryAvailable && onRetryPreview != null) ({ onRetryPreview(row) }) else null,
+                            onManageSources, back = null, field = failure.field, permission = failure.permission,
+                            diagnostic = row.diagnosticFailure)
+                    }
+                    else -> Text(stringResource(R.string.discovery_preview_empty), Modifier.padding(16.dp),
+                        style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
         }
         if (validBooks.isNotEmpty()) CompositionLocalProvider(LocalOverscrollFactory provides null) {
             LazyRow(

@@ -1,5 +1,6 @@
 package hnovel.content
 
+import hnovel.execution.ExecutionTask
 import hnovel.network.*
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.*
@@ -12,6 +13,50 @@ class HlibNativeSourceTest {
     private fun raw(base: String) = JsonObject(Json.parseToJsonElement(
         javaClass.getResourceAsStream("/hlib-native.json")!!.bufferedReader().use { it.readText() }
     ).jsonObject + ("bookSourceUrl" to JsonPrimitive(base)))
+
+    @Test fun homepageAndRankingListsOnlyEvaluateTitlesAndLinks(): Unit = runBlocking {
+        val requests = mutableListOf<BrokerRequest>()
+        val browser = BrowserExecutor { _, request, _, _, _ ->
+            requests += request
+            val rows = (1..30).joinToString("") {
+                "<li class='list-group-item'><a href='/s/book-$it'>Book $it</a>" +
+                    "<a href='/u/writer'><span class='text-body'>Writer</span></a><p class='short'>Intro</p></li>"
+            }
+            BrokerResult.Success(BrokerResponse(0, request.url, emptyMap(),
+                "<html><div class='container'><ul>$rows</ul></div></html>".toByteArray(), "UTF-8", 0,
+                kind = ResponseKind.BrowserDocument))
+        }
+        RuleSourceFixture(object : BrowserExecutor by browser {
+            override suspend fun defaultUserAgent() = "Fixture WebView"
+        }).use { fixture -> fixture.source { raw(fixture.server.url("/").toString().trimEnd('/')) }.use { source ->
+            val fields = mutableListOf<String>()
+            val batches = mutableListOf<ExecutionTask.BookOverviews>()
+            fixture.beforeRun = { task, _ -> when (task) {
+                is ExecutionTask.Rule -> fields += task.location.field
+                is ExecutionTask.BookOverviews -> batches += task
+                else -> Unit
+            } }
+            fun assertOverviewBatches(sizes: List<Int>) {
+                assertEquals(sizes, batches.map { it.inputs.size })
+                assertTrue(batches.all { it.field == "ruleExplore" && it.nameRule.isNotBlank() && it.urlRule.isNotBlank() })
+                assertFalse(fields.any { it == "ruleExplore.author" || it == "ruleExplore.intro" })
+            }
+            val discovery = source.openDiscovery("overview")
+            val home = discovery.catalog(homepage = true)
+            val preview = discovery.preview(home.homepage!!.first().url, emptyMap()).books
+            assertEquals((1..6).map { "Book $it" }, preview.map { it.title })
+            assertTrue(preview.all { it.author.isEmpty() })
+            assertOverviewBatches(listOf(6))
+            assertEquals(1, requests.size)
+            fields.clear()
+            batches.clear()
+            val ranking = discovery.openPages(home.homepage.first().url, emptyMap()).page(1).books
+            assertEquals((1..30).map { "Book $it" }, ranking.map { it.title })
+            assertOverviewBatches(listOf(8, 8, 8, 6))
+            assertEquals("The full ranking reuses the successful preview document", 1, requests.size)
+            assertEquals(0, fixture.server.requestCount)
+        } }
+    }
 
     @Test fun publicNavbarDoesNotRequestLoginAndEveryReadUsesTheBrowser() = runBlocking {
         val requests = mutableListOf<BrokerRequest>()
