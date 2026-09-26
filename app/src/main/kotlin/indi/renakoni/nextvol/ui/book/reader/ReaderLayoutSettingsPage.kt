@@ -176,7 +176,7 @@ internal fun ReaderLayoutPreview(settings: ReaderSettingsEditor, modifier: Modif
                 .border(1.dp, readerTextColor(settings).copy(alpha = 0.12f), RoundedCornerShape(4.dp))
                 .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(paragraphSpacing),
+            verticalArrangement = Arrangement.spacedBy(paragraphSpacing, Alignment.CenterVertically),
         ) {
             stringResource(R.string.reader_welcome_preview).split('\n').forEach { line ->
                 Text(line, style = layout.style.copy(textAlign = TextAlign.Center), color = readerTextColor(settings))

@@ -87,6 +87,25 @@ class ReaderLayoutPreviewTest {
         assertEquals(initial.bottom - 48f * 148 / 640, viewport().bottom, 1f)
     }
 
+    @Test fun welcomeIsCenteredInsideTheReadingViewportAcrossWindowSizes() {
+        showPreview()
+        fun assertCentered() {
+            val first = compose.onNodeWithText("欢迎来到Nextvol").fetchSemanticsNode().boundsInRoot
+            val last = compose.onNodeWithText("Welcome to Nextvol").fetchSemanticsNode().boundsInRoot
+            assertEquals(viewport().center.y, (first.top + last.bottom) / 2, 1f)
+            assertEquals(viewport().center.x, first.center.x, 1f)
+            assertEquals(viewport().center.x, last.center.x, 1f)
+        }
+        assertCentered()
+        compose.runOnIdle {
+            windowSize = IntSize(640, 360)
+            previewSize = IntSize(320, 190)
+            fontScale = 1.3f
+            layout = layout.copy(paragraphSpacing = 6f)
+        }
+        assertCentered()
+    }
+
     @Test fun automaticPaddingAndFooterUseTheBodySemanticsAtPreviewScale() {
         showPreview()
         compose.runOnIdle { layout = layout.copy(autoPadding = true) }

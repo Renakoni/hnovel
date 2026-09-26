@@ -8,5 +8,6 @@
     <string name="reader_paper_mist">雾灰</string>
     <string name="reader_paper_black">纯黑</string>
     <string name="reader_paper_ink">水墨</string>
-    <string name="reader_paper_sample">文</string>
+    <string name="reader_paper_sample">风从书页间经过。\n故事在此刻展开。</string>
+    <string name="reader_paper_preview_title">第一章</string>
 </resources>

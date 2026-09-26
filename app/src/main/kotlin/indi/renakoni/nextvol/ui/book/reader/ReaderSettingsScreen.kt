@@ -1,5 +1,8 @@
 package indi.renakoni.nextvol.ui.book.reader
 
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -85,26 +88,28 @@ fun SettingsBottomSheet(
     ) {
         BackHandler(enabled = showPaper) { showPaper = false }
         var selectedTabIndex by rememberSaveable { mutableIntStateOf(0) }
-        if (showPaper) {
-            ReaderPaperPage(settingState, onBack = { showPaper = false }, windowInsets = WindowInsets(0, 0, 0, 0))
-        } else Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .fillMaxHeight()
-        ) {
-            Text(
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                style = typography.displayMedium,
-                text = stringResource(R.string.reader_settings),
-                fontWeight = FontWeight.W600
-            )
-            ContentSettings(
-                settingState = settingState,
-                selectedTabIndex = selectedTabIndex,
-                onTabSelected = { index -> selectedTabIndex = index },
-                onClickThemeSettings = onClickThemeSettings,
-                onClickPaper = { showPaper = true },
-            )
+        Crossfade(targetState = showPaper, animationSpec = tween(180), label = "reader-paper-page") { paper ->
+            if (paper) {
+                ReaderPaperPage(settingState, onBack = { showPaper = false }, windowInsets = WindowInsets(0, 0, 0, 0))
+            } else Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight()
+            ) {
+                Text(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                    style = typography.displayMedium,
+                    text = stringResource(R.string.reader_settings),
+                    fontWeight = FontWeight.W600
+                )
+                ContentSettings(
+                    settingState = settingState,
+                    selectedTabIndex = selectedTabIndex,
+                    onTabSelected = { index -> selectedTabIndex = index },
+                    onClickThemeSettings = onClickThemeSettings,
+                    onClickPaper = { showPaper = true },
+                )
+            }
         }
     }
 }
