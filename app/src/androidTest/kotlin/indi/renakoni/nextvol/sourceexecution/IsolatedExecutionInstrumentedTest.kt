@@ -157,12 +157,16 @@ class IsolatedExecutionInstrumentedTest {
                     val limits = ExecutionLimits(timeoutMillis = 30000, maxOutputBytes = 1024,
                         maxRequests = 48, maxDataBytes = 32 * 1024 * 1024)
                     SourceExecutionBroker(identity, authority, session, limits, base).use { bridge ->
+                        // Exercise multi-megabyte pipe transport without approaching the worker's
+                        // allocation budget with UTF-8/JSON/JS copies on older Android runtimes.
+                        val body = "文".repeat(50000)
                         server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
                             override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest) = MockResponse()
-                                .setBody("文".repeat(200000) + request.path)
+                                .setBody(body + request.path)
                         }
                         val paths = JsonArray((0 until 40).map { JsonPrimitive("/$it") })
-                        val task = ExecutionTask.Script("java.ajaxAll($paths).map(r=>r.body().slice(200000))", baseUrl = base)
+                        assertTrue(body.toByteArray(Charsets.UTF_8).size.toLong() * paths.size > 1024 * 1024)
+                        val task = ExecutionTask.Script("java.ajaxAll($paths).map(r=>r.body().slice(${body.length}))", baseUrl = base)
                         assertEquals(ExecutionResult.Success(paths.toString()), executor.execute(identity, task, limits, bridge))
                     }
                     // The executor closes each invocation's broker, including successful calls.
