@@ -30,6 +30,39 @@ class SourceBrokerTest {
         return (result as BrokerResult.Success).response
     }
 
+    @Test fun eightSameHostRequestsArriveBeforeAnyResponseAndTheNinthWaits() = runBlocking {
+        MockWebServer().use { server ->
+            val entered = CountDownLatch(8)
+            val release = CountDownLatch(1)
+            val active = AtomicInteger()
+            val maximum = AtomicInteger()
+            server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse {
+                    maximum.accumulateAndGet(active.incrementAndGet(), ::maxOf)
+                    entered.countDown()
+                    try { check(release.await(10, TimeUnit.SECONDS)) }
+                    finally { active.decrementAndGet() }
+                    return MockResponse().setBody("ready")
+                }
+            }
+            server.start()
+            SourceBroker(directory.root.toPath()).use { broker ->
+                val session = broker.open(scope(), listOf(grant(server.url("/"))))
+                val requests = (0..8).map { index -> async { session.execute(request(server.url("/page/$index"))) } }
+                try {
+                    withContext(Dispatchers.IO) {
+                        val arrived = entered.await(5, TimeUnit.SECONDS)
+                        assertTrue("Expected eight in-flight requests, observed ${maximum.get()}", arrived)
+                    }
+                    assertEquals(8, server.requestCount)
+                } finally { release.countDown() }
+                requests.awaitAll().forEach { assertEquals("ready", success(it).text()) }
+                assertEquals(8, maximum.get())
+                assertEquals(9, server.requestCount)
+            }
+        }
+    }
+
     @Test fun sameOriginPagesReuseConnectionsButNewAccountsDoNot() = runBlocking {
         MockWebServer().use { server ->
             server.start()

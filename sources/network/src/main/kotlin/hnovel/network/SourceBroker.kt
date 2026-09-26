@@ -109,7 +109,12 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
     }
     // An HTTP proxy would move DNS/peer validation to an unchecked destination.
     // Each route below supplies its own DNS, sockets and connection pool.
+    // enqueue() also has a per-host queue; it must not silently lower the broker's concurrency.
     private val client = OkHttpClient.Builder().proxy(Proxy.NO_PROXY).followRedirects(false).followSslRedirects(false)
+        .dispatcher(okhttp3.Dispatcher().apply {
+            maxRequests = limits.concurrency
+            maxRequestsPerHost = limits.concurrency
+        })
         .retryOnConnectionFailure(false).cookieJar(CookieJar.NO_COOKIES).cache(null)
         .addNetworkInterceptor { chain ->
             val peer = chain.connection()?.socket()?.remoteSocketAddress as? InetSocketAddress

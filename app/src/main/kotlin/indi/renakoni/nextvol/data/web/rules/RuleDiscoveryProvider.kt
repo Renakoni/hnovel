@@ -2,13 +2,16 @@ package indi.renakoni.nextvol.data.web.rules
 
 import com.github.michaelbull.result.*
 import hnovel.content.*
+import hnovel.network.BrokerLimits
 import indi.renakoni.nextvol.data.web.DISCOVERY_SEARCH_PREFIX
+import indi.renakoni.nextvol.data.web.ForegroundSourceRequest
 import io.nightfish.lightnovelreader.api.web.discovery.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.flow.flow
@@ -20,7 +23,7 @@ import kotlinx.serialization.json.jsonObject
 internal class RuleDiscoveryProvider(private val source: RuleSource,
     private val session: RuleDiscoverySession = source.openDiscovery(java.util.UUID.randomUUID().toString()),
     private val recovery: RuleRequestRecovery? = null) : DiscoveryPreviewProvider {
-    companion object { internal const val PREVIEW_CONCURRENCY = 4 }
+    companion object { internal const val PREVIEW_CONCURRENCY = BrokerLimits.DEFAULT_CONCURRENCY }
     override val hasFeed get() = source.canFeed && (current?.takeIf {
         // Empty/login/transient responses cannot prove that the source is category-only.
         it.homepage != null || it.rows.any { row -> row.type == "url" && row.url.isNotBlank() }
@@ -64,19 +67,31 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
                 category.id.takeIf { definition.homepage == null }, previewLoading = true)
         }.toMutableList()
         if (sections.isNotEmpty()) emit(Ok(sections.toList()))
-        val concurrent = if (entries.size > 1) try {
-            session.concurrentPreviews(entries.map { it.url }, catalog.values)
+        suspend fun preparePreviews(offset: Int) = if (entries.size - offset > 1) try {
+            session.concurrentPreviews(entries.drop(offset).map { it.url }, catalog.values)
         } catch (_: SourceContentException) { null } else null
+        var offset = 0
+        var prepared = preparePreviews(offset)
+        if (prepared == null && entries.size > 1) {
+            sections[0] = preview(sections[0], entries[0].url, catalog.values, allowInteraction = false)
+            emit(Ok(sections.toList()))
+            offset = 1
+            // The first login hook may initialize cached request inputs. Recheck once;
+            // stateful requests still fail the same safety gate and remain sequential.
+            prepared = preparePreviews(offset)
+        }
+        val concurrent = prepared
+        val remaining = entries.withIndex().drop(offset)
         if (concurrent != null) coroutineScope {
             val results = Channel<Pair<Int, DiscoverySection>>(PREVIEW_CONCURRENCY)
             val permits = Semaphore(PREVIEW_CONCURRENCY)
             try {
-                entries.forEachIndexed { index, category ->
+                remaining.forEachIndexed { previewIndex, (index, category) ->
                     val section = sections[index]
                     launch {
                         try {
                             permits.withPermit {
-                                results.send(index to preview(section, category.url, catalog.values) { concurrent[index].page(1) })
+                                results.send(index to preview(section, category.url, catalog.values, allowInteraction = false) { concurrent[previewIndex].page(1) })
                             }
                         } catch (cancelled: CancellationException) {
                             // Session/route retirement can cancel one read without cancelling this collector.
@@ -86,14 +101,14 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
                         }
                     }
                 }
-                repeat(entries.size) {
+                repeat(remaining.size) {
                     val (index, section) = results.receive()
                     sections[index] = section
                     emit(Ok(sections.toList()))
                 }
             } finally { results.cancel() }
-        } else for ((index, category) in entries.withIndex()) {
-            sections[index] = preview(sections[index], category.url, catalog.values)
+        } else for ((index, category) in remaining) {
+            sections[index] = preview(sections[index], category.url, catalog.values, allowInteraction = false)
             emit(Ok(sections.toList()))
         }
         if (entries.isEmpty()) {
@@ -111,10 +126,17 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
     }
 
     private suspend fun preview(section: DiscoverySection, url: String, values: Map<String, String>,
+        allowInteraction: Boolean = true,
         load: suspend () -> RuleListPage = { session.preview(url, values) }): DiscoverySection {
         previewDiagnostics.remove(section.id)
         return try {
-            val page = if (recovery == null) load() else recovery.execute { load() }
+            val page = when {
+                recovery == null -> load()
+                allowInteraction -> recovery.execute { load() }
+                // Automatic sections must release their slots instead of waiting for user input.
+                // Explicit preview retries keep foreground verification and its single retry.
+                else -> withContext(ForegroundSourceRequest(allowsInteraction = false)) { recovery.execute { load() } }
+            }
             section.copy(books = page.books.take(6).map(::book), previewLoading = false,
                 previewFailure = if (page.books.isEmpty() && page.nextCursor == null)
                     DiscoveryPreviewFailure(DiscoveryError.InvalidResponse, "ruleExplore.bookList") else null)
