@@ -47,12 +47,13 @@ class HlibNativeSourceTest {
             assertEquals((1..6).map { "Book $it" }, preview.map { it.title })
             assertTrue(preview.all { it.author.isEmpty() })
             assertOverviewBatches(listOf(6))
+            assertEquals(1, requests.size)
             fields.clear()
             batches.clear()
             val ranking = discovery.openPages(home.homepage.first().url, emptyMap()).page(1).books
             assertEquals((1..30).map { "Book $it" }, ranking.map { it.title })
             assertOverviewBatches(listOf(8, 8, 8, 6))
-            assertEquals(2, requests.size)
+            assertEquals("The full ranking reuses the successful preview document", 1, requests.size)
             assertEquals(0, fixture.server.requestCount)
         } }
     }
