@@ -19,5 +19,5 @@
     <string name="source_group_deselect_visible">Снять выбор видимых</string>
     <string name="source_group_selected">Выбрано: %1$d</string>
     <string name="source_groups_saved">Группы обновлены</string>
-    <string name="source_groups_import_help">Новые источники не входят в группы. Распределите их после добавления.</string>
+    <string name="source_groups_import_help">Источники из каталога распределяются по группам по категориям. Источники, импортированные по ссылке или из файла, остаются без группы.</string>
 </resources>
