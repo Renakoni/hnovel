@@ -865,5 +865,14 @@
     "index": 3,
     "host": "m.bgnovel.com",
     "available": true
+  },
+  {
+    "key": "https://www.pixiv.net/novel",
+    "category": "Adult",
+    "name": "Pixiv 小说",
+    "subtitle": "小说与同人 · 需登录 Pixiv，内容以账号权限为准",
+    "index": 7,
+    "host": "www.pixiv.net",
+    "available": true
   }
 ]

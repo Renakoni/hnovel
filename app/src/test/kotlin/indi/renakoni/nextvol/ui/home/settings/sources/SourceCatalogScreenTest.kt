@@ -77,6 +77,22 @@ class SourceCatalogScreenTest {
         verify(exactly = 0) { model.commit(any(), any(), any()) }
     }
 
+    @Test fun bundledPixivCanBeSelectedFromTheAdultCategoryForPreview() {
+        val catalog = SourceCatalog(activity.get())
+        val pixiv = catalog.entries.single { it.key == "https://www.pixiv.net/novel" }
+        activity.get().setContent { MaterialTheme {
+            SourcesScreen(state.copy(catalog = catalog.entries), model, onDiagnostics = {}) {}
+        } }
+        compose.onNodeWithText("Add book source").performClick()
+        compose.onNodeWithText("Categories").performClick()
+        compose.onNodeWithText(activity.get().getString(SourceCategory.Adult.title)).performScrollTo().performClick()
+        compose.onNodeWithText(pixiv.name).performScrollTo().performClick()
+        compose.onNodeWithText(pixiv.name).assertIsOn()
+        compose.onNodeWithText("Continue").performClick()
+        verify(exactly = 1) { model.previewCatalog(setOf(pixiv.key)) }
+        verify(exactly = 0) { model.commit(any(), any(), any()) }
+    }
+
     @Test fun officialCategoryUsesTheExistingCrossCategorySelectionAndRestoration() {
         val contentRule = object : ComposeContentTestRule, ComposeTestRule by compose {
             override fun setContent(composable: @Composable () -> Unit) { activity.get().setContent(content = composable) }
