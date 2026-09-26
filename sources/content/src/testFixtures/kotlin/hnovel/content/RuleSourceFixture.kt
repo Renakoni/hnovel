@@ -11,10 +11,11 @@ import org.junit.Assert.*
 import java.nio.file.Files
 import java.util.concurrent.atomic.AtomicInteger
 
-class RuleSourceFixture(browser: BrowserExecutor? = null, private val trace: ContentTrace = ContentTrace.None) : AutoCloseable {
+class RuleSourceFixture(browser: BrowserExecutor? = null, private val trace: ContentTrace = ContentTrace.None,
+    route: SourceRouteProvider? = null) : AutoCloseable {
     val server = MockWebServer()
     val authority = ExecutionAuthority()
-    val broker = SourceBroker(Files.createTempDirectory("rule-source-broker"), browser = browser)
+    val broker = SourceBroker(Files.createTempDirectory("rule-source-broker"), browser = browser, route = route)
     val worker = WorkerRuntime()
     val documents = AtomicInteger()
     var cycle = false

@@ -109,6 +109,9 @@ internal class SourceCookies(private val storage: SourceStorage) {
     @Synchronized fun browserSnapshot(url: HttpUrl): List<String> = cookies.values.map { it.second }
         .filter { key(it) !in browserOnly && it.expiresAt > System.currentTimeMillis() && it.matches(url) }.map(Cookie::toString)
 
+    @Synchronized fun responseSnapshot(url: HttpUrl): List<String> = cookies.values.map { it.second }
+        .filter { it.expiresAt > System.currentTimeMillis() && browserMatches(it, url) }.map(Cookie::toString)
+
     private fun browserMatches(cookie: Cookie, url: HttpUrl): Boolean {
         val loopback = url.host in setOf("localhost", "127.0.0.1", "::1")
         return cookie.matches(if (cookie.secure && loopback) url.newBuilder().scheme("https").build() else url)

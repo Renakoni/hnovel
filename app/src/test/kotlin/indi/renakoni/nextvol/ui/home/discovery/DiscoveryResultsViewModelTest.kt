@@ -196,6 +196,23 @@ class DiscoveryResultsViewModelTest {
         assertEquals(mapOf("sort" to "b"), provider.requests.single().filters)
     }
 
+    @Test fun manualRefreshInvalidatesTheHomepageHandoffBeforeRequestingTheFirstPage() = runTest(dispatcher) {
+        val refreshes = mutableListOf<Boolean>()
+        val provider = object : Pages() {
+            override suspend fun homepageCatalog(refresh: Boolean): Result<DiscoveryCatalog, DiscoveryError> {
+                refreshes += refresh
+                return Ok(DiscoveryCatalog(emptyList(), filters("")))
+            }
+        }
+        add(provider)
+        val model = model(route = route.copy(categoryId = null))
+        advanceUntilIdle()
+        model.refresh()
+        advanceUntilIdle()
+        assertEquals(listOf(false, true), refreshes)
+        assertEquals(listOf(null, null), provider.requests.map { it.cursor })
+    }
+
     @Test fun feedOnlyMoreInitializesItsScopedFiltersAndPaginatesWithoutCategories() = runTest(dispatcher) {
         var catalogs = 0
         val provider = object : Pages() {

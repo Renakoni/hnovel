@@ -9,6 +9,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.github.michaelbull.result.get
 import indi.renakoni.nextvol.NextVolApplication
 import indi.renakoni.nextvol.data.web.SourceSessionManager
 import indi.renakoni.nextvol.data.web.rules.ImportedRuleSources
@@ -61,6 +62,15 @@ class DiscoveryResultsPerformanceInstrumentedTest {
         }
         val reports = mutableListOf<JsonObject>()
         for (iteration in 0..repeats) {
+            val previewStarted = SystemClock.elapsedRealtimeNanos()
+            val previewId = args.getString("discoveryUiPreviewId")
+            if (previewId != null) runBlocking {
+                val home = requireNotNull(entry.registry().discovery(source).get()).forSession("ui-home-$iteration")
+                assertTrue(home.homepageCatalog(refresh = true).get() != null)
+                val preview = requireNotNull(home.preview(previewId).get())
+                assertTrue(preview.previewFailure == null && preview.books.size == 6)
+            }
+            val previewMillis = (SystemClock.elapsedRealtimeNanos() - previewStarted) / 1_000_000.0
             val dataReady = AtomicLong()
             val started = SystemClock.elapsedRealtimeNanos()
             lateinit var model: DiscoveryResultsViewModel
@@ -91,6 +101,7 @@ class DiscoveryResultsPerformanceInstrumentedTest {
                 put("iteration", iteration); put("sample", if (iteration == 0) "first" else "repeat")
                 put("books", model.state.value.books.size)
                 put("result", failure ?: "Success")
+                if (previewId != null) put("previewWarmupMs", previewMillis)
                 dataReady.get().takeIf { it > 0 }?.let { put("dataReadyMs", (it - started) / 1_000_000.0) }
                 displayed?.let { put("booksDisplayedByMs", (it - started) / 1_000_000.0) }
             }

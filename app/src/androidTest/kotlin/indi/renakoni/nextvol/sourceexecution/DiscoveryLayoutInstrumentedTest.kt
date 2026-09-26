@@ -78,6 +78,11 @@ class DiscoveryLayoutInstrumentedTest {
         compose.mainClock.advanceTimeBy(500)
         compose.onNodeWithText(compose.activity.getString(R.string.discovery_preview_empty)).performScrollTo().assertIsDisplayed()
         screenshot("discovery-empty-large.png")
+        compose.runOnIdle { sections = listOf(daily.copy(previewLoading = true)) }
+        compose.mainClock.advanceTimeBy(500)
+        compose.onNodeWithText("沿着星光去旅行").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(compose.activity.getString(R.string.discovery_preview_loading)).assertDoesNotExist()
+        screenshot("discovery-resuming-large.png")
     }
 
     private fun screenshot(name: String) {

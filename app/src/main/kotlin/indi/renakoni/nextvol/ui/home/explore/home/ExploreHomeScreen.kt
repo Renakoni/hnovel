@@ -168,7 +168,10 @@ private fun ExploreRowSection(
             row.books.filter { it.id.remoteId.isNotBlank() }.distinctBy { it.id }
         }
 
-        if (row.previewLoading || row.previewFailure != null || validBooks.isEmpty()) {
+        if (row.previewLoading && validBooks.isNotEmpty()) {
+            LinearProgressIndicator(Modifier.padding(horizontal = 16.dp).fillMaxWidth())
+        }
+        if (row.previewFailure != null || validBooks.isEmpty()) {
             Surface(modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 12.dp).fillMaxWidth(),
                 shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainerLow) {
                 when {
