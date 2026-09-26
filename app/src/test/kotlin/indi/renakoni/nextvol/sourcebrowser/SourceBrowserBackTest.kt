@@ -2,6 +2,7 @@ package indi.renakoni.nextvol.sourcebrowser
 
 import android.app.Activity
 import android.app.Application
+import android.content.Intent
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.webkit.WebView
@@ -44,14 +45,14 @@ class SourceBrowserBackTest {
         val service = nativeService()
         val view = service.webView!!
         shadowOf(view).setCanGoBack(true)
-        val controller = Robolectric.buildActivity(NativeSourceBrowserActivity::class.java).setup()
+        val controller = nativeActivity().setup()
         back(controller.get())
         assertEquals(1, shadowOf(view).goBackInvocations)
         assertFalse(controller.get().isFinishing)
-        verify(exactly = 0) { service.cancel(); service.confirm() }
+        verify(exactly = 0) { service.cancel("native-job"); service.confirm("native-job") }
         shadowOf(view).setCanGoBack(false)
         back(controller.get())
-        verify(exactly = 1) { service.cancel() }
+        verify(exactly = 1) { service.cancel("native-job") }
         controller.pause().stop().destroy()
     }
 
@@ -132,18 +133,27 @@ class SourceBrowserBackTest {
 
     @Test fun nativeRecreationDoesNotCancelAndFinishingReleasesItsSession() {
         val service = nativeService()
-        val controller = Robolectric.buildActivity(NativeSourceBrowserActivity::class.java).setup()
+        val controller = nativeActivity().setup()
         controller.recreate()
         assertSame(controller.get(), service.activity)
-        verify(exactly = 0) { service.cancel() }
+        verify(exactly = 0) { service.cancel("native-job") }
         shadowOf(service.webView!!).setCanGoBack(true)
         back(controller.get())
         assertEquals(1, shadowOf(service.webView!!).goBackInvocations)
-        verify(exactly = 0) { service.cancel() }
+        verify(exactly = 0) { service.cancel("native-job") }
         controller.get().finish()
         controller.pause().stop().destroy()
         assertNull(service.activity)
-        verify(exactly = 1) { service.cancel() }
+        verify(exactly = 1) { service.cancel("native-job") }
+    }
+
+    @Test fun aLateNativeWindowCannotAttachToAnotherJob() {
+        val service = nativeService()
+        val old = nativeActivity("retired-job").setup()
+        assertTrue(old.get().isFinishing)
+        assertNull(service.activity)
+        old.pause().stop().destroy()
+        verify(exactly = 0) { service.cancel(any()); service.confirm(any()) }
     }
 
     @Test @Config(sdk = [35]) fun unregisterRestoresThePreviousCallbackWhileTheWindowIsAlive() {
@@ -187,11 +197,15 @@ class SourceBrowserBackTest {
         var owner: NativeSourceBrowserActivity? = null
         every { service.webView } returns view
         every { service.title } returns "Website"
+        every { service.interactiveJobId } returns "native-job"
         every { service.activity } answers { owner }
         every { service.activity = any() } answers { owner = firstArg() }
         NativeSourceBrowserService.active = service
         return service
     }
+
+    private fun nativeActivity(jobId: String = "native-job") = Robolectric.buildActivity(NativeSourceBrowserActivity::class.java,
+        Intent(RuntimeEnvironment.getApplication(), NativeSourceBrowserActivity::class.java).putExtra("jobId", jobId))
 
     private fun sourceService(results: MutableList<BrokerResult>, verification: Boolean = false): SourceBrowserService {
         // Attach the real service without starting its disposable Chromium process.

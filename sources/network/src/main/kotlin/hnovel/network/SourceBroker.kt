@@ -227,6 +227,12 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         policy.check(parsed); cookies.setHeader(parsed, "", true) }
 
     /** Host-only cookie handoff; never exposed as a website JavascriptInterface. */
+    @Synchronized fun nativeBrowserCookieSeed(url: String): NativeBrowserCookieSeed {
+        checkOpen(); val parsed = url.toHttpUrlOrNull() ?: error("Invalid cookie URL")
+        policy.check(parsed)
+        return cookies.browserSeed(parsed)
+    }
+
     @Synchronized fun nativeBrowserCookies(url: String): List<String> {
         checkOpen(); val parsed = url.toHttpUrlOrNull() ?: error("Invalid cookie URL")
         policy.check(parsed)
@@ -240,10 +246,11 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         return cookies.responseSnapshot(parsed)
     }
 
-    @Synchronized fun updateNativeBrowserCookies(url: String, values: List<String>, completeMetadata: Boolean = true) {
+    @Synchronized fun updateNativeBrowserCookies(url: String, values: List<String>, completeMetadata: Boolean = true,
+        expectedSeedVersion: Long? = null) {
         checkOpen(); val parsed = url.toHttpUrlOrNull() ?: error("Invalid cookie URL")
         policy.check(parsed)
-        cookies.replaceBrowserSnapshot(parsed, values, completeMetadata)
+        cookies.replaceBrowserSnapshot(parsed, values, completeMetadata, expectedSeedVersion)
     }
 
     @Synchronized fun browserCookie(url: String, value: String? = null): String {

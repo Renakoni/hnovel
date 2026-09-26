@@ -8,6 +8,29 @@ import org.junit.Test
 import java.nio.file.Files
 
 class NativeBrowserCookiesTest {
+    @Test fun nativeCookieSeedsAdvanceOnlyForHostWritesAndRejectOlderPageHandoffs() = runBlocking {
+        val root = Files.createTempDirectory("native-cookie-seed")
+        try { SourceBroker(root).use { broker ->
+            val url = "https://cookie-seed.test/"
+            val session = broker.open(SourceScope("test", "seed", "legado"), listOf(NetworkGrant(url)))
+            val initial = session.nativeBrowserCookieSeed(url)
+            session.setCookie(url, "account=old")
+            val old = session.nativeBrowserCookieSeed(url)
+            assertTrue(old.version > initial.version)
+            assertTrue(old.cookies.single().startsWith("account=old;"))
+            session.updateNativeBrowserCookies(url, listOf("account=browser; Path=/; HttpOnly"), expectedSeedVersion = old.version)
+            assertEquals(old.version, session.nativeBrowserCookieSeed(url).version)
+            assertTrue(session.nativeBrowserCookieSeed(url).cookies.isEmpty())
+            session.setCookie(url, "account=new")
+            val newer = session.nativeBrowserCookieSeed(url)
+            session.updateNativeBrowserCookies(url, listOf("account=stale; Path=/; HttpOnly"), expectedSeedVersion = old.version)
+            assertEquals("account=new", session.cookie(url))
+            assertEquals(newer, session.nativeBrowserCookieSeed(url))
+            session.removeCookie(url)
+            assertTrue(session.nativeBrowserCookieSeed(url).version > newer.version)
+        } } finally { root.toFile().deleteRecursively() }
+    }
+
     @Test fun verifiedCookiesRespectPathsHttpOnlyExpiryAndAccountRetirementWithAutomaticCaptureOff() = runBlocking {
         val root = Files.createTempDirectory("native-cookie-handoff")
         try { MockWebServer().use { server ->

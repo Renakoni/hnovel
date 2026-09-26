@@ -62,6 +62,7 @@ class SourceBrowserService : Service() {
             handler.post { runCatching { open() }.onFailure { fail() } }
         }
         override fun shutdown() { check(Binder.getCallingUid() == applicationInfo.uid); Process.killProcess(Process.myPid()) }
+        override fun cancel(jobId: String): Boolean { check(Binder.getCallingUid() == applicationInfo.uid); return false }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
