@@ -31,6 +31,8 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
         private set
     @Volatile var responseLimitExceeded = false
         private set
+    @Volatile var missingCacheRead = false
+        private set
 
     init {
         require(identity.namespace == session.scope.namespace && identity.sourceId == session.scope.sourceId &&
@@ -109,6 +111,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
             }
             val stored = session.read(StorageRequest(area, key))
             check(stored is StorageResult.Value) { "Storage read failed" }
+            if (name == "cache.get" && stored.value.isNullOrEmpty()) missingCacheRead = true
             stored.value?.let(::JsonPrimitive) ?: if (!name.startsWith("cache.")) JsonPrimitive("") else JsonNull
         }
         val requestNumber = reserveRequest()
