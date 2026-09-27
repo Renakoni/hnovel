@@ -67,7 +67,10 @@ class AndroidIsolatedExecutor @Inject constructor(@ApplicationContext context: C
     /** Bind only this group's potential workers. Readiness overlaps transport; busy slots are left alone. */
     suspend fun prepareIndependent(identity: ExecutionIdentity, count: Int) = withContext(Dispatchers.IO) {
         if (!authority.accepts(identity)) return@withContext
-        for (slot in pool.workers.drop(1).take(count.coerceIn(0, parallelism))) {
+        val slots = synchronized(pool.idleWorkers) {
+            pool.idleWorkers.descendingIterator().asSequence().take(count.coerceIn(0, parallelism)).toList()
+        }
+        for (slot in slots) {
             currentCoroutineContext().ensureActive()
             if (!slot.lock.tryLock()) continue
             try {

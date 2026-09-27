@@ -115,6 +115,39 @@ class IsolatedConcurrencyInstrumentedTest {
         }
     }
 
+    @Test fun partialPreparationFollowsPreviousCompletionOrder() = runBlocking {
+        fixture { fixture ->
+            val count = fixture.executor.parallelism
+            assumeTrue(count >= 2)
+            val source = fixture.source("partial-preparation")
+            val components = mutableListOf<ComponentName>()
+            val previous = List(count) { index ->
+                async { fixture.execute(source) }.also {
+                    assertEquals(index, withTimeout(25000) { fixture.browser.entered.receive() })
+                    components.add(fixture.bindings.last())
+                }
+            }
+            // Finish by component number so the next borrowers use the opposite end of the pool.
+            val completionOrder = components.indices.sortedBy { components[it].className }
+            for (index in completionOrder) {
+                fixture.browser.releases[index].complete("previous")
+                assertValue("previous", previous[index].await())
+            }
+            fixture.executor.close()
+            fixture.bindings.clear()
+
+            val preparedCount = minOf(2, count - 1)
+            val expected = completionOrder.asReversed().take(preparedCount).map { components[it] }
+            fixture.executor.prepareIndependent(source.identity, preparedCount)
+            assertEquals("Partial preparation must follow the next borrowers' order", expected, fixture.bindings.toList())
+            val upcoming = List(preparedCount) { async { fixture.execute(source) } }
+            withTimeout(25000) { repeat(preparedCount) { fixture.browser.entered.receive() } }
+            assertEquals("Execution must not bind additional processes", expected, fixture.bindings.toList())
+            repeat(preparedCount) { fixture.browser.releases[count + it].complete("prepared") }
+            upcoming.awaitAll().forEach { assertValue("prepared", it) }
+        }
+    }
+
     @Test fun independentRuleFinishesWhileSharedWorkerWaitsAndStatefulCallsStayOrdered() = runBlocking {
         fixture { fixture ->
             val source = fixture.source("same-source")
