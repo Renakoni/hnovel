@@ -1,11 +1,13 @@
 package indi.renakoni.nextvol.sourceexecution
 
+import android.app.ActivityManager
 import android.content.Context
 import android.os.Binder
 import android.os.IBinder
 import android.os.Process
 import android.os.ParcelFileDescriptor
 import android.os.RemoteException
+import android.os.SystemClock
 import android.system.Os
 import android.system.OsConstants
 import android.system.StructPollfd
@@ -24,6 +26,7 @@ import hnovel.execution.LibraryTooLarge
 import hnovel.execution.libraryCode
 import kotlinx.coroutines.async
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -39,50 +42,120 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import java.io.ByteArrayOutputStream
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
+import indi.renakoni.nextvol.BuildConfig
 
-/** One serialized worker on API 24+. Successful calls reuse the process; failed calls retire it. */
+/** Stateful rules keep one worker; independent work uses a bounded pool of separately killable processes. */
 class AndroidIsolatedExecutor @Inject constructor(@ApplicationContext context: Context, private val authority: ExecutionAuthority) {
     private val context = context.applicationContext
+    private val pool = synchronized(poolLock) {
+        sharedPool ?: WorkerPool(independentWorkerParallelism(Runtime.getRuntime().availableProcessors(),
+            this.context.getSystemService(ActivityManager::class.java).isLowRamDevice)).also { sharedPool = it }
+    }
+    internal val parallelism get() = pool.parallelism
+
+    /** Bind only this group's potential workers. Readiness overlaps transport; busy slots are left alone. */
+    suspend fun prepareIndependent(identity: ExecutionIdentity, count: Int) = withContext(Dispatchers.IO) {
+        if (!authority.accepts(identity)) return@withContext
+        val slots = synchronized(pool.idleWorkers) {
+            pool.idleWorkers.descendingIterator().asSequence().take(count.coerceIn(0, parallelism)).toList()
+        }
+        for (slot in slots) {
+            currentCoroutineContext().ensureActive()
+            if (!slot.lock.tryLock()) continue
+            try {
+                if (!authority.accepts(identity)) return@withContext
+                if (slot.worker == null && slot.retiringBinder?.isBinderAlive != true) {
+                    // Preparation is optional; actual execution still reports binding failures.
+                    slot.worker = try { IsolatedWorkerConnection(this@AndroidIsolatedExecutor.context, authority, slot.service) }
+                        catch (_: Exception) { null }
+                    if (BuildConfig.DEBUG && slot.worker != null) android.util.Log.d("RuleExecutionTrace",
+                        "slot=${slot.id} phase=Prepare parallelism=$parallelism")
+                }
+                scheduleRetirement(slot)
+            } finally { slot.lock.unlock() }
+        }
+    }
 
     suspend fun execute(identity: ExecutionIdentity, task: ExecutionTask,
         limits: ExecutionLimits = ExecutionLimits(), broker: SourceExecutionBroker? = null): ExecutionResult = withContext(Dispatchers.IO) {
         if (broker != null && (broker.identity != identity || broker.limits != limits)) return@withContext failure(FailureCode.InvalidIdentity)
         if (broker != null && !broker.matchesTaskContext(task)) return@withContext failure(FailureCode.InvalidTask)
         if (!authority.accepts(identity)) return@withContext failure(FailureCode.InvalidIdentity)
+        if (task is ExecutionTask.Rule && task.readOnly && !task.libraryCode.isNullOrBlank())
+            return@withContext failure(FailureCode.InvalidTask)
         val request = ExecutionWire.encode(identity, task, limits)
         if (request.size > ExecutionWire.MAX_INPUT_BYTES) return@withContext failure(FailureCode.InputLimit)
-        if (!workerLock.tryLock()) return@withContext failure(FailureCode.Busy)
+        val queuedAt = SystemClock.elapsedRealtime()
+        val call = nextCall.incrementAndGet()
         try {
-            // A new bind must never reuse a worker whose previous shutdown has not completed.
-            if (retiringBinder?.isBinderAlive == true) return@withContext failure(FailureCode.ProcessExited)
-            val previous = retainedWorker
-            if (previous != null && (previous.authority !== authority || previous.died.isCompleted || previous.hasRevokedOwner())) retire(previous)
-            if (retiringBinder?.isBinderAlive == true) return@withContext failure(FailureCode.ProcessExited)
-            val worker = retainedWorker ?: IsolatedWorkerConnection(context, authority).also { retainedWorker = it }
-            invoke(worker, identity, task, limits, broker)
+            withWorker(task) { slot ->
+                val admittedAt = SystemClock.elapsedRealtime()
+                if (!authority.accepts(identity)) return@withWorker failure(FailureCode.Revoked)
+                // Each component has its own process. Never rebind it before its previous worker dies.
+                if (slot.retiringBinder?.isBinderAlive == true) return@withWorker failure(FailureCode.ProcessExited)
+                val previous = slot.worker
+                if (previous != null && (previous.authority !== authority || previous.died.isCompleted || previous.hasRevokedOwner())) retire(slot, previous)
+                if (slot.retiringBinder?.isBinderAlive == true) return@withWorker failure(FailureCode.ProcessExited)
+                val worker = slot.worker ?: IsolatedWorkerConnection(context, authority, slot.service).also { slot.worker = it }
+                val started = SystemClock.elapsedRealtime()
+                val active = activeCalls.incrementAndGet()
+                trace(call, slot, task, "Start", "queueMs=${admittedAt - queuedAt} active=$active")
+                var outcome = "Cancelled"
+                try {
+                    invoke(slot, worker, identity, task, limits, broker).also {
+                        outcome = (it as? ExecutionResult.Failure)?.code?.name ?: "Success"
+                    }
+                } finally {
+                    trace(call, slot, task, "End", "elapsedMs=${SystemClock.elapsedRealtime() - started} result=$outcome active=${activeCalls.decrementAndGet()}")
+                }
+            }
         } finally {
-            workerLock.unlock()
+            broker?.close()
         }
     }
 
     /** Release retained library state when the owning runtime is shut down. */
     suspend fun close() = withContext(NonCancellable + Dispatchers.IO) {
-        workerLock.withLock { retainedWorker?.takeIf { it.authority === authority }?.let { retire(it) } }
+        pool.workers.forEach { slot ->
+            slot.lock.withLock { slot.worker?.takeIf { it.authority === authority }?.let { retire(slot, it) } }
+        }
     }
 
-    private suspend fun retire(worker: IsolatedWorkerConnection) {
-        retiringBinder = worker.remote?.asBinder()
-        try { worker.close() } finally { if (retainedWorker === worker) retainedWorker = null }
+    private suspend fun retire(slot: WorkerSlot, worker: IsolatedWorkerConnection) {
+        slot.idleRetirement?.cancel()
+        slot.idleRetirement = null
+        slot.retiringBinder = worker.remote?.asBinder()
+        try { worker.close() } finally { if (slot.worker === worker) slot.worker = null }
     }
 
-    private suspend fun invoke(worker: IsolatedWorkerConnection, identity: ExecutionIdentity, task: ExecutionTask,
+    /** Only independent slots may decay: the shared worker can own mutable library state. */
+    private fun scheduleRetirement(slot: WorkerSlot) {
+        slot.idleRetirement?.cancel()
+        slot.idleRetirement = null
+        val worker = slot.worker ?: return
+        slot.idleRetirement = pool.maintenance.launch {
+            delay(INDEPENDENT_IDLE_MILLIS)
+            slot.lock.withLock {
+                if (slot.worker !== worker || slot.idleRetirement !== currentCoroutineContext()[Job]) return@withLock
+                slot.idleRetirement = null
+                withContext(NonCancellable) { retire(slot, worker) }
+                if (BuildConfig.DEBUG) android.util.Log.d("RuleExecutionTrace", "slot=${slot.id} phase=IdleRetire")
+            }
+        }
+    }
+
+    private suspend fun invoke(slot: WorkerSlot, worker: IsolatedWorkerConnection, identity: ExecutionIdentity, task: ExecutionTask,
         limits: ExecutionLimits, broker: SourceExecutionBroker?): ExecutionResult = coroutineScope {
         val result = CompletableDeferred<ExecutionResult>()
         val finished = AtomicBoolean()
@@ -101,6 +174,7 @@ class AndroidIsolatedExecutor @Inject constructor(@ApplicationContext context: C
         try {
             // Android class loading is not script execution. Bound cold startup separately;
             // cancellation/revocation still interrupts it and no task is submitted before readiness.
+            val waitingAt = SystemClock.elapsedRealtime()
             val service = withTimeoutOrNull(15000) {
                 select<IIsolatedExecutionService?> {
                     worker.connected.onAwait { it }
@@ -112,6 +186,8 @@ class AndroidIsolatedExecutor @Inject constructor(@ApplicationContext context: C
                 worker.died.isCompleted -> failure(FailureCode.ProcessExited)
                 else -> failure(FailureCode.Timeout)
             }
+            if (BuildConfig.DEBUG) android.util.Log.d("RuleExecutionTrace",
+                "slot=${slot.id} phase=Ready waitMs=${SystemClock.elapsedRealtime() - waitingAt}")
             val completed = withTimeoutOrNull(limits.timeoutMillis) {
                 val definition = task.libraryCode()
                 val scripts = if (SourceLibraryDefinition.isUrlMap(definition)) {
@@ -207,19 +283,65 @@ class AndroidIsolatedExecutor @Inject constructor(@ApplicationContext context: C
             broker?.close()
             withContext(NonCancellable + Dispatchers.Main.immediate) {
                 revocations.cancelAndJoin()
-                if (!keepWorker) retire(worker)
+                if (!keepWorker) retire(slot, worker)
             }
         }
     }
 
     private fun failure(code: FailureCode) = ExecutionResult.Failure(code)
 
+    private class WorkerSlot(val id: Int, val service: Class<out IsolatedExecutionService>) {
+        val lock = Mutex()
+        var retiringBinder: IBinder? = null
+        var worker: IsolatedWorkerConnection? = null
+        var idleRetirement: Job? = null
+    }
+
+    private suspend fun <T> withWorker(task: ExecutionTask, block: suspend (WorkerSlot) -> T): T {
+        val independent = when (task) {
+            is ExecutionTask.ContentMarkup, is ExecutionTask.BookOverviews, is ExecutionTask.DiscoveryReadPlan -> true
+            is ExecutionTask.Rule -> task.readOnly
+            else -> false
+        }
+        if (!independent) return pool.workers.first().let { slot -> slot.lock.withLock { block(slot) } }
+        return pool.permits.withPermit {
+            // Prefer the last used process so sequential work does not cold-start the whole pool.
+            val slot = synchronized(pool.idleWorkers) { pool.idleWorkers.removeLast() }
+            try { slot.lock.withLock {
+                slot.idleRetirement?.cancel()
+                slot.idleRetirement = null
+                try { block(slot) } finally { scheduleRetirement(slot) }
+            } }
+            finally { synchronized(pool.idleWorkers) { pool.idleWorkers.addLast(slot) } }
+        }
+    }
+
+    private fun trace(call: Long, slot: WorkerSlot, task: ExecutionTask, phase: String, detail: String) {
+        if (BuildConfig.DEBUG) android.util.Log.d("RuleExecutionTrace",
+            "call=$call slot=${slot.id} task=${task.javaClass.simpleName} phase=$phase $detail thread=${Thread.currentThread().name}")
+    }
+
+    private class WorkerPool(val parallelism: Int) {
+        val maintenance = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val workers = listOf(IsolatedExecutionService::class.java,
+            IndependentExecutionService1::class.java, IndependentExecutionService2::class.java,
+            IndependentExecutionService3::class.java, IndependentExecutionService4::class.java)
+            .take(parallelism + 1).mapIndexed { index, service -> WorkerSlot(index, service) }
+        val idleWorkers = java.util.ArrayDeque(workers.drop(1).reversed())
+        val permits = Semaphore(parallelism)
+    }
+
     companion object {
-        private val workerLock = Mutex()
-        private var retiringBinder: IBinder? = null
-        private var retainedWorker: IsolatedWorkerConnection? = null
+        internal const val INDEPENDENT_IDLE_MILLIS = 60_000L
+        private val poolLock = Any()
+        private var sharedPool: WorkerPool? = null
+        private val nextCall = AtomicLong()
+        private val activeCalls = AtomicInteger()
     }
 }
+
+internal fun independentWorkerParallelism(processors: Int, lowRamDevice: Boolean): Int =
+    if (lowRamDevice) 1 else processors.coerceIn(1, 4)
 
 /** Polling keeps a stalled pipe cancellable without blocking a Binder thread. */
 internal suspend fun readExecutionResultPacket(pipe: ParcelFileDescriptor): ByteArray =

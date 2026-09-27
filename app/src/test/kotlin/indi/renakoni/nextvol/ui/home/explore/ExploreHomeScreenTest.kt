@@ -161,6 +161,52 @@ class ExploreHomeScreenTest {
         compose.onNodeWithText("Source A section 8").assertIsDisplayed()
     }
 
+    @Test fun aDecayedFeedsSavedPositionSurvivesTheShortFirstBatch() {
+        val id = Identifier("fixture", "Decayed source")
+        val sections = List(20) { index ->
+            SourceDiscoverySection("$index", "Section $index", emptyList(), SourceDiscoveryTarget(id, "/$index"))
+        }
+        val saved = DiscoveryScroll(8, 0)
+        var page by mutableStateOf(DiscoveryPageContent(loading = true, scroll = saved))
+        activity.get().setContent { MaterialTheme {
+            ExploreHomeScreen(DiscoveryPageState(listOf(listing(id)), id, mapOf(id to page)),
+                {}, { _, position -> page = page.copy(scroll = position) }, {}, {}, {}, {}, {}, { _, _ -> }, { _, _ -> }, {})
+        } }
+        compose.mainClock.autoAdvance = false
+        compose.mainClock.advanceTimeByFrame()
+        compose.waitForIdle()
+        compose.runOnIdle { page = page.copy(sections = sections.take(2)) }
+        compose.mainClock.advanceTimeByFrame()
+        compose.waitForIdle()
+        compose.runOnIdle { page = page.copy(sections = sections, loaded = true, loading = false) }
+        compose.mainClock.autoAdvance = true
+        compose.onNodeWithText("Section 8").assertIsDisplayed()
+        compose.runOnIdle { assertEquals(saved, page.scroll) }
+    }
+
+    @Test fun scrollingDuringReloadKeepsTheNewPositionInsteadOfRestoringTheOldOne() {
+        val id = Identifier("fixture", "Decayed source")
+        val sections = List(30) { index ->
+            SourceDiscoverySection("$index", "Section $index", emptyList(), SourceDiscoveryTarget(id, "/$index"))
+        }
+        var page by mutableStateOf(DiscoveryPageContent(loading = true, scroll = DiscoveryScroll(8, 0), sections = sections.take(20)))
+        activity.get().setContent { MaterialTheme {
+            ExploreHomeScreen(DiscoveryPageState(listOf(listing(id)), id, mapOf(id to page)),
+                {}, { _, position -> page = page.copy(scroll = position) }, {}, {}, {}, {}, {}, { _, _ -> }, { _, _ -> }, {})
+        } }
+        compose.mainClock.autoAdvance = false
+        compose.mainClock.advanceTimeByFrame()
+        compose.onNode(hasScrollToIndexAction() and SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange))
+            .performTouchInput { swipeDown(durationMillis = 300) }
+        compose.mainClock.advanceTimeBy(1000)
+        val moved = page.scroll
+        assertTrue(moved.index < 8)
+        compose.runOnIdle { page = page.copy(sections = sections, loaded = true, loading = false) }
+        compose.mainClock.autoAdvance = true
+        compose.waitForIdle()
+        compose.runOnIdle { assertEquals(moved, page.scroll) }
+    }
+
     @Test fun oneRealSourceAndItsUnsupportedSearchDoNotCreatePlaceholders() {
         val id = Identifier("fixture", "Only source")
         activity.get().setContent { MaterialTheme {

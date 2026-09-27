@@ -61,7 +61,7 @@ internal val ExecutionLimits.scriptDataLimit: Int get() = maxDataBytes ?: maxOut
   val chapterBigVariables: Map<String, String> = emptyMap(), val chineseConverter: Int = 0,
   val unescapeHtml: Boolean = true, val sourceHeaderRule: String = "", val discovery: JsonObject? = null,
   val sourceLoginUrl: String = "", val sourceComment: String? = null, val nextChapterUrl: String? = null,
-  val scriptTemplates: Boolean = true) : ExecutionTask
+  val scriptTemplates: Boolean = true, val readOnly: Boolean = false) : ExecutionTask
 }
 
 fun ExecutionTask.libraryCode(): String? = when (this) {
@@ -235,6 +235,9 @@ class WorkerRuntime(private val archives: hnovel.rhino.ArchiveDecoder = hnovel.r
     catch (_: Exception) { return kotlinx.serialization.json.Json.encodeToString(ExecutionResult.serializer(), ExecutionResult.Failure(FailureCode.InvalidTask)) }
   if (SourceLibraryDefinition.isUrlMap(wire.task.libraryCode()) && wire.libraryScripts == null)
    return kotlinx.serialization.json.Json.encodeToString(ExecutionResult.serializer(), ExecutionResult.Failure(FailureCode.BridgeDenied))
+  if (wire.task is ExecutionTask.Rule && wire.task.readOnly &&
+   (!wire.task.libraryCode.isNullOrBlank() || !WorkerDiscoveryReadPlan.isReadOnlyRule(wire.task.rule)))
+   return kotlinx.serialization.json.Json.encodeToString(ExecutionResult.serializer(), ExecutionResult.Failure(FailureCode.InvalidTask))
   val result = when (val task = wire.task) {
    is ExecutionTask.ContentMarkup -> WorkerContentMarkup.evaluate(task, wire.limits)
    is ExecutionTask.DiscoveryReadPlan -> WorkerDiscoveryReadPlan.evaluate(task, wire.limits)

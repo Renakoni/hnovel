@@ -124,6 +124,14 @@
         android:exported="false"
         android:isolatedProcess="true"
         android:process=":source_execution" />
+    <service android:name=".sourceexecution.IndependentExecutionService1" android:exported="false"
+        android:isolatedProcess="true" android:process=":source_execution_1" />
+    <service android:name=".sourceexecution.IndependentExecutionService2" android:exported="false"
+        android:isolatedProcess="true" android:process=":source_execution_2" />
+    <service android:name=".sourceexecution.IndependentExecutionService3" android:exported="false"
+        android:isolatedProcess="true" android:process=":source_execution_3" />
+    <service android:name=".sourceexecution.IndependentExecutionService4" android:exported="false"
+        android:isolatedProcess="true" android:process=":source_execution_4" />
     <service android:name=".sourcebrowser.SourceBrowserService" android:exported="false"
         android:process=":source_browser" />
     <service android:name=".sourcebrowser.NativeSourceBrowserService" android:exported="false"

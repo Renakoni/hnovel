@@ -109,14 +109,20 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
     }
     // An HTTP proxy would move DNS/peer validation to an unchecked destination.
     // Each route below supplies its own DNS, sockets and connection pool.
-    private val client = OkHttpClient.Builder().proxy(Proxy.NO_PROXY).followRedirects(false).followSslRedirects(false)
+    // enqueue() also has a per-host queue; it must not silently lower the broker's concurrency.
+    // Registering a source does not need an HTTP client or its TLS/connection resources.
+    private val client = lazy { OkHttpClient.Builder().proxy(Proxy.NO_PROXY).followRedirects(false).followSslRedirects(false)
+        .dispatcher(okhttp3.Dispatcher().apply {
+            maxRequests = limits.concurrency
+            maxRequestsPerHost = limits.concurrency
+        })
         .retryOnConnectionFailure(false).cookieJar(CookieJar.NO_COOKIES).cache(null)
         .addNetworkInterceptor { chain ->
             val peer = chain.connection()?.socket()?.remoteSocketAddress as? InetSocketAddress
                 ?: throw BrokerFailure(RequestStage.Permission, FailureCode.AddressDenied)
             (chain.request().tag(NetworkPolicy::class.java) ?: policy).checkPeer(chain.request().url, peer.address)
             chain.proceed(chain.request())
-        }.build()
+        }.build() }
     private val routeClients = mutableMapOf<Pair<SourceNetworkRoute, String>, OkHttpClient>()
 
     @Synchronized private fun clientFor(route: SourceNetworkRoute, url: HttpUrl): OkHttpClient {
@@ -135,7 +141,7 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         }
         return routeClients.getOrPut(route to origin) {
             val pool = ConnectionPool()
-            val builder = client.newBuilder().socketFactory(route.socketFactory).connectionPool(pool)
+            val builder = client.value.newBuilder().socketFactory(route.socketFactory).connectionPool(pool)
             val transport = (if (url.isHttps) certificates.configure(builder, origin) else builder).build()
             route.attach(pool)
             transport
@@ -647,11 +653,13 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         lifetime.cancel()
         denied.clear()
         certificates.close()
-        client.dispatcher.cancelAll()
+        if (client.isInitialized()) client.value.dispatcher.cancelAll()
         routeClients.forEach { (key, transport) -> key.first.detach(transport.connectionPool) }
         routeClients.clear()
-        client.connectionPool.evictAll()
-        client.dispatcher.executorService.shutdown()
+        if (client.isInitialized()) {
+            client.value.connectionPool.evictAll()
+            client.value.dispatcher.executorService.shutdown()
+        }
     }
 }
 

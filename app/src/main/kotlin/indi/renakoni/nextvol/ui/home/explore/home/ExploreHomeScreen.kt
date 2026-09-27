@@ -34,6 +34,7 @@ import indi.renakoni.nextvol.ui.home.HomeSettingsAction
 import indi.renakoni.nextvol.ui.home.discovery.*
 import indi.renakoni.nextvol.utils.fadingEdge
 import io.nightfish.lightnovelreader.api.identifier.Identifier
+import kotlinx.coroutines.flow.first
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -78,7 +79,15 @@ fun ExploreHomeScreen(
                 val content = state.content[id] ?: DiscoveryPageContent()
                 if (id != null) key(id, content.resetId) {
                     val list = rememberLazyListState(content.scroll.index, content.scroll.offset)
+                    val currentContent by rememberUpdatedState(content)
                     LaunchedEffect(list) {
+                        if (!content.loaded && content.scroll != DiscoveryScroll()) {
+                            // A decayed page may first emit a short batch that clamps the saved position.
+                            // Wait for the complete feed unless the reader starts scrolling meanwhile.
+                            val ready = snapshotFlow { currentContent.loaded to list.isScrollInProgress }
+                                .first { (loaded, scrolling) -> loaded || scrolling }
+                            if (!ready.second) list.scrollToItem(content.scroll.index, content.scroll.offset)
+                        }
                         snapshotFlow { DiscoveryScroll(list.firstVisibleItemIndex, list.firstVisibleItemScrollOffset) }
                             .collect { onScroll(id, it) }
                     }

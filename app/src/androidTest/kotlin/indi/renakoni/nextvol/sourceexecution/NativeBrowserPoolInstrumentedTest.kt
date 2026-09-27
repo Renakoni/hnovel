@@ -187,6 +187,71 @@ class NativeBrowserPoolInstrumentedTest {
         }
     }
 
+    @Test fun removedScriptsAndEventHandlersStillGetTheirPostLoadUpdates() = runBlocking {
+        fixture { session, server ->
+            val append = "var li=document.createElement('li');li.textContent='complete';document.querySelector('ul').appendChild(li)"
+            server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse {
+                    val body = when (request.path) {
+                        "/script" -> html("<ul></ul><script>" +
+                            "addEventListener('load',function(){setTimeout(function(){$append},650)});" +
+                            "document.currentScript.remove()</script>")
+                        "/handler" -> html("<ul></ul>").replace("<body>",
+                            "<body onload=\"document.body.removeAttribute('onload');setTimeout(function(){$append},650)\">")
+                        "/fetch" -> html("<ul></ul><script>" +
+                            "addEventListener('load',function(){fetch('/data').then(r=>r.text()).then(function(){$append})});" +
+                            "document.currentScript.remove()</script>")
+                        "/data" -> return MockResponse().setBody("ready").setBodyDelay(650, TimeUnit.MILLISECONDS)
+                        else -> error("Unexpected fixture request")
+                    }
+                    return MockResponse().setHeader("Content-Type", "text/html").setBody(body)
+                }
+            }
+            for (path in listOf("/script", "/handler", "/fetch")) {
+                val document = org.jsoup.Jsoup.parse(read(session, server, path).text())
+                assertEquals(path, listOf("complete"), document.select("li").eachText())
+            }
+        }
+    }
+
+    @Test fun navigationCancelsThePreviousDocumentsCompletionTimer() = runBlocking {
+        fixture { session, server ->
+            server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest) = MockResponse().setHeader("Content-Type", "text/html").setBody(
+                    if (request.path == "/redirect") html("<script>" +
+                        "addEventListener('load',function(){setTimeout(function(){location.replace('/ready')},350)})</script>")
+                    else html("<ul></ul><script>addEventListener('load',function(){setTimeout(function(){" +
+                        "var li=document.createElement('li');li.textContent='complete';document.querySelector('ul').appendChild(li)" +
+                        "},800)})</script>"))
+            }
+            val response = read(session, server, "/redirect")
+            assertEquals(server.url("/ready").toString(), response.finalUrl)
+            assertEquals(listOf("complete"), org.jsoup.Jsoup.parse(response.text()).select("li").eachText())
+        }
+    }
+
+    @Test fun staticDocumentsKeepTheSourcesExplicitDelayWithoutHoldingOtherPages() = runBlocking {
+        fixture { session, server ->
+            val entered = CompletableDeferred<Long>()
+            server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse {
+                    if (request.path == "/delayed") entered.complete(android.os.SystemClock.elapsedRealtime())
+                    return MockResponse().setHeader("Content-Type", "text/html").setBody(html("<p>${request.path}</p>"))
+                }
+            }
+            read(session, server, "/warm")
+            val delayed = async {
+                session.execute(BrokerRequest("delayed", server.url("/delayed").toString(), timeoutMillis = 30000,
+                    browser = BrowserOptions(delayMillis = 2000)))
+            }
+            val started = withTimeout(10000) { entered.await() }
+            assertTrue(read(session, server, "/fast").text().contains("/fast"))
+            assertFalse("An explicit delay must not delay the other page", delayed.isCompleted)
+            assertTrue(withTimeout(10000) { delayed.await() } is BrokerResult.Success)
+            assertTrue(android.os.SystemClock.elapsedRealtime() - started >= 2000)
+        }
+    }
+
     /** Separate from latency samples: memory capture itself adds work. Frame gaps measure host
      * main-loop scheduling, not the discovery screen's rendered-frame jank rate. */
     @Test fun measureBoundedPageResources() = runBlocking {

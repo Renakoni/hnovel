@@ -270,7 +270,7 @@ class RuleDiscoveryProviderTest {
         }
     }
 
-    @Test fun challengeInSecondModuleRetriesOnlyThatModule() = runBlocking {
+    @Test fun challengeInSecondModuleWaitsForManualRetryAndDoesNotReloadTheFirst() = runBlocking {
         RuleSourceFixture().use { fixture -> fixture.source { raw -> JsonObject(definition(raw) +
             ("homepageModules" to JsonPrimitive("""[
                 {"key":"first","type":"card","title":"First","url":"/search?module=1"},
@@ -279,19 +279,19 @@ class RuleDiscoveryProviderTest {
             val original = source.openDiscovery("original")
             val catalog = original.catalog(homepage = true)
             val books = original.page("/search", 1, emptyMap())
+            var verified = false
             val verification = mockk<SourceVerification> {
                 every { kind } returns hnovel.network.BrowserChallengeKind.Cloudflare
                 every { certificate } returns null
                 every { origin } returns fixture.server.url("/").toString()
-                coEvery { complete() } returns Unit
+                coEvery { complete() } coAnswers { verified = true }
             }
             val session = mockk<RuleDiscoverySession>()
             coEvery { session.catalog(homepage = true) } returns catalog
             coEvery { session.concurrentPreviews(any(), any()) } returns null
             coEvery { session.preview("/search?module=1", any()) } returns RuleListPage(books, "2", 2)
-            var attempts = 0
             coEvery { session.preview("/search?module=2", any()) } coAnswers {
-                if (++attempts == 1) throw SourceContentException(ContentError.BrowserRequired,
+                if (!verified) throw SourceContentException(ContentError.BrowserRequired,
                     "ruleExplore", verification = verification)
                 RuleListPage(books, "2", 2)
             }
@@ -300,11 +300,16 @@ class RuleDiscoveryProviderTest {
                 WebDataSourceItem(owner.source, "Fixture", ""), emptySet(), revision = owner.revision), SourceStatus.Ready)))
             val coordinator = SourceVerificationCoordinator(mockk<WebSourceRegistry> { every { sources } returns listings })
             val provider = RuleDiscoveryProvider(source, session, RuleRequestRecovery(coordinator, owner, "Fixture"))
-            val sizes = mutableListOf<Int>()
-            withContext(ForegroundSourceRequest()) { provider.feedUpdates().collect { sizes += it.get()!!.size } }
-            assertEquals(listOf(2, 2, 2), sizes)
+            val snapshots = mutableListOf<List<DiscoverySection>>()
+            withContext(ForegroundSourceRequest()) { provider.feedUpdates().collect { snapshots += it.get()!! } }
+            assertEquals(listOf(2, 2, 2), snapshots.map { it.size })
+            assertNotNull(snapshots.last()[1].previewFailure)
+            coVerify(exactly = 0) { verification.complete() }
+            val retried = withContext(ForegroundSourceRequest()) { provider.preview(snapshots.last()[1].id).get()!! }
+            assertNull(retried.previewFailure)
+            assertTrue(retried.books.isNotEmpty())
             coVerify(exactly = 1) { session.preview("/search?module=1", any()) }
-            coVerify(exactly = 2) { session.preview("/search?module=2", any()) }
+            coVerify(exactly = 3) { session.preview("/search?module=2", any()) }
             coVerify(exactly = 1) { verification.complete() }
         } }
     }

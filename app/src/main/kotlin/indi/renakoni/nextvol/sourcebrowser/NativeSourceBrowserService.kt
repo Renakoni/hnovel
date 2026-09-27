@@ -228,8 +228,10 @@ class NativeSourceBrowserService : Service() {
         private val startedAt = SystemClock.elapsedRealtime()
         val view = WebView(this@NativeSourceBrowserService)
         private val finished = AtomicBoolean()
-        private var evaluating = false
+        private var evaluatingNavigation: Int? = null
         private var navigation = 0
+        private var staticDocumentCheck: String? = null
+        private var scheduledEvaluation: Runnable? = null
         @Volatile private var httpError = false
         @Volatile private var httpChallenge: BrowserChallengeKind? = null
 
@@ -282,6 +284,8 @@ class NativeSourceBrowserService : Service() {
                 setSupportMultipleWindows(false)
                 mediaPlaybackRequiresUserGesture = true
             }
+            if (!job.options.interactive && job.options.script.isBlank() && job.options.sourceRegex.isBlank())
+                staticDocumentCheck = runCatching { view.observeStaticDocument() }.getOrNull()
             view.webChromeClient = object : WebChromeClient() {
                 override fun onPermissionRequest(request: PermissionRequest) = request.deny()
                 override fun onGeolocationPermissionsShowPrompt(origin: String, callback: GeolocationPermissions.Callback) = callback.invoke(origin, false, false)
@@ -310,6 +314,8 @@ class NativeSourceBrowserService : Service() {
                 }
                 override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
                     navigation++
+                    scheduledEvaluation?.let(handler::removeCallbacks)
+                    scheduledEvaluation = null
                     trace("Navigation")
                 }
                 override fun onPageCommitVisible(view: WebView, url: String) {
@@ -318,8 +324,7 @@ class NativeSourceBrowserService : Service() {
                 override fun onPageFinished(view: WebView, url: String) {
                     if (url != view.url) return
                     trace("PageFinished")
-                    if (!job.options.interactive || job.options.script.isNotBlank())
-                        handler.postDelayed({ evaluate() }, 1000 + job.options.delayMillis)
+                    if (!job.options.interactive || job.options.script.isNotBlank()) scheduleEvaluation()
                 }
                 override fun onReceivedHttpError(view: WebView, request: WebResourceRequest, response: WebResourceResponse) {
                     if (request.isForMainFrame) {
@@ -361,24 +366,65 @@ class NativeSourceBrowserService : Service() {
 
         private fun matches(url: String) = job.options.sourceRegex.isNotBlank() && Regex(job.options.sourceRegex).containsMatchIn(url)
 
-        fun evaluate() {
-            if (finished.get() || evaluating || pages[job.jobId] !== this) return
-            trace("Evaluate")
-            evaluating = true
+        private fun scheduleEvaluation() {
             val version = navigation
+            val completedAt = SystemClock.uptimeMillis()
+            fun schedule(static: Boolean) {
+                if (finished.get() || version != navigation || pages[job.jobId] !== this) return
+                trace(if (static) "StaticReady" else "CompatibilityWait")
+                val due = completedAt + job.options.delayMillis + if (static) 0 else 1000
+                scheduledEvaluation?.let(handler::removeCallbacks)
+                scheduledEvaluation = Runnable {
+                    scheduledEvaluation = null
+                    if (version == navigation) evaluate()
+                }.also { handler.postAtTime(it, due) }
+            }
+            val check = staticDocumentCheck
+            if (check == null) schedule(false)
+            else view.evaluateJavascript(check) { schedule(it == "true") }
+        }
+
+        fun evaluate() {
+            if (finished.get() || evaluatingNavigation == navigation || pages[job.jobId] !== this) return
+            trace("Evaluate")
+            val version = navigation
+            evaluatingNavigation = version
             val script = job.options.script.ifBlank { "document.documentElement.outerHTML" }
+            val timing = if (BuildConfig.DEBUG && !job.options.interactive) """
+                (function(){try{
+                    var n=performance.getEntriesByType('navigation')[0], r=performance.getEntriesByType('resource');
+                    if (!n) return null;
+                    var scripts=0, images=0;
+                    for (var i=0;i<r.length;i++) {
+                        if (r[i].initiatorType==='script') scripts=Math.max(scripts,r[i].duration);
+                        if (r[i].initiatorType==='img') images=Math.max(images,r[i].duration);
+                    }
+                    return {htmlStartMs:Math.round(n.responseStart),htmlEndMs:Math.round(n.responseEnd),
+                        domReadyMs:Math.round(n.domContentLoadedEventEnd),loadMs:Math.round(n.loadEventEnd),
+                        resources:r.length,scriptMaxMs:Math.round(scripts),imageMaxMs:Math.round(images)};
+                }catch(e){return null;}})()
+            """.trimIndent() else "null"
             view.evaluateJavascript("""
                 (function(){try {
                     var challenge=$websiteChallengeScript;
-                    return JSON.stringify({url:location.href,challenge:challenge,value:challenge ? null : eval(${JsonPrimitive(script)})});
+                    return JSON.stringify({url:location.href,challenge:challenge,timing:$timing,value:challenge ? null : eval(${JsonPrimitive(script)})});
                 }catch(e){return null;}})()
             """.trimIndent()) { encoded ->
-                evaluating = false
+                if (evaluatingNavigation == version) evaluatingNavigation = null
                 if (finished.get() || pages[job.jobId] !== this) return@evaluateJavascript
-                if (version != navigation) { handler.postDelayed({ evaluate() }, 100); return@evaluateJavascript }
+                if (version != navigation) {
+                    if (job.options.interactive) handler.postDelayed({ evaluate() }, 100)
+                    return@evaluateJavascript
+                }
                 try {
                     val outer = Json.parseToJsonElement(encoded)
                     val result = if (outer == JsonNull) null else Json.parseToJsonElement(outer.jsonPrimitive.content).jsonObject
+                    if (BuildConfig.DEBUG) (result?.get("timing") as? JsonObject)?.let { values ->
+                        // Numeric milestones only: never log resource URLs, headers or document content.
+                        val fields = listOf("htmlStartMs", "htmlEndMs", "domReadyMs", "loadMs", "resources", "scriptMaxMs", "imageMaxMs")
+                            .mapNotNull { key -> (values[key] as? JsonPrimitive)?.intOrNull?.let { "$key=$it" } }
+                        trace("DocumentTiming ${fields.joinToString(" ")}")
+                    }
                     val challenge = result?.get("challenge")?.takeUnless { it == JsonNull }?.jsonPrimitive?.content ?: httpChallenge?.name
                     if (challenge != null) {
                         if (job.options.interactive) handler.postDelayed({ evaluate() }, 1000)
@@ -456,6 +502,8 @@ class NativeSourceBrowserService : Service() {
         }
 
         private fun dispose() {
+            scheduledEvaluation?.let(handler::removeCallbacks)
+            scheduledEvaluation = null
             cookieSeeds.remove(job.jobId)
             val currentActivity = if (job.options.interactive) activity.also { activity = null } else null
             pages.remove(job.jobId)

@@ -8,6 +8,7 @@ import android.os.IBinder
 import android.os.ParcelFileDescriptor
 import android.os.Process
 import android.os.RemoteException
+import android.os.SystemClock
 import hnovel.execution.ExecutionResult
 import hnovel.execution.ExecutionWire
 import hnovel.execution.ExecutionPayload
@@ -19,10 +20,11 @@ import kotlinx.serialization.json.JsonArray
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import indi.renakoni.nextvol.BuildConfig
 
 /** Real Binder transport in an isolated UID. Only the installed app's UID can submit work. */
-class IsolatedExecutionService : Service() {
-    private val executor = Executors.newSingleThreadExecutor()
+open class IsolatedExecutionService : Service() {
+    private val executor = Executors.newSingleThreadExecutor { Thread(it, "source-rule") }
     private val running = AtomicBoolean()
     private val runtime = WorkerRuntime(AndroidArchiveDecoder)
     private val memoryMonitor = Executors.newSingleThreadScheduledExecutor()
@@ -72,6 +74,9 @@ class IsolatedExecutionService : Service() {
             }
             executor.execute work@ {
                 var released = false
+                val started = SystemClock.elapsedRealtime()
+                val cpuStarted = SystemClock.currentThreadTimeMillis()
+                if (BuildConfig.DEBUG) android.util.Log.d("RuleWorkerTrace", "phase=Start worker=${this@IsolatedExecutionService.javaClass.simpleName} thread=${Thread.currentThread().name}")
                 try {
                     enforceMemoryBudget()
                     val result = try {
@@ -96,6 +101,8 @@ class IsolatedExecutionService : Service() {
                     running.set(false)
                     deliver(callback, result)
                 } finally {
+                    if (BuildConfig.DEBUG) android.util.Log.d("RuleWorkerTrace",
+                        "phase=End worker=${this@IsolatedExecutionService.javaClass.simpleName} elapsedMs=${SystemClock.elapsedRealtime() - started} cpuMs=${SystemClock.currentThreadTimeMillis() - cpuStarted}")
                     if (!released) running.set(false)
                 }
             }

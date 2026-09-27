@@ -84,7 +84,7 @@ data class NativeBrowserCookieSeed(val version: Long, val cookies: List<String>)
     @Serializable data class Failure(val code: FailureCode) : StorageResult
 }
 
-data class BrokerLimits(val concurrency: Int = 4, val minIntervalMillis: Long = 0,
+data class BrokerLimits(val concurrency: Int = DEFAULT_CONCURRENCY, val minIntervalMillis: Long = 0,
     val maxResponseBytes: Int = DEFAULT_MAX_RESPONSE_BYTES, val maxRequestBytes: Int = 1024 * 1024,
     val maxStorageBytes: Long = 2 * 1024 * 1024, val maxStorageEntries: Int = 1024,
     val maxCacheBytes: Int = 8 * 1024 * 1024, val cacheTtlMillis: Long = 60000,
@@ -93,6 +93,7 @@ data class BrokerLimits(val concurrency: Int = 4, val minIntervalMillis: Long = 
     init { require(concurrency > 0 && minIntervalMillis >= 0 && maxResponseBytes > 0 && maxRequestBytes > 0 &&
         maxStorageBytes > 0 && maxStorageEntries > 0 && maxCacheBytes > 0 && cacheTtlMillis > 0 && maxRedirects >= 0 && maxRetry >= 0 && maxTimeoutMillis > 0 && maxBookStorageBytes > 0 && maxBookStorageEntries > 0) }
     companion object {
+        const val DEFAULT_CONCURRENCY = 8
         // Some reading pages embed a multi-megabyte catalogue beside a short chapter.
         const val DEFAULT_MAX_RESPONSE_BYTES = 16 * 1024 * 1024
     }

@@ -10,7 +10,11 @@ import hnovel.content.ContentTrace
 import hnovel.content.RuleSource
 import hnovel.content.RuleTaskRunner
 import hnovel.execution.ExecutionAuthority
+import hnovel.execution.ExecutionIdentity
+import hnovel.execution.ExecutionLimits
+import hnovel.execution.ExecutionResult
 import hnovel.execution.ExecutionTask
+import hnovel.execution.SourceExecutionBroker
 import hnovel.imports.*
 import hnovel.network.*
 import indi.renakoni.nextvol.data.web.AndroidSourceStorageCipher
@@ -114,16 +118,19 @@ class DiscoveryPerformanceInstrumentedTest {
                     finally { opens.incrementAndGet(); openNanos.addAndGet(SystemClock.elapsedRealtimeNanos() - start) }
                 }
             }
-            val runner = RuleTaskRunner { owner, task, limits, bridge ->
-                val field = (task as? ExecutionTask.Rule)?.location?.field ?: task.javaClass.simpleName
-                calls.computeIfAbsent(field) { AtomicInteger() }.incrementAndGet()
-                val started = SystemClock.elapsedRealtimeNanos()
-                try { taskRunner.execute(owner, task, limits, bridge) }
-                finally {
-                    val elapsed = SystemClock.elapsedRealtimeNanos() - started
-                    executionSpans.add(started to started + elapsed)
-                    executionNanos.addAndGet(elapsed)
-                    taskNanos.computeIfAbsent(field) { AtomicLong() }.addAndGet(elapsed)
+            val runner = object : RuleTaskRunner by taskRunner {
+                override suspend fun execute(identity: ExecutionIdentity, task: ExecutionTask,
+                    limits: ExecutionLimits, broker: SourceExecutionBroker): ExecutionResult {
+                    val field = (task as? ExecutionTask.Rule)?.location?.field ?: task.javaClass.simpleName
+                    calls.computeIfAbsent(field) { AtomicInteger() }.incrementAndGet()
+                    val started = SystemClock.elapsedRealtimeNanos()
+                    try { return taskRunner.execute(identity, task, limits, broker) }
+                    finally {
+                        val elapsed = SystemClock.elapsedRealtimeNanos() - started
+                        executionSpans.add(started to started + elapsed)
+                        executionNanos.addAndGet(elapsed)
+                        taskNanos.computeIfAbsent(field) { AtomicLong() }.addAndGet(elapsed)
+                    }
                 }
             }
             val trace = ContentTrace { event ->

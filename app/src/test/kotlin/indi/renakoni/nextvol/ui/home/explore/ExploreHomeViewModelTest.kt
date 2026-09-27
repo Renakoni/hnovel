@@ -353,6 +353,74 @@ class ExploreHomeViewModelTest {
         assertEquals(DiscoveryError.Network, complete.sections.last().previewFailure!!.error)
     }
 
+    @Test fun refreshingACompletedFeedKeepsBooksUntilEachSectionHasAFreshResult() = runTest(dispatcher) {
+        val first = DiscoverySection("first", "First", listOf(DiscoveryBook("old-first", "Old first")), "/first")
+        val second = DiscoverySection("second", "Second", listOf(DiscoveryBook("old-second", "Old second")), "/second")
+        val update = CompletableDeferred<Unit>()
+        val finish = CompletableDeferred<Unit>()
+        var loads = 0
+        val id = add("refresh", object : Feed() {
+            override fun feedUpdates() = flow<Result<List<DiscoverySection>, DiscoveryError>> {
+                if (++loads == 1) { emit(Ok(listOf(first, second))); return@flow }
+                val waiting = listOf(first, second).map { it.copy(books = emptyList(), previewLoading = true) }
+                emit(Ok(waiting))
+                update.await()
+                val fresh = first.copy(books = listOf(DiscoveryBook("new-first", "New first")))
+                emit(Ok(listOf(fresh, waiting[1])))
+                finish.await()
+                emit(Ok(listOf(fresh, second.copy(books = emptyList(),
+                    previewFailure = DiscoveryPreviewFailure(DiscoveryError.Network)))))
+            }
+        })
+        val model = model()
+        advanceUntilIdle()
+        assertTrue(model.state.value.content.getValue(id).loaded)
+        model.refresh()
+        runCurrent()
+        val waiting = model.state.value.content.getValue(id)
+        assertEquals(listOf("Old first", "Old second"), waiting.sections.map { it.books.single().title })
+        assertTrue(waiting.sections.all { it.previewLoading })
+        update.complete(Unit)
+        runCurrent()
+        assertEquals(listOf("New first", "Old second"),
+            model.state.value.content.getValue(id).sections.map { it.books.single().title })
+        finish.complete(Unit)
+        advanceUntilIdle()
+        val complete = model.state.value.content.getValue(id)
+        assertTrue(complete.loaded)
+        assertFalse(complete.sections.first().previewLoading)
+        assertEquals("New first", complete.sections.first().books.single().title)
+        assertTrue(complete.sections.last().books.isEmpty())
+        assertEquals(DiscoveryError.Network, complete.sections.last().previewFailure!!.error)
+    }
+
+    @Test fun changingTheEnvironmentOrAccountDuringRefreshDropsRetainedBooks() = runTest(dispatcher) {
+        for (change in listOf("environment", "account")) {
+            val first = DiscoverySection("first", "First", listOf(DiscoveryBook("old", "Old book")), "/first")
+            var loads = 0
+            val id = add(change, object : Feed() {
+                override fun feedUpdates() = flow<Result<List<DiscoverySection>, DiscoveryError>> {
+                    if (++loads == 1) { emit(Ok(listOf(first))); return@flow }
+                    emit(Ok(listOf(first.copy(books = emptyList(), previewLoading = true))))
+                    awaitCancellation()
+                }
+            })
+            val model = model()
+            model.openSource(id)
+            runCurrent()
+            model.refresh()
+            runCurrent()
+            assertEquals("Old book", model.state.value.content.getValue(id).sections.single().books.single().title)
+            if (change == "environment") model.environment(DiscoveryEnvironment(themeMode = "1")) else accounts.begin(id)
+            model.setActive(true)
+            runCurrent()
+            assertTrue(change, model.state.value.content.getValue(id).sections.single().books.isEmpty())
+            stores.last().clear()
+            registry.unregister(id)
+            runCurrent()
+        }
+    }
+
     @Test fun refreshEnvironmentAndAccountChangesDoNotRetainInterruptedBooks() = runTest(dispatcher) {
         for (change in listOf("refresh", "environment", "account")) {
             var loads = 0

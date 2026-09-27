@@ -15,11 +15,12 @@ import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.atomic.AtomicBoolean
 
 /** A bound process, independent of any one invocation's result and broker endpoints. */
-internal class IsolatedWorkerConnection(private val context: Context, val authority: ExecutionAuthority) {
+internal class IsolatedWorkerConnection(private val context: Context, val authority: ExecutionAuthority,
+    service: Class<out IsolatedExecutionService>) {
     val connected = CompletableDeferred<IIsolatedExecutionService>()
     val died = CompletableDeferred<Unit>()
     var lastIdentity: ExecutionIdentity? = null
-    // Inspected only under AndroidIsolatedExecutor.workerLock. Keep the most recent ticket per
+    // Inspected only under this worker slot's lock. Keep the most recent ticket per
     // source lifetime so invalidated sessions cannot leave reusable library state in the worker.
     private val libraryTickets = LinkedHashMap<List<String>, ExecutionIdentity>(16, 0.75f, true)
     fun retain(identity: ExecutionIdentity) {
@@ -53,7 +54,7 @@ internal class IsolatedWorkerConnection(private val context: Context, val author
         override fun onBindingDied(name: ComponentName) { died.complete(Unit) }
     }
 
-    private val bound = context.bindService(Intent(context, IsolatedExecutionService::class.java), connection, Context.BIND_AUTO_CREATE)
+    private val bound = context.bindService(Intent(context, service), connection, Context.BIND_AUTO_CREATE)
 
     init { if (!bound) died.complete(Unit) }
 

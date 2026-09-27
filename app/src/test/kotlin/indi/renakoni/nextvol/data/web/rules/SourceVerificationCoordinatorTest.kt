@@ -193,6 +193,20 @@ class SourceVerificationCoordinatorTest {
         assertTrue(coordinator.prompts.value.isEmpty())
     }
 
+    @Test fun expiryAtTheOpeningDeadlineDoesNotRemoveAnActiveVerification() = runTest {
+        val completed = CompletableDeferred<Unit>()
+        coEvery { verification.complete() } coAnswers { completed.await() }
+        runCatching { coordinator.execute<Unit>(owner, "Fixture") { throw failure } }
+        val id = coordinator.prompts.value.single().id
+        val opening = async { coordinator.verifyBackground(id) }
+        runCurrent()
+        coordinator.expireBackgroundNotice(id)
+        assertTrue(coordinator.prompts.value.single().opening)
+        completed.complete(Unit)
+        opening.await()
+        assertTrue(coordinator.prompts.value.isEmpty())
+    }
+
     @Test fun accountRetirementPreventsRetryAfterTheBrowserReturns() = runTest {
         val monitor = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { coordinator.observeRetirement() }
         val completed = CompletableDeferred<Unit>()

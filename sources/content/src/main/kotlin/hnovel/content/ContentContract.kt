@@ -6,6 +6,9 @@ import kotlinx.serialization.json.JsonObject
 
 /** Android supplies the isolated service; JVM fixtures execute the same worker and broker protocol. */
 fun interface RuleTaskRunner {
+    /** Begin bounded process startup without awaiting readiness or evaluating source code. */
+    suspend fun prepareIndependent(identity: ExecutionIdentity, count: Int) {}
+
     suspend fun execute(identity: ExecutionIdentity, task: ExecutionTask, limits: ExecutionLimits,
         broker: SourceExecutionBroker): ExecutionResult
 }
