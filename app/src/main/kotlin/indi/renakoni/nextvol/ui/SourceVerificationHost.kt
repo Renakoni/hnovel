@@ -16,6 +16,7 @@ import indi.renakoni.nextvol.data.web.sourceFailureMessage
 import hnovel.content.SourceContentException
 import hnovel.network.BrowserChallengeKind
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /** Foreground verification is owned by its request. Only background notices need an action. */
@@ -32,6 +33,10 @@ fun SourceVerificationHost(coordinator: SourceVerificationCoordinator) {
         SourceCertificateDialog(problem, { coordinator.approveCertificate(confirmation.id) }, { coordinator.dismiss(confirmation.id) })
     }
     if (foreground == null && background != null && !background.opening && confirmation == null) {
+        LaunchedEffect(background.id) {
+            delay(4_000)
+            coordinator.expireBackgroundNotice(background.id)
+        }
         Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.BottomCenter) {
             Snackbar(action = {
                 TextButton(onClick = {

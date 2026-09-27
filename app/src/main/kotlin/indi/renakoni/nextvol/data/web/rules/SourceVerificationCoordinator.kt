@@ -41,6 +41,12 @@ class SourceVerificationCoordinator @Inject constructor(private val registry: We
 
     fun dismiss(id: String) = remove(id)
 
+    /** Expiry must not cancel a browser or certificate confirmation opened at the deadline. */
+    fun expireBackgroundNotice(id: String) = synchronized(lock) {
+        val prompt = pending[id]?.prompt ?: return@synchronized
+        if (!prompt.foreground && !prompt.opening && !prompt.confirmingCertificate) remove(id)
+    }
+
     /** Only the confirmation dialog calls this. Merely opening a prompt grants nothing. */
     fun approveCertificate(id: String) = synchronized(lock) {
         val entry = pending[id] ?: return@synchronized
