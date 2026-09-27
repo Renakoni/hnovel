@@ -25,11 +25,15 @@ class PixivPresentationTest {
     private fun definition(fixture: RuleSourceFixture, settings: String = "", localUrls: Boolean = true): JsonObject {
         // Run the shipped UI, catalogue, library and actions; only provide an isolated test account.
         val local = if (localUrls) Json.parseToJsonElement(original.toString().replace(
-            "https://www.pixiv.net", fixture.server.url("/").toString().removeSuffix("/"))).jsonObject else original
+            "https://www.pixiv.net", fixture.server.url("/").toString().removeSuffix("/"))).jsonObject else
+            // Preserve generated direct-connection URLs while reading the isolated fixture's Cookie jar.
+            JsonObject(original + ("jsLib" to JsonPrimitive(original.getValue("jsLib").jsonPrimitive.content.replace(
+                "java.getCookie(\"https://www.pixiv.net/\", null)", "java.getCookie('${fixture.server.url("/")}', null)"))))
         val setup = """
             if (!cache.get('pixivPresentationTest')) {
                 cache.put('pixivUid','12345');
                 cache.put('pixivCookie','PHPSESSID=12345_test');
+                cookie.setCookie('${fixture.server.url("/")}', 'PHPSESSID=12345_test');
                 cache.put('pixivCsrfToken','test-token');
                 cache.put('checkTimes','1');
                 let settings = setDefaultSettings();

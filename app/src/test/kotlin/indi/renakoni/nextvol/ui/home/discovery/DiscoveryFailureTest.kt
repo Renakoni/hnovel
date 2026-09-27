@@ -74,6 +74,22 @@ class DiscoveryFailureTest {
         compose.onNodeWithText("Retry").assertIsDisplayed()
     }
 
+    @Test fun websiteErrorsShowTheirStatusAndChangingStatusClosesOldDetails() {
+        var status by mutableStateOf(400)
+        activity.get().setContent { MaterialTheme {
+            DiscoveryFailure(DiscoveryError.Network, {}, {}, back = null, field = "ruleExplore.bookList", httpStatus = status)
+        } }
+        compose.onNodeWithText(activity.get().getString(R.string.discovery_http_error, 400)).assertIsDisplayed()
+        compose.onNodeWithText(activity.get().getString(R.string.discovery_invalid_rules)).assertDoesNotExist()
+        compose.onNodeWithText("Error details").performClick()
+        compose.onNodeWithText("Error type: Network").assertIsDisplayed()
+        compose.runOnIdle { status = 403 }
+        compose.onNodeWithText("Close").assertDoesNotExist()
+        compose.onNodeWithText(activity.get().getString(R.string.discovery_http_denied, 403)).assertIsDisplayed()
+        compose.runOnIdle { status = 503 }
+        compose.onNodeWithText(activity.get().getString(R.string.discovery_http_error, 503)).assertIsDisplayed()
+    }
+
     @Test fun structuredHostCallFactsAppearOnlyInDetailsAndMatchTheExportShape() {
         val failure = hnovel.execution.ExecutionResult.Failure(hnovel.execution.FailureCode.BridgeDenied,
             hnovel.rules.RuleError(hnovel.rules.RuleStage.Script, hnovel.rules.RuleLocation("exploreUrl"), "BridgeDenied"),

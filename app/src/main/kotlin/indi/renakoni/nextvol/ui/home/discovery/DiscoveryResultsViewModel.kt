@@ -37,6 +37,7 @@ data class DiscoveryResultsState(
     val errorField: String? = null,
     val errorPermission: DiscoveryPermission? = null,
     val errorDiagnostic: hnovel.execution.ExecutionResult.Failure? = null,
+    val errorHttpStatus: Int? = null,
 )
 
 /** One ViewModel per navigation entry. Only lightweight identity/filter values survive process death. */
@@ -136,6 +137,7 @@ class DiscoveryResultsViewModel internal constructor(
             var failureField: String? = null
             var permissionFailure: DiscoveryPermission? = null
             var diagnosticFailure: hnovel.execution.ExecutionResult.Failure? = null
+            var httpStatus: Int? = null
             val result = discoveryRequest {
                 if (session == null) {
                     val source = registry.discovery(sourceId).getOrElse { return@discoveryRequest Err(it) }
@@ -146,7 +148,7 @@ class DiscoveryResultsViewModel internal constructor(
                     // and may persist infoMap; raw explore targets still need it even without a category ID.
                     if ((source.hasCategories || source.hasInteractions) && !target.startsWith(DISCOVERY_SEARCH_PREFIX)) {
                         val catalog = (if (route.categoryId == null) source.homepageCatalog(refreshCatalog) else source.catalog(refreshCatalog))
-                            .getOrElse { failureField = source.failureField; permissionFailure = source.permissionFailure; diagnosticFailure = source.diagnosticFailure; return@discoveryRequest Err(it) }
+                            .getOrElse { failureField = source.failureField; permissionFailure = source.permissionFailure; diagnosticFailure = source.diagnosticFailure; httpStatus = source.httpStatus; return@discoveryRequest Err(it) }
                         if (token != serial) return@discoveryRequest Err(DiscoveryError.Unavailable)
                         refreshCatalog = false
                         catalogValues = catalog.values
@@ -162,12 +164,12 @@ class DiscoveryResultsViewModel internal constructor(
                     saveFilters(values)
                     mutableState.value = state.value.copy(definitions = opened.filters, filters = values)
                 }
-                requireNotNull(session).loadMore().onErr { failureField = session?.failureField; permissionFailure = session?.permissionFailure; diagnosticFailure = session?.diagnosticFailure }
+                requireNotNull(session).loadMore().onErr { failureField = session?.failureField; permissionFailure = session?.permissionFailure; diagnosticFailure = session?.diagnosticFailure; httpStatus = session?.httpStatus }
             }
             if (token != serial || !active) return@launch
             result.onOk { mutableState.value = state.value.copy(books = it.books, loading = false,
-                loaded = true, hasMore = it.nextCursor != null, errorField = null, errorPermission = null, errorDiagnostic = null) }
-                .onErr { mutableState.value = state.value.copy(loading = false, error = it, errorField = failureField, errorPermission = permissionFailure, errorDiagnostic = diagnosticFailure) }
+                loaded = true, hasMore = it.nextCursor != null, errorField = null, errorPermission = null, errorDiagnostic = null, errorHttpStatus = null) }
+                .onErr { mutableState.value = state.value.copy(loading = false, error = it, errorField = failureField, errorPermission = permissionFailure, errorDiagnostic = diagnosticFailure, errorHttpStatus = httpStatus) }
         }
     }
 }

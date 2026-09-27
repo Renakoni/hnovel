@@ -45,6 +45,13 @@ class NativeSourceBrowserService : Service() {
     internal val title get() = interactivePage?.job?.options?.title.orEmpty()
     companion object { internal var active: NativeSourceBrowserService? = null }
 
+    override fun onCreate() {
+        super.onCreate()
+        // AndroidX Startup runs in the main process only. Domain cookie parsing here
+        // also needs OkHttp's application context to load the public suffix list.
+        okhttp3.OkHttp.initialize(applicationContext)
+    }
+
     override fun onBind(intent: Intent): IBinder = object : IBrowserService.Stub() {
         override fun start(payload: String, callback: IBrowserHost) {
             check(Binder.getCallingUid() == applicationInfo.uid && payload.length <= 393216)

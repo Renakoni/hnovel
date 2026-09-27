@@ -27,6 +27,7 @@ class PixivDiscoveryTest {
         val setup = """
             if($cachedAccount) cache.put('pixivUid','12345');
             cache.put('pixivCookie','PHPSESSID=12345_test');
+            cookie.setCookie(baseUrl, 'PHPSESSID=12345_test');
             cache.put('pixivCsrfToken','test-token');
             cache.put('checkTimes','1');
             var testSettings=setDefaultSettings();
@@ -102,7 +103,7 @@ class PixivDiscoveryTest {
         }
     }
 
-    @Test fun coldAccountIsInitializedBeforeBookmarkUrlsAreSnapshotted() = runBlocking {
+    @Test fun cachedCookieInitializesAccountBeforeBookmarkUrlsAreSnapshotted() = runBlocking {
         RuleSourceFixture(browser).use { fixture ->
             fixture.server.dispatcher = object : Dispatcher() {
                 override fun dispatch(request: RecordedRequest) = MockResponse()
@@ -113,7 +114,7 @@ class PixivDiscoveryTest {
                 val discovery = source.openDiscovery("cold")
                 val catalog = discovery.catalog()
                 val bookmarks = catalog.rows.filter { it.url.contains("/novels/bookmarks?") }.map { it.url }
-                assertNull(discovery.concurrentPreviews(bookmarks, emptyMap()))
+                assertNotNull(discovery.concurrentPreviews(bookmarks, emptyMap()))
                 assertEquals(0, fixture.server.requestCount)
                 val recommendation = catalog.rows.first { it.url.contains("/ajax/top/novel?") }
                 discovery.preview(recommendation.url, emptyMap())

@@ -5,6 +5,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import hnovel.network.*
 import indi.renakoni.nextvol.sourcebrowser.AndroidSourceBrowser
 import kotlinx.coroutines.*
+import kotlinx.serialization.json.*
 import okhttp3.mockwebserver.*
 import org.junit.Assert.*
 import org.junit.Test
@@ -17,6 +18,53 @@ import java.util.concurrent.atomic.AtomicInteger
 
 @RunWith(AndroidJUnit4::class)
 class NativeBrowserAdmissionCookieInstrumentedTest {
+    @Test fun parentDomainCookiesReachSubdomainsAndSurviveBrowserProcessReplacement() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val root = File(context.cacheDir, "native-domain-cookie-${System.nanoTime()}")
+        val loopback = java.net.InetAddress.getByName("127.0.0.1")
+        try { MockWebServer().use { server ->
+            server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse {
+                    val response = MockResponse().setHeader("Content-Type", "text/html").setHeader("Cache-Control", "no-store")
+                    if (request.path == "/seed") response
+                        .addHeader("Set-Cookie", "account=fixture; Domain=reader.localhost; Path=/; Max-Age=600; HttpOnly")
+                        .addHeader("Set-Cookie", "host=fixture; Path=/; Max-Age=600")
+                    return response.setBody("""<html><head><link rel='icon' href='data:,'></head><body><script>
+                        window.snapshot=JSON.stringify({sent:${JsonPrimitive(request.getHeader("Cookie").orEmpty())},visible:document.cookie});
+                        </script></body></html>""")
+                }
+            }
+            server.start(loopback, 0)
+            // Chromium resolves *.localhost to loopback without relying on an external DNS service.
+            val url = server.url("/").newBuilder().host("login.reader.localhost").build().toString()
+            val sibling = server.url("/").newBuilder().host("www.reader.localhost").build().toString()
+            SourceBroker(root.toPath(), dns = okhttp3.Dns { listOf(loopback) }, browser = AndroidSourceBrowser(context)).use { broker ->
+                val grants = listOf(NetworkGrant(url, true), NetworkGrant(sibling, true))
+                val account = broker.open(SourceScope("native-domain-cookie", root.name, "test"), grants)
+                val other = broker.open(SourceScope("native-domain-cookie", "other-${root.name}", "test"), grants)
+                listOf(account, other).forEach { it.configureSource(url, true, browserRead = true) }
+                suspend fun read(session: SourceSession, target: String): JsonObject {
+                    val result = session.execute(BrokerRequest("read", target, timeoutMillis = 30000,
+                        browser = BrowserOptions(script = "window.snapshot || null")))
+                    assertTrue(result.toString(), result is BrokerResult.Success)
+                    return Json.parseToJsonElement((result as BrokerResult.Success).response.text()).jsonObject
+                }
+                try {
+                    assertTrue(account.execute(BrokerRequest("seed", url + "seed", kind = ResourceKind.Api)) is BrokerResult.Success)
+                    assertEquals(2, account.nativeBrowserCookieSeed(url).cookies.size)
+                    val first = read(account, url)
+                    assertEquals(setOf("account=fixture", "host=fixture"), first.getValue("sent").jsonPrimitive.content.split("; ").toSet())
+                    assertEquals("host=fixture", first.getValue("visible").jsonPrimitive.content)
+                    assertEquals("", read(other, url).getValue("sent").jsonPrimitive.content)
+                    // Switching profiles replaces the dedicated process; the original account must retain its scope.
+                    val restored = read(account, sibling)
+                    assertEquals("account=fixture", restored.getValue("sent").jsonPrimitive.content)
+                    assertEquals("", restored.getValue("visible").jsonPrimitive.content)
+                } finally { account.clearAccount(); other.clearAccount() }
+            }
+        } } finally { root.deleteRecursively() }
+    }
+
     @Test fun cookieChangedDuringAdmissionWaitsForTheOldSiblingBeforeStartingANewBatch() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val root = File(context.cacheDir, "native-admission-sibling-${System.nanoTime()}")

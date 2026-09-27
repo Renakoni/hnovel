@@ -34,6 +34,7 @@ data class DiscoveryPageContent(
     val sections: List<SourceDiscoverySection> = emptyList(),
     val resetId: Long = 0,
     val errorDiagnostic: hnovel.execution.ExecutionResult.Failure? = null,
+    val errorHttpStatus: Int? = null,
 )
 
 data class DiscoveryPageState(
@@ -199,12 +200,12 @@ abstract class DiscoveryPageViewModel(
                 put(source, current.copy(sections = current.sections.map { if (it.id == section.id) value else it }))
             }
         }
-        replace(section.copy(previewLoading = true, previewFailure = null, diagnosticFailure = null))
+        replace(section.copy(previewLoading = true, previewFailure = null, diagnosticFailure = null, httpStatus = null))
         val job = viewModelScope.launch(foreground, start = CoroutineStart.LAZY) {
             val result = discoveryRequest { preview(discovery, section.id) }
             if (serial != token || state.value.selected != source) return@launch
             replace(result.getOrElse { section.copy(previewLoading = false,
-                previewFailure = DiscoveryPreviewFailure(it), diagnosticFailure = null) })
+                previewFailure = DiscoveryPreviewFailure(it), diagnosticFailure = null, httpStatus = null) })
             previewRetries.remove(section.id)
         }
         previewRetries[section.id] = section to job
@@ -235,7 +236,7 @@ abstract class DiscoveryPageViewModel(
         pending = viewModelScope.launch(foreground) {
             val result = discoveryRequest { discovery.interact(id, value, longClick) }
             if (serial != token || !active || state.value.selected != source) return@launch
-            result.onErr { put(source, state.value.content.getValue(source).copy(acting = false, error = it, errorField = discovery.failureField, errorPermission = discovery.permissionFailure, errorDiagnostic = discovery.diagnosticFailure)) }
+            result.onErr { put(source, state.value.content.getValue(source).copy(acting = false, error = it, errorField = discovery.failureField, errorPermission = discovery.permissionFailure, errorDiagnostic = discovery.diagnosticFailure, errorHttpStatus = discovery.httpStatus)) }
                 .onOk { update ->
                     put(source, applyCatalog(state.value.content.getValue(source), update.catalog))
                     // Record invalidation before an emitted action can stop/cancel this page's work.
@@ -262,7 +263,7 @@ abstract class DiscoveryPageViewModel(
         val token = Any()
         browserToken = token
         browser?.cancel()
-        put(command.source, state.value.content.getValue(command.source).copy(loading = false, acting = true, error = null, errorField = null, errorPermission = null, errorDiagnostic = null))
+        put(command.source, state.value.content.getValue(command.source).copy(loading = false, acting = true, error = null, errorField = null, errorPermission = null, errorDiagnostic = null, errorHttpStatus = null))
         browser = viewModelScope.launch {
             val result = discoveryRequest { discovery.openBrowser(action) }
             // Its Activity covers this destination. Completion may precede onStart, after UI
@@ -270,7 +271,7 @@ abstract class DiscoveryPageViewModel(
             if (browserToken !== token) return@launch
             browserToken = null
             browser = null
-            result.onErr { put(command.source, state.value.content.getValue(command.source).copy(acting = false, error = it, errorField = discovery.failureField, errorPermission = discovery.permissionFailure, errorDiagnostic = discovery.diagnosticFailure)) }
+            result.onErr { put(command.source, state.value.content.getValue(command.source).copy(acting = false, error = it, errorField = discovery.failureField, errorPermission = discovery.permissionFailure, errorDiagnostic = discovery.diagnosticFailure, errorHttpStatus = discovery.httpStatus)) }
                 .onOk { refresh() }
         }
     }
@@ -343,7 +344,7 @@ abstract class DiscoveryPageViewModel(
 
     private fun applyCatalog(previous: DiscoveryPageContent, catalog: SourceDiscoveryCatalog) = previous.copy(
         categories = catalog.categories, filters = catalog.filters, values = catalog.values, buttons = catalog.buttons,
-        loaded = true, loading = false, acting = false, error = null, errorField = null, errorPermission = null, errorDiagnostic = null)
+        loaded = true, loading = false, acting = false, error = null, errorField = null, errorPermission = null, errorDiagnostic = null, errorHttpStatus = null)
 
     protected open fun feedUpdates(discovery: SourceDiscovery) = discovery.feedUpdates()
     protected open suspend fun preview(discovery: SourceDiscovery, id: String) = discovery.preview(id)
@@ -403,7 +404,7 @@ abstract class DiscoveryPageViewModel(
                     }
                     failure?.let { return@discoveryRequest Err(it) }
                 }
-                Ok(content.copy(loaded = true, loading = false, acting = false, error = null, errorField = null, errorPermission = null, errorDiagnostic = null))
+                Ok(content.copy(loaded = true, loading = false, acting = false, error = null, errorField = null, errorPermission = null, errorDiagnostic = null, errorHttpStatus = null))
             }
             // A retained verification window may fail before this page resumes. Its result
             // still belongs here; navigation/cancellation already invalidate serial.
@@ -411,7 +412,7 @@ abstract class DiscoveryPageViewModel(
             val current = state.value.content[id] ?: previous
             result.onOk { page -> refreshCatalog -= id; put(id, page.copy(scroll = current.scroll,
                 sections = page.sections.map { previewOverrides[it.id] ?: it })) }
-                .onErr { put(id, current.copy(error = it, loading = false, errorField = sessions[id]?.failureField, errorPermission = sessions[id]?.permissionFailure, errorDiagnostic = sessions[id]?.diagnosticFailure)) }
+                .onErr { put(id, current.copy(error = it, loading = false, errorField = sessions[id]?.failureField, errorPermission = sessions[id]?.permissionFailure, errorDiagnostic = sessions[id]?.diagnosticFailure, errorHttpStatus = sessions[id]?.httpStatus)) }
         }
     }
 }

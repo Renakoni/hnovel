@@ -7,7 +7,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 data class RuleListPage(val books: List<RuleBook>, val nextCursor: String?, val nextPage: Int?)
-internal data class RuleListResult(val books: List<RuleBook>, val url: String, val nextUrl: String?)
+internal data class RuleListResult(val books: List<RuleBook>, val url: String, val nextUrl: String?, val httpErrorStatus: Int? = null)
 
 /** One query/filter snapshot. Remote URLs stay opaque to callers and never become source settings. */
 class RuleListSession internal constructor(private val field: String, private val explicit: Boolean,
@@ -54,6 +54,9 @@ class RuleListSession internal constructor(private val field: String, private va
         val repeatedBooks = result.books.isNotEmpty() && result.books.all { it.id in books }
         val repeatedCursor = explicit && result.nextUrl != null && (result.nextUrl == result.url || result.nextUrl in urls)
         val more = if (explicit) result.nextUrl != null else result.books.isNotEmpty()
+        // An HTTP rejection cannot establish the end of a list, even if its continuation loops.
+        if (result.books.isEmpty() && result.httpErrorStatus != null && (!more || repeatedCursor))
+            throw SourceContentException(ContentError.Network, "$field.bookList", httpStatus = result.httpErrorStatus)
         val reason = when {
             repeatedCursor -> "RepeatedCursor"
             repeatedBooks -> "RepeatedBooks"
