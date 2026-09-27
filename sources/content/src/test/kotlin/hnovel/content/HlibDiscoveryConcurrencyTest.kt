@@ -1,6 +1,7 @@
 package hnovel.content
 
 import hnovel.network.*
+import hnovel.execution.ExecutionTask
 import kotlinx.coroutines.*
 import kotlinx.serialization.json.*
 import org.junit.Assert.*
@@ -9,7 +10,7 @@ import java.io.File
 import java.util.concurrent.atomic.AtomicInteger
 
 class HlibDiscoveryConcurrencyTest {
-    @Test fun shippedHlibStartsEveryPreviewBeforeTheFirstPageFinishes() = runBlocking {
+    @Test fun shippedHlibOverlapsBothTransportAndParsing() = runBlocking {
         val entered = AtomicInteger()
         val allEntered = CompletableDeferred<Unit>()
         val releaseFirst = CompletableDeferred<Unit>()
@@ -49,6 +50,25 @@ class HlibDiscoveryConcurrencyTest {
                     assertEquals(4, entered.get())
                 } finally { releaseFirst.complete(Unit) }
                 assertEquals(6, loads.first().await().books.size)
+
+                val parsing = CompletableDeferred<Unit>()
+                val releaseParser = CompletableDeferred<Unit>()
+                fixture.afterRun = { task ->
+                    if (task is ExecutionTask.Rule && task.location.field == "ruleExplore.bookList" &&
+                        "type=day" in task.baseUrl) {
+                        parsing.complete(Unit)
+                        releaseParser.await()
+                    }
+                }
+                val reloaded = requireNotNull(discovery.concurrentPreviews(urls, catalog.values))
+                    .map { async { it.page(1) } }
+                val others = try {
+                    withTimeout(5000) { parsing.await() }
+                    withTimeoutOrNull(3000) { reloaded.drop(1).awaitAll() }
+                } finally { releaseParser.complete(Unit) }
+                val completed = reloaded.awaitAll()
+                assertNotNull("The blocked daily parser must not hold the other rankings", others)
+                assertTrue(completed.all { it.books.size == 6 })
             }
         }
     }

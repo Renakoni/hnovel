@@ -6,6 +6,7 @@ import android.os.IBinder
 import android.os.Process
 import android.os.ParcelFileDescriptor
 import android.os.RemoteException
+import android.os.SystemClock
 import android.system.Os
 import android.system.OsConstants
 import android.system.StructPollfd
@@ -39,15 +40,20 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import java.io.ByteArrayOutputStream
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
+import indi.renakoni.nextvol.BuildConfig
 
-/** One serialized worker on API 24+. Successful calls reuse the process; failed calls retire it. */
+/** Stateful rules keep one worker; independent work uses a bounded pool of separately killable processes. */
 class AndroidIsolatedExecutor @Inject constructor(@ApplicationContext context: Context, private val authority: ExecutionAuthority) {
     private val context = context.applicationContext
 
@@ -56,33 +62,52 @@ class AndroidIsolatedExecutor @Inject constructor(@ApplicationContext context: C
         if (broker != null && (broker.identity != identity || broker.limits != limits)) return@withContext failure(FailureCode.InvalidIdentity)
         if (broker != null && !broker.matchesTaskContext(task)) return@withContext failure(FailureCode.InvalidTask)
         if (!authority.accepts(identity)) return@withContext failure(FailureCode.InvalidIdentity)
+        if (task is ExecutionTask.Rule && task.readOnly && !task.libraryCode.isNullOrBlank())
+            return@withContext failure(FailureCode.InvalidTask)
         val request = ExecutionWire.encode(identity, task, limits)
         if (request.size > ExecutionWire.MAX_INPUT_BYTES) return@withContext failure(FailureCode.InputLimit)
-        if (!workerLock.tryLock()) return@withContext failure(FailureCode.Busy)
+        val queuedAt = SystemClock.elapsedRealtime()
+        val call = nextCall.incrementAndGet()
         try {
-            // A new bind must never reuse a worker whose previous shutdown has not completed.
-            if (retiringBinder?.isBinderAlive == true) return@withContext failure(FailureCode.ProcessExited)
-            val previous = retainedWorker
-            if (previous != null && (previous.authority !== authority || previous.died.isCompleted || previous.hasRevokedOwner())) retire(previous)
-            if (retiringBinder?.isBinderAlive == true) return@withContext failure(FailureCode.ProcessExited)
-            val worker = retainedWorker ?: IsolatedWorkerConnection(context, authority).also { retainedWorker = it }
-            invoke(worker, identity, task, limits, broker)
+            withWorker(task) { slot ->
+                val admittedAt = SystemClock.elapsedRealtime()
+                if (!authority.accepts(identity)) return@withWorker failure(FailureCode.Revoked)
+                // Each component has its own process. Never rebind it before its previous worker dies.
+                if (slot.retiringBinder?.isBinderAlive == true) return@withWorker failure(FailureCode.ProcessExited)
+                val previous = slot.worker
+                if (previous != null && (previous.authority !== authority || previous.died.isCompleted || previous.hasRevokedOwner())) retire(slot, previous)
+                if (slot.retiringBinder?.isBinderAlive == true) return@withWorker failure(FailureCode.ProcessExited)
+                val worker = slot.worker ?: IsolatedWorkerConnection(context, authority, slot.service).also { slot.worker = it }
+                val started = SystemClock.elapsedRealtime()
+                val active = activeCalls.incrementAndGet()
+                trace(call, slot, task, "Start", "queueMs=${admittedAt - queuedAt} active=$active")
+                var outcome = "Cancelled"
+                try {
+                    invoke(slot, worker, identity, task, limits, broker).also {
+                        outcome = (it as? ExecutionResult.Failure)?.code?.name ?: "Success"
+                    }
+                } finally {
+                    trace(call, slot, task, "End", "elapsedMs=${SystemClock.elapsedRealtime() - started} result=$outcome active=${activeCalls.decrementAndGet()}")
+                }
+            }
         } finally {
-            workerLock.unlock()
+            broker?.close()
         }
     }
 
     /** Release retained library state when the owning runtime is shut down. */
     suspend fun close() = withContext(NonCancellable + Dispatchers.IO) {
-        workerLock.withLock { retainedWorker?.takeIf { it.authority === authority }?.let { retire(it) } }
+        workers.forEach { slot ->
+            slot.lock.withLock { slot.worker?.takeIf { it.authority === authority }?.let { retire(slot, it) } }
+        }
     }
 
-    private suspend fun retire(worker: IsolatedWorkerConnection) {
-        retiringBinder = worker.remote?.asBinder()
-        try { worker.close() } finally { if (retainedWorker === worker) retainedWorker = null }
+    private suspend fun retire(slot: WorkerSlot, worker: IsolatedWorkerConnection) {
+        slot.retiringBinder = worker.remote?.asBinder()
+        try { worker.close() } finally { if (slot.worker === worker) slot.worker = null }
     }
 
-    private suspend fun invoke(worker: IsolatedWorkerConnection, identity: ExecutionIdentity, task: ExecutionTask,
+    private suspend fun invoke(slot: WorkerSlot, worker: IsolatedWorkerConnection, identity: ExecutionIdentity, task: ExecutionTask,
         limits: ExecutionLimits, broker: SourceExecutionBroker?): ExecutionResult = coroutineScope {
         val result = CompletableDeferred<ExecutionResult>()
         val finished = AtomicBoolean()
@@ -207,17 +232,49 @@ class AndroidIsolatedExecutor @Inject constructor(@ApplicationContext context: C
             broker?.close()
             withContext(NonCancellable + Dispatchers.Main.immediate) {
                 revocations.cancelAndJoin()
-                if (!keepWorker) retire(worker)
+                if (!keepWorker) retire(slot, worker)
             }
         }
     }
 
     private fun failure(code: FailureCode) = ExecutionResult.Failure(code)
 
+    private class WorkerSlot(val id: Int, val service: Class<out IsolatedExecutionService>) {
+        val lock = Mutex()
+        var retiringBinder: IBinder? = null
+        var worker: IsolatedWorkerConnection? = null
+    }
+
+    private suspend fun <T> withWorker(task: ExecutionTask, block: suspend (WorkerSlot) -> T): T {
+        val independent = when (task) {
+            is ExecutionTask.ContentMarkup, is ExecutionTask.BookOverviews, is ExecutionTask.DiscoveryReadPlan -> true
+            is ExecutionTask.Rule -> task.readOnly
+            else -> false
+        }
+        if (!independent) return workers.first().let { slot -> slot.lock.withLock { block(slot) } }
+        return permits.withPermit {
+            // Prefer the last used process so sequential work does not cold-start the whole pool.
+            val slot = synchronized(idleWorkers) { idleWorkers.removeLast() }
+            try { slot.lock.withLock { block(slot) } }
+            finally { synchronized(idleWorkers) { idleWorkers.addLast(slot) } }
+        }
+    }
+
+    private fun trace(call: Long, slot: WorkerSlot, task: ExecutionTask, phase: String, detail: String) {
+        if (BuildConfig.DEBUG) android.util.Log.d("RuleExecutionTrace",
+            "call=$call slot=${slot.id} task=${task.javaClass.simpleName} phase=$phase $detail thread=${Thread.currentThread().name}")
+    }
+
     companion object {
-        private val workerLock = Mutex()
-        private var retiringBinder: IBinder? = null
-        private var retainedWorker: IsolatedWorkerConnection? = null
+        internal val PARALLELISM = Runtime.getRuntime().availableProcessors().coerceIn(2, 4)
+        private val workers = listOf(IsolatedExecutionService::class.java,
+            IndependentExecutionService1::class.java, IndependentExecutionService2::class.java,
+            IndependentExecutionService3::class.java, IndependentExecutionService4::class.java)
+            .take(PARALLELISM + 1).mapIndexed { index, service -> WorkerSlot(index, service) }
+        private val idleWorkers = java.util.ArrayDeque(workers.drop(1).reversed())
+        private val permits = Semaphore(PARALLELISM)
+        private val nextCall = AtomicLong()
+        private val activeCalls = AtomicInteger()
     }
 }
 

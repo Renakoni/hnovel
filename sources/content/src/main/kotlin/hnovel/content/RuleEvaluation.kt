@@ -24,13 +24,14 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
     var nextChapterUrl: String? = null
     var missingCacheRead = false
         private set
+    var readOnly = false
     // Human login/verification shares the enclosing login operation's five-minute budget.
     private val limits = ExecutionLimits(timeoutMillis = if (interactive) 300000 else 30000, maxOutputBytes = 196608,
         maxRequests = 64, maxDataBytes = 16 * 1024 * 1024)
 
     fun fork(bookId: String? = this.bookId, chapterId: String? = this.chapterId) =
         RuleEvaluation(identity, authority, session, runner, library, bookId, chapterId, book.copy(), chapter.copy(), baseUrl, keyword, page, calls, headerRule, interactive, trace, sourceLoginUrl, sourceComment, verification, maxRuleCalls, sourceName, sourceLastUpdateTime, memory)
-            .also { it.discovery = discovery; it.nextChapterUrl = nextChapterUrl; it.requestUserAgent = requestUserAgent }
+            .also { it.discovery = discovery; it.nextChapterUrl = nextChapterUrl; it.requestUserAgent = requestUserAgent; it.readOnly = readOnly }
 
     suspend fun headers(): Map<String, String> {
         if (headerRule.isBlank()) return emptyMap()
@@ -52,7 +53,7 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
             chapter.variables, book.metadata, chapter.metadata, book.bigVariables, chapter.bigVariables,
             unescapeHtml = unescape, sourceHeaderRule = if (field == "header") "" else headerRule, discovery = discovery,
             sourceLoginUrl = sourceLoginUrl, sourceComment = sourceComment, nextChapterUrl = nextChapterUrl,
-            scriptTemplates = scriptTemplates)
+            scriptTemplates = scriptTemplates, readOnly = readOnly)
         val executed = execute(task, field, input.toString().length)
         if (discovery != null) discovery = executed.discovery ?: throw SourceContentException(ContentError.InvalidRule, field)
         book = book.copy(metadata = executed.book ?: book.metadata,

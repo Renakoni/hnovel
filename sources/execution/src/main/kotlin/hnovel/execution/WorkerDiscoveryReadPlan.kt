@@ -9,7 +9,7 @@ import org.mozilla.javascript.Token
 import org.mozilla.javascript.ast.*
 
 /** A conservative syntax check in the isolated worker, never execution of a source on the host.
- * Request cache reads are snapshotted before dispatch; this does not permit parallel script execution. */
+ * Request cache reads are snapshotted before dispatch. Read-only response rules can run without shared library state. */
 internal object WorkerDiscoveryReadPlan {
     fun evaluate(task: ExecutionTask.DiscoveryReadPlan, limits: ExecutionLimits): ExecutionResult {
         val accepted = task.urls.size in 1..64 && task.rules.size <= 64 &&
@@ -45,6 +45,8 @@ internal object WorkerDiscoveryReadPlan {
     private fun rule(value: String): Boolean = RuleParser().parse(value, RuleLocation("ruleExplore"), RuleBudget()).steps.all {
         if (it.script) script(it.text, selectors = true) else ExecutionTask.BookOverviews.supports(it.text)
     }
+
+    internal fun isReadOnlyRule(value: String): Boolean = value.length <= 65536 && runCatching { rule(value) }.getOrDefault(false)
 
     private val reserved = setOf("baseUrl", "result", "key", "page", "infoMap", "java", "cache", "JSON", "String", "Number",
         "parseInt", "parseFloat", "encodeURIComponent", "decodeURIComponent", "undefined")

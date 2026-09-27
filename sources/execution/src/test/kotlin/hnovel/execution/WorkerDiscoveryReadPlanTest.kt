@@ -66,4 +66,24 @@ class WorkerDiscoveryReadPlanTest {
         assertEquals(ExecutionResult.Failure(FailureCode.OutputLimit), WorkerDiscoveryReadPlan.evaluate(
             ExecutionTask.DiscoveryReadPlan(listOf("/list"), "", emptyList()), ExecutionLimits(maxOutputBytes = 1)))
     }
+
+    @Test fun independentRulesRecheckPurityBeforeExecutingAnySourceCode() {
+        val identity = ExecutionIdentity("source", "legado", "1", "test")
+        WorkerRuntime().use { runtime ->
+            fun execute(rule: String, library: String? = null): ExecutionResult = ExecutionWire.decodeResult(
+                runtime.executeSerialized(ExecutionWire.encode(identity, ExecutionTask.Rule(rule,
+                    RuleValue.Text("<li>one</li>"), output = hnovel.rules.OutputKind.Text,
+                    libraryCode = library, readOnly = true), ExecutionLimits())
+                    .toString(Charsets.UTF_8)).toByteArray())
+            val result = execute("@js:java.getString('li@text')")
+            assertTrue(result.toString(), result is ExecutionResult.Success)
+            assertEquals(RuleValue.Text("one"), Json.decodeFromString(ExecutedRule.serializer(),
+                (result as ExecutionResult.Success).output).value)
+            for (rule in listOf("@js:source.put('x','y')", "@js:java.ajax('/next')", "@put:{x:'li'}li",
+                "@js:infoMap.mode='changed'", "@js:cache.get('account')")) {
+                assertEquals(rule, ExecutionResult.Failure(FailureCode.InvalidTask), execute(rule))
+            }
+            assertEquals(ExecutionResult.Failure(FailureCode.InvalidTask), execute("li@text", "var shared={n:0}"))
+        }
+    }
 }

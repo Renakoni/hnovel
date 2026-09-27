@@ -21,11 +21,13 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
     private val runner: RuleTaskRunner, private val trace: ContentTrace = ContentTrace.None,
     private val discoveryEnabled: Boolean = definition.enabledExplore) : AutoCloseable {
     internal val spec = RuleSourceDefinition(definition)
+    private val bookUrlRule = ":\\A(?:${spec.bookUrlPattern})\\z"
     private val store = RuleBookStore(session, authority, identity)
     private val previewDocuments = DiscoveryPreviewDocuments()
     internal fun clearDiscoveryPreviews() = previewDocuments.clear()
     private val serial = Mutex()
     private var previewPlan: Pair<List<String>, Boolean>? = null
+    private var parallelPreviewParsing: Boolean? = null
     private var prefetchedDirectoryId: String? = null
     // Search memory belongs to a caller's query. This instance is replaced for another account or revision.
     private val searchMemory = object : LinkedHashMap<String, ScriptMemory>(8, 0.75f, true) {
@@ -82,7 +84,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         return ListPagePlan(context, url, urlField, fields, field, overview, previewLimit, request, key, previewDocuments.generation(), concurrent)
     }
 
-    /** Only the transport runs outside the source lock. Login hooks and parsing share one turn. */
+    /** Transport is independent; the caller keeps stateful hooks and parsing in one source turn. */
     private suspend fun ListPagePlan.read(): suspend () -> RuleListResult {
         val cached = key?.takeIf { generation == previewDocuments.generation() && previewKey(context, request) == it }
             ?.let(previewDocuments::get)
@@ -121,8 +123,8 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
 
     internal suspend fun canReadPreviewsConcurrently(urls: List<String>): Boolean = operation("discovery.previewPlan") {
         previewPlan?.takeIf { it.first == urls }?.let { return@operation it.second }
-        // Request inputs are snapshotted before dispatch. Response scripts need not be pure:
-        // their hook, row state and library evaluation still run together under serial.
+        // Request inputs are snapshotted before dispatch. Stateful response scripts still
+        // keep their hook, row state and library evaluation together under serial.
         val result = try { evaluation().discoveryReadPlan(urls, spec.header, emptyList()) }
         catch (failure: SourceContentException) {
             if (failure.code == ContentError.Unavailable) throw failure
@@ -130,6 +132,22 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         }
         previewPlan = urls.toList() to result
         result
+    }
+
+    private suspend fun canParsePreviewsConcurrently(): Boolean {
+        parallelPreviewParsing?.let { return it }
+        val result = spec.library == null && spec.loginCheck.isBlank() &&
+            spec.explore.string("bookList").isNotBlank() && canDeferBookFields(spec.explore) && try {
+                evaluation().discoveryReadPlan(listOf("/"), "", listOf(
+                    spec.explore.string("bookList").removePrefix("-").removePrefix("+"),
+                    spec.explore.string("name"), spec.explore.string("bookUrl"), spec.explore.string("nextPageUrl"),
+                    bookUrlRule.takeIf { spec.bookUrlPattern.isNotBlank() }.orEmpty()))
+            } catch (failure: SourceContentException) {
+                if (failure.code == ContentError.Unavailable) throw failure
+                false
+            }
+        parallelPreviewParsing = result
+        return result
     }
 
     /** Prepare the complete independent group before any read. A generated POST or interactive
@@ -152,6 +170,9 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
                     request.browser?.let { options -> options.interactive || options.html != null || options.webCookie != null ||
                         options.script.isNotBlank() || options.sourceRegex.isNotBlank() || options.overrideUrl || options.verificationCode } == true
             } == true }) return@operation emptyList()
+            val parallelParsing = canParsePreviewsConcurrently()
+            trace.record(ContentTraceEvent("concurrency", "ruleExplore", 0, plans.size,
+                result = if (parallelParsing) "ParallelParsing" else "SerialParsing"))
             plans.mapIndexed { index, prepared ->
                 var first = true
                 val load: suspend () -> RuleListResult = {
@@ -161,7 +182,10 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
                             first = false
                             val plan = prepared.getOrThrow()
                             val finish = plan.read()
-                            operation("ruleExplore") { finish() }
+                            if (parallelParsing) {
+                                plan.context.readOnly = true
+                                finish()
+                            } else operation("ruleExplore") { finish() }
                         }
                     } }
                 }
@@ -396,9 +420,19 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
     private suspend fun booksFromPage(context: RuleEvaluation, document: PageDocument, fields: JsonObject,
         field: String, overview: Boolean = false, previewLimit: Int? = null): List<RuleBook> {
         val rule = fields.string("bookList")
-        val isBookUrl = spec.bookUrlPattern.isNotBlank() && context.value(":\\A(?:${spec.bookUrlPattern})\\z",
+        val isBookUrl = spec.bookUrlPattern.isNotBlank() && context.value(bookUrlRule,
             RuleValue.Text(document.url), "bookUrlPattern", OutputKind.Elements).items().isNotEmpty()
         if (rule.isBlank() || isBookUrl) {
+            if (context.readOnly) {
+                // A list can redirect to a detail page with stateful information rules. Only an
+                // actual match re-enters the original serialized path; other lists stay independent.
+                trace.record(ContentTraceEvent("concurrency", field, 0, result = "SerialDetailFallback"))
+                return operation(field) {
+                    context.readOnly = false
+                    try { booksFromPage(context, document, fields, field, overview, previewLimit) }
+                    finally { context.readOnly = true }
+                }
+            }
             val id = sourceLink(document.url, document.url)
             if (overview && spec.information.string("init").isBlank() && canDeferBookFields(spec.information)) {
                 val row = context.fork(bookId = id)
@@ -447,11 +481,16 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             }
         }
         val ordered = (if (!lightweight && rule.startsWith('-')) books.reversed() else books).distinctBy { it.id }
-        store.write(ordered.mapNotNull { book ->
-            val old = store.read(book.id)
-            if (old?.informationLoaded != true || old.revision != identity.revision)
-                BookRecord(identity.revision, book, preview = previews[book.id]).takeUnless { it == old } else null
-        })
+        // Parallel previews may finish after a full information load. Check and commit together
+        // so a late preview cannot replace that richer record or write after source retirement.
+        currentCoroutineContext().ensureActive()
+        authority.authorized(identity) {
+            store.write(ordered.mapNotNull { book ->
+                val old = store.read(book.id)
+                if (old?.informationLoaded != true || old.revision != identity.revision)
+                    BookRecord(identity.revision, book, preview = previews[book.id]).takeUnless { it == old } else null
+            })
+        }
         return ordered
     }
 
