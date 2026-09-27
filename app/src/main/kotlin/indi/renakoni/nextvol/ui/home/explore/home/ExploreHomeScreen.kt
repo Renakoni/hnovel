@@ -97,7 +97,7 @@ fun ExploreHomeScreen(
                         // A keyed trailing spacer would anchor the empty list when the first feed arrives.
                         LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 80.dp)) {
                             content.error?.let { error -> item(key = "error") {
-                                DiscoveryFailure(error, onRefresh, onManageSources, back = null, field = content.errorField, permission = content.errorPermission, diagnostic = content.errorDiagnostic)
+                                DiscoveryFailure(error, onRefresh, onManageSources, back = null, field = content.errorField, permission = content.errorPermission, diagnostic = content.errorDiagnostic, httpStatus = content.errorHttpStatus)
                             } }
                             items(content.filters, key = { "input:" + it.id }) { filter ->
                                 Column(Modifier.padding(horizontal = 16.dp)) {
@@ -194,7 +194,7 @@ private fun ExploreRowSection(
                         DiscoveryFailure(failure.error,
                             if (row.previewRetryAvailable && onRetryPreview != null) ({ onRetryPreview(row) }) else null,
                             onManageSources, back = null, field = failure.field, permission = failure.permission,
-                            diagnostic = row.diagnosticFailure)
+                            diagnostic = row.diagnosticFailure, httpStatus = row.httpStatus)
                     }
                     else -> Text(stringResource(R.string.discovery_preview_empty), Modifier.padding(16.dp),
                         style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)

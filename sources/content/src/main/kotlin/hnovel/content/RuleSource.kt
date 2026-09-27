@@ -56,9 +56,11 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             throw SourceContentException(ContentError.Storage, "discovery.$key")
     }
 
-    internal suspend fun discoveryPage(context: RuleEvaluation, url: String): List<RuleBook> =
-        booksFromPage(context, fetch(context, url, "exploreUrl",
-            acceptErrorResponse = spec.explore.string("bookList").isScriptRule()), spec.explore, "ruleExplore", overview = true)
+    internal suspend fun discoveryPage(context: RuleEvaluation, url: String): List<RuleBook> {
+        val document = fetch(context, url, "exploreUrl", acceptErrorResponse = spec.explore.string("bookList").isScriptRule())
+        return booksFromPage(context, document, spec.explore, "ruleExplore", overview = true)
+            .also { checkEmptyResponse(it, document, "ruleExplore.bookList") }
+    }
 
     internal fun listSession(fields: JsonObject, field: String,
         load: suspend (Int, String?, ScriptMemory) -> RuleListResult) =
@@ -109,6 +111,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         // Optional continuations must distinguish that empty output from a real repeated link.
         val next = if (rule.isBlank()) null else context.text(rule, document.input(), "$field.nextPageUrl").trim()
             .takeIf { it.isNotBlank() && it != "null" }?.let { sourceLink(document.url, it) }
+        if (next == null) checkEmptyResponse(books, document, "$field.bookList")
         if (responseKey != null && books.isNotEmpty() &&
             document.successfulResponse && document.url == request.url) {
             // A response may establish cookies, but later rule side effects must not rebind its identity.
@@ -403,6 +406,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val document = fetch(context, spec.searchUrl, "searchUrl",
             acceptErrorResponse = spec.search.string("bookList").isScriptRule())
         booksFromPage(context, document, spec.search, "ruleSearch")
+            .also { checkEmptyResponse(it, document, "ruleSearch.bookList") }
     }
 
     /** Executes a selected discovery URL through the same production list pipeline as search. */
@@ -450,7 +454,9 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             val record = saveInformation(id, BookRecord(identity.revision, RuleBook(id, state = context.book)), document)
             return listOf(record.book)
         }
-        val items = context.value(rule.removePrefix("-").removePrefix("+"), document.input(), "$field.bookList", OutputKind.Elements).items()
+        val items = responseRule(document.httpErrorStatus) {
+            context.value(rule.removePrefix("-").removePrefix("+"), document.input(), "$field.bookList", OutputKind.Elements).items()
+        }
         val lightweight = overview && canDeferBookFields(fields)
         val books = mutableListOf<RuleBook>()
         val previews = mutableMapOf<String, BookPreview>()
@@ -890,25 +896,28 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         if (spec.loginCheck.isBlank()) {
             if (!acceptErrorResponse) checkStatus(response.status, field, response.kind == ResponseKind.BrowserDocument)
             return PageDocument(response.text(), response.finalUrl, inline, context.baseUrl,
-                response.status in 200..299 || response.status == 0 && response.kind == ResponseKind.BrowserDocument)
+                response.status in 200..299 || response.status == 0 && response.kind == ResponseKind.BrowserDocument,
+                httpErrorStatus(response.status))
         }
         // The pinned hook receives and returns StrResponse, including retry responses from java.connect.
         val snapshot = response.scriptSnapshot(binary = false)
         // Only this hook may explicitly re-execute the request it checks; the refetch does not run the hook again.
         context.currentRequest = request
-        val checked = try {
+        val checked = try { responseRule(httpErrorStatus(response.status)) {
             context.script("""
                 result=host.call('response.view',JSON.parse(result));
                 result=eval(${JsonPrimitive(scriptBody(spec.loginCheck))});
                 JSON.stringify({body:result.getBody(),url:result.getUrl(),status:result.code(),
                     browserDocument:typeof result.isBrowserDocument==='function' && result.isBrowserDocument()});
             """.trimIndent(), RuleValue.Text(snapshot.toString()), "loginCheckJs").text()
-        } finally { context.currentRequest = null }
+        } } finally { context.currentRequest = null }
         val value = Json.parseToJsonElement(checked).jsonObject
-        if (!acceptErrorResponse) checkStatus(value.getValue("status").jsonPrimitive.int, "loginCheckJs", value["browserDocument"]?.jsonPrimitive?.boolean == true)
+        val status = value.getValue("status").jsonPrimitive.int
+        if (!acceptErrorResponse) checkStatus(status, "loginCheckJs", value["browserDocument"]?.jsonPrimitive?.boolean == true)
         val finalUrl = sourceLink(response.finalUrl, value.getValue("url").jsonPrimitive.content)
         context.baseUrl = if (inline) url else finalUrl
-        return PageDocument(value.getValue("body").jsonPrimitive.content, finalUrl, inline, context.baseUrl)
+        return PageDocument(value.getValue("body").jsonPrimitive.content, finalUrl, inline, context.baseUrl,
+            httpErrorStatus = httpErrorStatus(status))
     }
 
     private fun verification(failure: BrokerResult.Failure): SourceVerification? {
@@ -958,9 +967,24 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         // explicit login request establishes an authentication failure for this account.
         if (status == 401 && (field == "loginUrl" || field.startsWith("loginUi."))) {
             authority.authorized(identity) { session.write(StorageRequest(StorageArea.Account, "login/status", "required")) }
-            throw SourceContentException(ContentError.LoginRequired, field)
+            throw SourceContentException(ContentError.LoginRequired, field, httpStatus = httpErrorStatus(status))
         }
-        if (status !in 200..299) throw SourceContentException(ContentError.Network, field)
+        if (status !in 200..299) throw SourceContentException(ContentError.Network, field, httpStatus = httpErrorStatus(status))
+    }
+
+    private fun httpErrorStatus(status: Int) = status.takeIf { it in 100..599 && it !in 200..299 }
+
+    private fun checkEmptyResponse(books: List<RuleBook>, document: PageDocument, field: String) {
+        if (books.isEmpty()) document.httpErrorStatus?.let { checkStatus(it, field) }
+    }
+
+    /** Scripts may recover from rejected responses. Keep the response context only when parsing fails;
+     * syntax, permission, cancellation and resource failures retain their own recovery path. */
+    private suspend fun <T> responseRule(status: Int?, block: suspend () -> T): T = try { block() }
+    catch (failure: SourceContentException) {
+        if (status != null && failure.code == ContentError.InvalidRule && failure.diagnostic?.code == hnovel.execution.FailureCode.ScriptRuntime)
+            throw SourceContentException(ContentError.Network, failure.field, diagnostic = failure.diagnostic, httpStatus = status)
+        throw failure
     }
     private suspend fun links(context: RuleEvaluation, rule: String, document: PageDocument, field: String): List<String> =
         if (rule.isBlank()) emptyList() else context.value(rule, document.input(), field, OutputKind.TextList).items()

@@ -30,6 +30,7 @@ class PixivPresentationTest {
             if (!cache.get('pixivPresentationTest')) {
                 cache.put('pixivUid','12345');
                 cache.put('pixivCookie','PHPSESSID=12345_test');
+                if ($localUrls) cookie.setCookie(baseUrl, 'PHPSESSID=12345_test');
                 cache.put('pixivCsrfToken','test-token');
                 cache.put('checkTimes','1');
                 let settings = setDefaultSettings();

@@ -873,6 +873,9 @@
     "subtitle": "小说与同人 · 需登录 Pixiv，内容以账号权限为准",
     "index": 7,
     "host": "www.pixiv.net",
-    "available": true
+    "available": true,
+    "replaces": [
+      "0267df1bae9b850f7f40439759aa71886e08254613bea17da79ff2240af7f1a5"
+    ]
   }
 ]

@@ -34,8 +34,12 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
         private set
     var diagnosticFailure: hnovel.execution.ExecutionResult.Failure? = null
         private set
+    var httpStatus: Int? = null
+        private set
     private val previewDiagnostics = java.util.concurrent.ConcurrentHashMap<String, hnovel.execution.ExecutionResult.Failure>()
     fun previewDiagnostic(id: String) = previewDiagnostics[id]
+    private val previewHttpStatuses = java.util.concurrent.ConcurrentHashMap<String, Int>()
+    fun previewHttpStatus(id: String) = previewHttpStatuses[id]
     private var current: RuleDiscoveryCatalog? = null
     private data class PageKey(val target: String, val filters: Map<String, String>)
     private val pages = object : LinkedHashMap<PageKey, RuleListSession>(8, 0.75f, true) {
@@ -55,6 +59,7 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
     override suspend fun feed() = feedUpdates().last()
     override fun feedUpdates() = flow<Result<List<DiscoverySection>, DiscoveryError>> {
         previewDiagnostics.clear()
+        previewHttpStatuses.clear()
         val definition = request { session.catalog(homepage = true) }
             .getOrElse { emit(Err(it)); return@flow }
         current = definition
@@ -129,6 +134,7 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
         allowInteraction: Boolean = true,
         load: suspend () -> RuleListPage = { session.preview(url, values) }): DiscoverySection {
         previewDiagnostics.remove(section.id)
+        previewHttpStatuses.remove(section.id)
         return try {
             val page = when {
                 recovery == null -> load()
@@ -143,6 +149,7 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (failure: SourceContentException) {
             failure.diagnostic?.let { previewDiagnostics[section.id] = it }
+            failure.httpStatus?.let { previewHttpStatuses[section.id] = it }
             section.copy(previewLoading = false, previewFailure = DiscoveryPreviewFailure(failure.discoveryError(),
                 failure.field, failure.denial?.let { DiscoveryPermission(it.origin, it.kind.name) }))
         }
@@ -198,13 +205,14 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
 
     private fun book(book: RuleBook) = DiscoveryBook(book.id, book.title)
     private suspend fun <T> request(retry: Boolean = true, block: suspend () -> T): Result<T, DiscoveryError> = try {
-        failureField = null; permissionFailure = null; diagnosticFailure = null
+        failureField = null; permissionFailure = null; diagnosticFailure = null; httpStatus = null
         Ok(if (recovery == null || !retry) block() else recovery.execute(block))
     }
     catch (cancelled: CancellationException) { throw cancelled }
     catch (failure: SourceContentException) {
         failureField = failure.field
         diagnosticFailure = failure.diagnostic
+        httpStatus = failure.httpStatus
         permissionFailure = failure.denial?.let { DiscoveryPermission(it.origin, it.kind.name) }
         Err(failure.discoveryError())
     }

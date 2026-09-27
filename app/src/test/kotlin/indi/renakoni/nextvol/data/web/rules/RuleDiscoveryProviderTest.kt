@@ -37,6 +37,72 @@ import org.robolectric.annotation.Config
 class RuleDiscoveryProviderTest {
     @get:Rule val directory = TemporaryFolder()
 
+    @Test fun httpFailuresStayWithTheirSectionsAndClearAfterPreviewAndPageRecovery() = runBlocking {
+        for (hook in listOf("", "result")) RuleSourceFixture().use { fixture ->
+            val recovered = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+            fixture.server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
+                override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest): okhttp3.mockwebserver.MockResponse {
+                    val path = request.requestUrl!!.encodedPath
+                    val status = if (path in recovered) 200 else when (path) { "/bad" -> 400; "/empty" -> 403; else -> 200 }
+                    val body = when (status) {
+                        400 -> """{"error":true,"body":[]}"""
+                        403 -> """{"error":"empty","body":[]}"""
+                        else -> """{"body":{"page":{"items":"<li><h2>Recovered</h2><a href='/book/one'>Read</a></li>"}}}"""
+                    }
+                    return okhttp3.mockwebserver.MockResponse().setResponseCode(status).setBody(body)
+                }
+            }
+            val rule = fixture.source { raw -> JsonObject(raw + mapOf(
+                "exploreUrl" to JsonPrimitive("Bad::/bad\nEmpty::/empty\nGood::/good"),
+                "homepageModules" to JsonPrimitive("""[{"key":"bad","type":"ranking","title":"Bad","url":"/bad"},
+                    {"key":"empty","type":"ranking","title":"Empty","url":"/empty"},
+                    {"key":"good","type":"ranking","title":"Good","url":"/good"}]"""),
+                "loginCheckJs" to JsonPrimitive(hook),
+                "ruleExplore" to buildJsonObject {
+                    put("bookList", "<js>var data=JSON.parse(result);data.error==='empty' ? [] : data.body.page.items</js>li")
+                    put("name", "h2@text"); put("bookUrl", "a@href")
+                }
+            )) }
+            val id = Identifier("rules", rule.definition.sourceId)
+            val registry = WebSourceRegistry()
+            registry.register(RuleWebBookDataSource(id, rule), SourceMetadata(WebDataSourceItem(id, "Fixture", "Tests"),
+                setOf(SourceCapability.Categories, SourceCapability.Explore)))
+            try {
+                val discovery = (registry.resolve(id) as SourceResolution.Ready).runtime.discovery!!.forSession("http")
+                val sections = discovery.feed().get()!!.associateBy { it.title }
+                val bad = sections.getValue("Bad")
+                val empty = sections.getValue("Empty")
+                assertEquals(DiscoveryError.Network, bad.previewFailure!!.error)
+                assertEquals(400, bad.httpStatus)
+                assertEquals(hnovel.execution.FailureCode.ScriptRuntime, bad.diagnosticFailure?.code)
+                assertEquals(DiscoveryError.Network, empty.previewFailure!!.error)
+                assertEquals(403, empty.httpStatus)
+                assertNull(empty.diagnosticFailure)
+                assertEquals("Recovered", sections.getValue("Good").books.single().title)
+                assertNull(sections.getValue("Good").httpStatus)
+                assertNull(discovery.httpStatus)
+
+                recovered += "/bad"
+                val retried = discovery.preview(bad.id).get()!!
+                assertNull(retried.httpStatus)
+                assertNull(retried.previewFailure)
+                assertNull(retried.diagnosticFailure)
+                val pages = discovery.open(empty.more!!)
+                assertEquals(DiscoveryError.Network, pages.loadMore().getError())
+                assertEquals(403, pages.httpStatus)
+                recovered += "/empty"
+                assertEquals("Recovered", pages.loadMore().get()!!.books.single().title)
+                assertNull(pages.httpStatus)
+                assertNull(discovery.preview(empty.id).get()!!.httpStatus)
+
+                val search = indi.renakoni.nextvol.data.explore.searchFailure(
+                    SourceContentException(ContentError.Network, "ruleSearch.bookList", httpStatus = 403))
+                assertEquals(DiscoveryError.Network, search.error)
+                assertEquals(403, search.httpStatus)
+            } finally { registry.unregister(id) }
+        }
+    }
+
     @Test fun safeCallDiagnosticsFollowTheirPreviewAndResultSessionAndClearAfterRecovery() = runBlocking {
         RuleSourceFixture().use { fixture ->
             var fail = true

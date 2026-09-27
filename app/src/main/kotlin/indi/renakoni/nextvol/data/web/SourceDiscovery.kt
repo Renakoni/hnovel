@@ -21,7 +21,7 @@ data class SourceDiscoveryBook(val id: SourceBookId, val title: String, val auth
 data class SourceDiscoverySection(val id: String, val title: String, val books: List<SourceDiscoveryBook>,
     val more: SourceDiscoveryTarget?, val categoryId: String? = null, val previewFailure: DiscoveryPreviewFailure? = null,
     val diagnosticFailure: hnovel.execution.ExecutionResult.Failure? = null, val previewLoading: Boolean = false,
-    val previewRetryAvailable: Boolean = false)
+    val previewRetryAvailable: Boolean = false, val httpStatus: Int? = null)
 data class SourceDiscoveryCategory(val id: String, val title: String, val target: SourceDiscoveryTarget)
 data class SourceDiscoveryPage(val books: List<SourceDiscoveryBook>, val nextCursor: String?)
 data class SourceDiscoveryCatalog(val categories: List<SourceDiscoveryCategory>, val filters: List<DiscoveryFilter>,
@@ -36,6 +36,7 @@ class SourceDiscovery internal constructor(private val runtime: SourceRuntime, p
     val failureField get() = provider.failureField
     val permissionFailure get() = provider.permissionFailure
     val diagnosticFailure get() = (provider as? indi.renakoni.nextvol.data.web.rules.RuleDiscoveryProvider)?.diagnosticFailure
+    val httpStatus get() = (provider as? indi.renakoni.nextvol.data.web.rules.RuleDiscoveryProvider)?.httpStatus
 
     fun forSession(id: String, values: Map<String, String> = emptyMap(), environment: DiscoveryEnvironment = DiscoveryEnvironment()): SourceDiscovery {
         runtime.checkAvailable()
@@ -113,7 +114,8 @@ class SourceDiscovery internal constructor(private val runtime: SourceRuntime, p
     private fun bind(section: DiscoverySection) = SourceDiscoverySection(section.id, section.title,
         section.books.map(::bind), section.more?.let(::target), section.categoryId, section.previewFailure,
         (provider as? indi.renakoni.nextvol.data.web.rules.RuleDiscoveryProvider)?.previewDiagnostic(section.id), section.previewLoading,
-        provider is DiscoveryPreviewProvider)
+        provider is DiscoveryPreviewProvider,
+        (provider as? indi.renakoni.nextvol.data.web.rules.RuleDiscoveryProvider)?.previewHttpStatus(section.id))
     private fun bind(catalog: DiscoveryCatalog) = SourceDiscoveryCatalog(catalog.categories.map {
         SourceDiscoveryCategory(it.id, it.title, target(it.target))
     }, catalog.filters.map { if (it is DiscoveryFilter.Choice) it.copy(options = it.options.toMap()) else it },
@@ -129,6 +131,7 @@ class DiscoverySession internal constructor(private val source: SourceDiscovery,
     val failureField get() = source.failureField
     val permissionFailure get() = source.permissionFailure
     val diagnosticFailure get() = source.diagnosticFailure
+    val httpStatus get() = source.httpStatus
     private val mutex = Mutex()
     private var values: Map<String, String> = emptyMap()
     private var cursor: String? = null
