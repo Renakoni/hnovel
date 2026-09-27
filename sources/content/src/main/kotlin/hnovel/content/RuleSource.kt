@@ -109,9 +109,10 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val rule = fields.string("nextPageUrl")
         // Ordinary URL rules intentionally fall back to the current URL on empty output.
         // Optional continuations must distinguish that empty output from a real repeated link.
-        val next = if (rule.isBlank()) null else context.text(rule, document.input(), "$field.nextPageUrl").trim()
-            .takeIf { it.isNotBlank() && it != "null" }?.let { sourceLink(document.url, it) }
-        if (next == null) checkEmptyResponse(books, document, "$field.bookList")
+        val next = responseRule(document.httpErrorStatus.takeIf { books.isEmpty() }) {
+            if (rule.isBlank()) null else context.text(rule, document.input(), "$field.nextPageUrl").trim()
+                .takeIf { it.isNotBlank() && it != "null" }?.let { sourceLink(document.url, it) }
+        }
         if (responseKey != null && books.isNotEmpty() &&
             document.successfulResponse && document.url == request.url) {
             // A response may establish cookies, but later rule side effects must not rebind its identity.
@@ -121,7 +122,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
                     previewDocuments.put(responseKey, document, context.requestUserAgent, generation)
             }
         }
-        return RuleListResult(books, document.url, next)
+        return RuleListResult(books, document.url, next, document.httpErrorStatus)
     }
 
     internal suspend fun canReadPreviewsConcurrently(urls: List<String>): Boolean = operation("discovery.previewPlan") {

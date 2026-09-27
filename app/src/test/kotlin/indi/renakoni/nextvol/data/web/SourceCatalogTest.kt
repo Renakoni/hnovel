@@ -137,10 +137,10 @@ class SourceCatalogTest {
         assertEquals(free.map { it.key }, raw.map { it.jsonObject.getValue("bookSourceUrl").jsonPrimitive.content })
     }
 
-    @Test fun bundledRepairsMatchOnlyTheirPublishedOriginalDigests() {
-        for (entry in allEntries().filter { it.replaces.isNotEmpty() }) {
+    @Test fun bundledRepairsMatchOnlyTheirKnownDigests() {
+        for (entry in allEntries().filter { it.replaces.isNotEmpty() }) for (digest in entry.replaces) {
             val original = SourceDefinition("installed", "legado", LEGADO_PROFILE, entry.key, "Renamed",
-                true, true, ImportOrigin(ImportOrigin.Kind.Paste), entry.replaces.single(), 1, "{}")
+                true, true, ImportOrigin(ImportOrigin.Kind.Paste), digest, 1, "{}")
             assertEquals(JsonArray(listOf(raw(entry))).toString(), catalog.replacement(original))
             assertNull(catalog.replacement(original.copy(contentDigest = "user-edited")))
             assertNull(catalog.replacement(original.copy(importKey = "https://unrelated.invalid/")))

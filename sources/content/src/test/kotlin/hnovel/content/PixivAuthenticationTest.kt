@@ -104,6 +104,76 @@ class PixivAuthenticationTest {
         }
     }
 
+    @Test fun catalogUsesLiveCookiesAfterCacheExpiryAccountChangesOrLogout() = runBlocking {
+        for (storedCookie in listOf(null, "PHPSESSID=99999_stale"))
+            for (currentCookie in listOf("PHPSESSID=12345_current", "PHPSESSID=0_guest", ""))
+                RuleSourceFixture(browser()).use { fixture ->
+                    fixture.source(profile = EXTENSION_PROFILE) { definition(fixture) }.use { source ->
+                        val session = session(fixture, source)
+                        if (currentCookie.isNotEmpty()) session.setCookie(fixture.server.url("/").toString(), currentCookie)
+                        if (storedCookie != null) cache(session, "pixivCookie", storedCookie)
+                        cache(session, "pixivUid", "99999")
+                        cache(session, "pixivCsrfToken", "stale-token")
+                        cache(session, "pixivHeaders", """{"Cookie":"PHPSESSID=99999_stale"}""")
+                        val discovery = source.openDiscovery("restored-account")
+                        val catalog = discovery.catalog()
+                        val authenticated = currentCookie == "PHPSESSID=12345_current"
+                        assertEquals("stored=$storedCookie current=$currentCookie",
+                            if (authenticated) "12345" else null, cached(session, "pixivUid"))
+                        assertEquals(if (authenticated) currentCookie else null, cached(session, "pixivCookie"))
+                        assertNull(cached(session, "pixivCsrfToken"))
+                        assertNull(cached(session, "pixivHeaders"))
+                        if (authenticated) assertNotNull(discovery.concurrentPreviews(
+                            catalog.rows.filter { it.url.contains("/novels/bookmarks?") }.map { it.url }, emptyMap()))
+                        assertEquals("Account restoration must not require a response hook", 0, fixture.server.requestCount)
+                    }
+                }
+    }
+
+    @Test fun readingActionsRebuildHeadersAfterLoginChangesCredentials() = runBlocking {
+        val post = java.util.concurrent.atomic.AtomicReference<RecordedRequest>()
+        RuleSourceFixture(browser { session, request ->
+            session.setCookie(request.url.substringBefore("/accounts/"), "PHPSESSID=12345_fresh", replace = true)
+        }).use { fixture ->
+            fixture.server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse = when (request.path) {
+                    "/ajax/settings/self" -> {
+                        val authenticated = request.getHeader("Cookie").orEmpty().contains("PHPSESSID=12345_fresh")
+                        MockResponse().setResponseCode(if (authenticated) 200 else 401)
+                            .setBody(if (authenticated) """{"error":false,"body":{}}""" else """{"error":true,"body":{}}""")
+                    }
+                    "/ajax/novels/bookmarks/add" -> {
+                        post.set(request)
+                        MockResponse().setBody("""{"error":false,"body":{}}""")
+                    }
+                    else -> MockResponse().setBody("""<html>token\":\"$token</html>""")
+                }
+            }
+            fixture.source(profile = EXTENSION_PROFILE) { JsonObject(definition(fixture) +
+                ("loginUi" to JsonPrimitive("""[
+                    {"name":"login","type":"button","action":"login()"},
+                    {"name":"post","type":"button","action":"getPostBody('${fixture.server.url("/ajax/novels/bookmarks/add")}', '{}')"}
+                ]""")))
+            }.use { source ->
+                val session = session(fixture, source)
+                session.setCookie(fixture.server.url("/").toString(), "PHPSESSID=11111_expired")
+                cache(session, "pixivCookie", "PHPSESSID=11111_expired")
+                cache(session, "pixivUid", "11111")
+                cache(session, "pixivCsrfToken", "expired-token")
+                cache(session, "pixivHeaders", """{"Cookie":"PHPSESSID=11111_expired","x-csrf-token":"expired-token"}""")
+                source.openDiscovery("reading-action").catalog()
+                source.openLoginSession().use { panel ->
+                    val form = panel.loginForm()
+                    for (name in listOf("login", "post"))
+                        panel.login(form.values, form.fields.single { it.name == name }.id, form.id)
+                }
+                assertTrue(post.get().getHeader("Cookie").orEmpty().contains("PHPSESSID=12345_fresh"))
+                assertEquals(token, post.get().getHeader("x-csrf-token"))
+                assertEquals(userAgent, post.get().getHeader("User-Agent"))
+            }
+        }
+    }
+
     @Test fun expiredSessionsCanOpenLoginAndRefreshCredentialsUsingValidBrowserHeaders() = runBlocking {
         val openings = AtomicInteger()
         val selfRequests = AtomicInteger()

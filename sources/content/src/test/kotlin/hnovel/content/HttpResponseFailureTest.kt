@@ -80,6 +80,29 @@ class HttpResponseFailureTest {
         }
     }
 
+    @Test fun rejectedEmptyPagesKeepTheirStatusWhenTheContinuationParserFails() = runBlocking {
+        for (search in listOf(false, true)) RuleSourceFixture().use { fixture ->
+            respond(fixture, 403)
+            fixture.source { raw ->
+                val paged = JsonObject(fields("@js:[]") +
+                    ("nextPageUrl" to JsonPrimitive("@js:JSON.parse(result).body.page.next")))
+                JsonObject(rules(raw, "@js:[]") + mapOf("ruleSearch" to paged, "ruleExplore" to paged))
+            }.use { source ->
+                val pages = if (search) source.openSearchPages("book")
+                    else source.openDiscovery("rejected-continuation").openPages("/list", emptyMap())
+                val failure = runCatching { pages.page(1) }.exceptionOrNull() as SourceContentException
+                assertEquals(ContentError.Network, failure.code)
+                assertEquals(403, failure.httpStatus)
+                assertEquals(if (search) "ruleSearch.nextPageUrl" else "ruleExplore.nextPageUrl", failure.field)
+                assertEquals(FailureCode.ScriptRuntime, failure.diagnostic?.code)
+                respond(fixture, 200, """{"body":{"page":{"next":""}}}""")
+                val recovered = pages.page(1)
+                assertTrue(recovered.books.isEmpty())
+                assertNull(recovered.nextCursor)
+            }
+        }
+    }
+
     @Test fun successfulEmptyPagesAndBrokenSuccessfulRulesKeepTheirMeaning() = runBlocking {
         RuleSourceFixture().use { fixture ->
             respond(fixture, 200)
@@ -93,6 +116,34 @@ class HttpResponseFailureTest {
                 assertEquals(ContentError.InvalidRule, failure.code)
                 assertEquals(FailureCode.ScriptRuntime, failure.diagnostic?.code)
                 assertNull(failure.httpStatus)
+            }
+        }
+    }
+
+    @Test fun rejectedEmptyPagesCannotEndPaginationWithRepeatedContinuations() = runBlocking {
+        for (previousPage in listOf(false, true)) RuleSourceFixture().use { fixture ->
+            val rejected = java.util.concurrent.atomic.AtomicBoolean(true)
+            fixture.server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse {
+                    val first = previousPage && request.path == "/list"
+                    val next = if (first) "/second" else if (rejected.get()) "/list" else ""
+                    return MockResponse().setResponseCode(if (first || !rejected.get()) 200 else 403)
+                        .setBody("""{"next":"$next"}""")
+                }
+            }
+            fixture.source { raw -> JsonObject(rules(raw, "@js:[]") +
+                ("ruleExplore" to JsonObject(fields("@js:[]") +
+                    ("nextPageUrl" to JsonPrimitive("@js:JSON.parse(result).next")))))
+            }.use { source ->
+                val pages = source.openDiscovery("rejected-cycle").openPages("/list", emptyMap())
+                val cursor = if (previousPage) pages.page().nextCursor.also { assertNotNull(it) } else null
+                val failure = runCatching { pages.page(cursor) }.exceptionOrNull() as? SourceContentException
+                assertEquals(ContentError.Network, failure?.code)
+                assertEquals(403, failure?.httpStatus)
+                rejected.set(false)
+                val recovered = pages.page(cursor)
+                assertTrue(recovered.books.isEmpty())
+                assertNull(recovered.nextCursor)
             }
         }
     }
@@ -162,7 +213,7 @@ class HttpResponseFailureTest {
     }
 
     @Test fun recoveredListsDoNotHideLaterBookFieldErrors() = runBlocking {
-        RuleSourceFixture().use { fixture ->
+        for (field in listOf("name", "nextPageUrl")) RuleSourceFixture().use { fixture ->
             val original = fixture.server.dispatcher
             fixture.server.dispatcher = object : Dispatcher() {
                 override fun dispatch(request: RecordedRequest) = if (request.path == "/list")
@@ -170,11 +221,11 @@ class HttpResponseFailureTest {
             }
             fixture.source { raw -> JsonObject(rules(raw, "<js>java.ajax('/search')</js>li") +
                 ("ruleSearch" to JsonObject(fields("<js>java.ajax('/search')</js>li") +
-                    ("name" to JsonPrimitive("@js:throw 'broken title rule'")))))
+                    (field to JsonPrimitive("@js:throw 'broken rule'")))))
             }.use { source ->
-                val failure = runCatching { source.search("book") }.exceptionOrNull() as SourceContentException
+                val failure = runCatching { source.openSearchPages("book").page(1) }.exceptionOrNull() as SourceContentException
                 assertEquals(ContentError.InvalidRule, failure.code)
-                assertEquals("ruleSearch.name", failure.field)
+                assertEquals("ruleSearch.$field", failure.field)
                 assertNull(failure.httpStatus)
             }
         }
