@@ -1,5 +1,10 @@
 package indi.renakoni.nextvol.sourceexecution
 
+import android.content.ComponentName
+import android.content.Context
+import android.content.ContextWrapper
+import android.content.Intent
+import android.content.ServiceConnection
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import hnovel.execution.*
@@ -11,9 +16,11 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.serialization.json.Json
 import org.junit.Assert.*
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicInteger
 
 /** The barriers are reached by scripts inside real isolated Binder workers, not a mock executor. */
@@ -39,7 +46,22 @@ class IsolatedConcurrencyInstrumentedTest {
         val authority = ExecutionAuthority()
         val browser = BlockingBrowser()
         val sessions = SourceBroker(root.toPath(), browser = browser)
-        val executor = AndroidIsolatedExecutor(context, authority)
+        val bindings = ConcurrentLinkedQueue<ComponentName>()
+        val retirements = ConcurrentLinkedQueue<ComponentName>()
+        val connections = java.util.concurrent.ConcurrentHashMap<ServiceConnection, ComponentName>()
+        val executor = AndroidIsolatedExecutor(object : ContextWrapper(context) {
+            override fun getApplicationContext(): Context = this
+            override fun bindService(service: Intent, conn: ServiceConnection, flags: Int): Boolean =
+                super.bindService(service, conn, flags).also { if (it) {
+                    val component = checkNotNull(service.component)
+                    bindings.add(component)
+                    connections[conn] = component
+                } }
+            override fun unbindService(conn: ServiceConnection) {
+                super.unbindService(conn)
+                connections.remove(conn)?.let(retirements::add)
+            }
+        }, authority)
         fun source(name: String) = Source(authority.issue(name, "legado", "1", "concurrency"),
             sessions.open(SourceScope("concurrency", name, "legado"), emptyList()))
         suspend fun execute(source: Source, readOnly: Boolean = true, timeout: Long = 30000,
@@ -69,6 +91,30 @@ class IsolatedConcurrencyInstrumentedTest {
             (result as ExecutionResult.Success).output).value)
     }
 
+    @Test fun preparationIsBoundedAndExecutionReusesThePreparedConnections() = runBlocking {
+        fixture { fixture ->
+            val source = fixture.source("prepared")
+            val retired = fixture.source("retired")
+            fixture.authority.revoke(retired.identity)
+            fixture.executor.prepareIndependent(retired.identity, Int.MAX_VALUE)
+            fixture.executor.prepareIndependent(source.identity, 0)
+            assertTrue(fixture.bindings.isEmpty())
+            fixture.executor.prepareIndependent(source.identity, 1)
+            assertEquals(1, fixture.bindings.size)
+            fixture.executor.prepareIndependent(source.identity, Int.MAX_VALUE)
+            fixture.executor.prepareIndependent(source.identity, Int.MAX_VALUE)
+            val count = fixture.executor.parallelism
+            assertEquals(count, fixture.bindings.size)
+            assertTrue(fixture.bindings.all { it.className.contains("IndependentExecutionService") })
+            assertEquals(0, fixture.browser.calls.get())
+            val running = List(count) { async { fixture.execute(source) } }
+            withTimeout(25000) { repeat(count) { fixture.browser.entered.receive() } }
+            assertEquals("Execution must reuse the prepared bindings", count, fixture.bindings.size)
+            repeat(count) { fixture.browser.releases[it].complete("prepared") }
+            running.awaitAll().forEach { assertValue("prepared", it) }
+        }
+    }
+
     @Test fun independentRuleFinishesWhileSharedWorkerWaitsAndStatefulCallsStayOrdered() = runBlocking {
         fixture { fixture ->
             val source = fixture.source("same-source")
@@ -89,10 +135,40 @@ class IsolatedConcurrencyInstrumentedTest {
         }
     }
 
+    @Test fun idlePreparedWorkersRetireWhileBusyAndStatefulWorkersRemainUsable() = runBlocking {
+        fixture { fixture ->
+            val source = fixture.source("idle")
+            assertValue("stateful", fixture.execute(source, readOnly = false, rule = "@js:'stateful'"))
+            val count = minOf(2, fixture.executor.parallelism)
+            fixture.executor.prepareIndependent(source.identity, count)
+            val busy = if (count > 1) async { fixture.execute(source, timeout = 120000) } else null
+            if (busy != null) withTimeout(20000) { fixture.browser.entered.receive() }
+            val initialBindings = fixture.bindings.size
+            withTimeout(AndroidIsolatedExecutor.INDEPENDENT_IDLE_MILLIS + 20000) {
+                while (fixture.retirements.isEmpty()) delay(50)
+            }
+            assertEquals(1, fixture.retirements.size)
+            assertTrue(fixture.retirements.single().className.contains("IndependentExecutionService"))
+            assertValue("stateful", fixture.execute(source, readOnly = false, rule = "@js:'stateful'"))
+            assertEquals(initialBindings, fixture.bindings.size)
+            if (busy != null) {
+                assertFalse("An active invocation must not expire with an idle slot", busy.isCompleted)
+                fixture.browser.releases[0].complete("busy")
+                assertValue("busy", busy.await())
+            }
+            val start = fixture.browser.calls.get()
+            val resumed = List(count) { async { fixture.execute(source) } }
+            withTimeout(20000) { repeat(count) { fixture.browser.entered.receive() } }
+            assertEquals("Only the expired process needs a new binding", initialBindings + 1, fixture.bindings.size)
+            repeat(count) { fixture.browser.releases[start + it].complete("resumed") }
+            resumed.awaitAll().forEach { assertValue("resumed", it) }
+        }
+    }
+
     @Test fun poolBoundsExecutionAndCancellationOrRevocationCannotLeakPermits() = runBlocking {
         fixture { fixture ->
             val source = fixture.source("parallel-source")
-            val count = AndroidIsolatedExecutor.PARALLELISM
+            val count = fixture.executor.parallelism
             val running = List(count) { async { fixture.execute(source) } }
             withTimeout(25000) { repeat(count) { fixture.browser.entered.receive() } }
             val cancelled = async { fixture.execute(source) }
@@ -118,6 +194,7 @@ class IsolatedConcurrencyInstrumentedTest {
 
     @Test fun deadlineRetiresOnlyTheBlockedWorkerAndAnotherSourceKeepsItsResult() = runBlocking {
         fixture { fixture ->
+            assumeTrue(fixture.executor.parallelism >= 2)
             val timedSource = fixture.source("timed")
             val otherSource = fixture.source("healthy")
             val timed = async { fixture.execute(timedSource, timeout = 5000) }

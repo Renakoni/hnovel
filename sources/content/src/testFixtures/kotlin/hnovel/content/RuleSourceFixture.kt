@@ -22,18 +22,24 @@ class RuleSourceFixture(browser: BrowserExecutor? = null, private val trace: Con
     var status = 200
     var afterRun: suspend (ExecutionTask) -> Unit = {}
     var beforeRun: (ExecutionTask, ExecutionLimits) -> Unit = { _, _ -> }
+    var onPrepareIndependent: (ExecutionIdentity, Int) -> Unit = { _, _ -> }
     var imageBytes = byteArrayOf(1, 2, 3)
     var extraChapter = false
     var duplicateToc = false
-    val runner = RuleTaskRunner { identity, task, limits, bridge ->
-        beforeRun(task, limits)
-        val scripts = task.libraryCode()?.takeIf(SourceLibraryDefinition::isUrlMap)?.let { bridge.loadLibrary(it) }
-        val wire = ExecutionWire.encode(identity, task, limits, scripts).toString(Charsets.UTF_8)
-        val result = ExecutionWire.decodeResult(worker.executeSerialized(wire, HostBridge { name, args ->
-            runBlocking { bridge.call(name, args) }
-        }).toByteArray())
-        afterRun(task)
-        result
+    val runner = object : RuleTaskRunner {
+        override suspend fun prepareIndependent(identity: ExecutionIdentity, count: Int) = onPrepareIndependent(identity, count)
+
+        override suspend fun execute(identity: ExecutionIdentity, task: ExecutionTask,
+            limits: ExecutionLimits, broker: SourceExecutionBroker): ExecutionResult {
+            beforeRun(task, limits)
+            val scripts = task.libraryCode()?.takeIf(SourceLibraryDefinition::isUrlMap)?.let { broker.loadLibrary(it) }
+            val wire = ExecutionWire.encode(identity, task, limits, scripts).toString(Charsets.UTF_8)
+            val result = ExecutionWire.decodeResult(worker.executeSerialized(wire, HostBridge { name, args ->
+                runBlocking { broker.call(name, args) }
+            }).toByteArray())
+            afterRun(task)
+            return result
+        }
     }
     init {
         server.dispatcher = object : Dispatcher() {

@@ -65,6 +65,33 @@ class RuleDiscoveryConcurrencyTest {
         verifyAutomaticFailures(concurrent = true)
     }
 
+    @Test fun aFullHomepageKeepsOnlyEightWaitingWorkersAndCancelsWithoutStartingTheQueue() = runBlocking {
+        RuleSourceFixture().use { fixture -> fixture.source { definition(it, (0 until 64).map { "/module-$it" }) }.use { source ->
+            val catalog = source.openDiscovery("catalog").catalog(homepage = true)
+            val entered = Channel<Unit>(Channel.UNLIMITED)
+            val starts = AtomicInteger()
+            val page = mockk<RuleListSession> {
+                coEvery { page(1) } coAnswers {
+                    starts.incrementAndGet()
+                    entered.send(Unit)
+                    awaitCancellation()
+                }
+            }
+            val session = mockk<RuleDiscoverySession> {
+                coEvery { catalog(homepage = true) } returns catalog
+                coEvery { concurrentPreviews(any(), any()) } returns List(64) { page }
+            }
+            val pending = async { RuleDiscoveryProvider(source, session).feed() }
+            try {
+                withTimeout(3000) { repeat(8) { entered.receive() } }
+                fun descendants(job: Job): Int = job.children.sumOf { 1 + descendants(it) }
+                assertTrue("Waiting jobs must stay bounded", descendants(pending) <= 10)
+                assertEquals(8, starts.get())
+            } finally { pending.cancelAndJoin() }
+            assertEquals(8, starts.get())
+        } }
+    }
+
     @Test fun automaticVerificationDoesNotBlockTheSequentialFallback() = runBlocking {
         verifyAutomaticFailures(concurrent = false)
     }

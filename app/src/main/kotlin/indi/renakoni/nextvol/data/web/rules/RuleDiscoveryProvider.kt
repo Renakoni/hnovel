@@ -12,8 +12,6 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.last
 import kotlinx.serialization.json.Json
@@ -84,14 +82,16 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
         val remaining = entries.withIndex().drop(offset)
         if (concurrent != null) coroutineScope {
             val results = Channel<Pair<Int, DiscoverySection>>(PREVIEW_CONCURRENCY)
-            val permits = Semaphore(PREVIEW_CONCURRENCY)
+            val next = java.util.concurrent.atomic.AtomicInteger()
             try {
-                remaining.forEachIndexed { previewIndex, (index, category) ->
-                    val section = sections[index]
+                // Bound waiting coroutines as well as active reads, even for a very large catalogue.
+                repeat(minOf(PREVIEW_CONCURRENCY, remaining.size)) {
                     launch {
                         try {
-                            permits.withPermit {
-                                results.send(index to preview(section, category.url, catalog.values, allowInteraction = false) { concurrent[previewIndex].page(1) })
+                            while (true) {
+                                val previewIndex = next.getAndIncrement()
+                                val (index, category) = remaining.getOrNull(previewIndex) ?: break
+                                results.send(index to preview(sections[index], category.url, catalog.values, allowInteraction = false) { concurrent[previewIndex].page(1) })
                             }
                         } catch (cancelled: CancellationException) {
                             // Session/route retirement can cancel one read without cancelling this collector.

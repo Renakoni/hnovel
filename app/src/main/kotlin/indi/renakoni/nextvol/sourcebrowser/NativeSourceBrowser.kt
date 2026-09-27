@@ -11,6 +11,10 @@ import kotlinx.serialization.json.Json
 
 /** Host-owned admission and lifecycle. Website subrequests use Chromium's own network stack. */
 internal class NativeSourceBrowser(private val context: Context, private val networks: AndroidSourceNetworks) {
+    private val slots = synchronized(NativeSourceBrowser::class.java) {
+        sharedSlots ?: NativeBrowserSlots(pageLimit(context.getSystemService(android.app.ActivityManager::class.java).isLowRamDevice))
+            .also { sharedSlots = it }
+    }
     private class Connection(val context: Context, val profile: String, val route: SourceNetworkRoute?,
         val session: SourceSession?) : ServiceConnection {
         val ready = CompletableDeferred<IBrowserService>()
@@ -45,7 +49,8 @@ internal class NativeSourceBrowser(private val context: Context, private val net
     companion object {
         // All instances share the one manifest process, including instrumentation hosts.
         internal const val PAGE_LIMIT = BrokerLimits.DEFAULT_CONCURRENCY
-        private val slots = NativeBrowserSlots(PAGE_LIMIT)
+        internal fun pageLimit(lowRamDevice: Boolean) = if (lowRamDevice) 2 else PAGE_LIMIT
+        private var sharedSlots: NativeBrowserSlots? = null
         private var connection: Connection? = null
         private suspend fun disconnect() {
             val old = connection ?: return

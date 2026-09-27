@@ -173,6 +173,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             val parallelParsing = canParsePreviewsConcurrently()
             trace.record(ContentTraceEvent("concurrency", "ruleExplore", 0, plans.size,
                 result = if (parallelParsing) "ParallelParsing" else "SerialParsing"))
+            if (parallelParsing) runner.prepareIndependent(identity, plans.count { it.isSuccess })
             plans.mapIndexed { index, prepared ->
                 var first = true
                 val load: suspend () -> RuleListResult = {

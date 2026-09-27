@@ -50,6 +50,7 @@ data class DiscoveryPageState(
 }
 
 internal const val SOURCE_PAGE_SIZE = 20
+internal const val MAX_RETAINED_SOURCE_PAGES = 8
 
 data class DiscoveryCommand(val source: Identifier, val epoch: Long, val action: DiscoveryAction, val values: Map<String, String>)
 
@@ -82,6 +83,7 @@ abstract class DiscoveryPageViewModel(
     private val previewRetries = mutableMapOf<String, Pair<SourceDiscoverySection, Job>>()
     private val previewOverrides = mutableMapOf<String, SourceDiscoverySection>()
     private val sessions = mutableMapOf<Identifier, SourceDiscovery>()
+    private val recentPages = linkedSetOf<Identifier>()
     private val refreshCatalog = mutableSetOf<Identifier>()
     private val resumablePreviews = mutableSetOf<Identifier>()
     private val outgoing = Channel<DiscoveryCommand>(Channel.BUFFERED)
@@ -121,6 +123,7 @@ abstract class DiscoveryPageViewModel(
                 // cancelLoad also clears loading flags; do not restore a snapshot captured before it.
                 val content = state.value.content.filterKeys { it in next && versions[it] == next[it] }
                 sessions.keys.retainAll(content.keys)
+                recentPages.retainAll(content.keys)
                 resumablePreviews.retainAll(content.keys)
                 refreshCatalog.retainAll(next.keys)
                 versions = next
@@ -176,7 +179,9 @@ abstract class DiscoveryPageViewModel(
         val id = state.value.selected ?: return
         cancelLoad()
         refreshCatalog += id
-        resumablePreviews -= id
+        // A completed page remains useful while its replacement is loading.
+        // Interrupted refreshes still discard their partial snapshot.
+        if (state.value.content[id]?.loaded == true) resumablePreviews += id else resumablePreviews -= id
         put(id, (state.value.content[id] ?: newContent()).copy(loaded = false, loading = false, error = null))
         if (active) load()
     }
@@ -345,11 +350,27 @@ abstract class DiscoveryPageViewModel(
 
     private fun newContent() = DiscoveryPageContent(resetId = ++contentId)
 
+    /** Old pages shed rebuildable content; drafts and positions survive the next session. */
+    private fun retainPage(id: Identifier) {
+        recentPages.remove(id)
+        recentPages.add(id)
+        while (recentPages.size > MAX_RETAINED_SOURCE_PAGES) {
+            val oldest = recentPages.first()
+            recentPages.remove(oldest)
+            sessions.remove(oldest)
+            resumablePreviews.remove(oldest)
+            state.value.content[oldest]?.let { page ->
+                put(oldest, DiscoveryPageContent(values = page.values, scroll = page.scroll, resetId = page.resetId))
+            }
+        }
+    }
+
     private fun load() {
         val id = state.value.selected ?: return
+        retainPage(id)
         val previous = state.value.content[id] ?: newContent()
         if (previous.loaded || previous.loading || previous.acting || previous.error != null) return
-        val retained = if (resumablePreviews.remove(id) && id !in refreshCatalog)
+        val retained = if (resumablePreviews.remove(id))
             previous.sections.filter { it.previewFailure == null && it.books.isNotEmpty() }.associateBy { it.id }
             else emptyMap()
         val token = ++serial

@@ -4,6 +4,10 @@ import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
 import hnovel.content.RuleTaskRunner
 import hnovel.execution.ExecutionAuthority
+import hnovel.execution.ExecutionIdentity
+import hnovel.execution.ExecutionLimits
+import hnovel.execution.ExecutionTask
+import hnovel.execution.SourceExecutionBroker
 import indi.renakoni.nextvol.data.book.BookIdentity
 import indi.renakoni.nextvol.data.web.SourceSessionEpochStore
 import indi.renakoni.nextvol.sourceexecution.AndroidIsolatedExecutor
@@ -29,8 +33,12 @@ object WebDataSourceModule {
     @Singleton
     @Provides
     fun provideRuleTaskRunner(executor: AndroidIsolatedExecutor): RuleTaskRunner {
-        return RuleTaskRunner { identity, task, limits, broker ->
-            executor.execute(identity, task, limits, broker)
+        return object : RuleTaskRunner {
+            override suspend fun prepareIndependent(identity: ExecutionIdentity, count: Int) =
+                executor.prepareIndependent(identity, count)
+
+            override suspend fun execute(identity: ExecutionIdentity, task: ExecutionTask,
+                limits: ExecutionLimits, broker: SourceExecutionBroker) = executor.execute(identity, task, limits, broker)
         }
     }
 

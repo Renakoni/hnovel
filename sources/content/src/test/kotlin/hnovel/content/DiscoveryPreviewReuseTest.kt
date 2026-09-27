@@ -187,7 +187,7 @@ class DiscoveryPreviewReuseTest {
     }
 
     @Test fun ttlCapacityAndRouteRetirementBoundHandoffMemory() {
-        val cache = DiscoveryPreviewDocuments()
+        val cache = DiscoveryPreviewDocuments(DiscoveryPreviewDocuments.Pool())
         val route = SourceNetworkRoute.systemDefault()
         fun key(i: Int) = DiscoveryPreviewDocuments.Key(BrokerRequest("content", "https://fixture.test/$i"), route,
             emptyList(), emptyMap(), null)
