@@ -797,8 +797,11 @@
     "name": "第一版主",
     "subtitle": "成人向文字",
     "index": 4,
-    "host": "m.diyibanzhu.buzz",
-    "available": true
+    "host": "www.diyibanzi.com",
+    "available": true,
+    "replaces": [
+      "2359149f392914afe8ddbb317d37d584734a5535acf734206fd41e6d0a27368a"
+    ]
   },
   {
     "key": "https://www.htlvbooks.com",
