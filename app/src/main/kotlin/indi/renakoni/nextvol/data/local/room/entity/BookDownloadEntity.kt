@@ -23,6 +23,10 @@ data class BookDownloadEntity(
     @ColumnInfo(defaultValue = "''") val taskError: String = "",
     @ColumnInfo(defaultValue = "0") val taskRunAttempt: Int = 0,
     @ColumnInfo(defaultValue = "0") val taskHidden: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val taskRetryCount: Int = 0,
+    @ColumnInfo(defaultValue = "0") val taskNextAttemptAt: Long = 0,
+    @ColumnInfo(defaultValue = "''") val taskSourceRevision: String = "",
+    @ColumnInfo(defaultValue = "-1") val taskAccountGeneration: Long = -1,
 )
 
 /** Ownership and the source-visible version of a successfully saved chapter. Body stays in Room. */

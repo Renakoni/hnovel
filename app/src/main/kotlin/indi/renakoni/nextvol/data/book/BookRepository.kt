@@ -270,6 +270,12 @@ class BookRepository @Inject constructor(
     internal fun sourceRevision(book: SourceBookId): String = sourceRegistry.sources.value
         .firstOrNull { it.metadata.id == book.sourceId }?.metadata?.revision.orEmpty()
 
+    internal fun downloadSource(book: SourceBookId) = sourceRegistry.sources.value
+        .firstOrNull { it.metadata.id == book.sourceId }?.metadata
+
+    internal suspend fun canReplayDownload(book: SourceBookId): Boolean =
+        (sourceRegistry.resolve(book.sourceId) as? indi.renakoni.nextvol.data.web.SourceResolution.Ready)?.runtime?.canReplayDownloads == true
+
     fun downloadGeneration(): Long = downloads.generation()
 
     /** Export works from one offline snapshot, filling only missing source data. */

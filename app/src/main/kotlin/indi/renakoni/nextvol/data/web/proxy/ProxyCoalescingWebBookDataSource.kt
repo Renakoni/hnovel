@@ -46,6 +46,8 @@ class ProxyCoalescingWebBookDataSource(
         // Interactive continuations belong to their UI caller. Sharing detached work
         // with background downloads would lose cancellation and interaction ownership.
         if (currentCoroutineContext()[indi.renakoni.nextvol.data.web.ForegroundSourceRequest]?.allowsInteraction == true) return block()
+        // A durable task owns its retry budget and cancellation; detached sharing loses both.
+        if (currentCoroutineContext()[hnovel.network.RequestRetryContext] != null) return block()
         val owner = currentCoroutineContext()[SourceRequestOwner] ?: kotlin.coroutines.EmptyCoroutineContext
         return withContext(RequestContext(key)) { coalescing.execute { withContext(owner) { block() } } }
     }

@@ -98,7 +98,7 @@ class BookDownloadTest {
     private fun openLibrary() {
         db = Room.databaseBuilder(context, NextVolDatabase::class.java, directory.root.resolve("library.db").path)
             .addMigrations(NextVolDatabase.MIGRATION_17_18, NextVolDatabase.MIGRATION_18_19,
-                NextVolDatabase.MIGRATION_19_20, NextVolDatabase.MIGRATION_20_21, NextVolDatabase.MIGRATION_21_22, NextVolDatabase.MIGRATION_22_23, NextVolDatabase.MIGRATION_23_24, NextVolDatabase.MIGRATION_24_25).allowMainThreadQueries().build()
+                NextVolDatabase.MIGRATION_19_20, NextVolDatabase.MIGRATION_20_21, NextVolDatabase.MIGRATION_21_22, NextVolDatabase.MIGRATION_22_23, NextVolDatabase.MIGRATION_23_24, NextVolDatabase.MIGRATION_24_25, NextVolDatabase.MIGRATION_25_26).allowMainThreadQueries().build()
         local = LocalBookDataSource(db.bookInformationDao(), db.bookVolumesDao(), db.chapterContentDao(), db.userReadingDataDao(), indi.renakoni.nextvol.data.book.BookAliasStore(db))
         downloads = BookDownloadStore(context, db, decoder)
         val shelves = BookshelfRepository(db.bookshelfDao(), mockk(relaxed = true), registry, downloads, local.aliases)
@@ -352,7 +352,7 @@ class BookDownloadTest {
             execSQL("DROP TABLE bangumi_binding"); execSQL("DROP TABLE bangumi_sync_record"); execSQL("DROP TABLE book_alias"); version = 17
         }
         db.close(); openLibrary()
-        assertEquals(25, db.openHelper.writableDatabase.version)
+        assertEquals(26, db.openHelper.writableDatabase.version)
         val blocked = File(context.filesDir, "book-downloads").apply { writeText("not a directory") }
         try { downloads.prepare(); fail("Image copy must fail before ownership is committed") }
         catch (_: java.io.IOException) { }
@@ -522,13 +522,41 @@ class BookDownloadTest {
     }
 
     @Test fun restoredTasksNeverAttachToTheBackedUpExecutor() = runBlocking {
-        val owner = indi.renakoni.nextvol.data.local.room.entity.BookDownloadEntity(a.storageKey, phase = "updating",
-            attempt = "old-attempt", taskWorkId = java.util.UUID.randomUUID().toString(), taskStatus = DownloadTaskStatus.Running.name)
-        downloads.restore(listOf(owner), emptyList(), legacy = false)
-        val restored = downloads.entry(a)!!
-        assertEquals("", restored.attempt)
-        assertEquals("", restored.taskWorkId)
-        assertEquals(DownloadTaskStatus.Interrupted, restored.taskState(null).status)
+        for (status in listOf(DownloadTaskStatus.Running, DownloadTaskStatus.WaitingRetry)) {
+            downloads.clearDownloads()
+            val owner = indi.renakoni.nextvol.data.local.room.entity.BookDownloadEntity(a.storageKey, phase = "updating",
+                attempt = "old-attempt", taskWorkId = java.util.UUID.randomUUID().toString(), taskStatus = status.name,
+                taskRetryCount = 2, taskNextAttemptAt = Long.MAX_VALUE)
+            downloads.restore(listOf(owner), emptyList(), legacy = false)
+            val restored = downloads.entry(a)!!
+            assertEquals("", restored.attempt)
+            assertEquals("", restored.taskWorkId)
+            assertEquals(DownloadTaskStatus.Interrupted, restored.taskState(null).status)
+            assertEquals(2, restored.taskRetryCount)
+            assertEquals(0L, restored.taskNextAttemptAt)
+        }
+    }
+
+    @Test fun room25UpgradePreservesTaskOwnershipAndContentWithAnUnusedRetryBudget() = runBlocking {
+        register(a)
+        assertEquals(ListenableWorker.Result.success(), download())
+        val before = downloads.entry(a)!!
+        db.openHelper.writableDatabase.apply {
+            execSQL("ALTER TABLE book_download RENAME TO old_download")
+            execSQL("CREATE TABLE book_download (bookId TEXT NOT NULL PRIMARY KEY, revision TEXT NOT NULL, directoryHash TEXT NOT NULL, phase TEXT NOT NULL, generation INTEGER NOT NULL, attempt TEXT NOT NULL, coverUri TEXT NOT NULL, taskWorkId TEXT NOT NULL DEFAULT '', taskStatus TEXT NOT NULL DEFAULT 'None', taskStage TEXT NOT NULL DEFAULT 'Unknown', taskChapter TEXT NOT NULL DEFAULT '', taskError TEXT NOT NULL DEFAULT '', taskRunAttempt INTEGER NOT NULL DEFAULT 0, taskHidden INTEGER NOT NULL DEFAULT 0)")
+            execSQL("INSERT INTO book_download SELECT bookId, revision, directoryHash, phase, generation, attempt, coverUri, taskWorkId, taskStatus, taskStage, taskChapter, taskError, taskRunAttempt, taskHidden FROM old_download")
+            execSQL("DROP TABLE old_download")
+            version = 25
+        }
+        db.close(); openLibrary()
+        val owner = downloads.entry(a)!!
+        assertEquals(before.taskWorkId, owner.taskWorkId)
+        assertEquals(before.taskStatus, owner.taskStatus)
+        assertEquals(0, owner.taskRetryCount)
+        assertEquals(0L, owner.taskNextAttemptAt)
+        assertEquals(-1L, owner.taskAccountGeneration)
+        assertNotNull(chapter(a, "1"))
+        assertEquals(3, db.bookDownloadDao().chapters(a.storageKey).size)
     }
 
     @Test fun room24UpgradeKeepsContentAndDoesNotInventAnActiveTask() = runBlocking {
@@ -543,7 +571,7 @@ class BookDownloadTest {
         }
         db.close(); openLibrary()
         val owner = downloads.entry(a)!!
-        assertEquals(25, db.openHelper.writableDatabase.version)
+        assertEquals(26, db.openHelper.writableDatabase.version)
         assertEquals("", owner.taskWorkId)
         assertEquals(DownloadTaskStatus.Interrupted, owner.taskState(null).status)
         assertEquals(DownloadStage.Unknown, owner.taskState(null).stage)

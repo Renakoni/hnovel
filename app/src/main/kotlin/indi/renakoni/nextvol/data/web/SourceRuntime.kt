@@ -22,6 +22,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
@@ -38,6 +39,7 @@ class SourceRuntime internal constructor(
 ) {
     val id get() = metadata.id
     val isAvailable get() = lifetime.isActive
+    internal val canReplayDownloads get() = (source as? indi.renakoni.nextvol.data.web.rules.RuleWebBookDataSource)?.canReplayDownloads == true
     private val responseCache = source.cache?.let { Cache(it.maxCountEachType, it.timeout) }
     private val priority = ProxyPriorityWebBookDataSource(source)
     private val coalescing = ProxyCoalescingWebBookDataSource(priority)
@@ -50,9 +52,13 @@ class SourceRuntime internal constructor(
     }
 
     internal suspend fun <T> execute(block: suspend () -> T): T {
+        currentCoroutineContext().ensureActive()
         checkAvailable()
+        val version = currentCoroutineContext()[SourceRequestVersion]
+        version?.check(metadata)
         val interaction = currentCoroutineContext()[ForegroundSourceRequest] ?: kotlin.coroutines.EmptyCoroutineContext
-        val request = lifetime.async(interaction + SourceRequestOwner(id)) { block() }
+        val retry = currentCoroutineContext()[hnovel.network.RequestRetryContext] ?: kotlin.coroutines.EmptyCoroutineContext
+        val request = lifetime.async(interaction + retry + (version ?: kotlin.coroutines.EmptyCoroutineContext) + SourceRequestOwner(id)) { block() }
         return try {
             request.await().also { checkAvailable() }
         } finally {

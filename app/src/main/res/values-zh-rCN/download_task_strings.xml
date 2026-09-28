@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="download_task_waiting_retry">等待重试</string>
+    <string name="download_task_retry_time">第 %1$d 次重试：不早于 %2$s</string>
+    <string name="download_error_rate_limited">书源暂时限流或不可用</string>
+    <string name="download_error_retry_exhausted">自动重试已停止，请稍后再试</string>
     <string name="download_stage_unknown">未记录执行阶段</string>
     <string name="download_task_unknown">下载任务 %1$s</string>
     <string name="download_task_unfinished">未完成的下载</string>

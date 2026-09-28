@@ -45,7 +45,7 @@ class SourceVerification internal constructor(val kind: hnovel.network.BrowserCh
 class SourceContentException(val code: ContentError, val field: String,
     val denial: hnovel.network.OriginDenial? = null, val dependency: hnovel.rules.ScriptDependency? = null,
     val verification: SourceVerification? = null, val diagnostic: hnovel.execution.ExecutionResult.Failure? = null,
-    val httpStatus: Int? = null) : Exception("${code.name}: $field")
+    val httpStatus: Int? = null, val retry: hnovel.network.RequestRetryHint? = null) : Exception("${code.name}: $field")
 
 @Serializable data class ScriptState(
     val metadata: JsonObject = JsonObject(emptyMap()),

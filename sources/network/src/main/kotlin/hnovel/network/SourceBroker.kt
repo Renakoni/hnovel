@@ -51,7 +51,8 @@ class SourceBroker(private val storageRoot: Path, private val dns: Dns = VpnDns.
 
 class SourceSession internal constructor(val scope: SourceScope, grants: List<NetworkGrant>, root: Path,
     dns: Dns, private val limits: BrokerLimits, cipher: StorageCipher = StorageCipher.Plain,
-    private val browser: BrowserExecutor? = null, private val routes: SourceRouteProvider) : AutoCloseable {
+    private val browser: BrowserExecutor? = null, private val routes: SourceRouteProvider,
+    private val retryPolicy: HttpRetryPolicy = HttpRetryPolicy()) : AutoCloseable {
     internal val grants = grants.map { it.copy(headers = it.headers.toMap()) }
     private val policy = NetworkPolicy(this.grants, dns)
     private val imagePolicy = NetworkPolicy(this.grants, dns, publicImages = true)
@@ -380,7 +381,9 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         // requests stay explicit HTTP operations; URL options can still supply a render script.
         val snapshot = request.copy(headers = request.headers.toMap(), browser = request.browser ?:
             if (browserDefault && browserRead && request.kind == ResourceKind.Document) BrowserOptions() else null)
-        val work = lifetime.async {
+        val retryContext = currentCoroutineContext()[RequestRetryContext]
+        if (!retryPolicy.safe(snapshot)) retryContext?.disallowReplay()
+        val work = lifetime.async(retryContext ?: kotlin.coroutines.EmptyCoroutineContext) {
             var stage = RequestStage.Queue
             try {
                 val transport = selectedRoute.getOrThrow()
@@ -418,19 +421,23 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
                             }
                         }
                         result
-                    } else permits.withPermit { stage = RequestStage.Connect; perform(snapshot, guard, policy, paceSource, transport, browserDefault) }
+                    } else {
+                        perform(snapshot, guard, policy, paceSource, transport, browserDefault) { stage = RequestStage.Connect }
+                    }
                 }
             } catch (_: TimeoutCancellationException) {
-                BrokerResult.Failure(stage, FailureCode.Timeout)
+                BrokerResult.Failure(stage, FailureCode.Timeout,
+                    retryable = stage == RequestStage.Connect && retryPolicy.safe(snapshot))
             } catch (cancelled: CancellationException) { throw cancelled }
               catch (failure: BrokerFailure) {
                   var result: BrokerResult.Failure? = null
                   guard.commit { result = permissionResult(failure, snapshot.kind) }
-                  checkNotNull(result)
+                  checkNotNull(result).let { it.copy(retryable = it.code == FailureCode.RouteUnavailable && retryPolicy.safe(snapshot)) }
               }
               catch (_: IllegalArgumentException) { BrokerResult.Failure(RequestStage.Parse, FailureCode.InvalidRequest) }
-              catch (_: java.net.UnknownHostException) { BrokerResult.Failure(RequestStage.Connect, FailureCode.Dns) }
-              catch (_: IOException) { BrokerResult.Failure(RequestStage.Connect, FailureCode.Network) }
+              catch (_: java.net.UnknownHostException) { BrokerResult.Failure(RequestStage.Connect, FailureCode.Dns, retryable = retryPolicy.safe(snapshot)) }
+              catch (failure: IOException) { BrokerResult.Failure(RequestStage.Connect, FailureCode.Network,
+                  retryable = retryPolicy.safe(snapshot) && retryPolicy.recoverable(failure)) }
         }
         return try { work.await().also { checkOpen() }.let { result ->
             if (result is BrokerResult.Success && snapshot.responseAsHex) result.copy(response = result.response.copy(textAsHex = true)) else result
@@ -454,7 +461,7 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
     }
 
     private suspend fun perform(request: BrokerRequest, guard: RequestCommitGuard, policy: NetworkPolicy,
-        paceSource: Boolean, route: SourceNetworkRoute, detectChallenges: Boolean): BrokerResult {
+        paceSource: Boolean, route: SourceNetworkRoute, detectChallenges: Boolean, onRequest: () -> Unit): BrokerResult {
         val initialUrl = request.url.toHttpUrlOrNull() ?: throw BrokerFailure(RequestStage.Parse, FailureCode.InvalidRequest)
         policy.check(initialUrl)
         val initialHeaders = headers(initialUrl, request.headers, policy)
@@ -471,26 +478,26 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
             }
             if (request.cache == CacheMode.Only) return BrokerResult.Failure(RequestStage.Response, FailureCode.CacheMiss)
         }
-        for (attempt in 0..request.retry) {
-            try {
-                var response = redirects(request, initialUrl, guard, policy, paceSource, route)
-                // Raw java.ajax/connect responses and browser subrequests must remain available
-                // to source login/check scripts. Detect challenges before document extraction.
-                if (detectChallenges && request.kind == ResourceKind.Document) {
-                    // Preserve the existing one-shot cookie bootstrap for GET documents.
-                    // POST must reach verification without silently replaying its body.
-                    if (request.method == "GET" && isCookieRefreshChallenge(response))
-                        response = redirects(request, initialUrl, guard, policy, paceSource, route)
-                    websiteChallenge(response)?.let { challenge ->
-                        return BrokerResult.Failure(RequestStage.Response, FailureCode.BrowserRequired, attempt,
-                            challenge = challenge, verificationRequest = request)
+        val safe = retryPolicy.safe(request)
+        // Preserve one safe connection recovery even at retry=0 unless the host disables
+        // retries. Share its budget with explicit retries, not a nested OkHttp retry loop.
+        val taskOwned = currentCoroutineContext()[RequestRetryContext] != null
+        val retryLimit = if (safe && !taskOwned) maxOf(request.retry, 1).coerceAtMost(limits.maxRetry) else 0
+        var cookieRefreshed = false
+        for (attempt in 0..retryLimit) {
+            val response = try {
+                guard.commit { checkOpen() }
+                permits.withPermit {
+                    var response = redirects(request, initialUrl, guard, policy, paceSource, route, onRequest)
+                    // Cookie bootstrap has one separate credit for the whole logical read,
+                    // never one credit per retry. Login/submission bodies are not replayed.
+                    if (detectChallenges && request.kind == ResourceKind.Document && request.method == "GET" &&
+                        !cookieRefreshed && isCookieRefreshChallenge(response)) {
+                        cookieRefreshed = true
+                        response = redirects(request, initialUrl, guard, policy, paceSource, route, onRequest)
                     }
+                    response
                 }
-                if (response.status in setOf(429, 502, 503, 504) && attempt < request.retry) continue
-                if (request.cache == CacheMode.ReadThrough && response.status in 200..299) guard.commit {
-                    cache.put(cacheKey, response)
-                }
-                return BrokerResult.Success(response)
             } catch (failure: BrokerFailure) { throw failure }
               catch (failure: IOException) {
                 route.checkAvailable()
@@ -501,19 +508,39 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
                 }
                 if (failure is javax.net.ssl.SSLPeerUnverifiedException)
                     return BrokerResult.Failure(RequestStage.Connect, FailureCode.Certificate, attempt)
-                if (attempt == request.retry) return BrokerResult.Failure(RequestStage.Connect,
+                if (attempt == retryLimit || !retryPolicy.recoverable(failure)) return BrokerResult.Failure(RequestStage.Connect,
                     when (failure) {
                         is java.net.UnknownHostException -> FailureCode.Dns
                         is java.io.InterruptedIOException -> FailureCode.Timeout
                         else -> FailureCode.Network
-                    }, attempt)
+                    }, attempt, retryable = safe && retryPolicy.recoverable(failure))
+                guard.commit { checkOpen() }
+                retryPolicy.await(checkNotNull(retryPolicy.delayMillis(attempt)))
+                continue
             }
+            // Raw APIs/browser subrequests keep the original response for source scripts.
+            if (detectChallenges && request.kind == ResourceKind.Document) {
+                websiteChallenge(response)?.let { challenge ->
+                    return BrokerResult.Failure(RequestStage.Response, FailureCode.BrowserRequired, attempt,
+                        challenge = challenge, verificationRequest = request)
+                }
+            }
+            val wait = if (safe && attempt < minOf(request.retry, retryLimit)) retryPolicy.delayMillis(attempt, response) else null
+            if (wait != null) {
+                guard.commit { checkOpen() }
+                retryPolicy.await(wait) // No network permit is retained during retry backoff.
+                continue
+            }
+            if (request.cache == CacheMode.ReadThrough && response.status in 200..299) guard.commit {
+                cache.put(cacheKey, response)
+            }
+            return BrokerResult.Success(response)
         }
         error("Unreachable retry state")
     }
 
     private suspend fun redirects(request: BrokerRequest, first: HttpUrl, guard: RequestCommitGuard, policy: NetworkPolicy,
-        paceSource: Boolean, route: SourceNetworkRoute): BrokerResponse {
+        paceSource: Boolean, route: SourceNetworkRoute, onRequest: () -> Unit): BrokerResponse {
         var url = first
         var method = request.method
         var body = request.body
@@ -535,10 +562,27 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
             if (bytes != null && bytes.size > limits.maxRequestBytes) throw BrokerFailure(RequestStage.Parse, FailureCode.InvalidRequest)
             val requestBody = if (method in setOf("POST", "PUT", "PATCH") || bytes != null)
                 (bytes ?: ByteArray(0)).toRequestBody(headers["Content-Type"]?.toMediaTypeOrNull()) else null
+            onRequest()
             val transport = clientFor(route, url)
-            // Catalogue parsing can outlive a server's pooled connection. Let OkHttp recover
-            // safe reads, without implicitly replaying login/submission bodies after a lost reply.
-            val call = transport.newBuilder().retryOnConnectionFailure(method == "GET" || method == "HEAD")
+            // Broker retries own the budget, including stale pooled-connection recovery.
+            // OkHttp 5.4 follows 503/Retry-After:0 even with connection retries disabled.
+            // Hide this header only from its follow-up interceptor; restore it before the
+            // response/size checks and caller see it (including invalid or huge values).
+            var retryAfter = emptyList<String>()
+            val call = transport.newBuilder().retryOnConnectionFailure(false)
+                .addInterceptor { chain ->
+                    val response = chain.proceed(chain.request())
+                    if (retryAfter.isEmpty()) response else response.newBuilder().apply {
+                        retryAfter.forEach { addHeader("Retry-After", it) }
+                    }.build()
+                }
+                .addNetworkInterceptor { chain ->
+                    val response = chain.proceed(chain.request())
+                    if (response.code != 503) response else {
+                        retryAfter = response.headers.values("Retry-After")
+                        response.newBuilder().removeHeader("Retry-After").build()
+                    }
+                }
                 .dns(policy.dns(url, route.dns)).callTimeout(request.timeoutMillis, TimeUnit.MILLISECONDS)
                 .readTimeout(request.timeoutMillis, TimeUnit.MILLISECONDS).build()
                 .newCall(Request.Builder().url(url).tag(NetworkPolicy::class.java, policy).headers(headers).method(method, requestBody).build())

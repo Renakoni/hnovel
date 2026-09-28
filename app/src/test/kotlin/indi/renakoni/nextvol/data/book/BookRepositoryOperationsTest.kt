@@ -54,6 +54,25 @@ import org.robolectric.annotation.Config
 class BookRepositoryOperationsTest {
     private val fixture = BookRepositoryFixture()
 
+    @Test fun repeatedContinueActionsKeepTheWaitingExecutorAndDoNotResetItsBudget() = runTest {
+        val book = BookIdentity.book("book")
+        val id = java.util.UUID.randomUUID()
+        val owner = indi.renakoni.nextvol.data.local.room.entity.BookDownloadEntity(book.storageKey,
+            taskWorkId = id.toString(), taskStatus = "WaitingRetry", taskRetryCount = 2, taskNextAttemptAt = Long.MAX_VALUE)
+        coEvery { fixture.downloads.entry(book) } returns owner
+        val waiting = mockk<WorkInfo> {
+            every { this@mockk.id } returns id
+            every { state } returns WorkInfo.State.ENQUEUED
+        }
+        every { fixture.workManager.getWorkInfoByIdFlow(id) } returns flowOf(waiting)
+        val repository = fixture.repository()
+        val first = async { repository.cacheBook(book.storageKey).first() }
+        val second = async { repository.cacheBook(book.storageKey).first() }
+        assertSame(waiting, first.await()); assertSame(waiting, second.await())
+        coVerify(exactly = 0) { fixture.downloads.queueTask(any(), any(), any()) }
+        verify(exactly = 0) { fixture.workManager.enqueueUniqueWork(any<String>(), any(), any<OneTimeWorkRequest>()) }
+    }
+
     @Test
     fun singleKeepWorkRetainsActiveIdentityAndReplacesTerminalRowsAcrossClockChanges() {
         val database = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), WorkDatabase::class.java)

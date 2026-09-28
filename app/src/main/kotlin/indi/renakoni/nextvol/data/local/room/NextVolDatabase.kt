@@ -66,7 +66,7 @@ import io.nightfish.lightnovelreader.api.content.builder.simpleText
         indi.renakoni.nextvol.data.bangumi.BangumiBindingEntity::class,
         indi.renakoni.nextvol.data.bangumi.BangumiSyncRecord::class
     ],
-    version = 25,
+    version = 26,
     exportSchema = false
 )
 abstract class NextVolDatabase : RoomDatabase() {
@@ -121,7 +121,8 @@ abstract class NextVolDatabase : RoomDatabase() {
                             MIGRATION_21_22,
                             MIGRATION_22_23,
                             MIGRATION_23_24,
-                            MIGRATION_24_25
+                            MIGRATION_24_25,
+                            MIGRATION_25_26
                         )
                         .allowMainThreadQueries()
                         .build()
@@ -924,6 +925,15 @@ abstract class NextVolDatabase : RoomDatabase() {
                 db.execSQL("CREATE TABLE IF NOT EXISTS downloaded_chapter (id TEXT NOT NULL PRIMARY KEY, " +
                     "bookId TEXT NOT NULL, signature TEXT NOT NULL, images TEXT NOT NULL)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_downloaded_chapter_bookId ON downloaded_chapter (bookId)")
+            }
+        }
+
+        internal val MIGRATION_25_26 = object : Migration(25, 26) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE book_download ADD COLUMN taskRetryCount INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE book_download ADD COLUMN taskNextAttemptAt INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE book_download ADD COLUMN taskSourceRevision TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE book_download ADD COLUMN taskAccountGeneration INTEGER NOT NULL DEFAULT -1")
             }
         }
 
