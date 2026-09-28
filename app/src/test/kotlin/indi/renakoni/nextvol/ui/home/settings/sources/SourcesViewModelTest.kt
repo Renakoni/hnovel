@@ -34,7 +34,7 @@ import java.nio.file.Files
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [27], application = Application::class)
 class SourcesViewModelTest {
-    @Test fun bundledPixivKeepsItsLoginActionWhenSettingsExpandAndReportsDebugFeedback(): Unit = runBlocking {
+    @Test fun bundledPixivKeepsItsLoginActionWhenSettingsExpandAndReportsSettingsFeedback(): Unit = runBlocking {
         val original = RuntimeEnvironment.getApplication().assets.open("source-catalog/Adult.json").bufferedReader().use {
             Json.parseToJsonElement(it.readText()).jsonArray.map { entry -> entry.jsonObject }
                 .single { entry -> entry["bookSourceUrl"]?.jsonPrimitive?.content == "https://www.pixiv.net/novel" }
@@ -49,10 +49,10 @@ class SourcesViewModelTest {
                 val expanded = source.loginForm()
                 assertTrue(expanded.fields.size > collapsed.fields.size)
                 assertEquals(login, SourceLoginService.directLoginAction(expanded))
-                val debug = expanded.fields.single { it.action == "editSettings('DEBUG')" }
-                val feedback = source.login(expanded.values, debug.id, expanded.id).messages
+                val fast = expanded.fields.single { it.action == "editSettings('FAST')" }
+                val feedback = source.login(expanded.values, fast.id, expanded.id).messages
                 assertEquals(1, feedback.size)
-                assertTrue(feedback.single().contains("调试模式"))
+                assertTrue(feedback.single().contains("快速模式"))
                 assertTrue(feedback.single().startsWith("✅ 已开启"))
                 assertEquals(0, fixture.server.requestCount)
             }

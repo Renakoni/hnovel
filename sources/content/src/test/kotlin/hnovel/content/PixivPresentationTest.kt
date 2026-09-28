@@ -78,11 +78,13 @@ class PixivPresentationTest {
             fixture.source(profile = EXTENSION_PROFILE) { definition(fixture,
                 "settings.SHOW_SETTINGS=true;settings.SHOW_DISCOVER=true;settings.SHOW_FURRY=true;") }.use { source ->
                 source.openLoginSession().use { panel ->
-                    val names = panel.loginForm().fields.map { it.name.substringAfterLast(' ') }
-                    assertTrue(names.containsAll(listOf("章节编号", "调试模式", "自动收藏", "分类设置",
+                    val form = panel.loginForm()
+                    val names = form.fields.map { it.name.substringAfterLast(' ') }
+                    assertEquals("updateSource()", form.fields.single { it.name.endsWith("更新书源") }.action)
+                    assertTrue(names.containsAll(listOf("章节编号", "快速模式", "自动收藏", "分类设置",
                         "排行榜单", "原创热门", "添加屏蔽", "喜欢标签", "他人收藏", "文本框")))
                     assertTrue(names.none { it in listOf("章节名称", "收藏本章", "刷新本章", "发送评论",
-                        "删除评论", "显示投票", "兽人小说", "兽人作者") })
+                        "删除评论", "显示评论", "调试模式", "备份恢复", "显示投票", "兽人小说", "兽人作者") })
                     assertEquals(0, fixture.server.requestCount)
                 }
             }
@@ -195,15 +197,53 @@ class PixivPresentationTest {
         }
     }
 
+    @Test fun chapterIgnoresLegacyCommentAndDebugSettingsWithoutCommentRequests() = runBlocking {
+        RuleSourceFixture(browser).use { fixture ->
+            val normal = fixture.server.dispatcher
+            fixture.server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse =
+                    if (request.path == "/c/1") MockResponse().setHeader("Content-Type", "application/json").setBody(
+                        """{"error":false,"body":{"id":"1","title":"One","content":"Chapter body",
+                            "description":"","commentCount":100,"userId":"12345","userName":"Author"}}""")
+                    else normal.dispatch(request)
+            }
+            fixture.source(profile = EXTENSION_PROFILE) { raw ->
+                JsonObject(definition(fixture, "settings.SHOW_COMMENTS=true;settings.DEBUG=true;") +
+                    raw.filterKeys { it in setOf("searchUrl", "ruleSearch", "ruleBookInfo", "ruleToc", "header") } +
+                    ("ruleContent" to buildJsonObject {
+                        put("content", original.getValue("ruleContent").jsonObject.getValue("content"))
+                    }))
+            }.use { source ->
+                source.loginForm()
+                val book = source.search("fixture").single()
+                val chapter = source.directory(book.id).first { !it.isVolume }
+                val before = fixture.server.requestCount
+                repeat(before) { fixture.server.takeRequest(1, TimeUnit.SECONDS)!! }
+                assertEquals(listOf(ContentPart(text = "Chapter body")), source.content(book.id, chapter.id).parts)
+                val paths = List(fixture.server.requestCount - before) {
+                    fixture.server.takeRequest(1, TimeUnit.SECONDS)!!.requestUrl!!.encodedPath
+                }
+                // The shipped loginCheckJs explicitly refetches once; neither request is for comments.
+                assertEquals(listOf("/c/1", "/c/1"), paths)
+            }
+        }
+    }
+
     @Test fun removedFeaturesHaveNoRemainingEntrypointsImplementationsOrEndpoints() {
         val serialized = original.toString()
         for (removed in listOf("novelCommentAdd", "novelCommentDelete", "getNovelCommentID", "splitComments",
             "novelPollAnswer", "getPollData", "pollData", "问卷调查", "SHOW_QUESTION", "SHOW_FURRY",
-            "urlLinpxAuthors", "api.linpx.ink", "furrynovel", "getFurryAuthors", "updatePixivAuthors")) {
+            "urlLinpxAuthors", "api.linpx.ink", "furrynovel", "getFurryAuthors", "updatePixivAuthors",
+            "DEBUG", "debugFunc", "checkPixiv", "function profile(", "调试模式",
+            "backupRestore", "backupData", "restoreData", "stripCfCookies", "备份恢复",
+            "SHOW_COMMENTS", "urlNovelComments", "getComment", "processComment", "formatComment",
+            "/novels/comments/", "urlEmojiUrl", "urlStampUrl", "let emoji =", "发送评论", "显示评论")) {
             assertFalse(removed, serialized.contains(removed))
         }
-        assertTrue(original.getValue("ruleContent").jsonObject.getValue("content").jsonPrimitive.content
-            .contains("getComment(resp.body, content)"))
+        assertTrue(original.getValue("jsLib").jsonPrimitive.content.contains("function updateSource()"))
+        assertTrue(original.getValue("jsLib").jsonPrimitive.content.contains("function urlMessageThreadLatest("))
+        assertTrue(original.getValue("exploreUrl").jsonPrimitive.content
+            .contains("https://cdn.jsdelivr.net/gh/DowneyRem/PixivSource@main/pixiv.json"))
         assertTrue(original.getValue("ruleToc").jsonObject.getValue("chapterList").jsonPrimitive.content
             .contains("ADD_CHAPTER_INDEX"))
     }
