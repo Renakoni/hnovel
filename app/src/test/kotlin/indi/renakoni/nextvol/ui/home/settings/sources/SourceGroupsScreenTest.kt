@@ -428,6 +428,32 @@ class SourceGroupsScreenTest {
         verify(exactly = 1) { model.updateGroups(setOf(Identifier("rules", "One")), emptySet(), setOf("work")) }
     }
 
+    @Test fun creatingGroupSavesPendingAdditionsAndRemovalsAndKeepsDraftOnFailure() {
+        var state by mutableStateOf(initial.copy(installed = listOf(source("One", "work"), source("Two", "work"))))
+        activity.get().setContent { MaterialTheme { SourcesScreen(state, model, onDiagnostics = {}) {} } }
+        compose.onNodeWithText("One").performScrollTo().performTouchInput { longClick() }
+        compose.onNodeWithText("Edit groups").performClick()
+        compose.onNode(hasText("Work") and isToggleable()).assertIsOn().performClick()
+        compose.onNode(hasText("Empty") and isToggleable()).assertIsOff().performClick()
+        compose.onNodeWithText("New group").performClick()
+        compose.onNode(hasText("Cancel") and hasAnyAncestor(isDialog())).performClick()
+        compose.onNode(hasText("Work") and isToggleable()).assertIsOff()
+        compose.onNode(hasText("Empty") and isToggleable()).assertIsOn()
+        compose.onNodeWithText("New group").performClick()
+        compose.onNode(hasSetTextAction()).performTextInput("Weekend")
+        compose.onNodeWithText("Save").performClick()
+        verify(exactly = 1) { model.createGroup("Weekend", setOf(Identifier("rules", "One")), setOf("empty"), setOf("work")) }
+        verify(exactly = 0) { model.updateGroups(any(), any(), any()) }
+        compose.runOnIdle { state = state.copy(message = indi.renakoni.nextvol.R.string.sources_action_failed) }
+        compose.onNode(hasSetTextAction()).assertTextContains("Weekend")
+        compose.onNodeWithText("Save").assertIsEnabled().performClick()
+        verify(exactly = 2) { model.createGroup("Weekend", setOf(Identifier("rules", "One")), setOf("empty"), setOf("work")) }
+        compose.runOnIdle { state = state.copy(groups = groups + SourceGroup("weekend", "Weekend"),
+            installed = listOf(source("One", "empty", "weekend"), source("Two", "work")),
+            message = indi.renakoni.nextvol.R.string.source_groups_saved, groupRevision = 1) }
+        compose.onNode(isDialog()).assertDoesNotExist()
+    }
+
     @Test fun longPressAndSelectAllRespectTheSearchAndBackLeavesTheGroupOpen() {
         activity.get().setContent { MaterialTheme { SourcesScreen(initial.copy(installed = listOf(
             source("One", "work"), source("Two", "work"))), model, onDiagnostics = {}) {} } }

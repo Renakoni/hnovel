@@ -229,12 +229,16 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext private val co
         lock.withLock { groups.toList() }
     }
 
-    suspend fun createGroup(name: String, members: Set<Identifier> = emptySet()) = withContext(Dispatchers.IO) {
+    suspend fun createGroup(name: String, members: Set<Identifier> = emptySet(),
+        added: Set<String> = emptySet(), removed: Set<String> = emptySet()) = withContext(Dispatchers.IO) {
         restore()
         lock.withLock {
             val group = SourceGroup(java.util.UUID.randomUUID().toString(), checkedGroupName(name))
             require(members.all { it in active })
-            saveGrouping(groups + group, members.associateWith { active.getValue(it).installed.preferences().groupIds + group.id })
+            require((added + removed).all { id -> groups.any { it.id == id } } && added.intersect(removed).isEmpty())
+            saveGrouping(groups + group, members.associateWith {
+                (active.getValue(it).installed.preferences().groupIds + added + group.id) - removed
+            })
         }
     }
 

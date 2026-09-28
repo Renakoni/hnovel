@@ -201,6 +201,8 @@ class SourceGroupsTest {
                 assertTrue(runCatching { sources.updateGroups(setOf(id, Identifier("rules", "removed")), setOf(group.id), emptySet()) }.isFailure)
                 assertTrue(runCatching { sources.updateGroups(setOf(id), setOf("removed"), emptySet()) }.isFailure)
                 assertTrue(runCatching { sources.updateGroups(setOf(id), setOf(group.id), setOf(group.id)) }.isFailure)
+                assertTrue(runCatching { sources.createGroup("New", setOf(id), setOf("removed")) }.isFailure)
+                assertTrue(runCatching { sources.createGroup("New", setOf(id), setOf(group.id), setOf(group.id)) }.isFailure)
                 assertEquals(before, file.readText())
                 assertTrue(sources.installedSources().single().preferences.groupIds.isEmpty())
             } finally { sources.stop() }
@@ -314,6 +316,39 @@ class SourceGroupsTest {
         }
     }
 
+    @Test fun creatingGroupCommitsPendingMembershipChangesAndPreservesUntouchedSources() = runBlocking {
+        val context = host()
+        RuleSourceFixture().use { fixture ->
+            val accounts = SourceSessionManager(fixture.authority)
+            var sources = ImportedRuleSources(context, WebSourceRegistry(fixture.authority), fixture.authority, accounts, fixture.runner)
+            try {
+                val ids = listOf("one", "two", "three").map { sources.activate(commit(sources, fixture.raw(it)), emptyList()) }
+                val members = ids.take(2).toSet()
+                sources.createGroup("Reading", members)
+                val removed = sources.sourceGroups().last().id
+                sources.createGroup("Favorites", setOf(ids.first()))
+                val untouched = sources.sourceGroups().last().id
+                sources.createGroup("Shared")
+                val added = sources.sourceGroups().last().id
+                sources.setPreferences(ids.first(), enabled = false, discoveryVisible = true)
+                val before = sources.installedSources()
+                sources.createGroup("Weekend", members, setOf(added), setOf(removed))
+                val created = sources.sourceGroups().last().id
+                val expected = listOf(setOf(untouched, added, created), setOf(added, created), emptySet())
+                val after = sources.installedSources()
+                assertEquals(before.zip(expected).map { (source, memberships) ->
+                    source.copy(preferences = source.preferences.copy(groupIds = memberships))
+                }, after)
+                val groups = sources.sourceGroups()
+                assertEquals(listOf("Reading", "Favorites", "Shared", "Weekend"), groups.map { it.name })
+                sources.stop()
+                sources = ImportedRuleSources(context, WebSourceRegistry(fixture.authority), fixture.authority, accounts, fixture.runner)
+                assertEquals(after, sources.installedSources())
+                assertEquals(groups, sources.sourceGroups())
+            } finally { sources.stop() }
+        }
+    }
+
     @Test fun failedGroupWriteLeavesMembershipRuntimeAndSavedGroupsIntact() = runBlocking {
         val context = host()
         RuleSourceFixture().use { fixture ->
@@ -332,7 +367,7 @@ class SourceGroupsTest {
                 check(base.delete()); check(base.mkdir()); File(base, "block").writeText("fixture")
                 try {
                     assertTrue(runCatching { sources.deleteGroup(groups.single().id) }.isFailure)
-                    assertTrue(runCatching { sources.createGroup("New", setOf(id)) }.isFailure)
+                    assertTrue(runCatching { sources.createGroup("New", setOf(id), removed = setOf(groups.single().id)) }.isFailure)
                 } finally { base.deleteRecursively(); base.writeBytes(saved); backup.delete() }
                 assertEquals(before, sources.installedSources())
                 assertEquals(groups, sources.sourceGroups())

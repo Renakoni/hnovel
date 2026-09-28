@@ -68,13 +68,14 @@ private fun SourceGroupFilter(name: String, count: Int, selected: Boolean, onSel
 @Composable
 internal fun SourceGroupsDialog(groups: List<SourceGroup>, installed: List<InstalledRuleSource>, busy: Boolean,
     message: Int?, revision: Long, members: Set<String>, onDismiss: () -> Unit,
-    onSave: (Set<String>, Set<String>) -> Unit, onCreate: (String) -> Unit) {
+    onSave: (Set<String>, Set<String>) -> Unit, onCreate: (String, Set<String>, Set<String>) -> Unit) {
     var creating by rememberSaveable(revision) { mutableStateOf(false) }
     var added by rememberSaveable(revision) { mutableStateOf(emptyList<String>()) }
     var removed by rememberSaveable(revision) { mutableStateOf(emptyList<String>()) }
     val sources = installed.filter { it.definition.sourceId in members }
     if (creating) {
-        SourceGroupNameDialog(groups, null, busy, message, onDismiss = { creating = false }, onSave = onCreate)
+        SourceGroupNameDialog(groups, null, busy, message, onDismiss = { creating = false },
+            onSave = { onCreate(it, added.toSet(), removed.toSet()) })
         return
     }
     AlertDialog(onDismissRequest = { if (!busy) onDismiss() },
