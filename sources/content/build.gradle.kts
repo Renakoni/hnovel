@@ -16,5 +16,8 @@ dependencies {
     testFixturesImplementation(libs.kotlinx.coroutines.core)
     testFixturesApi(libs.kotlinx.serialization.json)
 }
-tasks.test { useJUnit() }
+tasks.test {
+    useJUnit()
+    inputs.file("../../app/src/main/assets/source-catalog/Adult.json")
+}
 sourceSets.test { resources.srcDir("../../tests/source-compatibility/browser") }
