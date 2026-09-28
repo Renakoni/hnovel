@@ -19,6 +19,7 @@ import java.net.Proxy
 import java.nio.charset.Charset
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -86,6 +87,9 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
     var localStorageRetention = LocalStorageRetention()
         private set
     private var defaultUserAgent: String? = null
+    @Volatile private var requestTrace: RequestTrace = RequestTrace.None
+    /** Host-only observer; source scripts cannot install diagnostic callbacks. */
+    fun traceRequests(trace: RequestTrace) { requestTrace = trace }
     @Synchronized fun configureSource(url: String, cookiesEnabled: Boolean, browserRead: Boolean = false,
         concurrentRate: String? = null, localStorageRetention: LocalStorageRetention = LocalStorageRetention(),
         defaultUserAgent: String? = null) {
@@ -121,6 +125,11 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
             val peer = chain.connection()?.socket()?.remoteSocketAddress as? InetSocketAddress
                 ?: throw BrokerFailure(RequestStage.Permission, FailureCode.AddressDenied)
             (chain.request().tag(NetworkPolicy::class.java) ?: policy).checkPeer(chain.request().url, peer.address)
+            chain.request().tag(HttpRequestObservation::class.java)?.let { trace ->
+                trace.observation.record(RequestEvidence.TransportHeaders, RequestPath.Http,
+                    userAgent = UserAgentSummary.from(chain.request().header("User-Agent")),
+                    attempt = trace.attempt, hop = trace.hop)
+            }
             chain.proceed(chain.request())
         }.build() }
     private val routeClients = mutableMapOf<Pair<SourceNetworkRoute, String>, OkHttpClient>()
@@ -380,7 +389,21 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         // requests stay explicit HTTP operations; URL options can still supply a render script.
         val snapshot = request.copy(headers = request.headers.toMap(), browser = request.browser ?:
             if (browserDefault && browserRead && request.kind == ResourceKind.Document) BrowserOptions() else null)
-        val work = lifetime.async {
+        val observation = requestTrace.takeUnless { it === RequestTrace.None }?.let {
+            RequestObservation(it, currentCoroutineContext()[RequestObservation])
+        }
+        observation?.record(RequestEvidence.Selected, when {
+            snapshot.url.startsWith("data:") -> RequestPath.Inline
+            snapshot.browser != null -> RequestPath.Browser
+            else -> RequestPath.Http
+        }, when {
+            snapshot.url.startsWith("data:") -> null
+            request.browser != null -> RequestReason.ExplicitBrowser
+            snapshot.browser != null -> RequestReason.SourceBrowserRead
+            !browserDefault -> RequestReason.ExplicitHttp
+            else -> RequestReason.DefaultHttp
+        })
+        val work = lifetime.async(observation ?: EmptyCoroutineContext) {
             var stage = RequestStage.Queue
             try {
                 val transport = selectedRoute.getOrThrow()
@@ -400,8 +423,10 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
                         val url = snapshot.url.toHttpUrlOrNull() ?: throw BrokerFailure(RequestStage.Parse, FailureCode.InvalidRequest)
                         val browserHeaders = if (snapshot.browser.webCookie != null) {
                             policy.check(url)
+                            observation?.record(RequestEvidence.HeadersResolved, RequestPath.Browser,
+                                RequestReason.WebCookieDefaults, listOf(UserAgentSource.WebViewDefault))
                             emptyMap()
-                        } else headers(url, snapshot.headers, policy, includeCookies = false).toMap()
+                        } else headers(url, snapshot.headers, policy, includeCookies = false, observation = observation).toMap()
                         val maxBytes = minOf(snapshot.maxResponseBytes ?: limits.maxResponseBytes, limits.maxResponseBytes)
                         val result = browser?.execute(this@SourceSession, snapshot.copy(browser = null, headers = browserHeaders,
                             maxResponseBytes = maxBytes), snapshot.browser, guard, transport)
@@ -433,8 +458,16 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
               catch (_: IOException) { BrokerResult.Failure(RequestStage.Connect, FailureCode.Network) }
         }
         return try { work.await().also { checkOpen() }.let { result ->
+            observation?.record(RequestEvidence.Completed, when {
+                result is BrokerResult.Success && result.response.protocol == "data" -> RequestPath.Inline
+                result is BrokerResult.Success && result.response.fromCache -> RequestPath.Cache
+                else -> null
+            }, status = (result as? BrokerResult.Success)?.response?.status, failure = (result as? BrokerResult.Failure)?.code)
             if (result is BrokerResult.Success && snapshot.responseAsHex) result.copy(response = result.response.copy(textAsHex = true)) else result
-        } } finally { work.cancel() }
+        } } catch (cancelled: CancellationException) {
+            observation?.record(RequestEvidence.Cancelled)
+            throw cancelled
+        } finally { work.cancel() }
     }
 
     private fun validate(request: BrokerRequest) {
@@ -457,7 +490,8 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         paceSource: Boolean, route: SourceNetworkRoute, detectChallenges: Boolean): BrokerResult {
         val initialUrl = request.url.toHttpUrlOrNull() ?: throw BrokerFailure(RequestStage.Parse, FailureCode.InvalidRequest)
         policy.check(initialUrl)
-        val initialHeaders = headers(initialUrl, request.headers, policy)
+        val observation = currentCoroutineContext()[RequestObservation]
+        val initialHeaders = headers(initialUrl, request.headers, policy, observation = observation)
         val cacheKey = hash(Json.encodeToString(listOf(initialUrl.toString(), request.responseCharset.orEmpty(), request.followRedirects.toString(),
             Json.encodeToString<Map<String, List<String>>>(initialHeaders.toMultimap().mapKeys { it.key.lowercase() }.toSortedMap()))))
         if (request.cache != CacheMode.Disabled) {
@@ -473,14 +507,16 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         }
         for (attempt in 0..request.retry) {
             try {
-                var response = redirects(request, initialUrl, guard, policy, paceSource, route)
+                var response = redirects(request, initialUrl, guard, policy, paceSource, route, attempt)
                 // Raw java.ajax/connect responses and browser subrequests must remain available
                 // to source login/check scripts. Detect challenges before document extraction.
                 if (detectChallenges && request.kind == ResourceKind.Document) {
                     // Preserve the existing one-shot cookie bootstrap for GET documents.
                     // POST must reach verification without silently replaying its body.
-                    if (request.method == "GET" && isCookieRefreshChallenge(response))
-                        response = redirects(request, initialUrl, guard, policy, paceSource, route)
+                    if (request.method == "GET" && isCookieRefreshChallenge(response)) {
+                        observation?.record(RequestEvidence.Selected, RequestPath.Http, RequestReason.CookieBootstrap, attempt = attempt)
+                        response = redirects(request, initialUrl, guard, policy, paceSource, route, attempt)
+                    }
                     websiteChallenge(response)?.let { challenge ->
                         return BrokerResult.Failure(RequestStage.Response, FailureCode.BrowserRequired, attempt,
                             challenge = challenge, verificationRequest = request)
@@ -513,7 +549,8 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
     }
 
     private suspend fun redirects(request: BrokerRequest, first: HttpUrl, guard: RequestCommitGuard, policy: NetworkPolicy,
-        paceSource: Boolean, route: SourceNetworkRoute): BrokerResponse {
+        paceSource: Boolean, route: SourceNetworkRoute, attempt: Int): BrokerResponse {
+        val observation = currentCoroutineContext()[RequestObservation]
         var url = first
         var method = request.method
         var body = request.body
@@ -530,7 +567,7 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
                 checkOpen()
                 lastStart = System.nanoTime()
             }
-            val headers = headers(url, callerHeaders, policy)
+            val headers = headers(url, callerHeaders, policy, observation = observation, attempt = attempt, hop = hop)
             val bytes = body?.toByteArray(Charset.forName(request.charset))
             if (bytes != null && bytes.size > limits.maxRequestBytes) throw BrokerFailure(RequestStage.Parse, FailureCode.InvalidRequest)
             val requestBody = if (method in setOf("POST", "PUT", "PATCH") || bytes != null)
@@ -541,7 +578,9 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
             val call = transport.newBuilder().retryOnConnectionFailure(method == "GET" || method == "HEAD")
                 .dns(policy.dns(url, route.dns)).callTimeout(request.timeoutMillis, TimeUnit.MILLISECONDS)
                 .readTimeout(request.timeoutMillis, TimeUnit.MILLISECONDS).build()
-                .newCall(Request.Builder().url(url).tag(NetworkPolicy::class.java, policy).headers(headers).method(method, requestBody).build())
+                .newCall(Request.Builder().url(url).tag(NetworkPolicy::class.java, policy)
+                    .tag(HttpRequestObservation::class.java, observation?.let { HttpRequestObservation(it, attempt, hop) })
+                    .headers(headers).method(method, requestBody).build())
             route.track(call)
             val response = try {
                 awaitResponse(call, request.responseCharset, hop, guard, minOf(request.maxResponseBytes ?: limits.maxResponseBytes, limits.maxResponseBytes))
@@ -566,23 +605,30 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         error("Unreachable redirect state")
     }
 
-    private fun headers(url: HttpUrl, explicit: Map<String, String>, policy: NetworkPolicy, includeCookies: Boolean = true): Headers {
+    private fun headers(url: HttpUrl, explicit: Map<String, String>, policy: NetworkPolicy, includeCookies: Boolean = true,
+        observation: RequestObservation? = null, attempt: Int? = null, hop: Int? = null): Headers {
         val headers = Headers.Builder()
+        val sources = observation?.let { mutableListOf<UserAgentSource>() }
+        fun supplied(key: String, source: UserAgentSource) {
+            if (key.equals("User-Agent", true) && sources?.contains(source) == false) sources.add(source)
+        }
         // Legado supplies a desktop UA even when the source has no header rule. Some sites
         // return HTTP 200 with null book/chapter data to OkHttp's default client identity.
-        defaultUserAgent?.let { headers.set("User-Agent", it) }
-        policy.check(url).headers.forEach { (key, value) -> headers.set(key, value) }
+        defaultUserAgent?.let { headers.set("User-Agent", it); supplied("User-Agent", UserAgentSource.SessionDefault) }
+        policy.check(url).headers.forEach { (key, value) -> headers.set(key, value); supplied(key, UserAgentSource.OriginGrant) }
         val sameOrigin = sourceUrl.toHttpUrlOrNull()?.let { NetworkPolicy.origin(it) == NetworkPolicy.origin(url) } == true
         val loginHeaders = if (sameOrigin) (account.read(StorageRequestKey.LOGIN_HEADERS) as? StorageResult.Value)?.value else null
         loginHeaders?.let { Json.parseToJsonElement(it).let { json ->
             (json as kotlinx.serialization.json.JsonObject).forEach { (key, value) ->
                 headers.set(key, (value as kotlinx.serialization.json.JsonPrimitive).content)
+                supplied(key, UserAgentSource.AccountLogin)
             }
         } }
         // A CDN learned from page data must not receive a source's arbitrary credential headers.
         val knownOrigin = grants.any { sourceOrigin(it.origin) == NetworkPolicy.origin(url) }
         explicit.forEach { (key, value) ->
             if (policy !== imagePolicy || knownOrigin || key.lowercase() in setOf("user-agent", "referer", "accept", "accept-language")) headers.set(key, value)
+            supplied(key, UserAgentSource.RequestHeaders)
         }
         if (headers.build().names().any { it.lowercase() in setOf("host", "content-length", "transfer-encoding", "proxy-authorization", "proxy-connection") }) {
             throw BrokerFailure(RequestStage.Permission, FailureCode.InvalidRequest)
@@ -590,6 +636,12 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         // Source-provided Accept-Encoding disables OkHttp's transparent gzip decoder.
         // Negotiate only transport-supported encodings; preserve explicit uncompressed requests.
         if (headers["Accept-Encoding"]?.trim()?.equals("identity", true) != true) headers.removeAll("Accept-Encoding")
+        if (sources != null) {
+            if (sources.isEmpty()) sources.add(if (includeCookies) UserAgentSource.TransportDefault else UserAgentSource.WebViewDefault)
+            observation.record(RequestEvidence.HeadersResolved, userAgentSources = sources.toList(),
+                userAgent = UserAgentSummary.from(headers["User-Agent"] ?: if (includeCookies) "okhttp/${OkHttp.VERSION}" else null),
+                attempt = attempt, hop = hop)
+        }
         // Chromium owns its persistent cookie store; the mediated browser reads the jar
         // through its host bridge. Do not inject an HTTP jar snapshot as a native Cookie header.
         if (!includeCookies) return headers.build()
