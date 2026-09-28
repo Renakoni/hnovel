@@ -116,8 +116,9 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
         mutable.update { it.copy(installed = installed, groups = groups, catalog = catalog.entries) }
     }
     fun refresh() = launch { reload() }
-    fun createGroup(name: String, members: Set<Identifier> = emptySet()) = launch(showProgress = false) {
-        sources.createGroup(name, members); reload()
+    fun createGroup(name: String, members: Set<Identifier> = emptySet(),
+        added: Set<String> = emptySet(), removed: Set<String> = emptySet()) = launch(showProgress = false) {
+        sources.createGroup(name, members, added, removed); reload()
         mutable.update { it.copy(message = R.string.source_groups_saved, groupRevision = it.groupRevision + 1) }
     }
     fun renameGroup(id: String, name: String) = launch(showProgress = false) {

@@ -497,7 +497,7 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
         SourceGroupsDialog(state.groups, state.installed, state.busy, state.message, state.groupRevision, groupingSources.orEmpty().toSet(),
             onDismiss = { groupingSources = null },
             onSave = { added, removed -> model.updateGroups(members, added, removed) },
-            onCreate = { model.createGroup(it, members) })
+            onCreate = { name, added, removed -> model.createGroup(name, members, added, removed) })
     }
     editingGroup?.let { groupId ->
         SourceGroupNameDialog(state.groups, state.groups.find { it.id == groupId }, state.busy, state.message,
