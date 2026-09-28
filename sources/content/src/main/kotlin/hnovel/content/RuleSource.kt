@@ -691,7 +691,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             } catch (failure: SourceContentException) {
                 // BookList/BookInfo tolerate optional metadata errors. Keep the trace, and
                 // still surface cancellation, limits, missing dependencies and login/permissions.
-                if (name !in setOf("kind", "wordCount", "lastChapter", "intro", "coverUrl") || failure.code != ContentError.InvalidRule) throw failure
+                if (name !in setOf("kind", "wordCount", "updateTime", "lastChapter", "intro", "coverUrl") || failure.code != ContentError.InvalidRule) throw failure
                 ""
             }
             val value = extracted.ifBlank {

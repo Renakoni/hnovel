@@ -7,6 +7,37 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RuleMetadataTest {
+    @Test fun updateMetadataStillPropagatesLimitsAndLoginFailures(): Unit = runBlocking {
+        for (code in listOf(ContentError.Limit, ContentError.LoginRequired)) RuleSourceFixture().use { fixture ->
+            fixture.beforeRun = { task, _ ->
+                if (task is ExecutionTask.Rule && task.location.field == "ruleBookInfo.updateTime")
+                    throw SourceContentException(code, task.location.field)
+            }
+            fixture.source(customize = { raw -> JsonObject(raw + ("ruleBookInfo" to
+                JsonObject(raw.getValue("ruleBookInfo").jsonObject +
+                    ("updateTime" to JsonPrimitive("@js:'2026-09-14'"))))) }).use { source ->
+                val failure = runCatching { source.information(fixture.server.url("/book/one").toString()) }.exceptionOrNull()
+                assertTrue(failure is SourceContentException)
+                assertEquals(code, (failure as SourceContentException).code)
+            }
+        }
+    }
+
+    @Test fun invalidUpdateRuleKeepsEarlierMetadataAndReadableDetails(): Unit = runBlocking {
+        RuleSourceFixture().use { fixture -> fixture.source(customize = { raw -> JsonObject(raw + mapOf(
+            "ruleSearch" to JsonObject(raw.getValue("ruleSearch").jsonObject +
+                ("updateTime" to JsonPrimitive("@js:'2026-09-14'"))),
+            "ruleBookInfo" to JsonObject(raw.getValue("ruleBookInfo").jsonObject +
+                ("updateTime" to JsonPrimitive("@js:throw new Error('optional date')")))
+        )) }).use { source ->
+            val found = source.search("title").single()
+            val book = source.information(found.id)
+            assertEquals("Same title", book.title)
+            assertEquals("2026-09-14", book.updateTime)
+            assertEquals(3, source.directory(book.id).size)
+        } }
+    }
+
     @Test fun cachedInformationNeverLoadsOrRefreshesDocuments(): Unit = runBlocking {
         RuleSourceFixture().use { fixture -> fixture.source().use { source ->
             val id = fixture.server.url("/book/one").toString()
