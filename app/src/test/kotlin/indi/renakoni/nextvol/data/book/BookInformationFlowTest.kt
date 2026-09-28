@@ -93,6 +93,38 @@ class BookInformationFlowTest {
     }
 
     @Test
+    fun unreadableOptionalMetadataRetainsTheBookWithoutExposingObservationTime() = runTest {
+        for (failure in listOf(java.io.IOException("unreadable"),
+            kotlinx.serialization.SerializationException("invalid snapshot"),
+            hnovel.content.SourceContentException(hnovel.content.ContentError.Storage, "bookState"))) {
+            val book = SourceBookId(Identifier("rules", "metadata"), "book")
+            val information = local.copy(id = book.storageKey)
+            val runtime = mockk<SourceRuntime> {
+                every { isAvailable } returns true
+                coEvery { bookInformationForDisplay(book.remoteId, information) } throws failure
+            }
+            coEvery { fixture.registry.resolve(book.sourceId) } returns SourceResolution.Ready(runtime)
+            assertEquals(information.copy(lastUpdated = UNKNOWN_BOOK_UPDATE_TIME),
+                fixture.repository().bookInformationForDisplay(information))
+            coVerify(exactly = 0) { fixture.local.updateBookInformation(any()) }
+            coVerify(exactly = 0) { runtime.getBookInformation(any(), any(), any()) }
+        }
+    }
+
+    @Test
+    fun optionalMetadataDoesNotSwallowCancellation() = runTest {
+        val book = SourceBookId(Identifier("rules", "metadata"), "book")
+        val information = local.copy(id = book.storageKey)
+        val cancelled = kotlinx.coroutines.CancellationException("cancelled")
+        val runtime = mockk<SourceRuntime> {
+            every { isAvailable } returns true
+            coEvery { bookInformationForDisplay(book.remoteId, information) } throws cancelled
+        }
+        coEvery { fixture.registry.resolve(book.sourceId) } returns SourceResolution.Ready(runtime)
+        assertEquals(cancelled, runCatching { fixture.repository().bookInformationForDisplay(information) }.exceptionOrNull())
+    }
+
+    @Test
     fun cachedThenRemoteSuccessKeepsProcessingPersistenceAndBookshelfUpdateOrder() = runTest {
         val actual = mutableListOf<Result<BookInformation, WebRequestError>>()
         fixture.repository().getBookInformationFlow("book", WebDataSourcePriority.High).collect {

@@ -1,5 +1,7 @@
 package indi.renakoni.nextvol.data.book
 
+import hnovel.content.parseBookUpdateTime
+import hnovel.content.parseBookWordCount
 import org.junit.Assert.*
 import org.junit.Test
 import java.time.LocalDateTime
@@ -17,6 +19,13 @@ class BookMetadataTest {
     @Test fun missingInvalidAndOverflowingCountsRemainUnknown() {
         for (raw in listOf("", "未知", "0", "-1", "1.23", "1,23", "30亿", "约十万字", "2026-09-14"))
             assertNull(raw, parseBookWordCount(raw))
+    }
+
+    @Test fun oversizedCountsAreRejectedBeforeRegexAndDecimalConversion() {
+        assertNull(parseBookWordCount("1,".repeat(10000) + "123"))
+        assertNull(parseBookWordCount("0".repeat(10000) + "1万"))
+        assertEquals(Int.MAX_VALUE, parseBookWordCount("2,147,483,647"))
+        assertNull(parseBookWordCount("2,147,483,648"))
     }
 
     @Test fun absoluteDatesRetainSourcePrecisionAndCalendarDate() {

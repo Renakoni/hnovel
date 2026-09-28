@@ -8,8 +8,8 @@ import com.github.michaelbull.result.get
 import com.github.michaelbull.result.getOrElse
 import indi.renakoni.nextvol.defaultplugin.wenku8.Wenku8Api
 import indi.renakoni.nextvol.data.book.UNKNOWN_BOOK_UPDATE_TIME
-import indi.renakoni.nextvol.data.book.parseBookUpdateTime
-import indi.renakoni.nextvol.data.book.parseBookWordCount
+import hnovel.content.parseBookUpdateTime
+import hnovel.content.parseBookWordCount
 import indi.renakoni.nextvol.data.explore.SearchPage
 import indi.renakoni.nextvol.data.web.SourceRequestException
 import io.nightfish.lightnovelreader.api.web.discovery.DiscoveryError

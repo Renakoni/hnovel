@@ -10,8 +10,6 @@ import com.github.michaelbull.result.getOrElse
 import hnovel.content.*
 import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.data.book.UNKNOWN_BOOK_UPDATE_TIME
-import indi.renakoni.nextvol.data.book.parseBookUpdateTime
-import indi.renakoni.nextvol.data.book.parseBookWordCount
 import indi.renakoni.nextvol.data.explore.PagedSearchProvider
 import indi.renakoni.nextvol.data.explore.SearchPage
 import indi.renakoni.nextvol.data.web.EmptyWebDataSource
@@ -77,8 +75,10 @@ internal class RuleWebBookDataSource(override val id: Identifier, private val so
     internal suspend fun informationForDisplay(id: String, information: BookInformation): BookInformation {
         val saved = source.cachedInformation(id)
         return information.copy(
-            wordCount = saved?.let { WordCount(parseBookWordCount(it.wordCount) ?: 0) } ?: information.wordCount,
-            lastUpdated = saved?.let { parseBookUpdateTime(it.updateTime) } ?: UNKNOWN_BOOK_UPDATE_TIME
+            wordCount = saved?.let { WordCount(parseBookWordCount(it.wordCount) ?: parseBookWordCount(it.lastValidWordCount) ?: 0) }
+                ?: information.wordCount,
+            lastUpdated = saved?.let { parseBookUpdateTime(it.updateTime) ?: parseBookUpdateTime(it.lastValidUpdateTime) }
+                ?: UNKNOWN_BOOK_UPDATE_TIME
         )
     }
 
@@ -109,7 +109,7 @@ internal class RuleWebBookDataSource(override val id: Identifier, private val so
     override suspend fun getImage(bookId: String, url: String, cover: Boolean) = request { source.image(bookId, url, cover) }
     private fun RuleBook.information() = BookInformation(id, title, author = author,
         description = description, coverUri = if (coverUrl.isBlank()) Uri.EMPTY else Uri.parse(coverUrl),
-        tags = tags, publishingHouse = "", wordCount = WordCount(parseBookWordCount(wordCount) ?: 0),
+        tags = tags, publishingHouse = "", wordCount = WordCount(parseBookWordCount(wordCount) ?: parseBookWordCount(lastValidWordCount) ?: 0),
         lastUpdated = LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(observedUpdate), java.time.ZoneOffset.UTC), isComplete = false)
     override fun close() = source.close()
     private suspend fun <T> request(block: suspend () -> T): Result<T, WebRequestError> = try {

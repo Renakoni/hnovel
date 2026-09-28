@@ -7,6 +7,28 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RuleMetadataTest {
+    @Test fun oldSnapshotsSeedLastValidMetadataWithoutChangingRawOrScriptState() {
+        val old = Json.decodeFromString<BookRecord>("""{"revision":"old","book":{
+            "id":"book","wordCount":"1.23万","updateTime":"2026-09-14","observedUpdate":123,
+            "state":{"variables":{"custom":"kept"}}}}""")
+        assertEquals("", old.book.lastValidWordCount)
+        assertEquals("", old.book.lastValidUpdateTime)
+        val invalid = old.book.copy(wordCount = "unknown", updateTime = "2026-02-30").preservingValidMetadata(old.book)
+        val restored = Json.decodeFromString<BookRecord>(Json.encodeToString(BookRecord.serializer(), old.copy(book = invalid)))
+        assertEquals("1.23万", restored.book.lastValidWordCount)
+        assertEquals("2026-09-14", restored.book.lastValidUpdateTime)
+        assertEquals("unknown", restored.book.wordCount)
+        assertEquals("2026-02-30", restored.book.updateTime)
+        assertEquals(old.book.state, restored.book.state)
+        assertEquals(old.book.observedUpdate, restored.book.observedUpdate)
+        val stillInvalid = restored.book.copy(wordCount = "0", updateTime = "today").preservingValidMetadata(restored.book)
+        assertEquals("1.23万", stillInvalid.lastValidWordCount)
+        assertEquals("2026-09-14", stillInvalid.lastValidUpdateTime)
+        val valid = restored.book.copy(wordCount = "2万", updateTime = "2026-09-15").preservingValidMetadata(restored.book)
+        assertEquals("2万", valid.lastValidWordCount)
+        assertEquals("2026-09-15", valid.lastValidUpdateTime)
+    }
+
     @Test fun updateMetadataStillPropagatesLimitsAndLoginFailures(): Unit = runBlocking {
         for (code in listOf(ContentError.Limit, ContentError.LoginRequired)) RuleSourceFixture().use { fixture ->
             fixture.beforeRun = { task, _ ->

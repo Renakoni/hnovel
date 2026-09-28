@@ -40,6 +40,8 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -98,10 +100,19 @@ class BookRepository @Inject constructor(
     internal suspend fun bookInformationForDisplay(information: BookInformation): BookInformation {
         val book = BookIdentity.book(information.id)
         if (book.sourceId.namespace != "rules") return information
-        val canonical = canonicalBook(book)
-        return sourceRegistry.request(canonical) { runtime ->
-            Ok(runtime.bookInformationForDisplay(canonical.remoteId, information))
-        }.getOrElse { information.copy(lastUpdated = UNKNOWN_BOOK_UPDATE_TIME) }
+        val fallback = information.copy(lastUpdated = UNKNOWN_BOOK_UPDATE_TIME)
+        return try {
+            val canonical = canonicalBook(book)
+            sourceRegistry.request(canonical) { runtime ->
+                Ok(runtime.bookInformationForDisplay(canonical.remoteId, information))
+            }.getOrElse { fallback }
+        } catch (failure: Exception) {
+            currentCoroutineContext().ensureActive()
+            if (failure !is java.io.IOException && failure !is kotlinx.serialization.SerializationException &&
+                failure !is hnovel.content.SourceContentException) throw failure
+            Log.w(TAG, "Could not read optional book metadata", failure)
+            fallback
+        }
     }
 
     override fun getBookInformationFlow(
