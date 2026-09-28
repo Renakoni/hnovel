@@ -19,6 +19,9 @@ interface BookDownloadDao {
     @Query("select * from book_download")
     suspend fun getAll(): List<BookDownloadEntity>
 
+    @Query("select * from book_download")
+    fun observeAll(): Flow<List<BookDownloadEntity>>
+
     @Query("select * from downloaded_chapter where id = :id")
     suspend fun chapter(id: String): DownloadedChapterEntity?
 

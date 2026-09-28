@@ -1,6 +1,7 @@
 package indi.renakoni.nextvol.data.local.room.entity
 
 import androidx.room.Entity
+import androidx.room.ColumnInfo
 import androidx.room.Index
 import androidx.room.PrimaryKey
 import kotlinx.serialization.Serializable
@@ -15,6 +16,13 @@ data class BookDownloadEntity(
     val generation: Long = 0,
     val attempt: String = "",
     val coverUri: String = "",
+    @ColumnInfo(defaultValue = "''") val taskWorkId: String = "",
+    @ColumnInfo(defaultValue = "'None'") val taskStatus: String = "None",
+    @ColumnInfo(defaultValue = "'Unknown'") val taskStage: String = "Unknown",
+    @ColumnInfo(defaultValue = "''") val taskChapter: String = "",
+    @ColumnInfo(defaultValue = "''") val taskError: String = "",
+    @ColumnInfo(defaultValue = "0") val taskRunAttempt: Int = 0,
+    @ColumnInfo(defaultValue = "0") val taskHidden: Boolean = false,
 )
 
 /** Ownership and the source-visible version of a successfully saved chapter. Body stays in Room. */

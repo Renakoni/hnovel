@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="download_stage_unknown">Stage not recorded</string>
+    <string name="download_task_unknown">Download task %1$s</string>
+    <string name="download_task_unfinished">Unfinished downloads</string>
+    <string name="download_task_remove">Cancel and remove task (keep downloaded content)</string>
+    <string name="download_task_queued">Queued</string>
+    <string name="download_task_interrupted">Interrupted; ready to continue</string>
+    <string name="download_task_cancelled">Cancelled</string>
+    <string name="download_task_content">Offline chapters: %1$d/%2$d</string>
+    <string name="download_task_chapter">Chapter %1$d</string>
+    <string name="download_stage_details">Book details</string>
+    <string name="download_stage_directory">Table of contents</string>
+    <string name="download_stage_body">Chapter text</string>
+    <string name="download_stage_image">Chapter images</string>
+    <string name="download_stage_cover">Cover</string>
+    <string name="download_stage_storage">Local storage</string>
+    <string name="download_error_network">Network unavailable or timed out</string>
+    <string name="download_error_authentication">Sign in to the source, then retry</string>
+    <string name="download_error_verification">Complete source verification, then retry</string>
+    <string name="download_error_source">Source unavailable</string>
+    <string name="download_error_request">Source request failed</string>
+    <string name="download_error_storage">Could not save locally; check storage space</string>
+</resources>

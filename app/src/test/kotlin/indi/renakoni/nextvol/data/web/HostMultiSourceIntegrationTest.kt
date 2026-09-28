@@ -261,6 +261,58 @@ class HostMultiSourceIntegrationTest {
         assertTrue(isActive)
     }
 
+    @Test fun eagerDuplicateSubmissionsKeepOnePersistentTaskAndOneExecutor() = runBlocking {
+        val source = register(a)
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        source.beforeInformation = { entered.complete(Unit); release.await() }
+        val first = books.cacheBook(a.storageKey) // Starts even before a collector attaches.
+        try {
+            withTimeout(30_000) { entered.await() }
+            val second = books.cacheBook(a.storageKey)
+            val one = withTimeout(30_000) { first.filterNotNull().first() }
+            val two = withTimeout(30_000) { second.filterNotNull().first() }
+            assertEquals(one.id, two.id)
+            assertEquals(one.id.toString(), downloads.entry(a)!!.taskWorkId)
+            assertEquals(1, downloads.entries().size)
+            assertEquals(1, source.information.get())
+            release.complete(Unit)
+            val finished = withTimeout(30_000) { first.filterNotNull().first { it.state.isFinished } }
+            assertEquals(WorkInfo.State.SUCCEEDED, finished.state)
+            assertEquals(indi.renakoni.nextvol.data.download.BookDownloadPhase.Complete,
+                books.downloadStatusFlow(a.storageKey).first().content.phase)
+        } finally { release.complete(Unit) }
+    }
+
+    @Test fun cancellingAPersistedTaskRevokesItAndExplicitRetryCreatesANewExecutor() = runBlocking {
+        val source = register(a)
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        source.beforeInformation = { entered.complete(Unit); release.await() }
+        val first = books.cacheBook(a.storageKey)
+        try {
+            withTimeout(30_000) { entered.await() }
+            val old = downloads.entry(a)!!
+            books.dismissDownload(a.storageKey)
+            assertEquals(WorkInfo.State.CANCELLED, withTimeout(30_000) { first.filterNotNull().first { it.state.isFinished } }.state)
+            assertTrue(downloads.entry(a)!!.taskHidden)
+            source.beforeInformation = null
+            val retry = books.cacheBook(a.storageKey)
+            val queued = withTimeout(30_000) { retry.filterNotNull().first() }
+            assertNotEquals(old.taskWorkId, queued.id.toString())
+            assertFalse(downloads.entry(a)!!.taskHidden)
+            assertTrue(runCatching { downloads.finishTask(BookDownloadStore.Task(a, downloads.generation(), old.taskWorkId)) }
+                .exceptionOrNull() is CancellationException)
+            // A coalesced source request can outlive one caller. Only the new task may commit it.
+            release.complete(Unit)
+            val retried = withTimeout(30_000) { retry.filterNotNull().first { it.state.isFinished } }
+            assertEquals(WorkInfo.State.SUCCEEDED, retried.state)
+            assertEquals(queued.id.toString(), downloads.entry(a)!!.taskWorkId)
+            assertEquals(indi.renakoni.nextvol.data.download.BookDownloadPhase.Complete,
+                books.downloadStatusFlow(a.storageKey).first().content.phase)
+        } finally { release.complete(Unit) }
+    }
+
     private class FixtureSource(override val id: Identifier) : WebBookDataSource by EmptyWebDataSource {
         val loads = AtomicInteger()
         val information = AtomicInteger()
