@@ -82,7 +82,7 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext private val co
                 check(snapshot.groups.map { it.id }.distinct().size == snapshot.groups.size)
                 check(snapshot.groups.map { it.name.lowercase(java.util.Locale.ROOT) }.distinct().size == snapshot.groups.size)
                 check(snapshot.groups.all { it.id.isNotBlank() && SourceGroup.validName(it.name) && it.name == it.name.trim() })
-                check(snapshot.sources.all { row -> row.preferences().groupId?.let { id -> snapshot.groups.any { it.id == id } } != false })
+                check(snapshot.sources.all { row -> row.preferences().groupIds.all { id -> snapshot.groups.any { it.id == id } } })
                 check(snapshot.sources.size <= ImportLimits().maxStoredEntries &&
                     snapshot.sources.map { it.definition.sourceId }.distinct().size == snapshot.sources.size)
                 groups = snapshot.groups
@@ -186,8 +186,8 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext private val co
                 } else null
                 InstalledSource(definition, origins.map { it.copy(headers = it.headers.toMap()) },
                     preferences = if (enableNew) SourcePreferences(true, definition.enabledExplore || hasExploreUrl,
-                        enabledSetByUser = true, category = category, groupId = groupId)
-                    else SourcePreferences(definition.enabled, definition.enabledExplore, category = category, groupId = groupId))
+                        enabledSetByUser = true, category = category, groupIds = setOfNotNull(groupId))
+                    else SourcePreferences(definition.enabled, definition.enabledExplore, category = category, groupIds = setOfNotNull(groupId)))
             }
             // Save once for a collection; opening one definition must not rewrite thousands of others.
             save(active.values.map { it.installed } + additions, nextGroups)
@@ -234,7 +234,7 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext private val co
         lock.withLock {
             val group = SourceGroup(java.util.UUID.randomUUID().toString(), checkedGroupName(name))
             require(members.all { it in active })
-            saveGrouping(groups + group, members.associateWith { group.id })
+            saveGrouping(groups + group, members.associateWith { active.getValue(it).installed.preferences().groupIds + group.id })
         }
     }
 
@@ -251,17 +251,18 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext private val co
         restore()
         lock.withLock {
             require(groups.any { it.id == groupId })
-            val members = active.filterValues { it.installed.preferences().groupId == groupId }.keys
-            saveGrouping(groups.filterNot { it.id == groupId }, members.associateWith { null })
+            val members = active.filterValues { groupId in it.installed.preferences().groupIds }.keys
+            saveGrouping(groups.filterNot { it.id == groupId },
+                members.associateWith { active.getValue(it).installed.preferences().groupIds - groupId })
         }
     }
 
-    suspend fun moveToGroup(members: Set<Identifier>, groupId: String?) = withContext(Dispatchers.IO) {
+    suspend fun updateGroups(members: Set<Identifier>, added: Set<String>, removed: Set<String>) = withContext(Dispatchers.IO) {
         restore()
         lock.withLock {
             require(members.isNotEmpty() && members.all { it in active })
-            require(groupId == null || groups.any { it.id == groupId })
-            saveGrouping(groups, members.associateWith { groupId })
+            require((added + removed).all { id -> groups.any { it.id == id } } && added.intersect(removed).isEmpty())
+            saveGrouping(groups, members.associateWith { (active.getValue(it).installed.preferences().groupIds + added) - removed })
         }
     }
 
@@ -271,11 +272,11 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext private val co
     }
 
     /** One durable snapshot for groups and membership; grouping never recreates a runtime or account. */
-    private fun saveGrouping(nextGroups: List<SourceGroup>, memberships: Map<Identifier, String?> = emptyMap()) {
+    private fun saveGrouping(nextGroups: List<SourceGroup>, memberships: Map<Identifier, Set<String>> = emptyMap()) {
         check(!restorationFailed)
         val next = active.mapValues { (id, binding) ->
             if (id !in memberships) binding else binding.copy(installed = binding.installed.copy(
-                preferences = binding.installed.preferences().copy(groupId = memberships[id])))
+                preferences = binding.installed.preferences().copy(groupId = null, groupIds = memberships.getValue(id))))
         }
         save(next.values.map { it.installed }, nextGroups)
         groups = nextGroups
@@ -505,7 +506,9 @@ data class InstalledRuleSource(val definition: SourceDefinition, val origins: Li
 }
 
 @Serializable data class SourcePreferences(val enabled: Boolean, val discoveryVisible: Boolean, val enabledSetByUser: Boolean = false,
-    val category: SourceCategory? = null, val groupId: String? = null)
+    // Keep the old field readable; new membership writes use groupIds and clear groupId.
+    val category: SourceCategory? = null, private val groupId: String? = null,
+    val groupIds: Set<String> = setOfNotNull(groupId))
 
 internal data class RuleLoginTarget(val source: Identifier, val revision: String, val generation: Long,
     val rules: RuleSource, val session: hnovel.network.SourceSession)

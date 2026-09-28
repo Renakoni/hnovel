@@ -128,8 +128,8 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
         sources.deleteGroup(id); reload()
         mutable.update { it.copy(message = R.string.source_groups_saved, groupRevision = it.groupRevision + 1) }
     }
-    fun moveToGroup(members: Set<Identifier>, groupId: String?) = launch(showProgress = false) {
-        sources.moveToGroup(members, groupId); reload()
+    fun updateGroups(members: Set<Identifier>, added: Set<String>, removed: Set<String>) = launch(showProgress = false) {
+        sources.updateGroups(members, added, removed); reload()
         mutable.update { it.copy(message = R.string.source_groups_saved, groupRevision = it.groupRevision + 1) }
     }
     fun select(id: Identifier?) = launch(showProgress = false) { selectSource(id) }
