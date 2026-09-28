@@ -31,7 +31,9 @@ import io.nightfish.lightnovelreader.api.book.UserReadingData
 import io.nightfish.lightnovelreader.api.book.Volume
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.async
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -90,26 +92,49 @@ class BookRepositoryOperationsTest {
     }
 
     @Test
-    fun cacheWorkKeepsItsWorkerInputAndObservesTheUniqueWorkIdentity() = runTest {
+    fun cacheWorkPersistsBeforeEnqueueAndObservesTheSubmittedIdentity() = runTest {
+        val book = BookIdentity.book("book")
         val submitted = slot<OneTimeWorkRequest>()
+        val persisted = CompletableDeferred<Unit>()
+        val persistCompletion = CompletableDeferred<Unit>()
+        val enqueued = CompletableDeferred<Unit>()
         val completion = ResolvableFuture.create<Operation.State.SUCCESS>()
         val operation = mockk<Operation> { every { result } returns completion }
-        every { fixture.workManager.enqueueUniqueWork(CacheBookWork.ofId(BookIdentity.bookKey("book")), ExistingWorkPolicy.KEEP, capture(submitted)) } returns operation
-        val repository = fixture.repository()
-        val observed = repository.cacheBook("book")
-        val work = submitted.captured
-        assertEquals(CacheBookWork::class.java.name, work.workSpec.workerClassName)
-        assertEquals(mapOf("bookId" to BookIdentity.bookKey("book"), "downloadGeneration" to 0L), work.workSpec.input.keyValueMap)
-        assertTrue(CacheBookWork.generationTag(0) in work.tags)
-        verify(exactly = 1) { fixture.workManager.enqueueUniqueWork(CacheBookWork.ofId(BookIdentity.bookKey("book")), ExistingWorkPolicy.KEEP, work) }
+        coEvery { fixture.downloads.entry(book) } returns null
+        coEvery { fixture.downloads.queueTask(book, 0L, any()) } coAnswers {
+            persisted.complete(Unit)
+            persistCompletion.await()
+        }
+        every { fixture.workManager.getWorkInfosForUniqueWorkFlow(CacheBookWork.ofId(book.storageKey)) } returns flowOf(emptyList())
+        every { fixture.workManager.enqueueUniqueWork(CacheBookWork.ofId(book.storageKey), ExistingWorkPolicy.KEEP, capture(submitted)) } answers {
+            enqueued.complete(Unit)
+            operation
+        }
+        try {
+            val observed = fixture.repository().cacheBook("book")
+            persisted.await() // Submission starts even without collecting its result.
+            verify(exactly = 0) { fixture.workManager.enqueueUniqueWork(any<String>(), any(), any<OneTimeWorkRequest>()) }
+            persistCompletion.complete(Unit)
+            enqueued.await()
+            val work = submitted.captured
+            assertEquals(CacheBookWork::class.java.name, work.workSpec.workerClassName)
+            assertEquals(mapOf("bookId" to book.storageKey, "downloadGeneration" to 0L, "persistedTask" to true), work.workSpec.input.keyValueMap)
+            assertTrue(CacheBookWork.generationTag(0) in work.tags)
+            coVerify(exactly = 1) { fixture.downloads.queueTask(book, 0L, work.id.toString()) }
 
-        val existingWork = mockk<WorkInfo>()
-        every { existingWork.state } returns WorkInfo.State.RUNNING
-        val workState = MutableStateFlow(listOf(existingWork))
-        every { fixture.workManager.getWorkInfosForUniqueWorkFlow(CacheBookWork.ofId(BookIdentity.bookKey("book"))) } returns workState
-        completion.set(Operation.SUCCESS)
-        assertSame(existingWork, observed.first())
-        verify(exactly = 1) { fixture.workManager.getWorkInfosForUniqueWorkFlow(CacheBookWork.ofId(BookIdentity.bookKey("book"))) }
+            val current = mockk<WorkInfo> { every { state } returns WorkInfo.State.RUNNING }
+            every { fixture.workManager.getWorkInfoByIdFlow(work.id) } returns flowOf(current)
+            val first = async { observed.first() }
+            runCurrent()
+            assertFalse(first.isCompleted)
+            verify(exactly = 0) { fixture.workManager.getWorkInfoByIdFlow(any()) }
+            completion.set(Operation.SUCCESS)
+            assertSame(current, first.await())
+            verify(exactly = 1) { fixture.workManager.getWorkInfoByIdFlow(work.id) }
+        } finally {
+            persistCompletion.cancel()
+            completion.cancel(false)
+        }
     }
 
     @Test
@@ -120,7 +145,9 @@ class BookRepositoryOperationsTest {
             val name = if (export) ExportBookToEPUBWork.ofId(book.storageKey) else CacheBookWork.ofId(book.storageKey)
             val completion = ResolvableFuture.create<Operation.State.SUCCESS>()
             val operation = mockk<Operation> { every { result } returns completion }
-            every { env.workManager.enqueueUniqueWork(name, ExistingWorkPolicy.KEEP, any<OneTimeWorkRequest>()) } returns operation
+            val submitted = slot<OneTimeWorkRequest>()
+            coEvery { env.downloads.entry(book) } returns null
+            every { env.workManager.enqueueUniqueWork(name, ExistingWorkPolicy.KEEP, capture(submitted)) } returns operation
             fun completedWork() = mockk<WorkInfo> {
                 every { state } returns WorkInfo.State.SUCCEEDED
             }
@@ -128,6 +155,7 @@ class BookRepositoryOperationsTest {
             val current = completedWork()
             val infos = MutableStateFlow(listOf(old))
             every { env.workManager.getWorkInfosForUniqueWorkFlow(name) } returns infos
+            every { env.workManager.getWorkInfoByIdFlow(any()) } returns flowOf(current)
             val observed = if (export) {
                 DetailViewModel(env.repository(), mockk(), mockk(), env.workManager, mockk())
                     // This test starts at an enabled export action; capability gating has its own tests.
@@ -137,12 +165,15 @@ class BookRepositoryOperationsTest {
             val first = async { observed.first() }
             runCurrent()
             assertFalse(first.isCompleted)
-            verify(exactly = 0) { env.workManager.getWorkInfosForUniqueWorkFlow(name) }
+            // Cache submission checks for an active executor, but must not emit the old terminal row.
+            verify(exactly = if (export) 0 else 1) { env.workManager.getWorkInfosForUniqueWorkFlow(name) }
+            verify(exactly = 0) { env.workManager.getWorkInfoByIdFlow(any()) }
 
             infos.value = listOf(current)
             completion.set(Operation.SUCCESS)
             runCurrent()
             assertSame(current, first.await())
+            if (!export) verify(exactly = 1) { env.workManager.getWorkInfoByIdFlow(submitted.captured.id) }
         }
     }
 

@@ -13,6 +13,9 @@ import com.github.michaelbull.result.getError
 import indi.renakoni.nextvol.data.book.*
 import indi.renakoni.nextvol.data.bookshelf.BookshelfRepository
 import indi.renakoni.nextvol.data.download.DownloadProgressRepository
+import indi.renakoni.nextvol.data.download.BookDownloadStatus
+import indi.renakoni.nextvol.data.download.DownloadTaskState
+import indi.renakoni.nextvol.data.download.DownloadTaskStatus
 import indi.renakoni.nextvol.data.web.zlibrary.ZLibrarySources
 import io.mockk.*
 import io.nightfish.lightnovelreader.api.book.*
@@ -45,8 +48,8 @@ class DetailCapabilitiesTest {
         every { repository.getBookInformationFlow(key, any()) } returns flowOf(Ok(book))
         every { repository.getUserReadingDataFlow(key) } returns emptyFlow()
         every { repository.getBookVolumesFlow(key, any()) } returns flowOf(Ok(BookVolumes(key, emptyList())))
-        every { repository.downloadChanges(key) } returns flowOf(Unit)
-        coEvery { repository.downloadState(key, any()) } returns indi.renakoni.nextvol.data.download.BookDownloadState()
+        val downloadStatus = BookDownloadStatus(task = DownloadTaskState(DownloadTaskStatus.Interrupted))
+        every { repository.downloadStatusFlow(key) } returns flowOf(downloadStatus)
         every { work.getWorkInfosForUniqueWorkFlow(any()) } returns flowOf(emptyList())
         coEvery { shelves.getBookshelfBookMetadata(key) } returns null
         every { shelves.getBookshelfBookMetadataFlow(key) } returns flowOf(null)
@@ -56,7 +59,7 @@ class DetailCapabilitiesTest {
         suspend fun until(condition: () -> Boolean) = withTimeout(5000) { while (!condition()) delay(10) }
         try {
             model.init(key)
-            until { model.uiState.bookInformation != null && model.uiState.metadataOnly }
+            until { model.uiState.bookInformation != null && model.uiState.metadataOnly && model.uiState.downloadState == downloadStatus }
             assertFalse(model.uiState.readingAvailable)
             assertNull(model.uiState.bookVolumes)
             assertNull(model.cacheBook(key).first())
