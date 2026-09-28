@@ -98,6 +98,8 @@ class SourceBrowserInstrumentedTest {
             try {
                 SourceBroker(root.toPath(), browser = AndroidSourceBrowser(context)).use { broker ->
                     val session = broker.open(SourceScope("agent", "A", "legado"), listOf(NetworkGrant(server.url("/").toString(), true)))
+                    val events = ConcurrentLinkedQueue<RequestDiagnostic>()
+                    session.traceRequests { events += it }
                     val result = session.execute(BrokerRequest("render", server.url("/").toString(),
                         headers = mapOf("user-agent" to "NovelFixture/1.0"), timeoutMillis = 60000,
                         browser = BrowserOptions(script = "window.finished ? navigator.userAgent : null")))
@@ -105,6 +107,19 @@ class SourceBrowserInstrumentedTest {
                     assertEquals("NovelFixture/1.0", (result as BrokerResult.Success).response.text())
                     assertTrue(agents.size >= 3)
                     assertTrue(agents.toString(), agents.all { it == "NovelFixture/1.0" })
+                    val rootId = events.first().requestId
+                    assertTrue(events.any { it.path == RequestPath.MediatedWebView && it.reason == RequestReason.BrowserRendering })
+                    val settings = events.single { it.evidence == RequestEvidence.WebViewSettings }
+                    assertEquals(rootId, settings.requestId)
+                    assertEquals(true, settings.webView?.matchesRequested)
+                    assertEquals(UserAgentFamily.Other, settings.webView?.userAgent?.family)
+                    val metadata = if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.USER_AGENT_METADATA))
+                        UserAgentMetadataStatus.UnhandledUserAgent else UserAgentMetadataStatus.Unsupported
+                    assertEquals(metadata, settings.webView?.metadata)
+                    val sent = events.filter { it.evidence == RequestEvidence.TransportHeaders }
+                    assertTrue(sent.size >= 3)
+                    assertTrue(sent.all { it.requestId != rootId && it.parentRequestId == rootId })
+                    assertFalse(events.toString().contains("NovelFixture/1.0"))
                 }
             } finally { root.deleteRecursively() }
         }

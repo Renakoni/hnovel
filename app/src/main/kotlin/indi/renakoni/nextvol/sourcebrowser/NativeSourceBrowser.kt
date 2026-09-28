@@ -134,10 +134,17 @@ internal class NativeSourceBrowser(private val context: Context, private val net
         val retention = NativeBrowserRetention(context.noBackupFilesDir, session.scope)
         val result = CompletableDeferred<BrokerResult>()
         val cookieVersion = java.util.concurrent.atomic.AtomicLong(-1)
+        val observation = currentCoroutineContext()[RequestObservation]
+        val diagnosticReported = java.util.concurrent.atomic.AtomicBoolean()
         val work = CoroutineScope(currentCoroutineContext() + SupervisorJob(currentCoroutineContext()[Job]))
         val host = object : IBrowserHost.Stub() {
             override fun call(operation: String, arguments: String): ParcelFileDescriptor {
                 check(Binder.getCallingUid() == context.applicationInfo.uid)
+                if (operation == "userAgentDiagnostic") {
+                    guard.commit { check(alive.get() && work.isActive && !session.closed && route.available) }
+                    if (diagnosticReported.compareAndSet(false, true)) observation.recordWebViewUserAgent(arguments)
+                    return BrowserWire.pipe("true")
+                }
                 require(operation == "cookies" && arguments.length <= 262144)
                 val snapshots = Json.decodeFromString<List<NativeCookieSnapshot>>(arguments)
                 require(snapshots.size <= 4)
@@ -238,7 +245,8 @@ internal class NativeSourceBrowser(private val context: Context, private val net
                             cookieVersion.set(selectedSeed.version)
                             started = true
                             service.start(Json.encodeToString(BrowserJob(request, options, owner, session.enabledCookieJar,
-                                network?.networkHandle, session.certificateExceptions(), selectedSeed.cookies, jobId, selectedSeed.version)), host)
+                                network?.networkHandle, session.certificateExceptions(), selectedSeed.cookies, jobId, selectedSeed.version,
+                                observeUserAgent = observation != null)), host)
                         }
                     }
                 }

@@ -170,16 +170,26 @@ class NativeBrowserInstrumentedTest {
                 </script></body></html>
             """.trimIndent())
         }
-        val page = Json.parseToJsonElement(render(session(broker, server), server.url("/book").toString(), "window.answer").text()).jsonObject
+        val events = java.util.concurrent.ConcurrentLinkedQueue<RequestDiagnostic>()
+        val session = session(broker, server).apply { traceRequests { events += it } }
+        val page = Json.parseToJsonElement(render(session, server.url("/book").toString(), "window.answer").text()).jsonObject
         val ua = page.getValue("http").jsonPrimitive.content
         assertTrue(ua, ua.contains("Windows NT"))
         assertEquals(ua, page.getValue("dom").jsonPrimitive.content)
+        assertTrue(events.any { it.path == RequestPath.NativeWebView && it.reason == RequestReason.NativeSourceRead })
+        val settings = checkNotNull(events.single { it.evidence == RequestEvidence.WebViewSettings }.webView)
+        assertEquals(true, settings.matchesRequested)
+        assertEquals(UserAgentSummary.from(ua), settings.userAgent)
+        assertEquals(1, events.map { it.requestId }.distinct().size)
+        assertTrue(events.none { it.evidence == RequestEvidence.TransportHeaders })
+        assertFalse(events.toString().contains(ua))
         if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.USER_AGENT_METADATA)) {
+            assertEquals(UserAgentMetadataStatus.Applied, settings.metadata)
             val hints = page.getValue("hints").jsonObject
             assertEquals("Windows", hints.getValue("platform").jsonPrimitive.content)
             assertFalse(hints.getValue("mobile").jsonPrimitive.boolean)
             assertFalse(hints.getValue("brands").jsonArray.any { it.jsonObject.getValue("brand").jsonPrimitive.content == "Android WebView" })
-        }
+        } else assertEquals(UserAgentMetadataStatus.Unsupported, settings.metadata)
     } }
 
     @Test fun headerOnlyCloudflareChallengeOffersVerificationInsteadOfANetworkError(): Unit = runBlocking { fixture { broker, server ->
