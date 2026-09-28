@@ -441,7 +441,8 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
     state.loginForm?.let { form ->
         SourceLoginDialog(form, state.busy, model::submitLogin, model::cancelLogin,
             title = stringResource(if (state.configurationPanel) R.string.sources_configuration else R.string.sources_login),
-            message = state.message?.let { stringResource(it) }, showLoginAction = !state.configurationPanel, feedback = state.loginMessages)
+            message = state.message?.let { stringResource(it) }, showLoginAction = !state.configurationPanel, feedback = state.loginMessages,
+            hideAccountActions = state.configurationPanel)
     }
 }
 

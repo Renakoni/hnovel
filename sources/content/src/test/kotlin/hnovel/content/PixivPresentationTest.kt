@@ -84,7 +84,7 @@ class PixivPresentationTest {
                     assertTrue(names.containsAll(listOf("章节编号", "快速模式", "自动收藏", "分类设置",
                         "排行榜单", "原创热门", "添加屏蔽", "喜欢标签", "他人收藏", "文本框")))
                     assertTrue(names.none { it in listOf("章节名称", "收藏本章", "刷新本章", "发送评论",
-                        "删除评论", "显示评论", "调试模式", "备份恢复", "显示投票", "兽人小说", "兽人作者") })
+                        "删除评论", "显示评论", "调试模式", "备份恢复", "反馈问题", "显示投票", "兽人小说", "兽人作者") })
                     assertEquals(0, fixture.server.requestCount)
                 }
             }
@@ -236,6 +236,7 @@ class PixivPresentationTest {
             "urlLinpxAuthors", "api.linpx.ink", "furrynovel", "getFurryAuthors", "updatePixivAuthors",
             "DEBUG", "debugFunc", "checkPixiv", "function profile(", "调试模式",
             "backupRestore", "backupData", "restoreData", "stripCfCookies", "备份恢复",
+            "startGithubIssue", "反馈问题", "github.com/DowneyRem/PixivSource/issues",
             "SHOW_COMMENTS", "urlNovelComments", "getComment", "processComment", "formatComment",
             "/novels/comments/", "urlEmojiUrl", "urlStampUrl", "let emoji =", "发送评论", "显示评论")) {
             assertFalse(removed, serialized.contains(removed))

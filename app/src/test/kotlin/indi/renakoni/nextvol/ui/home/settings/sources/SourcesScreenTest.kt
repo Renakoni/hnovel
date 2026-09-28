@@ -85,6 +85,40 @@ class SourcesScreenTest {
     }
 
     @Test @Config(qualifiers = "en-rUS-w360dp-h800dp")
+    fun configurationHidesAccountActionsAndSubmitsOriginalFieldAndFormIds() {
+        val update = LoginField("Update source", "button", action = "updateSource()")
+        val form = LoginForm(listOf(
+            LoginField("Source sign in", "button", action = " login(); "),
+            LoginField("Source sign out", "button", action = "logout()"),
+            LoginField("Preference", "toggle", choices = listOf("saved", "changed")),
+            LoginField("Login settings", "button", action = "configureAccount()"),
+            update), null, mapOf("Preference" to "saved"))
+        activity.get().setContent { MaterialTheme {
+            SourceLoginDialog(form, false, model::submitLogin, model::cancelLogin,
+                title = "Source configuration", showLoginAction = false, hideAccountActions = true)
+        } }
+        compose.onNodeWithText("Source sign in").assertDoesNotExist()
+        compose.onNodeWithText("Source sign out").assertDoesNotExist()
+        compose.onNodeWithText("Login settings").assertIsDisplayed()
+        compose.onNodeWithText("Preference: saved").assertIsDisplayed()
+        compose.onNodeWithText("Update source").performClick()
+        verify(exactly = 1) { model.submitLogin(form.values, update.id, form.id) }
+    }
+
+    @Test @Config(qualifiers = "en-rUS-w360dp-h800dp")
+    fun loginDialogKeepsDeclaredAccountActions() {
+        val login = LoginField("Source sign in", "button", action = "login()")
+        val form = LoginForm(listOf(login, LoginField("Source sign out", "button", action = "logout()")), null)
+        var submitted: Pair<String?, String>? = null
+        activity.get().setContent { MaterialTheme {
+            SourceLoginDialog(form, false, { _, action, formId -> submitted = action to formId }, {})
+        } }
+        compose.onNodeWithText("Source sign in").assertIsDisplayed().performClick()
+        compose.onNodeWithText("Source sign out").assertIsDisplayed()
+        org.junit.Assert.assertEquals(login.id to form.id, submitted)
+    }
+
+    @Test @Config(qualifiers = "en-rUS-w360dp-h800dp")
     fun savedChangesCloseAddingAndShowOneShortToastWithoutReplayingOnReentry() {
         ShadowToast.reset()
         var state by mutableStateOf(SourceManagementState())

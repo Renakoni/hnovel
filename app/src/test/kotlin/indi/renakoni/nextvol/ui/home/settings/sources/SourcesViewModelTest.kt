@@ -44,11 +44,15 @@ class SourcesViewModelTest {
                 val collapsed = source.loginForm()
                 val login = SourceLoginService.directLoginAction(collapsed)
                 assertNotNull(login)
+                assertTrue(collapsed.fields.none { it.action == "startGithubIssue()" })
+                assertTrue(collapsed.fields.any { it.action == "updateSource()" })
                 val expand = collapsed.fields.single { it.action == "editSettings('SHOW_SETTINGS')" }
                 source.login(collapsed.values, expand.id, collapsed.id)
                 val expanded = source.loginForm()
                 assertTrue(expanded.fields.size > collapsed.fields.size)
                 assertEquals(login, SourceLoginService.directLoginAction(expanded))
+                assertTrue(expanded.fields.none { it.action == "startGithubIssue()" })
+                assertTrue(expanded.fields.any { it.action == "updateSource()" })
                 val fast = expanded.fields.single { it.action == "editSettings('FAST')" }
                 val feedback = source.login(expanded.values, fast.id, expanded.id).messages
                 assertEquals(1, feedback.size)

@@ -21,8 +21,11 @@ import indi.renakoni.nextvol.R
 internal fun SourceLoginDialog(form: LoginForm, busy: Boolean,
     onSubmit: (Map<String, String>, String?, String) -> Unit, onCancel: () -> Unit,
     title: String = stringResource(R.string.sources_login), message: String? = null,
-    showLoginAction: Boolean = true, feedback: List<String> = emptyList()) {
+    showLoginAction: Boolean = true, feedback: List<String> = emptyList(), hideAccountActions: Boolean = false) {
     val values = remember(form) { mutableStateMapOf<String, String>().apply { putAll(form.values) } }
+    // Native account controls still use the original form and action IDs.
+    val fields = form.fields.filterNot { hideAccountActions && it.type == "button" &&
+        it.action?.trim()?.removeSuffix(";")?.trim() in setOf("login()", "logout()") }
     AlertDialog(onDismissRequest = onCancel, title = { Text(title) },
         text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             message?.let { Text(it) }
@@ -36,7 +39,7 @@ internal fun SourceLoginDialog(form: LoginForm, busy: Boolean,
             }
             Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (form.browserUrl != null) Text(stringResource(R.string.sources_browser_login))
-            form.fields.forEach { field -> key(field.id) {
+            fields.forEach { field -> key(field.id) {
                 fun change(value: String) {
                     values[field.name] = value
                     if (field.action != null) onSubmit(values.toMap(), field.id, form.id)
