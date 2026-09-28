@@ -12,10 +12,7 @@
     <string name="source_group_name">Название группы</string>
     <string name="source_group_name_help">Уникальное название длиной от 1 до 60 символов.</string>
     <string name="source_group_move">Настроить группы</string>
-    <string name="source_group_move_named">Изменить группу для «%1$s»</string>
     <string name="source_group_select">Выбрать источники</string>
-    <string name="source_group_select_visible">Выбрать видимые</string>
-    <string name="source_group_deselect_visible">Снять выбор видимых</string>
     <string name="source_group_selected">Выбрано: %1$d</string>
     <string name="source_groups_saved">Группы обновлены</string>
     <string name="source_groups_import_help">Источники из каталога распределяются по группам по категориям. Источники, импортированные по ссылке или из файла, остаются без группы.</string>

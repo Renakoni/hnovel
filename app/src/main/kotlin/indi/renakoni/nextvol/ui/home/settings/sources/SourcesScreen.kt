@@ -12,7 +12,9 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.selection.triStateToggleable
 import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -30,6 +32,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -183,6 +186,7 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
         }
     }
     LaunchedEffect(state.installed) {
+        if (managementGroup == "" && state.installed.none { it.preferences.groupIds.isEmpty() }) managementGroup = null
         chosen = chosen - state.installed.map { it.definition.importKey }.toSet()
         selectedSources = selectedSources.filter { selected -> state.installed.any { it.definition.sourceId == selected } }
         selectedGroupSources = selectedGroupSources.filter { selected -> state.installed.any {
@@ -431,22 +435,35 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                             }
                         })
                 }
-                item {
-                    SectionHeader(text = if (state.installed.isEmpty()) stringResource(R.string.sources_imported_group)
-                        else stringResource(R.string.source_catalog_installed, state.installed.size))
-                }
                 item(key = "source-user-groups") {
-                    SourceGroupFilters(state.groups, state.installed, managementGroup) { managementGroup = it }
-                    if (state.installed.isNotEmpty()) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                        if (selecting) TextButton(enabled = !state.busy && visibleSources.isNotEmpty(), onClick = {
-                            val ids = visibleSources.map { it.definition.sourceId }
-                            selectedSources = if (ids.all { it in selectedSources }) selectedSources - ids.toSet()
-                                else (selectedSources + ids).distinct()
-                        }) { Text(stringResource(if (visibleSources.isNotEmpty() && visibleSources.all { it.definition.sourceId in selectedSources })
-                            R.string.source_group_deselect_visible else R.string.source_group_select_visible)) }
-                        else TextButton(onClick = { selecting = true }, enabled = !state.busy) {
-                            Text(stringResource(R.string.source_group_select))
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            SectionHeader(modifier = Modifier.weight(1f),
+                                text = if (state.installed.isEmpty()) stringResource(R.string.sources_imported_group)
+                                    else stringResource(R.string.source_catalog_installed, state.installed.size))
+                            if (selecting) {
+                                val selection = when {
+                                    visibleSources.isNotEmpty() && visibleSources.all { it.definition.sourceId in selectedSources } -> ToggleableState.On
+                                    visibleSources.any { it.definition.sourceId in selectedSources } -> ToggleableState.Indeterminate
+                                    else -> ToggleableState.Off
+                                }
+                                Row(Modifier.heightIn(min = 48.dp).triStateToggleable(selection,
+                                    enabled = !state.busy && visibleSources.isNotEmpty(), role = Role.Checkbox) {
+                                    val ids = visibleSources.map { it.definition.sourceId }
+                                    selectedSources = if (selection == ToggleableState.On) selectedSources - ids.toSet()
+                                        else (selectedSources + ids).distinct()
+                                }.padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    TriStateCheckbox(selection, onClick = null, enabled = !state.busy && visibleSources.isNotEmpty())
+                                    Text(stringResource(R.string.source_group_select_all), style = MaterialTheme.typography.labelLarge)
+                                }
+                            } else if (state.installed.isNotEmpty()) TextButton(onClick = { selecting = true },
+                                enabled = !state.busy && visibleSources.isNotEmpty()) {
+                                Text(stringResource(R.string.source_group_select_members))
+                            }
                         }
+                        SourceGroupFilters(state.groups, state.installed, managementGroup) { managementGroup = it }
                     }
                 }
                 if (visibleSources.isEmpty()) item {
@@ -456,27 +473,25 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                     val id = ImportedRuleSources.id(source.definition)
                     val presentation = state.catalog.find { it.key == source.definition.importKey }
                     val selected = source.definition.sourceId in selectedSources
-                    val groupAction = stringResource(R.string.source_group_move_named, presentation?.name ?: source.definition.displayName)
-                    val groupName = state.groups.filter { it.id in source.preferences.groupIds }.joinToString(" · ") { it.name }
-                        .ifEmpty { stringResource(R.string.source_group_ungrouped) }
-                    ListItem(headlineContent = { Text(presentation?.name ?: source.definition.displayName) },
-                        leadingContent = if (selecting) ({ Checkbox(selected, onCheckedChange = null) }) else null,
-                        supportingContent = { Column {
+                    val selectLabel = stringResource(R.string.source_group_select)
+                    ListItem(headlineContent = { Text(presentation?.name ?: source.definition.displayName,
+                        style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                        leadingContent = if (selecting) ({ Checkbox(selected, onCheckedChange = null, enabled = !state.busy) }) else null,
+                        supportingContent = {
                             Text(presentation?.host?.takeIf(String::isNotBlank)
-                                ?: android.net.Uri.parse(source.definition.importKey).host.orEmpty())
-                            if (!selecting) TextButton(onClick = { groupingSources = listOf(source.definition.sourceId) }, enabled = !state.busy,
-                                contentPadding = PaddingValues(horizontal = 0.dp), modifier = Modifier.semantics { contentDescription = groupAction }) {
-                                Text(groupName, style = MaterialTheme.typography.labelMedium,
-                                    maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                            }
-                        } },
+                                ?: android.net.Uri.parse(source.definition.importKey).host.orEmpty(),
+                                style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        },
                         trailingContent = if (selecting) null else ({ Switch(source.preferences.enabled,
                             { model.setEnabled(id, it) }, enabled = !state.busy) }),
                         modifier = Modifier.clip(MaterialTheme.shapes.large).then(if (selecting)
                             Modifier.toggleable(selected, enabled = !state.busy, role = Role.Checkbox) {
                                 selectedSources = if (selected) selectedSources - source.definition.sourceId
                                     else selectedSources + source.definition.sourceId
-                            } else Modifier.clickable(enabled = !state.busy) { model.select(id) }),
+                            } else Modifier.combinedClickable(enabled = !state.busy, onClick = { model.select(id) },
+                                onLongClickLabel = selectLabel, onLongClick = {
+                                    selecting = true; selectedSources = listOf(source.definition.sourceId)
+                                })),
                         colors = ListItemDefaults.colors(containerColor = if (selecting && selected)
                             MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainer))
                 }
