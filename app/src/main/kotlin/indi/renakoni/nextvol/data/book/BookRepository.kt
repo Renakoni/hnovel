@@ -13,6 +13,7 @@ import androidx.work.workDataOf
 import com.github.michaelbull.result.Ok
 import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.andThen
+import com.github.michaelbull.result.getOrElse
 import com.github.michaelbull.result.map
 import com.github.michaelbull.result.onErr
 import com.github.michaelbull.result.onOk
@@ -92,6 +93,16 @@ class BookRepository @Inject constructor(
 
     fun getBookInformationFlow(book: SourceBookId, priority: WebDataSourcePriority = WebDataSourcePriority.Default) =
         getBookInformationFlow(book.storageKey, priority)
+
+    /** Keep observation timestamps in storage/update checks, not in the detail UI. */
+    internal suspend fun bookInformationForDisplay(information: BookInformation): BookInformation {
+        val book = BookIdentity.book(information.id)
+        if (book.sourceId.namespace != "rules") return information
+        val canonical = canonicalBook(book)
+        return sourceRegistry.request(canonical) { runtime ->
+            Ok(runtime.bookInformationForDisplay(canonical.remoteId, information))
+        }.getOrElse { information.copy(lastUpdated = UNKNOWN_BOOK_UPDATE_TIME) }
+    }
 
     override fun getBookInformationFlow(
         id: String,

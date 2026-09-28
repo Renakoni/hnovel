@@ -7,6 +7,9 @@ import com.github.michaelbull.result.coroutines.coroutineBinding
 import com.github.michaelbull.result.get
 import com.github.michaelbull.result.getOrElse
 import indi.renakoni.nextvol.defaultplugin.wenku8.Wenku8Api
+import indi.renakoni.nextvol.data.book.UNKNOWN_BOOK_UPDATE_TIME
+import indi.renakoni.nextvol.data.book.parseBookUpdateTime
+import indi.renakoni.nextvol.data.book.parseBookWordCount
 import indi.renakoni.nextvol.data.explore.SearchPage
 import indi.renakoni.nextvol.data.web.SourceRequestException
 import io.nightfish.lightnovelreader.api.web.discovery.DiscoveryError
@@ -34,8 +37,6 @@ import kotlinx.coroutines.flow.flowOn
 import org.jsoup.nodes.Element
 import org.jsoup.nodes.TextNode
 import java.net.URLEncoder
-import java.time.LocalDate
-import java.time.format.DateTimeFormatter
 import kotlin.time.Duration.Companion.seconds
 
 class Wenku8WebsiteDataSource(
@@ -43,7 +44,6 @@ class Wenku8WebsiteDataSource(
     val wenku8Api: Wenku8Api
 ): Wenku8BookDataSource {
     private val titleRegex = Regex("(.*) ?[(（](.*)[)）] ?$")
-    private val dateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
     private fun url(string: String) = "$host/$string"
 
     override suspend fun getBookInformation(id: String): Result<BookInformation, WebRequestError> = coroutineBinding {
@@ -98,21 +98,16 @@ class Wenku8WebsiteDataSource(
                 ?.text()
                 ?.replace("文库分类：", "")
                 ?: Err(WebRequestError("解析错误", "无法解析该书本的信息(id=$id)")).bind(),
-            wordCount = soup
+            wordCount = WordCount(soup
                 .selectFirstXpath("//*[@id=\"content\"]/div[1]/table[1]/tbody/tr[2]/td[5]")
                 ?.text()
                 ?.replace("全文长度：", "")
-                ?.replace("字", "")
-                ?.toIntOrNull()
-                ?.let { WordCount(it) }
-                ?: Err(WebRequestError("解析错误", "无法解析该书本的信息(id=$id)")).bind(),
+                ?.let(::parseBookWordCount) ?: 0),
             lastUpdated = soup
                 .selectFirstXpath("//*[@id=\"content\"]/div[1]/table[1]/tbody/tr[2]/td[4]")
                 ?.text()
                 ?.replace("最后更新：", "")
-                ?.let { LocalDate.parse(it, dateTimeFormatter) }
-                ?.atStartOfDay()
-                ?: Err(WebRequestError("解析错误", "无法解析该书本的信息(id=$id)")).bind(),
+                ?.let(::parseBookUpdateTime) ?: UNKNOWN_BOOK_UPDATE_TIME,
             isComplete = soup
                 .selectFirstXpath("//*[@id=\"content\"]/div[1]/table[1]/tbody/tr[2]/td[3]")
                 ?.text()

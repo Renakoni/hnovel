@@ -13,6 +13,7 @@ import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.workDataOf
 import com.github.michaelbull.result.onOk
+import com.github.michaelbull.result.map
 import com.github.michaelbull.result.get
 import dagger.hilt.android.lifecycle.HiltViewModel
 import indi.renakoni.nextvol.data.book.BookRepository
@@ -118,9 +119,10 @@ class DetailViewModel @Inject constructor(
                 result.onOk {
                     val metadata = bookshelfRepository.getBookshelfBookMetadata(bookId) ?: return@onOk
                     metadata.bookShelfIds.forEach { shelf -> bookshelfRepository.deleteBookFromBookshelfUpdatedBookIds(shelf, bookId) }
-                    bookshelfRepository.updateBookshelfBookMetadataLastUpdateTime(bookId, it.lastUpdated)
+                    if (it.lastUpdated.year > 1970)
+                        bookshelfRepository.updateBookshelfBookMetadataLastUpdateTime(bookId, it.lastUpdated)
                 }
-                _uiState.bookInformation = result
+                _uiState.bookInformation = result.map { bookRepository.bookInformationForDisplay(it) }
             }
         }
     }

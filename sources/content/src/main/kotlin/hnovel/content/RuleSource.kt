@@ -506,6 +506,11 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         store.canonicalId(sourceLink(spec.baseUrl, bookId))
     }
 
+    /** Read saved metadata without executing rules or requesting a document. */
+    suspend fun cachedInformation(bookId: String): RuleBook? = withContext(Dispatchers.IO) {
+        store.read(sourceLink(spec.baseUrl, bookId))?.book
+    }
+
     suspend fun information(bookId: String): RuleBook = operation("ruleBookInfo", timeoutMillis = DIRECTORY_TIMEOUT_MILLIS) {
         prefetchedDirectoryId = null
         val id = store.canonicalId(sourceLink(spec.baseUrl, bookId))

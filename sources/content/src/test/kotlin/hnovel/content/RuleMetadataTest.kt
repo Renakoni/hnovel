@@ -7,6 +7,19 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RuleMetadataTest {
+    @Test fun cachedInformationNeverLoadsOrRefreshesDocuments(): Unit = runBlocking {
+        RuleSourceFixture().use { fixture -> fixture.source().use { source ->
+            val id = fixture.server.url("/book/one").toString()
+            assertNull(source.cachedInformation(id))
+            assertEquals(0, fixture.server.requestCount)
+            val information = source.information(id)
+            val requests = fixture.server.requestCount
+            fixture.status = 503
+            assertEquals(information, source.cachedInformation(id))
+            assertEquals(requests, fixture.server.requestCount)
+        } }
+    }
+
     @Test fun absentAndBlankKindRulesKeepEarlierMetadataWithoutExecutingAnEmptyTask(): Unit = runBlocking {
         for (kind in listOf(null, "", " \t\n")) for (discovery in listOf(false, true)) RuleSourceFixture().use { fixture ->
             val kindTasks = mutableListOf<ExecutionTask.Rule>()

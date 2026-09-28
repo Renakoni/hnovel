@@ -9,6 +9,9 @@ import com.github.michaelbull.result.onOk
 import com.github.michaelbull.result.getOrElse
 import hnovel.content.*
 import indi.renakoni.nextvol.R
+import indi.renakoni.nextvol.data.book.UNKNOWN_BOOK_UPDATE_TIME
+import indi.renakoni.nextvol.data.book.parseBookUpdateTime
+import indi.renakoni.nextvol.data.book.parseBookWordCount
 import indi.renakoni.nextvol.data.explore.PagedSearchProvider
 import indi.renakoni.nextvol.data.explore.SearchPage
 import indi.renakoni.nextvol.data.web.EmptyWebDataSource
@@ -71,6 +74,14 @@ internal class RuleWebBookDataSource(override val id: Identifier, private val so
     }
     internal suspend fun canonicalBookId(id: String) = source.canonicalBookId(id)
 
+    internal suspend fun informationForDisplay(id: String, information: BookInformation): BookInformation {
+        val saved = source.cachedInformation(id)
+        return information.copy(
+            wordCount = saved?.let { WordCount(parseBookWordCount(it.wordCount) ?: 0) } ?: information.wordCount,
+            lastUpdated = saved?.let { parseBookUpdateTime(it.updateTime) } ?: UNKNOWN_BOOK_UPDATE_TIME
+        )
+    }
+
     override suspend fun getBookInformation(id: String) = request {
         // The legacy source API keeps the caller's remote ID; migration is a separate host operation.
         source.information(id).information().copy(id = id)
@@ -98,7 +109,7 @@ internal class RuleWebBookDataSource(override val id: Identifier, private val so
     override suspend fun getImage(bookId: String, url: String, cover: Boolean) = request { source.image(bookId, url, cover) }
     private fun RuleBook.information() = BookInformation(id, title, author = author,
         description = description, coverUri = if (coverUrl.isBlank()) Uri.EMPTY else Uri.parse(coverUrl),
-        tags = tags, publishingHouse = "", wordCount = WordCount(wordCount.toIntOrNull() ?: 0),
+        tags = tags, publishingHouse = "", wordCount = WordCount(parseBookWordCount(wordCount) ?: 0),
         lastUpdated = LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(observedUpdate), java.time.ZoneOffset.UTC), isComplete = false)
     override fun close() = source.close()
     private suspend fun <T> request(block: suspend () -> T): Result<T, WebRequestError> = try {

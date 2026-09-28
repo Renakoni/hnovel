@@ -310,7 +310,6 @@
     <string name="detail_introduction">Аннотация</string>
     <string name="detail_contents">Оглавление</string>
     <string name="detail_title">Детали</string>
-    <string name="detail_info_word_count_content">Слов: %1$s</string>
     <string name="detail_info_stats_count_content">Всего томов: %1$d, глав: %2$d</string>
     <string name="local_book_info_title">Сведения о кэше книги</string>
     <string name="local_book_info_book_information">Сведения о книге</string>
