@@ -13,7 +13,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
     private val allowInteraction: Boolean = false, private val speakText: String? = null,
     private val speakSpeed: Int = 10, private val sourceName: String = "", private val sourceLastUpdateTime: Long = 0,
     private val requestUserAgent: String? = null, currentRequest: BrokerRequest? = null,
-    private val memory: ScriptMemory = ScriptMemory()) : AutoCloseable {
+    private val memory: ScriptMemory = ScriptMemory(), private val onMessage: ((String) -> Unit)? = null) : AutoCloseable {
     private val currentRequest = currentRequest?.let { it.copy(headers = it.headers.toMap()) }
     // Waiting for a person must not increase a single HTTP request's network budget.
     private val requestTimeoutMillis = limits.timeoutMillis.coerceAtMost(60000)
@@ -121,6 +121,7 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
                     require(args.size == 1 && args.single() is JsonPrimitive && args.single().jsonPrimitive.isString)
                     session.showMessage(args.single().jsonPrimitive.content, name == "java.longToast",
                         RequestCommitGuard { action -> authorized(action) })
+                    authorized { onMessage?.invoke(args.single().jsonPrimitive.content) }
                     JsonNull
                 }
                 "java.getWebViewUA" -> {

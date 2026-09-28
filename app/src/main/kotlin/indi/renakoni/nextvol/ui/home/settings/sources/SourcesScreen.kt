@@ -232,6 +232,9 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
             state.message?.takeUnless { it == R.string.sources_saved }?.let { message ->
                 item { Text(stringResource(message), color = MaterialTheme.colorScheme.primary) }
             }
+            if (state.loginForm == null && state.loginMessages.isNotEmpty()) item {
+                androidx.compose.foundation.text.selection.SelectionContainer { Text(state.loginMessages.joinToString("\n\n")) }
+            }
             if (state.selected == ZLibrarySources.ID) {
                 item(key = "zlibrary-settings") { ZLibrarySettingsEditor(state.zLibrary, state.busy, state.registry.find { it.metadata.id == ZLibrarySources.ID },
                     onEnabled = model::setZLibraryEnabled, onSave = model::saveZLibrary,
@@ -281,9 +284,15 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                                     onRetry = { model.select(state.selected) }, onVerify = model::verifyPending)
                             }
                         }
-                        if (settings.variableDescription.isNotBlank()) {
+                        if (settings.configurationDeclared || settings.variableDescription.isNotBlank()) {
                             SectionHeader(text = stringResource(R.string.sources_configuration))
-                            Text(settings.variableDescription)
+                            if (settings.configurationDeclared && settings.loginErrorField == null) {
+                                OutlinedButton(onClick = { model.beginConfiguration(state.selected!!) }, enabled = !state.busy &&
+                                    entry?.status in setOf(SourceStatus.Registered, SourceStatus.Ready) && SourceCapability.Login in capabilities) {
+                                    Text(stringResource(R.string.sources_open_panel))
+                                }
+                            }
+                            if (settings.variableDescription.isNotBlank()) Text(settings.variableDescription)
                         }
                         TextButton(onClick = { showDetails = !showDetails }) { Text(stringResource(R.string.sources_advanced)) }
                         if (showDetails) {
@@ -430,7 +439,9 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
             onCreate = { model.createGroup(it, members) }, onRename = model::renameGroup, onDelete = model::deleteGroup)
     }
     state.loginForm?.let { form ->
-        SourceLoginDialog(form, state.busy, model::submitLogin, model::cancelLogin)
+        SourceLoginDialog(form, state.busy, model::submitLogin, model::cancelLogin,
+            title = stringResource(if (state.configurationPanel) R.string.sources_configuration else R.string.sources_login),
+            message = state.message?.let { stringResource(it) }, showLoginAction = !state.configurationPanel, feedback = state.loginMessages)
     }
 }
 

@@ -98,6 +98,16 @@ class SourceLoginService @Inject constructor(private val sources: ImportedRuleSo
 
         // Conservative display convention, not a new login schema. Ambiguous forms have no label.
         private val accountNames = setOf("user", "username", "account", "email", "账号", "帐号", "账户", "用户名", "邮箱")
+        // Use only the protocol's unique login() button, never translated labels or the first action.
+        // Credential inputs still need an editable form, including multiple account-name fields.
+        fun directLoginAction(form: LoginForm): String? {
+            if (form.fields.any { it.type == "password" ||
+                it.type == "text" && it.name.trim().lowercase(java.util.Locale.ROOT) in accountNames }) return null
+            return form.fields.singleOrNull {
+                it.type == "button" && it.action?.trim()?.removeSuffix(";")?.trim() == "login()"
+            }?.id
+        }
+
         fun accountNameField(form: LoginForm?): String? = form?.fields?.filter {
             it.type == "text" && it.name.trim().lowercase(java.util.Locale.ROOT) in accountNames
         }?.singleOrNull()?.name

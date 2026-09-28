@@ -11,4 +11,4 @@ data class LoginReadingContext(val bookId: String, val chapterId: String?, val r
 
 /** Refreshes are deferred until the user action succeeds and stay bound to the captured reading context. */
 enum class LoginRefreshTarget { BookInformation, Directory, Content }
-data class LoginActionResult(val refreshTargets: Set<LoginRefreshTarget> = emptySet())
+data class LoginActionResult(val refreshTargets: Set<LoginRefreshTarget> = emptySet(), val messages: List<String> = emptyList())

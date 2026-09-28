@@ -64,6 +64,26 @@ class SourcesScreenTest {
     }
     @After fun destroy() { activity.pause().stop().destroy() }
 
+    @Test @Config(qualifiers = "en-rUS-w320dp-h640dp")
+    fun configurationFeedbackStaysVisibleWhileControlsScrollAndClosingDoesNotAuthenticate() {
+        val form = LoginForm((1..40).map { LoginField("Control $it", "button", action = "configure()") }, null)
+        val feedback = "Debug enabled\nDetailed instructions stay here"
+        var submitted = false
+        var closed = false
+        activity.get().setContent { MaterialTheme {
+            SourceLoginDialog(form, false, { _, _, _ -> submitted = true }, { closed = true },
+                title = "Source configuration", message = "Action feedback", showLoginAction = false, feedback = listOf(feedback))
+        } }
+        compose.onNodeWithText("Source configuration").assertIsDisplayed()
+        compose.onNodeWithText("Sign in").assertDoesNotExist()
+        compose.onNodeWithText("Control 40").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(feedback).assertIsDisplayed()
+        compose.onNodeWithText("Action feedback").assertIsDisplayed()
+        compose.onNodeWithText("OK").performClick()
+        org.junit.Assert.assertTrue(closed)
+        org.junit.Assert.assertFalse(submitted)
+    }
+
     @Test @Config(qualifiers = "en-rUS-w360dp-h800dp")
     fun savedChangesCloseAddingAndShowOneShortToastWithoutReplayingOnReentry() {
         ShadowToast.reset()
@@ -669,7 +689,7 @@ class SourcesScreenTest {
     @Test @Config(qualifiers = "en-rUS-w320dp-h640dp")
     fun accountCardDistinguishesSavedSessionsAndOffersExplicitAccountActions() {
         val definition = SourceDefinition("account", "legado", "fixture", "https://fixture.invalid/", "Account source", true,
-            false, ImportOrigin(ImportOrigin.Kind.Paste), "digest", 1, """{"loginUi":[{"name":"user"}]}""")
+            false, ImportOrigin(ImportOrigin.Kind.Paste), "digest", 1, """{"loginUi":[{"name":"user"},{"name":"Settings","type":"button","action":"configure()"}]}""")
         val id = ImportedRuleSources.id(definition)
         var state by mutableStateOf(SourceManagementState(installed = listOf(InstalledRuleSource(definition,
             listOf(hnovel.network.NetworkGrant("https://fixture.invalid/")), null)), selected = id,
@@ -685,7 +705,8 @@ class SourcesScreenTest {
         compose.onNodeWithText("Sign in again").performScrollTo().performClick()
         verify(exactly = 1) { model.relogin(id) }
         compose.onNodeWithText("Open source panel").performScrollTo().performClick()
-        verify(exactly = 1) { model.beginLogin(id) }
+        verify(exactly = 1) { model.beginConfiguration(id) }
+        verify(exactly = 0) { model.beginLogin(id) }
         compose.runOnIdle { state = state.copy(busy = true) }
         compose.onNodeWithText("Sign out").assertIsNotEnabled()
         compose.onNodeWithText("Sign in again").assertIsNotEnabled()
@@ -702,6 +723,7 @@ class SourcesScreenTest {
         compose.onNodeWithText("Signed out").assertExists()
         compose.onNodeWithText("Sign in").performScrollTo().assertIsEnabled()
         compose.onNodeWithText("Sign in again").assertDoesNotExist()
+        compose.onNodeWithText("Open source panel").performScrollTo().assertIsEnabled()
         compose.runOnIdle { state = state.copy(storedSettingsAvailable = false) }
         compose.onNodeWithText("Account status unavailable").assertExists()
         compose.onNodeWithText("Signed out").assertDoesNotExist()

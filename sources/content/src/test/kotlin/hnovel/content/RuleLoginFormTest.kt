@@ -13,6 +13,27 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RuleLoginFormTest {
+    @Test fun actionFeedbackIsTrimmedOrderedBoundedAndNotReplayedByTheNextAction() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            fixture.source { raw -> JsonObject(raw + mapOf(
+                "loginUrl" to JsonPrimitive("function login(){}"),
+                "loginUi" to JsonPrimitive("""[
+                    {"name":"notice","type":"button","action":"java.longToast(String.fromCharCode(10,10)+'Debug enabled');java.toast('  Details  ');java.toast('   ');"},
+                    {"name":"many","type":"button","action":"for(var i=0;i<20;i++)java.toast(String(i));java.longToast('x'.repeat(5000));"},
+                    {"name":"quiet","type":"button","action":"true"}
+                ]""")
+            )) }.use { source ->
+                val form = source.loginForm()
+                assertEquals(listOf("Debug enabled", "Details"), source.login(form.values, "notice").messages)
+                val bounded = source.login(form.values, "many").messages
+                assertEquals(16, bounded.size)
+                assertEquals("5", bounded.first())
+                assertEquals(4096, bounded.last().length)
+                assertTrue(source.login(form.values, "quiet").messages.isEmpty())
+            }
+        }
+    }
+
     @Test fun foregroundLoginGetsFiveMinutesButSearchAndNetworkRequestsKeepTheirBudgets() = runBlocking {
         var browserCalls = 0
         val browser = BrowserExecutor { _, request, options, _, _ ->

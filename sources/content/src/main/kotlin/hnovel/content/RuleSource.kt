@@ -336,6 +336,13 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val info = JsonObject(submitted.mapValues { JsonPrimitive(it.value) }).toString()
         saveLoginValues(submitted)
         val context = loginContext(submitted, interactive = true)
+        val messages = ArrayDeque<String>()
+        context.onMessage = { message ->
+            message.trim().take(4096).takeIf { it.isNotEmpty() }?.let {
+                if (messages.size == 16) messages.removeFirst()
+                messages.addLast(it)
+            }
+        }
         if (form.browserUrl != null && action == null) {
             val pending = if (spec.browserRead) (session.read(StorageRequest(StorageArea.Account,
                 StorageRequestKey.BROWSER_PENDING_URL)) as? StorageResult.Value)?.value else null
@@ -396,7 +403,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         if (changed != submitted) saveLoginValues(changed.filter { (key, value) -> submitted[key] != value })
         if (actions.any { it.jsonObject.string("kind") == "refresh" }) cachedLoginForm = null
         if (action == null) authority.authorized(identity) { check(session.write(StorageRequest(StorageArea.Account, "login/status", "authenticated")) is StorageResult.Value) }
-        LoginActionResult(refreshTargets.toSet())
+        LoginActionResult(refreshTargets.toSet(), messages.toList())
     }
 
     /** Pages called with the same [query] share `cache.*Memory`; without one, memory lasts for this page only. */

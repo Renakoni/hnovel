@@ -3,6 +3,7 @@ package indi.renakoni.nextvol.ui.home.settings.sources
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -19,11 +20,21 @@ import indi.renakoni.nextvol.R
 @Composable
 internal fun SourceLoginDialog(form: LoginForm, busy: Boolean,
     onSubmit: (Map<String, String>, String?, String) -> Unit, onCancel: () -> Unit,
-    title: String = stringResource(R.string.sources_login), message: String? = null) {
+    title: String = stringResource(R.string.sources_login), message: String? = null,
+    showLoginAction: Boolean = true, feedback: List<String> = emptyList()) {
     val values = remember(form) { mutableStateMapOf<String, String>().apply { putAll(form.values) } }
     AlertDialog(onDismissRequest = onCancel, title = { Text(title) },
-        text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             message?.let { Text(it) }
+            if (feedback.isNotEmpty()) {
+                Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.medium) {
+                    SelectionContainer {
+                        Text(feedback.joinToString("\n\n"), Modifier.heightIn(max = 160.dp)
+                            .verticalScroll(rememberScrollState()).padding(12.dp))
+                    }
+                }
+            }
+            Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (form.browserUrl != null) Text(stringResource(R.string.sources_browser_login))
             form.fields.forEach { field -> key(field.id) {
                 fun change(value: String) {
@@ -55,6 +66,8 @@ internal fun SourceLoginDialog(form: LoginForm, busy: Boolean,
                     }
                 }
             } }
-        } }, confirmButton = { TextButton(onClick = { onSubmit(values.toMap(), null, form.id) }, enabled = !busy) { Text(stringResource(R.string.sources_login)) } },
-        dismissButton = { TextButton(onClick = onCancel) { Text(stringResource(android.R.string.cancel)) } })
+            }
+        } }, confirmButton = {
+            if (showLoginAction) TextButton(onClick = { onSubmit(values.toMap(), null, form.id) }, enabled = !busy) { Text(stringResource(R.string.sources_login)) }
+        }, dismissButton = { TextButton(onClick = onCancel) { Text(stringResource(if (showLoginAction) android.R.string.cancel else android.R.string.ok)) } })
 }

@@ -94,6 +94,7 @@ fun NavGraphBuilder.bookReaderDestination(onReaderActiveChanged: (Boolean) -> Un
                 onSubmit = { values, action, formId -> panelModel.submit(values, action, formId, viewModel::applySourcePanelRefresh) },
                 onCancel = { panelModel.dismiss() }, title = stringResource(R.string.reader_source_panel),
                 message = notice ?: stringResource(R.string.reader_source_panel_boundary),
+                showLoginAction = false, feedback = panelModel.feedback,
             ) else androidx.compose.material3.AlertDialog(
                 onDismissRequest = { panelModel.dismiss() },
                 title = { androidx.compose.material3.Text(stringResource(R.string.reader_source_panel)) },

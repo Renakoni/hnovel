@@ -9,7 +9,8 @@ import kotlinx.serialization.json.*
 
 /** Only declaration data for the fixed settings sections. Never initializes rules or evaluates JS. */
 data class RuleSettingsPresentation(val loginDeclared: Boolean = false, val loginErrorField: String? = null,
-    val variableDescription: String = "", val nativeBrowser: Boolean = false, val accountNameField: String? = null) {
+    val variableDescription: String = "", val nativeBrowser: Boolean = false, val accountNameField: String? = null,
+    val configurationDeclared: Boolean = false) {
     companion object {
         fun read(definition: SourceDefinition): RuleSettingsPresentation {
             val raw = runCatching { Json.parseToJsonElement(definition.rawJson) as? JsonObject }.getOrNull()
@@ -28,11 +29,12 @@ data class RuleSettingsPresentation(val loginDeclared: Boolean = false, val logi
             if (!declared) return base // loginCheckJs alone does not create a login entry.
             val extended = definition.profile == EXTENSION_PROFILE
             if (ui.startsWith("@js:", true) || ui.startsWith("<js>", true))
-                return if (extended) base else base.copy(loginErrorField = "loginUi")
+                return if (extended) base.copy(configurationDeclared = true) else base.copy(loginErrorField = "loginUi")
             return try {
                 val form = LoginForm.parse(ui, url, extended)
                 base.copy(loginDeclared = url.isNotBlank() || form.fields.isNotEmpty(),
-                    accountNameField = SourceLoginService.accountNameField(form))
+                    accountNameField = SourceLoginService.accountNameField(form),
+                    configurationDeclared = form.fields.any { it.action != null })
             } catch (failure: SourceContentException) { base.copy(loginErrorField = failure.field) }
               catch (_: IllegalArgumentException) { base.copy(loginErrorField = "loginUi") }
         }

@@ -31,6 +31,7 @@ data class SourceManagementState(val installed: List<InstalledRuleSource> = empt
     val preview: ImportPreview? = null, val updateTarget: Identifier? = null,
     val previewOrigins: Map<Int, String> = emptyMap(),
     val busy: Boolean = false, val showProgress: Boolean = true, val message: Int? = null, val loginForm: LoginForm? = null,
+    val configurationPanel: Boolean = false, val loginMessages: List<String> = emptyList(),
     val loginStatus: LoginStatus = LoginStatus.LoggedOut, val variable: String = "",
     val zLibrary: ZLibraryState = ZLibraryState(), val checks: Map<String, SourceCheckSummary> = emptyMap(),
     val network: SourceNetworkState? = null, val storedSettingsAvailable: Boolean = false,
@@ -140,6 +141,7 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
             loginStatus = if (it.selected == id) it.loginStatus else LoginStatus.LoggedOut,
             variable = if (it.selected == id) it.variable else "", storedSettingsAvailable = false,
             accountName = if (it.selected == id) it.accountName else null,
+            loginMessages = if (it.selected == id) it.loginMessages else emptyList(),
             network = id?.let(::networkState)) }
         if (id != null && mutable.value.installed.any { ImportedRuleSources.id(it.definition) == id }) {
             refreshStoredSettings(id)
@@ -328,8 +330,9 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
         mutable.update { it.copy(selected = null, message = R.string.sources_removed) }
     }
     fun beginLogin(id: Identifier) = launch { openLogin(id) }
+    fun beginConfiguration(id: Identifier) = launch { openLogin(id, configuration = true) }
     fun relogin(id: Identifier) = launch { openLogin(id, LoginIntent.Relogin) }
-    private suspend fun openLogin(id: Identifier, intent: LoginIntent = LoginIntent.Panel) {
+    private suspend fun openLogin(id: Identifier, intent: LoginIntent = LoginIntent.Panel, configuration: Boolean = false) {
         val definition = sources.installedSources().single { ImportedRuleSources.id(it.definition) == id }.definition
         val declaration = RuleSettingsPresentation.read(definition)
         if (!declaration.loginDeclared || declaration.loginErrorField != null)
@@ -341,14 +344,16 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
             login.begin(id, intent).also { attempt = it }
         }
         var form: LoginForm? = null
+        mutable.update { it.copy(loginForm = null, configurationPanel = configuration, loginMessages = emptyList()) }
         try {
             val loaded = login.form(active).also { form = it }
             currentCoroutineContext().ensureActive()
-            if (loaded.browserUrl != null && loaded.fields.isEmpty()) {
-                login.submit(active, emptyMap())
+            val action = SourceLoginService.directLoginAction(loaded).takeUnless { configuration }
+            if (!configuration && (loaded.browserUrl != null && loaded.fields.isEmpty() || action != null)) {
+                val result = login.submit(active, loaded.values, action, loaded.id)
                 login.cancel(active)
                 attempt = null
-                mutable.update { it.copy(loginForm = null) }
+                mutable.update { it.copy(loginForm = null, loginMessages = result.messages) }
             } else mutable.update { it.copy(loginForm = loaded) }
         } catch (failure: Exception) {
             withContext(NonCancellable) { login.cancel(active) }
@@ -361,16 +366,21 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
     fun submitLogin(values: Map<String, String>, action: String? = null, formId: String? = null) = launch {
         val active = checkNotNull(attempt)
         val submittedForm = state.value.loginForm
+        mutable.update { it.copy(loginMessages = emptyList()) }
         try {
-            login.submit(active, values, action, formId)
+            val result = login.submit(active, values, action, formId)
             val form = if (action == null) null else login.form(active)
             if (action == null) { login.cancel(active); attempt = null }
-            mutable.update { it.copy(loginForm = form) }
+            mutable.update { it.copy(loginForm = form, loginMessages = result.messages) }
         } finally {
             withContext(NonCancellable) { refreshStoredSettings(active.source, submittedForm) }
         }
     }
-    fun logout(id: Identifier) = launch { login.logout(id); refreshStoredSettings(id) }
+    fun logout(id: Identifier) = launch {
+        login.logout(id)
+        mutable.update { it.copy(loginMessages = emptyList()) }
+        refreshStoredSettings(id)
+    }
     fun verifyPending() = launch {
         val prompt = state.value.verification ?: return@launch
         // The coordinator owns the original request and account. Opening verification is not a new login attempt.
@@ -389,7 +399,7 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
                     if (generation == operationGeneration) refreshStoredSettings(active.source)
                 }
             }
-            if (generation == operationGeneration) mutable.update { it.copy(loginForm = null, busy = false) }
+            if (generation == operationGeneration) mutable.update { it.copy(loginForm = null, busy = false, loginMessages = emptyList()) }
         }
     }
     fun cancel() { operation?.cancel() }
