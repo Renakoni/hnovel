@@ -66,7 +66,7 @@
     "weight": 0
   },
   {
-    "bookSourceComment": "2026-08-01 按 alicesw.com 当前 HTML 结构编写。未写入个人 Cookie；如站点改为强制登录，请在书源 header 中自行加入 Cookie。",
+    "bookSourceComment": "项目维护的爱丽丝书屋小说规则：动态读取分类、最新、原创及排行榜；桌面搜索和列表、移动版详情及正文。不包含个人 Cookie。",
     "bookSourceGroup": "优选书源",
     "bookSourceName": "爱丽丝书屋",
     "bookSourceType": 0,
@@ -75,50 +75,52 @@
     "enabled": true,
     "enabledCookieJar": true,
     "enabledExplore": true,
-    "exploreUrl": "都市::https://www.alicesw.com/lists/64.html?page={{page}}\n玄幻::https://www.alicesw.com/lists/62.html?page={{page}}\n校园::https://www.alicesw.com/lists/61.html?page={{page}}\n乡村::https://www.alicesw.com/lists/63.html?page={{page}}\n乱伦::https://www.alicesw.com/lists/65.html?page={{page}}\n同人::https://www.alicesw.com/lists/73.html?page={{page}}\n武侠::https://www.alicesw.com/lists/68.html?page={{page}}\n系统::https://www.alicesw.com/lists/69.html?page={{page}}\n穿越::https://www.alicesw.com/lists/70.html?page={{page}}\n科幻::https://www.alicesw.com/lists/71.html?page={{page}}\n明星::https://www.alicesw.com/lists/72.html?page={{page}}\n奇幻::https://www.alicesw.com/lists/75.html?page={{page}}\n经典::https://www.alicesw.com/lists/79.html?page={{page}}\n反差::https://www.alicesw.com/lists/22.html?page={{page}}\n凌辱::https://www.alicesw.com/lists/46.html?page={{page}}\n堕落::https://www.alicesw.com/lists/18.html?page={{page}}\n纯爱::https://www.alicesw.com/lists/19.html?page={{page}}\n伪娘::https://www.alicesw.com/lists/52.html?page={{page}}\n萝莉::https://www.alicesw.com/lists/48.html?page={{page}}\n熟女::https://www.alicesw.com/lists/56.html?page={{page}}\n正太::https://www.alicesw.com/lists/50.html?page={{page}}\nNTR::https://www.alicesw.com/lists/54.html?page={{page}}\n媚黑::https://www.alicesw.com/lists/53.html?page={{page}}\n调教::https://www.alicesw.com/lists/58.html?page={{page}}\n言情::https://www.alicesw.com/lists/59.html?page={{page}}\n百合::https://www.alicesw.com/lists/47.html?page={{page}}\n耽美::https://www.alicesw.com/lists/82.html?page={{page}}\n重口::https://www.alicesw.com/lists/21.html?page={{page}}\n其他::https://www.alicesw.com/lists/57.html?page={{page}}",
-    "header": "{\"User-Agent\":\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36\",\"Accept-Language\":\"zh-CN,zh;q=0.9\"}",
+    "exploreUrl": "@js:\nvar root = source.getKey();\nvar options = JSON.stringify({headers:{'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'}});\nvar doc = org.jsoup.Jsoup.parse(java.ajax(root+','+options), root);\nvar rows = [], seen = {};\ndoc.select(\"#nav a[href^='/lists/'],#nav a[href^='/all/'],#nav a[href^='/other/rank_hits/'],#nav a[href='/original.html']\").forEach(function(a) {\n  var url = String(a.absUrl('href')).split('?')[0];\n  var title = String(a.text()).trim();\n  if (title && !seen[url]) {\n    seen[url] = true;\n    rows.push({title:title,url:url+(url.indexOf('/other/rank_hits/') >= 0 ? '' : '?page={{page}}')+','+options});\n  }\n});\nif (!rows.length) throw new Error('Site navigation is empty');\nJSON.stringify(rows);",
+    "header": "{\"User-Agent\":\"Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36\",\"Referer\":\"https://www.alicesw.com/\"}",
     "lastUpdateTime": 1785586186811,
     "loginUrl": "https://www.alicesw.com/user/user/login.html",
     "respondTime": 180000,
     "ruleBookInfo": {
-      "author": "@css:.novel_info p:eq(0) a@text",
-      "coverUrl": "@css:.pic img@src",
-      "intro": "@css:.jianjie p@text",
-      "kind": "@css:.novel_info p:eq(1) a@text&&@css:.tags_list a@text",
-      "lastChapter": "@css:.novel_info p:eq(5) a@text",
-      "name": "@css:.novel_title@text",
-      "tocUrl": "@css:.book_newchap .tit a@href",
-      "wordCount": "@css:.novel_info p:eq(3)@text##.*字 数：([^·]+).*##$1"
+      "author": ".detail-box .top a[href*='f=author']@text",
+      "coverUrl": ".detail-box .imgbox img@data-src||.detail-box .imgbox img@src",
+      "intro": ".jianjie@text",
+      "kind": ".tags a[href*='f=tag']@text||.detail-box .top a[href^='/lists/']@text##(?m)^#\\s*##",
+      "lastChapter": ".detail-box .top a[href^='/book/']@text",
+      "name": ".detail-box .top .xs-title@text",
+      "tocUrl": "a[href^='/other/chapters/']@href",
+      "updateTime": "meta[name='og:novel:update_time']@content##^\\s+|\\s+$##",
+      "wordCount": ".detail-box .top .xs-show:contains(字数)@text##^字数：\\s*|\\s*·.*$##"
     },
     "ruleContent": {
-      "content": "@css:.j_readContent p@text",
-      "nextContentUrl": "@css:#j_chapterNext@href",
-      "title": "@css:.j_chapterName@text"
+      "content": "#chapterContent .content_txt@html",
+      "title": "#chapterContent h3@text"
     },
     "ruleExplore": {
-      "author": "@css:li.four@text",
-      "bookList": "@css:.rec_rullist ul",
-      "bookUrl": "@css:li.two a@href",
-      "kind": "@css:li.sev a@text",
-      "lastChapter": "@css:li.three a@text",
-      "name": "@css:li.two a@text",
-      "wordCount": "@css:li.five@text"
+      "author": ".four@text",
+      "bookList": ".rec_rullist > ul",
+      "bookUrl": ".two a@href",
+      "kind": ".sev a@text",
+      "lastChapter": ".three a@text",
+      "name": ".two a@text##全文阅读$##",
+      "updateTime": ".six@text",
+      "wordCount": ".five@text"
     },
     "ruleSearch": {
-      "author": "@css:p.mb-1 a@text",
-      "bookList": "@css:.list-group-item",
-      "bookUrl": "@css:h5 a@href",
-      "intro": "@css:.content-txt@text",
-      "kind": "@css:h5 small@text##[\\[\\]]##",
-      "name": "@css:h5 a@text##^\\d+\\.\\s*##",
-      "wordCount": "@css:p.mb-1@text##.*字数：([^　\\s]+).*##$1"
+      "author": ".mb-1 a@text",
+      "bookList": ".list-group > .list-group-item",
+      "bookUrl": "h5 a@href",
+      "intro": ".content-txt@text",
+      "kind": "a[href*='f=tag']@text##(?m)^#\\s*##",
+      "name": "h5 a@text##^\\d+\\.\\s*|全文阅读$##",
+      "updateTime": ".timedesc@text##.*更新时间：\\s*(.*)##$1",
+      "wordCount": ".mb-1@text##.*字数：\\s*([^\\s　]+).*##$1"
     },
     "ruleToc": {
-      "chapterList": "@css:.mulu_list li",
-      "chapterName": "@css:a@text",
-      "chapterUrl": "@css:a@href"
+      "chapterList": ".section-list a[href]",
+      "chapterName": "@text",
+      "chapterUrl": "@href"
     },
-    "searchUrl": "https://www.alicesw.com/search.html?q={{java.encodeURI(key)}}&f=_all&p={{page}}",
+    "searchUrl": "/search.html?q={{key}}&p={{page}}&f=_all,{\"headers\":{\"User-Agent\":\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36\"}}",
     "weight": 0
   },
   {
@@ -211,7 +213,7 @@
     "weight": 0
   },
   {
-    "bookSourceComment": "",
+    "bookSourceComment": "旧移动域名现跳转至 https://www.diyibanzi.com；保留 bookSourceUrl 作为导入身份。旧站榜单已失效，改用当前站点分类。旧书籍地址无法可靠映射，请重新搜索加入书架。",
     "bookSourceGroup": "🔞",
     "bookSourceName": "第一版主⑦",
     "bookSourceType": 0,
@@ -221,38 +223,45 @@
     "enabled": true,
     "enabledCookieJar": false,
     "enabledExplore": true,
-    "exploreUrl": "最近更新::http://m.diyibanzhu.buzz/top/lastupdate_{{page}}/\n最新入库::http://m.diyibanzhu.buzz/top/postdate_{{page}}/\n总点击榜::http://m.diyibanzhu.buzz/top/allvisit_{{page}}/\n总收藏榜::http://m.diyibanzhu.buzz/top/goodnum_{{page}}/\n总推荐榜::http://m.diyibanzhu.buzz/top/allvote_{{page}}/\n总字数榜::http://m.diyibanzhu.buzz/top/size_{{page}}/\n完本小说::http://m.diyibanzhu.buzz/full/{{page}}/\n玄幻小说::http://m.diyibanzhu.buzz/sort/1_{{page}}/\n仙侠小说::http://m.diyibanzhu.buzz/sort/2_{{page}}/\n都市小说::http://m.diyibanzhu.buzz/sort/3_{{page}}/\n军史小说::http://m.diyibanzhu.buzz/sort/4_{{page}}/\n网游小说::http://m.diyibanzhu.buzz/sort/5_{{page}}/\n科幻小说::http://m.diyibanzhu.buzz/sort/6_{{page}}/\n耽美小说::http://m.diyibanzhu.buzz/sort/7_{{page}}/\n辣文合集::http://m.diyibanzhu.buzz/sort/8_{{page}}/",
-    "lastUpdateTime": 1662704861767,
+    "exploreUrl": "全部小说::https://www.diyibanzi.com/sort/{{page}}/\n完本小说::https://www.diyibanzi.com/quanben/sort/{{page}}/\n玄幻小说::https://www.diyibanzi.com/sort/1/{{page}}/\n武侠小说::https://www.diyibanzi.com/sort/2/{{page}}/\n都市小说::https://www.diyibanzi.com/sort/3/{{page}}/\n历史小说::https://www.diyibanzi.com/sort/4/{{page}}/\n科幻小说::https://www.diyibanzi.com/sort/5/{{page}}/\n游戏小说::https://www.diyibanzi.com/sort/6/{{page}}/\n女生小说::https://www.diyibanzi.com/sort/7/{{page}}/\n其他小说::https://www.diyibanzi.com/sort/8/{{page}}/",
+    "lastUpdateTime": 1790571819506,
     "loginUrl": "",
     "respondTime": 9107,
     "ruleBookInfo": {
-      "coverUrl": "class.pic@img@src",
-      "intro": "class.intro@p@textNodes",
+      "name": "[property=\"og:novel:book_name\"]@content",
+      "author": "[property=\"og:novel:author\"]@content",
+      "coverUrl": "class.novel_info_main@img@src",
+      "intro": "[property=\"og:description\"]@content",
       "kind": "[property=\"og:novel:category\"]@content&&[property=\"og:novel:status\"]@content",
-      "lastChapter": "class.infotype@tag.p.3@a@text",
-      "tocUrl": "text.章节目录@href"
+      "lastChapter": "[property=\"og:novel:lastest_chapter_name\"]@content",
+      "tocUrl": "[property=\"og:novel:read_url\"]@content"
     },
     "ruleContent": {
-      "content": "id.novelcontent@textNodes##本章未完，请点击.*",
+      "content": "id.article@html",
       "nextContentUrl": "text.下一页@href"
     },
-    "ruleExplore": {},
+    "ruleExplore": {
+      "bookList": "ul.flex > li",
+      "name": "h2@text",
+      "author": "class.li_bottom@a@text",
+      "bookUrl": "class.img_span@a@href",
+      "coverUrl": "img@data-original",
+      "intro": "class.indent@text"
+    },
     "ruleSearch": {
-      "author": "class.author@a@text||class.p3@text",
-      "bookList": "class.searchresult@p||class.article||class.articlegeneral||class.full_content",
-      "bookUrl": "a@href",
-      "coverUrl": "img@src||tag.a.0@href##.*/(\\d+)/(\\d+)/##http://www.diyibanzhu.buzz/files/article/image/$1/$2/$2s.jpg",
-      "intro": "class.simple@textNodes",
-      "kind": "class.p1@text##\\[|]",
-      "name": "h6@a@text||tag.a.0@text##《|》"
+      "author": "tag.p.0@ownText",
+      "bookList": "ul.flex > li.searchresult",
+      "bookUrl": "class.img_span@a@href",
+      "coverUrl": "img@data-original",
+      "intro": "class.searchresult_p@text",
+      "name": "h3@text"
     },
     "ruleToc": {
-      "chapterList": "class.chapters@li@a",
+      "chapterList": "id.ul_all_chapters@li@a",
       "chapterName": "text",
-      "chapterUrl": "href",
-      "nextTocUrl": "text.下一页@href"
+      "chapterUrl": "href"
     },
-    "searchUrl": "http://m.diyibanzhu.buzz/s.php,{\n  \"charset\": \"gbk\",\n  \"method\": \"POST\",\n  \"body\": \"s={{key}}&type=articlename\"\n}",
+    "searchUrl": "https://www.diyibanzi.com/search/,{\n  \"charset\": \"utf-8\",\n  \"method\": \"POST\",\n  \"body\": \"searchkey={{key}}&searchtype=all\"\n}",
     "weight": 0
   },
   {
