@@ -10,8 +10,11 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -35,18 +38,31 @@ internal fun SourceManagementAction(title: String, icon: Int, enabled: Boolean, 
 @Composable
 internal fun SourceGroupFilters(groups: List<SourceGroup>, installed: List<InstalledRuleSource>,
     selected: String?, onSelect: (String?) -> Unit) {
+    val ungroupedCount = installed.count { it.preferences.groupIds.isEmpty() }
     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         item(key = "all") { FilterChip(selected == null, { onSelect(null) },
             label = { Text(stringResource(R.string.sources_filter_all)) }) }
-        item(key = "ungrouped") { FilterChip(selected == "", { onSelect("") },
-            label = { Text(stringResource(R.string.source_group_ungrouped)) },
-            trailingIcon = { Text(installed.count { it.preferences.groupIds.isEmpty() }.toString()) }) }
+        if (ungroupedCount > 0) item(key = "ungrouped") {
+            SourceGroupFilter(stringResource(R.string.source_group_ungrouped), ungroupedCount, selected == "") { onSelect("") }
+        }
         items(groups, key = { it.id }) { group ->
-            FilterChip(selected == group.id, { onSelect(group.id) },
-                label = { Text(group.name, Modifier.widthIn(max = 180.dp), maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                trailingIcon = { Text(installed.count { group.id in it.preferences.groupIds }.toString()) })
+            SourceGroupFilter(group.name, installed.count { group.id in it.preferences.groupIds }, selected == group.id) { onSelect(group.id) }
         }
     }
+}
+
+@Composable
+private fun SourceGroupFilter(name: String, count: Int, selected: Boolean, onSelect: () -> Unit) {
+    val memberCount = pluralStringResource(R.plurals.source_group_member_count, count, count)
+    FilterChip(selected, onSelect, modifier = Modifier.semantics { contentDescription = "$name, $memberCount" },
+        label = { Text(name, Modifier.widthIn(max = 180.dp), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        trailingIcon = if (count > 0) ({
+            Badge(containerColor = if (selected) MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.12f)
+                else MaterialTheme.colorScheme.surfaceContainerHighest,
+                contentColor = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant) {
+                Text(count.toString())
+            }
+        }) else null)
 }
 
 @Composable

@@ -12,10 +12,7 @@
     <string name="source_group_name">Group name</string>
     <string name="source_group_name_help">Use a unique name of 1–60 characters.</string>
     <string name="source_group_move">Edit groups</string>
-    <string name="source_group_move_named">Change group for %1$s</string>
     <string name="source_group_select">Select sources</string>
-    <string name="source_group_select_visible">Select visible</string>
-    <string name="source_group_deselect_visible">Deselect visible</string>
     <string name="source_group_selected">Selected: %1$d</string>
     <string name="source_groups_saved">Groups updated</string>
     <string name="source_groups_import_help">Catalog sources are grouped by category. Sources imported from a link or file start ungrouped.</string>

@@ -12,10 +12,7 @@
     <string name="source_group_name">分类名称</string>
     <string name="source_group_name_help">使用不重复的名称，长度为 1–60 个字符。</string>
     <string name="source_group_move">设置分类</string>
-    <string name="source_group_move_named">更改「%1$s」的分类</string>
-    <string name="source_group_select">批量整理</string>
-    <string name="source_group_select_visible">全选当前列表</string>
-    <string name="source_group_deselect_visible">取消当前列表选择</string>
+    <string name="source_group_select">选择书源</string>
     <string name="source_group_selected">已选择 %1$d 个书源</string>
     <string name="source_groups_saved">分类已更新</string>
     <string name="source_groups_import_help">从分类目录添加的书源会归入对应分类；通过链接或文件导入的书源默认放入「未分类」。</string>

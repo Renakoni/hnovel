@@ -6,10 +6,13 @@ import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import hnovel.imports.*
+import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.data.web.rules.*
 import io.mockk.mockk
 import io.mockk.verify
@@ -19,6 +22,7 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
@@ -76,10 +80,130 @@ class SourceGroupsScreenTest {
         verify(exactly = 0) { model.previewUrl(any(), any()) }
     }
 
+    @Test fun zeroUngroupedIsHiddenButEmptyRealGroupsRemainAndCardsDoNotRepeatGroups() {
+        activity.get().setContent { MaterialTheme { SourcesScreen(initial.copy(
+            installed = listOf(source("One", "work"))), model, onDiagnostics = {}) {} } }
+        compose.onNodeWithText("Ungrouped").assertDoesNotExist()
+        compose.onAllNodesWithText("Work").assertCountEquals(1)
+        compose.onNodeWithContentDescription("Empty, 0 sources").performScrollTo().performClick()
+        compose.onNode(hasText("Empty") and isSelectable()).assertIsSelected()
+        compose.onNodeWithText("One").assertDoesNotExist()
+        compose.onNodeWithText("Select").assertIsNotEnabled()
+    }
+
+    @Test fun noInstalledSourcesStillKeepRealEmptyGroupsWithoutAnUngroupedChip() {
+        activity.get().setContent { MaterialTheme { SourcesScreen(initial.copy(installed = emptyList()),
+            model, onDiagnostics = {}) {} } }
+        compose.onNodeWithText("Ungrouped").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Work, 0 sources").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Empty, 0 sources").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Select").assertDoesNotExist()
+    }
+
+    @Test fun numericGroupNamesStayDistinctFromCountsAndEmptyGroupsOmitTheBadge() {
+        activity.get().setContent { MaterialTheme { SourcesScreen(initial.copy(
+            groups = listOf(SourceGroup("numeric", "1"), SourceGroup("adult", "r18")),
+            installed = listOf(source("One", "adult"), source("Two", "adult"))), model, onDiagnostics = {}) {} } }
+        compose.onNodeWithContentDescription("1, 0 sources").assert(hasText("1")).performScrollTo().performClick().assertIsSelected()
+        compose.onNodeWithText("0").assertDoesNotExist()
+        compose.onNodeWithContentDescription("r18, 2 sources").assert(hasText("r18") and hasText("2"))
+            .performClick().assertIsSelected()
+        compose.onNodeWithText("One").assertIsDisplayed()
+        compose.onNodeWithText("Two").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test fun assigningTheLastUngroupedSourceReturnsToAllAndUngroupedCanReappear() {
+        var state by mutableStateOf(initial)
+        activity.get().setContent { MaterialTheme { SourcesScreen(state, model, onDiagnostics = {}) {} } }
+        compose.onNode(hasText("Ungrouped") and isSelectable()).performClick()
+        compose.onNodeWithText("One").assertIsDisplayed()
+        compose.onNodeWithText("Two").assertDoesNotExist()
+        compose.runOnIdle { state = state.copy(installed = listOf(source("One", "work"), source("Two", "work"))) }
+        compose.onNodeWithText("Ungrouped").assertDoesNotExist()
+        compose.onNode(hasText("All") and isSelectable()).assertIsSelected()
+        compose.onNodeWithText("One").assertIsDisplayed()
+        compose.onNodeWithText("Two").performScrollTo().assertIsDisplayed()
+        compose.runOnIdle { state = initial }
+        compose.onNode(hasText("Ungrouped") and isSelectable()).performScrollTo().performClick()
+        compose.onNodeWithText("One").assertIsDisplayed()
+        compose.onNodeWithText("Two").assertDoesNotExist()
+    }
+
+    @Test fun inlineSelectionTracksVisibleGroupsAndBackClearsSelection() {
+        activity.get().setContent { MaterialTheme { SourcesScreen(initial, model, onDiagnostics = {}) {} } }
+        val title = compose.onNodeWithText(activity.get().getString(R.string.source_catalog_installed, 2)).fetchSemanticsNode().boundsInRoot
+        val action = compose.onNodeWithText("Select").fetchSemanticsNode().boundsInRoot
+        assertTrue(title.center.y in action.top..action.bottom)
+        compose.onNodeWithText("Select").performClick()
+        compose.onNodeWithText("Select all").assertIsOff().performClick()
+        compose.onNodeWithText("Selected: 2").assertIsDisplayed()
+        compose.onNode(hasText("Work") and isSelectable()).performClick()
+        compose.onNodeWithText("Select all").assertIsOn().performClick()
+        compose.onNodeWithText("Select all").assertIsOff()
+        compose.onNodeWithText("Selected: 1").assertIsDisplayed()
+        compose.onNode(hasText("All") and isSelectable()).performClick()
+        compose.onNodeWithText("Select all").assert(SemanticsMatcher.expectValue(
+            SemanticsProperties.ToggleableState, ToggleableState.Indeterminate))
+        compose.onNodeWithContentDescription("Back").performClick()
+        compose.onNodeWithText("Select").assertIsDisplayed().performClick()
+        compose.onNodeWithText("Selected: 0").assertIsDisplayed()
+        compose.onNodeWithText("Edit groups").assertIsNotEnabled()
+        verify(exactly = 0) { model.updateGroups(any(), any(), any()) }
+    }
+
+    @Test fun sourceTapOpensSettingsAndItsSwitchDoesNotSelectOrOpenTheSource() {
+        activity.get().setContent { MaterialTheme { SourcesScreen(initial, model, onDiagnostics = {}) {} } }
+        compose.onNodeWithText("One").performScrollTo().performClick()
+        verify(exactly = 1) { model.select(Identifier("rules", "One")) }
+        compose.onNode(isToggleable() and hasAnyAncestor(hasText("One"))).performClick()
+        verify(exactly = 1) { model.setEnabled(Identifier("rules", "One"), false) }
+        verify(exactly = 1) { model.select(any()) }
+        compose.onNodeWithText("Selected: 1").assertDoesNotExist()
+        compose.onNodeWithText("Select").performScrollTo().performClick()
+        compose.onNode(hasText("One") and isToggleable()).performScrollTo().assertIsOff().performClick().assertIsOn()
+        verify(exactly = 1) { model.setEnabled(any(), any()) }
+        verify(exactly = 1) { model.select(any()) }
+    }
+
+    @Test fun busyStateDisablesHeaderSelectionLongPressAndSelectedRows() {
+        var state by mutableStateOf(initial)
+        activity.get().setContent { MaterialTheme { SourcesScreen(state, model, onDiagnostics = {}) {} } }
+        compose.onNodeWithText("Select").performClick()
+        compose.runOnIdle { state = state.copy(busy = true) }
+        compose.onNodeWithText("Select all").assertIsNotEnabled()
+        compose.onNode(hasText("One") and isToggleable()).performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithText("Edit groups").assertIsNotEnabled()
+        compose.runOnIdle { state = state.copy(busy = false) }
+        compose.onNodeWithContentDescription("Back").performClick()
+        compose.runOnIdle { state = state.copy(busy = true) }
+        compose.onNodeWithText("Select").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithText("One").performScrollTo().assertIsNotEnabled().performTouchInput { longClick() }
+        compose.onNodeWithText("Selected: 1").assertDoesNotExist()
+        verify(exactly = 0) { model.select(any()) }
+    }
+
+    @Test @Config(qualifiers = "en-rUS-w320dp-h640dp")
+    fun mainListRemainsUsableAtLargeFontSizeWithLongSourceNames() {
+        val longName = "A book source with a long title that needs two lines"
+        val one = source("One", "work")
+        activity.get().setContent { MaterialTheme {
+            CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, 1.6f)) {
+                SourcesScreen(initial.copy(installed = listOf(one.copy(definition = one.definition.copy(displayName = longName)))),
+                    model, onDiagnostics = {}) {}
+            }
+        } }
+        compose.onNodeWithText("Select").performScrollTo().assertIsDisplayed().performClick()
+        compose.onNodeWithText("Select all").performScrollTo().assertIsDisplayed().performClick()
+        compose.onNodeWithText(longName).performScrollTo().assertIsDisplayed().assertIsOn()
+        compose.onNodeWithText("Edit groups").assertIsDisplayed().performClick()
+        compose.onNode(hasText("Work") and isToggleable()).assertIsOn()
+        compose.onNode(hasText("Empty") and isToggleable()).assertIsOff()
+    }
+
     @Test fun batchSelectionSurvivesFilteringAndUpdatesOnlyChosenGroups() {
         var state by mutableStateOf(initial.copy(message = indi.renakoni.nextvol.R.string.source_groups_saved, groupRevision = 1))
         activity.get().setContent { MaterialTheme { SourcesScreen(state, model, onDiagnostics = {}) {} } }
-        compose.onNodeWithText("Select sources").performScrollTo().performClick()
+        compose.onNodeWithText("Select").performScrollTo().performClick()
         compose.onNodeWithText("One").performScrollTo().performClick()
         compose.onNodeWithText("Selected: 1").assertIsDisplayed()
         compose.onNodeWithText("Work").performScrollTo().performClick()
@@ -126,7 +250,8 @@ class SourceGroupsScreenTest {
 
     @Test fun singleSourceCanCreateItsGroupWithoutOpeningSourceSettings() {
         activity.get().setContent { MaterialTheme { SourcesScreen(initial, model, onDiagnostics = {}) {} } }
-        compose.onNodeWithContentDescription("Change group for One").performScrollTo().performClick()
+        compose.onNodeWithText("One").performScrollTo().performTouchInput { longClick() }
+        compose.onNodeWithText("Edit groups").performClick()
         compose.onNodeWithText("New group").performClick()
         compose.onNode(hasSetTextAction()).performTextInput("Weekend")
         compose.onNodeWithText("Save").performClick()
@@ -294,7 +419,8 @@ class SourceGroupsScreenTest {
     @Test fun aSourceCanHaveTwoCheckedGroupsAndOnlyUncheckingOneIsSaved() {
         activity.get().setContent { MaterialTheme { SourcesScreen(initial.copy(
             installed = listOf(source("One", "work", "empty"))), model, onDiagnostics = {}) {} } }
-        compose.onNodeWithContentDescription("Change group for One").performScrollTo().performClick()
+        compose.onNodeWithText("One").performScrollTo().performTouchInput { longClick() }
+        compose.onNodeWithText("Edit groups").performClick()
         compose.onNode(hasText("Work") and isToggleable()).assertIsOn().performClick()
         compose.onNode(hasText("Empty") and isToggleable()).assertIsOn()
         compose.onNode(hasText("Ungrouped") and hasAnyAncestor(isDialog())).assertDoesNotExist()
