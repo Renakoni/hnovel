@@ -86,6 +86,27 @@ class SourceIdentityRoomTest {
         try { db.close() } finally { Dispatchers.resetMain() }
     }
 
+    @Test fun missingDirectoryIsACacheMissRatherThanAnEmptySuccess() = runBlocking {
+        assertNull(db.bookVolumesDao().getBookVolumes(a.storageKey))
+        assertNull(local.getBookVolumes(a.storageKey))
+    }
+
+    @Test fun emptyVolumeDirectoryIsACacheMiss() = runBlocking {
+        val volumes = a.bind(BookVolumes(a.remoteId, listOf(Volume("empty", "empty", emptyList()))))
+        local.updateBookVolumes(volumes)
+        assertEquals(1, db.bookVolumesDao().getVolumeEntitiesByBookId(a.storageKey).size)
+        assertNull(db.bookVolumesDao().getBookVolumes(a.storageKey))
+        assertNull(local.getBookVolumes(a.storageKey))
+    }
+
+    @Test fun emptyVolumeAlongsideReadableChaptersRemainsCached() = runBlocking {
+        val volumes = a.bind(BookVolumes(a.remoteId, listOf(Volume("empty", "empty", emptyList()),
+            Volume("readable", "readable", listOf(ChapterInformation("one", "One"))))))
+        local.updateBookVolumes(volumes)
+        assertEquals(volumes, db.bookVolumesDao().getBookVolumes(a.storageKey))
+        assertEquals(volumes, local.getBookVolumes(a.storageKey))
+    }
+
     private fun info(book: SourceBookId, title: String) = book.bind(BookInformation(
         id = book.remoteId, title = title, author = "author", description = "", publishingHouse = "",
         wordCount = WordCount(1), lastUpdated = LocalDateTime.of(2026, 9, 8, 0, 0), isComplete = false))

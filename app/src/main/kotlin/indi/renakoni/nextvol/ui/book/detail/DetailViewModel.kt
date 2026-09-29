@@ -1,5 +1,6 @@
 package indi.renakoni.nextvol.ui.book.detail
 
+import indi.renakoni.nextvol.data.book.availableVolumes
 import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -103,7 +104,7 @@ class DetailViewModel @Inject constructor(
 
     suspend fun markChaptersUnread(chapterIds: Set<String>) {
         val bookId = checkNotNull(book).storageKey
-        val volumes = checkNotNull(_uiState.bookVolumes?.get())
+        val volumes = checkNotNull(_uiState.bookVolumes?.availableVolumes())
         val catalogIds = volumes.volumes.flatMap { it.chapters }.mapTo(mutableSetOf()) { it.id }
         withContext(Dispatchers.IO) {
             readingDataRepository.markChaptersUnread(bookId, chapterIds, catalogIds)

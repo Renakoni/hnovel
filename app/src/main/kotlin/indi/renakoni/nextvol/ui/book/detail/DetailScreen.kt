@@ -1,5 +1,6 @@
 package indi.renakoni.nextvol.ui.book.detail
 
+import indi.renakoni.nextvol.data.book.availableVolumes
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -176,7 +177,7 @@ fun DetailScreen(
     var confirmUnread by remember { mutableStateOf(false) }
     var savingUnread by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
-    val catalogIds = uiState.bookVolumes?.get()?.volumes.orEmpty()
+    val catalogIds = uiState.bookVolumes?.availableVolumes()?.volumes.orEmpty()
         .flatMap { it.chapters }.mapTo(mutableSetOf()) { it.id }
     val selectedIds = selectedChapterIds.toSet().intersect(catalogIds)
     val exitSelection = {
@@ -185,7 +186,7 @@ fun DetailScreen(
         confirmUnread = false
     }
     BackHandler(selectingChapters) { if (!savingUnread) exitSelection() }
-    val volumesEmpty = catalogIds.isEmpty()
+    val volumesEmpty = uiState.bookVolumes?.get()?.volumes?.any { it.chapters.isNotEmpty() } != true
 
     val isCollapsed by remember {
         derivedStateOf {
@@ -205,7 +206,7 @@ fun DetailScreen(
     val scrollingUp by lazyListState.isScrollingUp()
     val fabVisible by remember(uiState.bookVolumes, lazyListState) {
         derivedStateOf {
-            val hasVolumes = uiState.bookVolumes?.get()?.volumes?.any { it.chapters.isNotEmpty() } == true
+            val hasVolumes = uiState.bookVolumes?.availableVolumes()?.volumes?.any { it.chapters.isNotEmpty() } == true
             val allowByDirection = !lazyListState.isScrollInProgress || scrollingUp
             val canGoForward = lazyListState.canScrollForward
 
@@ -658,7 +659,17 @@ private fun DetailContent(
         }
 
         if (visible >= 6 && uiState.readingAvailable) {
-            uiState.bookVolumes?.onOk { bookVolumes ->
+            uiState.bookVolumes?.onErr { error ->
+                item {
+                    Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(if (uiState.bookVolumes?.availableVolumes() != null) stringResource(R.string.book_directory_incomplete)
+                            else error.title, style = typography.titleMedium)
+                        Text(error.message, style = typography.bodyMedium)
+                        TextButton(onClick = onRetryVolumes) { Text(stringResource(R.string.discovery_retry)) }
+                    }
+                }
+            }
+            uiState.bookVolumes?.availableVolumes()?.let { bookVolumes ->
                 items(
                     items = bookVolumes.volumes,
                     key = { it.volumeId }
@@ -676,15 +687,8 @@ private fun DetailContent(
                         lastReadingChapterId = uiState.userReadingData?.lastReadChapterId
                     )
                 }
-            }?.onErr { error ->
-                item {
-                    Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text(error.title, style = typography.titleMedium)
-                        Text(error.message, style = typography.bodyMedium)
-                        TextButton(onClick = onRetryVolumes) { Text(stringResource(R.string.discovery_retry)) }
-                    }
-                }
-            } ?: item {
+            }
+            if (uiState.bookVolumes == null) item {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
