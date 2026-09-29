@@ -328,11 +328,13 @@ class Wenku8NetworkTest {
             val db = Room.inMemoryDatabaseBuilder(context, NextVolDatabase::class.java).allowMainThreadQueries().build()
             val local = LocalBookDataSource(db.bookInformationDao(), db.bookVolumesDao(), db.chapterContentDao(), db.userReadingDataDao(), indi.renakoni.nextvol.data.book.BookAliasStore(db))
             val downloads = BookDownloadStore(context, db, ContentJsonDecoder(ContentComponentRegistry()))
-            val shelves = BookshelfRepository(db.bookshelfDao(), mockk(relaxed = true), fixture.registry, downloads, local.aliases)
+            val work = mockk<androidx.work.WorkManager>(relaxed = true)
+            val scheduler = indi.renakoni.nextvol.data.download.BookDownloadScheduler(downloads, work, local.aliases)
+            val shelves = BookshelfRepository(db.bookshelfDao(), scheduler, fixture.registry, local.aliases)
             val text = TextProcessingRepository(mockk { every { enabled } returns false },
                 mockk { every { enabled } returns false }, ContentComponentRegistry())
-            val books = BookRepository(local, shelves, text, mockk(relaxed = true),
-                ChapterRepository(fixture.registry, local, text, mockk(), downloads), BookReadingDataRepository(local), fixture.registry, downloads, mockk())
+            val books = BookRepository(local, shelves, text, work,
+                ChapterRepository(fixture.registry, local, text, mockk(), downloads), BookReadingDataRepository(local), fixture.registry, downloads, mockk(), scheduler)
             val cache = DiskCache.Builder().directory(directory.root.resolve("coil").path.toPath()).maxSizeBytes(1024 * 1024).build()
             val loader = ImageLoader.Builder(context).diskCache(cache).components {
                 add(SourceImageInterceptor(fixture.registry, context, downloads)); add(SourceImageFetcher.Factory())

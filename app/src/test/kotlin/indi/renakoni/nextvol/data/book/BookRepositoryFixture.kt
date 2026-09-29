@@ -8,6 +8,7 @@ import indi.renakoni.nextvol.data.web.proxy.ProxyWebBookDataSource
 import io.mockk.coEvery
 import io.mockk.every
 import indi.renakoni.nextvol.data.download.BookDownloadStore
+import indi.renakoni.nextvol.data.download.BookDownloadScheduler
 import indi.renakoni.nextvol.data.web.SourceRuntime
 import indi.renakoni.nextvol.data.web.SourceResolution
 import indi.renakoni.nextvol.data.web.WebSourceRegistry
@@ -40,11 +41,12 @@ internal class BookRepositoryFixture {
 
     val downloads = mockk<BookDownloadStore>(relaxed = true)
     val localBooks = mockk<indi.renakoni.nextvol.data.localbook.LocalBookStore>()
+    val scheduler by lazy { BookDownloadScheduler(downloads, workManager, aliases) }
 
     fun chapterRepository() = ChapterRepository(registry, local, text, localBooks, downloads)
 
     fun repository() = BookRepository(
         local, bookshelves, text, workManager,
-        chapterRepository(), BookReadingDataRepository(local), registry, downloads, localBooks,
+        chapterRepository(), BookReadingDataRepository(local), registry, downloads, localBooks, scheduler,
     )
 }

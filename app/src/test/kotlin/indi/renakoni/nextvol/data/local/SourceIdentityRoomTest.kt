@@ -73,7 +73,8 @@ class SourceIdentityRoomTest {
             .allowMainThreadQueries().build()
         local = LocalBookDataSource(db.bookInformationDao(), db.bookVolumesDao(), db.chapterContentDao(), db.userReadingDataDao(), BookAliasStore(db))
         downloads = BookDownloadStore(RuntimeEnvironment.getApplication(), db, ContentJsonDecoder(ContentComponentRegistry()))
-        shelves = BookshelfRepository(db.bookshelfDao(), mockk(), indi.renakoni.nextvol.data.web.WebSourceRegistry(), downloads, local.aliases)
+        val scheduler = indi.renakoni.nextvol.data.download.BookDownloadScheduler(downloads, mockk(), local.aliases)
+        shelves = BookshelfRepository(db.bookshelfDao(), scheduler, indi.renakoni.nextvol.data.web.WebSourceRegistry(), local.aliases)
         val coordinator = StatisticsWriteCoordinator()
         stats = StatsRepository(db.bookRecordDao(), db.dailyCountDao(), mockk(), coordinator)
         backup = LocalDataManager(db, db.bookInformationDao(), db.bookRecordDao(), db.dailyCountDao(),

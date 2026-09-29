@@ -8,7 +8,7 @@
     <string name="download_task_unknown">Download task %1$s</string>
     <string name="download_task_unfinished">Unfinished downloads</string>
     <string name="download_task_remove">Cancel and remove task (keep downloaded content)</string>
-    <string name="download_task_queued">Queued</string>
+    <string name="download_task_queued">Waiting for network or system scheduling</string>
     <string name="download_task_interrupted">Interrupted; ready to continue</string>
     <string name="download_task_cancelled">Cancelled</string>
     <string name="download_task_content">Offline chapters: %1$d/%2$d</string>
@@ -25,4 +25,10 @@
     <string name="download_error_source">Source unavailable</string>
     <string name="download_error_request">Source request failed</string>
     <string name="download_error_storage">Could not save locally; check storage space</string>
+    <string name="download_notification_channel">Book downloads</string>
+    <string name="download_notification_title">Downloading book</string>
+    <string name="download_notification_text">Open the app to view download progress</string>
+    <string name="download_notification_cancel">Cancel download</string>
+    <string name="download_error_system_restricted">Background execution restricted; open the app to continue</string>
+    <string name="download_error_system_interrupted">The previous execution was interrupted</string>
 </resources>

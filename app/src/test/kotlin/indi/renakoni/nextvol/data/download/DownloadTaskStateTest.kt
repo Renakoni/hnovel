@@ -9,6 +9,18 @@ import org.junit.Test
 import java.io.IOException
 
 class DownloadTaskStateTest {
+    @Test fun platformRestrictionRemainsResumableWithoutRefundingRetries() {
+        val owner = BookDownloadEntity("book", taskStatus = DownloadTaskStatus.Interrupted.name,
+            taskError = DownloadFailure.SystemRestricted.name, taskRetryCount = 2)
+        val state = owner.taskState(WorkInfo.State.FAILED)
+        assertEquals(DownloadTaskStatus.Interrupted, state.status)
+        assertEquals(DownloadFailure.SystemRestricted, state.failure)
+        assertEquals(2, state.retryCount)
+        assertTrue(state.canResume)
+        assertFalse(state.active)
+        assertEquals(DownloadTaskStatus.Cancelled, owner.taskState(WorkInfo.State.CANCELLED).status)
+    }
+
     @Test fun orphanedRunningAndQueuedRecordsAreResumableNotActive() {
         for (status in listOf(DownloadTaskStatus.Running, DownloadTaskStatus.Queued)) {
             val owner = BookDownloadEntity("book", taskStatus = status.name)

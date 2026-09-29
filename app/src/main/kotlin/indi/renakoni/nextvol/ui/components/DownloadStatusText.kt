@@ -57,6 +57,8 @@ fun downloadStatusText(status: BookDownloadStatus): String {
         DownloadFailure.SourceUnavailable -> R.string.download_error_source
         DownloadFailure.SourceRequest -> R.string.download_error_request
         DownloadFailure.Storage -> R.string.download_error_storage
+        DownloadFailure.SystemRestricted -> R.string.download_error_system_restricted
+        DownloadFailure.SystemInterrupted -> R.string.download_error_system_interrupted
     }) }
     return parts.joinToString(" · ")
 }

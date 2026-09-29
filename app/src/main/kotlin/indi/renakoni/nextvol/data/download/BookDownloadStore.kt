@@ -84,6 +84,9 @@ class BookDownloadStore @Inject constructor(@ApplicationContext private val cont
             owner.taskWorkId != workId && !(legacy && owner.taskStatus !in
                 listOf(DownloadTaskStatus.Queued.name, DownloadTaskStatus.Running.name, DownloadTaskStatus.WaitingRetry.name)))
             throw CancellationException("Download task was replaced")
+        if (owner.taskWorkId == workId && owner.taskStatus in
+            setOf(DownloadTaskStatus.Complete.name, DownloadTaskStatus.Failed.name, DownloadTaskStatus.Interrupted.name))
+            return@withLock Task(book, generation, workId)
         val current = if (owner.taskWorkId == workId) owner else owner.copy(
             taskRetryCount = 0, taskNextAttemptAt = 0, taskSourceRevision = "", taskAccountGeneration = -1)
         val waiting = current.taskNextAttemptAt > nowMillis
@@ -118,6 +121,11 @@ class BookDownloadStore @Inject constructor(@ApplicationContext private val cont
         it.copy(taskSourceRevision = revision, taskAccountGeneration = accountGeneration)
     }
 
+    suspend fun interruptTask(task: Task, failure: DownloadFailure = DownloadFailure.SystemRestricted) = updateTask(task) {
+        it.copy(taskStatus = DownloadTaskStatus.Interrupted.name,
+            taskError = failure.name, taskNextAttemptAt = 0)
+    }
+
     /** Reserve the next recovery before returning control to WorkManager; restart never refunds it. */
     suspend fun deferTaskRetry(task: Task, expectedRetries: Int, nextAttemptAt: Long, failure: DownloadFailure) = updateTask(task) {
         check(it.taskRetryCount == expectedRetries)
@@ -130,7 +138,8 @@ class BookDownloadStore @Inject constructor(@ApplicationContext private val cont
         withContext(Dispatchers.IO) { lock.withLock {
             for (owner in dao.getAll()) {
                 if (BookIdentity.book(owner.bookId).sourceId == source && owner.taskStatus in
-                    setOf(DownloadTaskStatus.Queued.name, DownloadTaskStatus.Running.name, DownloadTaskStatus.WaitingRetry.name)) {
+                    setOf(DownloadTaskStatus.Queued.name, DownloadTaskStatus.Running.name, DownloadTaskStatus.WaitingRetry.name,
+                        DownloadTaskStatus.Interrupted.name)) {
                     dao.put(owner.copy(taskWorkId = "", attempt = "", taskStatus = DownloadTaskStatus.Cancelled.name,
                         taskError = DownloadFailure.SourceUnavailable.name, taskNextAttemptAt = 0))
                 }

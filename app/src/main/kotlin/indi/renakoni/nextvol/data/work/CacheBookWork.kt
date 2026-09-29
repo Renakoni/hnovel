@@ -1,9 +1,17 @@
 package indi.renakoni.nextvol.data.work
 
 import android.content.Context
+import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.os.Build
 import android.util.Log
+import androidx.core.app.NotificationCompat
 import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
+import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
 import coil3.SingletonImageLoader
 import coil3.request.CachePolicy
@@ -13,12 +21,16 @@ import coil3.request.SuccessResult
 import com.github.michaelbull.result.coroutines.coroutineBinding
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import indi.renakoni.nextvol.MainActivity
+import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.data.book.BookIdentity
 import indi.renakoni.nextvol.data.book.BookRepository
 import indi.renakoni.nextvol.data.download.BookDownloadStore
+import indi.renakoni.nextvol.data.download.DownloadCancelReceiver
 import indi.renakoni.nextvol.data.download.DownloadStage
 import indi.renakoni.nextvol.data.download.DownloadFailure
 import indi.renakoni.nextvol.data.download.DownloadRetryPolicy
+import indi.renakoni.nextvol.data.download.DownloadTaskStatus
 import hnovel.network.RequestRetryContext
 import indi.renakoni.nextvol.data.download.downloadFailure
 import io.nightfish.lightnovelreader.api.error.WebRequestError
@@ -45,6 +57,7 @@ class CacheBookWork @AssistedInject constructor(
     internal var retryPolicy = DownloadRetryPolicy()
     companion object {
         private const val TAG = "CacheBookWork"
+        private const val CHANNEL = "book-downloads"
 
         fun ofId(id: String): String = "cache:${BookIdentity.bookKey(id)}"
         fun generationTag(generation: Long): String = "book-download:$generation"
@@ -55,14 +68,43 @@ class CacheBookWork @AssistedInject constructor(
         return runDownload(requested)
     }
 
+    override suspend fun getForegroundInfo(): ForegroundInfo {
+        val context = applicationContext
+        if (Build.VERSION.SDK_INT >= 26) {
+            context.getSystemService(NotificationManager::class.java).createNotificationChannel(
+                NotificationChannel(CHANNEL, context.getString(R.string.download_notification_channel), NotificationManager.IMPORTANCE_LOW))
+        }
+        val open = Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        val notification = NotificationCompat.Builder(context, CHANNEL)
+            .setSmallIcon(R.drawable.downloading_24px)
+            .setContentTitle(context.getString(R.string.download_notification_title))
+            .setContentText(context.getString(R.string.download_notification_text))
+            .setContentIntent(PendingIntent.getActivity(context, id.hashCode(), open,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
+            .addAction(R.drawable.close_24px, context.getString(R.string.download_notification_cancel),
+                DownloadCancelReceiver.pendingIntent(context, inputData.getString("bookId").orEmpty(), id))
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setProgress(0, 0, true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .build()
+        return if (Build.VERSION.SDK_INT >= 29)
+            ForegroundInfo(id.hashCode(), notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        else ForegroundInfo(id.hashCode(), notification)
+    }
+
     private suspend fun runDownload(requested: indi.renakoni.nextvol.data.book.SourceBookId): Result {
         var task: BookDownloadStore.Task? = null
         try {
             val initial = bookRepository.canonicalBook(requested)
+            val previous = downloads.entry(initial)
             val startedTask = downloads.startTask(initial, inputData.getLong("downloadGeneration", 0), id.toString(),
                 runAttemptCount, legacy = !inputData.getBoolean("persistedTask", false), nowMillis = retryPolicy.nowMillis())
             task = startedTask
             val owner = checkNotNull(downloads.entry(initial))
+            if (owner.taskStatus == DownloadTaskStatus.Complete.name) return Result.success()
+            if (owner.taskStatus in setOf(DownloadTaskStatus.Failed.name, DownloadTaskStatus.Interrupted.name))
+                return bookWorkFailure("cache_failed", initial)
             val source = bookRepository.downloadSource(initial)
             if (owner.taskAccountGeneration >= 0 &&
                 (source?.accountGeneration != owner.taskAccountGeneration || source.revision != owner.taskSourceRevision)) {
@@ -71,9 +113,31 @@ class CacheBookWork @AssistedInject constructor(
             }
             if (owner.taskNextAttemptAt > retryPolicy.nowMillis()) return Result.retry()
             if (source != null) downloads.bindTaskSource(task, source.revision, source.accountGeneration)
-            val retry = if (bookRepository.canReplayDownload(initial)) RequestRetryContext() else null
+            val replaySafe = bookRepository.canReplayDownload(initial)
+            if (previous?.taskWorkId == id.toString() && previous.taskStatus == DownloadTaskStatus.Running.name) {
+                if (!replaySafe) {
+                    downloads.interruptTask(startedTask, DownloadFailure.SystemInterrupted)
+                    return bookWorkFailure("download_interrupted", initial)
+                }
+                val next = retryPolicy.nextAttemptAt(owner.taskRetryCount, hnovel.network.RequestRetryHint())
+                if (next == null) {
+                    downloads.finishTask(startedTask, DownloadFailure.RetryExhausted)
+                    return bookWorkFailure("cache_failed", initial)
+                }
+                downloads.deferTaskRetry(startedTask, owner.taskRetryCount, next, DownloadFailure.SystemInterrupted)
+                return Result.retry()
+            }
+            val retry = if (replaySafe) RequestRetryContext() else null
             val version = source?.let(::SourceRequestVersion)
             version?.check(bookRepository.downloadSource(initial))
+            try {
+                setForeground(getForegroundInfo())
+            } catch (failure: Exception) {
+                currentCoroutineContext().ensureActive()
+                downloads.interruptTask(startedTask)
+                Log.w(TAG, "Foreground download unavailable: ${failure.javaClass.simpleName}")
+                return bookWorkFailure("background_restricted", initial)
+            }
             return withContext((retry ?: kotlin.coroutines.EmptyCoroutineContext) +
                 (version ?: kotlin.coroutines.EmptyCoroutineContext)) {
                 // Record the task before details; identity promotion transfers it without owning files yet.

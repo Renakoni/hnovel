@@ -130,11 +130,12 @@ class MixedSourceAcceptanceTest {
                     .allowMainThreadQueries().build()
                 local = LocalBookDataSource(db.bookInformationDao(), db.bookVolumesDao(), db.chapterContentDao(), db.userReadingDataDao(), indi.renakoni.nextvol.data.book.BookAliasStore(db))
                 downloads = indi.renakoni.nextvol.data.download.BookDownloadStore(context, db, decoder)
-                shelves = BookshelfRepository(db.bookshelfDao(), work, registry, downloads, local.aliases)
+                val scheduler = indi.renakoni.nextvol.data.download.BookDownloadScheduler(downloads, work, local.aliases)
+                shelves = BookshelfRepository(db.bookshelfDao(), scheduler, registry, local.aliases)
                 val text = TextProcessingRepository(mockk { every { enabled } returns false }, mockk { every { enabled } returns false }, ContentComponentRegistry())
                 chapters = ChapterRepository(registry, local, text, mockk(), downloads)
                 readingData = BookReadingDataRepository(local)
-                books = BookRepository(local, shelves, text, work, chapters, readingData, registry, downloads, mockk())
+                books = BookRepository(local, shelves, text, work, chapters, readingData, registry, downloads, mockk(), scheduler)
                 stats = StatsRepository(db.bookRecordDao(), db.dailyCountDao(), books, StatisticsWriteCoordinator())
                 progress = DownloadProgressRepository(db.userDataDao(), books, downloads)
             }
@@ -197,7 +198,11 @@ class MixedSourceAcceptanceTest {
                     identities += book
                     assertEquals(fromCategory, book)
                     shelves.addBookIntoBookShelf(1, books.getBookInformationFlow(book).last().get()!!)
-                    assertEquals(WorkInfo.State.SUCCEEDED, withTimeout(30000) { books.cacheBook(book.storageKey).filterNotNull().first { it.state.isFinished } }.state)
+                    val cache = books.cacheBook(book.storageKey)
+                    val queued = withTimeout(30000) { cache.filterNotNull().first() }
+                    assertEquals(WorkInfo.State.ENQUEUED, queued.state)
+                    WorkManagerTestInitHelper.getTestDriver(context)!!.setAllConstraintsMet(queued.id)
+                    assertEquals(WorkInfo.State.SUCCEEDED, withTimeout(30000) { cache.filterNotNull().first { it.state.isFinished } }.state)
                     val chapter = local.getBookVolumes(book.storageKey)!!.volumes.single().chapters.first()
                     books.updateUserReadingData(book.storageKey) { it.copyWithUpdatedChapterReadingProgress(chapter.id, (index + 1) / 4f).copy(lastReadChapterId = chapter.id) }
                     stats.updateReadingStatistics(ReadingStatsUpdate(book.storageKey, secondDelta = (index + 1) * 60, readEventDelta = 1, localTime = LocalTime.NOON))
