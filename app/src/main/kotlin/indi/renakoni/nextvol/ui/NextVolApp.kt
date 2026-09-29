@@ -7,11 +7,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.rememberNavController
 import androidx.compose.ui.unit.dp
 import indi.renakoni.nextvol.ui.dialog.UpdatesAvailableDialogViewModel
-import indi.renakoni.nextvol.ui.dialog.navigateToPluginInstallerDialog
 import indi.renakoni.nextvol.ui.dialog.navigateUpdatesAvailableDialog
 import indi.renakoni.nextvol.ui.navigation.NextVolNavHost
 import indi.renakoni.nextvol.tts.ReadAloudController
@@ -27,7 +25,6 @@ import io.nightfish.lightnovelreader.api.Route
 
 @Composable
 fun NextVolApp(
-    onBuildNavHost: NavGraphBuilder.() -> Unit,
     onReaderActiveChanged: (Boolean) -> Unit,
     readerStyle: ReaderStyle,
     intentFlow: Flow<Intent>,
@@ -54,7 +51,7 @@ fun NextVolApp(
                 val uri = intent.data ?: return@collect
                 if (uri.scheme == "legado") {
                     sourceImportUrl(uri.toString())?.let { navController.navigate(Route.Main.Settings.SourceImport(it)) }
-                } else navController.navigateToPluginInstallerDialog(uri.toString())
+                }
             }
         }
     }
@@ -68,7 +65,6 @@ fun NextVolApp(
         }) {
         NextVolNavHost(
             navController = navController,
-            onBuildNavHost = onBuildNavHost,
             onReaderActiveChanged = onReaderActiveChanged,
             readerStyle = readerStyle
         )

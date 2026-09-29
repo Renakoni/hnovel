@@ -26,6 +26,7 @@ import androidx.work.WorkManager
 import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.ui.components.ImportUserDataDialog
 import indi.renakoni.nextvol.ui.components.SettingsClickableEntry
+import indi.renakoni.nextvol.ui.components.backupFailureMessage
 import indi.renakoni.nextvol.utils.uriLauncher
 import kotlinx.coroutines.launch
 
@@ -35,7 +36,6 @@ fun DataSettingsList(
     importData: (Uri, Boolean) -> OneTimeWorkRequest,
     onClickStorageManager: () -> Unit,
 ) {
-    val dataImportFailedText by rememberUpdatedState(stringResource(R.string.data_import_failed))
     val dataImportSuccessText by rememberUpdatedState(stringResource(R.string.data_import_success))
     val dataFileChooserTitle = stringResource(R.string.data_file_choose)
 
@@ -55,7 +55,7 @@ fun DataSettingsList(
                         isImporting = false
                         showImportDialog = false
                         pendingImportUri = null
-                        Toast.makeText(context, dataImportFailedText, Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, backupFailureMessage(it?.outputData, R.string.data_import_failed), Toast.LENGTH_LONG).show()
                     }
                     WorkInfo.State.SUCCEEDED -> {
                         isImporting = false

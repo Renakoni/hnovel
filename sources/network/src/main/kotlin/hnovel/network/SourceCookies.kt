@@ -29,12 +29,14 @@ internal class SourceCookies(private val storage: SourceStorage) {
         }
     }
 
-    @Synchronized fun header(url: HttpUrl, explicit: String?): String {
+    @Synchronized fun header(url: HttpUrl, explicit: String?, diagnostic: ((CookieDiagnostic) -> Unit)? = null): String {
+        val before = if (diagnostic != null) cookies.size else 0
         cookies.entries.removeAll { it.value.second.expiresAt <= System.currentTimeMillis() }
         val matching = cookies.values.map { it.second }
             .filter { it.expiresAt > System.currentTimeMillis() && it.matches(url) }
             .sortedByDescending { it.path.length }
             .toMutableList()
+        val eligible = matching.size
         // Explicit rule/account cookies override every same-name jar cookie for this destination.
         val explicitValues = linkedMapOf<String, String>()
         explicit?.split(';')?.forEach { part ->
@@ -43,10 +45,15 @@ internal class SourceCookies(private val storage: SourceStorage) {
         }
         if (explicitValues.isNotEmpty()) {
             matching.removeAll { it.name in explicitValues }
-            return (explicitValues.map { "${it.key}=${it.value}" } + matching.map { "${it.name}=${it.value}" })
-                .joinToString("; ")
         }
-        return matching.joinToString("; ") { "${it.name}=${it.value}" }
+        if (diagnostic != null) runCatching {
+            diagnostic(CookieDiagnostic(CookieStore.HttpJar, selected = matching.size + explicitValues.size,
+                explicit = explicitValues.size, expired = before - cookies.size,
+                unmatched = cookies.size - eligible, overridden = eligible - matching.size))
+        }
+        return if (explicitValues.isNotEmpty())
+            (explicitValues.map { "${it.key}=${it.value}" } + matching.map { "${it.name}=${it.value}" }).joinToString("; ")
+        else matching.joinToString("; ") { "${it.name}=${it.value}" }
     }
 
     @Synchronized fun save(url: HttpUrl, headers: okhttp3.Headers, fromBrowser: Boolean = false) {
@@ -142,7 +149,7 @@ internal class SourceCookies(private val storage: SourceStorage) {
                 check(storage.write("cookies", saved) is StorageResult.Value)
             } else save(url, headers.build(), fromBrowser = true)
             browserOnly.retainAll(cookies.keys)
-            // OkHttp's Cookie model cannot retain SameSite, even with complete metadata.
+            // A parsed HTTP cookie does not retain Chromium's partition/context ownership.
             // Chromium owns its original cookies; only HTTP/rule updates are sent back.
         } catch (failure: Exception) {
             restoreMemory(before); browserOnly.clear(); browserOnly.addAll(beforeBrowserOnly); throw failure

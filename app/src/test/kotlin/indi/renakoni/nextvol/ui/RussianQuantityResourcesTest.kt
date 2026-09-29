@@ -25,7 +25,6 @@ class RussianQuantityResourcesTest {
         val context = RuntimeEnvironment.getApplication()
         assertEquals("Чтение", context.getString(R.string.nav_reading))
         assertEquals("Повторить", context.getString(R.string.action_retry))
-        assertEquals("Управление плагинами", context.getString(R.string.settings_plugins))
     }
 
     @Test fun genericRussianVoiceCountsUseOneFewAndMany() {

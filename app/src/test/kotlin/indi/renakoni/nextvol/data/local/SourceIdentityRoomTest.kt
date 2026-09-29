@@ -18,7 +18,8 @@ import indi.renakoni.nextvol.data.statistics.StatsRepository
 import indi.renakoni.nextvol.data.statistics.ReadingStatsUpdate
 import indi.renakoni.nextvol.data.work.SaveBookshelfWork
 import indi.renakoni.nextvol.data.work.workerParameters
-import indi.renakoni.nextvol.utils.readAppLocalData
+import indi.renakoni.nextvol.data.backup.BackupArchive
+import indi.renakoni.nextvol.data.backup.BackupFiles
 import indi.renakoni.nextvol.utils.ofId
 import com.github.michaelbull.result.get
 import io.mockk.coEvery
@@ -84,6 +85,27 @@ class SourceIdentityRoomTest {
 
     @After fun tearDown() {
         try { db.close() } finally { Dispatchers.resetMain() }
+    }
+
+    @Test fun missingDirectoryIsACacheMissRatherThanAnEmptySuccess() = runBlocking {
+        assertNull(db.bookVolumesDao().getBookVolumes(a.storageKey))
+        assertNull(local.getBookVolumes(a.storageKey))
+    }
+
+    @Test fun emptyVolumeDirectoryIsACacheMiss() = runBlocking {
+        val volumes = a.bind(BookVolumes(a.remoteId, listOf(Volume("empty", "empty", emptyList()))))
+        local.updateBookVolumes(volumes)
+        assertEquals(1, db.bookVolumesDao().getVolumeEntitiesByBookId(a.storageKey).size)
+        assertNull(db.bookVolumesDao().getBookVolumes(a.storageKey))
+        assertNull(local.getBookVolumes(a.storageKey))
+    }
+
+    @Test fun emptyVolumeAlongsideReadableChaptersRemainsCached() = runBlocking {
+        val volumes = a.bind(BookVolumes(a.remoteId, listOf(Volume("empty", "empty", emptyList()),
+            Volume("readable", "readable", listOf(ChapterInformation("one", "One"))))))
+        local.updateBookVolumes(volumes)
+        assertEquals(volumes, db.bookVolumesDao().getBookVolumes(a.storageKey))
+        assertEquals(volumes, local.getBookVolumes(a.storageKey))
     }
 
     private fun info(book: SourceBookId, title: String) = book.bind(BookInformation(
@@ -283,8 +305,9 @@ class SourceIdentityRoomTest {
 
     @Test fun preNextVolBackupRestoresSourceAssociationsAndDownloadOwnership() = runBlocking {
         val wenku = SourceBookId("Wenku8".ofId(), "123")
-        val restored = Cbor.decodeFromByteArray<AppLocalData>(requireNotNull(
-            javaClass.getResourceAsStream("/backups/before-nextvol.lnr")).readAppLocalData())
+        val restored = BackupFiles.read(RuntimeEnvironment.getApplication().cacheDir) {
+            requireNotNull(javaClass.getResourceAsStream("/backups/before-nextvol.lnr"))
+        }
         assertTrue(backup.importAppLocalData(restored).isOk)
         assertEquals(Identifier("lightnovelreader", "Wenku8"), wenku.sourceId)
         assertEquals("Wenku fixture", local.getBookInformation(wenku.storageKey)!!.title)
@@ -326,14 +349,14 @@ class SourceIdentityRoomTest {
         shelves.addBookshelf(Bookshelf(id = 1, name = "mixed"))
         for (book in listOf(a, b)) shelves.addBookIntoBookShelf(1, info(book, "Same title"))
         val context = RuntimeEnvironment.getApplication()
-        val file = context.filesDir.resolve("mixed-bookshelf.lnr")
-        val uri = Uri.parse("content://fixture/mixed-bookshelf.lnr")
+        val file = context.filesDir.resolve("mixed-bookshelf.nvbackup")
+        val uri = Uri.parse("content://fixture/mixed-bookshelf.nvbackup")
         org.robolectric.Shadows.shadowOf(context.contentResolver).registerOutputStream(uri, file.outputStream())
         try {
             val worker = SaveBookshelfWork(context, workerParameters(workDataOf(
                 "bookshelfId" to 1, "uri" to uri.toString())), backup, db.bookshelfDao())
             assertEquals(ListenableWorker.Result.success(), worker.doWork())
-            val restored = Cbor.decodeFromByteArray<AppLocalData>(file.inputStream().readAppLocalData())
+            val restored = BackupArchive.read(file)
             assertEquals(setOf(a.storageKey, b.storageKey), restored.localDataList.single()
                 .bookshelfBookMetadataEntities.map { it.id }.toSet())
             db.bookshelfDao().clear()

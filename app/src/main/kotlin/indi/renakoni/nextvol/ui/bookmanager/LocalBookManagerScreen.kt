@@ -382,7 +382,7 @@ fun LocalBookManagerContent(
                     IconButton({ deleteDialogVisible = true }) {
                         Icon(
                             painter = painterResource(id = R.drawable.delete_forever_24px),
-                            contentDescription = stringResource(R.string.plugin_delete_confirm)
+                            contentDescription = stringResource(R.string.local_book_delete_confirm)
                         )
                     }
                 }

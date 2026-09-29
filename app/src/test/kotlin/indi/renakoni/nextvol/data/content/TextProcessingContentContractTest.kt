@@ -74,7 +74,7 @@ class TextProcessingContentContractTest {
             assertEquals(expected, output)
             val rendered = decoder.decodeComponents(
                 output.content,
-                create = { _, _, decode -> (decode() as SimpleTextComponentData).text },
+                create = { (it as SimpleTextComponentData).text },
                 error = { "error" },
             )
             assertEquals(listOf("bodyAB", "short", "error", "error", "error", "error", "error"), rendered)
@@ -83,31 +83,6 @@ class TextProcessingContentContractTest {
             assertEquals(listOf("bodyAB"), exported)
         }
         assertEquals(listOf("book/A", "book/B", "book/A", "book/B"), events)
-    }
-
-    @Test
-    fun registrationsAreReadAgainForEachProcessorRatherThanFrozenAtRepositoryConstruction() {
-        val registry = ContentComponentRegistry()
-        val processing = TextProcessingRepository(
-            mockk { every { enabled } returns false }, mockk { every { enabled } returns false }, registry,
-        )
-        processing.registerProcessors(Identifier("fixture", "register"), object : TextProcessor {
-            override val enabled = true
-            override fun processText(text: String) = text
-            override fun processChapterContent(bookId: String, chapterContent: ChapterContent, componentProcessor: ComponentProcessor): ChapterContent {
-                registry.registrar.id(Identifier("fixture", "late"))
-                    .component(fixtures.content.NoArgFixtureComponent::class)
-                    .data(SimpleTextComponentData::class).serializer(SimpleTextComponentData.jsonSerializer).register()
-                return chapterContent
-            }
-        })
-        processing.registerProcessors(Identifier("fixture", "transform"), object : TextProcessor {
-            override val enabled = true
-            override fun processText(text: String) = text.uppercase()
-        })
-        val chapter = ChapterContent("chapter", "title", Json.parseToJsonElement("""{"components":[{"id":"fixture:late","data":{"text":"body"}}]}""").jsonObject)
-        val expected = Json.parseToJsonElement("""{"components":[{"id":"fixture:late","data":{"text":"BODY"}}]}""").jsonObject
-        assertEquals(expected, processing.processChapterContent("book") { chapter }.content)
     }
 
     @Test
@@ -123,7 +98,7 @@ class TextProcessingContentContractTest {
             val decoder = ContentJsonDecoder(registry)
             assertEquals(
                 listOf("error"),
-                decoder.decodeComponents(processor.get(), { _, _, _ -> "unexpected" }, { "error" }),
+                decoder.decodeComponents(processor.get(), { "unexpected" }, { "error" }),
             )
             decoder.getDataFromJsonObject(processor.get()) { error("No valid component to export") }
         }

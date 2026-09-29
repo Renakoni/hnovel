@@ -29,14 +29,10 @@ NextVol <sup>*Refactored Version*</sup> is an open-source app for reading light 
 - EPUB export functionality for your favorite novels
 - Active development with passionate contributors
 
-## Plugin Development and Custom Data Sources
+## Custom Sources
 
-You can add custom data sources and plugins to NextVol.
-
-The following are links to relevant resources:
-- [Example Plugin](https://github.com/dmzz-yyhyy/LightNovelReaderPlguin-Template)
-- [Development Guide](https://lnr.nariko.org/plugin-dev/)
-- [LNR API KDoc](https://api-doc.lnr.nariko.org/)
+Import JSON rule sources by URL, local file or pasted text in Settings → Sources.
+See the [source import documentation](sources/import/README.md) for supported formats.
 
 Developers are welcome to contribute!
 

@@ -679,21 +679,29 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         // Source-provided Accept-Encoding disables OkHttp's transparent gzip decoder.
         // Negotiate only transport-supported encodings; preserve explicit uncompressed requests.
         if (headers["Accept-Encoding"]?.trim()?.equals("identity", true) != true) headers.removeAll("Accept-Encoding")
+        // Gate the callback holder too: a captured mutable local allocates even without an observer.
+        val cookieDiagnostic = observation?.let { arrayOfNulls<CookieDiagnostic>(1) }
+        // Chromium owns its persistent store; do not turn an HTTP jar snapshot into a native header.
+        if (includeCookies) {
+            val observeCookies: ((CookieDiagnostic) -> Unit)? = cookieDiagnostic?.let { result ->
+                { value -> result[0] = value.copy(automaticCapture = enabledCookieJar) }
+            }
+            // enabledCookieJar controls capture, not sending explicit login/verification cookies.
+            val cookie = if (policy !== imagePolicy || knownOrigin) cookies.header(url, headers["Cookie"], observeCookies)
+                else {
+                    if (cookieDiagnostic != null) cookieDiagnostic[0] = CookieDiagnostic(CookieStore.ExplicitHeaderOnly,
+                        automaticCapture = enabledCookieJar)
+                    headers["Cookie"].orEmpty()
+                }
+            headers.removeAll("Cookie")
+            if (cookie.isNotEmpty()) headers.set("Cookie", cookie)
+        }
         if (sources != null) {
             if (sources.isEmpty()) sources.add(if (includeCookies) UserAgentSource.TransportDefault else UserAgentSource.WebViewDefault)
             observation.record(RequestEvidence.HeadersResolved, userAgentSources = sources.toList(),
                 userAgent = UserAgentSummary.from(headers["User-Agent"] ?: if (includeCookies) "okhttp/${OkHttp.VERSION}" else null),
-                attempt = attempt, hop = hop)
+                attempt = attempt, hop = hop, cookies = cookieDiagnostic?.get(0))
         }
-        // Chromium owns its persistent cookie store; the mediated browser reads the jar
-        // through its host bridge. Do not inject an HTTP jar snapshot as a native Cookie header.
-        if (!includeCookies) return headers.build()
-        // enabledCookieJar controls automatic HTTP response capture. Explicit login/verification
-        // cookies are sent even when it is off (Legado AnalyzeUrl.setCookie).
-        val cookie = if (policy !== imagePolicy || knownOrigin) cookies.header(url, headers["Cookie"])
-            else headers["Cookie"].orEmpty()
-        headers.removeAll("Cookie")
-        if (cookie.isNotEmpty()) headers.set("Cookie", cookie)
         return headers.build()
     }
 

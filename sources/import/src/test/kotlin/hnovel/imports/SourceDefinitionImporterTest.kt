@@ -66,7 +66,7 @@ class SourceDefinitionImporterTest {
         assertFalse(reopened[0].enabled)
     }
 
-    @Test fun filePasteAndStreamUseSameParserAndRejectDisguisedPlugins() {
+    @Test fun filePasteAndStreamUseSameParser() {
         val importer = SourceDefinitionImporter(SourceDefinitionStore(temp.newFolder().toPath()))
         val file = temp.newFile("definition.json").toPath()
         Files.write(file, ("\uFEFF" + json()).toByteArray())
@@ -74,8 +74,6 @@ class SourceDefinitionImporterTest {
         assertTrue(fromFile.issues.isEmpty())
         assertEquals(ImportOrigin(ImportOrigin.Kind.File, "definition.json"), fromFile.candidates.single().origin)
         assertEquals(importer.preview(json()).candidates.single().rawJson, fromFile.candidates.single().rawJson)
-        assertEquals(ImportCode.PluginPackage, importer.previewStream(ByteArrayInputStream(json().toByteArray()), "source.APK").issues.single().code)
-        assertEquals(ImportCode.PluginPackage, importer.previewStream(ByteArrayInputStream(byteArrayOf(80,75,3,4,0)), "source.json").issues.single().code)
         assertEquals(ImportCode.InvalidJson, importer.previewStream(ByteArrayInputStream(byteArrayOf(0xc0.toByte())), "source.json").issues.single().code)
     }
 

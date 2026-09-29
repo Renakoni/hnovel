@@ -1,5 +1,7 @@
 package indi.renakoni.nextvol.data.web.rules
 
+import indi.renakoni.nextvol.data.export.ExportBookToEpubUseCase
+
 import android.app.Application
 import android.content.Context
 import android.content.ContextWrapper
@@ -118,7 +120,8 @@ class MixedSourceAcceptanceTest {
             val factory = object : WorkerFactory() {
                 override fun createWorker(appContext: Context, name: String, params: WorkerParameters): ListenableWorker? = when (name) {
                     CacheBookWork::class.java.name -> CacheBookWork(appContext, params, progress, books, downloads)
-                    ExportBookToEPUBWork::class.java.name -> ExportBookToEPUBWork(appContext, params, books, progress, decoder, downloads)
+                    ExportBookToEPUBWork::class.java.name -> ExportBookToEPUBWork(appContext, params,
+                        ExportBookToEpubUseCase(appContext, books, progress, decoder, downloads))
                     CheckUpdateWork::class.java.name -> CheckUpdateWork(appContext, params, books, shelves)
                     else -> null
                 }
@@ -275,7 +278,7 @@ class MixedSourceAcceptanceTest {
                 for (id in listOf(a, b, searchOnly)) sources.remove(id)
                 registry.unregister(native.id)
                 val requests = fixture.documents.get(); val nativeRequests = nativeReads.get()
-                val rendering = ContentTestHost().apply { initializeInjector() }
+                val rendering = ContentTestHost()
                 val chapterLoader = ReaderChapterLoader(chapters, rendering.renderer)
                 for ((index, book) in identities.withIndex()) {
                     val reading = books.getUserReadingData(book.storageKey)

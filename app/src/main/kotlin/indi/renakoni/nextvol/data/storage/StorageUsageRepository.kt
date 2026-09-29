@@ -4,7 +4,6 @@ import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
 import indi.renakoni.nextvol.data.local.room.NextVolDatabase
 import indi.renakoni.nextvol.data.local.room.converter.ListConverter
-import indi.renakoni.nextvol.data.plugin.PluginManager
 import indi.renakoni.nextvol.data.userdata.UserDataRepository
 import io.nightfish.lightnovelreader.api.userdata.UserDataPath
 import kotlinx.coroutines.Dispatchers
@@ -18,7 +17,6 @@ import javax.inject.Singleton
 class StorageUsageRepository @Inject constructor(
     @param:ApplicationContext private val context: Context,
     private val database: NextVolDatabase,
-    private val pluginManager: PluginManager,
     private val userDataRepository: UserDataRepository
 ) {
     companion object {
@@ -96,9 +94,7 @@ class StorageUsageRepository @Inject constructor(
 
         val appBytes = getAppFileBytes(context)
         val databaseDiskBytes = getRoomFileBytes(context, DB_NAME)
-        val pluginRoots = setOf(pluginManager.pluginsDir.canonicalPath, pluginManager.pluginsTempDir.canonicalPath)
-        val pluginBytes = pluginRoots.sumOf { fileSize(File(it)) }
-        val cacheBytes = childrenSizeExcept(context.cacheDir, pluginRoots)
+        val cacheBytes = fileSize(context.cacheDir)
         val otherFileBytes = childrenSizeExcept(
             root = context.dataDir,
             excludedPaths = setOf(
@@ -108,7 +104,7 @@ class StorageUsageRepository @Inject constructor(
                 context.dataDir.resolve("app_webview").canonicalPath,
                 context.filesDir.canonicalPath,
                 context.dataDir.resolve("no_backup").canonicalPath,
-            ) + pluginRoots
+            )
         ) + fileSize(context.filesDir)
 
         val allBookMetadataBytes =
@@ -118,10 +114,9 @@ class StorageUsageRepository @Inject constructor(
                     orphanChapterInformationBytes
 
         val snapshot = StorageUsageSnapshot(
-            totalBytes = appBytes + databaseDiskBytes + pluginBytes + cacheBytes + otherFileBytes,
+            totalBytes = appBytes + databaseDiskBytes + cacheBytes + otherFileBytes,
             appBytes = appBytes,
             databaseDiskBytes = databaseDiskBytes,
-            pluginBytes = pluginBytes,
             cacheBytes = cacheBytes,
             otherFileBytes = otherFileBytes,
             allBookMetadataBytes = allBookMetadataBytes,

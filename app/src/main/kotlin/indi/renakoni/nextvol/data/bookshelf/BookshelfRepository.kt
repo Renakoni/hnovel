@@ -128,7 +128,7 @@ class BookshelfRepository @Inject constructor(
         // Metadata-only sources can be bookmarked, but an automatic cache would always fail.
         val sourceId = BookIdentity.book(bookId).sourceId
         val canCache = sourceRegistry.sources.value.any { it.metadata.id == sourceId && it.metadata.supportsReading }
-        if (canCache && bookshelf.autoCache && bookshelf.allBookIds.contains(bookId)) {
+        if (canCache && bookshelf.autoCache) {
             downloadScheduler.enqueue(BookIdentity.book(bookId))
         }
         (bookshelf.allBookIds + listOf(bookId)).let {

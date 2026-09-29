@@ -10,8 +10,6 @@
     <string name="sources_account_required">Нужно войти снова</string>
     <string name="sources_account_loading">Загрузка состояния учётной записи…</string>
     <string name="sources_account_unknown">Не удалось прочитать состояние учётной записи</string>
-    <string name="sources_plugins_group">Источники плагинов</string>
-    <string name="sources_network_plugin">Этот плагин сам управляет сетью и не поддерживает данный переключатель обхода VPN.</string>
     <string name="sources_login_definition_error">В описании входа источника неверно поле %1$s. Проверьте определение источника.</string>
     <string name="sources_account_unavailable">Действия с учётной записью временно недоступны</string>
     <string name="sources_session_saved">Сеанс сохранён</string>
@@ -42,7 +40,7 @@
     <string name="sources_title">Источники</string>
     <string name="sources_manage_help">Добавление, настройка, вход и обновление источников</string>
     <string name="sources_add">Добавить источник книг</string>
-    <string name="sources_add_help">Добавьте JSON-источник по URL, из локального файла или вставленного текста. Также можно импортировать локальные пакеты источников .lnrp / APK поддерживаемых версий.</string>
+    <string name="sources_add_help">Добавьте JSON-источник по URL, из локального файла или вставленного текста.</string>
     <string name="sources_url">URL файла источника</string>
     <string name="sources_preview_url">Скачать и просмотреть</string>
     <string name="sources_file">Выбрать локальный файл</string>

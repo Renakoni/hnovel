@@ -7,6 +7,72 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RuleMetadataTest {
+    @Test fun oldSnapshotsSeedLastValidMetadataWithoutChangingRawOrScriptState() {
+        val old = Json.decodeFromString<BookRecord>("""{"revision":"old","book":{
+            "id":"book","wordCount":"1.23万","updateTime":"2026-09-14","observedUpdate":123,
+            "state":{"variables":{"custom":"kept"}}}}""")
+        assertEquals("", old.book.lastValidWordCount)
+        assertEquals("", old.book.lastValidUpdateTime)
+        val invalid = old.book.copy(wordCount = "unknown", updateTime = "2026-02-30").preservingValidMetadata(old.book)
+        val restored = Json.decodeFromString<BookRecord>(Json.encodeToString(BookRecord.serializer(), old.copy(book = invalid)))
+        assertEquals("1.23万", restored.book.lastValidWordCount)
+        assertEquals("2026-09-14", restored.book.lastValidUpdateTime)
+        assertEquals("unknown", restored.book.wordCount)
+        assertEquals("2026-02-30", restored.book.updateTime)
+        assertEquals(old.book.state, restored.book.state)
+        assertEquals(old.book.observedUpdate, restored.book.observedUpdate)
+        val stillInvalid = restored.book.copy(wordCount = "0", updateTime = "today").preservingValidMetadata(restored.book)
+        assertEquals("1.23万", stillInvalid.lastValidWordCount)
+        assertEquals("2026-09-14", stillInvalid.lastValidUpdateTime)
+        val valid = restored.book.copy(wordCount = "2万", updateTime = "2026-09-15").preservingValidMetadata(restored.book)
+        assertEquals("2万", valid.lastValidWordCount)
+        assertEquals("2026-09-15", valid.lastValidUpdateTime)
+    }
+
+    @Test fun updateMetadataStillPropagatesLimitsAndLoginFailures(): Unit = runBlocking {
+        for (code in listOf(ContentError.Limit, ContentError.LoginRequired)) RuleSourceFixture().use { fixture ->
+            fixture.beforeRun = { task, _ ->
+                if (task is ExecutionTask.Rule && task.location.field == "ruleBookInfo.updateTime")
+                    throw SourceContentException(code, task.location.field)
+            }
+            fixture.source(customize = { raw -> JsonObject(raw + ("ruleBookInfo" to
+                JsonObject(raw.getValue("ruleBookInfo").jsonObject +
+                    ("updateTime" to JsonPrimitive("@js:'2026-09-14'"))))) }).use { source ->
+                val failure = runCatching { source.information(fixture.server.url("/book/one").toString()) }.exceptionOrNull()
+                assertTrue(failure is SourceContentException)
+                assertEquals(code, (failure as SourceContentException).code)
+            }
+        }
+    }
+
+    @Test fun invalidUpdateRuleKeepsEarlierMetadataAndReadableDetails(): Unit = runBlocking {
+        RuleSourceFixture().use { fixture -> fixture.source(customize = { raw -> JsonObject(raw + mapOf(
+            "ruleSearch" to JsonObject(raw.getValue("ruleSearch").jsonObject +
+                ("updateTime" to JsonPrimitive("@js:'2026-09-14'"))),
+            "ruleBookInfo" to JsonObject(raw.getValue("ruleBookInfo").jsonObject +
+                ("updateTime" to JsonPrimitive("@js:throw new Error('optional date')")))
+        )) }).use { source ->
+            val found = source.search("title").single()
+            val book = source.information(found.id)
+            assertEquals("Same title", book.title)
+            assertEquals("2026-09-14", book.updateTime)
+            assertEquals(3, source.directory(book.id).size)
+        } }
+    }
+
+    @Test fun cachedInformationNeverLoadsOrRefreshesDocuments(): Unit = runBlocking {
+        RuleSourceFixture().use { fixture -> fixture.source().use { source ->
+            val id = fixture.server.url("/book/one").toString()
+            assertNull(source.cachedInformation(id))
+            assertEquals(0, fixture.server.requestCount)
+            val information = source.information(id)
+            val requests = fixture.server.requestCount
+            fixture.status = 503
+            assertEquals(information, source.cachedInformation(id))
+            assertEquals(requests, fixture.server.requestCount)
+        } }
+    }
+
     @Test fun absentAndBlankKindRulesKeepEarlierMetadataWithoutExecutingAnEmptyTask(): Unit = runBlocking {
         for (kind in listOf(null, "", " \t\n")) for (discovery in listOf(false, true)) RuleSourceFixture().use { fixture ->
             val kindTasks = mutableListOf<ExecutionTask.Rule>()

@@ -7,7 +7,7 @@ the system font scale.
 
 | Role | Style | Size / line height | Weight | Representative UI |
 | --- | --- | --- | --- | --- |
-| Full-screen page title | `displayLarge` | 22 / 28 | 600 | Settings, plugins, sources, discovery results, speech settings |
+| Full-screen page title | `displayLarge` | 22 / 28 | 600 | Settings, sources, discovery results, speech settings |
 | Settings section | `bodyLarge` through `SectionHeader` | 15 / 24 | 600 (explicit override) | Extensions, reading, display and data groups |
 | Ordinary bottom-sheet title | `displayMedium` | 19 / 26 | 600 | Reader settings, chapter directory, source range/pages, search range/failures, export |
 | Settings row main text | `headlineSmall` | 17 / 25.5 | 400 | `SettingsClickableEntry`, `SettingsSwitchEntry`, menu/slider entries |

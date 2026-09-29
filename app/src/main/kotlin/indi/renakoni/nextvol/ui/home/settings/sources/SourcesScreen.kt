@@ -495,15 +495,6 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                         colors = ListItemDefaults.colors(containerColor = if (selecting && selected)
                             MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainer))
                 }
-                val installedIds = state.installed.map { ImportedRuleSources.id(it.definition) }.toSet()
-                val plugins = state.registry.filter { !it.metadata.builtIn && it.metadata.id !in installedIds && it.metadata.id != ZLibrarySources.ID }
-                if (plugins.isNotEmpty()) item { SectionHeader(text = stringResource(R.string.sources_plugins_group)) }
-                items(plugins, key = { it.metadata.id.toString() }) { entry ->
-                    ListItem(headlineContent = { Text(entry.metadata.item.name) },
-                        supportingContent = { Text(entry.metadata.item.provider) },
-                        modifier = Modifier.clip(MaterialTheme.shapes.large).clickable(enabled = !state.busy) { model.select(entry.metadata.id) },
-                        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer))
-                }
             }
         }
     } }

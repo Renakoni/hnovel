@@ -67,6 +67,10 @@ class MetadataBookmarkTest {
             assertTrue(submitted.workSpec.input.getBoolean("persistedTask", false))
             assertEquals(androidx.work.NetworkType.CONNECTED, submitted.workSpec.constraints.requiredNetworkType)
             verify(exactly = 1) { work.enqueueUniqueWork(any<String>(), any<ExistingWorkPolicy>(), any<OneTimeWorkRequest>()) }
+            val newBook = novel.copy(remoteId = "new-book")
+            shelves.addBookIntoBookShelf(1, info.copy(id = newBook.storageKey))
+            assertTrue(shelves.getBookshelf(1)!!.allBookIds.contains(newBook.storageKey))
+            verify(exactly = 2) { work.enqueueUniqueWork(any<String>(), any<ExistingWorkPolicy>(), any<OneTimeWorkRequest>()) }
         } finally { registry.unregister(metadata.sourceId); registry.unregister(novel.sourceId); db.close() }
     }
 }
