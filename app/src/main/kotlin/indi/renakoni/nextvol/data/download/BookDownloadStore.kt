@@ -518,8 +518,8 @@ class BookDownloadStore @Inject constructor(@ApplicationContext private val cont
             val failures = owner.chapterFailures()
             DownloadSelectionState(chapters.mapIndexed { index, chapter ->
                 val saved = records[chapter.id]
-                val downloaded = chapterSaved(book, owner, saved, savedIds)
-                chapter.id to DownloadChapterState(downloaded, downloaded &&
+                val downloaded = chapterSaved(book, owner, saved, savedIds, requireCurrentImages = false)
+                chapter.id to DownloadChapterState(downloaded, downloaded && chapterSaved(book, owner, saved, savedIds) &&
                     (revision.isNullOrEmpty() || owner.revision == revision) &&
                     saved?.signature == downloadChapterSignature(chapters, index, owner.revision),
                     failures[BookIdentity.chapter(chapter.id, book).remoteId])
@@ -527,10 +527,10 @@ class BookDownloadStore @Inject constructor(@ApplicationContext private val cont
         } }
 
     private fun chapterSaved(book: SourceBookId, owner: BookDownloadEntity, saved: DownloadedChapterEntity?,
-        savedIds: Set<String>): Boolean = saved != null && saved.id in savedIds &&
+        savedIds: Set<String>, requireCurrentImages: Boolean = true): Boolean = saved != null && saved.id in savedIds &&
         Json.decodeFromString<List<String>>(saved.images).all {
             val file = imageFile(book, owner.generation, it, false, saved.resourceVersion)
-            file.isFile && file.length() > 0 && !staleMarker(file).exists()
+            file.isFile && file.length() > 0 && (!requireCurrentImages || !staleMarker(file).exists())
         }
 
     suspend fun clearReadingCache() = withContext(Dispatchers.IO) { lock.withLock {

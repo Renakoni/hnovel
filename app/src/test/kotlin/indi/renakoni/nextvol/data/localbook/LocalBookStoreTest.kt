@@ -64,7 +64,7 @@ class LocalBookStoreTest {
 
     private fun openDatabase() {
         database = Room.databaseBuilder(context, NextVolDatabase::class.java, File(temporary.root, "library.db").path)
-            .addMigrations(NextVolDatabase.MIGRATION_18_19, NextVolDatabase.MIGRATION_19_20, NextVolDatabase.MIGRATION_20_21, NextVolDatabase.MIGRATION_21_22, NextVolDatabase.MIGRATION_22_23, NextVolDatabase.MIGRATION_23_24, NextVolDatabase.MIGRATION_24_25, NextVolDatabase.MIGRATION_25_26, NextVolDatabase.MIGRATION_26_27, NextVolDatabase.MIGRATION_27_28).allowMainThreadQueries().build()
+            .addMigrations(NextVolDatabase.MIGRATION_18_19, NextVolDatabase.MIGRATION_19_20, NextVolDatabase.MIGRATION_20_21, NextVolDatabase.MIGRATION_21_22, NextVolDatabase.MIGRATION_22_23, NextVolDatabase.MIGRATION_23_24, NextVolDatabase.MIGRATION_24_25, NextVolDatabase.MIGRATION_25_26, NextVolDatabase.MIGRATION_26_27, NextVolDatabase.MIGRATION_27_28, NextVolDatabase.MIGRATION_28_29).allowMainThreadQueries().build()
         store = LocalBookStore(context, database)
         local = LocalBookDataSource(database.bookInformationDao(), database.bookVolumesDao(), database.chapterContentDao(), database.userReadingDataDao(), indi.renakoni.nextvol.data.book.BookAliasStore(database))
         downloads = BookDownloadStore(context, database, ContentJsonDecoder(ContentComponentRegistry()))

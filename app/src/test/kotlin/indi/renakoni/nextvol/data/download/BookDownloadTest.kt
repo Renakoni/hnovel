@@ -134,7 +134,7 @@ class BookDownloadTest {
     private fun openLibrary() {
         db = Room.databaseBuilder(context, NextVolDatabase::class.java, directory.root.resolve("library.db").path)
             .addMigrations(NextVolDatabase.MIGRATION_17_18, NextVolDatabase.MIGRATION_18_19,
-                NextVolDatabase.MIGRATION_19_20, NextVolDatabase.MIGRATION_20_21, NextVolDatabase.MIGRATION_21_22, NextVolDatabase.MIGRATION_22_23, NextVolDatabase.MIGRATION_23_24, NextVolDatabase.MIGRATION_24_25, NextVolDatabase.MIGRATION_25_26, NextVolDatabase.MIGRATION_26_27, NextVolDatabase.MIGRATION_27_28).allowMainThreadQueries().build()
+                NextVolDatabase.MIGRATION_19_20, NextVolDatabase.MIGRATION_20_21, NextVolDatabase.MIGRATION_21_22, NextVolDatabase.MIGRATION_22_23, NextVolDatabase.MIGRATION_23_24, NextVolDatabase.MIGRATION_24_25, NextVolDatabase.MIGRATION_25_26, NextVolDatabase.MIGRATION_26_27, NextVolDatabase.MIGRATION_27_28, NextVolDatabase.MIGRATION_28_29).allowMainThreadQueries().build()
         local = LocalBookDataSource(db.bookInformationDao(), db.bookVolumesDao(), db.chapterContentDao(), db.userReadingDataDao(), indi.renakoni.nextvol.data.book.BookAliasStore(db))
         downloads = BookDownloadStore(context, db, decoder)
         val text = TextProcessingRepository(mockk { every { enabled } returns false },
@@ -820,6 +820,7 @@ class BookDownloadTest {
         val selection = books.downloadSelection(a.storageKey, a.bind(source.directory()))
         assertEquals(3, selection.chapters.size)
         assertTrue(selection.chapters.values.all { it.downloaded })
+        assertTrue(selection.chapters.values.none { it.current })
     }
 
     @Test fun imageVerificationKeepsItsCategoryInsteadOfBecomingANetworkError() = runBlocking {

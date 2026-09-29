@@ -65,7 +65,7 @@ class LocalBookRelinkTest {
             override fun getFilesDir() = File(temporary.root, name).apply { mkdirs() }
         }
         val db = Room.databaseBuilder(context, NextVolDatabase::class.java, File(temporary.root, "$name.db").path)
-            .allowMainThreadQueries().addMigrations(NextVolDatabase.MIGRATION_22_23, NextVolDatabase.MIGRATION_23_24, NextVolDatabase.MIGRATION_24_25, NextVolDatabase.MIGRATION_25_26, NextVolDatabase.MIGRATION_26_27, NextVolDatabase.MIGRATION_27_28).build().also(databases::add)
+            .allowMainThreadQueries().addMigrations(NextVolDatabase.MIGRATION_22_23, NextVolDatabase.MIGRATION_23_24, NextVolDatabase.MIGRATION_24_25, NextVolDatabase.MIGRATION_25_26, NextVolDatabase.MIGRATION_26_27, NextVolDatabase.MIGRATION_27_28, NextVolDatabase.MIGRATION_28_29).build().also(databases::add)
         val store = LocalBookStore(context, db)
         val coordinator = StatisticsWriteCoordinator()
         val backup = LocalDataManager(db, db.bookInformationDao(), db.bookRecordDao(), db.dailyCountDao(),
