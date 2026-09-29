@@ -73,6 +73,30 @@ class BookRepositoryOperationsTest {
         verify(exactly = 0) { fixture.workManager.enqueueUniqueWork(any<String>(), any(), any<OneTimeWorkRequest>()) }
     }
 
+    @Test fun explicitContinueReplacesARevokedCooldownInsteadOfReusingItsExecutor() = runTest {
+        val book = BookIdentity.book("book")
+        val name = CacheBookWork.ofId(book.storageKey)
+        val oldId = java.util.UUID.randomUUID()
+        coEvery { fixture.downloads.entry(book) } returns indi.renakoni.nextvol.data.local.room.entity.BookDownloadEntity(
+            book.storageKey, taskStatus = "Cancelled", taskError = "SourceUnavailable", taskRetryCount = 1)
+        val waiting = mockk<WorkInfo> {
+            every { id } returns oldId
+            every { state } returns WorkInfo.State.ENQUEUED
+        }
+        every { fixture.workManager.getWorkInfosForUniqueWorkFlow(name) } returns flowOf(listOf(waiting))
+        every { fixture.workManager.getWorkInfoByIdFlow(any()) } returns flowOf(null)
+        val submitted = slot<OneTimeWorkRequest>()
+        val completion = ResolvableFuture.create<Operation.State.SUCCESS>().apply { set(Operation.SUCCESS) }
+        val operation = mockk<Operation> { every { result } returns completion }
+        every { fixture.workManager.enqueueUniqueWork(name, ExistingWorkPolicy.REPLACE, capture(submitted)) } returns operation
+
+        fixture.repository().cacheBook(book.storageKey).first()
+
+        verify(exactly = 1) { fixture.workManager.enqueueUniqueWork(name, ExistingWorkPolicy.REPLACE, any<OneTimeWorkRequest>()) }
+        assertTrue(submitted.captured.id != oldId)
+        coVerify(exactly = 1) { fixture.downloads.queueTask(book, 0L, submitted.captured.id.toString()) }
+    }
+
     @Test
     fun singleKeepWorkRetainsActiveIdentityAndReplacesTerminalRowsAcrossClockChanges() {
         val database = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), WorkDatabase::class.java)

@@ -58,6 +58,7 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext private val co
                 for ((id, generation) in generations) {
                     val current = active[id] ?: continue
                     if (current.session != null && current.session.scope.accountGeneration != generation) {
+                        downloads?.revokeSourceTasks(id)
                         runCatching { current.session.clearAccount() }.onFailure {
                             android.util.Log.w("ImportedRuleSources", "Retired account cleanup failed")
                         }
@@ -461,6 +462,7 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext private val co
             val current = checkNotNull(active[id]) { "Source is not installed" }
             check(current.rule != null) { "Source is disabled or unavailable" }
             if (expectedGeneration != null) check(accounts.current(id).generation == expectedGeneration) { "Login attempt is stale" }
+            downloads?.revokeSourceTasks(id)
             accounts.begin(id)
             try { current.session?.clearAccount() } finally {
                 current.broker?.close()
