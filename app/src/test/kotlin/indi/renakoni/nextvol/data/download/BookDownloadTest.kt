@@ -200,6 +200,43 @@ class BookDownloadTest {
         assertEquals(DownloadTaskStatus.Complete.name, downloads.entry(a)!!.taskStatus)
     }
 
+    @Test fun imageVerificationResumesTheWaitingDownload() = runBlocking {
+        val source = Remote(a).apply { withImages = true }
+        val coordinator = indi.renakoni.nextvol.data.web.rules.SourceVerificationCoordinator(registry)
+        val owner = indi.renakoni.nextvol.data.web.rules.VerificationOwner(a.sourceId, "1", 0)
+        var verified = false
+        val verification = mockk<hnovel.content.SourceVerification> {
+            every { kind } returns hnovel.network.BrowserChallengeKind.Login
+            every { certificate } returns null
+            every { origin } returns "https://fixture.invalid/"
+            coEvery { complete() } coAnswers { verified = true }
+        }
+        val challenge = hnovel.content.SourceContentException(hnovel.content.ContentError.BrowserRequired,
+            "image", verification = verification)
+        registry.register(object : WebBookDataSource by source, SourceImageProvider {
+            override suspend fun getImage(bookId: String, url: String, cover: Boolean): com.github.michaelbull.result.Result<ByteArray, WebRequestError> = try {
+                coordinator.execute(owner, "Fixture") {
+                    if (!verified) throw challenge
+                    source.getImage(bookId, url, cover)
+                }
+            } catch (error: hnovel.content.SourceContentException) {
+                Err(WebRequestError("Verification", "Required", error,
+                    kind = io.nightfish.lightnovelreader.api.error.WebRequestErrorKind.VerificationRequired))
+            }
+        }, SourceMetadata(WebDataSourceItem(a.sourceId, "Fixture", "fixture"),
+            setOf(SourceCapability.BookInformation, SourceCapability.Directory, SourceCapability.ChapterContent), revision = "1"))
+        val queued = captureQueuedDownloads()
+        assertTrue(download() is ListenableWorker.Result.Failure)
+        assertEquals(DownloadTaskStatus.WaitingVerification.name, downloads.entry(a)!!.taskStatus)
+        coordinator.verifyBackground(coordinator.prompts.value.single().id)
+        assertTrue(verified)
+        assertEquals(1, queued.size)
+        val request = queued.single()
+        assertEquals(ListenableWorker.Result.success(), CacheBookWork(context,
+            workerParameters(request.workSpec.input, request.id), progress, books, downloads).doWork())
+        assertEquals(DownloadTaskStatus.Complete.name, downloads.entry(a)!!.taskStatus)
+    }
+
     @Test fun verificationSnapshotsIgnoreCancelledReplacedAndRetiredTasksWithoutDeletingContent() = runBlocking {
         register(a)
         assertEquals(ListenableWorker.Result.success(), download())
