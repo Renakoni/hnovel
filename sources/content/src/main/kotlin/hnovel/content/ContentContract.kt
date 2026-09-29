@@ -57,7 +57,8 @@ class SourceContentException(val code: ContentError, val field: String,
 @Serializable data class RuleBook(val id: String, val title: String = "", val author: String = "",
     val description: String = "", val coverUrl: String = "", val tocUrl: String = id,
     val tags: List<String> = emptyList(), val wordCount: String = "", val latestChapter: String = "",
-    val updateTime: String = "", val state: ScriptState = ScriptState(), val observedUpdate: Long = 0)
+    val updateTime: String = "", val state: ScriptState = ScriptState(), val observedUpdate: Long = 0,
+    val lastValidWordCount: String = "", val lastValidUpdateTime: String = "")
 
 @Serializable data class RuleChapter(val id: String, val title: String, val isVolume: Boolean = false,
     val isVip: Boolean = false, val isPay: Boolean = false, val updateTime: String = "",

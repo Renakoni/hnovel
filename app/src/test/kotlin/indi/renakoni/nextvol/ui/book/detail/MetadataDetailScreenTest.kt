@@ -11,8 +11,10 @@ import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.navigation.NavHostController
 import com.github.michaelbull.result.Err
 import com.github.michaelbull.result.Ok
+import com.github.michaelbull.result.map
 import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.data.book.SourceBookId
+import indi.renakoni.nextvol.data.book.UNKNOWN_BOOK_UPDATE_TIME
 import indi.renakoni.nextvol.data.download.BookDownloadState
 import indi.renakoni.nextvol.data.download.BookDownloadPhase
 import indi.renakoni.nextvol.data.download.MutableDownloadItem
@@ -20,7 +22,9 @@ import indi.renakoni.nextvol.data.download.DownloadType
 import indi.renakoni.nextvol.data.web.zlibrary.ZLibrarySources
 import indi.renakoni.nextvol.utils.LocalClaimSnackbarHost
 import indi.renakoni.nextvol.utils.LocalSnackbarHost
+import indi.renakoni.nextvol.utils.dateFormatter
 import io.nightfish.lightnovelreader.api.book.BookInformation
+import io.nightfish.lightnovelreader.api.book.BookVolumes
 import io.nightfish.lightnovelreader.api.book.WordCount
 import io.nightfish.lightnovelreader.api.error.WebRequestError
 import io.nightfish.lightnovelreader.api.ui.LocalNavController
@@ -49,6 +53,15 @@ class MetadataDetailScreenTest {
         activity.setup()
     }
     @After fun destroy() { activity.pause().stop().destroy() }
+    private fun readingState(count: Int, updated: LocalDateTime) = MutableDetailUiState().apply {
+        val key = SourceBookId(io.nightfish.lightnovelreader.api.identifier.Identifier("rules", "metadata"), "book").storageKey
+        bookInformation = Ok(BookInformation(key, "Book", author = "Author", description = "Description",
+            publishingHouse = "", wordCount = WordCount(count), lastUpdated = updated, isComplete = false))
+        readingAvailable = true
+        bookVolumes = Ok(BookVolumes(key, emptyList()))
+        userReadingData = io.nightfish.lightnovelreader.api.book.UserReadingData(key)
+    }
+
     private fun show(state: MutableDetailUiState, retry: () -> Unit = {}, bookmark: (String) -> Unit = {}, cache: (String) -> Unit = {}) {
         activity.get().setContent {
             CompositionLocalProvider(LocalNavController provides NavHostController(activity.get()),
@@ -56,6 +69,49 @@ class MetadataDetailScreenTest {
                 MaterialTheme { DetailScreen(state, {}, {}, {}, {}, cache, bookmark, {}, {}, {}, retry) }
             }
         }
+    }
+
+    @Test fun missingWordCountAndUpdateDateAreHiddenWithoutHidingDirectoryStatistics() {
+        show(readingState(0, UNKNOWN_BOOK_UPDATE_TIME))
+        val zeroWords = activity.get().getString(R.string.book_info_word_count_kilo, "0")
+        val missingDate = activity.get().getString(R.string.book_info_update_date, UNKNOWN_BOOK_UPDATE_TIME.format(dateFormatter()))
+        compose.onNodeWithText(zeroWords).assertDoesNotExist()
+        compose.onNodeWithText(missingDate).assertDoesNotExist()
+        val info = activity.get().getString(R.string.action_show_info)
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(info))
+        compose.onNodeWithText(info).performClick()
+        compose.onNodeWithText(activity.get().getString(R.string.detail_info_updated_on)).assertDoesNotExist()
+        compose.onAllNodes(hasText(zeroWords, substring = true)).assertCountEquals(0)
+        compose.onNodeWithText(activity.get().getString(R.string.detail_info_stats_count_content, 0, 0)).assertExists()
+    }
+
+    @Test fun knownMetadataRemainsVisibleAndStatisticsDoNotRepeatTheWordUnit() {
+        val updated = LocalDateTime.of(2026, 9, 14, 0, 0)
+        show(readingState(123, updated))
+        val words = activity.get().getString(R.string.book_info_word_count_kilo, "123")
+        compose.onNodeWithText(words).assertExists()
+        compose.onNodeWithText(activity.get().getString(R.string.book_info_update_date, updated.format(dateFormatter()))).assertExists()
+        val info = activity.get().getString(R.string.action_show_info)
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(info))
+        compose.onNodeWithText(info).performClick()
+        compose.onNodeWithText(activity.get().getString(R.string.detail_info_updated_on)).assertExists()
+        val statistics = activity.get().getString(R.string.detail_info_stats_count_content, 0, 0)
+        compose.onNodeWithText(words + "\n" + statistics).assertExists()
+    }
+
+    @Test fun wordCountAndUpdateDateAreHiddenIndependently() {
+        val state = readingState(123, UNKNOWN_BOOK_UPDATE_TIME)
+        show(state)
+        val words = activity.get().getString(R.string.book_info_word_count_kilo, "123")
+        val missingDate = activity.get().getString(R.string.book_info_update_date, UNKNOWN_BOOK_UPDATE_TIME.format(dateFormatter()))
+        compose.onNodeWithText(words).assertExists()
+        compose.onNodeWithText(missingDate).assertDoesNotExist()
+        val updated = LocalDateTime.of(2026, 9, 14, 0, 0)
+        compose.runOnIdle {
+            state.bookInformation = state.bookInformation?.map { it.copy(wordCount = WordCount(0), lastUpdated = updated) }
+        }
+        compose.onNodeWithText(words).assertDoesNotExist()
+        compose.onNodeWithText(activity.get().getString(R.string.book_info_update_date, updated.format(dateFormatter()))).assertExists()
     }
 
     @Test fun metadataShowsEditionAndBasicInfoWithoutReadingDirectoryCacheOrExport() {

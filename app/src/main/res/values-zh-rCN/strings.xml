@@ -315,7 +315,6 @@
     <string name="detail_introduction">介绍</string>
     <string name="detail_contents">目录</string>
     <string name="detail_title">详情</string>
-    <string name="detail_info_word_count_content">%1$s 字</string>
     <string name="detail_info_stats_count_content">共计 %1$d 卷，%2$d 章</string>
     <string name="local_book_info_title">书籍缓存详情</string>
     <string name="local_book_info_book_information">书籍信息</string>
