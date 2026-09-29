@@ -166,13 +166,15 @@ internal val LocalReaderPositionSession = compositionLocalOf<ReaderPositionSessi
 @Composable
 internal fun RegisterReaderPositionCapture(state: ContentUiState, read: () -> ReaderPosition?): Any {
     val session = LocalReaderPositionSession.current
+    val active by rememberUpdatedState(LocalReaderRendererActive.current)
     val current by rememberUpdatedState(read)
     val token = remember(session, state) { Any() }
-    DisposableEffect(session, state, token) {
-        session?.register(state, token) { current() }
+    DisposableEffect(session, state, token, active) {
+        if (active) session?.register(state, token) { if (active) current() else null }
         onDispose { session?.unregister(state, token) }
     }
-    LaunchedEffect(session, state, token) {
+    LaunchedEffect(session, state, token, active) {
+        if (!active) return@LaunchedEffect
         snapshotFlow { current() }.collect { session?.publish(state, token, it) }
     }
     return token

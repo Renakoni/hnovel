@@ -98,6 +98,40 @@ class ReaderPositionInstrumentedTest {
         fixture.assertPosition()
     }
 
+    @Test fun explicitRightLeafBookmarkKeepsItsCharacterThroughSingleAndBothScrollModes() {
+        val fixture = Fixture()
+        fixture.awaitReady()
+        compose.runOnIdle { fixture.width = 1000.dp; fixture.height = 600.dp }
+        fixture.awaitReady()
+        val flip = fixture.reader.uiState.contentUiState as FlipPageContentUiState
+        assertEquals(2, flip.visibleLeafRange.count())
+        val rightLeaf = flip.visibleLeafRange.last
+        val nodes = compose.onAllNodes(
+            SemanticsMatcher.keyIsDefined(SemanticsActions.GetTextLayoutResult) and
+                hasAnyAncestor(hasTestTag("reader-leaf-$rightLeaf")), useUnmergedTree = true,
+        ).fetchSemanticsNodes()
+        val offset = compose.runOnIdle {
+            val layouts = mutableListOf<TextLayoutResult>()
+            nodes.first().config[SemanticsActions.GetTextLayoutResult].action!!.invoke(layouts)
+            fixture.text.indexOf(layouts.first().layoutInput.text.text) + 3
+        }
+        assertTrue(offset > 2)
+        compose.runOnIdle {
+            fixture.bookmarks.pending = fixture.bookmarks.capture!!()!!.bookmark().copy(componentIndex = 0, offset = offset)
+        }
+        compose.waitUntil(10_000) { fixture.bookmarks.pending == null }
+        fixture.assertPosition(offset)
+        compose.runOnIdle { fixture.width = 600.dp }
+        fixture.assertPosition(offset)
+        fixture.setMode(flip = false, continuous = false)
+        fixture.assertPosition(offset)
+        fixture.setMode(flip = false, continuous = true)
+        fixture.assertPosition(offset)
+        fixture.setMode(flip = true, continuous = true)
+        compose.runOnIdle { fixture.width = 1000.dp }
+        fixture.assertPosition(offset)
+    }
+
     @Test fun repeatedFontSpacingPaddingAndWidthChangesDoNotRoundTheLogicalAnchor() {
         val fixture = Fixture()
         for (flip in listOf(true, false)) {

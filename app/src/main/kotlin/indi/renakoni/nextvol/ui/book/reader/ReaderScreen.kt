@@ -464,7 +464,9 @@ fun Content(
                 label = "ContentAnimate"
             ) { contentUiState ->
                 // Controls cover the reading viewport; outgoing animated modes must release input.
-                CompositionLocalProvider(LocalReaderTextLayout provides textLayout,
+                CompositionLocalProvider(indi.renakoni.nextvol.ui.book.reader.content.LocalReaderRendererActive provides
+                    (contentUiState === readingScreenUiState.contentUiState),
+                    LocalReaderTextLayout provides textLayout,
                     LocalReaderPositionSession provides if (contentUiState === readingScreenUiState.contentUiState)
                         positions else null,
                     LocalReaderBookmarks provides if (contentUiState === readingScreenUiState.contentUiState)
