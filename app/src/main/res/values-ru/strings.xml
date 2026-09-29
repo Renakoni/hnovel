@@ -92,6 +92,7 @@
     <string name="offline_desc">Проверьте доступность сайта и настройки прокси.</string>
     <string name="saved_to_pictures_dir">Сохранено в Pictures/NextVol/%s</string>
     <string name="save_failed">Не удалось сохранить</string>
+    <string name="bookshelf_load_failed">Не удалось загрузить полки. Закройте диалог и попробуйте ещё раз.</string>
     <string name="reader_custom_font_load_failed">Не удалось загрузить шрифт. Используется стандартный. Выберите другой шрифт.</string>
     <string name="reader_custom_background_load_failed">Не удалось загрузить фоновое изображение. Выберите другое изображение.</string>
     <string name="reader_first_page">Вы на первой странице</string>
@@ -222,9 +223,9 @@
     <string name="settings_theme_text_font_weight">Толщина шрифта</string>
     <string name="data_settings">Данные</string>
     <string name="settings_snap_data">Снимок данных пользователя</string>
-    <string name="settings_snap_data_desc">Создать снимок текущих данных пользователя в формате .lnr</string>
+    <string name="settings_snap_data_desc">Экспорт данных пользователя в резервную копию NextVol (.nvbackup)</string>
     <string name="settings_import_data">Импорт данных пользователя</string>
-    <string name="settings_import_data_desc">Импорт данных пользователя из выбранного файла .lnr</string>
+    <string name="settings_import_data_desc">Импорт резервной копии NextVol (.nvbackup) или поддерживаемой старой копии .lnr</string>
     <string name="settings_storage_manager">Хранилище и очистка</string>
     <string name="settings_storage_manager_desc">Просмотр занятого места и очистка кеша чтения или загрузок.</string>
     <string name="settings_plugins">Управление плагинами</string>
@@ -442,7 +443,6 @@
     <string name="dialog_about_version">Версия</string>
     <string name="dialog_delete_bookshelf">Удалить полку</string>
     <string name="dialog_delete_bookshelf_text">Вы уверены, что хотите удалить эту полку? Она будет потеряна навсегда! (Очень надолго!)</string>
-    <string name="dialog_add_to_bookshelf_text">Добавить книгу на следующие полки</string>
     <string name="dialog_export_to_epub">Экспорт в EPUB</string>
     <string name="dialog_export_to_epub_text">EPUB (Electronic Publication) — открытый стандарт электронных книг с форматом .epub.\n\nХотите экспортировать книгу в EPUB?</string>
     <string name="dialog_updates_available">Доступны обновления</string>
@@ -687,7 +687,7 @@
     <string name="local_book_preview_hint">Нажмите на главу, чтобы проверить текст и заголовок.</string>
     <string name="local_book_image_chapter">Эта глава содержит иллюстрации.</string>
     <string name="local_book_empty_chapter">В этой главе только заголовок.</string>
-    <string name="local_book_backup_note">Локальные файлы хранятся на этом устройстве. Обмен и резервные копии .lnr не включают эти файлы; для переноса сохраните исходный EPUB или TXT.</string>
+    <string name="local_book_backup_note">Локальные файлы хранятся на этом устройстве. Резервные копии NextVol и экспорт полки не включают эти файлы; для переноса сохраните исходный EPUB или TXT.</string>
     <string name="local_book_stored_files">Исходный файл и обработанное содержимое</string>
     <string name="local_book_delete_title">Удалить локальные книги?</string>
     <string name="local_book_delete_originals">Выбранные импортированные книги будут удалены со всех полок вместе с исходными файлами и содержимым в приложении. Другие копии и файлы вне приложения сохранятся. У сетевых книг удаляется только выбранный локальный кэш.</string>
@@ -717,4 +717,5 @@
     <string name="source_verification_background">Для %1$s требуется проверка. Фоновое чтение остановлено; после проверки повторите загрузку.</string>
     <string name="source_verification_failed">Проверка не завершена или учётная запись источника изменилась. Повторите попытку из источника.</string>
     <string name="discovery_verification_required">Проверка на сайте не завершена. Повторите попытку, чтобы открыть страницу проверки.</string>
+    <string name="book_directory_incomplete">Список глав загружен не полностью. Показаны только загруженные главы.</string>
 </resources>

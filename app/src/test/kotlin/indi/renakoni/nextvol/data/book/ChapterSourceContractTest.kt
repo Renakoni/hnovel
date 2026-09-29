@@ -4,6 +4,10 @@ import android.app.Application
 import com.github.michaelbull.result.Err
 import com.github.michaelbull.result.Ok
 import com.github.michaelbull.result.Result
+import com.github.michaelbull.result.get
+import com.github.michaelbull.result.getError
+import hnovel.content.ContentError
+import hnovel.content.SourceContentException
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -11,6 +15,7 @@ import io.mockk.mockk
 import io.mockk.verify
 import io.nightfish.lightnovelreader.api.book.BookVolumes
 import io.nightfish.lightnovelreader.api.book.ChapterContent
+import io.nightfish.lightnovelreader.api.book.ChapterInformation
 import io.nightfish.lightnovelreader.api.book.Volume
 import io.nightfish.lightnovelreader.api.error.WebRequestError
 import io.nightfish.lightnovelreader.api.web.WebDataSourcePriority
@@ -20,6 +25,7 @@ import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -37,8 +43,9 @@ abstract class ChapterSourceContractTest {
     private val events = mutableListOf<String>()
     private val localChapter = ChapterContent(chapter.storageKey, "local", JsonObject(emptyMap()))
     private val remoteChapter = localChapter.copy(id = "chapter", title = "remote", nextChapter = "next")
-    private val localVolumes = BookVolumes(book.storageKey, listOf(Volume(BookIdentity.volumeKey(book, "volume"), "local", emptyList())))
-    private val remoteVolumes = BookVolumes("book", listOf(Volume("volume", "remote", emptyList())))
+    private val localVolumes = BookVolumes(book.storageKey, listOf(Volume(BookIdentity.volumeKey(book, "volume"), "local",
+        listOf(ChapterInformation(chapter.storageKey, "One")))))
+    private val remoteVolumes = BookVolumes("book", listOf(Volume("volume", "remote", listOf(ChapterInformation("chapter", "One")))))
     private val error = WebRequestError("offline", "request failed")
 
     protected abstract fun source(): ChapterSource
@@ -91,8 +98,8 @@ abstract class ChapterSourceContractTest {
             events += "emit"
         }
         assertEquals(
-            listOf(Ok(BookVolumes(book.storageKey, listOf(Volume(BookIdentity.volumeKey(book, "volume"), "processed:local", emptyList())))),
-                Ok(BookVolumes(book.storageKey, listOf(Volume(BookIdentity.volumeKey(book, "volume"), "processed:remote", emptyList()))))),
+            listOf(Ok(BookVolumes(book.storageKey, listOf(Volume(BookIdentity.volumeKey(book, "volume"), "processed:local", localVolumes.volumes.single().chapters)))),
+                Ok(BookVolumes(book.storageKey, listOf(Volume(BookIdentity.volumeKey(book, "volume"), "processed:remote", localVolumes.volumes.single().chapters))))),
             actual,
         )
         assertEquals(listOf("local", "process:local", "emit", "remote", "store:remote", "process:remote", "emit"), events)
@@ -108,7 +115,7 @@ abstract class ChapterSourceContractTest {
         val volumes = source().getBookVolumesFlow("book").toList()
         assertEquals(listOf(Ok(localChapter.copy(title = "processed:local"))), chapter)
         assertEquals(
-            listOf(Ok(BookVolumes(book.storageKey, listOf(Volume(BookIdentity.volumeKey(book, "volume"), "processed:local", emptyList()))))),
+            listOf(Ok(BookVolumes(book.storageKey, listOf(Volume(BookIdentity.volumeKey(book, "volume"), "processed:local", localVolumes.volumes.single().chapters))))),
             volumes,
         )
         coVerify(exactly = 1) { fixture.remote.getChapterContent("chapter", "book", WebDataSourcePriority.Default) }
@@ -128,6 +135,56 @@ abstract class ChapterSourceContractTest {
         coEvery { fixture.remote.getBookVolumes(any(), any()) } returns Err(error)
         assertEquals(listOf(Err(error)), source().getChapterContentFlow("chapter", "book").toList())
         assertEquals(listOf(Err(error)), source().getBookVolumesFlow("book").toList())
+    }
+
+    @Test
+    fun emptyDirectoryCacheDoesNotSuppressRemoteFailure() = runTest {
+        coEvery { fixture.local.getBookVolumes(any()) } returns BookVolumes(book.storageKey, emptyList())
+        coEvery { fixture.remote.getBookVolumes(any(), any()) } returns Err(error)
+        every { fixture.text.processBookVolumes(any()) } answers { firstArg<() -> BookVolumes>()() }
+        assertEquals(listOf(Err(error)), source().getBookVolumesFlow("book").toList())
+        coVerify(exactly = 0) { fixture.local.updateBookVolumes(any()) }
+    }
+
+    @Test
+    fun emptyVolumesCacheDoesNotSuppressRemoteFailure() = runTest {
+        val empty = localVolumes.volumes.single().copy(chapters = emptyList())
+        coEvery { fixture.local.getBookVolumes(any()) } returns localVolumes.copy(volumes =
+            listOf(empty, empty.copy(volumeId = BookIdentity.volumeKey(book, "other"))))
+        coEvery { fixture.remote.getBookVolumes(any(), any()) } returns Err(error)
+        assertEquals(listOf(Err(error)), source().getBookVolumesFlow("book").toList())
+        coVerify(exactly = 0) { fixture.local.updateBookVolumes(any()) }
+        verify(exactly = 0) { fixture.text.processBookVolumes(any()) }
+    }
+
+    @Test
+    fun emptyVolumeAlongsideReadableChaptersRemainsUsable() = runTest {
+        val mixed = localVolumes.copy(volumes = listOf(Volume(BookIdentity.volumeKey(book, "empty"), "empty", emptyList())) + localVolumes.volumes)
+        coEvery { fixture.local.getBookVolumes(any()) } returns mixed
+        coEvery { fixture.remote.getBookVolumes(any(), any()) } returns Err(error)
+        every { fixture.text.processBookVolumes(any()) } answers { firstArg<() -> BookVolumes>()() }
+        assertEquals(listOf(Ok(mixed)), source().getBookVolumesFlow("book").toList())
+        coVerify(exactly = 0) { fixture.local.updateBookVolumes(any()) }
+    }
+
+    @Test
+    fun partialDirectoryRemainsAnErrorWhileBindingAndProcessingReadableChapters() = runTest {
+        coEvery { fixture.local.getBookVolumes(any()) } returns null
+        val partial = remoteVolumes.copy(volumes = listOf(remoteVolumes.volumes.single().copy(
+            chapters = listOf(ChapterInformation("chapter", "One")))))
+        val failure = SourceContentException(ContentError.Network, "ruleToc.chapterList", httpStatus = 502)
+        coEvery { fixture.remote.getBookVolumes(any(), any()) } returns
+            Err(error.copy(throwable = PartialBookVolumesException(partial, failure)))
+        val result = source().getBookVolumesFlow("book").toList().single()
+        assertTrue(result.isErr)
+        assertNull(result.get())
+        val available = result.availableVolumes()!!
+        assertEquals(book.storageKey, available.bookId)
+        assertEquals(BookIdentity.volumeKey(book, "volume"), available.volumes.single().volumeId)
+        assertEquals("processed:remote", available.volumes.single().volumeTitle)
+        assertEquals(chapter.storageKey, available.volumes.single().chapters.single().id)
+        assertEquals(502, (result.getError()!!.throwable as PartialBookVolumesException).httpStatus)
+        coVerify(exactly = 0) { fixture.local.updateBookVolumes(any()) }
     }
 
     @Test

@@ -1,5 +1,7 @@
 package indi.renakoni.nextvol.ui.home.bookshelf.home
 
+import android.widget.Toast
+import indi.renakoni.nextvol.utils.textToast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.layout.Column
@@ -26,7 +28,9 @@ import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.workDataOf
 import indi.renakoni.nextvol.R
+import indi.renakoni.nextvol.data.backup.BackupArchive
 import indi.renakoni.nextvol.data.work.SaveBookshelfWork
+import indi.renakoni.nextvol.ui.components.backupFailureMessage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.io.File
@@ -69,7 +73,7 @@ fun BookshelfHomeScreen(
             val uri = FileProvider.getUriForFile(
                 context,
                 "${context.applicationInfo.processName}.provider",
-                File(context.cacheDir, "NextVolBookshelfData.lnr")
+                File(context.cacheDir, BackupArchive.BOOKSHELF_FILE_NAME)
             )
             val workRequest = OneTimeWorkRequestBuilder<SaveBookshelfWork>()
                 .setInputData(
@@ -84,7 +88,7 @@ fun BookshelfHomeScreen(
                 ExistingWorkPolicy.KEEP,
                 workRequest
             )
-            coroutineScope.launch(Dispatchers.IO) {
+            coroutineScope.launch(Dispatchers.Main) {
                 workManager.getWorkInfoByIdFlow(workRequest.id).collect {
                     when (it?.state) {
                         WorkInfo.State.SUCCEEDED -> {
@@ -94,6 +98,9 @@ fun BookshelfHomeScreen(
                                 .addStream(uri)
                                 .setChooserTitle(shareTitle)
                                 .startChooser()
+                        }
+                        WorkInfo.State.FAILED -> {
+                            textToast(context, backupFailureMessage(it?.outputData, R.string.backup_export_failed), Toast.LENGTH_LONG).show()
                         }
 
                         else -> return@collect

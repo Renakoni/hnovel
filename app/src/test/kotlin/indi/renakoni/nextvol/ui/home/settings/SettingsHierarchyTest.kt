@@ -198,6 +198,8 @@ class SettingsHierarchyTest {
         var checks = 0
         var backs = 0
         show { UpdatesSettingsScreen("Not checked", state, { checks++ }, { backs++ }) }
+        assertEquals("LnrAPI", state.distributionPlatformKey)
+        assertEquals("Development", state.updateChannelKey)
         assertEquals(0, checks)
         entry(R.string.settings_auto_check_updates).performClick()
         compose.waitUntil { !state.checkUpdate }
@@ -210,6 +212,56 @@ class SettingsHierarchyTest {
         assertEquals(1, checks)
         assertEquals(1, backs)
         assertEquals(false, runBlocking { state.checkUpdateUserData.get() })
+        assertEquals("Release", runBlocking { state.updateChannelKeyUserData.get() })
+    }
+
+    @Test fun updateMenusKeepOrderLabelsAndSavedKeysAcrossPlatformChanges() {
+        runBlocking {
+            data.stringUserData(UserDataPath.Settings.App.DistributionPlatform.path).set("GitHub")
+            data.stringUserData(UserDataPath.Settings.App.UpdateChannel.path).set("CI")
+        }
+        val state = SettingState(data, scope)
+        show { UpdatesSettingsScreen("Not checked", state, {}, {}) }
+        compose.waitUntil { state.distributionPlatformKey == "GitHub" && state.updateChannelKey == "CI" }
+        entry(R.string.settings_distribution_platform).performClick()
+        val platforms = listOf(R.string.key_platform_github, R.string.key_platform_lnr_api).map {
+            compose.onAllNodesWithText(label(it)).onLast().fetchSemanticsNode().boundsInRoot.top
+        }
+        assertTrue(platforms[0] < platforms[1])
+        compose.onNodeWithText(label(R.string.key_platform_lnr_api)).performClick()
+        compose.waitUntil { state.distributionPlatformKey == "LnrAPI" }
+        assertEquals("CI", runBlocking { state.updateChannelKeyUserData.get() })
+        entry(R.string.settings_update_channel).performClick()
+        val channels = listOf(R.string.key_update_channel_release, R.string.key_update_channel_development,
+            R.string.key_update_channel_ci).map {
+            compose.onAllNodesWithText(label(it)).onLast().fetchSemanticsNode().boundsInRoot.top
+        }
+        assertTrue(channels.zipWithNext().all { (first, second) -> first < second })
+        compose.onNodeWithText(label(R.string.key_update_channel_development)).performClick()
+        compose.waitUntil { state.updateChannelKey == "Development" }
+        assertEquals("LnrAPI", runBlocking { state.distributionPlatformKeyUserData.get() })
+        assertEquals("Development", runBlocking { state.updateChannelKeyUserData.get() })
+    }
+
+    @Test fun openingUpdateMenusDoesNotRewriteUnknownSavedValues() {
+        runBlocking {
+            data.stringUserData(UserDataPath.Settings.App.DistributionPlatform.path).set("old-platform")
+            data.stringUserData(UserDataPath.Settings.App.UpdateChannel.path).set("old-channel")
+        }
+        val state = SettingState(data, scope)
+        show { UpdatesSettingsScreen("Not checked", state, {}, {}) }
+        compose.waitUntil { state.distributionPlatformKey == "old-platform" && state.updateChannelKey == "old-channel" }
+        entry(R.string.settings_update_channel).performClick()
+        listOf(R.string.key_update_channel_release, R.string.key_update_channel_development,
+            R.string.key_update_channel_ci).forEach { compose.onNodeWithText(label(it)).assertIsDisplayed() }
+        assertEquals("old-platform", runBlocking { state.distributionPlatformKeyUserData.get() })
+        assertEquals("old-channel", runBlocking { state.updateChannelKeyUserData.get() })
+        compose.onNodeWithText(label(R.string.key_update_channel_release)).performClick()
+        compose.waitUntil { state.updateChannelKey == "Release" }
+        assertEquals("old-platform", runBlocking { state.distributionPlatformKeyUserData.get() })
+        entry(R.string.settings_distribution_platform).performClick()
+        compose.onNodeWithText(label(R.string.key_platform_github)).performClick()
+        compose.waitUntil { state.distributionPlatformKey == "GitHub" }
         assertEquals("Release", runBlocking { state.updateChannelKeyUserData.get() })
     }
 

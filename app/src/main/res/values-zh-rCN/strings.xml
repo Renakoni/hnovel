@@ -92,6 +92,7 @@
     <string name="offline_desc">当前无法获取在线数据，请刷新重试\n检查源网站连通性，或者换个网络试试</string>
     <string name="saved_to_pictures_dir">已保存到 Pictures/NextVol/%s</string>
     <string name="save_failed">保存失败</string>
+    <string name="bookshelf_load_failed">书架加载失败，请关闭后重试。</string>
     <string name="reader_custom_font_load_failed">字体加载失败，已恢复默认字体。请重新选择字体。</string>
     <string name="reader_custom_background_load_failed">背景图片加载失败，请重新选择图片。</string>
     <string name="reader_first_page">已经是第一页了</string>
@@ -222,9 +223,9 @@
     <string name="settings_theme_text_font_weight">字重</string>
     <string name="data_settings">数据</string>
     <string name="settings_snap_data">备份数据</string>
-    <string name="settings_snap_data_desc">将应用内的用户数据导出为 .lnr 文件</string>
+    <string name="settings_snap_data_desc">将用户数据导出为 NextVol 备份（.nvbackup）</string>
     <string name="settings_import_data">导入数据</string>
-    <string name="settings_import_data_desc">从选定的 .lnr 文件导入用户数据</string>
+    <string name="settings_import_data_desc">导入 NextVol 备份（.nvbackup）或受支持的旧版 .lnr 备份</string>
     <string name="settings_storage_manager">存储与清理</string>
     <string name="settings_storage_manager_desc">查看存储占用，清理阅读缓存或下载内容</string>
     <string name="settings_plugins">插件管理</string>
@@ -447,7 +448,6 @@
     <string name="dialog_about_version">版本</string>
     <string name="dialog_delete_bookshelf">删除书架</string>
     <string name="dialog_delete_bookshelf_text">确定要删除这个书架吗？它将会永久失去！（真的很久！）</string>
-    <string name="dialog_add_to_bookshelf_text">将这本书添加至以下书架</string>
     <string name="dialog_export_to_epub">导出为 EPUB</string>
     <string name="dialog_export_to_epub_text">EPUB (Electronic Publication) 是一种开放的电子书标准，格式为 .epub。\n\n要将这本书导出为 EPUB 吗？</string>
     <string name="dialog_updates_available">更新可用</string>
@@ -710,7 +710,7 @@
     <string name="local_book_preview_hint">点击章节即可检查正文和标题是否正确。</string>
     <string name="local_book_image_chapter">本章包含插图。</string>
     <string name="local_book_empty_chapter">本章只有标题。</string>
-    <string name="local_book_backup_note">本地文件保存在当前设备中，现有 .lnr 分享与备份不包含这些文件。换设备时请使用原始 EPUB 或 TXT 文件。</string>
+    <string name="local_book_backup_note">本地文件保存在当前设备中，NextVol 备份与书架分享不包含这些文件。换设备时请使用原始 EPUB 或 TXT 文件。</string>
     <string name="local_book_stored_files">导入原文件与解析内容</string>
     <string name="local_book_delete_title">删除本地书籍？</string>
     <string name="local_book_delete_originals">选中的导入书籍将从所有书架移除，并永久删除本应用内对应的原文件和解析内容。其他导入副本及应用外的原文件会保留。在线书籍仅清除选中的本地缓存。</string>
@@ -724,4 +724,5 @@
     <string name="log_recording_off_desc">选择日志等级，重启应用后开始记录</string>
     <string name="log_empty_file_desc">这份文件没有日志内容</string>
     <string name="log_empty_current_desc">新的日志会显示在这里，修改等级后需重启应用</string>
+    <string name="book_directory_incomplete">目录未加载完整，当前仅显示已获取的章节。</string>
 </resources>
