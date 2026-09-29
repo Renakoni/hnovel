@@ -58,6 +58,7 @@ internal fun SourceConfigurationSheet(
         }
     }
     ModalBottomSheet(onDismissRequest = ::back, sheetState = sheetState,
+        properties = ModalBottomSheetProperties(shouldDismissOnBackPress = !hasPage),
         containerColor = MaterialTheme.colorScheme.surface) {
         BackHandler(enabled = hasPage, onBack = ::parent)
         Column(Modifier.fillMaxWidth().fillMaxHeight(0.88f)) {
