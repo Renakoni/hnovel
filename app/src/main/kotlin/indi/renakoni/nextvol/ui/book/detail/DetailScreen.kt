@@ -872,13 +872,13 @@ private fun BookCardBlock(
     }
     val updateText = if (bookInformation.isComplete) {
         stringResource(R.string.book_completed)
-    } else {
+    } else if (bookInformation.lastUpdated.year > 1970) {
         stringResource(
             R.string.book_info_update_date,
             bookInformation.lastUpdated.format(dateFormatter())
         )
-    }
-    val wordCountText = bookInformation.wordCount.get()
+    } else null
+    val wordCountText = if (bookInformation.wordCount.count > 0) bookInformation.wordCount.get() else null
 
     Row(
         modifier = modifier
@@ -950,12 +950,12 @@ private fun BookCardBlock(
                 style = typography.bodyLarge
             )
             if (showReadingMetadata) Column {
-                InfoRow(
+                if (updateText != null) InfoRow(
                     icon = { BookStatusIcon(bookInformation.isComplete) },
                     text = updateText
                 )
-                Spacer(Modifier.height(2.dp))
-                InfoRow(
+                if (updateText != null && wordCountText != null) Spacer(Modifier.height(2.dp))
+                if (wordCountText != null) InfoRow(
                     icon = {
                         Icon(
                             painter = painterResource(R.drawable.text_snippet_24px),

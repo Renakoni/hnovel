@@ -23,6 +23,8 @@ import androidx.navigation.toRoute
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import indi.renakoni.nextvol.R
+import indi.renakoni.nextvol.data.backup.BackupArchive
+import indi.renakoni.nextvol.ui.components.backupFailureMessage
 import indi.renakoni.nextvol.ui.components.ExportContext
 import indi.renakoni.nextvol.ui.components.ExportUserDataDialog
 import indi.renakoni.nextvol.ui.components.MutableExportContext
@@ -148,7 +150,7 @@ private fun NavGraphBuilder.exportUserDataDialog() {
                 workManager.getWorkInfoByIdFlow(viewModel.exportToFile(uri, exportContext).id).collect {
                     when (it?.state) {
                         WorkInfo.State.FAILED -> {
-                            Toast.makeText(context.applicationContext, R.string.data_export_failed, Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context.applicationContext, backupFailureMessage(it?.outputData, R.string.backup_export_failed), Toast.LENGTH_LONG).show()
                         }
                         WorkInfo.State.SUCCEEDED -> {
                             Toast.makeText(context.applicationContext, R.string.data_export_success, Toast.LENGTH_SHORT).show()
@@ -169,7 +171,7 @@ private fun NavGraphBuilder.exportUserDataDialog() {
             },
             onClickSaveToFile = {
                 exportContext = it
-                createDataFile("NextVolData", selectLocationTitle, saveDataToFileLauncher)
+                createDataFile(BackupArchive.USER_DATA_FILE_NAME, selectLocationTitle, saveDataToFileLauncher)
             }
         )
     }
@@ -187,7 +189,7 @@ private fun createDataFile(fileName: String, chooserTitle: String, launcher: Man
         type = "*/*"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
             putExtra(DocumentsContract.EXTRA_INITIAL_URI, initUri)
-        putExtra(Intent.EXTRA_TITLE, "$fileName.lnr")
+        putExtra(Intent.EXTRA_TITLE, fileName)
     }
     launcher.launch(Intent.createChooser(intent, chooserTitle))
 }
