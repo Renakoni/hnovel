@@ -31,7 +31,7 @@ data class SourceManagementState(val installed: List<InstalledRuleSource> = empt
     val preview: ImportPreview? = null, val updateTarget: Identifier? = null,
     val previewOrigins: Map<Int, String> = emptyMap(),
     val busy: Boolean = false, val showProgress: Boolean = true, val message: Int? = null, val loginForm: LoginForm? = null,
-    val configurationPanel: Boolean = false, val loginMessages: List<String> = emptyList(),
+    val configurationPanel: Boolean = false,
     val loginStatus: LoginStatus = LoginStatus.LoggedOut, val variable: String = "",
     val zLibrary: ZLibraryState = ZLibraryState(), val checks: Map<String, SourceCheckSummary> = emptyMap(),
     val network: SourceNetworkState? = null, val storedSettingsAvailable: Boolean = false,
@@ -145,7 +145,6 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
             loginStatus = if (it.selected == id) it.loginStatus else LoginStatus.LoggedOut,
             variable = if (it.selected == id) it.variable else "", storedSettingsAvailable = false,
             accountName = if (it.selected == id) it.accountName else null,
-            loginMessages = if (it.selected == id) it.loginMessages else emptyList(),
             network = id?.let(::networkState)) }
         if (id != null && mutable.value.installed.any { ImportedRuleSources.id(it.definition) == id }) {
             refreshStoredSettings(id)
@@ -337,7 +336,7 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
     }
     fun beginLogin(id: Identifier) = launch { openLogin(id) }
     fun beginConfiguration(id: Identifier) = launch {
-        mutable.update { it.copy(configurationPanel = true, loginForm = null, loginMessages = emptyList()) }
+        mutable.update { it.copy(configurationPanel = true, loginForm = null) }
         try { openLogin(id, configuration = true) }
         finally { if (state.value.loginForm == null) mutable.update { it.copy(configurationPanel = false) } }
     }
@@ -356,15 +355,15 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
         var form: LoginForm? = null
         try {
             currentCoroutineContext().ensureActive()
-            mutable.update { it.copy(loginForm = null, configurationPanel = configuration, loginMessages = emptyList()) }
+            mutable.update { it.copy(loginForm = null, configurationPanel = configuration) }
             val loaded = login.form(active).also { form = it }
             currentCoroutineContext().ensureActive()
             val action = SourceLoginService.directLoginAction(loaded).takeUnless { configuration }
             if (!configuration && (loaded.browserUrl != null && loaded.fields.isEmpty() || action != null)) {
-                val result = login.submit(active, loaded.values, action, loaded.id)
+                login.submit(active, loaded.values, action, loaded.id)
                 login.cancel(active)
                 attempt = null
-                mutable.update { it.copy(loginForm = null, loginMessages = result.messages) }
+                mutable.update { it.copy(loginForm = null) }
             } else mutable.update { it.copy(loginForm = loaded) }
         } catch (failure: Exception) {
             withContext(NonCancellable) { login.cancel(active) }
@@ -389,7 +388,6 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
     fun submitLogin(values: Map<String, String>, action: String? = null, formId: String? = null) = launch {
         val active = checkNotNull(attempt)
         val submittedForm = state.value.loginForm
-        mutable.update { it.copy(loginMessages = emptyList()) }
         try {
             val update = submittedForm?.takeIf { it.id == formId }?.fields?.singleOrNull {
                 it.id == action && it.enabled && it.type == "button" &&
@@ -404,21 +402,20 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
                 }
                 withContext(NonCancellable) { login.cancel(active) }
                 attempt = null
-                mutable.update { it.copy(loginForm = null) }
+                mutable.update { it.copy(loginForm = null, configurationPanel = false) }
                 showUpdate(checked, active.source)
                 return@launch
             }
-            val result = login.submit(active, values, action, formId)
+            login.submit(active, values, action, formId)
             val form = if (action == null) null else login.form(active)
             if (action == null) { login.cancel(active); attempt = null }
-            mutable.update { it.copy(loginForm = form, loginMessages = result.messages) }
+            mutable.update { it.copy(loginForm = form, configurationPanel = it.configurationPanel && form != null) }
         } finally {
             withContext(NonCancellable) { refreshStoredSettings(active.source, submittedForm) }
         }
     }
     fun logout(id: Identifier) = launch {
         login.logout(id)
-        mutable.update { it.copy(loginMessages = emptyList()) }
         refreshStoredSettings(id)
     }
     fun verifyPending() = launch {
@@ -431,7 +428,7 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
         val pending = operation
         pending?.cancel()
         val generation = ++operationGeneration
-        mutable.update { it.copy(loginForm = null, configurationPanel = false, loginMessages = emptyList(),
+        mutable.update { it.copy(loginForm = null, configurationPanel = false,
             busy = true, showProgress = true) }
         val active = attempt; attempt = null
         viewModelScope.launch {
@@ -443,7 +440,7 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
                 }
             }
             if (generation == operationGeneration) mutable.update { it.copy(loginForm = null, configurationPanel = false,
-                busy = false, loginMessages = emptyList()) }
+                busy = false) }
         }
     }
     fun cancel() { operation?.cancel() }

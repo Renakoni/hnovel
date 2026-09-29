@@ -28,7 +28,6 @@ class ReaderSourcePanelViewModel @Inject internal constructor(
     var busy by mutableStateOf(false); private set
     var visible by mutableStateOf(false); private set
     var notice: Int? by mutableStateOf(null); private set
-    var feedback: List<String> by mutableStateOf(emptyList()); private set
     var available by mutableStateOf(false); private set
     private var book: SourceBookId? = null
     private var chapter: SourceChapterId? = null
@@ -68,7 +67,7 @@ class ReaderSourcePanelViewModel @Inject internal constructor(
         val capturedBook = book ?: return
         val capturedChapter = chapter
         val epoch = ++version
-        visible = true; busy = true; notice = null; feedback = emptyList()
+        visible = true; busy = true; notice = null
         job = viewModelScope.launch(foreground) {
             try {
                 val resolved = registry.resolve(capturedBook.sourceId) as? SourceResolution.Ready ?: error("Source unavailable")
@@ -98,20 +97,19 @@ class ReaderSourcePanelViewModel @Inject internal constructor(
         val capturedBook = book ?: return
         val capturedChapter = chapter
         val epoch = version
-        busy = true; notice = null; feedback = emptyList()
+        busy = true; notice = null
         job = viewModelScope.launch(foreground) {
             var submitted = false
             try {
                 val result = login.submit(panel, values, action, formId)
                 submitted = true
-                if (epoch == version) feedback = result.messages
                 login.withAttempt(panel) {
                     val update = refresh.refresh(capturedBook, capturedChapter, capturedRuntime, result.refreshTargets)
                     if (update.isErr) {
                         if (epoch == version) notice = R.string.reader_source_panel_refresh_failed
                     } else if (epoch == version) {
                         apply(capturedBook.storageKey, capturedChapter?.storageKey, update.get()!!)
-                        notice = R.string.reader_source_panel_completed
+                        if (result.messages.isEmpty()) notice = R.string.reader_source_panel_completed
                     }
                 }
                 val updated = login.form(panel)
@@ -133,7 +131,7 @@ class ReaderSourcePanelViewModel @Inject internal constructor(
         // close() revokes the panel ticket immediately; it never closes the shared source.
         attempt?.let { it.rules.close(); it.lifetime.cancel() }
         attempt = null; runtime = null; form = null
-        visible = false; busy = false; notice = message; feedback = emptyList()
+        visible = false; busy = false; notice = message
     }
 
     override fun onCleared() { dismiss(null); super.onCleared() }

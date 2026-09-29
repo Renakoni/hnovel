@@ -65,21 +65,17 @@ class SourcesScreenTest {
     @After fun destroy() { activity.pause().stop().destroy() }
 
     @Test @Config(qualifiers = "en-rUS-w320dp-h640dp")
-    fun configurationFeedbackStaysVisibleWhileControlsScrollAndClosingDoesNotAuthenticate() {
+    fun configurationControlsScrollAndClosingDoesNotAuthenticate() {
         val form = LoginForm((1..40).map { LoginField("Control $it", "button", action = "configure()") }, null)
-        val feedback = "Debug enabled\nDetailed instructions stay here"
         var submitted = false
         var closed = false
         activity.get().setContent { MaterialTheme {
-            SourceConfigurationSheet(form, false, { _, _, _ -> submitted = true }, { closed = true },
-                message = "Action feedback", feedback = listOf(feedback))
+            SourceConfigurationSheet(form, false, { _, _, _ -> submitted = true }, { closed = true })
         } }
         compose.onNodeWithText("Source configuration").assertIsDisplayed()
         compose.onNodeWithText("Sign in").assertDoesNotExist()
-        compose.onNodeWithText("Action feedback").assertIsDisplayed()
         compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Control 40"))
         compose.onNodeWithText("Control 40").assertIsDisplayed()
-        compose.onNodeWithText(feedback).assertIsDisplayed()
         compose.onNodeWithContentDescription("Close").performClick()
         org.junit.Assert.assertTrue(closed)
         org.junit.Assert.assertFalse(submitted)
@@ -131,25 +127,19 @@ class SourcesScreenTest {
         val field = LoginField("General novels", "button", action = "configure()", section = "Discovery", checked = true)
         val original = LoginForm(listOf(field), null, id = "original")
         var form by mutableStateOf(original)
-        var feedback by mutableStateOf(emptyList<String>())
         var submitted: Pair<String?, String>? = null
         activity.get().setContent { MaterialTheme {
             SourceConfigurationSheet(form, false, { _, action, formId ->
                 submitted = action to formId
                 form = form.copy(fields = listOf(field.copy(checked = false)), id = form.id + "-refreshed")
-                feedback = listOf("Saved")
-            }, {}, feedback = feedback)
+            }, {})
         } }
         compose.onNodeWithText("Discovery").performClick()
         compose.onNodeWithText("General novels").assertIsOn().performClick()
         compose.onNodeWithText("General novels").assertIsOff()
-        compose.onNodeWithText("Saved").assertIsDisplayed()
         org.junit.Assert.assertEquals(field.id to original.id, submitted)
-        compose.onNodeWithContentDescription("Dismiss result").performClick()
-        compose.onNodeWithText("Saved").assertDoesNotExist()
         compose.onNodeWithText("General novels").performClick()
         org.junit.Assert.assertEquals(field.id to "original-refreshed", submitted)
-        compose.onNodeWithText("Saved").assertIsDisplayed()
     }
 
     @Test @Config(qualifiers = "en-rUS-w360dp-h800dp")
@@ -211,7 +201,6 @@ class SourcesScreenTest {
             compose.runOnIdle { state = state.copy(message = message) }
             compose.onNodeWithText("Source configuration").assertIsDisplayed()
             compose.onNodeWithText(activity.get().getString(message)).assertDoesNotExist()
-            compose.onNodeWithText(activity.get().getString(indi.renakoni.nextvol.R.string.sources_configuration_result)).assertDoesNotExist()
             compose.runOnIdle {
                 org.junit.Assert.assertNull(state.message)
                 org.junit.Assert.assertEquals(index + 1, ShadowToast.shownToastCount())

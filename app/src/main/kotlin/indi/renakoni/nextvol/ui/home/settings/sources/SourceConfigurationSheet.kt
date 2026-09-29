@@ -5,11 +5,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -17,10 +14,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -37,7 +32,6 @@ import kotlinx.coroutines.launch
 internal fun SourceConfigurationSheet(
     form: LoginForm?, busy: Boolean,
     onSubmit: (Map<String, String>, String?, String) -> Unit, onCancel: () -> Unit,
-    message: String? = null, feedback: List<String> = emptyList(),
 ) {
     val values = remember(form) { mutableStateMapOf<String, String>().apply { putAll(form?.values.orEmpty()) } }
     val fields = form?.fields.orEmpty().filterNot { it.type == "button" &&
@@ -45,7 +39,6 @@ internal fun SourceConfigurationSheet(
     val sections = fields.mapNotNull { it.section }.distinct()
     var selectedSection by remember { mutableStateOf<String?>(null) }
     val section = selectedSection?.takeIf { it in sections }
-    var showFeedback by remember(form?.id, feedback) { mutableStateOf(true) }
     val scrollState = rememberLazyListState()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
@@ -79,8 +72,6 @@ internal fun SourceConfigurationSheet(
                         CircularProgressIndicator()
                     }
                 }
-                message?.let { item { Text(it, Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
-                    color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) } }
                 items(fields.filter { it.section == section }, key = { it.id }) { field ->
                     SourceConfigurationField(field, values[field.name].orEmpty(), !busy && field.enabled,
                         onChange = { values[field.name] = it },
@@ -94,23 +85,6 @@ internal fun SourceConfigurationSheet(
                             trailingContent = { Icon(painterResource(R.drawable.arrow_forward_ios_24px), null, Modifier.size(16.dp)) },
                             colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
                             modifier = Modifier.clickable { selectedSection = name }.padding(horizontal = 8.dp))
-                    }
-                }
-            }
-            if (feedback.isNotEmpty() && showFeedback) {
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(stringResource(R.string.sources_configuration_result), Modifier.weight(1f),
-                            style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        IconButton(onClick = { showFeedback = false }, modifier = Modifier.size(40.dp)) {
-                            Icon(painterResource(R.drawable.close_24px), stringResource(R.string.sources_configuration_dismiss_result), Modifier.size(18.dp))
-                        }
-                    }
-                    SelectionContainer {
-                        Text(feedback.joinToString("\n\n"), Modifier.fillMaxWidth().heightIn(max = 112.dp)
-                            .verticalScroll(rememberScrollState()).semantics { liveRegion = LiveRegionMode.Polite },
-                            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }

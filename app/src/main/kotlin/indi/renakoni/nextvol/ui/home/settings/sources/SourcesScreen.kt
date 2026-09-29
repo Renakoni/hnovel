@@ -141,6 +141,8 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
     onDiagnostics: (Identifier) -> Unit, onSearch: (Identifier) -> Unit = {}, onBack: () -> Unit) {
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
+    var sourceToast by remember { mutableStateOf<Toast?>(null) }
+    DisposableEffect(context) { onDispose { sourceToast?.cancel() } }
     var adding by rememberSaveable { mutableStateOf(false) }
     var addTab by rememberSaveable { mutableIntStateOf(0) }
     var category by rememberSaveable { mutableStateOf<SourceCategory?>(null) }
@@ -181,18 +183,17 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
             snackbar.showSnackbar(groupsSavedMessage)
         }
     }
-    val updateMessage = state.message?.takeIf { it == R.string.sources_up_to_date ||
+    val toastMessage = state.message?.takeIf { state.configurationPanel || it == R.string.sources_saved || it == R.string.sources_up_to_date ||
         it == R.string.sources_pixiv_update_unsupported || it == R.string.sources_pixiv_update_failed }
-    val inlineMessage = state.message?.takeUnless { it == updateMessage }
-    LaunchedEffect(state.message) {
-        if (state.message == R.string.sources_saved) {
+    val inlineMessage = state.message?.takeUnless { it == toastMessage }
+    LaunchedEffect(toastMessage) {
+        val message = toastMessage ?: return@LaunchedEffect
+        if (message == R.string.sources_saved) {
             adding = false; category = null; chosen = emptyList()
-            textToast(context.applicationContext, R.string.sources_saved, Toast.LENGTH_SHORT).show()
             model.consumeSavedMessage()
-        } else if (updateMessage != null) {
-            textToast(context.applicationContext, updateMessage, Toast.LENGTH_SHORT).show()
-            model.consumeMessage(updateMessage)
-        }
+        } else model.consumeMessage(message)
+        sourceToast?.cancel()
+        sourceToast = textToast(context.applicationContext, context.getString(message), Toast.LENGTH_SHORT).also { it.show() }
     }
     LaunchedEffect(state.installed) {
         if (managementGroup == "" && state.installed.none { it.preferences.groupIds.isEmpty() }) managementGroup = null
@@ -314,9 +315,6 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
             if (state.busy && state.showProgress) item { LinearProgressIndicator(Modifier.fillMaxWidth()); TextButton(onClick = model::cancel) { Text(stringResource(android.R.string.cancel)) } }
             inlineMessage?.takeUnless { it == R.string.sources_saved || it == R.string.source_groups_saved }?.let { message ->
                 item { Text(stringResource(message), color = MaterialTheme.colorScheme.primary) }
-            }
-            if (state.loginForm == null && state.loginMessages.isNotEmpty()) item {
-                androidx.compose.foundation.text.selection.SelectionContainer { Text(state.loginMessages.joinToString("\n\n")) }
             }
             if (state.selected == ZLibrarySources.ID) {
                 item(key = "zlibrary-settings") { ZLibrarySettingsEditor(state.zLibrary, state.busy, state.registry.find { it.metadata.id == ZLibrarySources.ID },
@@ -546,11 +544,10 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
             val link = model.configurationLink(action, formId)
             if (link == null) model.submitLogin(values, action, formId) else try { uriHandler.openUri(link) }
             catch (_: IllegalArgumentException) { textToast(context, R.string.sources_action_failed, Toast.LENGTH_SHORT).show() }
-        }, model::cancelLogin,
-            message = inlineMessage?.let { stringResource(it) }, feedback = state.loginMessages)
+        }, model::cancelLogin)
     else state.loginForm?.let { form ->
         SourceLoginDialog(form, state.busy, model::submitLogin, model::cancelLogin,
-            message = inlineMessage?.let { stringResource(it) }, feedback = state.loginMessages)
+            message = inlineMessage?.let { stringResource(it) })
     }
 }
 

@@ -82,8 +82,8 @@ fun NavGraphBuilder.bookReaderDestination(onReaderActiveChanged: (Boolean) -> Un
         val currentChapter = viewModel.uiState.contentUiState?.readingChapterId
         LaunchedEffect(route.bookId, currentChapter) { panelModel.bind(route.bookId, currentChapter) }
         val notice = panelModel.notice?.let { stringResource(it) }
-        LaunchedEffect(notice, panelModel.visible) {
-            if (notice != null && !panelModel.visible) {
+        LaunchedEffect(notice) {
+            if (notice != null) {
                 textToast(navController.context, notice, Toast.LENGTH_LONG).show()
                 panelModel.clearNotice()
             }
@@ -94,8 +94,8 @@ fun NavGraphBuilder.bookReaderDestination(onReaderActiveChanged: (Boolean) -> Un
                 form, panelModel.busy,
                 onSubmit = { values, action, formId -> panelModel.submit(values, action, formId, viewModel::applySourcePanelRefresh) },
                 onCancel = { panelModel.dismiss() }, title = stringResource(R.string.reader_source_panel),
-                message = notice ?: stringResource(R.string.reader_source_panel_boundary),
-                showLoginAction = false, feedback = panelModel.feedback,
+                message = stringResource(R.string.reader_source_panel_boundary),
+                showLoginAction = false,
             ) else androidx.compose.material3.AlertDialog(
                 onDismissRequest = { panelModel.dismiss() },
                 title = { androidx.compose.material3.Text(stringResource(R.string.reader_source_panel)) },

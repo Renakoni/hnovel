@@ -225,7 +225,6 @@ class PixivSourceUpdatesTest {
                 model.submitLogin(form.values, button.id, form.id)
                 assertEquals(R.string.sources_up_to_date, idle().message)
                 assertNotNull(idle().loginForm)
-                assertTrue(idle().loginMessages.isEmpty())
                 model.consumeMessage(R.string.sources_up_to_date)
                 assertNull(idle().message)
                 assertEquals(0, executions)
