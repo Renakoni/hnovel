@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- The test APK doubles as a reproducible, signed plugin fixture. -->
+        <meta-data android:name="lnr_plugin" android:value="indi.renakoni.nextvol.pluginfixture.InstallationFixturePlugin" />
+        <meta-data android:name="lnr_web_data_source" android:value="indi.renakoni.nextvol.pluginfixture.InstallationFixtureSource" />
+    </application>
+</manifest>

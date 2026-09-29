@@ -4,15 +4,18 @@ import android.webkit.WebSettings
 import androidx.webkit.UserAgentMetadata
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
+import hnovel.network.RequestEvidence
+import hnovel.network.RequestObservation
+import hnovel.network.UserAgentMetadataStatus
+import hnovel.network.UserAgentSummary
+import hnovel.network.WebViewUserAgentDiagnostic
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
 /** Keep Chromium's client hints consistent with the source's requested Chrome identity. */
-internal fun WebSettings.applySourceUserAgent(value: String) {
+internal fun WebSettings.applySourceUserAgent(value: String): UserAgentMetadataStatus {
     userAgentString = value
-    if (!WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA)) return
-    val version = Regex("Chrome/(\\d+)(\\.[\\d.]+)?").find(value) ?: return
-    val major = version.groupValues[1]
-    val full = major + version.groupValues[2].ifEmpty { ".0.0.0" }
-    try {
+    return sourceUserAgentMetadataStatus(value, WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA)) { major, full ->
         val metadata = WebSettingsCompat.getUserAgentMetadata(this)
         val brands = metadata.brandVersionList.map { item ->
             if (item.brand !in setOf("Chromium", "Android WebView", "Google Chrome")) item
@@ -27,8 +30,43 @@ internal fun WebSettings.applySourceUserAgent(value: String) {
                 .setArchitecture("x86").setBitness(if ("Win64" in value) 64 else 32)
         }
         WebSettingsCompat.setUserAgentMetadata(this, updated.build())
-    } catch (_: RuntimeException) {
-        // Some providers advertise the feature but reject metadata overrides.
-        android.util.Log.w("SourceBrowser", "WebView rejected user agent metadata")
+    }.also { status ->
+        if (status == UserAgentMetadataStatus.Rejected)
+            android.util.Log.w("SourceBrowser", "WebView rejected user agent metadata")
     }
+}
+
+internal fun sourceUserAgentMetadataStatus(value: String, supported: Boolean, update: (String, String) -> Unit): UserAgentMetadataStatus {
+    if (!supported) return UserAgentMetadataStatus.Unsupported
+    val version = Regex("Chrome/(\\d+)(\\.[\\d.]+)?").find(value) ?: return UserAgentMetadataStatus.UnhandledUserAgent
+    val major = version.groupValues[1]
+    val full = major + version.groupValues[2].ifEmpty { ".0.0.0" }
+    return try {
+        update(major, full)
+        UserAgentMetadataStatus.Applied
+    } catch (_: RuntimeException) {
+        UserAgentMetadataStatus.Rejected
+    }
+}
+
+/** Trusted service-only callback. PageBridge's public whitelist deliberately excludes it. */
+internal fun WebSettings.configureSourceUserAgent(job: BrowserJob, host: IBrowserHost) {
+    val requested = job.request.headers.entries.firstOrNull { it.key.equals("User-Agent", true) }?.value
+    val status = requested?.let { applySourceUserAgent(it) } ?: UserAgentMetadataStatus.ProviderDefault
+    if (job.observeUserAgent) reportSourceUserAgent(host, this, requested, status)
+}
+
+internal fun reportSourceUserAgent(host: IBrowserHost, settings: WebSettings, requested: String?, status: UserAgentMetadataStatus) {
+    runCatching {
+        val effective = settings.userAgentString
+        val diagnostic = WebViewUserAgentDiagnostic(status, UserAgentSummary.from(effective), requested?.let { it == effective })
+        BrowserWire.read(host.call("userAgentDiagnostic", Json.encodeToString(diagnostic)), 2048)
+    }
+}
+
+internal fun RequestObservation?.recordWebViewUserAgent(arguments: String) {
+    require(arguments.length <= 2048)
+    val diagnostic = Json.decodeFromString<WebViewUserAgentDiagnostic>(arguments)
+    diagnostic.userAgent.majorVersion?.let { require(it in 0..9999) }
+    this?.record(RequestEvidence.WebViewSettings, webView = diagnostic)
 }

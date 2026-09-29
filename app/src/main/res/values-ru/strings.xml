@@ -223,9 +223,9 @@
     <string name="settings_theme_text_font_weight">Толщина шрифта</string>
     <string name="data_settings">Данные</string>
     <string name="settings_snap_data">Снимок данных пользователя</string>
-    <string name="settings_snap_data_desc">Создать снимок текущих данных пользователя в формате .lnr</string>
+    <string name="settings_snap_data_desc">Экспорт данных пользователя в резервную копию NextVol (.nvbackup)</string>
     <string name="settings_import_data">Импорт данных пользователя</string>
-    <string name="settings_import_data_desc">Импорт данных пользователя из выбранного файла .lnr</string>
+    <string name="settings_import_data_desc">Импорт резервной копии NextVol (.nvbackup) или поддерживаемой старой копии .lnr</string>
     <string name="settings_storage_manager">Хранилище и очистка</string>
     <string name="settings_storage_manager_desc">Просмотр занятого места и очистка кеша чтения или загрузок.</string>
     <string name="settings_plugins">Управление плагинами</string>
@@ -311,7 +311,6 @@
     <string name="detail_introduction">Аннотация</string>
     <string name="detail_contents">Оглавление</string>
     <string name="detail_title">Детали</string>
-    <string name="detail_info_word_count_content">Слов: %1$s</string>
     <string name="detail_info_stats_count_content">Всего томов: %1$d, глав: %2$d</string>
     <string name="local_book_info_title">Сведения о кэше книги</string>
     <string name="local_book_info_book_information">Сведения о книге</string>
@@ -688,7 +687,7 @@
     <string name="local_book_preview_hint">Нажмите на главу, чтобы проверить текст и заголовок.</string>
     <string name="local_book_image_chapter">Эта глава содержит иллюстрации.</string>
     <string name="local_book_empty_chapter">В этой главе только заголовок.</string>
-    <string name="local_book_backup_note">Локальные файлы хранятся на этом устройстве. Обмен и резервные копии .lnr не включают эти файлы; для переноса сохраните исходный EPUB или TXT.</string>
+    <string name="local_book_backup_note">Локальные файлы хранятся на этом устройстве. Резервные копии NextVol и экспорт полки не включают эти файлы; для переноса сохраните исходный EPUB или TXT.</string>
     <string name="local_book_stored_files">Исходный файл и обработанное содержимое</string>
     <string name="local_book_delete_title">Удалить локальные книги?</string>
     <string name="local_book_delete_originals">Выбранные импортированные книги будут удалены со всех полок вместе с исходными файлами и содержимым в приложении. Другие копии и файлы вне приложения сохранятся. У сетевых книг удаляется только выбранный локальный кэш.</string>

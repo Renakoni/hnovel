@@ -23,15 +23,14 @@ import indi.renakoni.nextvol.data.statistics.StatisticsWriteCoordinator
 import indi.renakoni.nextvol.data.statistics.StatsRepository
 import indi.renakoni.nextvol.data.work.ImportDataWork
 import indi.renakoni.nextvol.data.work.workerParameters
-import indi.renakoni.nextvol.utils.writeAppLocalData
+import indi.renakoni.nextvol.data.backup.BackupArchive
+import indi.renakoni.nextvol.data.backup.BackupContent
+import indi.renakoni.nextvol.data.backup.BackupKind
 import io.mockk.mockk
 import io.nightfish.lightnovelreader.api.book.BookInformation
 import io.nightfish.lightnovelreader.api.book.WordCount
 import io.nightfish.lightnovelreader.api.identifier.Identifier
 import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.ExperimentalSerializationApi
-import kotlinx.serialization.cbor.Cbor
-import kotlinx.serialization.encodeToByteArray
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -44,12 +43,11 @@ import java.time.LocalDateTime
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [27], application = Application::class)
-@OptIn(ExperimentalSerializationApi::class)
 class BackupRestoreTest {
     @Test fun failedOverwriteMustPreserveTheExistingLibrary() = runBlocking {
         val context = RuntimeEnvironment.getApplication()
         val db = Room.inMemoryDatabaseBuilder(context, NextVolDatabase::class.java).allowMainThreadQueries().build()
-        val file = context.cacheDir.resolve("review-backup.lnr")
+        val file = context.cacheDir.resolve("review-backup.nvbackup")
         try {
             val coordinator = StatisticsWriteCoordinator()
             val stats = StatsRepository(db.bookRecordDao(), db.dailyCountDao(), mockk(), coordinator)
@@ -69,7 +67,7 @@ class BackupRestoreTest {
             val payload = AppLocalData(localDataList = listOf(LocalData.empty().copy(bookInformationEntities = listOf(incomingEntity))),
                 globalLocalData = LocalData.empty())
             backup.validateBackup(payload)
-            file.outputStream().use { it.writeAppLocalData(Cbor.encodeToByteArray(payload)) }
+            BackupArchive.write(file, payload, BackupArchive.manifest(BackupKind.USER_DATA, setOf(BackupContent.BOOKSHELF)))
             val provider = object : ContentProvider() {
                 override fun onCreate() = true
                 override fun getType(uri: Uri) = "application/zip"

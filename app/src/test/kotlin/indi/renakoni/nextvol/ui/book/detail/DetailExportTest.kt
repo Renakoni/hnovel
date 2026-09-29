@@ -10,6 +10,9 @@ import androidx.work.WorkManager
 import com.google.common.util.concurrent.Futures
 import indi.renakoni.nextvol.data.book.BookIdentity
 import indi.renakoni.nextvol.data.book.BookRepository
+import indi.renakoni.nextvol.data.export.ExportType
+import indi.renakoni.nextvol.data.work.CacheBookWork
+import indi.renakoni.nextvol.data.work.ExportBookToEPUBWork
 import io.mockk.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -39,9 +42,21 @@ class DetailExportTest {
         val store = ViewModelStore().apply { put("detail", model) }
         try {
             (model.uiState as MutableDetailUiState).readingAvailable = true
+            model.exportSettings = ExportSettings(setOf("v1", "v2"), includeImages = false, exportType = ExportType.VOLUMES)
             model.startEpubExport(BookIdentity.bookKey("1"), "Book")
             runCurrent()
             assertNull(request.captured.workSpec.input.getString("uri"))
+            val input = request.captured.workSpec.input
+            assertEquals(BookIdentity.bookKey("1"), input.getString("bookId"))
+            assertEquals("Book", input.getString("title"))
+            assertEquals(7L, input.getLong("downloadGeneration", 0))
+            assertEquals("VOLUMES", input.getString("exportType"))
+            assertEquals("v1,v2", input.getString("selectedVolume"))
+            assertFalse(input.getBoolean("includeImages", true))
+            assertEquals(ExportBookToEPUBWork::class.java.name, request.captured.workSpec.workerClassName)
+            assertTrue(CacheBookWork.generationTag(7) in request.captured.tags)
+            verify { work.enqueueUniqueWork(ExportBookToEPUBWork.ofId(BookIdentity.bookKey("1")), ExistingWorkPolicy.KEEP, any<OneTimeWorkRequest>()) }
+            verify { work.getWorkInfosForUniqueWorkFlow(ExportBookToEPUBWork.ofId(BookIdentity.bookKey("1"))) }
             val completed = mockk<WorkInfo> { every { state } returns WorkInfo.State.SUCCEEDED }
             infos.value = listOf(completed)
             runCurrent()
