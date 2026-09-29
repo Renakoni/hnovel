@@ -42,7 +42,7 @@ class BangumiMigrationTest {
             it.version = 20
         }
         val migrated = Room.databaseBuilder(context, NextVolDatabase::class.java, name)
-            .addMigrations(NextVolDatabase.MIGRATION_20_21, NextVolDatabase.MIGRATION_21_22, NextVolDatabase.MIGRATION_22_23, NextVolDatabase.MIGRATION_23_24, NextVolDatabase.MIGRATION_24_25).build()
+            .addMigrations(NextVolDatabase.MIGRATION_20_21, NextVolDatabase.MIGRATION_21_22, NextVolDatabase.MIGRATION_22_23, NextVolDatabase.MIGRATION_23_24, NextVolDatabase.MIGRATION_24_25, NextVolDatabase.MIGRATION_25_26).build()
         try {
             val dao = migrated.bangumiBindingDao()
             assertEquals(setOf("subject:11"), dao.get(17, "saved-book")!!.binding().acknowledged)
@@ -71,7 +71,7 @@ class BangumiMigrationTest {
             it.version = 19
         }
         val migrated = Room.databaseBuilder(context, NextVolDatabase::class.java, name)
-            .addMigrations(NextVolDatabase.MIGRATION_19_20, NextVolDatabase.MIGRATION_20_21, NextVolDatabase.MIGRATION_21_22, NextVolDatabase.MIGRATION_22_23, NextVolDatabase.MIGRATION_23_24, NextVolDatabase.MIGRATION_24_25).build()
+            .addMigrations(NextVolDatabase.MIGRATION_19_20, NextVolDatabase.MIGRATION_20_21, NextVolDatabase.MIGRATION_21_22, NextVolDatabase.MIGRATION_22_23, NextVolDatabase.MIGRATION_23_24, NextVolDatabase.MIGRATION_24_25, NextVolDatabase.MIGRATION_25_26).build()
         try {
             assertEquals("Saved", migrated.bookInformationDao().get("saved-book")!!.title)
             assertTrue(migrated.bangumiBindingDao().getAll(17).isEmpty())

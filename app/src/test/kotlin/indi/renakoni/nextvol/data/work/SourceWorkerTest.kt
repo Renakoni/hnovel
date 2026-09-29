@@ -81,6 +81,7 @@ class SourceWorkerTest {
         val progress = mockk<DownloadProgressRepository> { every { addExportItem(capture(items)) } just Runs }
         for (book in listOf(a, b)) {
             val runtime = mockk<SourceRuntime> {
+                every { canReplayDownloads } returns false
                 coEvery { execute<Any?>(any()) } coAnswers { firstArg<suspend () -> Any?>().invoke() }
                 coEvery { canonicalBookId(any()) } coAnswers { firstArg() }
                 coEvery { getBookInformation("same", any(), any()) } returns Ok(info("same"))
@@ -103,6 +104,8 @@ class SourceWorkerTest {
     @Test fun missingSourceLoginAndVerificationAreDistinctTerminalFailures() = runTest {
         val context = RuntimeEnvironment.getApplication()
         val repository = mockk<BookRepository>()
+        coEvery { repository.canReplayDownload(any()) } returns false
+        every { repository.downloadSource(any()) } returns null
         coEvery { repository.canonicalBook(any()) } coAnswers { firstArg() }
         coEvery { repository.refreshBookInformation(a, any(), any()) } returns Ok(info(a.storageKey))
         every { repository.getBookInformationFlow(any<String>(), any()) } returns kotlinx.coroutines.flow.emptyFlow()

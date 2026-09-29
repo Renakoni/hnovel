@@ -57,6 +57,70 @@ class ImportedRuleSourcesTest {
         return service.activate(service.definitions.list().single { Json.parseToJsonElement(it.rawJson) == raw }.reference(), listOf(NetworkGrant(origin, true)))
     }
 
+    @Test fun sourceChangesCannotReactivateQueuedOrWaitingDownloadsButHostRestartCan() = runBlocking {
+        for (action in listOf("remove", "disable", "restart", "rotate", "account")) {
+            val host = context()
+            RuleSourceFixture().use { fixture ->
+                val registry = WebSourceRegistry(fixture.authority)
+                val accounts = SourceSessionManager(fixture.authority)
+                val db = Room.databaseBuilder(host, NextVolDatabase::class.java, File(host.filesDir, "library.db").path)
+                    .allowMainThreadQueries().build()
+                val downloads = indi.renakoni.nextvol.data.download.BookDownloadStore(host, db, ContentJsonDecoder(ContentComponentRegistry()))
+                var service = ImportedRuleSources(host, registry, fixture.authority, accounts, fixture.runner, downloads = downloads)
+                try {
+                    val grants = listOf(NetworkGrant(fixture.server.url("/").toString(), true))
+                    val source = install(service, fixture.raw(), fixture.server.url("/").toString())
+                    val reference = service.definitions.list().single().reference()
+                    val book = SourceBookId(source, fixture.server.url("/book/one").toString())
+                    val id = java.util.UUID.randomUUID().toString()
+                    val queued = SourceBookId(source, fixture.server.url("/book/queued").toString())
+                    val queuedId = java.util.UUID.randomUUID().toString()
+                    downloads.queueTask(queued, 0, queuedId)
+                    downloads.queueTask(book, 0, id)
+                    val task = downloads.startTask(book, 0, id, 0)
+                    downloads.deferTaskRetry(task, 0, Long.MAX_VALUE, indi.renakoni.nextvol.data.download.DownloadFailure.Network)
+                    when (action) {
+                        "remove" -> { service.remove(source); service.activate(reference, grants) }
+                        "disable" -> { service.setPreferences(source, enabled = false); service.setPreferences(source, enabled = true) }
+                        "rotate" -> { service.rotateAccount(source) }
+                        "account" -> {
+                            val account = accounts.begin(source)
+                            withTimeout(5000) { registry.sources.first { sources -> sources.any {
+                                it.metadata.id == source && it.metadata.accountGeneration == account.generation
+                            } } }
+                        }
+                        "restart" -> {
+                            service.stop()
+                            service = ImportedRuleSources(host, registry, fixture.authority, accounts, fixture.runner, downloads = downloads)
+                            service.restore()
+                        }
+                    }
+                    val owner = downloads.entry(book)!!
+                    if (action == "restart") {
+                        assertEquals(queuedId, downloads.entry(queued)!!.taskWorkId)
+                        assertEquals("Queued", downloads.entry(queued)!!.taskStatus)
+                        assertEquals(0, downloads.entry(queued)!!.taskRetryCount)
+                        assertEquals(id, owner.taskWorkId)
+                        assertEquals("WaitingRetry", owner.taskStatus)
+                        assertEquals(1, owner.taskRetryCount)
+                    } else {
+                        assertTrue("$action must revoke the task before its first execution",
+                            runCatching { downloads.startTask(queued, 0, queuedId, 0) }.exceptionOrNull() is CancellationException)
+                        assertEquals("Cancelled", downloads.entry(queued)!!.taskStatus)
+                        assertEquals("", owner.taskWorkId)
+                        assertEquals("Cancelled", owner.taskStatus)
+                        assertEquals("SourceUnavailable", owner.taskError)
+                        assertTrue(runCatching { downloads.startTask(book, 0, id, 1) }.exceptionOrNull() is CancellationException)
+                        assertTrue(runCatching { downloads.startTask(book, 0, id, 1, legacy = true) }.exceptionOrNull() is CancellationException)
+                        assertTrue(runCatching { downloads.taskStage(task, indi.renakoni.nextvol.data.download.DownloadStage.Body) }
+                            .exceptionOrNull() is CancellationException)
+                    }
+                    assertEquals(0, fixture.server.requestCount)
+                } finally { service.stop(); db.close(); host.filesDir.deleteRecursively() }
+            }
+        }
+    }
+
     @Test fun importedSourcesUseHostRepositoryRoomCacheWorkerAndOfflineReaderContract() = runBlocking {
         val context = context()
         RuleSourceFixture().use { fixture ->

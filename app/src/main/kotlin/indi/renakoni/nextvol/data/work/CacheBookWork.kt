@@ -18,6 +18,8 @@ import indi.renakoni.nextvol.data.book.BookRepository
 import indi.renakoni.nextvol.data.download.BookDownloadStore
 import indi.renakoni.nextvol.data.download.DownloadStage
 import indi.renakoni.nextvol.data.download.DownloadFailure
+import indi.renakoni.nextvol.data.download.DownloadRetryPolicy
+import hnovel.network.RequestRetryContext
 import indi.renakoni.nextvol.data.download.downloadFailure
 import io.nightfish.lightnovelreader.api.error.WebRequestError
 import indi.renakoni.nextvol.data.download.DownloadProgressRepository
@@ -25,6 +27,7 @@ import indi.renakoni.nextvol.data.download.DownloadType
 import indi.renakoni.nextvol.data.download.MutableDownloadItem
 import indi.renakoni.nextvol.data.download.downloadChapterSignature
 import indi.renakoni.nextvol.data.image.SourceImage
+import indi.renakoni.nextvol.data.web.SourceRequestVersion
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
@@ -39,6 +42,7 @@ class CacheBookWork @AssistedInject constructor(
     private val bookRepository: BookRepository,
     private val downloads: BookDownloadStore,
 ) : CoroutineWorker(appContext, workerParams) {
+    internal var retryPolicy = DownloadRetryPolicy()
     companion object {
         private const val TAG = "CacheBookWork"
 
@@ -48,23 +52,42 @@ class CacheBookWork @AssistedInject constructor(
 
     override suspend fun doWork(): Result {
         val requested = inputData.sourceBook() ?: return bookWorkFailure("invalid_book_identity")
+        return runDownload(requested)
+    }
+
+    private suspend fun runDownload(requested: indi.renakoni.nextvol.data.book.SourceBookId): Result {
         var task: BookDownloadStore.Task? = null
         try {
             val initial = bookRepository.canonicalBook(requested)
-            task = downloads.startTask(initial, inputData.getLong("downloadGeneration", 0), id.toString(),
-                runAttemptCount, legacy = !inputData.getBoolean("persistedTask", false))
-            // Record the task before details; identity promotion transfers it without owning files yet.
-            val information = bookRepository.refreshBookInformation(initial, fresh = true)
-            val book = bookRepository.canonicalBook(initial)
-            val resolvedTask = task.copy(book = book)
-            task = resolvedTask
-            if (information.isErr) return downloads.withBookOperation(book) {
-                val attempt = downloads.begin(book, resolvedTask.generation, id.toString(), requireTask = true)
-                downloads.finish(attempt, success = false)
-                downloads.finishTask(resolvedTask, downloadFailure(information.component2(), DownloadStage.Details))
-                bookWorkFailure(bookWorkFailureReason(information.component2()), book)
+            val startedTask = downloads.startTask(initial, inputData.getLong("downloadGeneration", 0), id.toString(),
+                runAttemptCount, legacy = !inputData.getBoolean("persistedTask", false), nowMillis = retryPolicy.nowMillis())
+            task = startedTask
+            val owner = checkNotNull(downloads.entry(initial))
+            val source = bookRepository.downloadSource(initial)
+            if (owner.taskAccountGeneration >= 0 &&
+                (source?.accountGeneration != owner.taskAccountGeneration || source.revision != owner.taskSourceRevision)) {
+                downloads.finishTask(task, DownloadFailure.SourceUnavailable)
+                return bookWorkFailure("source_unavailable", initial)
             }
-            return downloads.withBookOperation(book) { cacheBook(book, information.component1()!!, resolvedTask) }
+            if (owner.taskNextAttemptAt > retryPolicy.nowMillis()) return Result.retry()
+            if (source != null) downloads.bindTaskSource(task, source.revision, source.accountGeneration)
+            val retry = if (bookRepository.canReplayDownload(initial)) RequestRetryContext() else null
+            val version = source?.let(::SourceRequestVersion)
+            version?.check(bookRepository.downloadSource(initial))
+            return withContext((retry ?: kotlin.coroutines.EmptyCoroutineContext) +
+                (version ?: kotlin.coroutines.EmptyCoroutineContext)) {
+                // Record the task before details; identity promotion transfers it without owning files yet.
+                val information = bookRepository.refreshBookInformation(initial, fresh = true)
+                val book = bookRepository.canonicalBook(initial)
+                val resolvedTask = startedTask.copy(book = book)
+                task = resolvedTask
+                if (information.isErr) return@withContext downloads.withBookOperation(book) {
+                    val attempt = downloads.begin(book, resolvedTask.generation, id.toString(), requireTask = true)
+                    downloads.finish(attempt, success = false)
+                    failed(resolvedTask, information.component2(), DownloadStage.Details)
+                }
+                downloads.withBookOperation(book) { cacheBook(book, information.component1()!!, resolvedTask) }
+            }
         } catch (_: CancellationException) {
             currentCoroutineContext().ensureActive()
             return bookWorkFailure("source_unavailable", requested)
@@ -73,6 +96,31 @@ class CacheBookWork @AssistedInject constructor(
             Log.e(TAG, "Download details failed: ${failure.javaClass.simpleName}")
             return bookWorkFailure("cache_failed", requested)
         }
+    }
+
+    private suspend fun failed(task: BookDownloadStore.Task, error: WebRequestError?, stage: DownloadStage): Result {
+        val retryContext = currentCoroutineContext()[RequestRetryContext]
+        val hint = when (val cause = error?.throwable) {
+            is hnovel.content.SourceContentException -> cause.retry
+            is indi.renakoni.nextvol.data.image.SourceImageRequestException -> cause.retry
+            else -> null
+        }
+        val owner = downloads.entry(task.book)
+        val source = bookRepository.downloadSource(task.book)
+        val currentSource = owner != null && source != null && owner.taskSourceRevision == source.revision &&
+            owner.taskAccountGeneration == source.accountGeneration
+        val failure = if (owner != null && owner.taskAccountGeneration >= 0 && !currentSource)
+            DownloadFailure.SourceUnavailable else downloadFailure(error, stage)
+        if (retryContext?.replaySafe == true && hint != null && currentSource &&
+            failure in setOf(DownloadFailure.Network, DownloadFailure.RateLimited)) {
+            val next = retryPolicy.nextAttemptAt(checkNotNull(owner).taskRetryCount, hint)
+            if (next != null) {
+                downloads.deferTaskRetry(task, owner.taskRetryCount, next, failure)
+                return Result.retry()
+            }
+            downloads.finishTask(task, DownloadFailure.RetryExhausted)
+        } else downloads.finishTask(task, failure)
+        return bookWorkFailure(bookWorkFailureReason(error), task.book)
     }
 
     private suspend fun cacheBook(book: indi.renakoni.nextvol.data.book.SourceBookId,
@@ -84,6 +132,7 @@ class CacheBookWork @AssistedInject constructor(
         var complete = false
         var stage = DownloadStage.Directory
         suspend fun mark(value: DownloadStage, chapter: String = "") {
+            currentCoroutineContext()[SourceRequestVersion]?.check(bookRepository.downloadSource(book))
             stage = value
             downloads.taskStage(task, value, chapter)
         }
@@ -130,9 +179,9 @@ class CacheBookWork @AssistedInject constructor(
             }
             if (result.isErr) {
                 item.sourceError = result.component2()?.kind
-                downloads.finishTask(task, downloadFailure(result.component2(), stage))
-                return bookWorkFailure(bookWorkFailureReason(result.component2()), book)
+                return failed(task, result.component2(), stage)
             }
+            currentCoroutineContext()[SourceRequestVersion]?.check(bookRepository.downloadSource(book))
             if (bookRepository.sourceRevision(book) != revision) {
                 mark(DownloadStage.Details)
                 downloads.finishTask(task, DownloadFailure.SourceUnavailable)
@@ -147,9 +196,8 @@ class CacheBookWork @AssistedInject constructor(
             currentCoroutineContext().ensureActive()
             return bookWorkFailure("source_unavailable", book)
         } catch (failure: Exception) {
-            downloads.finishTask(task, downloadFailure(WebRequestError("", "", failure), stage))
             Log.e(TAG, "Download failed for ${book.fileKey}: ${failure.javaClass.simpleName}")
-            return bookWorkFailure("cache_failed", book)
+            return failed(task, WebRequestError("", "", failure), stage)
         } finally {
             if (!complete) {
                 item.progress = -1f
@@ -166,6 +214,8 @@ class CacheBookWork @AssistedInject constructor(
         beforeSave: suspend () -> Unit) {
         val request = ImageRequest.Builder(applicationContext)
             .data(image.copy(preferDownloaded = false))
+            .coroutineContext((currentCoroutineContext()[RequestRetryContext] ?: kotlin.coroutines.EmptyCoroutineContext) +
+                (currentCoroutineContext()[SourceRequestVersion] ?: kotlin.coroutines.EmptyCoroutineContext))
             .memoryCachePolicy(CachePolicy.DISABLED)
             .diskCachePolicy(if (force) CachePolicy.WRITE_ONLY else CachePolicy.ENABLED)
             .build()

@@ -28,6 +28,7 @@ import indi.renakoni.nextvol.data.work.CacheBookWork
 import indi.renakoni.nextvol.data.download.BookDownloadStore
 import indi.renakoni.nextvol.data.download.BookDownloadStatus
 import indi.renakoni.nextvol.data.download.DownloadTaskState
+import indi.renakoni.nextvol.data.download.DownloadTaskStatus
 import indi.renakoni.nextvol.data.download.taskState
 import io.nightfish.lightnovelreader.api.book.BookInformation
 import io.nightfish.lightnovelreader.api.book.BookRepositoryApi
@@ -225,17 +226,21 @@ class BookRepository @Inject constructor(
         val submission = downloadSubmissions.async(start = CoroutineStart.UNDISPATCHED) { downloadSubmissionLock.withLock {
             val book = canonicalBook(BookIdentity.book(bookId))
             val name = CacheBookWork.ofId(book.storageKey)
-            val previous = downloads.entry(book)?.taskWorkId?.takeIf { it.isNotEmpty() }
+            val owner = downloads.entry(book)
+            val previous = owner?.taskWorkId?.takeIf { it.isNotEmpty() }
                 ?.let { workManager.getWorkInfoByIdFlow(UUID.fromString(it)).first() }
             val active = previous?.takeUnless { it.state.isFinished }
                 ?: workManager.getWorkInfosForUniqueWorkFlow(name).first().firstOrNull { !it.state.isFinished }
-            if (active != null) return@withLock active.id
+            val revoked = owner?.taskStatus == DownloadTaskStatus.Cancelled.name
+            if (active != null && !revoked) return@withLock active.id
             val request = OneTimeWorkRequestBuilder<CacheBookWork>()
                 .addTag(CacheBookWork.generationTag(generation))
                 .setInputData(workDataOf("bookId" to book.storageKey, "downloadGeneration" to generation, "persistedTask" to true))
                 .build()
             downloads.queueTask(book, generation, request.id.toString())
-            workManager.enqueueUniqueWork(name, ExistingWorkPolicy.KEEP, request).await()
+            // A revoked cooldown must not absorb a new submission through KEEP.
+            workManager.enqueueUniqueWork(name,
+                if (revoked) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP, request).await()
             request.id
         } }
         return flow { emitAll(workManager.getWorkInfoByIdFlow(submission.await())) }
@@ -291,6 +296,12 @@ class BookRepository @Inject constructor(
 
     internal fun sourceRevision(book: SourceBookId): String = sourceRegistry.sources.value
         .firstOrNull { it.metadata.id == book.sourceId }?.metadata?.revision.orEmpty()
+
+    internal fun downloadSource(book: SourceBookId) = sourceRegistry.sources.value
+        .firstOrNull { it.metadata.id == book.sourceId }?.metadata
+
+    internal suspend fun canReplayDownload(book: SourceBookId): Boolean =
+        (sourceRegistry.resolve(book.sourceId) as? indi.renakoni.nextvol.data.web.SourceResolution.Ready)?.runtime?.canReplayDownloads == true
 
     fun downloadGeneration(): Long = downloads.generation()
 

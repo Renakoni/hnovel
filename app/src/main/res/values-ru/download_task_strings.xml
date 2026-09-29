@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="download_task_waiting_retry">Ожидание повтора</string>
+    <string name="download_task_retry_time">Повтор %1$d: не раньше %2$s</string>
+    <string name="download_error_rate_limited">Источник временно ограничивает запросы или недоступен</string>
+    <string name="download_error_retry_exhausted">Автоматические повторы остановлены; повторите позже</string>
     <string name="download_stage_unknown">Этап не записан</string>
     <string name="download_task_unknown">Загрузка %1$s</string>
     <string name="download_task_unfinished">Незавершённые загрузки</string>
