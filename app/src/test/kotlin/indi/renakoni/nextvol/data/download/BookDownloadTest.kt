@@ -500,6 +500,21 @@ class BookDownloadTest {
         downloads.taskStage(task.copy(book = canonical), DownloadStage.Directory)
     }
 
+    @Test fun identityPromotionKeepsImagesReadableThroughTheOldChapterIdentity() = runBlocking {
+        val source = register(a).apply { withImages = true }
+        assertTrue(download() is ListenableWorker.Result.Success)
+        val image = SourceImage(a, IMAGE, chapterId = SourceChapterId(a, "1").storageKey)
+        val previous = downloads.image(image)!!
+        val canonical = SourceBookId(a.sourceId, "series")
+        val volumes = canonical.bind(BookVolumes(canonical.remoteId, source.directory().volumes))
+        downloads.mergeIdentity(a, canonical, volumes) {
+            local.aliases.merge(a, canonical, canonical.bind(source.information()), volumes)
+        }
+        val migrated = downloads.image(image)!!
+        assertNotEquals(previous.path, migrated.path)
+        assertArrayEquals(png, migrated.readBytes())
+    }
+
     @Test fun imageVerificationKeepsItsCategoryInsteadOfBecomingANetworkError() = runBlocking {
         register(a).apply {
             withImages = true; imageFailed = true
