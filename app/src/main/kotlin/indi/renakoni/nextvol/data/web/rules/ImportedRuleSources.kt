@@ -401,7 +401,9 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext private val co
         fun read(area: StorageArea, key: String) =
             (session.read(StorageRequest(area, key)) as? StorageResult.Value
                 ?: error("Stored source settings are unavailable")).value
-        val status = SourceLoginService.storedStatus(session)
+        val definition = active.getValue(id).installed.definition
+        val status = SourceLoginService.storedStatus(session,
+            pixiv = definition.profile == EXTENSION_PROFILE && definition.importKey == PixivUpdateAdapter.KEY)
         val name = if (accountNameField != null && status in setOf("authenticated", "session")) {
             val info = (session.read(StorageRequest(StorageArea.Account, hnovel.network.StorageRequestKey.LOGIN_INFO)) as? StorageResult.Value)?.value
             SourceLoginService.savedAccountName(accountNameField, info)

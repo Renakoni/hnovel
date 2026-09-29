@@ -31,8 +31,7 @@ class SourceLoginService @Inject constructor(private val sources: ImportedRuleSo
     // before loading and before returning, rejecting any form produced by a retired attempt.
     suspend fun form(attempt: LoginAttempt): LoginForm = recover(attempt) { target(attempt).rules.loginForm().also { target(attempt) } }
     suspend fun status(source: Identifier): LoginStatus = withContext(Dispatchers.IO) {
-        val target = sources.loginTarget(source)
-        savedStatus(storedStatus(target.session))
+        savedStatus(sources.storedSettings(source).loginStatus)
     }
     suspend fun begin(source: Identifier, intent: LoginIntent = LoginIntent.Panel, reading: LoginReadingContext? = null): LoginAttempt {
         val target = if (intent == LoginIntent.Relogin) sources.rotateAccount(source) else sources.loginTarget(source)
@@ -93,9 +92,17 @@ class SourceLoginService @Inject constructor(private val sources: ImportedRuleSo
         return current.copy(rules = attempt.rules)
     }
     internal companion object {
-        fun storedStatus(session: SourceSession): String? {
+        private val pixivCredential = Regex("[1-9][0-9]*_[^;\\s]+")
+
+        fun storedStatus(session: SourceSession, pixiv: Boolean = false): String? {
             val stored = session.read(StorageRequest(StorageArea.Account, "login/status")) as? StorageResult.Value
                 ?: error("Stored source settings are unavailable")
+            if (pixiv) {
+                if (stored.value == "required") return stored.value
+                // A browser visit can save a guest session. Match the source's current-cookie rule.
+                return if (session.hasMatchingCookie("https://www.pixiv.net/", "PHPSESSID", pixivCredential))
+                    stored.value ?: "session" else null
+            }
             return stored.value ?: "session".takeIf { session.hasSavedCookies() }
         }
 
