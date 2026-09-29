@@ -42,10 +42,18 @@ class SourceVerification internal constructor(val kind: hnovel.network.BrowserCh
 }
 
 /** Logs expose stable codes/fields; verification is an opaque action bound to the failed account. */
-class SourceContentException(val code: ContentError, val field: String,
+open class SourceContentException(val code: ContentError, val field: String,
     val denial: hnovel.network.OriginDenial? = null, val dependency: hnovel.rules.ScriptDependency? = null,
     val verification: SourceVerification? = null, val diagnostic: hnovel.execution.ExecutionResult.Failure? = null,
     val httpStatus: Int? = null) : Exception("${code.name}: $field")
+
+/** Readable chapters do not turn a failed catalogue into a successful refresh. */
+class PartialDirectoryException internal constructor(internal val snapshot: DirectorySnapshot,
+    val failure: SourceContentException) : SourceContentException(failure.code, failure.field, failure.denial,
+    failure.dependency, failure.verification, failure.diagnostic, failure.httpStatus) {
+    val chapters: List<RuleChapter> get() = snapshot.chapters
+    init { initCause(failure) }
+}
 
 @Serializable data class ScriptState(
     val metadata: JsonObject = JsonObject(emptyMap()),
@@ -72,6 +80,8 @@ data class RuleContent(val id: String, val title: String, val parts: List<Conten
     @kotlinx.serialization.Transient val successfulResponse: Boolean = false,
     @kotlinx.serialization.Transient val httpErrorStatus: Int? = null)
 @Serializable internal data class BookPreview(val input: hnovel.rules.RuleValue, val baseUrl: String, val accountGeneration: Long)
+@Serializable internal data class DirectorySnapshot(val chapters: List<RuleChapter>, val state: ScriptState)
 @Serializable internal data class BookRecord(val revision: String, val book: RuleBook,
     val informationLoaded: Boolean = false, val document: PageDocument? = null,
-    val chapters: List<RuleChapter> = emptyList(), val preview: BookPreview? = null)
+    val chapters: List<RuleChapter> = emptyList(), val preview: BookPreview? = null,
+    val partialDirectory: DirectorySnapshot? = null)
