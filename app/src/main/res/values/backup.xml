@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backup_invalid">The backup is damaged or has an invalid format. Select a NextVol backup or a supported legacy .lnr file.</string>
+    <string name="backup_unsupported_version">This backup version is not supported. Use a version of NextVol that supports it.</string>
+    <string name="backup_too_large">The backup exceeds the supported size. Try a backup without chapter caches.</string>
+    <string name="backup_export_failed">Backup export failed. The destination file may be incomplete; please export again.</string>
+</resources>

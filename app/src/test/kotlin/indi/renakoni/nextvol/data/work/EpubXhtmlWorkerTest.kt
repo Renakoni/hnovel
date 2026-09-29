@@ -1,5 +1,7 @@
 package indi.renakoni.nextvol.data.work
 
+import indi.renakoni.nextvol.data.export.ExportBookToEpubUseCase
+
 import android.app.Application
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -110,7 +112,8 @@ class EpubXhtmlWorkerTest {
                     val name = if (missingMetadata) "book-missing-metadata.epub" else "book-$volumeCount.epub"
                     val data = workDataOf("bookId" to book.storageKey, "exportType" to type,
                         "selectedVolume" to volumes.volumes.joinToString(",") { it.volumeId })
-                    val worker = ExportBookToEPUBWork(context, workerParameters(data), repository, progress, decoder, exportDownloads())
+                    val worker = ExportBookToEPUBWork(context, workerParameters(data),
+                        ExportBookToEpubUseCase(context, repository, progress, decoder, exportDownloads()))
                     assertTrue(worker.doWork() is ListenableWorker.Result.Success)
                     val files = EpubShareFiles.files(context, worker.id)
                     assertEquals(if (type == "BOOK") 1 else volumeCount, files.size)
