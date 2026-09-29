@@ -63,7 +63,7 @@ class DownloadRecoveryTest {
         }
         val id = Identifier("rules", "recovery")
         val book = SourceBookId(id, fixture.server.url("/book").toString())
-        val workId = UUID.randomUUID()
+        var workId = UUID.randomUUID()
         val registry = WebSourceRegistry(fixture.authority)
         val requests = Collections.synchronizedList(mutableListOf<String>())
         var failedPath = "/c/2"
@@ -71,6 +71,7 @@ class DownloadRecoveryTest {
         var retryAfter = "90"
         var withImages = true
         var unsafeChapter = false
+        var thirdChapter = false
         var now = 1_800_000_000_000L
         lateinit var db: NextVolDatabase
         lateinit var downloads: BookDownloadStore
@@ -92,9 +93,11 @@ class DownloadRecoveryTest {
                         "/book" -> "<h1>Book</h1><a class='toc' href='/toc'>toc</a>" +
                             if (withImages) "<img src='/cover.png'>" else ""
                         "/toc" -> "<li><a href='/c/1'>One</a></li><a class='next' href='/toc2'>next</a>"
-                        "/toc2" -> "<li><a href='/c/2,{\"retry\":3${if (unsafeChapter) ",\"method\":\"POST\",\"body\":\"submit\"" else ""}}'>Two</a></li>"
+                        "/toc2" -> "<li><a href='/c/2,{\"retry\":3${if (unsafeChapter) ",\"method\":\"POST\",\"body\":\"submit\"" else ""}}'>Two</a></li>" +
+                            if (thirdChapter) "<li><a href='/c/3'>Three</a></li>" else ""
                         "/c/1" -> "<article><p>first</p></article>"
                         "/c/2" -> "<article><p>second</p>${if (withImages) "<img src='/image.png'>" else ""}</article>"
+                        "/c/3" -> "<article><p>third</p></article>"
                         "/image.png", "/cover.png" -> return MockResponse().setBody(Buffer().write(png))
                         else -> return MockResponse().setResponseCode(404)
                     }
@@ -125,7 +128,7 @@ class DownloadRecoveryTest {
 
         private fun open() {
             db = Room.databaseBuilder(context, NextVolDatabase::class.java, root.resolve("library.db").path)
-                .addMigrations(NextVolDatabase.MIGRATION_25_26).allowMainThreadQueries().build()
+                .addMigrations(NextVolDatabase.MIGRATION_25_26, NextVolDatabase.MIGRATION_26_27).allowMainThreadQueries().build()
             val aliases = BookAliasStore(db)
             local = LocalBookDataSource(db.bookInformationDao(), db.bookVolumesDao(), db.chapterContentDao(), db.userReadingDataDao(), aliases)
             downloads = BookDownloadStore(context, db, ContentJsonDecoder(ContentComponentRegistry()))
@@ -195,9 +198,47 @@ class DownloadRecoveryTest {
             assertEquals(3, owner().taskRetryCount)
             assertEquals(DownloadFailure.RetryExhausted.name, owner().taskError)
             assertEquals(4, calls("/book")); assertEquals(4, calls("/toc2"))
-            assertEquals(1, calls("/c/1")); assertEquals(3, calls("/c/2")); assertEquals(2, calls("/image.png"))
+            assertEquals(1, calls("/c/1")); assertEquals(2, calls("/c/2")); assertEquals(2, calls("/image.png"))
             assertEquals(0, calls("/cover.png"))
         } } }
+    }
+
+    @Test fun savedBodySurvivesRestartAndAccountChangeAndOnlyMissingImagesAreRetried() = runBlocking {
+        RuleSourceFixture().use { fixture -> Library(fixture).use { library -> with(library) {
+            failedPath = "/image.png"; queue()
+            assertEquals(Result.retry(), run())
+            val candidate = db.bookDownloadDao().candidates(book.storageKey).single()
+            val state = downloads.state(book, local.getBookVolumes(book.storageKey), "1", false, contentOnly = true)
+            assertEquals(2, state.bodyChapters); assertEquals(1, state.savedChapters)
+            assertEquals(1, state.missingImages); assertTrue(state.coverMissing)
+            now = owner().taskNextAttemptAt
+            reopen(); register(account = 1)
+            val requestsBefore = requests.size
+            assertTrue(run() is Result.Failure) // Old requests cannot borrow the new login.
+            assertEquals(requestsBefore, requests.size)
+            assertEquals(candidate, db.bookDownloadDao().candidates(book.storageKey).single())
+            workId = UUID.randomUUID(); queue(); failedPath = ""
+            assertEquals(Result.success(), run())
+            assertEquals(1, calls("/c/1")); assertEquals(1, calls("/c/2"))
+            assertEquals(2, calls("/image.png")); assertEquals(1, calls("/cover.png"))
+            assertTrue(db.bookDownloadDao().candidates(book.storageKey).isEmpty())
+        } } }
+    }
+
+    @Test fun independentMissingChapterDoesNotBlockLaterChaptersButStatefulRulesStillStop() = runBlocking {
+        for (mode in listOf("static", "script", "post")) {
+            RuleSourceFixture().use { fixture -> Library(fixture).use { library -> with(library) {
+                thirdChapter = true; withImages = false; status = 404
+                if (mode == "script") register(script = true)
+                if (mode == "post") unsafeChapter = true
+                queue(); assertTrue(mode, run() is Result.Failure)
+                assertEquals(mode, 1, calls("/c/1"))
+                assertEquals(mode, if (mode == "static") 1 else 0, calls("/c/3"))
+                assertEquals(mode, if (mode == "static") 2 else 1, db.bookDownloadDao().chapters(book.storageKey).size)
+                assertEquals(DownloadStage.Body.name, owner().taskStage)
+                assertEquals(0, owner().taskRetryCount)
+            } } }
+        }
     }
 
     @Test fun detailsCoverAndImageTransientFailuresAllUseTheTaskBudget() = runBlocking {

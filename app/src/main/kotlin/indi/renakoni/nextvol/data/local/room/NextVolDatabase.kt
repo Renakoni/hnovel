@@ -61,12 +61,13 @@ import io.nightfish.lightnovelreader.api.content.builder.simpleText
         FormattingRuleEntity::class,
         BookDownloadEntity::class,
         DownloadedChapterEntity::class,
+        indi.renakoni.nextvol.data.local.room.entity.DownloadChapterCandidateEntity::class,
         ImportedBookEntity::class,
         indi.renakoni.nextvol.data.localbook.LocalBookFileManifest::class,
         indi.renakoni.nextvol.data.bangumi.BangumiBindingEntity::class,
         indi.renakoni.nextvol.data.bangumi.BangumiSyncRecord::class
     ],
-    version = 26,
+    version = 27,
     exportSchema = false
 )
 abstract class NextVolDatabase : RoomDatabase() {
@@ -122,7 +123,8 @@ abstract class NextVolDatabase : RoomDatabase() {
                             MIGRATION_22_23,
                             MIGRATION_23_24,
                             MIGRATION_24_25,
-                            MIGRATION_25_26
+                            MIGRATION_25_26,
+                            MIGRATION_26_27
                         )
                         .allowMainThreadQueries()
                         .build()
@@ -925,6 +927,15 @@ abstract class NextVolDatabase : RoomDatabase() {
                 db.execSQL("CREATE TABLE IF NOT EXISTS downloaded_chapter (id TEXT NOT NULL PRIMARY KEY, " +
                     "bookId TEXT NOT NULL, signature TEXT NOT NULL, images TEXT NOT NULL)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_downloaded_chapter_bookId ON downloaded_chapter (bookId)")
+            }
+        }
+
+        internal val MIGRATION_26_27 = object : Migration(26, 27) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE downloaded_chapter ADD COLUMN resourceVersion TEXT NOT NULL DEFAULT ''")
+                db.execSQL("CREATE TABLE IF NOT EXISTS download_chapter_candidate (id TEXT NOT NULL PRIMARY KEY, " +
+                    "bookId TEXT NOT NULL, signature TEXT NOT NULL, body TEXT NOT NULL, images TEXT NOT NULL, resourceVersion TEXT NOT NULL)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_download_chapter_candidate_bookId ON download_chapter_candidate (bookId)")
             }
         }
 

@@ -25,4 +25,7 @@
     <string name="download_error_source">Источник недоступен</string>
     <string name="download_error_request">Ошибка запроса к источнику</string>
     <string name="download_error_storage">Не удалось сохранить; проверьте свободное место</string>
+    <string name="download_body_coverage">Текст сохранён: %1$d/%2$d глав</string>
+    <string name="download_missing_images">Не хватает изображений: %1$d</string>
+    <string name="download_missing_cover">Обложка не загружена</string>
 </resources>

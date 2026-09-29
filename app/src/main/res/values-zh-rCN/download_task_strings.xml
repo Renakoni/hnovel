@@ -25,4 +25,7 @@
     <string name="download_error_source">书源不可用</string>
     <string name="download_error_request">书源请求失败</string>
     <string name="download_error_storage">本地保存失败，请检查存储空间</string>
+    <string name="download_body_coverage">正文已保存 %1$d/%2$d 章</string>
+    <string name="download_missing_images">缺少 %1$d 张图片</string>
+    <string name="download_missing_cover">封面未下载</string>
 </resources>

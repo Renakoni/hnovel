@@ -11,6 +11,7 @@ import coil3.request.ErrorResult
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
 import com.github.michaelbull.result.coroutines.coroutineBinding
+import com.github.michaelbull.result.Err
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import indi.renakoni.nextvol.data.book.BookIdentity
@@ -141,7 +142,7 @@ class CacheBookWork @AssistedInject constructor(
             val active = downloads.begin(book, inputData.getLong("downloadGeneration", 0), id.toString(), requireTask = true)
             attempt = active
             val revision = bookRepository.sourceRevision(book)
-            val result = coroutineBinding {
+            val result = coroutineBinding<Unit, WebRequestError> {
                 mark(DownloadStage.Directory)
                 val volumes = bookRepository.downloadDirectory(book).bind()
                 val chapters = volumes.volumes.flatMap { it.chapters }.distinctBy { it.id }
@@ -150,24 +151,49 @@ class CacheBookWork @AssistedInject constructor(
                 mark(DownloadStage.Storage)
                 val unchanged = downloads.target(active, volumes, revision, cover)
                 val fetchedImages = mutableSetOf<String>()
+                // The static-rule replay gate excludes scripts and shared book variables.
+                // Request bodies/method overrides may carry sequencing semantics even without JS.
+                val independent = bookRepository.canReplayDownload(book) && chapters.none {
+                    Regex("\"(?:method|body)\"\\s*:", RegexOption.IGNORE_CASE)
+                        .containsMatchIn(BookIdentity.chapter(it.id, book).remoteId)
+                }
+                var chapterFailure: Triple<WebRequestError, DownloadStage, String>? = null
                 chapters.forEachIndexed { index, chapter ->
                     currentCoroutineContext().ensureActive()
                     val signature = downloadChapterSignature(chapters, index, revision)
-                    val saved = downloads.reusable(active, chapter.id, signature)
-                    mark(DownloadStage.Body, chapter.id)
-                    val content = saved ?: bookRepository.downloadChapter(book, chapter.id).bind()
-                    val images = downloads.chapterImages(content)
-                    for (uri in images) {
-                        if (uri !in fetchedImages && (saved == null || !downloads.hasImage(active, uri))) {
-                            mark(DownloadStage.Image, chapter.id)
-                            cacheImage(active, SourceImage(book, uri), force = saved == null || downloads.isImageStale(active, uri, false)) {
+                    val chapterResult = try {
+                        coroutineBinding<Unit, WebRequestError> {
+                            mark(DownloadStage.Body, chapter.id)
+                            val checkpoint = downloads.checkpoint(active, chapter.id, signature) ?: run {
+                                val content = bookRepository.downloadChapter(book, chapter.id).bind()
                                 mark(DownloadStage.Storage, chapter.id)
+                                downloads.saveCandidate(active, content, signature)
                             }
-                            fetchedImages += uri
+                            for (uri in checkpoint.images) {
+                                if (!downloads.hasCheckpointImage(active, checkpoint, uri)) {
+                                    mark(DownloadStage.Image, chapter.id)
+                                    cacheImage(active, SourceImage(book, uri), force = uri !in fetchedImages,
+                                        resourceVersion = checkpoint.resourceVersion) {
+                                        mark(DownloadStage.Storage, chapter.id)
+                                    }
+                                    fetchedImages += uri
+                                }
+                            }
+                            mark(DownloadStage.Storage, chapter.id)
+                            downloads.publish(active, checkpoint)
                         }
+                    } catch (failure: CancellationException) { throw failure }
+                    catch (failure: Exception) { Err(WebRequestError("", "", failure)) }
+                    if (chapterResult.isErr) {
+                        val error = checkNotNull(chapterResult.component2())
+                        val contentError = error.throwable as? hnovel.content.SourceContentException
+                        val imageError = error.throwable as? indi.renakoni.nextvol.data.image.SourceImageRequestException
+                        val isolated = stage in setOf(DownloadStage.Body, DownloadStage.Image) &&
+                            ((contentError?.httpStatus ?: imageError?.httpStatus) == 404 ||
+                                contentError?.code == hnovel.content.ContentError.EmptyContent)
+                        if (!independent || !isolated) chapterResult.bind()
+                        if (chapterFailure == null) chapterFailure = Triple(error, stage, chapter.id)
                     }
-                    mark(DownloadStage.Storage, chapter.id)
-                    downloads.saveChapter(active, content, signature, images)
                     item.progress = (index + 1f) / (chapters.size + 1)
                 }
                 if (cover.isNotEmpty() && (!unchanged || !downloads.hasImage(active, cover, true))) {
@@ -176,6 +202,11 @@ class CacheBookWork @AssistedInject constructor(
                         mark(DownloadStage.Storage)
                     }
                 }
+                chapterFailure?.let { (error, failedStage, chapterId) ->
+                    mark(failedStage, chapterId)
+                    Err(error).bind()
+                }
+                Unit
             }
             if (result.isErr) {
                 item.sourceError = result.component2()?.kind
@@ -211,6 +242,7 @@ class CacheBookWork @AssistedInject constructor(
     }
 
     private suspend fun cacheImage(attempt: BookDownloadStore.Attempt, image: SourceImage, force: Boolean,
+        resourceVersion: String = "",
         beforeSave: suspend () -> Unit) {
         val request = ImageRequest.Builder(applicationContext)
             .data(image.copy(preferDownloaded = false))
@@ -223,7 +255,7 @@ class CacheBookWork @AssistedInject constructor(
             is ErrorResult -> throw result.throwable
             is SuccessResult -> {
                 beforeSave()
-                downloads.retainImage(attempt, image, result.diskCacheKey)
+                downloads.retainImage(attempt, image, result.diskCacheKey, resourceVersion)
             }
         }
     }

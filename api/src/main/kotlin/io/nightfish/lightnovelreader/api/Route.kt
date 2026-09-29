@@ -283,7 +283,8 @@ object Route {
         data class ImageViewerDialog(
             val imageUri: String,
             val bookId: String,
-            val cover: Boolean = false
+            val cover: Boolean = false,
+            val chapterId: String? = null
         )
     }
     /** 有可用更新提示对话框路由 */

@@ -31,6 +31,9 @@ fun downloadStatusLabel(status: BookDownloadStatus): String = stringResource(whe
 fun downloadStatusText(status: BookDownloadStatus): String {
     val parts = mutableListOf(downloadStatusLabel(status),
         stringResource(R.string.download_task_content, status.content.savedChapters, status.content.totalChapters))
+    parts += stringResource(R.string.download_body_coverage, status.content.bodyChapters, status.content.totalChapters)
+    if (status.content.missingImages > 0) parts += stringResource(R.string.download_missing_images, status.content.missingImages)
+    if (status.content.coverMissing) parts += stringResource(R.string.download_missing_cover)
     if (status.task.status == DownloadTaskStatus.WaitingRetry) {
         parts += stringResource(R.string.download_task_retry_time, status.task.retryCount,
             java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT)

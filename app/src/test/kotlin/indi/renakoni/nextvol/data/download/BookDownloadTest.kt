@@ -98,7 +98,7 @@ class BookDownloadTest {
     private fun openLibrary() {
         db = Room.databaseBuilder(context, NextVolDatabase::class.java, directory.root.resolve("library.db").path)
             .addMigrations(NextVolDatabase.MIGRATION_17_18, NextVolDatabase.MIGRATION_18_19,
-                NextVolDatabase.MIGRATION_19_20, NextVolDatabase.MIGRATION_20_21, NextVolDatabase.MIGRATION_21_22, NextVolDatabase.MIGRATION_22_23, NextVolDatabase.MIGRATION_23_24, NextVolDatabase.MIGRATION_24_25, NextVolDatabase.MIGRATION_25_26).allowMainThreadQueries().build()
+                NextVolDatabase.MIGRATION_19_20, NextVolDatabase.MIGRATION_20_21, NextVolDatabase.MIGRATION_21_22, NextVolDatabase.MIGRATION_22_23, NextVolDatabase.MIGRATION_23_24, NextVolDatabase.MIGRATION_24_25, NextVolDatabase.MIGRATION_25_26, NextVolDatabase.MIGRATION_26_27).allowMainThreadQueries().build()
         local = LocalBookDataSource(db.bookInformationDao(), db.bookVolumesDao(), db.chapterContentDao(), db.userReadingDataDao(), indi.renakoni.nextvol.data.book.BookAliasStore(db))
         downloads = BookDownloadStore(context, db, decoder)
         val shelves = BookshelfRepository(db.bookshelfDao(), mockk(relaxed = true), registry, downloads, local.aliases)
@@ -216,16 +216,30 @@ class BookDownloadTest {
     }
 
     @Test fun imageFailureAndReadingRefreshKeepPreviouslyDownloadedBody() = runBlocking {
-        val source = register(a).apply { withImages = true }
+        val source = register(a).apply { withImages = true; extraImage = true }
         assertEquals(ListenableWorker.Result.success(), download())
         val before = chapter(a, "1")!!
-        source.chapters = source.chapters.map { it.copy(title = "Changed") }
-        source.imageFailed = true
+        source.chapters = source.chapters.mapIndexed { index, chapter -> if (index == 0) chapter.copy(title = "Changed") else chapter }
+        source.failedImage = "$IMAGE?extra"
+        source.imageBytes = ByteArrayOutputStream().also {
+            Bitmap.createBitmap(3, 3, Bitmap.Config.ARGB_8888).compress(Bitmap.CompressFormat.PNG, 100, it)
+        }.toByteArray()
         assertTrue(download() is ListenableWorker.Result.Failure)
         assertEquals(before, chapter(a, "1"))
         local.updateChapterContent(before.copy(title = "Incomplete reading refresh"))
         assertEquals(before, chapter(a, "1"))
         assertArrayEquals(png, downloads.image(SourceImage(a, IMAGE))!!.readBytes())
+        assertEquals(1, db.bookDownloadDao().candidates(a.storageKey).size)
+        val calls = source.imageCalls
+        source.failedImage = null
+        assertEquals(ListenableWorker.Result.success(), download())
+        assertEquals(2, source.chapterCalls["1"])
+        assertEquals(calls + 1, source.imageCalls)
+        assertEquals("Changed", chapter(a, "1")!!.title)
+        assertArrayEquals(source.imageBytes, downloads.image(SourceImage(a, IMAGE,
+            chapterId = SourceChapterId(a, "1").storageKey))!!.readBytes())
+        assertArrayEquals(png, downloads.image(SourceImage(a, IMAGE,
+            chapterId = SourceChapterId(a, "2").storageKey))!!.readBytes())
     }
 
     @Test fun clearingDownloadsRevokesLateResultsAndPreUpgradeQueuedWork() = runBlocking {
@@ -352,7 +366,7 @@ class BookDownloadTest {
             execSQL("DROP TABLE bangumi_binding"); execSQL("DROP TABLE bangumi_sync_record"); execSQL("DROP TABLE book_alias"); version = 17
         }
         db.close(); openLibrary()
-        assertEquals(26, db.openHelper.writableDatabase.version)
+        assertEquals(27, db.openHelper.writableDatabase.version)
         val blocked = File(context.filesDir, "book-downloads").apply { writeText("not a directory") }
         try { downloads.prepare(); fail("Image copy must fail before ownership is committed") }
         catch (_: java.io.IOException) { }
@@ -537,6 +551,15 @@ class BookDownloadTest {
         }
     }
 
+    private fun androidx.sqlite.db.SupportSQLiteDatabase.removeCheckpointSchema() {
+        execSQL("ALTER TABLE downloaded_chapter RENAME TO checkpoint_chapters")
+        execSQL("CREATE TABLE downloaded_chapter (id TEXT NOT NULL PRIMARY KEY, bookId TEXT NOT NULL, signature TEXT NOT NULL, images TEXT NOT NULL)")
+        execSQL("INSERT INTO downloaded_chapter SELECT id, bookId, signature, images FROM checkpoint_chapters")
+        execSQL("DROP TABLE checkpoint_chapters")
+        execSQL("CREATE INDEX index_downloaded_chapter_bookId ON downloaded_chapter (bookId)")
+        execSQL("DROP TABLE download_chapter_candidate")
+    }
+
     @Test fun room25UpgradePreservesTaskOwnershipAndContentWithAnUnusedRetryBudget() = runBlocking {
         register(a)
         assertEquals(ListenableWorker.Result.success(), download())
@@ -546,6 +569,7 @@ class BookDownloadTest {
             execSQL("CREATE TABLE book_download (bookId TEXT NOT NULL PRIMARY KEY, revision TEXT NOT NULL, directoryHash TEXT NOT NULL, phase TEXT NOT NULL, generation INTEGER NOT NULL, attempt TEXT NOT NULL, coverUri TEXT NOT NULL, taskWorkId TEXT NOT NULL DEFAULT '', taskStatus TEXT NOT NULL DEFAULT 'None', taskStage TEXT NOT NULL DEFAULT 'Unknown', taskChapter TEXT NOT NULL DEFAULT '', taskError TEXT NOT NULL DEFAULT '', taskRunAttempt INTEGER NOT NULL DEFAULT 0, taskHidden INTEGER NOT NULL DEFAULT 0)")
             execSQL("INSERT INTO book_download SELECT bookId, revision, directoryHash, phase, generation, attempt, coverUri, taskWorkId, taskStatus, taskStage, taskChapter, taskError, taskRunAttempt, taskHidden FROM old_download")
             execSQL("DROP TABLE old_download")
+            removeCheckpointSchema()
             version = 25
         }
         db.close(); openLibrary()
@@ -555,6 +579,7 @@ class BookDownloadTest {
         assertEquals(0, owner.taskRetryCount)
         assertEquals(0L, owner.taskNextAttemptAt)
         assertEquals(-1L, owner.taskAccountGeneration)
+        assertTrue(db.bookDownloadDao().chapters(a.storageKey).all { it.resourceVersion.isEmpty() })
         assertNotNull(chapter(a, "1"))
         assertEquals(3, db.bookDownloadDao().chapters(a.storageKey).size)
     }
@@ -567,11 +592,12 @@ class BookDownloadTest {
             execSQL("CREATE TABLE book_download (bookId TEXT NOT NULL PRIMARY KEY, revision TEXT NOT NULL, directoryHash TEXT NOT NULL, phase TEXT NOT NULL, generation INTEGER NOT NULL, attempt TEXT NOT NULL, coverUri TEXT NOT NULL)")
             execSQL("INSERT INTO book_download SELECT bookId, revision, directoryHash, 'updating', generation, 'old-attempt', coverUri FROM old_download")
             execSQL("DROP TABLE old_download")
+            removeCheckpointSchema()
             version = 24
         }
         db.close(); openLibrary()
         val owner = downloads.entry(a)!!
-        assertEquals(26, db.openHelper.writableDatabase.version)
+        assertEquals(27, db.openHelper.writableDatabase.version)
         assertEquals("", owner.taskWorkId)
         assertEquals(DownloadTaskStatus.Interrupted, owner.taskState(null).status)
         assertEquals(DownloadStage.Unknown, owner.taskState(null).stage)
@@ -755,6 +781,9 @@ class BookDownloadTest {
         var exportVolumes: List<Volume>? = null
         var withImages = false
         var imageFailed = false
+        var extraImage = false
+        var failedImage: String? = null
+        var imageBytes = png
         var imageFailureKind = io.nightfish.lightnovelreader.api.error.WebRequestErrorKind.Other
         var directoryFailed = false
         var informationFailed = false
@@ -769,6 +798,7 @@ class BookDownloadTest {
         fun body(id: String) = ChapterContent(id, chapters.single { it.id == id }.title,
             ContentBuilder().simpleText("${book.sourceId.id}:$id").apply {
                 if (withImages) image(Uri.parse(IMAGE))
+                if (withImages && extraImage) image(Uri.parse("$IMAGE?extra"))
             }.build())
         override suspend fun getBookInformation(id: String): com.github.michaelbull.result.Result<BookInformation, WebRequestError> =
             if (informationFailed) Err(WebRequestError("Network", "Unavailable")) else Ok(information())
@@ -783,7 +813,7 @@ class BookDownloadTest {
         }
         override suspend fun getImage(bookId: String, url: String, cover: Boolean): com.github.michaelbull.result.Result<ByteArray, WebRequestError> {
             imageCalls++
-            return if (imageFailed) Err(WebRequestError("Image", "Unavailable", kind = imageFailureKind)) else Ok(png)
+            return if (imageFailed || url == failedImage) Err(WebRequestError("Image", "Unavailable", kind = imageFailureKind)) else Ok(imageBytes)
         }
     }
 }

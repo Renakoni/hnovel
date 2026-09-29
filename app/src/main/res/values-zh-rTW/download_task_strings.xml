@@ -25,4 +25,7 @@
     <string name="download_error_source">書源無法使用</string>
     <string name="download_error_request">書源請求失敗</string>
     <string name="download_error_storage">本機儲存失敗，請檢查儲存空間</string>
+    <string name="download_body_coverage">正文已儲存 %1$d/%2$d 章</string>
+    <string name="download_missing_images">缺少 %1$d 張圖片</string>
+    <string name="download_missing_cover">封面未下載</string>
 </resources>

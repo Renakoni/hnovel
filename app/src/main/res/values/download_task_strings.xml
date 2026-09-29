@@ -25,4 +25,7 @@
     <string name="download_error_source">Source unavailable</string>
     <string name="download_error_request">Source request failed</string>
     <string name="download_error_storage">Could not save locally; check storage space</string>
+    <string name="download_body_coverage">Bodies saved: %1$d/%2$d</string>
+    <string name="download_missing_images">Missing images: %1$d</string>
+    <string name="download_missing_cover">Cover not downloaded</string>
 </resources>

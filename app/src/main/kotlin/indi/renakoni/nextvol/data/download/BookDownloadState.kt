@@ -8,7 +8,8 @@ import java.security.MessageDigest
 enum class BookDownloadPhase { None, Partial, Complete, Updating, Failed, Outdated }
 
 data class BookDownloadState(val phase: BookDownloadPhase = BookDownloadPhase.None,
-    val savedChapters: Int = 0, val totalChapters: Int = 0)
+    val savedChapters: Int = 0, val totalChapters: Int = 0,
+    val bodyChapters: Int = savedChapters, val missingImages: Int = 0, val coverMissing: Boolean = false)
 
 internal fun downloadDirectoryHash(volumes: BookVolumes): String = downloadHash(
     BookIdentity.encode("download-directory", volumes.volumes.flatMap { volume ->
