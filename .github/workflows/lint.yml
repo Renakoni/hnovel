@@ -28,12 +28,12 @@ jobs:
           mkdir -p build/reports/lint
           python3 .github/scripts/test_check_resources.py 2>&1 | tee build/reports/lint/resource-tests.log
           python3 .github/scripts/check_resources.py 2>&1 | tee build/reports/lint/resources.log
-      - name: Run full app Debug Lint
+      - name: Run full Debug Lint and production Release fatal checks
         if: ${{ !cancelled() && steps.environment.outcome == 'success' }}
         shell: bash
         run: |
           mkdir -p build/reports/lint
-          ./gradlew --no-daemon :app:lintDebug --console=plain --stacktrace --max-workers=2 2>&1 | tee build/reports/lint/gradle.log
+          ./gradlew --no-daemon :app:lintDebug :app:lintVitalRelease --continue --console=plain --stacktrace --max-workers=2 2>&1 | tee build/reports/lint/gradle.log
       - name: Upload Lint reports
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -42,5 +42,6 @@ jobs:
           path: |
             app/build/reports/lint-results-debug.*
             app/build/intermediates/lint_intermediate_text_report/debug/lintReportDebug
+            app/build/intermediates/lint_vital_intermediate_text_report/release/lintVitalReportRelease
             build/reports/lint
           if-no-files-found: warn
