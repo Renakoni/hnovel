@@ -139,6 +139,61 @@ class ReaderPositionInstrumentedTest {
     @Test fun chapterScrollBodyIsCenteredAndSharesItsRealViewportAtEveryWidth() = assertScrollBody(false)
     @Test fun continuousScrollBodyIsCenteredAndSharesItsRealViewportAtEveryWidth() = assertScrollBody(true)
 
+    @Test fun pageLayoutPreferenceRoundTripsKeepTheOriginalCharacterAndSavedProgress() {
+        val fixture = Fixture(unitDensity = true, initialProgress = 0.6f)
+        fun assertLayout(columns: Int, reason: ReaderLayoutReason? = null) {
+            compose.waitUntil(20_000) {
+                fixture.layoutResult.value?.let { it.geometry?.columns == columns && it.reason == reason } == true
+            }
+            fixture.assertPosition()
+        }
+        compose.runOnIdle { fixture.width = 1000.dp; fixture.height = 600.dp }
+        assertLayout(2)
+        for ((preference, columns) in listOf("single" to 1, "double" to 2, "auto" to 2)) {
+            runBlocking { settings.pageLayoutUserData.set(preference) }
+            compose.waitUntil(5_000) { fixture.reader.readerSettings.pageLayout == preference }
+            assertLayout(columns)
+        }
+        compose.runOnIdle { fixture.width = 800.dp }
+        assertLayout(1, ReaderLayoutReason.WindowTooNarrow)
+        runBlocking { settings.fontSizeUserData.set(18f); settings.pageLayoutUserData.set("double") }
+        assertLayout(2) // Explicit double is allowed below the automatic 840dp threshold.
+        compose.runOnIdle { fixture.width = 450.dp }
+        assertLayout(1, ReaderLayoutReason.WindowTooNarrow)
+        compose.runOnIdle { fixture.width = 1000.dp }
+        assertLayout(2)
+        compose.runOnIdle { fixture.height = 400.dp }
+        assertLayout(1, ReaderLayoutReason.WindowTooShort)
+        compose.runOnIdle { fixture.height = 600.dp }
+        assertLayout(2)
+        runBlocking { settings.fontSizeUserData.set(36f) }
+        assertLayout(1, ReaderLayoutReason.TextTooLarge)
+        runBlocking { settings.fontSizeUserData.set(20f) }
+        assertLayout(2)
+        for (continuous in listOf(false, true)) {
+            fixture.setMode(flip = false, continuous = continuous)
+            assertLayout(1, ReaderLayoutReason.ScrollMode)
+            assertEquals("double", fixture.reader.readerSettings.pageLayout)
+            assertEquals(720, (fixture.reader.uiState.contentUiState as ScrollContentUiState).lazyListState.layoutInfo.viewportSize.width)
+        }
+        fixture.setMode(flip = true, continuous = true)
+        assertLayout(2)
+        compose.activityRule.scenario.recreate()
+        fixture.awaitReady()
+        assertLayout(2)
+        assertEquals("double", fixture.reader.readerSettings.pageLayout)
+        compose.activityRule.scenario.moveToState(Lifecycle.State.CREATED)
+        try {
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+            val saved = fixture.savedProgress()
+            assertTrue("Layout-only changes must not publish reading: ${fixture.progressWrites}", fixture.progressWrites.isEmpty())
+            assertEquals(0.6f, saved.currentChapterReadingProgressMap.getValue(fixture.chapter.id))
+            assertEquals(0.6f, saved.maxChapterReadingProgressMap.getValue(fixture.chapter.id))
+        } finally {
+            compose.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+        }
+    }
+
     private fun assertScrollBody(continuous: Boolean) {
         val fixture = Fixture(unitDensity = true)
         fixture.setMode(flip = false, continuous = continuous)
@@ -341,6 +396,7 @@ class ReaderPositionInstrumentedTest {
         val speechOffset = text.indexOf("marker-071") + 5
         val repository = UserDataRepository(database.userDataDao())
         val bookmarks = ReaderBookmarkSession()
+        val layoutResult = mutableStateOf<ReaderLayoutResult?>(null)
         var interceptRestoration: (() -> Unit)? = null
         val chapter = ChapterContentUiState("marked-chapter", "Source positions",
             if (empty) emptyList() else listOf(SimpleTextComponent(SimpleTextComponentData(text), repository, context)), "before", "after")
@@ -418,6 +474,7 @@ class ReaderPositionInstrumentedTest {
                             LocalReaderTextLayout provides rememberReaderTextLayout(reader.readerSettings),
                             LocalReaderPositionSession provides reader.positions,
                             LocalReaderBookmarks provides bookmarks,
+                            LocalReaderLayoutResult provides layoutResult,
                             LocalReaderSpeechFollow provides if (speechTarget) ReaderSpeechFollow(
                                 SpeechPosition("fixture-book", chapter.id, chapter.speechTextIndex.fingerprint, speechOffset, speechOffset + 1),
                                 following = true) else ReaderSpeechFollow(),

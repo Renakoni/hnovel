@@ -150,6 +150,10 @@ fun ReaderScreen(
     val backBlockMode = settingState.backBlockMode
     var lastBackPressTime: Long by remember { mutableLongStateOf(0) }
     var showSettingsBottomSheet by remember { mutableStateOf(false) }
+    val layoutResult = remember(readingScreenUiState.contentUiState,
+        readingScreenUiState.contentUiState?.readingChapterContent?.get()) {
+        mutableStateOf<ReaderLayoutResult?>(null)
+    }
     var showChapterSelectionBottomSheet by remember { mutableStateOf(false) }
     val bookmarkSession = remember(readingScreenUiState.bookId) { ReaderBookmarkSession() }
     val positionSession = LocalReaderPositionSession.current
@@ -279,7 +283,8 @@ fun ReaderScreen(
             accumulateReadTime = accumulateReadTime,
         )
 
-        CompositionLocalProvider(LocalReaderSpeechFollow provides speechFollow, LocalReaderBookmarks provides bookmarkSession) {
+        CompositionLocalProvider(LocalReaderSpeechFollow provides speechFollow, LocalReaderBookmarks provides bookmarkSession,
+            LocalReaderLayoutResult provides layoutResult) {
             Content(
                 isImmersive = isImmersive,
                 volumeKeysEnabled = !sourcePanelVisible && !showSettingsBottomSheet && !showChapterSelectionBottomSheet && !showReadAloud && !showBookmarks,
@@ -380,6 +385,7 @@ fun ReaderScreen(
         enter = if (settingState.reduceMotion) EnterTransition.None else fadeIn() + expandIn(),
         exit = if (settingState.reduceMotion) ExitTransition.None else shrinkOut() + fadeOut(),
     ) {
+        CompositionLocalProvider(LocalReaderLayoutResult provides layoutResult) {
         SettingsBottomSheet(
             sheetState = settingsBottomSheetState,
             onDismissRequest = {
@@ -393,6 +399,7 @@ fun ReaderScreen(
             settingState = settingState,
             onClickThemeSettings = onClickThemeSettings
         )
+        }
     }
 
     AnimatedVisibility(visible = showChapterSelectionBottomSheet,

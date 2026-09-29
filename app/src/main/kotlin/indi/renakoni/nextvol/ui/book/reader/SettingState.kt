@@ -39,6 +39,7 @@ class SettingState(
     override val volumeKeyContinuousFlipIntervalUserData = userDataRepository.floatUserData(UserDataPath.Reader.VolumeKeyContinuousFlipInterval.path)
     override val volumeKeyScrollFractionUserData = userDataRepository.floatUserData(UserDataPath.Reader.VolumeKeyScrollFraction.path)
     override val flipAnimeUserData = userDataRepository.stringUserData(UserDataPath.Reader.FlipAnime.path)
+    override val pageLayoutUserData = userDataRepository.stringUserData(UserDataPath.Reader.PageLayout.path)
     override val fastChapterChangeUserData = userDataRepository.booleanUserData(UserDataPath.Reader.FastChapterChange.path)
     override val batteryIndicatorDisplayModeUserData = userDataRepository.stringUserData(UserDataPath.Reader.BatteryIndicatorDisplayMode.path)
     override val enableTimeIndicatorUserData = userDataRepository.booleanUserData(UserDataPath.Reader.EnableTimeIndicator.path)
@@ -86,6 +87,11 @@ class SettingState(
     private val storedVolumeKeyScrollFraction by volumeKeyScrollFractionUserData.safeAsState(DefaultVolumeKeyScrollFraction)
     override val volumeKeyScrollFraction get() = volumeKeyScrollFraction(storedVolumeKeyScrollFraction)
     override val flipAnime by flipAnimeUserData.safeAsState(MenuOptions.FlipAnimationOptions.ScrollWithoutShadow)
+    private val storedPageLayout by pageLayoutUserData.safeAsState("auto")
+    override val pageLayout get() = when (storedPageLayout) {
+        "single", "double" -> storedPageLayout
+        else -> "auto"
+    }
     override val fastChapterChange by fastChapterChangeUserData.safeAsState(false)
     override val batteryIndicatorDisplayMode by batteryIndicatorDisplayModeUserData.safeAsState("classic")
     override val enableTimeIndicator by enableTimeIndicatorUserData.safeAsState(true)

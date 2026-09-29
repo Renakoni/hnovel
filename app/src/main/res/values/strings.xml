@@ -632,4 +632,16 @@
     <string name="log_empty_current_desc">New logs appear here. Restart after changing the log level.</string>
     <string name="book_directory_incomplete">The chapter list is incomplete. Only loaded chapters are shown.</string>
     <string name="reader_visible_page_range">Pages %1$d–%2$d of %3$d</string>
+    <string name="reader_page_layout_title">Page layout</string>
+    <string name="reader_page_layout_auto">Automatic</string>
+    <string name="reader_page_layout_single">Single page</string>
+    <string name="reader_page_layout_double">Double page</string>
+    <string name="reader_page_layout_waiting">Determining the current layout…</string>
+    <string name="reader_page_layout_current_single">Currently showing one page.</string>
+    <string name="reader_page_layout_current_double">Currently showing two pages.</string>
+    <string name="reader_page_layout_scroll">Applies only to paginated reading. Scrolling uses one column.</string>
+    <string name="reader_page_layout_narrow">Single page: the window is too narrow.</string>
+    <string name="reader_page_layout_short">Single page: the window is too short.</string>
+    <string name="reader_page_layout_large_text">Single page: the text is too large for two pages.</string>
+    <string name="reader_page_layout_unsupported">Single page: this chapter contains content that does not support two pages.</string>
 </resources>

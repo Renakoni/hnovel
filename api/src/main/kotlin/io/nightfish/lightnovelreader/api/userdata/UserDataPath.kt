@@ -69,6 +69,8 @@ sealed class UserDataPath(
         data object VolumeKeyScrollFraction : UserDataPath("volumeKeyScrollFraction", Reader)
         /** 翻页动画效果 @since Api 2 */
         data object FlipAnime : UserDataPath("flipAnime", Reader)
+        /** Paginated layout preference: auto, single or double. */
+        data object PageLayout : UserDataPath("pageLayout", Reader)
         /** 快速切换章节 @since Api 2 */
         data object FastChapterChange : UserDataPath("fastChapterChange", Reader)
         /** 电量指示器显示模式 @since Api 2 */

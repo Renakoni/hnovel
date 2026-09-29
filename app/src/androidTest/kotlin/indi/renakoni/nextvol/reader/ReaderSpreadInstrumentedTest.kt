@@ -34,6 +34,7 @@ import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.github.michaelbull.result.Ok
+import com.github.michaelbull.result.get
 import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.data.content.component.ImageComponent
 import indi.renakoni.nextvol.data.content.component.SimpleTextComponent
@@ -195,6 +196,33 @@ class ReaderSpreadInstrumentedTest {
         assertEquals(1..1, fixture.flip.visibleLeafRange)
     }
 
+    @Test fun doublePreferenceSurvivesUnsupportedContentAndInactiveRenderer() {
+        runBlocking { baseSettings.pageLayoutUserData.set("double") }
+        val fixture = Fixture()
+        compose.waitUntil(15_000) { fixture.layoutResult.value?.geometry?.columns == 2 }
+        val original = fixture.flip.readingChapterContent!!.get()!!
+        val special = object : AbstractContentComponent<ImageComponentData>(ImageComponentData(Uri.EMPTY)) {
+            override val id = ImageComponentData.id
+            @Composable override fun Content(modifier: Modifier) { Text("SPECIAL", modifier) }
+        }
+        val unsupported = ChapterContentUiState(original.id, original.title, original.content + special,
+            original.prevChapter, original.nextChapter)
+        compose.runOnIdle { fixture.flip.readingChapterContent = Ok(unsupported) }
+        compose.waitUntil(15_000) { fixture.layoutResult.value?.reason == ReaderLayoutReason.UnsupportedContent }
+        assertEquals(1, fixture.layoutResult.value?.geometry?.columns)
+        assertEquals(6, fixture.flip.pagerState.pageCount)
+        assertEquals("double", fixture.settings.pageLayout)
+        compose.runOnIdle { fixture.flip.readingChapterContent = Ok(original) }
+        compose.waitUntil(15_000) { fixture.layoutResult.value?.geometry?.columns == 2 }
+        assertNull(fixture.layoutResult.value?.reason)
+        assertEquals(3, fixture.flip.pagerState.pageCount)
+        assertEquals("double", fixture.settings.pageLayout)
+        val activeLayout = fixture.layoutResult.value
+        compose.runOnIdle { fixture.active = false; fixture.width = 600.dp }
+        compose.waitForIdle()
+        assertEquals(activeLayout, fixture.layoutResult.value)
+    }
+
     @Test fun swipeWithoutAnimationTurnsExactlyOneSpread() = assertSwipe(false)
     @Test fun animatedSwipeTurnsExactlyOneSpread() = assertSwipe(true)
 
@@ -309,6 +337,7 @@ class ReaderSpreadInstrumentedTest {
         var width by mutableStateOf(1000.dp)
         var active by mutableStateOf(true)
         val bookmarks = ReaderBookmarkSession()
+        val layoutResult = mutableStateOf<ReaderLayoutResult?>(null)
         var commits = 0
         val flip = MutableFlipPageContentUiState(
             loadNextChapter = { stage(two, ChapterEntry.Start) },
@@ -325,6 +354,7 @@ class ReaderSpreadInstrumentedTest {
                 val navController = rememberNavController()
                 CompositionLocalProvider(
                     LocalReaderRendererActive provides active, LocalReaderBookmarks provides bookmarks,
+                    LocalReaderLayoutResult provides layoutResult,
                     LocalReaderVolumeKeysEnabled provides volume,
                     LocalDensity provides Density(1f), LocalLayoutDirection provides direction,
                     LocalReaderBookId provides "spread-book", LocalNavController provides navController,
