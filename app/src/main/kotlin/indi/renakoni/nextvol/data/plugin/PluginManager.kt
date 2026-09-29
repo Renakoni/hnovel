@@ -21,14 +21,13 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dalvik.system.PathClassLoader
 import indi.renakoni.nextvol.data.plugin.injector.PluginInjector
 import indi.renakoni.nextvol.data.plugin.install.InstallState
-import indi.renakoni.nextvol.data.plugin.install.PluginInstallError
+import indi.renakoni.nextvol.data.plugin.install.PluginInstaller
 import indi.renakoni.nextvol.data.userdata.UserDataRepository
 import indi.renakoni.nextvol.data.web.WebBookDataSourceManager
 import indi.renakoni.nextvol.data.web.SourceNetworkSettings
 import indi.renakoni.nextvol.defaultplugin.wenku8.Wenku8Api
 import indi.renakoni.nextvol.utils.classLoader
 import indi.renakoni.nextvol.utils.getApkSignatures
-import indi.renakoni.nextvol.utils.isSignatureMatch
 import io.nightfish.lightnovelreader.api.ApiCompat
 import io.nightfish.lightnovelreader.api.plugin.LightNovelReaderPlugin
 import io.nightfish.lightnovelreader.api.plugin.Plugin
@@ -41,7 +40,6 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.serialization.json.Json
 import java.io.File
-import java.util.zip.ZipFile
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -67,7 +65,8 @@ class PluginManager @Inject constructor(
     private val enabledPluginsUserData =
         userDataRepository.stringListUserData(UserDataPath.Plugin.EnabledPlugins.path)
 
-    val pluginsDir: File = appContext.dataDir.resolve("plugins")
+    private val pluginInstaller = PluginInstaller(appContext)
+    val pluginsDir: File = pluginInstaller.pluginsDir
     val pluginsTempDir: File = appContext.cacheDir.resolve("plugins_tmp")
     var appPluginInfos: List<PluginAppInfo> = emptyList()
        private set
@@ -76,22 +75,14 @@ class PluginManager @Inject constructor(
     fun addOnInitializedCallback(callback: () -> Unit) {
         onInitializedCallbacks += callback
     }
-    fun getPluginDir(name: String): File = pluginsDir.resolve(name)
-    fun getPluginDataDir(pluginDir: File) = pluginDir.resolve("data")
-    fun getPluginFile(pluginDir: File): File = pluginDir.resolve("plugin")
-    fun getPluginAssetDir(pluginDir: File): File = pluginDir.resolve("asset")
-    fun getPluginLibsDir(pluginDir: File): File = pluginDir.resolve("libs")
-    private fun getPluginInstallLock(pluginDir: File) = pluginDir.resolve("lock")
+    fun getPluginDir(name: String): File = pluginInstaller.getPluginDir(name)
+    fun getPluginDataDir(pluginDir: File) = pluginInstaller.getPluginDataDir(pluginDir)
+    fun getPluginFile(pluginDir: File): File = pluginInstaller.getPluginFile(pluginDir)
+    fun getPluginAssetDir(pluginDir: File): File = pluginInstaller.getPluginAssetDir(pluginDir)
+    fun getPluginLibsDir(pluginDir: File): File = pluginInstaller.getPluginLibsDir(pluginDir)
+    private fun getPluginInstallLock(pluginDir: File) = pluginInstaller.getPluginInstallLock(pluginDir)
     private fun getPluginLoadError(pluginDir: File) = pluginDir.resolve("error")
-    private fun getPluginMetadataFile(pluginDir: File): File = pluginDir.resolve("metadata.json")
-
-    private fun deletePluginWithoutData(pluginDir: File) {
-        pluginDir.listFiles {
-            it.name != "data"
-        }?.forEach {
-            it.deleteRecursively()
-        }
-    }
+    private fun getPluginMetadataFile(pluginDir: File): File = pluginInstaller.getPluginMetadataFile(pluginDir)
 
     suspend fun unloadPlugin(packageName: String) {
         loadedPluginMap[packageName]?.onUnload()
@@ -209,169 +200,48 @@ class PluginManager @Inject constructor(
         onInitializedCallbacks.forEach { it() }
     }
 
-    private fun extractAssetFromApk(apk: File, targetDir: File) = runCatching {
-        ZipFile(apk).use { zip ->
-            val entries = zip.entries()
-            while (entries.hasMoreElements()) {
-                val entry = entries.nextElement()
-                if (!entry.isDirectory && entry.name.startsWith("assets/")) {
-                    zip.getInputStream(entry).buffered().use { input ->
-                        val out = targetDir.resolve(entry.name.removePrefix("assets/"))
-                        out.parentFile?.mkdirs()
-                        out.outputStream().buffered().use { input.copyTo(it) }
-                    }
-                }
-            }
-        }
-    }
-
-    private fun extractLibFromApk(apk: File, targetDir: File) = runCatching {
-        val tempDir = targetDir.resolve("temp").also { it.mkdir() }
-        val packageInfo = appContext.packageManager.getPackageArchiveInfo(apk.path, 0)
-        packageInfo?.applicationInfo?.let {
-            ZipFile(apk.path).use { zip ->
-                val entries = zip.entries()
-                while (entries.hasMoreElements()) {
-                    val entry = entries.nextElement()
-                    if (
-                        entry.name.startsWith("lib/") &&
-                        !entry.isDirectory &&
-                        !entry.name.endsWith("libandroidx.graphics.path.so")
-                    ) {
-                        val out = tempDir.resolve(entry.name.removePrefix("lib/"))
-                        out.parentFile?.mkdirs()
-                        zip.getInputStream(entry).buffered().use { input ->
-                            out.outputStream().buffered().use { input.copyTo(it) }
-                        }
-                    }
-                }
-            }
-        }
-        val abiList = Build.SUPPORTED_ABIS
-        for (abi in abiList.reversed()) {
-            val abiDir = tempDir.resolve(abi)
-            if (!abiDir.exists()) continue
-            abiDir.listFiles()?.forEach { file ->
-                val outputFile = targetDir.resolve(file.name)
-                outputFile.parentFile?.mkdirs()
-                if (!outputFile.exists()) outputFile.createNewFile()
-                outputFile.outputStream().buffered().use {
-                    file.inputStream().buffered().copyTo(it)
-                }
-            }
-        }
-        tempDir.deleteRecursively()
-        return@runCatching
-    }
-
     fun installPlugin(
         plugin: File
     ): Flow<InstallState> = flow {
         emit(InstallState.Start.ParsePackageInfo)
-        val packageInfo = appContext.packageManager.getPackageArchiveInfo(
-            plugin.path,
-            PackageManager.GET_PERMISSIONS
-        )
-        if (packageInfo == null) {
+        val packageName = pluginInstaller.readPackageName(plugin)
+        if (packageName == null) {
             emit(InstallState.Error(Error("Failed to get package info from APK file: ${plugin.name}")))
             return@flow
         }
-        val packageName = packageInfo.packageName
-
         emit(InstallState.Start.Clean)
         val pluginDir = getPluginDir(packageName)
-        val lock = getPluginInstallLock(pluginDir)
-        if (lock.exists()) {
-            deletePluginWithoutData(pluginDir)
-        }
+        pluginInstaller.cleanInterruptedInstallation(pluginDir)
         loadedPluginMap[packageName]?.let {
             unloadPlugin(packageName)
         }
 
         emit(InstallState.Start.ParsePluginMetadata)
-        val newPluginMetadata = getPluginMetadata(plugin, packageName).onErr {
+        val newPluginMetadata = pluginInstaller.readMetadata(plugin, packageName).onErr {
             emit(InstallState.Error(it))
             return@flow
         }.get() ?: return@flow
 
         emit(InstallState.Start.CheckPluginInstallLegality)
 
-        val metadataFile = getPluginMetadataFile(pluginDir)
-        val currentPluginApk = getPluginFile(pluginDir)
-        if (currentPluginApk.exists()) {
-            runCatching {
-                metadataFile
-                    .inputStream()
-                    .use {
-                        Json.decodeFromString<PluginMetadata>(it.readBytes().decodeToString())
-                    }
-                    .also { println(it) }
-            }.andThen { currentPluginMetadata ->
-                if (newPluginMetadata.packageName in appPluginInfos.map { it.packageName }) {
-                    return@andThen Err(PluginInstallError.AppPluginExist())
-                }
-                if (!ApiCompat.isSupported(newPluginMetadata.apiVersion)) {
-                    return@andThen Err(PluginInstallError.PluginNotSupport(currentPluginMetadata.apiVersion))
-                }
-                if (currentPluginMetadata.version > newPluginMetadata.version) {
-                    return@andThen Err(PluginInstallError.CurrentPluginVersionTooHighError())
-                }
-                if (!isSignatureMatch(
-                        getApkSignatures(currentPluginApk),
-                        getApkSignatures(plugin)
-                    )
-                ) {
-                    return@andThen Err(PluginInstallError.PluginSignatureNotMatchError())
-                }
-                return@andThen Ok(Unit)
-            }.onErr {
-                emit(InstallState.Error(it))
-                return@flow
-            }
-        }
-
-        emit(InstallState.Start.WritePluginMetadataToFile)
-        runCatching {
-            deletePluginWithoutData(pluginDir)
-            pluginDir.mkdirs()
-            lock.createNewFile()
-        }.onErr {
+        pluginInstaller.checkLegality(
+            plugin, pluginDir, newPluginMetadata, appPluginInfos.map { it.packageName }
+        ).onErr {
             emit(InstallState.Error(it))
             return@flow
         }
-        runCatching {
-            getPluginMetadataFile(pluginDir)
-                .outputStream()
-                .use {
-                    it.write(Json.encodeToString<PluginMetadata>(newPluginMetadata).toByteArray())
-                }
-        }.onErr {
+
+        emit(InstallState.Start.WritePluginMetadataToFile)
+        pluginInstaller.writeMetadata(pluginDir, newPluginMetadata).onErr {
             emit(InstallState.Error(it))
             return@flow
         }
 
         emit(InstallState.Start.CopyPlugin)
-        extractLibFromApk(plugin, getPluginLibsDir(pluginDir))
-            .onErr {
-                emit(InstallState.Error(it))
-                return@flow
-            }
-        extractAssetFromApk(plugin, getPluginAssetDir(pluginDir)).onErr {
+        pluginInstaller.copyPlugin(plugin, pluginDir).onErr {
             emit(InstallState.Error(it))
             return@flow
         }
-        runCatching {
-            val target = getPluginFile(pluginDir)
-            plugin.inputStream().buffered().use { inputStream ->
-                target.outputStream().buffered().use { outputStream ->
-                    inputStream.copyTo(outputStream)
-                }
-            }
-        }.onErr {
-            emit(InstallState.Error(it))
-            return@flow
-        }
-        lock.delete()
         mutableAllPluginMetadataList.removeAll { it.packageName == packageName }
         mutableAllPluginMetadataList.add(newPluginMetadata)
         emit(InstallState.Completed(packageName))
@@ -463,23 +333,6 @@ class PluginManager @Inject constructor(
         getPluginDir(packageName).deleteRecursively()
         mutableAllPluginMetadataList.removeAll { it.packageName == packageName }
     }
-
-    private fun getPluginMetadata(file: File, packageName: String): Result<PluginMetadata, Throwable> =
-        runCatching {
-            if (file.canWrite() && !file.setReadOnly()) error("Failed to set read-only plugin file")
-            val pluginClassName = appContext.packageManager
-                .getPackageArchiveInfo(file.absolutePath, PackageManager.GET_META_DATA)
-                ?.applicationInfo?.metaData?.getString("lnr_plugin")
-                ?: error("lnr_plugin not found in manifest meta-data of ${file.name}")
-            val cl = classLoader(file.absolutePath, null, this.javaClass.classLoader)
-            cl.loadClass(pluginClassName)
-        }.andThen {
-            runCatching {
-                val plugin = it.getAnnotation(Plugin::class.java)
-                    ?: return@andThen Err(Error("Failed to get plugin annotation from the plugin class"))
-                PluginMetadata.parse(plugin, packageName, getApkSignatures(file)?.isNotEmpty() == true)
-            }
-        }
 
     private fun getPluginMetadataAndPluginClass(packageName: String): Result<Pair<PluginMetadata, Class<*>>, Throwable> =
         runCatching {
