@@ -46,6 +46,8 @@ import io.nightfish.lightnovelreader.api.util.Cache
 import io.nightfish.lightnovelreader.api.web.WebBookDataSource
 import io.nightfish.lightnovelreader.api.web.WebDataSourceItem
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.test.resetMain
@@ -98,13 +100,17 @@ class BookDownloadTest {
     private fun openLibrary() {
         db = Room.databaseBuilder(context, NextVolDatabase::class.java, directory.root.resolve("library.db").path)
             .addMigrations(NextVolDatabase.MIGRATION_17_18, NextVolDatabase.MIGRATION_18_19,
-                NextVolDatabase.MIGRATION_19_20, NextVolDatabase.MIGRATION_20_21, NextVolDatabase.MIGRATION_21_22, NextVolDatabase.MIGRATION_22_23, NextVolDatabase.MIGRATION_23_24).allowMainThreadQueries().build()
+                NextVolDatabase.MIGRATION_19_20, NextVolDatabase.MIGRATION_20_21, NextVolDatabase.MIGRATION_21_22, NextVolDatabase.MIGRATION_22_23, NextVolDatabase.MIGRATION_23_24, NextVolDatabase.MIGRATION_24_25).allowMainThreadQueries().build()
         local = LocalBookDataSource(db.bookInformationDao(), db.bookVolumesDao(), db.chapterContentDao(), db.userReadingDataDao(), indi.renakoni.nextvol.data.book.BookAliasStore(db))
         downloads = BookDownloadStore(context, db, decoder)
         val shelves = BookshelfRepository(db.bookshelfDao(), mockk(relaxed = true), registry, downloads, local.aliases)
         val text = TextProcessingRepository(mockk { every { enabled } returns false },
             mockk { every { enabled } returns false }, ContentComponentRegistry())
-        books = BookRepository(local, shelves, text, mockk(relaxed = true), ChapterRepository(registry, local, text, mockk(), downloads),
+        val workManager = mockk<androidx.work.WorkManager>(relaxed = true) {
+            every { getWorkInfoByIdFlow(any()) } returns flowOf(null)
+            every { getWorkInfosForUniqueWorkFlow(any()) } returns flowOf(emptyList())
+        }
+        books = BookRepository(local, shelves, text, workManager, ChapterRepository(registry, local, text, mockk(), downloads),
             BookReadingDataRepository(local), registry, downloads, mockk())
     }
 
@@ -348,7 +354,7 @@ class BookDownloadTest {
             execSQL("DROP TABLE bangumi_binding"); execSQL("DROP TABLE bangumi_sync_record"); execSQL("DROP TABLE book_alias"); version = 17
         }
         db.close(); openLibrary()
-        assertEquals(24, db.openHelper.writableDatabase.version)
+        assertEquals(25, db.openHelper.writableDatabase.version)
         val blocked = File(context.filesDir, "book-downloads").apply { writeText("not a directory") }
         try { downloads.prepare(); fail("Image copy must fail before ownership is committed") }
         catch (_: java.io.IOException) { }
@@ -359,6 +365,200 @@ class BookDownloadTest {
         assertNotNull(chapter(a, "1"))
         assertArrayEquals(png, downloads.image(image)!!.readBytes())
         assertEquals(BookDownloadState(BookDownloadPhase.Partial, 1, 3), state())
+    }
+
+    @Test fun firstRequestFailuresStayVisibleAfterDatabaseReopenAndSourceRemoval() = runBlocking {
+        for ((index, stage) in listOf(DownloadStage.Details, DownloadStage.Directory, DownloadStage.Body).withIndex()) {
+            val book = SourceBookId(Identifier("fixture", "failure$index"), "same")
+            register(book).apply {
+                informationFailed = stage == DownloadStage.Details
+                directoryFailed = stage == DownloadStage.Directory
+                failedChapter = if (stage == DownloadStage.Body) "1" else null
+            }
+            assertTrue(download(book) is ListenableWorker.Result.Failure)
+            registry.unregister(book.sourceId)
+            db.close(); openLibrary()
+            val repository = DownloadProgressRepository(db.userDataDao(), books, downloads)
+            try {
+                val item = awaitTask(repository, book)
+                assertEquals(DownloadTaskStatus.Failed, item.status!!.task.status)
+                assertEquals(stage, item.status!!.task.stage)
+                assertEquals(DownloadFailure.SourceRequest, item.status!!.task.failure)
+                assertEquals(0, item.status!!.content.savedChapters)
+                assertEquals(books.downloadStatusFlow(book.storageKey).first(), item.status)
+                if (stage == DownloadStage.Details) assertTrue(books.downloadInformationFlow(book.storageKey).first().isErr)
+            } finally { repository.close() }
+        }
+    }
+
+    @Test fun interruptedPartialTaskDoesNotInventAnExecutorAfterReopening() = runBlocking {
+        val source = register(a)
+        local.updateBookVolumes(a.bind(source.directory()))
+        val id = java.util.UUID.randomUUID().toString()
+        downloads.queueTask(a, downloads.generation(), id)
+        val task = downloads.startTask(a, downloads.generation(), id, 2)
+        val attempt = downloads.begin(a, downloads.generation(), id)
+        val volumes = a.bind(source.directory())
+        downloads.target(attempt, volumes, "1", "")
+        val chapters = volumes.volumes.flatMap { it.chapters }
+        downloads.saveChapter(attempt, SourceChapterId(a, "1").bind(source.body("1")),
+            downloadChapterSignature(chapters, 0, "1"), emptyList())
+        downloads.taskStage(task, DownloadStage.Body, SourceChapterId(a, "2").storageKey)
+        db.close(); openLibrary()
+        val repository = DownloadProgressRepository(db.userDataDao(), books, downloads)
+        try {
+            val state = awaitTask(repository, a).status!!
+            assertEquals(DownloadTaskStatus.Interrupted, state.task.status)
+            assertEquals(2, state.task.runAttemptCount)
+            assertEquals(2, state.task.chapterIndex)
+            assertEquals(BookDownloadState(BookDownloadPhase.Partial, 1, 3), state.content)
+            assertTrue(state.task.canResume)
+        } finally { repository.close() }
+    }
+
+    @Test fun dismissedTaskRejectsLateStagesAndWritesButKeepsSavedContent() = runBlocking {
+        val source = register(a)
+        assertEquals(ListenableWorker.Result.success(), download())
+        val id = java.util.UUID.randomUUID().toString()
+        downloads.queueTask(a, downloads.generation(), id)
+        val task = downloads.startTask(a, downloads.generation(), id, 0)
+        val attempt = downloads.begin(a, downloads.generation(), id)
+        downloads.dismissTask(a)
+        assertTrue(runCatching { downloads.taskStage(task, DownloadStage.Body) }.exceptionOrNull() is CancellationException)
+        assertTrue(runCatching { downloads.finish(attempt, true) }.exceptionOrNull() is CancellationException)
+        assertTrue(runCatching { downloads.begin(a, downloads.generation(), id) }.exceptionOrNull() is CancellationException)
+        assertNotNull(chapter(a, "1"))
+        db.close(); openLibrary()
+        assertTrue(downloads.entry(a)!!.taskHidden)
+        val nextId = java.util.UUID.randomUUID().toString()
+        downloads.queueTask(a, downloads.generation(), nextId)
+        assertFalse(downloads.entry(a)!!.taskHidden)
+        assertTrue(runCatching { downloads.startTask(a, downloads.generation(), id, 0) }.exceptionOrNull() is CancellationException)
+        downloads.startTask(a, downloads.generation(), nextId, 0)
+        val current = downloads.begin(a, downloads.generation(), nextId, requireTask = true)
+        assertTrue(runCatching { downloads.begin(a, downloads.generation(), id, requireTask = true) }.exceptionOrNull() is CancellationException)
+        downloads.finish(current, success = true)
+        assertEquals(3, source.chapterCalls.size)
+    }
+
+    @Test fun clearingCompletedTaskHistoryDoesNotDeleteContentOrRestoreCards() = runBlocking {
+        register(a)
+        assertEquals(ListenableWorker.Result.success(), download())
+        val repository = DownloadProgressRepository(db.userDataDao(), books, downloads)
+        try {
+            assertEquals(1f, awaitTask(repository, a).progress)
+            repository.clearCompleted()
+            withTimeout(5000) { while (downloads.entry(a)?.taskHidden != true) delay(10) }
+        } finally { repository.close() }
+        db.close(); openLibrary()
+        assertNotNull(chapter(a, "1"))
+        assertEquals(BookDownloadPhase.Complete, state().phase)
+        assertTrue(downloads.entries().none { !it.taskHidden && it.bookId == a.storageKey })
+    }
+
+    @Test fun clearingAStaleCompletedViewCannotHideAnAlreadyQueuedRetry() = runBlocking {
+        register(a)
+        assertEquals(ListenableWorker.Result.success(), download())
+        val repository = DownloadProgressRepository(db.userDataDao(), books, downloads)
+        try {
+            val item = awaitTask(repository, a) as MutableDownloadItem
+            downloads.queueTask(a, downloads.generation(), java.util.UUID.randomUUID().toString())
+            withTimeout(5000) { while (item.status?.task?.status != DownloadTaskStatus.Interrupted) delay(10) }
+            item.progress = 1f // Simulate an old completed frame immediately after explicit retry.
+            repository.clearCompleted()
+            assertTrue(repository.downloadItemIdList.contains(item))
+            assertFalse(downloads.entry(a)!!.taskHidden)
+        } finally { repository.close() }
+    }
+
+    @Test fun identityPromotionTransfersTheTaskWithoutKeepingTheOldAttempt() = runBlocking {
+        val source = register(a)
+        val canonical = SourceBookId(a.sourceId, "series")
+        val id = java.util.UUID.randomUUID().toString()
+        downloads.queueTask(a, downloads.generation(), id)
+        val task = downloads.startTask(a, downloads.generation(), id, 0)
+        downloads.begin(a, downloads.generation(), id)
+        downloads.mergeIdentity(a, canonical, canonical.bind(BookVolumes(canonical.remoteId, source.directory().volumes)), commit = {})
+        assertNull(downloads.entry(a))
+        assertEquals(id, downloads.entry(canonical)!!.taskWorkId)
+        assertEquals("", downloads.entry(canonical)!!.attempt)
+        assertTrue(runCatching { downloads.taskStage(task, DownloadStage.Body) }.exceptionOrNull() is CancellationException)
+        downloads.taskStage(task.copy(book = canonical), DownloadStage.Directory)
+    }
+
+    @Test fun imageVerificationKeepsItsCategoryInsteadOfBecomingANetworkError() = runBlocking {
+        register(a).apply {
+            withImages = true; imageFailed = true
+            imageFailureKind = io.nightfish.lightnovelreader.api.error.WebRequestErrorKind.VerificationRequired
+        }
+        assertTrue(download() is ListenableWorker.Result.Failure)
+        val state = books.downloadStatusFlow(a.storageKey).first()
+        assertEquals(DownloadFailure.Verification, state.task.failure)
+        assertEquals(DownloadStage.Image, state.task.stage)
+        assertEquals(1, state.task.chapterIndex)
+        assertEquals(0, state.content.savedChapters)
+    }
+
+    @Test fun storageFailureIsRecordedWithoutPublishingItsPrivateExceptionText() = runBlocking {
+        register(a)
+        db.openHelper.writableDatabase.execSQL("CREATE TRIGGER deny_download BEFORE INSERT ON chapter_content BEGIN SELECT RAISE(FAIL, 'private-token-fixture'); END")
+        assertTrue(download() is ListenableWorker.Result.Failure)
+        val state = books.downloadStatusFlow(a.storageKey).first()
+        assertEquals(DownloadFailure.Storage, state.task.failure)
+        assertEquals(DownloadStage.Storage, state.task.stage)
+        assertFalse(downloads.entry(a).toString().contains("private-token-fixture"))
+        assertNull(chapter(a, "1"))
+    }
+
+    @Test fun exportPreparationDoesNotCreateAnUnrequestedCacheTask() = runBlocking {
+        register(a)
+        assertTrue(export(images = false) is ListenableWorker.Result.Success)
+        assertEquals(DownloadTaskStatus.None.name, downloads.entry(a)!!.taskStatus)
+        downloads.queueTask(b, downloads.generation(), java.util.UUID.randomUUID().toString())
+        val repository = DownloadProgressRepository(db.userDataDao(), books, downloads)
+        try {
+            awaitTask(repository, b)
+            assertFalse(repository.downloadItemIdList.any { it.type == DownloadType.CACHE && it.bookId == a.storageKey })
+            assertNotNull(chapter(a, "1"))
+        } finally { repository.close() }
+    }
+
+    @Test fun restoredTasksNeverAttachToTheBackedUpExecutor() = runBlocking {
+        val owner = indi.renakoni.nextvol.data.local.room.entity.BookDownloadEntity(a.storageKey, phase = "updating",
+            attempt = "old-attempt", taskWorkId = java.util.UUID.randomUUID().toString(), taskStatus = DownloadTaskStatus.Running.name)
+        downloads.restore(listOf(owner), emptyList(), legacy = false)
+        val restored = downloads.entry(a)!!
+        assertEquals("", restored.attempt)
+        assertEquals("", restored.taskWorkId)
+        assertEquals(DownloadTaskStatus.Interrupted, restored.taskState(null).status)
+    }
+
+    @Test fun room24UpgradeKeepsContentAndDoesNotInventAnActiveTask() = runBlocking {
+        register(a)
+        assertEquals(ListenableWorker.Result.success(), download())
+        db.openHelper.writableDatabase.apply {
+            execSQL("ALTER TABLE book_download RENAME TO old_download")
+            execSQL("CREATE TABLE book_download (bookId TEXT NOT NULL PRIMARY KEY, revision TEXT NOT NULL, directoryHash TEXT NOT NULL, phase TEXT NOT NULL, generation INTEGER NOT NULL, attempt TEXT NOT NULL, coverUri TEXT NOT NULL)")
+            execSQL("INSERT INTO book_download SELECT bookId, revision, directoryHash, 'updating', generation, 'old-attempt', coverUri FROM old_download")
+            execSQL("DROP TABLE old_download")
+            version = 24
+        }
+        db.close(); openLibrary()
+        val owner = downloads.entry(a)!!
+        assertEquals(25, db.openHelper.writableDatabase.version)
+        assertEquals("", owner.taskWorkId)
+        assertEquals(DownloadTaskStatus.Interrupted, owner.taskState(null).status)
+        assertEquals(DownloadStage.Unknown, owner.taskState(null).stage)
+        assertNotNull(chapter(a, "1"))
+        assertEquals(3, db.bookDownloadDao().chapters(a.storageKey).size)
+    }
+
+    private suspend fun awaitTask(repository: DownloadProgressRepository, book: SourceBookId): DownloadItem = withTimeout(5000) {
+        while (true) {
+            repository.downloadItemIdList.firstOrNull { it.bookId == book.storageKey && it.status != null }?.let { return@withTimeout it }
+            delay(10)
+        }
+        @Suppress("UNREACHABLE_CODE") error("Unreachable")
     }
 
     private suspend fun export(images: Boolean = true, selected: List<String>? = null,
@@ -530,6 +730,7 @@ class BookDownloadTest {
         var exportVolumes: List<Volume>? = null
         var withImages = false
         var imageFailed = false
+        var imageFailureKind = io.nightfish.lightnovelreader.api.error.WebRequestErrorKind.Other
         var directoryFailed = false
         var informationFailed = false
         var failedChapter: String? = null
@@ -557,7 +758,7 @@ class BookDownloadTest {
         }
         override suspend fun getImage(bookId: String, url: String, cover: Boolean): com.github.michaelbull.result.Result<ByteArray, WebRequestError> {
             imageCalls++
-            return if (imageFailed) Err(WebRequestError("Image", "Unavailable")) else Ok(png)
+            return if (imageFailed) Err(WebRequestError("Image", "Unavailable", kind = imageFailureKind)) else Ok(png)
         }
     }
 }

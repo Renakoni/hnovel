@@ -111,7 +111,9 @@ import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.data.book.get
 import indi.renakoni.nextvol.data.download.DownloadItem
 import indi.renakoni.nextvol.data.download.BookDownloadPhase
-import indi.renakoni.nextvol.data.download.BookDownloadState
+import indi.renakoni.nextvol.data.download.BookDownloadStatus
+import indi.renakoni.nextvol.ui.components.downloadStatusLabel
+import indi.renakoni.nextvol.ui.components.downloadStatusText
 import indi.renakoni.nextvol.ui.components.Cover
 import indi.renakoni.nextvol.ui.components.LnrSnackbar
 import indi.renakoni.nextvol.ui.components.Loading
@@ -621,6 +623,11 @@ private fun DetailContent(
                 onClickCache = { cacheBook(bookInformation.id) },
                 onClickShowInfo = onClickShowInfo
             )
+            if (uiState.downloadState.content.phase != BookDownloadPhase.None) {
+                Text(downloadStatusText(uiState.downloadState),
+                    Modifier.padding(horizontal = itemHorizontalPadding, vertical = 4.dp),
+                    style = typography.bodySmall, color = colorScheme.onSurfaceVariant)
+            }
         }
 
         if (visible >= 4 && !selectingChapters) item {
@@ -1075,7 +1082,7 @@ fun QuickOperationButton(
 private fun QuickOperationsBlock(
     modifier: Modifier,
     isInBookshelf: Boolean,
-    downloadState: BookDownloadState,
+    downloadState: BookDownloadStatus,
     canCache: Boolean,
     downloadItem: DownloadItem?,
     onClickAddToBookShelf: () -> Unit,
@@ -1112,17 +1119,11 @@ private fun QuickOperationsBlock(
             )
         }
 
-        val phase = downloadState.phase
+        val phase = downloadState.displayPhase
         if (canCache || phase != BookDownloadPhase.None) {
-            val status = when (phase) {
-                BookDownloadPhase.None -> R.string.cached_false
-                BookDownloadPhase.Partial -> R.string.book_download_partial
-                BookDownloadPhase.Complete -> R.string.cached
-                BookDownloadPhase.Updating -> R.string.book_download_updating
-                BookDownloadPhase.Failed -> R.string.book_download_failed
-                BookDownloadPhase.Outdated -> R.string.book_download_outdated
-            }
-            val action = when (phase) {
+            val action = if (downloadState.task.canResume) {
+                if (phase == BookDownloadPhase.Failed) R.string.book_download_retry else R.string.book_download_continue
+            } else when (phase) {
                 BookDownloadPhase.None, BookDownloadPhase.Updating -> null
                 BookDownloadPhase.Complete -> R.string.book_download_check_updates
                 BookDownloadPhase.Partial -> R.string.book_download_continue
@@ -1131,7 +1132,7 @@ private fun QuickOperationsBlock(
             }
             QuickOperationButton(
                 icon = if (phase == BookDownloadPhase.Complete) filledCloud else cloud,
-                title = stringResource(status),
+                title = downloadStatusLabel(downloadState),
                 supportingText = if (phase == BookDownloadPhase.Updating)
                     downloadItem?.progress?.takeIf { it >= 0f && it < 1f }?.let { "${(it * 100).toInt()}%" }
                 else action?.takeIf { canCache }?.let { stringResource(it) },

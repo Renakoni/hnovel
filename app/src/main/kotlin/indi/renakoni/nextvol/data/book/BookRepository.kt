@@ -11,6 +11,7 @@ import androidx.work.WorkManager
 import androidx.work.await
 import androidx.work.workDataOf
 import com.github.michaelbull.result.Ok
+import com.github.michaelbull.result.Err
 import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.andThen
 import com.github.michaelbull.result.getOrElse
@@ -25,6 +26,9 @@ import indi.renakoni.nextvol.data.text.TextProcessingRepository
 import indi.renakoni.nextvol.data.web.SourceDiscoveryTarget
 import indi.renakoni.nextvol.data.work.CacheBookWork
 import indi.renakoni.nextvol.data.download.BookDownloadStore
+import indi.renakoni.nextvol.data.download.BookDownloadStatus
+import indi.renakoni.nextvol.data.download.DownloadTaskState
+import indi.renakoni.nextvol.data.download.taskState
 import io.nightfish.lightnovelreader.api.book.BookInformation
 import io.nightfish.lightnovelreader.api.book.BookRepositoryApi
 import io.nightfish.lightnovelreader.api.book.BookVolumes
@@ -40,6 +44,16 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import java.util.UUID
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import javax.inject.Inject
@@ -73,6 +87,8 @@ class BookRepository @Inject constructor(
     companion object {
         private const val TAG = "BookRepository"
     }
+    private val downloadSubmissions = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val downloadSubmissionLock = Mutex()
 
     /** Declared reading capabilities and saved directories are separate from source availability.
      * A disabled source can still supply offline chapters; a metadata-only source cannot supply a TOC. */
@@ -204,24 +220,58 @@ class BookRepository @Inject constructor(
 
     fun cacheBook(bookId: String): Flow<WorkInfo?> {
         if (LocalBookStore.isLocal(BookIdentity.book(bookId))) return flowOf(null)
-        val key = BookIdentity.bookKey(bookId)
         val generation = downloads.generation()
-        val workRequest = OneTimeWorkRequestBuilder<CacheBookWork>()
-            .addTag(CacheBookWork.generationTag(generation))
-            .setInputData(
-                workDataOf(
-                    "bookId" to key,
-                    "downloadGeneration" to generation,
-                )
-            )
-            .build()
-        val operation = workManager.enqueueUniqueWork(
-            CacheBookWork.ofId(key),
-            ExistingWorkPolicy.KEEP,
-            workRequest
-        )
-        return workManager.observeSubmittedUniqueWork(CacheBookWork.ofId(key), operation)
+        // Submission remains eager: existing callers need not collect the returned flow.
+        val submission = downloadSubmissions.async(start = CoroutineStart.UNDISPATCHED) { downloadSubmissionLock.withLock {
+            val book = canonicalBook(BookIdentity.book(bookId))
+            val name = CacheBookWork.ofId(book.storageKey)
+            val previous = downloads.entry(book)?.taskWorkId?.takeIf { it.isNotEmpty() }
+                ?.let { workManager.getWorkInfoByIdFlow(UUID.fromString(it)).first() }
+            val active = previous?.takeUnless { it.state.isFinished }
+                ?: workManager.getWorkInfosForUniqueWorkFlow(name).first().firstOrNull { !it.state.isFinished }
+            if (active != null) return@withLock active.id
+            val request = OneTimeWorkRequestBuilder<CacheBookWork>()
+                .addTag(CacheBookWork.generationTag(generation))
+                .setInputData(workDataOf("bookId" to book.storageKey, "downloadGeneration" to generation, "persistedTask" to true))
+                .build()
+            downloads.queueTask(book, generation, request.id.toString())
+            workManager.enqueueUniqueWork(name, ExistingWorkPolicy.KEEP, request).await()
+            request.id
+        } }
+        return flow { emitAll(workManager.getWorkInfoByIdFlow(submission.await())) }
     }
+
+    suspend fun dismissDownload(bookId: String): Unit = downloadSubmissionLock.withLock {
+        val book = canonicalBook(BookIdentity.book(bookId))
+        val workId = downloads.entry(book)?.taskWorkId?.takeIf { it.isNotEmpty() }
+        downloads.dismissTask(book) // Revoke writes before asking the scheduler to stop.
+        workId?.let { workManager.cancelWorkById(UUID.fromString(it)).await() }
+        workManager.cancelUniqueWork(CacheBookWork.ofId(book.storageKey)).await()
+        if (book.storageKey != bookId) workManager.cancelUniqueWork(CacheBookWork.ofId(bookId)).await()
+    }
+
+    /** Download cards must remain renderable without making a successful source request. */
+    fun downloadInformationFlow(bookId: String): Flow<Result<BookInformation, WebRequestError>> = downloadChanges(bookId).map {
+        val book = canonicalBook(BookIdentity.book(bookId))
+        localBookDataSource.getBookInformation(book.storageKey)?.let(::Ok) ?: Err(WebRequestError("", ""))
+    }.distinctUntilChanged()
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    fun downloadStatusFlow(bookId: String): Flow<BookDownloadStatus> =
+        localBookDataSource.aliases.observe(BookIdentity.book(bookId)).flatMapLatest { book ->
+            combine(downloads.observe(book), sourceRegistry.sources) { _, _ -> downloads.entry(book) }
+                .flatMapLatest { owner ->
+                    val work = owner?.taskWorkId?.takeIf { it.isNotEmpty() }
+                        ?.let { workManager.getWorkInfoByIdFlow(UUID.fromString(it)) } ?: flowOf(null)
+                    work.map { info ->
+                        val volumes = localBookDataSource.getBookVolumes(book.storageKey)
+                        val chapterIndex = volumes?.volumes?.flatMap { it.chapters }?.distinctBy { it.id }
+                            ?.indexOfFirst { it.id == owner?.taskChapter }?.takeIf { it >= 0 }?.plus(1)
+                        BookDownloadStatus(downloads.state(book, volumes, sourceRevision(book), active = false, contentOnly = true),
+                            (owner?.taskState(info?.state) ?: DownloadTaskState()).copy(chapterIndex = chapterIndex))
+                    }
+                }
+        }
 
     override suspend fun getIsBookCached(bookId: String): Boolean {
         val book = BookIdentity.book(bookId)

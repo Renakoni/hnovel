@@ -23,7 +23,6 @@ import indi.renakoni.nextvol.data.bookshelf.BookshelfRepository
 import indi.renakoni.nextvol.data.download.DownloadProgressRepository
 import indi.renakoni.nextvol.data.download.DownloadType
 import indi.renakoni.nextvol.data.work.ExportBookToEPUBWork
-import indi.renakoni.nextvol.data.work.CacheBookWork
 import indi.renakoni.nextvol.data.book.observeSubmittedUniqueWork
 import io.nightfish.lightnovelreader.api.web.WebDataSourcePriority
 import kotlinx.coroutines.Dispatchers
@@ -81,10 +80,7 @@ class DetailViewModel @Inject constructor(
             }
         }
         viewModelScope.launch(Dispatchers.IO) {
-            combine(bookRepository.downloadChanges(bookId), snapshotFlow { _uiState.bookVolumes },
-                workManager.getWorkInfosForUniqueWorkFlow(CacheBookWork.ofId(bookId))) { _, _, work ->
-                bookRepository.downloadState(bookId, active = work.any { !it.state.isFinished })
-            }.collect { _uiState.downloadState = it }
+            bookRepository.downloadStatusFlow(bookId).collect { _uiState.downloadState = it }
         }
         viewModelScope.launch(Dispatchers.IO) {
             bookshelfRepository.getBookshelfBookMetadataFlow(bookId).collect {
