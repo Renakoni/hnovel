@@ -336,7 +336,11 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
         mutable.update { it.copy(selected = null, message = R.string.sources_removed) }
     }
     fun beginLogin(id: Identifier) = launch { openLogin(id) }
-    fun beginConfiguration(id: Identifier) = launch { openLogin(id, configuration = true) }
+    fun beginConfiguration(id: Identifier) = launch {
+        mutable.update { it.copy(configurationPanel = true, loginForm = null, loginMessages = emptyList()) }
+        try { openLogin(id, configuration = true) }
+        finally { if (state.value.loginForm == null) mutable.update { it.copy(configurationPanel = false) } }
+    }
     fun relogin(id: Identifier) = launch { openLogin(id, LoginIntent.Relogin) }
     private suspend fun openLogin(id: Identifier, intent: LoginIntent = LoginIntent.Panel, configuration: Boolean = false) {
         val definition = sources.installedSources().single { ImportedRuleSources.id(it.definition) == id }.definition
@@ -350,8 +354,9 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
             login.begin(id, intent).also { attempt = it }
         }
         var form: LoginForm? = null
-        mutable.update { it.copy(loginForm = null, configurationPanel = configuration, loginMessages = emptyList()) }
         try {
+            currentCoroutineContext().ensureActive()
+            mutable.update { it.copy(loginForm = null, configurationPanel = configuration, loginMessages = emptyList()) }
             val loaded = login.form(active).also { form = it }
             currentCoroutineContext().ensureActive()
             val action = SourceLoginService.directLoginAction(loaded).takeUnless { configuration }
@@ -369,6 +374,18 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
             withContext(NonCancellable) { refreshStoredSettings(id, form) }
         }
     }
+    fun configurationLink(action: String?, formId: String): String? {
+        val current = state.value
+        val active = attempt ?: return null
+        val form = current.loginForm ?: return null
+        if (current.busy || !current.configurationPanel || form.id != formId) return null
+        val field = form.fields.singleOrNull { it.id == action && it.enabled && it.type == "button" } ?: return null
+        if (field.action?.trim()?.removeSuffix(";")?.trim() != "startGithubReadme()") return null
+        val definition = current.installed.singleOrNull { ImportedRuleSources.id(it.definition) == active.source }?.definition
+            ?: return null
+        return "https://pixivsource.pages.dev/Pixiv".takeIf { updates.manages(definition) }
+    }
+
     fun submitLogin(values: Map<String, String>, action: String? = null, formId: String? = null) = launch {
         val active = checkNotNull(attempt)
         val submittedForm = state.value.loginForm
@@ -411,18 +428,22 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
         finally { withContext(NonCancellable) { refreshStoredSettings(prompt.owner.source) } }
     }
     fun cancelLogin() {
-        operation?.cancel()
+        val pending = operation
+        pending?.cancel()
         val generation = ++operationGeneration
-        mutable.update { it.copy(busy = true, showProgress = true) }
+        mutable.update { it.copy(loginForm = null, configurationPanel = false, loginMessages = emptyList(),
+            busy = true, showProgress = true) }
         val active = attempt; attempt = null
         viewModelScope.launch {
             withContext(NonCancellable) {
+                pending?.join()
                 if (active != null) {
                     login.cancel(active)
                     if (generation == operationGeneration) refreshStoredSettings(active.source)
                 }
             }
-            if (generation == operationGeneration) mutable.update { it.copy(loginForm = null, busy = false, loginMessages = emptyList()) }
+            if (generation == operationGeneration) mutable.update { it.copy(loginForm = null, configurationPanel = false,
+                busy = false, loginMessages = emptyList()) }
         }
     }
     fun cancel() { operation?.cancel() }

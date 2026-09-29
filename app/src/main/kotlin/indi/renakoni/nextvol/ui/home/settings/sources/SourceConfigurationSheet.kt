@@ -35,17 +35,17 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun SourceConfigurationSheet(
-    form: LoginForm, busy: Boolean,
+    form: LoginForm?, busy: Boolean,
     onSubmit: (Map<String, String>, String?, String) -> Unit, onCancel: () -> Unit,
     message: String? = null, feedback: List<String> = emptyList(),
 ) {
-    val values = remember(form) { mutableStateMapOf<String, String>().apply { putAll(form.values) } }
-    val fields = form.fields.filterNot { it.type == "button" &&
+    val values = remember(form) { mutableStateMapOf<String, String>().apply { putAll(form?.values.orEmpty()) } }
+    val fields = form?.fields.orEmpty().filterNot { it.type == "button" &&
         it.action?.trim()?.removeSuffix(";")?.trim() in setOf("login()", "logout()") }
     val sections = fields.mapNotNull { it.section }.distinct()
     var selectedSection by remember { mutableStateOf<String?>(null) }
     val section = selectedSection?.takeIf { it in sections }
-    var showFeedback by remember(form.id, feedback) { mutableStateOf(true) }
+    var showFeedback by remember(form?.id, feedback) { mutableStateOf(true) }
     val scrollState = rememberLazyListState()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
@@ -74,12 +74,17 @@ internal fun SourceConfigurationSheet(
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = scrollState,
                 contentPadding = PaddingValues(vertical = 8.dp)) {
+                if (form == null) item {
+                    Box(Modifier.fillParentMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
+                }
                 message?.let { item { Text(it, Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
                     color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) } }
                 items(fields.filter { it.section == section }, key = { it.id }) { field ->
                     SourceConfigurationField(field, values[field.name].orEmpty(), !busy && field.enabled,
                         onChange = { values[field.name] = it },
-                        onAction = { onSubmit(values.toMap(), field.id, form.id) })
+                        onAction = { form?.let { onSubmit(values.toMap(), field.id, it.id) } })
                 }
                 if (section == null && sections.isNotEmpty()) {
                     item { HorizontalDivider(Modifier.padding(horizontal = 24.dp, vertical = 12.dp),

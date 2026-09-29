@@ -29,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -139,6 +140,7 @@ private data class SourcesPage(val state: SourceManagementState, val adding: Boo
 fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
     onDiagnostics: (Identifier) -> Unit, onSearch: (Identifier) -> Unit = {}, onBack: () -> Unit) {
     val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
     var adding by rememberSaveable { mutableStateOf(false) }
     var addTab by rememberSaveable { mutableIntStateOf(0) }
     var category by rememberSaveable { mutableStateOf<SourceCategory?>(null) }
@@ -540,10 +542,14 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
         SourceGroupDeleteDialog(group, state.busy, state.message, onDismiss = { deletingGroup = null },
             onDelete = { model.deleteGroup(group.id) })
     }
-    state.loginForm?.let { form ->
-        if (state.configurationPanel) SourceConfigurationSheet(form, state.busy, model::submitLogin, model::cancelLogin,
+    if (state.configurationPanel) SourceConfigurationSheet(state.loginForm, state.busy, { values, action, formId ->
+            val link = model.configurationLink(action, formId)
+            if (link == null) model.submitLogin(values, action, formId) else try { uriHandler.openUri(link) }
+            catch (_: IllegalArgumentException) { textToast(context, R.string.sources_action_failed, Toast.LENGTH_SHORT).show() }
+        }, model::cancelLogin,
             message = inlineMessage?.let { stringResource(it) }, feedback = state.loginMessages)
-        else SourceLoginDialog(form, state.busy, model::submitLogin, model::cancelLogin,
+    else state.loginForm?.let { form ->
+        SourceLoginDialog(form, state.busy, model::submitLogin, model::cancelLogin,
             message = inlineMessage?.let { stringResource(it) }, feedback = state.loginMessages)
     }
 }
