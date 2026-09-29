@@ -1,7 +1,5 @@
 package indi.renakoni.nextvol.data.web
 
-import dalvik.system.PathClassLoader
-import indi.renakoni.nextvol.data.plugin.injector.PluginInjector
 import io.nightfish.lightnovelreader.api.identifier.Identifier
 import io.nightfish.lightnovelreader.api.web.WebBookDataSource
 import io.nightfish.lightnovelreader.api.web.WebBookDataSourceManagerApi
@@ -15,7 +13,6 @@ import javax.inject.Singleton
 class WebBookDataSourceManager @Inject constructor (
     val registry: WebSourceRegistry,
 ): WebBookDataSourceManagerApi {
-    private val registrationsByPackage = mutableMapOf<String, List<SourceRegistration>>()
     val webDataSourceItems: List<WebDataSourceItem> get() = registry.sources.value.map { it.metadata.item }
 
     override fun registerWebDataSource(webBookDataSource: WebBookDataSource, webDataSourceItem: WebDataSourceItem) {
@@ -39,30 +36,8 @@ class WebBookDataSourceManager @Inject constructor (
         registry.unregister(webDataSourceId)
     }
 
-    fun loadWebDataSourcesFromClassLoader(classLoader: PathClassLoader, injector: PluginInjector, packageName: String, webDataSourceClassNames: List<String>) {
-        val items = mutableListOf<SourceRegistration>()
-        try {
-            webDataSourceClassNames.forEach { className ->
-                val clazz = runCatching { classLoader.loadClass(className) }.getOrNull() ?: return@forEach
-                if (!WebBookDataSource::class.java.isAssignableFrom(clazz)) return@forEach
-                val instance = injector.provide<WebBookDataSource>(clazz)
-                if (instance is WebBookDataSource) items.add(loadWebDataSourceClass(instance))
-            }
-        } catch (failure: Throwable) {
-            items.asReversed().forEach { it.unregister() }
-            throw failure
-        }
-        registrationsByPackage[packageName] = items
-    }
-
     fun loadBuiltInSource(instance: WebBookDataSource, category: SourceCategory? = null) {
-        val item = loadWebDataSourceClass(instance, builtIn = true, category = category)
-        val packageName = instance.javaClass.`package`?.name ?: return
-        if (registrationsByPackage.contains(packageName)) {
-            registrationsByPackage[packageName] = registrationsByPackage[packageName]!! + listOf(item)
-        } else {
-            registrationsByPackage[packageName] = listOf(item)
-        }
+        loadWebDataSourceClass(instance, builtIn = true, category = category)
     }
 
     private fun loadWebDataSourceClass(instance: WebBookDataSource, builtIn: Boolean = false,
@@ -76,7 +51,4 @@ class WebBookDataSourceManager @Inject constructor (
         return register(instance, item, builtIn, category)
     }
 
-    fun unloadWebDataSourcesFromClassLoader(packageName: String) {
-        registrationsByPackage.remove(packageName)?.forEach { it.unregister() }
-    }
 }

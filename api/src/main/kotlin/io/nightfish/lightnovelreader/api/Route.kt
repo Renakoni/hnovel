@@ -1,13 +1,11 @@
 package io.nightfish.lightnovelreader.api
 
 import androidx.annotation.Keep
-import androidx.annotation.StringRes
 import kotlinx.serialization.Serializable
 
 /**
  * 应用内所有导航路由的定义对象
  * 使用 Kotlin 序列化实现导航路由
- * 插件可通过[LightNovelReaderPlugin][io.nightfish.lightnovelreader.api.plugin.LightNovelReaderPlugin]的导航功能进行页面跳转
  *
  * @since Api 2
  */
@@ -148,25 +146,6 @@ object Route {
                 @Serializable
                 data class Rules(val bookId: String)
             }
-            /** 插件管理界面路由组 */
-            @Serializable
-            object PluginManager {
-                /** 插件管理主界面路由 */
-                @Serializable
-                object Home
-                /**
-                 * 插件详情界面路由
-                 *
-                 * @param id 插件的唯一标识
-                 */
-                @Serializable
-                data class Detail(
-                    val id: String
-                )
-                /** 已安装插件列表界面路由 */
-                @Serializable
-                object AppList
-            }
             /** 调试信息界面路由 */
             @Serializable
             object Debug
@@ -212,36 +191,15 @@ object Route {
         data class Reader(val bookId: String, val chapterId: String)
 
         /**
-         * 颜色选择器调色盘用途
-         */
-        interface ColorPickerTarget {
-            /**
-             * 描述的翻译键id
-             */
-            @get:StringRes
-            val descriptionResId: Int
-        }
-
-        /**
-         * 颜色选择器调色盘用途类型（用于路由序列化）
-         */
-        enum class ColorPickerTargetType {
-            TEXT,
-            BACKGROUND,
-        }
-
-        /**
          * 颜色选择器对话框路由
          *
          * @param colorUserDataPath 颜色用户数据的路径字符串
          * @param colors 可选颜色的ARGB值列表
-         * @param target 调色盘用途类型
          */
         @Serializable
         data class ColorPickerDialog(
             val colorUserDataPath: String,
             val colors: LongArray,
-            val target: ColorPickerTargetType = ColorPickerTargetType.BACKGROUND,
         ) {
             /**
              * 判断两个[ColorPickerDialog]是否相等
@@ -257,20 +215,18 @@ object Route {
 
                 if (colorUserDataPath != other.colorUserDataPath) return false
                 if (!colors.contentEquals(other.colors)) return false
-                if (target != other.target) return false
 
                 return true
             }
 
             /**
-             * 基于[colorUserDataPath]、[colors]和[target]计算哈希值
+             * 基于[colorUserDataPath]和[colors]计算哈希值
              *
              * @return 哈希值
              */
             override fun hashCode(): Int {
                 var result = colorUserDataPath.hashCode()
                 result = 31 * result + colors.contentHashCode()
-                result = 31 * result + target.hashCode()
                 return result
             }
         }
@@ -318,15 +274,6 @@ object Route {
         val value: Float,
         val floatUserDataPath: String
     )
-    /**
-     * 插件安装器对话框路由
-     *
-     * @param source 插件来源路径或URI字符串
-     */
-    @Serializable
-    data class PluginInstallerDialog(
-        val source: String
-    )
     /** 书本管理器路由 */
     @Serializable
     object BookManager
@@ -335,11 +282,5 @@ object Route {
     @Serializable
     object StorageManager
 
-    /** 插件商店安装底栏
-     *
-     * @param pluginId 目标插件id
-     */
-    @Serializable
-    data class PluginStoreInstall(val pluginId: String)
 }
 

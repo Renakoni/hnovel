@@ -162,7 +162,7 @@ class EpubExportRegressionTest {
 
     @Test fun unknownBodyComponentsFailWithChapterLocationBeforePublishing() = runTest {
         startCase("silent-body-loss")
-        setBody(textBody("This text must not disappear", "missing-plugin:text"))
+        setBody(textBody("This text must not disappear", "unknown:text"))
         val result = worker().doWork() as ListenableWorker.Result.Failure
         assertEquals("invalid_content", result.outputData.getString("reason"))
         assertEquals("Chapter 1", result.outputData.getString("chapter"))

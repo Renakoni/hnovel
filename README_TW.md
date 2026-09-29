@@ -29,14 +29,10 @@ NextVol <sup>*重構版*</sup> 是一款開源的輕小說閱讀軟體，使用 
 - 將書本匯出為 EPUB 檔案
 - 熱情的開發者，還有更多…
 
-## 外掛程式開發與自訂資料來源
+## 自訂書源
 
-您可以為LightNovelReader新增自訂的資料來源與插件
-
-以下為相關資源鏈接
-- [範例外掛程式](https://github.com/dmzz-yyhyy/LightNovelReaderPlguin-Template)
-- [開髮指南](https://lnr.nariko.org/plugin-dev/)
-- [LNR Api KDoc](https://api-doc.lnr.nariko.org/)
+在設定的書源管理中，可透過連結、本機檔案或貼上文字匯入 JSON 規則書源。
+支援範圍請見[書源匯入說明](sources/import/README.md)。
 
 歡迎各位開發者進行開發!
 

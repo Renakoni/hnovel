@@ -37,7 +37,7 @@ class RuleContentReaderTest {
                 val result = provider.getChapterContent(chapter.id, book)
                 assertTrue(result.toString(), result.isOk)
                 val content = result.get()!!
-                val host = ContentTestHost().apply { initializeInjector() }
+                val host = ContentTestHost()
                 val components = host.renderer.getContentDataFromJson(content.content).components
                 assertEquals(paragraphs, components.mapNotNull { (it.data as? SimpleTextComponentData)?.text })
                 assertEquals(81, components.size)

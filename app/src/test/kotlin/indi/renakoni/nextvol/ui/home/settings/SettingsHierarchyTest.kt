@@ -97,7 +97,7 @@ class SettingsHierarchyTest {
                 onClickLogcat = { opened += "logs" },
                 onClickChangeSource = {}, onClickExportUserData = {},
                 onClickUpdates = { opened += "updates" }, onClickAbout = { opened += "about" },
-                onClickThemeSettings = {}, onClickPluginManager = {}, onClickTextFormatting = {},
+                onClickThemeSettings = {}, onClickTextFormatting = {},
                 onClickReadAloud = {}, onClickStorageManager = { opened += "storage" }, onBack = {},
             )
         }
