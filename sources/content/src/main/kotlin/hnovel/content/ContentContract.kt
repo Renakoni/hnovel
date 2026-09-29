@@ -50,7 +50,7 @@ open class SourceContentException(val code: ContentError, val field: String,
 /** Readable chapters do not turn a failed catalogue into a successful refresh. */
 class PartialDirectoryException internal constructor(internal val snapshot: DirectorySnapshot,
     val failure: SourceContentException) : SourceContentException(failure.code, failure.field, failure.denial,
-    failure.dependency, failure.verification, failure.diagnostic, failure.httpStatus) {
+    failure.dependency, failure.verification, failure.diagnostic, failure.httpStatus, failure.retry) {
     val chapters: List<RuleChapter> get() = snapshot.chapters
     init { initCause(failure) }
 }
