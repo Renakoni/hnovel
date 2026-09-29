@@ -203,7 +203,8 @@ class BookDownloadStore @Inject constructor(@ApplicationContext private val cont
                         taskStage = previous.taskStage, taskChapter = "", taskError = previous.taskError,
                         taskRunAttempt = previous.taskRunAttempt, taskHidden = previous.taskHidden,
                         taskRetryCount = previous.taskRetryCount, taskNextAttemptAt = previous.taskNextAttemptAt,
-                        taskSourceRevision = previous.taskSourceRevision, taskAccountGeneration = previous.taskAccountGeneration))
+                        taskSourceRevision = previous.taskSourceRevision, taskAccountGeneration = previous.taskAccountGeneration,
+                        taskRefreshId = previous.taskRefreshId))
                 } else if (existing == null) dao.put(destination)
                 retained.forEach { chapter ->
                     if (dao.chapter(chapter.id) == null) dao.put(chapter)
