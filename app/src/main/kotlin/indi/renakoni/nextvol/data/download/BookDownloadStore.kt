@@ -16,6 +16,8 @@ import indi.renakoni.nextvol.data.image.sourceImageCacheKey
 import indi.renakoni.nextvol.data.local.room.NextVolDatabase
 import indi.renakoni.nextvol.data.local.room.entity.BookDownloadEntity
 import indi.renakoni.nextvol.data.local.room.entity.DownloadedChapterEntity
+import indi.renakoni.nextvol.data.local.room.entity.DownloadChapterCandidateEntity
+import indi.renakoni.nextvol.data.local.room.entity.ChapterContentEntity
 import io.nightfish.lightnovelreader.api.book.BookVolumes
 import io.nightfish.lightnovelreader.api.book.ChapterContent
 import io.nightfish.lightnovelreader.api.content.component.ImageComponentData
@@ -41,6 +43,8 @@ class BookDownloadStore @Inject constructor(@ApplicationContext private val cont
     private val database: NextVolDatabase, private val decoder: ContentJsonDecoder) {
     data class Attempt(val book: SourceBookId, val generation: Long, val id: String)
     data class Task(val book: SourceBookId, val generation: Long, val workId: String)
+    data class ChapterCheckpoint(val content: ChapterContent, val signature: String,
+        val images: List<String>, val resourceVersion: String)
 
     private val dao = database.bookDownloadDao()
     private val lock = Mutex()
@@ -55,7 +59,8 @@ class BookDownloadStore @Inject constructor(@ApplicationContext private val cont
     }
 
     fun generation(): Long = database.userDataDao().getEntity(EPOCH)?.value?.toLong() ?: 0
-    fun observe(book: SourceBookId) = combine(dao.observe(book.storageKey), dao.observeChapters(book.storageKey)) { _, _ -> Unit }
+    fun observe(book: SourceBookId) = combine(dao.observe(book.storageKey), dao.observeChapters(book.storageKey),
+        dao.observeCandidates(book.storageKey)) { _, _, _ -> Unit }
 
     suspend fun prepare() = withContext(Dispatchers.IO) { lock.withLock { removeRetiredGenerations(); migrateLegacy() } }
     /** Normal downloads and export preparation must not replace each other's attempt. */
@@ -173,10 +178,12 @@ class BookDownloadStore @Inject constructor(@ApplicationContext private val cont
             if (id in chapterIds) chapter.copy(id = id, bookId = to.storageKey) else null
         }
         if (previous != null) {
-            for (uri in retained.flatMap { Json.decodeFromString<List<String>>(it.images) }.distinct()) {
+            for ((uri, version) in retained.flatMap { chapter ->
+                Json.decodeFromString<List<String>>(chapter.images).map { it to chapter.resourceVersion }
+            }.distinct()) {
                 currentCoroutineContext().ensureActive()
-                val source = imageFile(from, previous.generation, uri, false)
-                val destination = imageFile(to, generation, uri, false)
+                val source = imageFile(from, previous.generation, uri, false, version)
+                val destination = imageFile(to, generation, uri, false, version)
                 if (!source.isFile || destination.isFile) continue
                 check(destination.parentFile!!.isDirectory || destination.parentFile!!.mkdirs())
                 val atomic = AtomicFile(destination)
@@ -208,6 +215,7 @@ class BookDownloadStore @Inject constructor(@ApplicationContext private val cont
                     if (dao.chapter(chapter.id) == null) dao.put(chapter)
                 }
                 dao.deleteChapters(listOf(from.storageKey))
+                dao.deleteCandidates(listOf(from.storageKey))
                 dao.deleteBooks(listOf(from.storageKey))
             }
         }
@@ -217,14 +225,21 @@ class BookDownloadStore @Inject constructor(@ApplicationContext private val cont
         decoder.getDataFromJsonObject(chapter.content) { if (it is ImageComponentData) add(it.uri.toString()) }
     }.distinct()
 
-    private fun imageFile(book: SourceBookId, generation: Long, uri: String, cover: Boolean): File =
-        File(root, "$generation/${book.fileKey}/${downloadHash(BookIdentity.encode("download-image", listOf(cover.toString(), uri)))}")
+    private fun imageFile(book: SourceBookId, generation: Long, uri: String, cover: Boolean, version: String = ""): File {
+        val directory = if (version.isEmpty()) "" else "resources/${downloadHash(version)}/"
+        return File(root, "$generation/${book.fileKey}/$directory${downloadHash(BookIdentity.encode("download-image", listOf(cover.toString(), uri)))}")
+    }
 
     suspend fun image(image: SourceImage): File? = withContext(Dispatchers.IO) { lock.withLock {
         migrateLegacy()
         val canonical = database.bookAliasDao().get(image.book.storageKey)?.let(SourceBookId::fromStorageKey) ?: image.book
         val owner = dao.get(canonical.storageKey) ?: return@withLock null
-        imageFile(canonical, owner.generation, image.uri, image.cover).takeIf { it.isFile }
+        val chapter = if (image.cover) null else if (image.chapterId != null) dao.chapter(
+            SourceChapterId(canonical, BookIdentity.chapter(image.chapterId, image.book).remoteId).storageKey)
+            ?.takeIf { it.bookId == canonical.storageKey } else dao.chapters(canonical.storageKey).firstOrNull {
+                image.uri in Json.decodeFromString<List<String>>(it.images)
+            }
+        imageFile(canonical, owner.generation, image.uri, image.cover, chapter?.resourceVersion.orEmpty()).takeIf { it.isFile }
     } }
 
     suspend fun begin(book: SourceBookId, generation: Long, id: String, requireTask: Boolean = false): Attempt = withContext(Dispatchers.IO) { lock.withLock {
@@ -262,7 +277,56 @@ class BookDownloadStore @Inject constructor(@ApplicationContext private val cont
                 ?.forEach { file -> check(staleMarker(file).isFile || staleMarker(file).createNewFile()) }
         }
         dao.put(it.copy(directoryHash = hash, revision = revision, coverUri = coverUri))
+        val chapters = volumes.volumes.flatMap { it.chapters }.distinctBy { it.id }
+        val signatures = chapters.mapIndexed { index, chapter -> chapter.id to downloadChapterSignature(chapters, index, revision) }.toMap()
+        dao.candidates(attempt.book.storageKey).filter { candidate -> signatures[candidate.id] != candidate.signature }
+            .forEach { candidate -> dao.deleteCandidate(candidate.id) }
+        pruneResources(attempt.book, attempt.generation)
         unchanged
+    }
+
+    private fun ChapterContentEntity.toContent() =
+        ChapterContent(id, title, content, prevChapter.ifEmpty { null }, nextChapter.ifEmpty { null })
+
+    suspend fun checkpoint(attempt: Attempt, chapterId: String, signature: String): ChapterCheckpoint? = current(attempt) {
+        dao.candidate(chapterId)?.takeIf { it.bookId == attempt.book.storageKey && it.signature == signature }?.let { candidate ->
+            return@current ChapterCheckpoint(Json.decodeFromString<ChapterContentEntity>(candidate.body).toContent(),
+                signature, Json.decodeFromString(candidate.images), candidate.resourceVersion)
+        }
+        val saved = dao.chapter(chapterId)?.takeIf { it.bookId == attempt.book.storageKey && it.signature == signature }
+            ?: return@current null
+        database.chapterContentDao().get(chapterId)?.let { body ->
+            ChapterCheckpoint(body.toContent(), signature, Json.decodeFromString(saved.images), saved.resourceVersion)
+        }
+    }
+
+    suspend fun saveCandidate(attempt: Attempt, chapter: ChapterContent, signature: String): ChapterCheckpoint = current(attempt) {
+        require(SourceChapterId.fromStorageKey(chapter.id).book == attempt.book)
+        listOfNotNull(chapter.prevChapter, chapter.nextChapter).forEach { id ->
+            require(SourceChapterId.fromStorageKey(id).book == attempt.book)
+        }
+        val images = chapterImages(chapter)
+        val version = java.util.UUID.randomUUID().toString()
+        val body = ChapterContentEntity(chapter.id, chapter.title, chapter.content,
+            chapter.prevChapter.orEmpty(), chapter.nextChapter.orEmpty())
+        dao.put(DownloadChapterCandidateEntity(chapter.id, attempt.book.storageKey, signature,
+            Json.encodeToString(body), Json.encodeToString(images), version))
+        ChapterCheckpoint(chapter, signature, images, version)
+    }
+
+    suspend fun hasCheckpointImage(attempt: Attempt, checkpoint: ChapterCheckpoint, uri: String): Boolean = current(attempt) {
+        val file = imageFile(attempt.book, attempt.generation, uri, false, checkpoint.resourceVersion)
+        file.isFile && file.length() > 0 && !staleMarker(file).exists()
+    }
+
+    suspend fun publish(attempt: Attempt, checkpoint: ChapterCheckpoint) = saveChapter(attempt, checkpoint.content,
+        checkpoint.signature, checkpoint.images, resourceVersion = checkpoint.resourceVersion)
+
+    private suspend fun pruneResources(book: SourceBookId, generation: Long) {
+        val retained = (dao.chapters(book.storageKey).map { it.resourceVersion } +
+            dao.candidates(book.storageKey).map { it.resourceVersion }).map(::downloadHash).toSet()
+        File(root, "$generation/${book.fileKey}/resources").listFiles()?.filter { it.name !in retained }
+            ?.forEach { it.deleteRecursively() }
     }
 
     suspend fun reusable(attempt: Attempt, chapterId: String, signature: String): ChapterContent? = current(attempt) {
@@ -279,7 +343,10 @@ class BookDownloadStore @Inject constructor(@ApplicationContext private val cont
     }
 
     suspend fun hasImage(attempt: Attempt, uri: String, cover: Boolean = false): Boolean = current(attempt) {
-        val file = imageFile(attempt.book, attempt.generation, uri, cover)
+        val version = if (cover) "" else dao.chapters(attempt.book.storageKey).firstOrNull {
+            uri in Json.decodeFromString<List<String>>(it.images)
+        }?.resourceVersion.orEmpty()
+        val file = imageFile(attempt.book, attempt.generation, uri, cover, version)
         file.isFile && !staleMarker(file).exists()
     }
 
@@ -294,10 +361,10 @@ class BookDownloadStore @Inject constructor(@ApplicationContext private val cont
     }
 
     /** Copy the successfully decoded source bytes, not a resized/re-encoded bitmap. */
-    suspend fun retainImage(attempt: Attempt, image: SourceImage, cacheKey: String?) = current(attempt) {
+    suspend fun retainImage(attempt: Attempt, image: SourceImage, cacheKey: String?, resourceVersion: String = "") = current(attempt) {
         require(image.book == attempt.book)
         val bytes = cachedImageBytes(image, cacheKey) ?: error("Downloaded image bytes are unavailable")
-        writeImage(imageFile(image.book, attempt.generation, image.uri, image.cover), bytes)
+        writeImage(imageFile(image.book, attempt.generation, image.uri, image.cover, resourceVersion), bytes)
     }
 
     private fun writeImage(target: File, bytes: ByteArray) {
@@ -316,23 +383,28 @@ class BookDownloadStore @Inject constructor(@ApplicationContext private val cont
     }
 
     suspend fun saveChapter(attempt: Attempt, chapter: ChapterContent, signature: String, images: List<String>,
-        requireImages: Boolean = true) = current(attempt) {
+        requireImages: Boolean = true, resourceVersion: String = "") = current(attempt) {
+        val version = resourceVersion.ifEmpty {
+            dao.chapter(chapter.id)?.takeIf { it.signature == signature }?.resourceVersion.orEmpty()
+        }
         require(SourceChapterId.fromStorageKey(chapter.id).book == attempt.book)
         listOfNotNull(chapter.prevChapter, chapter.nextChapter).forEach {
             require(SourceChapterId.fromStorageKey(it).book == attempt.book)
         }
         if (requireImages) check(images.all { uri ->
-            val file = imageFile(attempt.book, attempt.generation, uri, false)
+            val file = imageFile(attempt.book, attempt.generation, uri, false, version)
             file.isFile && !staleMarker(file).exists()
         })
         database.withTransaction {
             database.chapterContentDao().update(chapter)
-            dao.put(DownloadedChapterEntity(chapter.id, attempt.book.storageKey, signature, Json.encodeToString(images)))
+            dao.put(DownloadedChapterEntity(chapter.id, attempt.book.storageKey, signature, Json.encodeToString(images), version))
+            dao.deleteCandidate(chapter.id)
         }
     }
 
     suspend fun finish(attempt: Attempt, success: Boolean) = current(attempt) {
         dao.put(it.copy(phase = if (success) "complete" else "failed", attempt = ""))
+        pruneResources(attempt.book, attempt.generation)
     }
 
     suspend fun state(book: SourceBookId, volumes: BookVolumes?, revision: String?, active: Boolean,
@@ -343,15 +415,24 @@ class BookDownloadStore @Inject constructor(@ApplicationContext private val cont
                 if (active) BookDownloadPhase.Updating else BookDownloadPhase.None)
             val chapters = volumes?.volumes.orEmpty().flatMap { it.chapters }.distinctBy { it.id }
             val records = dao.chapters(book.storageKey).associateBy { it.id }
-            if (active) return@withLock BookDownloadState(BookDownloadPhase.Updating,
-                chapters.count { it.id in records }, chapters.size)
+            val candidates = dao.candidates(book.storageKey).associateBy { it.id }
             val savedIds = dao.savedContentIds(book.storageKey).toSet()
+            val bodies = chapters.count { it.id in candidates || it.id in savedIds }
+            val missingImages = chapters.sumOf { chapter ->
+                val candidate = candidates[chapter.id]
+                val saved = records[chapter.id]
+                Json.decodeFromString<List<String>>(candidate?.images ?: saved?.images ?: "[]").count { uri ->
+                    val file = imageFile(book, owner.generation, uri, false,
+                        candidate?.resourceVersion ?: saved?.resourceVersion.orEmpty())
+                    !file.isFile || file.length() == 0L || staleMarker(file).exists()
+                }
+            }
             val count = chapters.count { chapter ->
                 val saved = records[chapter.id]
                 saved != null && chapter.id in savedIds &&
                     Json.decodeFromString<List<String>>(saved.images).all {
-                        val file = imageFile(book, owner.generation, it, false)
-                        file.isFile && !staleMarker(file).exists()
+                        val file = imageFile(book, owner.generation, it, false, saved.resourceVersion)
+                        file.isFile && file.length() > 0 && !staleMarker(file).exists()
                     }
             }
             val coverFile = imageFile(book, owner.generation, owner.coverUri, true)
@@ -362,14 +443,15 @@ class BookDownloadStore @Inject constructor(@ApplicationContext private val cont
                     signature == "" && owner.revision.isEmpty()
             }
             val phase = when {
+                active -> BookDownloadPhase.Updating
                 !contentOnly && owner.phase == "failed" -> BookDownloadPhase.Failed
                 !contentOnly && owner.phase == "updating" -> BookDownloadPhase.Partial // interrupted process
                 volumes != null && owner.directoryHash != downloadDirectoryHash(volumes) -> BookDownloadPhase.Outdated
                 !revision.isNullOrEmpty() && owner.revision.isNotEmpty() && owner.revision != revision -> BookDownloadPhase.Outdated
-                chapters.isNotEmpty() && count == chapters.size && coverSaved && signaturesCurrent -> BookDownloadPhase.Complete
+                chapters.isNotEmpty() && count == chapters.size && candidates.isEmpty() && missingImages == 0 && coverSaved && signaturesCurrent -> BookDownloadPhase.Complete
                 else -> BookDownloadPhase.Partial
             }
-            BookDownloadState(phase, count, chapters.size)
+            BookDownloadState(phase, count, chapters.size, bodies, missingImages, !coverSaved)
         } }
 
     suspend fun clearReadingCache() = withContext(Dispatchers.IO) { lock.withLock {
@@ -386,7 +468,7 @@ class BookDownloadStore @Inject constructor(@ApplicationContext private val cont
         val images = imagesFor(owners)
         database.withTransaction {
             database.userDataDao().insert(EPOCH, GROUP, "Long", Math.addExact(retired, 1).toString())
-            dao.clearDownloadedContent(); dao.clearChapters(); dao.clearBooks()
+            dao.clearDownloadedContent(); dao.clearChapters(); dao.clearCandidates(); dao.clearBooks()
             clearHistory(null)
         }
         clearCachedImages(images)
@@ -401,7 +483,7 @@ class BookDownloadStore @Inject constructor(@ApplicationContext private val cont
         val owners = keys.mapNotNull { dao.get(it) }
         val images = imagesFor(owners)
         database.withTransaction {
-            dao.deleteContent(keys); dao.deleteChapters(keys); dao.deleteBooks(keys)
+            dao.deleteContent(keys); dao.deleteChapters(keys); dao.deleteCandidates(keys); dao.deleteBooks(keys)
             clearHistory(keys.toSet())
         }
         clearCachedImages(images)
@@ -452,7 +534,7 @@ class BookDownloadStore @Inject constructor(@ApplicationContext private val cont
                 val next = Math.addExact(generation(), 1)
                 check(!File(root, next.toString()).exists()) { "Download restore directory is unavailable" }
                 database.userDataDao().insert(EPOCH, GROUP, "Long", next.toString())
-                dao.clearDownloadedContent(); dao.clearChapters(); dao.clearBooks()
+                dao.clearDownloadedContent(); dao.clearChapters(); dao.clearCandidates(); dao.clearBooks()
                 clearHistory(null)
             }
             writeLibrary()

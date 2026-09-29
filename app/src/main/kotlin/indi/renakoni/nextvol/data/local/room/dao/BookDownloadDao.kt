@@ -6,10 +6,32 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import indi.renakoni.nextvol.data.local.room.entity.BookDownloadEntity
 import indi.renakoni.nextvol.data.local.room.entity.DownloadedChapterEntity
+import indi.renakoni.nextvol.data.local.room.entity.DownloadChapterCandidateEntity
 import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface BookDownloadDao {
+    @Query("select * from download_chapter_candidate where id = :id")
+    suspend fun candidate(id: String): DownloadChapterCandidateEntity?
+
+    @Query("select * from download_chapter_candidate where bookId = :bookId")
+    suspend fun candidates(bookId: String): List<DownloadChapterCandidateEntity>
+
+    @Query("select * from download_chapter_candidate where bookId = :bookId")
+    fun observeCandidates(bookId: String): Flow<List<DownloadChapterCandidateEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun put(candidate: DownloadChapterCandidateEntity)
+
+    @Query("delete from download_chapter_candidate where id = :id")
+    suspend fun deleteCandidate(id: String)
+
+    @Query("delete from download_chapter_candidate where bookId in (:bookIds)")
+    suspend fun deleteCandidates(bookIds: List<String>)
+
+    @Query("delete from download_chapter_candidate")
+    suspend fun clearCandidates()
+
     @Query("select * from book_download where bookId = :bookId")
     suspend fun get(bookId: String): BookDownloadEntity?
 

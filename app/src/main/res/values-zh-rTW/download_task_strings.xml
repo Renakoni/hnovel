@@ -31,4 +31,7 @@
     <string name="download_notification_cancel">取消下載</string>
     <string name="download_error_system_restricted">系統限制背景執行，請開啟應用程式後繼續</string>
     <string name="download_error_system_interrupted">上次執行已中斷</string>
+    <string name="download_body_coverage">正文已儲存 %1$d/%2$d 章</string>
+    <string name="download_missing_images">缺少 %1$d 張圖片</string>
+    <string name="download_missing_cover">封面未下載</string>
 </resources>

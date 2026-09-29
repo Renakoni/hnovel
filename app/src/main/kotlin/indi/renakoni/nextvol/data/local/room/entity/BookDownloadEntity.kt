@@ -37,4 +37,16 @@ data class DownloadedChapterEntity(
     val bookId: String,
     val signature: String,
     val images: String = "[]",
+    @ColumnInfo(defaultValue = "''") val resourceVersion: String = "",
+)
+
+/** One complete body awaiting its required images; never replaces readable content prematurely. */
+@Entity(tableName = "download_chapter_candidate", indices = [Index("bookId")])
+data class DownloadChapterCandidateEntity(
+    @PrimaryKey val id: String,
+    val bookId: String,
+    val signature: String,
+    val body: String,
+    val images: String,
+    val resourceVersion: String,
 )
