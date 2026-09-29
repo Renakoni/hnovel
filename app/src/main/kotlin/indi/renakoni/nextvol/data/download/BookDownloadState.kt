@@ -10,7 +10,9 @@ enum class BookDownloadPhase { None, Partial, Complete, Updating, Failed, Outdat
 
 data class BookDownloadState(val phase: BookDownloadPhase = BookDownloadPhase.None,
     val savedChapters: Int = 0, val totalChapters: Int = 0,
-    val bodyChapters: Int = savedChapters, val missingImages: Int = 0, val coverMissing: Boolean = false)
+    val bodyChapters: Int = savedChapters, val missingImages: Int = 0, val coverMissing: Boolean = false,
+    val selectedChapters: Int? = null, val taskSavedChapters: Int = savedChapters,
+    val taskTotalChapters: Int = totalChapters)
 
 internal fun downloadDirectoryHash(volumes: BookVolumes): String = downloadHash(
     BookIdentity.encode("download-directory", volumes.volumes.flatMap { volume ->

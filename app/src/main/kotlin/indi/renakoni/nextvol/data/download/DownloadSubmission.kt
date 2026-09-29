@@ -8,6 +8,7 @@ sealed interface DownloadSubmission {
         val workId: UUID,
         val task: DownloadTaskState,
         val existing: Boolean = false,
+        val selectionMatches: Boolean = true,
     ) : DownloadSubmission
 
     data class Rejected(val failure: DownloadFailure) : DownloadSubmission

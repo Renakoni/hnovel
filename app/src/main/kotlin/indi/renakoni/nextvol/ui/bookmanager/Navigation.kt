@@ -9,6 +9,9 @@ import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
 import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.ui.components.downloadSubmissionText
+import indi.renakoni.nextvol.ui.book.download.navigateToBookDownload
+import indi.renakoni.nextvol.data.download.DownloadType
+import indi.renakoni.nextvol.data.download.DownloadTaskStatus
 import indi.renakoni.nextvol.utils.LocalSnackbarHost
 import indi.renakoni.nextvol.utils.isResumed
 import indi.renakoni.nextvol.utils.popBackStackIfResumed
@@ -47,7 +50,12 @@ fun NavGraphBuilder.bookManager() {
             downloadItemIdList = viewModel.downloadItemIdList,
             uiState = uiState,
             onClickCancel = viewModel::onClickCancel,
-            onClickRetry = viewModel::onClickRetry,
+            onClickRetry = { item ->
+                if (item.type == DownloadType.CACHE && item.status?.task?.status == DownloadTaskStatus.Complete)
+                    navController.navigateToBookDownload(item.bookId, refresh = true)
+                else viewModel.onClickRetry(item)
+            },
+            onOpenDownload = { navController.navigateToBookDownload(it) },
             onClickClearCompleted = viewModel::onClickClearCompleted
         )
     }

@@ -42,14 +42,15 @@ class BookDownloadScheduler @Inject constructor(
 
     fun enqueue(requested: SourceBookId, refresh: Boolean = false): Flow<WorkInfo?> {
         if (LocalBookStore.isLocal(requested)) return flowOf(null)
-        val submission = enqueueTask(requested, refresh)
+        val submission = enqueueTask(requested, refresh, null)
         return flow { emitAll(workManager.getWorkInfoByIdFlow(submission.await().workId)) }
     }
 
-    suspend fun submit(requested: SourceBookId, refresh: Boolean = false): DownloadSubmission {
+    suspend fun submit(requested: SourceBookId, refresh: Boolean = false, chapterIds: List<String>? = null): DownloadSubmission {
         if (LocalBookStore.isLocal(requested)) return DownloadSubmission.Rejected(DownloadFailure.SourceUnavailable)
+        if (chapterIds?.isEmpty() == true) return DownloadSubmission.Rejected(DownloadFailure.SelectionUnavailable)
         return try {
-            enqueueTask(requested, refresh).await()
+            enqueueTask(requested, refresh, chapterIds?.distinct()).await()
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Exception) {
@@ -60,7 +61,7 @@ class BookDownloadScheduler @Inject constructor(
     private fun submissionFailure(failure: Exception) =
         if (failure is android.database.sqlite.SQLiteException) DownloadFailure.Storage else DownloadFailure.Scheduling
 
-    private fun enqueueTask(requested: SourceBookId, refresh: Boolean) = run {
+    private fun enqueueTask(requested: SourceBookId, refresh: Boolean, chapterIds: List<String>?) = run {
         val generation = downloads.generation()
         // Submission is eager; automatic bookshelf downloads do not collect the result.
         submissions.async(start = CoroutineStart.UNDISPATCHED) { lock.withLock {
@@ -75,13 +76,13 @@ class BookDownloadScheduler @Inject constructor(
             if (active != null && !revoked) return@withLock DownloadSubmission.Accepted(active.id,
                 owner?.takeIf { it.taskWorkId == active.id.toString() }?.taskState(active.state)
                     ?: DownloadTaskState(if (active.state == WorkInfo.State.RUNNING) DownloadTaskStatus.Running else DownloadTaskStatus.Queued),
-                existing = true)
+                existing = true, selectionMatches = chapterIds == null || chapterIds.toSet() == owner?.selectedChapterIds())
             val request = OneTimeWorkRequestBuilder<CacheBookWork>()
                 .addTag(CacheBookWork.generationTag(generation))
                 .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
                 .setInputData(workDataOf("bookId" to book.storageKey, "downloadGeneration" to generation, "persistedTask" to true))
                 .build()
-            downloads.queueTask(book, generation, request.id.toString(), refresh)
+            downloads.queueTask(book, generation, request.id.toString(), refresh, chapterIds)
             try {
                 workManager.enqueueUniqueWork(name,
                     if (revoked) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP, request).await()

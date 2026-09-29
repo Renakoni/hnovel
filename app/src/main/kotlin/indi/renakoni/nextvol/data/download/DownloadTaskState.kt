@@ -9,7 +9,7 @@ import java.io.IOException
 
 enum class DownloadTaskStatus { None, Queued, Running, WaitingRetry, WaitingVerification, Interrupted, Failed, Cancelled, Complete }
 enum class DownloadStage { Unknown, Details, Directory, Body, Image, Cover, Storage }
-enum class DownloadFailure { Network, RateLimited, RetryExhausted, Authentication, Verification, SourceUnavailable, SourceRequest, Storage, SystemRestricted, SystemInterrupted, Scheduling }
+enum class DownloadFailure { Network, RateLimited, RetryExhausted, Authentication, Verification, SourceUnavailable, SourceRequest, Storage, SystemRestricted, SystemInterrupted, Scheduling, SelectionUnavailable }
 
 data class DownloadTaskState(
     val status: DownloadTaskStatus = DownloadTaskStatus.None,
@@ -38,6 +38,7 @@ data class BookDownloadStatus(
 
 /** Persist only an allow-listed category, never exception messages, headers or source URLs. */
 internal fun downloadFailure(error: WebRequestError?, stage: DownloadStage): DownloadFailure {
+    if (error?.throwable is DownloadSelectionChangedException) return DownloadFailure.SelectionUnavailable
     val image = error?.throwable as? SourceImageRequestException
     val content = error?.throwable as? hnovel.content.SourceContentException
     return when (image?.kind ?: error?.kind) {

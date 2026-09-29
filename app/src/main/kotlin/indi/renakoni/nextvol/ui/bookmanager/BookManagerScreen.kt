@@ -1,6 +1,7 @@
 package indi.renakoni.nextvol.ui.bookmanager
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
@@ -78,7 +79,8 @@ fun BookManagerScreen(
     uiState: LocalBookManagerUiState,
     onClickCancel: (DownloadItem) -> Unit,
     onClickRetry: (DownloadItem) -> Unit,
-    onClickClearCompleted: () -> Unit
+    onClickClearCompleted: () -> Unit,
+    onOpenDownload: (String) -> Unit = {},
 ) {
     var tabIndex by rememberSaveable { mutableIntStateOf(0) }
     var sortMenuExpanded by remember { mutableStateOf(false) }
@@ -174,6 +176,7 @@ fun BookManagerScreen(
                         downloadItemIdList = downloadItemIdList,
                         onClickCancel = onClickCancel,
                         onClickRetry = onClickRetry,
+                        onOpenDownload = onOpenDownload,
                         onClickClearCompleted = onClickClearCompleted
                     )
                 } else {
@@ -345,7 +348,8 @@ private fun DownloadManagerContent(
     downloadItemIdList: List<DownloadItem>,
     onClickCancel: (DownloadItem) -> Unit,
     onClickRetry: (DownloadItem) -> Unit,
-    onClickClearCompleted: () -> Unit
+    onClickClearCompleted: () -> Unit,
+    onOpenDownload: (String) -> Unit,
 ) {
     val itemList = downloadItemIdList.distinctBy { it.type to it.bookId }
     if (itemList.isEmpty()) {
@@ -375,7 +379,8 @@ private fun DownloadManagerContent(
             key = { "${it.type.name}_${it.bookId}" }
         ) { downloadItem ->
             Card(
-                modifier = Modifier.animateItem(),
+                modifier = Modifier.animateItem().clickable(enabled = downloadItem.type == DownloadType.CACHE,
+                    onClickLabel = stringResource(R.string.download_manage_selection)) { onOpenDownload(downloadItem.bookId) },
                 downloadItem = downloadItem,
                 onClickCancel = { onClickCancel(downloadItem) },
                 onClickRetry = { onClickRetry(downloadItem) }
@@ -408,7 +413,8 @@ private fun DownloadManagerContent(
             key = { "${it.type.name}_${it.bookId}" }
         ) { downloadItem ->
             Card(
-                modifier = Modifier.animateItem(),
+                modifier = Modifier.animateItem().clickable(enabled = downloadItem.type == DownloadType.CACHE,
+                    onClickLabel = stringResource(R.string.download_manage_selection)) { onOpenDownload(downloadItem.bookId) },
                 downloadItem = downloadItem,
                 onClickCancel = { onClickCancel(downloadItem) },
                 onClickRetry = { onClickRetry(downloadItem) }

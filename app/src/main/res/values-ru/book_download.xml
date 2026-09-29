@@ -1,0 +1,33 @@
+<resources>
+    <string name="download_page_title">Загрузка глав</string>
+    <string name="download_back">Назад</string>
+    <string name="download_book_coverage">Сохранено: %1$d из %2$d глав</string>
+    <string name="download_selection_count">Выбрано глав: %1$d · загруженные главы сохраняются</string>
+    <string name="download_start_selected">Загрузить главы: %1$d</string>
+    <string name="download_update_selected">Обновить главы: %1$d</string>
+    <string name="download_selection_complete">Выбранные главы загружены</string>
+    <string name="download_selection_progress">Выбрано: %1$d / %2$d</string>
+    <string name="download_selection_unavailable">Некоторые выбранные главы исчезли из оглавления. Обновите его и выберите главы заново.</string>
+    <string name="download_selection_active">Для книги уже есть задача. Отмените её перед изменением выбора.</string>
+    <string name="download_resume_selection">Продолжить предыдущий выбор</string>
+    <string name="download_cancel_reselect">Отменить задачу и выбрать заново</string>
+    <string name="download_directory_loading">Загрузка полного оглавления… Дождитесь завершения, чтобы выбрать главы.</string>
+    <string name="download_directory_failed">Полное оглавление недоступно. Новый выбор невозможен; загруженные главы сохранены.</string>
+    <string name="download_directory_retry">Обновить оглавление</string>
+    <string name="download_directory_ready">Полное оглавление · глав: %1$d</string>
+    <string name="download_select_all">Все</string>
+    <string name="download_select_missing">Нет или устарели</string>
+    <string name="download_select_range">Диапазон глав</string>
+    <string name="download_select_none">Снять выбор</string>
+    <string name="download_refresh_selected_hint">Загрузить выбранные главы заново. Старые версии сохранятся до успешного обновления.</string>
+    <string name="download_volume_number">Том %1$d</string>
+    <string name="download_volume_selection">Выбрано: %1$d из %2$d</string>
+    <string name="download_chapter_downloading">Загрузка</string>
+    <string name="download_chapter_saved">Загружено · доступно офлайн</string>
+    <string name="download_chapter_outdated">Доступно офлайн · нужно обновление</string>
+    <string name="download_chapter_missing">Не загружено</string>
+    <string name="download_range_hint">Выберите диапазон от 1 до %1$d по оглавлению. Обе границы включены.</string>
+    <string name="download_range_first">Первая глава</string>
+    <string name="download_range_last">Последняя глава</string>
+    <string name="download_manage_selection">Главы и загрузки</string>
+</resources>

@@ -308,6 +308,56 @@ class HostMultiSourceIntegrationTest {
         assertEquals(2, books.downloadStatusFlow(a.storageKey).first().content.savedChapters)
     }
 
+    @Test fun selectedDownloadFetchesOnlyItsChaptersAndDoesNotClaimTheWholeBook() = runBlocking {
+        val source = register(a)
+        val result = books.submitDownload(a.storageKey, chapterIds = listOf("2")) as DownloadSubmission.Accepted
+        allowNetwork(a)
+        val finished = withTimeout(30_000) {
+            workManager.getWorkInfoByIdFlow(result.workId).filterNotNull().first { it.state.isFinished }
+        }
+        assertEquals(WorkInfo.State.SUCCEEDED, finished.state)
+        assertEquals(1, source.chapters.get())
+        assertNull(local.getChapterContent(BookIdentity.chapter("1", a).storageKey))
+        assertNotNull(local.getChapterContent(BookIdentity.chapter("2", a).storageKey))
+        val status = books.downloadStatusFlow(a.storageKey).first()
+        assertEquals(DownloadTaskStatus.Complete, status.task.status)
+        assertEquals(1, status.content.taskSavedChapters)
+        assertEquals(1, status.content.taskTotalChapters)
+        assertEquals(2, status.content.totalChapters)
+        assertEquals(indi.renakoni.nextvol.data.download.BookDownloadPhase.Partial, status.content.phase)
+        assertFalse(books.getIsBookCached(a.storageKey))
+    }
+
+    @Test fun differentSelectionCannotReplaceAnActiveTaskAndResumeKeepsItsScope() = runBlocking {
+        register(a)
+        val first = books.submitDownload(a.storageKey, chapterIds = listOf("2")) as DownloadSubmission.Accepted
+        val different = books.submitDownload(a.storageKey, chapterIds = listOf("1")) as DownloadSubmission.Accepted
+        assertEquals(first.workId, different.workId)
+        assertFalse(different.selectionMatches)
+        books.dismissDownload(a.storageKey)
+        val resumed = books.submitDownload(a.storageKey) as DownloadSubmission.Accepted
+        assertFalse(resumed.existing)
+        allowNetwork(a)
+        val finished = withTimeout(30_000) {
+            workManager.getWorkInfoByIdFlow(resumed.workId).filterNotNull().first { it.state.isFinished }
+        }
+        assertEquals(WorkInfo.State.SUCCEEDED, finished.state)
+        assertNull(local.getChapterContent(BookIdentity.chapter("1", a).storageKey))
+        assertNotNull(local.getChapterContent(BookIdentity.chapter("2", a).storageKey))
+    }
+
+    @Test fun missingSelectedChapterFailsWithoutDownloadingUnselectedChapters() = runBlocking {
+        val source = register(a)
+        val result = books.submitDownload(a.storageKey, chapterIds = listOf("no-longer-present")) as DownloadSubmission.Accepted
+        allowNetwork(a)
+        val finished = withTimeout(30_000) {
+            workManager.getWorkInfoByIdFlow(result.workId).filterNotNull().first { it.state.isFinished }
+        }
+        assertEquals(WorkInfo.State.FAILED, finished.state)
+        assertEquals(0, source.chapters.get())
+        assertEquals(DownloadFailure.SelectionUnavailable.name, downloads.entry(a)?.taskError)
+    }
+
     @Test fun manualSubmissionRejectsAnUnavailableSourceWithoutCreatingATask() = runBlocking {
         assertEquals(DownloadSubmission.Rejected(DownloadFailure.SourceUnavailable), books.submitDownload(a.storageKey))
         assertTrue(downloads.entries().isEmpty())
