@@ -152,6 +152,10 @@ internal class NativeSourceBrowser(private val context: Context, private val net
                     check(alive.get() && work.isActive && !session.closed && route.available)
                     snapshots.filter { session.permissionFailure(it.url) == null }.forEach {
                         session.updateNativeBrowserCookies(it.url, it.cookies, it.completeMetadata, cookieVersion.get())
+                        // Receipt only: version fences may reject a stale handoff; this is not wire evidence.
+                        observation?.record(RequestEvidence.CookieSnapshot, RequestPath.NativeWebView,
+                            cookies = CookieDiagnostic(CookieStore.NativeBrowser, selected = it.cookies.size,
+                                partitionedExcluded = it.partitionedExcluded, completeMetadata = it.completeMetadata))
                     }
                 }
                 return BrowserWire.pipe("true")

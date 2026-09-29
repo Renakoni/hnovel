@@ -1,10 +1,34 @@
 package indi.renakoni.nextvol.sourcebrowser
 
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import org.junit.Assert.*
 import org.junit.Test
 
 class NativeWebCookiesTest {
     private val url = "https://www.example.org/account/page"
+
+    @Test fun partitionedCookiesStayExcludedWithOrWithoutDiagnostics() {
+        val values = listOf("private=token; Path=/; Secure; SameSite=None; Partitioned",
+            "ordinary=secret; HttpOnly; SameSite=Lax", "literal=Partitioned; Path=/")
+        val plain = nativeCookieSnapshot(url, values, true)
+        val observed = nativeCookieSnapshot(url, values, true, observe = true)
+        assertEquals(values.drop(1), plain.cookies)
+        assertEquals(plain.cookies, observed.cookies)
+        assertNull(plain.partitionedExcluded)
+        assertEquals(1, observed.partitionedExcluded)
+        assertFalse(Json.encodeToString(plain).contains("partitionedExcluded"))
+        assertEquals(observed, Json.decodeFromString<NativeCookieSnapshot>(Json.encodeToString(observed)))
+    }
+
+    @Test fun missingMetadataCannotClaimZeroPartitionedCookiesAndSnapshotLimitsStayEnforced() {
+        val old = Json.decodeFromString<NativeCookieSnapshot>("""{"url":"$url","cookies":[],"completeMetadata":false}""")
+        assertNull(old.partitionedExcluded)
+        assertNull(nativeCookieSnapshot(url, listOf("unknown=value"), false, observe = true).partitionedExcluded)
+        assertEquals(0, nativeCookieSnapshot(url, emptyList(), true, observe = true).partitionedExcluded)
+        assertThrows(IllegalArgumentException::class.java) { nativeCookieSnapshot(url, List(257) { "a=b" }, true) }
+        assertThrows(IllegalArgumentException::class.java) { nativeCookieSnapshot(url, listOf("a=" + "x".repeat(65536)), false) }
+    }
 
     @Test fun explicitValuesPreserveBrowserAttributesAndNewCookiesStayHostOnly() {
         val snapshot = NativeCookieSnapshot(url, listOf(

@@ -3,6 +3,18 @@ package indi.renakoni.nextvol.sourcebrowser
 import okhttp3.Cookie
 import okhttp3.HttpUrl.Companion.toHttpUrl
 
+/** Filtering is unchanged; the optional count describes an export, not cookies sent by Chromium. */
+internal fun nativeCookieSnapshot(url: String, values: List<String>, completeMetadata: Boolean, observe: Boolean = false): NativeCookieSnapshot {
+    var excluded = if (observe && completeMetadata) 0 else null
+    val cookies = if (completeMetadata) values.filterNot { value ->
+        val partitioned = value.split(';').any { it.trim().equals("Partitioned", true) }
+        if (partitioned) excluded = excluded?.plus(1)
+        partitioned
+    } else values
+    require(cookies.size <= 256 && cookies.sumOf(String::length) <= 65536)
+    return NativeCookieSnapshot(url, cookies, completeMetadata, excluded)
+}
+
 /** The compatibility input is a Cookie request header, not a Set-Cookie attribute list. */
 internal fun nativeWebCookieUpdates(url: String, header: String, snapshot: NativeCookieSnapshot): List<String> {
     require(header.length <= 65536)

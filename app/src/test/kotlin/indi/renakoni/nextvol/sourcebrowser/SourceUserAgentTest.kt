@@ -1,6 +1,7 @@
 package indi.renakoni.nextvol.sourcebrowser
 
 import hnovel.network.*
+import io.mockk.Called
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -10,6 +11,34 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SourceUserAgentTest {
+    @Test fun disabledDiagnosticsDoNotReadProviderSettingsOrCallTheHost() {
+        val settings = mockk<android.webkit.WebSettings>()
+        val host = mockk<IBrowserHost>()
+        val context = mockk<android.content.Context>()
+        settings.configureSourceUserAgent(BrowserJob(BrokerRequest("r", "https://example.org"), BrowserOptions()), host, context)
+        verify { settings wasNot Called; host wasNot Called; context wasNot Called }
+    }
+
+    @Test fun providerEvidenceIsBoundedAndItsFailureDoesNotSuppressUserAgentEvidence() {
+        val environment = WebViewEnvironmentDiagnostic("com.google.android.webview", "124.0.6367.219", true, false)
+        val settings = mockk<android.webkit.WebSettings>()
+        val host = mockk<IBrowserHost>()
+        every { settings.userAgentString } returns DESKTOP_USER_AGENT
+        every { host.call(any(), any()) } throws IllegalStateException("diagnostic pipe")
+        reportSourceUserAgent(host, settings, DESKTOP_USER_AGENT, UserAgentMetadataStatus.Applied) { environment }
+        verify(exactly = 1) { host.call("userAgentDiagnostic", match {
+            Json.decodeFromString<WebViewUserAgentDiagnostic>(it).environment == environment
+        }) }
+        reportSourceUserAgent(host, settings, DESKTOP_USER_AGENT, UserAgentMetadataStatus.Applied) { error("private-provider-error") }
+        verify(exactly = 1) { host.call("userAgentDiagnostic", match {
+            val value = Json.decodeFromString<WebViewUserAgentDiagnostic>(it)
+            value.environment == null && value.matchesRequested == true && !it.contains("private-provider-error")
+        }) }
+        assertThrows(IllegalArgumentException::class.java) { environment.copy(packageName = "https://private.test/token") }
+        assertThrows(IllegalArgumentException::class.java) { environment.copy(versionName = "124.0 private-token") }
+        assertThrows(IllegalArgumentException::class.java) { environment.copy(packageName = "a." + "x".repeat(160)) }
+    }
+
     @Test fun failedSettingsReadbackOrHostCallbackDoesNotEscapeDiagnosticReporting() {
         val settings = mockk<android.webkit.WebSettings>()
         val host = mockk<IBrowserHost>()
