@@ -15,6 +15,7 @@ import indi.renakoni.nextvol.data.localbook.LocalBookStore
 import indi.renakoni.nextvol.data.work.CacheBookWork
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
@@ -41,9 +42,28 @@ class BookDownloadScheduler @Inject constructor(
 
     fun enqueue(requested: SourceBookId, refresh: Boolean = false): Flow<WorkInfo?> {
         if (LocalBookStore.isLocal(requested)) return flowOf(null)
+        val submission = enqueueTask(requested, refresh)
+        return flow { emitAll(workManager.getWorkInfoByIdFlow(submission.await().workId)) }
+    }
+
+    suspend fun submit(requested: SourceBookId, refresh: Boolean = false): DownloadSubmission {
+        if (LocalBookStore.isLocal(requested)) return DownloadSubmission.Rejected(DownloadFailure.SourceUnavailable)
+        return try {
+            enqueueTask(requested, refresh).await()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            DownloadSubmission.Rejected(submissionFailure(failure))
+        }
+    }
+
+    private fun submissionFailure(failure: Exception) =
+        if (failure is android.database.sqlite.SQLiteException) DownloadFailure.Storage else DownloadFailure.Scheduling
+
+    private fun enqueueTask(requested: SourceBookId, refresh: Boolean) = run {
         val generation = downloads.generation()
         // Submission is eager; automatic bookshelf downloads do not collect the result.
-        val submission = submissions.async(start = CoroutineStart.UNDISPATCHED) { lock.withLock {
+        submissions.async(start = CoroutineStart.UNDISPATCHED) { lock.withLock {
             val book = aliases.resolve(requested)
             val name = CacheBookWork.ofId(book.storageKey)
             val owner = downloads.entry(book)
@@ -52,18 +72,27 @@ class BookDownloadScheduler @Inject constructor(
             val active = previous?.takeUnless { it.state.isFinished }
                 ?: workManager.getWorkInfosForUniqueWorkFlow(name).first().firstOrNull { !it.state.isFinished }
             val revoked = owner?.taskStatus == DownloadTaskStatus.Cancelled.name
-            if (active != null && !revoked) return@withLock active.id
+            if (active != null && !revoked) return@withLock DownloadSubmission.Accepted(active.id,
+                owner?.takeIf { it.taskWorkId == active.id.toString() }?.taskState(active.state)
+                    ?: DownloadTaskState(if (active.state == WorkInfo.State.RUNNING) DownloadTaskStatus.Running else DownloadTaskStatus.Queued),
+                existing = true)
             val request = OneTimeWorkRequestBuilder<CacheBookWork>()
                 .addTag(CacheBookWork.generationTag(generation))
                 .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
                 .setInputData(workDataOf("bookId" to book.storageKey, "downloadGeneration" to generation, "persistedTask" to true))
                 .build()
             downloads.queueTask(book, generation, request.id.toString(), refresh)
-            workManager.enqueueUniqueWork(name,
-                if (revoked) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP, request).await()
-            request.id
+            try {
+                workManager.enqueueUniqueWork(name,
+                    if (revoked) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP, request).await()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                downloads.finishTask(BookDownloadStore.Task(book, generation, request.id.toString()), submissionFailure(failure))
+                throw failure
+            }
+            DownloadSubmission.Accepted(request.id, DownloadTaskState(DownloadTaskStatus.Queued, DownloadStage.Details))
         } }
-        return flow { emitAll(workManager.getWorkInfoByIdFlow(submission.await())) }
     }
 
     internal suspend fun resumeVerified(expected: List<BookDownloadEntity>, sourceIsCurrent: () -> Boolean): Unit = lock.withLock {

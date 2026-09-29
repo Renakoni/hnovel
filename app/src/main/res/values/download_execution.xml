@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="download_submission_accepted">Download queued · %1$s</string>
+    <string name="download_task_waiting_network">Waiting for a network connection</string>
+    <string name="download_task_waiting_scheduler">Queued · waiting for the system to start</string>
+    <string name="download_error_scheduling">Could not submit the download. Please try again.</string>
+</resources>

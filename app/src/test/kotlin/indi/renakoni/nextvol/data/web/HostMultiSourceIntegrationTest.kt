@@ -17,6 +17,10 @@ import indi.renakoni.nextvol.data.content.ContentComponentRegistry
 import indi.renakoni.nextvol.data.content.ContentJsonDecoder
 import indi.renakoni.nextvol.data.download.DownloadProgressRepository
 import indi.renakoni.nextvol.data.download.BookDownloadStore
+import indi.renakoni.nextvol.data.download.BookDownloadScheduler
+import indi.renakoni.nextvol.data.download.DownloadSubmission
+import indi.renakoni.nextvol.data.download.DownloadFailure
+import indi.renakoni.nextvol.data.download.DownloadTaskStatus
 import indi.renakoni.nextvol.data.explore.ExploreRepository
 import indi.renakoni.nextvol.data.local.LocalBookDataSource
 import indi.renakoni.nextvol.data.local.LocalDataManager
@@ -281,6 +285,55 @@ class HostMultiSourceIntegrationTest {
         assertTrue(request.isCancelled)
         assertTrue(manager.registry.resolve(a.sourceId) is SourceResolution.Ready)
         assertTrue(isActive)
+    }
+
+    @Test fun manualSubmissionAcknowledgesTheQueueThenFetchesAndSavesRealChapters() = runBlocking {
+        val source = register(a)
+        val first = books.submitDownload(a.storageKey) as DownloadSubmission.Accepted
+        assertFalse(first.existing)
+        assertEquals(DownloadTaskStatus.Queued, first.task.status)
+        assertEquals(0, source.chapters.get())
+        val duplicate = books.submitDownload(a.storageKey) as DownloadSubmission.Accepted
+        assertTrue(duplicate.existing)
+        assertEquals(first.workId, duplicate.workId)
+        allowNetwork(a)
+        val finished = withTimeout(30_000) {
+            workManager.getWorkInfoByIdFlow(first.workId).filterNotNull().first { it.state.isFinished }
+        }
+        assertEquals(WorkInfo.State.SUCCEEDED, finished.state)
+        assertEquals(2, source.chapters.get())
+        assertNotNull(local.getChapterContent(BookIdentity.chapter("1", a).storageKey))
+        assertNotNull(local.getChapterContent(BookIdentity.chapter("2", a).storageKey))
+        assertEquals(2, books.downloadStatusFlow(a.storageKey).first().content.savedChapters)
+    }
+
+    @Test fun manualSubmissionRejectsAnUnavailableSourceWithoutCreatingATask() = runBlocking {
+        assertEquals(DownloadSubmission.Rejected(DownloadFailure.SourceUnavailable), books.submitDownload(a.storageKey))
+        assertTrue(downloads.entries().isEmpty())
+    }
+
+    @Test fun manualSubmissionDuringBackoffReturnsTheExistingDeadlineWithoutRestarting() = runBlocking {
+        register(a)
+        val first = books.submitDownload(a.storageKey) as DownloadSubmission.Accepted
+        val deadline = System.currentTimeMillis() + 60_000
+        downloads.deferTaskRetry(BookDownloadStore.Task(a, downloads.generation(), first.workId.toString()),
+            0, deadline, DownloadFailure.Network)
+        val repeated = books.submitDownload(a.storageKey) as DownloadSubmission.Accepted
+        assertTrue(repeated.existing)
+        assertEquals(first.workId, repeated.workId)
+        assertEquals(DownloadTaskStatus.WaitingRetry, repeated.task.status)
+        assertEquals(deadline, repeated.task.nextAttemptAt)
+    }
+
+    @Test fun failedSubmissionDoesNotLeaveAPersistedTaskPermanentlyQueued() = runBlocking {
+        val failing = mockk<WorkManager>()
+        every { failing.getWorkInfosForUniqueWorkFlow(any()) } returns flowOf(emptyList())
+        every { failing.enqueueUniqueWork(any(), any(), any<OneTimeWorkRequest>()) } throws IllegalStateException("submission failed")
+        val scheduler = BookDownloadScheduler(downloads, failing, local.aliases)
+        assertEquals(DownloadSubmission.Rejected(DownloadFailure.Scheduling), scheduler.submit(a))
+        val task = checkNotNull(downloads.entry(a))
+        assertEquals(DownloadTaskStatus.Failed.name, task.taskStatus)
+        assertEquals(DownloadFailure.Scheduling.name, task.taskError)
     }
 
     @Test fun eagerDuplicateSubmissionsKeepOnePersistentTaskAndOneExecutor() = runBlocking {

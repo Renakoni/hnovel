@@ -23,6 +23,8 @@ import indi.renakoni.nextvol.data.text.TextProcessingRepository
 import indi.renakoni.nextvol.data.web.SourceDiscoveryTarget
 import indi.renakoni.nextvol.data.download.BookDownloadStore
 import indi.renakoni.nextvol.data.download.BookDownloadScheduler
+import indi.renakoni.nextvol.data.download.DownloadSubmission
+import indi.renakoni.nextvol.data.download.DownloadFailure
 import indi.renakoni.nextvol.data.download.BookDownloadStatus
 import indi.renakoni.nextvol.data.download.DownloadTaskState
 import indi.renakoni.nextvol.data.download.DownloadTaskStatus
@@ -209,6 +211,15 @@ class BookRepository @Inject constructor(
 
     fun cacheBook(bookId: String, refresh: Boolean = false): Flow<WorkInfo?> =
         downloadScheduler.enqueue(BookIdentity.book(bookId), refresh)
+
+    suspend fun submitDownload(bookId: String, refresh: Boolean = false): DownloadSubmission {
+        val book = BookIdentity.book(bookId)
+        if (LocalBookStore.isLocal(book) || sourceRegistry.sources.value.none {
+                it.metadata.id == book.sourceId && it.metadata.supportsReading &&
+                    it.status == indi.renakoni.nextvol.data.web.SourceStatus.Ready
+            }) return DownloadSubmission.Rejected(DownloadFailure.SourceUnavailable)
+        return downloadScheduler.submit(book, refresh)
+    }
 
     suspend fun dismissDownload(bookId: String): Unit = downloadScheduler.dismiss(BookIdentity.book(bookId))
 

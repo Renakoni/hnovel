@@ -10,6 +10,7 @@ import indi.renakoni.nextvol.data.book.BookRepository
 import indi.renakoni.nextvol.data.download.DownloadItem
 import indi.renakoni.nextvol.data.download.DownloadProgressRepository
 import indi.renakoni.nextvol.data.download.DownloadType
+import indi.renakoni.nextvol.data.download.DownloadSubmission
 import indi.renakoni.nextvol.data.download.BookDownloadStore
 import indi.renakoni.nextvol.data.book.BookIdentity
 import indi.renakoni.nextvol.data.localbook.LocalBookStore
@@ -38,6 +39,8 @@ class BookManagerViewModel @Inject constructor(
     val downloadItemIdList get() = downloadProgressRepository.downloadItemIdList
     private val _clearedItemsFlow = MutableSharedFlow<Int>()
     val clearedItemsFlow = _clearedItemsFlow.asSharedFlow()
+    private val _downloadSubmissions = MutableSharedFlow<DownloadSubmission>()
+    val downloadSubmissions = _downloadSubmissions.asSharedFlow()
     val localBookManagerUiState = MutableLocalBookManagerUiState(
         load = ::loadLocalBooks,
         setSort = ::setLocalBookSort,
@@ -77,7 +80,9 @@ class BookManagerViewModel @Inject constructor(
     fun onClickClearCompleted() = downloadProgressRepository.clearCompleted()
 
     fun onClickRetry(item: DownloadItem) {
-        if (item.type == DownloadType.CACHE) bookRepository.cacheBook(item.bookId, refresh = item.progress >= 1f)
+        if (item.type == DownloadType.CACHE) viewModelScope.launch {
+            _downloadSubmissions.emit(bookRepository.submitDownload(item.bookId, refresh = item.progress >= 1f))
+        }
     }
 
     fun loadLocalBooks() {

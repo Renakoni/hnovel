@@ -60,6 +60,8 @@ import com.github.michaelbull.result.get
 import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.data.download.DownloadItem
 import indi.renakoni.nextvol.data.download.DownloadType
+import indi.renakoni.nextvol.data.download.DownloadStage
+import indi.renakoni.nextvol.data.download.DownloadTaskStatus
 import indi.renakoni.nextvol.data.book.BookIdentity
 import indi.renakoni.nextvol.ui.components.downloadStatusText
 import indi.renakoni.nextvol.ui.components.Cover
@@ -499,11 +501,18 @@ private fun Card(
                         color = MaterialTheme.colorScheme.secondary
                     )
                 }
-                if (downloadItem.progress >= 0 && downloadItem.progress < 1)
-                    LinearProgressIndicator(
-                        modifier = Modifier.fillMaxWidth(),
-                        progress = { progressAnim },
-                    )
+                if (downloadItem.progress >= 0 && downloadItem.progress < 1) {
+                    val task = downloadItem.status?.task
+                    if (task?.status == DownloadTaskStatus.Queued ||
+                        task?.stage in setOf(DownloadStage.Details, DownloadStage.Directory)) {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    } else {
+                        LinearProgressIndicator(
+                            modifier = Modifier.fillMaxWidth(),
+                            progress = { progressAnim },
+                        )
+                    }
+                }
             }
             if (downloadItem.type == DownloadType.CACHE && downloadItem.status?.task?.active == false)
                 TextButton(onClickRetry) {

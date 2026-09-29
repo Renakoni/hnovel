@@ -22,6 +22,8 @@ import indi.renakoni.nextvol.data.book.BookReadingDataRepository
 import indi.renakoni.nextvol.data.bookshelf.BookshelfRepository
 import indi.renakoni.nextvol.data.download.DownloadProgressRepository
 import indi.renakoni.nextvol.data.download.DownloadType
+import indi.renakoni.nextvol.data.download.DownloadSubmission
+import indi.renakoni.nextvol.data.download.DownloadFailure
 import indi.renakoni.nextvol.data.work.ExportBookToEPUBWork
 import indi.renakoni.nextvol.data.book.observeSubmittedUniqueWork
 import io.nightfish.lightnovelreader.api.web.WebDataSourcePriority
@@ -124,9 +126,9 @@ class DetailViewModel @Inject constructor(
         }
     }
 
-    fun cacheBook(bookId: String, refresh: Boolean = false): Flow<WorkInfo?> {
-        if (!_uiState.canCache) return flowOf(null)
-        return bookRepository.cacheBook(bookId, refresh)
+    suspend fun submitDownload(bookId: String, refresh: Boolean = false): DownloadSubmission {
+        if (!_uiState.canCache) return DownloadSubmission.Rejected(DownloadFailure.SourceUnavailable)
+        return bookRepository.submitDownload(bookId, refresh)
     }
 
     suspend fun tagPage(tag: String) = book?.let { bookRepository.bookTagPage(it, tag) }
