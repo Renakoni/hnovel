@@ -163,7 +163,7 @@ fun BookInfoBottomSheet(
                 icon = painterResource(R.drawable.text_snippet_24px)
             )
 
-            if (bookVolumes != null) InfoItem(
+            if (bookVolumes != null && bookInformation.lastUpdated.year > 1970) InfoItem(
                 title = stringResource(R.string.detail_info_updated_on),
                 content = bookInformation.lastUpdated.format(dateFormatter()) + "\n" +
                         if (bookInformation.isComplete) stringResource(R.string.book_completed)
@@ -183,14 +183,14 @@ fun BookInfoBottomSheet(
 
             if (bookVolumes != null) InfoItem(
                 title = stringResource(R.string.detail_info_stats),
-                content = stringResource(
-                    R.string.detail_info_word_count_content,
-                    bookInformation.wordCount.get()
-                ) + "\n" + stringResource(
-                    R.string.detail_info_stats_count_content,
-                    bookVolumes.volumes.count(),
-                    bookVolumes.volumes.sumOf { it.chapters.size }
-                ),
+                content = listOfNotNull(
+                    if (bookInformation.wordCount.count > 0) bookInformation.wordCount.get() else null,
+                    stringResource(
+                        R.string.detail_info_stats_count_content,
+                        bookVolumes.volumes.count(),
+                        bookVolumes.volumes.sumOf { it.chapters.size }
+                    )
+                ).joinToString("\n"),
                 titleStyle = titleStyle,
                 contentStyle = contentStyle,
                 icon = painterResource(R.drawable.text_fields_24px)

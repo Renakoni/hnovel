@@ -33,7 +33,7 @@ class SourceImportDownloadTest {
         }
     }
 
-    @Test fun rejectedRedirectStatusSizeAndPackagesCannotProduceCandidates() = runBlocking {
+    @Test fun rejectedRedirectStatusAndSizeCannotProduceCandidates() = runBlocking {
         MockWebServer().use { server -> MockWebServer().use { other ->
             server.start(); other.start()
             SourceBroker(temp.newFolder().toPath(), limits = BrokerLimits(maxResponseBytes = 128)).use { broker ->
@@ -48,11 +48,6 @@ class SourceImportDownloadTest {
                 assertEquals(ImportCode.DownloadFailed, importer.previewUrl(server.url("/").toString(), session).issues.single().code)
                 server.enqueue(MockResponse().setBody("x".repeat(129)))
                 assertEquals("ResponseTooLarge", importer.previewUrl(server.url("/").toString(), session).issues.single().field)
-                server.enqueue(MockResponse().setBody("PK\u0003\u0004rest"))
-                assertEquals(ImportCode.PluginPackage, importer.previewUrl(server.url("/hidden.json").toString(), session).issues.single().code)
-                val count = server.requestCount
-                assertEquals(ImportCode.PluginPackage, importer.previewUrl(server.url("/plugin.lnrp").toString(), session).issues.single().code)
-                assertEquals(count, server.requestCount)
             }
         } }
     }

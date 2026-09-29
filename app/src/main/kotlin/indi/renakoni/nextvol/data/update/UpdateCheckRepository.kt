@@ -17,7 +17,6 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import indi.renakoni.nextvol.BuildConfig
 import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.data.userdata.UserDataRepository
-import indi.renakoni.nextvol.ui.home.settings.data.MenuOptions
 import io.nightfish.lightnovelreader.api.userdata.UserDataPath
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -81,15 +80,14 @@ class UpdateCheckRepository @Inject constructor(
     fun check() {
         if (checkJob != null && checkJob!!.isActive) return
         checkJob = coroutineScope.launch {
-            val updateChannelKey = userDataRepository.stringUserData(UserDataPath.Settings.App.UpdateChannel.path).get() ?: MenuOptions.UpdateChannelOptions.DEVELOPMENT
-            val distributionPlatform = userDataRepository.stringUserData(UserDataPath.Settings.App.DistributionPlatform.path).get() ?: MenuOptions.UpdatePlatformOptions.LnrAPI
+            val updateChannelKey = userDataRepository.stringUserData(UserDataPath.Settings.App.UpdateChannel.path).get() ?: UpdateChannel.default.key
+            val distributionPlatform = userDataRepository.stringUserData(UserDataPath.Settings.App.DistributionPlatform.path).get() ?: UpdatePlatform.default.key
             Log.i("UpdateChecker", "Checking for updates from $distributionPlatform/$updateChannelKey")
             _updatePhase.update { UpdatePhase(R.string.update_phase_waiting, listOf(distributionPlatform)) }
             try {
                 release =
-                    MenuOptions.UpdatePlatformOptions
-                        .getOptionWithValue(distributionPlatform).value
-                        .getOptionWithValue(updateChannelKey).value
+                    UpdatePlatform.fromKey(distributionPlatform)
+                        .parserFor(UpdateChannel.fromKey(updateChannelKey))
                         .parser(_updatePhase)
             } catch (e: Exception) {
                 Log.e("UpdateChecker", "failed to get release")

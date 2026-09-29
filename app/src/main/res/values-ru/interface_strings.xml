@@ -10,10 +10,6 @@
     <string name="action_clear_text">Очистить текст</string>
     <string name="action_retry">Повторить</string>
     <string name="image_load_failed">Не удалось загрузить изображение</string>
-    <string name="plugin_signature_invalid">Недействительная подпись</string>
-    <string name="plugin_runtime_error">Ошибка выполнения</string>
-    <string name="plugin_incompatible">Несовместим</string>
-    <string name="plugin_app_badge">Приложение</string>
     <string name="dialog_value">Значение</string>
     <string name="paper_background_downloading">Загрузка фона страницы…</string>
     <string name="data_export_failed">Не удалось экспортировать данные</string>
@@ -45,8 +41,6 @@
         <item quantity="many">%1$d правил</item>
         <item quantity="other">%1$d правила</item>
     </plurals>
-    <string name="plugin_delete_action">Удалить плагин</string>
-    <string name="plugin_uninstall_action">Удалить приложение и плагин</string>
     <string name="stats_total">Всего</string>
     <string name="reader_chapter">Глава</string>
     <string name="reader_empty_chapter">В этой главе нет содержимого для чтения.</string>

@@ -9,7 +9,7 @@ on:
       - '.github/scripts/ci.init.gradle'
       - '.github/ci-environment/aboutlibraries/**'
       - '.github/ci-environment/sdk-packages/**'
-      - '.github/workflows/**'
+      - '.github/workflows/gradle-cache.yml'
       - '**/*.gradle.kts'
       - 'gradle/**'
       - 'gradle.properties'
@@ -29,7 +29,7 @@ jobs:
     if: github.ref == 'refs/heads/main'
     name: Populate main Gradle caches
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: ./.github/actions/android-environment
@@ -43,7 +43,7 @@ jobs:
     if: github.ref == 'refs/heads/main'
     name: Populate main API ${{ matrix.api }} image cache
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:

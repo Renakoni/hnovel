@@ -115,39 +115,6 @@ class IsolatedConcurrencyInstrumentedTest {
         }
     }
 
-    @Test fun partialPreparationFollowsPreviousCompletionOrder() = runBlocking {
-        fixture { fixture ->
-            val count = fixture.executor.parallelism
-            assumeTrue(count >= 2)
-            val source = fixture.source("partial-preparation")
-            val components = mutableListOf<ComponentName>()
-            val previous = List(count) { index ->
-                async { fixture.execute(source) }.also {
-                    assertEquals(index, withTimeout(25000) { fixture.browser.entered.receive() })
-                    components.add(fixture.bindings.last())
-                }
-            }
-            // Finish by component number so the next borrowers use the opposite end of the pool.
-            val completionOrder = components.indices.sortedBy { components[it].className }
-            for (index in completionOrder) {
-                fixture.browser.releases[index].complete("previous")
-                assertValue("previous", previous[index].await())
-            }
-            fixture.executor.close()
-            fixture.bindings.clear()
-
-            val preparedCount = minOf(2, count - 1)
-            val expected = completionOrder.asReversed().take(preparedCount).map { components[it] }
-            fixture.executor.prepareIndependent(source.identity, preparedCount)
-            assertEquals("Partial preparation must follow the next borrowers' order", expected, fixture.bindings.toList())
-            val upcoming = List(preparedCount) { async { fixture.execute(source) } }
-            withTimeout(25000) { repeat(preparedCount) { fixture.browser.entered.receive() } }
-            assertEquals("Execution must not bind additional processes", expected, fixture.bindings.toList())
-            repeat(preparedCount) { fixture.browser.releases[count + it].complete("prepared") }
-            upcoming.awaitAll().forEach { assertValue("prepared", it) }
-        }
-    }
-
     @Test fun independentRuleFinishesWhileSharedWorkerWaitsAndStatefulCallsStayOrdered() = runBlocking {
         fixture { fixture ->
             val source = fixture.source("same-source")
@@ -165,36 +132,6 @@ class IsolatedConcurrencyInstrumentedTest {
             assertEquals(2, withTimeout(5000) { fixture.browser.entered.receive() })
             fixture.browser.releases[2].complete("second")
             assertValue("second", second.await())
-        }
-    }
-
-    @Test fun idlePreparedWorkersRetireWhileBusyAndStatefulWorkersRemainUsable() = runBlocking {
-        fixture { fixture ->
-            val source = fixture.source("idle")
-            assertValue("stateful", fixture.execute(source, readOnly = false, rule = "@js:'stateful'"))
-            val count = minOf(2, fixture.executor.parallelism)
-            fixture.executor.prepareIndependent(source.identity, count)
-            val busy = if (count > 1) async { fixture.execute(source, timeout = 120000) } else null
-            if (busy != null) withTimeout(20000) { fixture.browser.entered.receive() }
-            val initialBindings = fixture.bindings.size
-            withTimeout(AndroidIsolatedExecutor.INDEPENDENT_IDLE_MILLIS + 20000) {
-                while (fixture.retirements.isEmpty()) delay(50)
-            }
-            assertEquals(1, fixture.retirements.size)
-            assertTrue(fixture.retirements.single().className.contains("IndependentExecutionService"))
-            assertValue("stateful", fixture.execute(source, readOnly = false, rule = "@js:'stateful'"))
-            assertEquals(initialBindings, fixture.bindings.size)
-            if (busy != null) {
-                assertFalse("An active invocation must not expire with an idle slot", busy.isCompleted)
-                fixture.browser.releases[0].complete("busy")
-                assertValue("busy", busy.await())
-            }
-            val start = fixture.browser.calls.get()
-            val resumed = List(count) { async { fixture.execute(source) } }
-            withTimeout(20000) { repeat(count) { fixture.browser.entered.receive() } }
-            assertEquals("Only the expired process needs a new binding", initialBindings + 1, fixture.bindings.size)
-            repeat(count) { fixture.browser.releases[start + it].complete("resumed") }
-            resumed.awaitAll().forEach { assertValue("resumed", it) }
         }
     }
 

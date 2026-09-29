@@ -18,7 +18,7 @@ import kotlinx.coroutines.ensureActive
 internal data class ReaderContentAnchor(val componentIndex: Int, val offset: Int)
 internal data class ReaderContentRange(val componentIndex: Int, val start: Int, val end: Int)
 
-/** Host-only page metadata; serialized source data and plugin constructors are unchanged. */
+/** Host-only page metadata, separate from serialized source data. */
 internal class ReaderPage(
     source: AbstractContentComponent<*>,
     val ranges: List<ReaderContentRange>,
