@@ -42,6 +42,7 @@ import indi.renakoni.nextvol.utils.isResumed
 import indi.renakoni.nextvol.utils.popBackStackIfResumed
 import io.nightfish.lightnovelreader.api.Route
 import io.nightfish.lightnovelreader.api.ui.LocalNavController
+import io.nightfish.lightnovelreader.api.userdata.UserDataPath
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -174,14 +175,20 @@ private fun NavGraphBuilder.colorPickerDialog() {
             },
             selectedColor = selectedColor ?: Color.Unspecified,
             colors = route.colors.map { Color(if (it < 0) return@map Color.Unspecified else it) },
-            description = stringResource(route.target.toAppTarget().descriptionResId)
+            description = stringResource(
+                when (route.colorUserDataPath) {
+                    UserDataPath.Reader.TextColor.path,
+                    UserDataPath.Reader.TextDarkColor.path -> R.string.dialog_color_picker_text_desc
+                    else -> R.string.dialog_color_picker_background_desc
+                }
+            )
         )
     }
 }
 
-fun NavController.navigateToColorPickerDialog(colorUserDataPath: String, colors: List<Long>, target: Route.Book.ColorPickerTargetType = Route.Book.ColorPickerTargetType.BACKGROUND) {
+fun NavController.navigateToColorPickerDialog(colorUserDataPath: String, colors: List<Long>) {
     if (!this.isResumed()) return
-    navigate(Route.Book.ColorPickerDialog(colorUserDataPath, colors.toLongArray(), target))
+    navigate(Route.Book.ColorPickerDialog(colorUserDataPath, colors.toLongArray()))
 }
 @SuppressLint("LocalContextGetResourceValueCall")
 private fun NavGraphBuilder.imageViewerDialog() {

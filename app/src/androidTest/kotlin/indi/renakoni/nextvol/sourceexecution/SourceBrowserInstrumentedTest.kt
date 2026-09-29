@@ -113,12 +113,17 @@ class SourceBrowserInstrumentedTest {
                     assertEquals(rootId, settings.requestId)
                     assertEquals(true, settings.webView?.matchesRequested)
                     assertEquals(UserAgentFamily.Other, settings.webView?.userAgent?.family)
+                    val environment = checkNotNull(settings.webView?.environment)
+                    assertNotNull(environment.packageName)
+                    assertNotNull(environment.versionName)
+                    assertEquals(androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.GET_COOKIE_INFO), environment.cookieInfo)
                     val metadata = if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.USER_AGENT_METADATA))
                         UserAgentMetadataStatus.UnhandledUserAgent else UserAgentMetadataStatus.Unsupported
                     assertEquals(metadata, settings.webView?.metadata)
                     val sent = events.filter { it.evidence == RequestEvidence.TransportHeaders }
                     assertTrue(sent.size >= 3)
                     assertTrue(sent.all { it.requestId != rootId && it.parentRequestId == rootId })
+                    assertTrue(events.any { it.parentRequestId == rootId && it.cookies?.store == CookieStore.HttpJar })
                     assertFalse(events.toString().contains("NovelFixture/1.0"))
                 }
             } finally { root.deleteRecursively() }

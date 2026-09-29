@@ -644,27 +644,14 @@ class SourcesScreenTest {
         org.junit.Assert.assertEquals(form.fields.takeLast(2).map { it.id }, actions)
     }
 
-    @Test fun builtinAndPluginRowsOpenTheirOwnBasicSettings() {
+    @Test fun builtinRowOpensItsBasicSettings() {
         val builtinId = Identifier("lightnovelreader", "Wenku8")
-        val pluginId = Identifier("fixture.plugin", "source")
         val builtin = SourceListing(SourceMetadata(WebDataSourceItem(builtinId, "Wenku8", "Built-in provider"),
             setOf(SourceCapability.Search), builtIn = true), SourceStatus.Registered)
-        val plugin = SourceListing(SourceMetadata(WebDataSourceItem(pluginId, "Plugin fixture", "Plugin provider"),
-            setOf(SourceCapability.Search)), SourceStatus.Failed)
-        var state by mutableStateOf(SourceManagementState(registry = listOf(builtin, plugin)))
+        var state by mutableStateOf(SourceManagementState(registry = listOf(builtin)))
         activity.get().setContent { MaterialTheme { SourcesScreen(state, model, onDiagnostics = {}) {} } }
         compose.onNodeWithText("Wenku8").performClick()
         verify(exactly = 1) { model.select(builtinId) }
-        compose.onAllNodes(hasScrollToIndexAction()).onFirst().performScrollToNode(hasText("Plugin fixture"))
-        compose.onNodeWithText("Plugin fixture").performClick()
-        verify(exactly = 1) { model.select(pluginId) }
-        compose.runOnIdle { state = state.copy(selected = pluginId, network = SourceNetworkState(limitation =
-            indi.renakoni.nextvol.R.string.sources_network_plugin)) }
-        compose.onNodeWithText("Basic settings").assertExists()
-        compose.onNodeWithText("Plugin provider").assertExists()
-        compose.onNodeWithContentDescription("Bypass VPN").assertIsOff().assertIsNotEnabled()
-        compose.onNodeWithContentDescription("Enable source").assertDoesNotExist()
-        compose.onNodeWithText("Sign in").assertDoesNotExist()
         compose.runOnIdle { state = state.copy(selected = builtinId, network = SourceNetworkState()) }
         compose.onNodeWithText("Search this source").assertExists()
         compose.onNodeWithContentDescription("Bypass VPN").assertIsOff().assertIsEnabled().performClick()

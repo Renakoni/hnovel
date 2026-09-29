@@ -16,18 +16,13 @@ class SettingsTest : UiAutomatorTest() {
     }
 
     @Test
-    fun extensionSourceAndPluginManagerOpen() {
+    fun bookSourcesOpen() {
         openSettings()
         clickText("Book sources")
         assertText("Book sources")
         assertForegroundPackage(TARGET_PACKAGE)
         pressBack()
 
-        clickText("Plugins")
-        assertText("Plugins")
-        assertDescription("Install plugin")
-        assertDescription("Plugin apps")
-        pressBack()
         assertText("Settings")
     }
 

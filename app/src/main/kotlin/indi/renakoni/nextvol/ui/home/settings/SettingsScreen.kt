@@ -47,7 +47,6 @@ fun SettingsScreen(
     onClickUpdates: () -> Unit,
     onClickAbout: () -> Unit,
     onClickThemeSettings: () -> Unit,
-    onClickPluginManager: () -> Unit,
     onClickTextFormatting: () -> Unit,
     onClickReadAloud: () -> Unit,
     onClickStorageManager: () -> Unit,
@@ -68,7 +67,6 @@ fun SettingsScreen(
                 ) {
                     ExtensionsSettingsList(
                         onClickChangeSource = onClickChangeSource,
-                        onClickPluginManager = onClickPluginManager,
                         onClickBangumi = onClickBangumi,
                     )
                 }

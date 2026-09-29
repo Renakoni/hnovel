@@ -9,9 +9,6 @@ import android.net.Uri
 import androidx.work.ListenableWorker
 import androidx.work.workDataOf
 import com.github.michaelbull.result.Ok
-import fixtures.content.FixtureData
-import fixtures.content.FixtureSerializer
-import fixtures.content.NoArgFixtureComponent
 import indi.renakoni.nextvol.data.book.*
 import indi.renakoni.nextvol.data.content.ContentComponentRegistry
 import indi.renakoni.nextvol.data.content.ContentJsonDecoder
@@ -56,10 +53,7 @@ class EpubXhtmlWorkerTest {
         val repository = mockk<BookRepository>()
         stubExportRepository(repository)
         val progress = mockk<DownloadProgressRepository>(relaxed = true)
-        val registry = ContentComponentRegistry().apply {
-            registrar.id(Identifier("fixture", "text")).component(NoArgFixtureComponent::class)
-                .data(FixtureData::class).serializer(FixtureSerializer()).register()
-        }
+        val registry = ContentComponentRegistry()
         val decoder = ContentJsonDecoder(registry)
         val imageUrls = listOf("https://example.org/Aa.png", "https://example.org/BB.png")
         assertEquals(imageUrls[0].hashCode(), imageUrls[1].hashCode())
@@ -99,8 +93,8 @@ class EpubXhtmlWorkerTest {
                                     })
                                 }
                                 add(buildJsonObject {
-                                    put("id", "fixture:text")
-                                    putJsonObject("data") { put("text", "Plugin text"); put("extension", "kept compatible") }
+                                    put("id", "lightnovelreader:simple_text")
+                                    put("data", SimpleTextComponentData("Extra text").toJsonElement())
                                 })
                             }
                         }
@@ -154,8 +148,8 @@ class EpubXhtmlWorkerTest {
             val doc = document(href)
             assertEquals(if (missingMetadata) "Untitled chapter" else "Chapter & \uD83D\uDE00", doc.rootElement.element("head").elementText("title"))
             assertTrue(doc.selectNodes("//*").all { (it as Element).namespaceURI == "http://www.w3.org/1999/xhtml" })
-            assertEquals(if (index % 2 == 0) "  A & <B> \uD83D\uDE00\uD840\uDC00Z\t&#0;  Plugin text" else "", doc.rootElement.element("body").stringValue)
-            assertEquals(if (index % 2 == 0) 2 else 0, doc.selectNodes("//*[local-name()='br']").size)
+            assertEquals(if (index % 2 == 0) "  A & <B> \uD83D\uDE00\uD840\uDC00Z\t&#0;  Extra text" else "", doc.rootElement.element("body").stringValue)
+            assertEquals(if (index % 2 == 0) 3 else 0, doc.selectNodes("//*[local-name()='br']").size)
             val images = doc.selectNodes("//*[local-name()='img']").map { (it as Element).attributeValue("src") }
             assertEquals(if (index % 2 == 0) 3 else 0, images.size)
             if (images.isNotEmpty()) assertEquals(2, images.distinct().size)

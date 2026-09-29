@@ -620,18 +620,16 @@ class SourcesViewModelTest {
         }
     }
 
-    @Test fun builtinAndPluginSettingsDoNotConstructLazyProviders(): Unit = runBlocking {
+    @Test fun builtinSettingsDoNotConstructLazyProviders(): Unit = runBlocking {
         Dispatchers.setMain(Dispatchers.Unconfined)
         val root = Files.createTempDirectory("registered-settings").toFile()
         val context = object : ContextWrapper(RuntimeEnvironment.getApplication()) { override fun getFilesDir() = root }
         val registry = WebSourceRegistry()
-        val ids = listOf(io.nightfish.lightnovelreader.api.identifier.Identifier("lightnovelreader", "Wenku8"),
-            io.nightfish.lightnovelreader.api.identifier.Identifier("plugin", "fixture"))
+        val id = io.nightfish.lightnovelreader.api.identifier.Identifier("lightnovelreader", "Wenku8")
         var constructions = 0
-        val registrations = ids.mapIndexed { index, id -> registry.register(SourceMetadata(
-            io.nightfish.lightnovelreader.api.web.WebDataSourceItem(id, id.id, "Fixture"), setOf(SourceCapability.Search), builtIn = index == 0)) {
-                constructions++; error("Opening basic settings must not create a provider")
-            }
+        val registration = registry.register(SourceMetadata(
+            io.nightfish.lightnovelreader.api.web.WebDataSourceItem(id, id.id, "Fixture"), setOf(SourceCapability.Search), builtIn = true)) {
+            constructions++; error("Opening basic settings must not create a provider")
         }
         val sources = mockk<ImportedRuleSources>()
         coEvery { sources.sourceGroups() } returns emptyList()
@@ -642,23 +640,19 @@ class SourcesViewModelTest {
         suspend fun idle() = withTimeout(10000) { model.state.first { !it.busy } }
         try {
             idle()
-            for (id in ids) {
-                model.select(id)
-                val state = idle()
-                assertEquals(id, state.selected)
-                if (id == ids.first()) {
-                    assertNull(state.network?.limitation)
-                    model.setBypassVpn(true)
-                    assertTrue(idle().network!!.bypassVpn)
-                    assertEquals(SourceNetworkMode.BypassVpn, SourceNetworkSettings(context, mockk()).mode(id))
-                } else assertNotNull(state.network?.limitation)
-                assertNull(state.loginForm)
-            }
+            model.select(id)
+            val state = idle()
+            assertEquals(id, state.selected)
+            assertNull(state.network?.limitation)
+            model.setBypassVpn(true)
+            assertTrue(idle().network!!.bypassVpn)
+            assertEquals(SourceNetworkMode.BypassVpn, SourceNetworkSettings(context, mockk()).mode(id))
+            assertNull(state.loginForm)
             assertEquals(0, constructions)
             assertTrue(registry.sources.value.all { it.status == SourceStatus.Registered })
             coVerify(exactly = 0) { sources.loginTarget(any()) }
             coVerify(exactly = 0) { sources.storedSettings(any(), any()) }
-        } finally { model.cancel(); registrations.forEach { it.unregister() }; Dispatchers.resetMain(); root.deleteRecursively() }
+        } finally { model.cancel(); registration.unregister(); Dispatchers.resetMain(); root.deleteRecursively() }
     }
 
     @Test fun absentOrInvalidLoginCannotOpenAnEmptyDialogOrRotateAccounts(): Unit = runBlocking {

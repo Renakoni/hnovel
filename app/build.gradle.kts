@@ -252,8 +252,6 @@ dependencies {
     implementation(libs.dom4j)
     implementation(libs.kotlin.result)
     implementation(libs.kotlin.result.coroutines)
-    // apksig
-    implementation(libs.apksig)
     // http
     implementation(libs.okhttp)
     implementation(libs.okhttp3.logging.interceptor)

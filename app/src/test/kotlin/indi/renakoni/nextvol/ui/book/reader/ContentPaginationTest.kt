@@ -2,7 +2,7 @@ package indi.renakoni.nextvol.ui.book.reader
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import fixtures.content.FixtureData
+import io.nightfish.lightnovelreader.api.content.component.SimpleTextComponentData
 import indi.renakoni.nextvol.ui.book.reader.content.flip.paginateComponents
 import io.nightfish.lightnovelreader.api.content.component.AbstractContentComponent
 import io.nightfish.lightnovelreader.api.content.component.AbstractDivisibleContentComponent
@@ -43,7 +43,7 @@ class ContentPaginationTest {
 
     @Test
     fun splitFailurePropagatesWithoutStartingLaterComponents() = runTest {
-        val failure = IllegalStateException("plugin split failed")
+        val failure = IllegalStateException("component split failed")
         var laterCalls = 0
         val components = listOf(
             Divisible { _, _ -> throw failure },
@@ -53,13 +53,13 @@ class ContentPaginationTest {
         assertEquals(0, laterCalls)
     }
 
-    private class Page(text: String) : AbstractContentComponent<FixtureData>(FixtureData(text)) {
+    private class Page(text: String) : AbstractContentComponent<SimpleTextComponentData>(SimpleTextComponentData(text)) {
         override val id = data.id
         @Composable override fun Content(modifier: Modifier) = Unit
     }
 
     private class Divisible(private val split: suspend (Int, Int) -> List<Page>) :
-        AbstractDivisibleContentComponent<Page, FixtureData>(FixtureData("divisible")) {
+        AbstractDivisibleContentComponent<Page, SimpleTextComponentData>(SimpleTextComponentData("divisible")) {
         override val id = data.id
         @Composable override fun Content(modifier: Modifier) = Unit
         override suspend fun split(height: Int, width: Int) = split.invoke(height, width)

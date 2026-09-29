@@ -37,8 +37,6 @@ import indi.renakoni.nextvol.ui.home.settings.formats.settingsFormatsDestination
 import indi.renakoni.nextvol.ui.home.settings.licenses.settingsLicensesDestination
 import indi.renakoni.nextvol.ui.home.settings.logcat.navigateToSettingsLogcatDestination
 import indi.renakoni.nextvol.ui.home.settings.logcat.settingsLogcatDestination
-import indi.renakoni.nextvol.ui.home.settings.pluginmanager.navigateToSettingsPluginManagerHomeDestination
-import indi.renakoni.nextvol.ui.home.settings.pluginmanager.settingsPluginManagerNavigation
 import indi.renakoni.nextvol.ui.home.settings.sources.settingsSourcesDestination
 import indi.renakoni.nextvol.ui.home.settings.sources.sourceDiagnosticDestination
 import indi.renakoni.nextvol.ui.home.settings.textformatting.editTextFormattingRuleDialog
@@ -76,7 +74,6 @@ fun NavGraphBuilder.settingsDestination() {
             onClickLogcat = navController::navigateToSettingsLogcatDestination,
             onClickTextFormatting = navController::navigateToSettingsTextFormattingManagerDestination,
             onClickReadAloud = navController::navigateToSpeechSettings,
-            onClickPluginManager = navController::navigateToSettingsPluginManagerHomeDestination,
             onClickBangumi = { navController.navigate(indi.renakoni.nextvol.ui.bangumi.BangumiRoute()) { launchSingleTop = true } },
             onClickThemeSettings = navController::navigateToSettingsThemeDestination,
             onClickStorageManager = navController::navigateToStorageManager,
@@ -102,7 +99,6 @@ fun NavGraphBuilder.settingsNavigation() {
         settingsAboutDestination()
         settingsThemeDestination()
         settingsTextFormattingNavigation()
-        settingsPluginManagerNavigation()
         settingsLicensesDestination()
         settingsFormatsDestination()
         speechSettingsDestination()

@@ -29,9 +29,8 @@ navigation remain [#79](https://github.com/Renakoni/hnovel/issues/79) and
   described below, without URL rows. Likewise, `upConfig` is a documented source-local
   host protocol; an exact upstream overload was not found. Neither is advertised as
   upstream differential compatibility.
-- External plugin API migration and publication boundaries are recorded in
-  [the API changelog](../../api/CHANGELOG.md); monorepo compilation is not binary
-  compatibility evidence for separately compiled plugins.
+- Internal source interface changes are recorded in
+  [the API changelog](../../api/CHANGELOG.md).
 
 ## Data, identity, and ownership
 
@@ -110,7 +109,7 @@ budgets, explicit variable writes, and host authority remain shared and bounded.
 ## List continuation (#385)
 
 Existing definitions retain integer `page` templates and stop on empty results. No
-bundled definition, category, grant, or external plugin API is changed. A legacy
+bundled definition, category, grant, or source interface is changed. A legacy
 empty list cannot prove whether the server ended or a script filtered every row;
 the host does not guess another request or manufacture a remote cursor.
 

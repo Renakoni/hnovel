@@ -38,7 +38,7 @@ class SourceNetworkSettingsTest {
         AndroidSourceNetworks(context).use { networks ->
             val first = SourceNetworkSettings(context, networks)
             val id = Identifier("rule", "a")
-            val other = Identifier("plugin", "a")
+            val other = Identifier("native", "a")
             assertEquals(SourceNetworkMode.SystemDefault, first.mode(id))
             first.setBypassVpn(id, true)
             assertEquals(SourceNetworkMode.SystemDefault, first.mode(other))

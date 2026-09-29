@@ -29,7 +29,7 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
-/** One registration generation. New callers never need a global provider or plugin manager. */
+/** One registration generation, resolved by source identity rather than a global provider. */
 class SourceRuntime internal constructor(
     val metadata: SourceMetadata,
     private val source: WebBookDataSource,

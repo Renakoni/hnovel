@@ -77,7 +77,7 @@ class RuleListPaginationTest {
         }
     }
 
-    @Test fun pagedSearchFollowsTheSameContinuationWithoutChangingThePluginSearchContract() = runBlocking {
+    @Test fun pagedSearchFollowsTheSameContinuation() = runBlocking {
         RuleSourceFixture().use { fixture ->
             fixture.pages()
             fixture.source(customize = ::definition).use { source ->
