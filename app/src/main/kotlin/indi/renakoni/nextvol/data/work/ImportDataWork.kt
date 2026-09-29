@@ -6,17 +6,16 @@ import android.util.Log
 import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import androidx.work.workDataOf
 import com.github.michaelbull.result.onErr
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import indi.renakoni.nextvol.data.backup.BackupException
+import indi.renakoni.nextvol.data.backup.BackupFailure
+import indi.renakoni.nextvol.data.backup.BackupFiles
 import indi.renakoni.nextvol.data.local.LocalDataManager
-import indi.renakoni.nextvol.data.local.cbor.AppLocalData
-import indi.renakoni.nextvol.utils.readAppLocalData
 import kotlinx.coroutines.CancellationException
-import kotlinx.serialization.ExperimentalSerializationApi
-import kotlinx.serialization.cbor.Cbor
-import kotlinx.serialization.decodeFromByteArray
-import java.io.FileInputStream
+import java.io.IOException
 
 @HiltWorker
 class ImportDataWork @AssistedInject constructor(
@@ -28,28 +27,29 @@ class ImportDataWork @AssistedInject constructor(
         const val TAG = "ImportDataWork"
     }
 
-    @OptIn(ExperimentalSerializationApi::class)
     override suspend fun doWork(): Result {
         val fileUri = inputData.getString("uri")?.let(Uri::parse) ?: return Result.failure()
         val overwrite = inputData.getBoolean("overwrite", false)
         val appLocalData = try {
-            applicationContext.contentResolver.openFileDescriptor(fileUri, "r")?.use { parcelFileDescriptor ->
-                FileInputStream(parcelFileDescriptor.fileDescriptor).use { inputStream ->
-                    Cbor.decodeFromByteArray<AppLocalData>(inputStream.readAppLocalData())
-                }
+            BackupFiles.read(applicationContext.cacheDir) {
+                applicationContext.contentResolver.openInputStream(fileUri)
+                    ?: throw IOException("Cannot open backup source")
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (e: Exception) {
             Log.e(TAG, "Failed to load file")
             e.printStackTrace()
-            return Result.failure()
-        } ?: return Result.failure()
+            return Result.failure(workDataOf(BackupException.ERROR_KEY to (e as? BackupException)?.reason?.name))
+        }
+        if (appLocalData.version != localDataManager.currentAppDataVersion) {
+            return Result.failure(workDataOf(BackupException.ERROR_KEY to BackupFailure.UNSUPPORTED_VERSION.name))
+        }
         try {
             localDataManager.validateBackup(appLocalData)
         } catch (failure: IllegalArgumentException) {
             Log.e(TAG, "Invalid backup identities", failure)
-            return Result.failure()
+            return Result.failure(workDataOf(BackupException.ERROR_KEY to BackupFailure.INVALID.name))
         }
         try {
             localDataManager.importAppLocalData(appLocalData, overwrite)

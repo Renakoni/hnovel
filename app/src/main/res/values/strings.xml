@@ -232,9 +232,9 @@
 
     <string name="data_settings">Data</string>
     <string name="settings_snap_data">Snapshot User Data</string>
-    <string name="settings_snap_data_desc">Create a snapshot of current user data as a .lnr file</string>
+    <string name="settings_snap_data_desc">Export user data as a NextVol Backup (.nvbackup)</string>
     <string name="settings_import_data">Import User Data</string>
-    <string name="settings_import_data_desc">Import user data from a selected .lnr file</string>
+    <string name="settings_import_data_desc">Import a NextVol Backup (.nvbackup) or a supported legacy .lnr backup</string>
     <string name="settings_storage_manager">Storage &amp; cleanup</string>
     <string name="settings_storage_manager_desc">View storage usage and clear reading cache or downloads.</string>
     <string name="settings_plugins">Plugin management</string>
@@ -739,7 +739,7 @@
     <string name="local_book_preview_hint">Tap a chapter to check its text and heading.</string>
     <string name="local_book_image_chapter">This chapter contains illustrations.</string>
     <string name="local_book_empty_chapter">This chapter contains only a heading.</string>
-    <string name="local_book_backup_note">Local files stay on this device. Existing .lnr sharing and backups do not include these files; keep the original EPUB or TXT for transfer to another device.</string>
+    <string name="local_book_backup_note">Local files stay on this device. NextVol backups and bookshelf sharing do not include these files; keep the original EPUB or TXT for transfer to another device.</string>
     <string name="local_book_stored_files">Imported original and parsed files</string>
     <string name="local_book_delete_title">Delete local books?</string>
     <string name="local_book_delete_originals">Selected imports will be removed from every bookshelf, and their original files and parsed content in this app will be permanently deleted. Other imported copies and files outside this app are kept. For online books, only the selected local cache is removed.</string>
