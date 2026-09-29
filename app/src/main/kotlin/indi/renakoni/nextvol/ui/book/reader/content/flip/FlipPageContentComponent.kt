@@ -1,5 +1,8 @@
 package indi.renakoni.nextvol.ui.book.reader.content.flip
 
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.first
+
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
@@ -57,6 +60,7 @@ import indi.renakoni.nextvol.ui.book.reader.content.readerBoundarySwipe
 import indi.renakoni.nextvol.ui.book.reader.content.ReaderVolumeDirection
 import indi.renakoni.nextvol.ui.book.reader.content.readerVolumeKeys
 import indi.renakoni.nextvol.ui.book.reader.content.LocalReaderSpeechFollow
+import indi.renakoni.nextvol.ui.book.reader.content.PrepareReaderSpeechIndex
 import indi.renakoni.nextvol.ui.book.reader.content.LocalReaderSpeechRanges
 import indi.renakoni.nextvol.ui.book.reader.content.readerSpeechManualScroll
 import indi.renakoni.nextvol.ui.home.settings.data.MenuOptions
@@ -124,6 +128,7 @@ private fun SimpleFlipPageTextComponent(
 ) {
     val scope = rememberCoroutineScope()
     val speech by rememberUpdatedState(LocalReaderSpeechFollow.current)
+    PrepareReaderSpeechIndex(chapterContent)
     val speechRanges = speech.ranges(chapterContent)
     val density = LocalDensity.current
     val layoutDirection = LocalLayoutDirection.current
@@ -232,6 +237,7 @@ private fun SimpleFlipPageTextComponent(
         }
         slippedContentComponentList = emptyList()
         uiState.updatePageState(PagerState { 0 })
+        snapshotFlow { !speech.awaitingIndex(chapterContent) }.first { it }
         pagination.submit(paginationInput, chapterContent.content, height, width) { result ->
             if (uiState.readingChapterContent?.get() !== chapterContent) return@submit
             slippedContentComponentList = result

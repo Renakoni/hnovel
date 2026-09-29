@@ -69,6 +69,7 @@ import indi.renakoni.nextvol.ui.book.reader.content.readerTapGestures
 import indi.renakoni.nextvol.ui.book.reader.content.readerVolumeKeys
 import indi.renakoni.nextvol.ui.book.reader.content.volumeKeyScrollDistance
 import indi.renakoni.nextvol.ui.book.reader.content.LocalReaderSpeechFollow
+import indi.renakoni.nextvol.ui.book.reader.content.PrepareReaderSpeechIndex
 import indi.renakoni.nextvol.ui.book.reader.content.LocalReaderSpeechRanges
 import indi.renakoni.nextvol.ui.book.reader.content.readerSpeechManualScroll
 import indi.renakoni.nextvol.ui.components.Loading
@@ -137,6 +138,7 @@ fun ScrollContentTextComponent(
     val textLayout = LocalReaderTextLayout.current
     val preparedChapters = uiState.contentList.mapIndexed { index, entry ->
         key(listState, entry?.first ?: "placeholder-$index") {
+            PrepareReaderSpeechIndex(entry?.second?.get())
             rememberPreparedScrollChapter(entry?.second?.get(), textLayout,
                 lazyColumnSize.width, lazyColumnSize.height)
         }
@@ -215,6 +217,7 @@ fun ScrollContentTextComponent(
         // The incoming speech anchor wins over the ordinary percentage restore.
         snapshotFlow {
             val prepared = latestPrepared.getOrNull(1)
+            if (prepared != null && speech.awaitingIndex(prepared.content)) return@snapshotFlow false
             val anchor = prepared?.let { speech.anchor(it.content) }
             anchor == null || anchor.componentIndex !in prepared.text || prepared.offsetFor(anchor) != null
         }.first { it }
