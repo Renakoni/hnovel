@@ -1,0 +1,274 @@
+package indi.renakoni.nextvol.reader
+
+import android.graphics.Bitmap
+import android.net.Uri
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.pager.PagerState
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.*
+import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.dp
+import androidx.navigation.compose.rememberNavController
+import androidx.room.Room
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import com.github.michaelbull.result.Ok
+import indi.renakoni.nextvol.R
+import indi.renakoni.nextvol.data.content.component.ImageComponent
+import indi.renakoni.nextvol.data.content.component.SimpleTextComponent
+import indi.renakoni.nextvol.data.local.room.NextVolDatabase
+import indi.renakoni.nextvol.data.userdata.UserDataRepository
+import indi.renakoni.nextvol.theme.AppTheme
+import indi.renakoni.nextvol.ui.LocalAppTheme
+import indi.renakoni.nextvol.ui.LocalReaderBookId
+import indi.renakoni.nextvol.ui.book.reader.*
+import indi.renakoni.nextvol.ui.book.reader.content.ChapterContentUiState
+import indi.renakoni.nextvol.ui.book.reader.content.flip.*
+import io.nightfish.lightnovelreader.api.content.component.AbstractContentComponent
+import io.nightfish.lightnovelreader.api.content.component.ImageComponentData
+import io.nightfish.lightnovelreader.api.content.component.SimpleTextComponentData
+import io.nightfish.lightnovelreader.api.ui.LocalNavController
+import io.nightfish.lightnovelreader.api.ui.theme.AppTypography
+import kotlinx.coroutines.*
+import org.junit.After
+import org.junit.Assert.*
+import org.junit.Before
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+import java.io.File
+
+@RunWith(AndroidJUnit4::class)
+class ReaderSpreadInstrumentedTest {
+    @get:Rule val compose = createAndroidComposeRule<ReaderSpreadTestActivity>()
+    private val context = InstrumentationRegistry.getInstrumentation().targetContext
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private lateinit var database: NextVolDatabase
+    private lateinit var baseSettings: SettingState
+    private lateinit var image: File
+
+    @Before fun prepare() {
+        database = Room.inMemoryDatabaseBuilder(context, NextVolDatabase::class.java).build()
+        baseSettings = SettingState(UserDataRepository(database.userDataDao()), scope)
+        image = File.createTempFile("spread-", ".png", context.cacheDir)
+        val bitmap = Bitmap.createBitmap(60, 180, Bitmap.Config.ARGB_8888)
+        bitmap.eraseColor(android.graphics.Color.BLUE)
+        for (x in 0 until bitmap.width) for (y in 0 until 20) {
+            bitmap.setPixel(x, y, android.graphics.Color.RED)
+            bitmap.setPixel(x, bitmap.height - 1 - y, android.graphics.Color.GREEN)
+        }
+        image.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        bitmap.recycle()
+    }
+
+    @After fun close() { scope.cancel(); database.close(); image.delete() }
+
+    @Test fun portraitImageFitsWithoutCroppingEitherEnd() {
+        Fixture()
+        val node = compose.onNodeWithTag("reader-leaf-1", useUnmergedTree = true)
+        compose.waitUntil(10_000) {
+            val pixels = node.captureToImage().asAndroidBitmap()
+            pixels.getPixel(pixels.width / 2, pixels.height / 2) == android.graphics.Color.BLUE
+        }
+        val pixels = node.captureToImage().asAndroidBitmap()
+        assertEquals(android.graphics.Color.RED, pixels.getPixel(pixels.width / 2, 10))
+        assertEquals(android.graphics.Color.GREEN, pixels.getPixel(pixels.width / 2, pixels.height - 11))
+        assertNotEquals(android.graphics.Color.BLUE, pixels.getPixel(10, pixels.height / 2))
+    }
+
+    @Test fun imageFailureAndRetryKeepTheSameRealLeafSequence() {
+        assertTrue(image.delete())
+        val fixture = Fixture()
+        val retry = hasText(context.getString(R.string.action_retry)) and
+            hasAnyAncestor(hasTestTag("reader-leaf-1"))
+        compose.waitUntil(10_000) { compose.onAllNodes(retry).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNode(retry).performClick()
+        compose.waitForIdle()
+        assertEquals(5, fixture.flip.realLeafCount)
+        assertEquals(0..1, fixture.flip.visibleLeafRange)
+        fixture.turn(true)
+        assertEquals(2..3, fixture.flip.visibleLeafRange)
+    }
+
+    @Test fun fiveLeavesNavigateAsThreeDisjointScreens() {
+        val fixture = Fixture()
+        assertEquals(5, fixture.flip.realLeafCount)
+        assertEquals(3, fixture.flip.pagerState.pageCount)
+        assertEquals(0..1, fixture.flip.visibleLeafRange)
+        fixture.turn(true)
+        assertEquals(2..3, fixture.flip.visibleLeafRange)
+        fixture.turn(true)
+        assertEquals(4..4, fixture.flip.visibleLeafRange)
+        compose.onNodeWithTag("reader-leaf-5", useUnmergedTree = true).assertDoesNotExist()
+        fixture.turn(false)
+        assertEquals(2..3, fixture.flip.visibleLeafRange)
+    }
+
+    @Test fun rtlChangesPhysicalSidesButNotLeafOrderOrOddEnding() {
+        val fixture = Fixture(LayoutDirection.Rtl)
+        val first = compose.onNodeWithTag("reader-leaf-0", useUnmergedTree = true).fetchSemanticsNode()
+        val second = compose.onNodeWithTag("reader-leaf-1", useUnmergedTree = true).fetchSemanticsNode()
+        val firstLeafLeft = first.boundsInRoot.left
+        assertTrue(first.boundsInRoot.left > second.boundsInRoot.left)
+        assertEquals(488f, first.boundsInRoot.width, 1f)
+        assertEquals(first.boundsInRoot.width, second.boundsInRoot.width, 0f)
+        assertEquals(0f, first.config[SemanticsProperties.TraversalIndex], 0f)
+        assertEquals(1f, second.config[SemanticsProperties.TraversalIndex], 0f)
+        fixture.turn(true); fixture.turn(true)
+        val last = compose.onNodeWithTag("reader-leaf-4", useUnmergedTree = true).fetchSemanticsNode()
+        assertEquals(firstLeafLeft, last.boundsInRoot.left, 0f)
+        assertEquals(4..4, fixture.flip.visibleLeafRange)
+    }
+
+    @Test fun oddChaptersCommitTheirOwnMappingAndReverseToPreviousLastScreen() {
+        val fixture = Fixture()
+        fixture.turn(true); fixture.turn(true); fixture.turn(true)
+        compose.waitUntil(10_000) { fixture.flip.readingChapterId == "two" }
+        assertEquals(0..1, fixture.flip.visibleLeafRange)
+        fixture.turn(false)
+        compose.waitUntil(10_000) { fixture.flip.readingChapterId == "one" }
+        assertEquals(4..4, fixture.flip.visibleLeafRange)
+        assertEquals(2, fixture.commits)
+    }
+
+    @Test fun resizeRetainsTheSourceLeafInsteadOfTheOldScreenIndex() {
+        val fixture = Fixture()
+        fixture.turn(true)
+        val previous = fixture.flip.pagerState
+        compose.runOnIdle { fixture.width = 600.dp }
+        compose.waitUntil(10_000) { fixture.flip.pagerState !== previous && fixture.flip.pagerState.pageCount == 5 }
+        compose.waitForIdle()
+        assertEquals(2..2, fixture.flip.visibleLeafRange)
+        val narrow = fixture.flip.pagerState
+        compose.runOnIdle { fixture.width = 1000.dp }
+        compose.waitUntil(10_000) { fixture.flip.pagerState !== narrow && fixture.flip.pagerState.pageCount == 3 }
+        compose.waitForIdle()
+        assertEquals(2..3, fixture.flip.visibleLeafRange)
+    }
+
+    @Test fun animatedPageTurnsMoveWholeSpreads() {
+        val fixture = Fixture(animated = true)
+        fixture.turn(true)
+        assertEquals(2..3, fixture.flip.visibleLeafRange)
+        fixture.turn(false)
+        assertEquals(0..1, fixture.flip.visibleLeafRange)
+    }
+
+    @Test fun reducedMotionDoesNotChangeTheStoredAnimationOrSpreadStep() {
+        val fixture = Fixture(animated = true, reduced = true)
+        fixture.turn(true)
+        assertEquals(2..3, fixture.flip.visibleLeafRange)
+        assertEquals("scroll", fixture.settings.flipAnime)
+        assertFalse(fixture.settings.animatePageTurns)
+    }
+
+    @Test fun unverifiedComponentFallsBackForTheWholeChapter() {
+        val fixture = Fixture(unsupported = true)
+        assertEquals(5, fixture.flip.pagerState.pageCount)
+        assertEquals(0..0, fixture.flip.visibleLeafRange)
+        fixture.turn(true)
+        assertEquals(1..1, fixture.flip.visibleLeafRange)
+    }
+
+    private inner class Fixture(
+        val direction: LayoutDirection = LayoutDirection.Ltr,
+        animated: Boolean = false,
+        reduced: Boolean = false,
+        private val unsupported: Boolean = false,
+    ) {
+        val settings = object : ReaderSettings by baseSettings {
+            override val isUsingFlipPage = true
+            override val isUsingClickFlipPage = true
+            override val fastChapterChange = true
+            override val flipAnime = if (animated) "scroll" else "none"
+            override val reduceMotion = reduced
+        }
+        private val repository = UserDataRepository(database.userDataDao())
+        private fun text(value: String) = SimpleTextComponent(SimpleTextComponentData(value), repository, context)
+        private fun chapter(id: String, prev: String?, next: String?) = ChapterContentUiState(id, id, listOf(
+            if (unsupported) object : AbstractContentComponent<ImageComponentData>(ImageComponentData(Uri.fromFile(image))) {
+                override val id = ImageComponentData.id
+                @Composable override fun Content(modifier: Modifier) { Text("SPECIAL", modifier) }
+            } else text("$id first"),
+            ImageComponent(ImageComponentData(Uri.fromFile(image))),
+            text("$id middle"), ImageComponent(ImageComponentData(Uri.fromFile(image))), text("$id last"),
+        ), prev, next)
+        private val one = chapter("one", null, "two")
+        private val two = chapter("two", "one", null)
+        var width by mutableStateOf(1000.dp)
+        var commits = 0
+        val flip = MutableFlipPageContentUiState(
+            loadNextChapter = { stage(two, ChapterEntry.Start) },
+            loadPrevChapter = { stage(one, ChapterEntry.End) },
+            changeChapter = {},
+            updatePageState = { update(it) },
+            commitPendingChapter = { pending, pager -> commit(pending, pager) },
+            cancelPendingChapter = { cancel() },
+        ).apply { bookId = "spread-book"; readingChapterId = one.id; readingChapterContent = Ok(one) }
+
+        init {
+            compose.setContent {
+                val colors = lightColorScheme()
+                val navController = rememberNavController()
+                CompositionLocalProvider(
+                    LocalDensity provides Density(1f), LocalLayoutDirection provides direction,
+                    LocalReaderBookId provides "spread-book", LocalNavController provides navController,
+                ) {
+                    MaterialTheme(colorScheme = colors, typography = AppTypography) {
+                        CompositionLocalProvider(
+                            LocalAppTheme provides AppTheme(false, colors),
+                            LocalReaderTextLayout provides rememberReaderTextLayout(settings),
+                        ) {
+                            Box(Modifier.width(width).height(600.dp).testTag("spread-host")) {
+                                FlipPageContentComponent(Modifier, flip, settings, PaddingValues(0.dp), {}, {}, {})
+                            }
+                        }
+                    }
+                }
+            }
+            compose.waitUntil(15_000) { flip.pagerState.pageCount > 0 }
+            compose.waitForIdle()
+        }
+
+        private fun update(pager: PagerState) { flip.pagerState = pager }
+        private fun stage(chapter: ChapterContentUiState, entry: ChapterEntry) {
+            flip.pendingChapter = FlipChapterTransition(chapter.id, entry, Ok(chapter))
+        }
+        private fun cancel() { flip.pendingChapter = null }
+        private fun commit(pending: FlipChapterTransition, pager: PagerState): Boolean {
+            if (flip.pendingChapter !== pending) return false
+            flip.readingChapterId = pending.chapterId
+            flip.readingChapterContent = pending.result
+            flip.pagerState = pager
+            flip.pendingChapter = null
+            commits++
+            return true
+        }
+        fun turn(forward: Boolean) {
+            compose.onNodeWithTag("spread-host").performTouchInput {
+                val physicalRight = forward == (direction == LayoutDirection.Ltr)
+                click(Offset(width * if (physicalRight) 0.96f else 0.04f, 4f))
+            }
+            compose.waitForIdle()
+        }
+    }
+}

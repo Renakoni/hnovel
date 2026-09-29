@@ -604,4 +604,5 @@
     <string name="log_empty_file_desc">这份文件没有日志内容</string>
     <string name="log_empty_current_desc">新的日志会显示在这里，修改等级后需重启应用</string>
     <string name="book_directory_incomplete">目录未加载完整，当前仅显示已获取的章节。</string>
+    <string name="reader_visible_page_range">第 %1$d–%2$d 页，共 %3$d 页</string>
 </resources>

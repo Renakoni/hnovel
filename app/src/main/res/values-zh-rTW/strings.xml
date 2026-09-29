@@ -605,4 +605,5 @@
     <string name="source_verification_failed">驗證未完成，或書源帳號已變更。請從該書源重試。</string>
     <string name="discovery_verification_required">網站驗證尚未完成，請重試以開啟驗證頁面。</string>
     <string name="book_directory_incomplete">目錄尚未載入完整，目前僅顯示已取得的章節。</string>
+    <string name="reader_visible_page_range">第 %1$d–%2$d 頁，共 %3$d 頁</string>
 </resources>
