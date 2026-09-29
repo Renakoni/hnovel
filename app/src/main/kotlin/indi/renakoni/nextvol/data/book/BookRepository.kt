@@ -207,7 +207,8 @@ class BookRepository @Inject constructor(
     override suspend fun updateUserReadingData(id: String, update: (UserReadingData) -> UserReadingData) =
         readingDataRepository.updateUserReadingData(id, update)
 
-    fun cacheBook(bookId: String): Flow<WorkInfo?> = downloadScheduler.enqueue(BookIdentity.book(bookId))
+    fun cacheBook(bookId: String, refresh: Boolean = false): Flow<WorkInfo?> =
+        downloadScheduler.enqueue(BookIdentity.book(bookId), refresh)
 
     suspend fun dismissDownload(bookId: String): Unit = downloadScheduler.dismiss(BookIdentity.book(bookId))
 

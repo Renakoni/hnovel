@@ -12,4 +12,12 @@ internal fun restorePre25DownloadSchema(execSql: (String) -> Unit) {
     execSql("DROP TABLE downloaded_chapter_v27")
     execSql("CREATE INDEX index_downloaded_chapter_bookId ON downloaded_chapter (bookId)")
     execSql("DROP TABLE download_chapter_candidate")
+    restorePre28ChapterSchema(execSql)
+}
+
+internal fun restorePre28ChapterSchema(execSql: (String) -> Unit) {
+    execSql("ALTER TABLE chapter_content RENAME TO chapter_content_v28")
+    execSql("CREATE TABLE chapter_content (id TEXT NOT NULL PRIMARY KEY, title TEXT NOT NULL, content TEXT NOT NULL, lastChapter TEXT NOT NULL, nextChapter TEXT NOT NULL)")
+    execSql("INSERT INTO chapter_content SELECT id, title, content, lastChapter, nextChapter FROM chapter_content_v28")
+    execSql("DROP TABLE chapter_content_v28")
 }

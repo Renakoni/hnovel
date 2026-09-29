@@ -210,6 +210,7 @@ class CacheBookWork @AssistedInject constructor(
             val active = downloads.begin(book, inputData.getLong("downloadGeneration", 0), id.toString(), requireTask = true)
             attempt = active
             val revision = bookRepository.sourceRevision(book)
+            val refreshId = checkNotNull(downloads.entry(book)).taskRefreshId
             val result = coroutineBinding<Unit, WebRequestError> {
                 mark(DownloadStage.Directory)
                 val volumes = bookRepository.downloadDirectory(book).bind()
@@ -217,7 +218,7 @@ class CacheBookWork @AssistedInject constructor(
                 check(chapters.isNotEmpty()) { "Source returned an empty directory" }
                 val cover = information.coverUri.toString()
                 mark(DownloadStage.Storage)
-                val unchanged = downloads.target(active, volumes, revision, cover)
+                val unchanged = downloads.target(active, volumes, revision, cover) && refreshId.isEmpty()
                 val fetchedImages = mutableSetOf<String>()
                 // The static-rule replay gate excludes scripts and shared book variables.
                 // Use the transport's option parser, including single-quoted request options.
@@ -234,10 +235,12 @@ class CacheBookWork @AssistedInject constructor(
                     val chapterResult = try {
                         coroutineBinding<Unit, WebRequestError> {
                             mark(DownloadStage.Body, chapter.id)
-                            val checkpoint = downloads.checkpoint(active, chapter.id, signature) ?: run {
-                                val content = bookRepository.downloadChapter(book, chapter.id).bind()
+                            val checkpoint = downloads.checkpoint(active, chapter.id, signature, refreshId) ?: run {
+                                val content = (if (refreshId.isEmpty())
+                                    downloads.readingContent(active, chapter.id, signature, revision) else null)
+                                    ?: bookRepository.downloadChapter(book, chapter.id).bind()
                                 mark(DownloadStage.Storage, chapter.id)
-                                downloads.saveCandidate(active, content, signature)
+                                downloads.saveCandidate(active, content, signature, refreshId)
                             }
                             for (uri in checkpoint.images) {
                                 if (!downloads.hasCheckpointImage(active, checkpoint, uri)) {

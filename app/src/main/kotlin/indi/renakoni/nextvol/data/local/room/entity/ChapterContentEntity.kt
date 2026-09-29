@@ -22,7 +22,8 @@ data class ChapterContentEntity(
     val content: JsonObject,
     @ColumnInfo(name = "lastChapter")
     val prevChapter: String,
-    val nextChapter: String
+    val nextChapter: String,
+    @ColumnInfo(defaultValue = "''") val sourceRevision: String = ""
 ): Mergeable<ChapterContentEntity> {
     override fun merge(new: ChapterContentEntity): ChapterContentEntity = new
 }

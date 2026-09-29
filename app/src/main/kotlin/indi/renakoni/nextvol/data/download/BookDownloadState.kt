@@ -2,6 +2,7 @@ package indi.renakoni.nextvol.data.download
 
 import indi.renakoni.nextvol.data.book.BookIdentity
 import io.nightfish.lightnovelreader.api.book.BookVolumes
+import io.nightfish.lightnovelreader.api.book.ChapterContent
 import io.nightfish.lightnovelreader.api.book.ChapterInformation
 import java.security.MessageDigest
 
@@ -19,6 +20,10 @@ internal fun downloadDirectoryHash(volumes: BookVolumes): String = downloadHash(
 internal fun downloadChapterSignature(chapters: List<ChapterInformation>, index: Int, revision: String): String =
     downloadHash(BookIdentity.encode("download-chapter", listOf(revision, chapters[index].id, chapters[index].title,
         chapters.getOrNull(index - 1)?.id.orEmpty(), chapters.getOrNull(index + 1)?.id.orEmpty())))
+
+internal fun downloadChapterSignature(chapter: ChapterContent, revision: String): String =
+    downloadHash(BookIdentity.encode("download-chapter", listOf(revision, chapter.id, chapter.title,
+        chapter.prevChapter.orEmpty(), chapter.nextChapter.orEmpty())))
 
 internal fun downloadHash(value: String): String = MessageDigest.getInstance("SHA-256")
     .digest(value.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }

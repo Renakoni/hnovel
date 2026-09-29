@@ -124,9 +124,9 @@ class DetailViewModel @Inject constructor(
         }
     }
 
-    fun cacheBook(bookId: String): Flow<WorkInfo?> {
+    fun cacheBook(bookId: String, refresh: Boolean = false): Flow<WorkInfo?> {
         if (!_uiState.canCache) return flowOf(null)
-        return bookRepository.cacheBook(bookId)
+        return bookRepository.cacheBook(bookId, refresh)
     }
 
     suspend fun tagPage(tag: String) = book?.let { bookRepository.bookTagPage(it, tag) }

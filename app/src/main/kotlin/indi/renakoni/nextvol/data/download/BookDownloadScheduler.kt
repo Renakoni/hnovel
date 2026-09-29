@@ -39,7 +39,7 @@ class BookDownloadScheduler @Inject constructor(
     private val submissions = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val lock = Mutex()
 
-    fun enqueue(requested: SourceBookId): Flow<WorkInfo?> {
+    fun enqueue(requested: SourceBookId, refresh: Boolean = false): Flow<WorkInfo?> {
         if (LocalBookStore.isLocal(requested)) return flowOf(null)
         val generation = downloads.generation()
         // Submission is eager; automatic bookshelf downloads do not collect the result.
@@ -58,7 +58,7 @@ class BookDownloadScheduler @Inject constructor(
                 .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
                 .setInputData(workDataOf("bookId" to book.storageKey, "downloadGeneration" to generation, "persistedTask" to true))
                 .build()
-            downloads.queueTask(book, generation, request.id.toString())
+            downloads.queueTask(book, generation, request.id.toString(), refresh)
             workManager.enqueueUniqueWork(name,
                 if (revoked) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP, request).await()
             request.id

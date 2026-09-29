@@ -21,6 +21,8 @@ internal class BookRepositoryFixture {
     }
     val local = mockk<LocalBookDataSource> {
         every { aliases } returns this@BookRepositoryFixture.aliases
+        coEvery { getReusableChapterContent(any(), any()) } returns null
+        coEvery { updateChapterContent(any(), any()) } coAnswers { updateChapterContent(firstArg()) }
     }
     val remote = mockk<ProxyWebBookDataSource>()
     var activeRemote = remote
