@@ -54,7 +54,7 @@ class MetadataDetailScreenTest {
         activity.get().setContent {
             CompositionLocalProvider(LocalNavController provides NavHostController(activity.get()),
                 LocalSnackbarHost provides SnackbarHostState(), LocalClaimSnackbarHost provides {}) {
-                MaterialTheme { DetailScreen(state, {}, {}, {}, {}, cache, bookmark, {}, {}, {}, retry) }
+                MaterialTheme { DetailScreen(state, {}, {}, {}, {}, { id, _ -> cache(id) }, bookmark, {}, {}, {}, retry) }
             }
         }
     }

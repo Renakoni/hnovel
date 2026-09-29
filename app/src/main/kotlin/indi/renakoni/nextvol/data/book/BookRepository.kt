@@ -197,7 +197,7 @@ class BookRepository @Inject constructor(
     override suspend fun updateUserReadingData(id: String, update: (UserReadingData) -> UserReadingData) =
         readingDataRepository.updateUserReadingData(id, update)
 
-    fun cacheBook(bookId: String): Flow<WorkInfo?> {
+    fun cacheBook(bookId: String, refresh: Boolean = false): Flow<WorkInfo?> {
         if (LocalBookStore.isLocal(BookIdentity.book(bookId))) return flowOf(null)
         val generation = downloads.generation()
         // Submission remains eager: existing callers need not collect the returned flow.
@@ -215,7 +215,7 @@ class BookRepository @Inject constructor(
                 .addTag(CacheBookWork.generationTag(generation))
                 .setInputData(workDataOf("bookId" to book.storageKey, "downloadGeneration" to generation, "persistedTask" to true))
                 .build()
-            downloads.queueTask(book, generation, request.id.toString())
+            downloads.queueTask(book, generation, request.id.toString(), refresh)
             // A revoked cooldown must not absorb a new submission through KEEP.
             workManager.enqueueUniqueWork(name,
                 if (revoked) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP, request).await()

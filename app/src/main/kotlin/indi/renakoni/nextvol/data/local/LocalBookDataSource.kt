@@ -60,19 +60,31 @@ class LocalBookDataSource @Inject constructor(
             }
         }
     }
-    override suspend fun updateChapterContent(chapterContent: ChapterContent) {
+    suspend fun getReusableChapterContent(id: String, revision: String): ChapterContent? {
+        val chapter = SourceChapterId.fromStorageKey(id)
+        return aliases.withResolved(chapter.book) { canonical ->
+            chapterContentDao.reusable(SourceChapterId(canonical, chapter.remoteId).storageKey, revision)?.let {
+                ChapterContent(it.id, it.title, it.content, it.prevChapter.ifEmpty { null }, it.nextChapter.ifEmpty { null })
+                    .rebind(canonical, chapter.book)
+            }
+        }
+    }
+
+    override suspend fun updateChapterContent(chapterContent: ChapterContent) = updateChapterContent(chapterContent, "")
+
+    internal suspend fun updateChapterContent(chapterContent: ChapterContent, sourceRevision: String) {
         val chapter = SourceChapterId.fromStorageKey(chapterContent.id)
         listOfNotNull(chapterContent.prevChapter, chapterContent.nextChapter).forEach {
             require(SourceChapterId.fromStorageKey(it).book == chapter.book)
         }
         aliases.withResolved(chapter.book) { canonical ->
             val rebound = chapterContent.rebind(chapter.book, canonical)
-            if (chapter.book == canonical) chapterContentDao.cache(rebound)
+            if (chapter.book == canonical) chapterContentDao.cache(rebound, sourceRevision)
             else {
                 val chapters = bookVolumesDao.getBookVolumes(canonical.storageKey)?.volumes.orEmpty().flatMap { it.chapters }
                 val index = chapters.indexOfFirst { it.id == rebound.id }
                 if (index >= 0) chapterContentDao.cache(ChapterContent(rebound.id, rebound.title, rebound.content,
-                    chapters.getOrNull(index - 1)?.id, chapters.getOrNull(index + 1)?.id))
+                    chapters.getOrNull(index - 1)?.id, chapters.getOrNull(index + 1)?.id), sourceRevision)
             }
         }
     }

@@ -147,7 +147,7 @@ fun DetailScreen(
     onClickBackButton: () -> Unit,
     onClickChapter: (String) -> Unit,
     onClickRead: () -> Unit,
-    cacheBook: (String) -> Unit,
+    cacheBook: (String, Boolean) -> Unit,
     requestAddBookToBookshelf: (String) -> Unit,
     onClickTag: (String) -> Unit,
     onClickCover: (Uri) -> Unit,
@@ -561,7 +561,7 @@ private fun DetailContent(
     bookInformation: BookInformation,
     lazyListState: LazyListState,
     onClickChapter: (String) -> Unit,
-    cacheBook: (String) -> Unit,
+    cacheBook: (String, Boolean) -> Unit,
     requestAddBookToBookshelf: (String) -> Unit,
     onClickTag: (String) -> Unit,
     onClickCover: (Uri) -> Unit,
@@ -619,7 +619,7 @@ private fun DetailContent(
                 canCache = uiState.canCache,
                 downloadItem = uiState.downloadItem,
                 onClickAddToBookShelf = { requestAddBookToBookshelf(bookInformation.id) },
-                onClickCache = { cacheBook(bookInformation.id) },
+                onClickCache = { refresh -> cacheBook(bookInformation.id, refresh) },
                 onClickShowInfo = onClickShowInfo
             )
             if (uiState.downloadState.content.phase != BookDownloadPhase.None) {
@@ -1082,7 +1082,7 @@ private fun QuickOperationsBlock(
     canCache: Boolean,
     downloadItem: DownloadItem?,
     onClickAddToBookShelf: () -> Unit,
-    onClickCache: () -> Unit,
+    onClickCache: (Boolean) -> Unit,
     onClickShowInfo: () -> Unit
 ) {
     val bookmark = painterResource(R.drawable.bookmark_add_24px)
@@ -1133,7 +1133,8 @@ private fun QuickOperationsBlock(
                     downloadItem?.progress?.takeIf { it >= 0f && it < 1f }?.let { "${(it * 100).toInt()}%" }
                 else action?.takeIf { canCache }?.let { stringResource(it) },
                 enabled = canCache && phase != BookDownloadPhase.Updating,
-                onClick = onClickCache,
+                onClick = { onClickCache(!downloadState.task.canResume &&
+                    phase in setOf(BookDownloadPhase.Complete, BookDownloadPhase.Outdated)) },
                 modifier = Modifier.weight(1f),
             )
         }
