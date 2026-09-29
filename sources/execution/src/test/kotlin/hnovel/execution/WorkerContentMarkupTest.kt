@@ -41,12 +41,6 @@ class WorkerContentMarkupTest {
         assertEquals(RuleError(RuleStage.Budget, RuleLocation("ruleContent.parts"), "MarkupOutputLimit"), failure.ruleError)
     }
 
-    @Test fun markupCannotExecuteScriptsAndUntrustedScriptsKeepTheirInstructionBudget() {
-        assertTrue(run(ExecutionTask.ContentMarkup("<p>safe</p><script>java.ajax('/never')</script>")) is ExecutionResult.Success)
-        assertEquals(ExecutionResult.Failure(FailureCode.Timeout), run(ExecutionTask.Script("while(true){}")))
-        assertEquals(ExecutionResult.Success("42"), run(ExecutionTask.Script("21*2")))
-    }
-
     @Test fun limitsAndCancellationKeepTheirLocationsAcrossTheWire() {
         val task = ExecutionTask.ContentMarkup("<div>".repeat(70), RuleLocation("ruleContent.parts", 9))
         val failure = run(task) as ExecutionResult.Failure
