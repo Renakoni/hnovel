@@ -31,6 +31,26 @@ import org.robolectric.annotation.Config
 @OptIn(ExperimentalCoroutinesApi::class)
 class ProxyCoalescingWebBookDataSourceTest {
     @Test
+    fun nonReplayableDownloadKeepsItsVersionAndCancelsItsRemoteRequest() = runTest {
+        val remote = mockk<ProxyWebBookDataSource>()
+        val version = indi.renakoni.nextvol.data.web.SourceRequestVersion(mockk())
+        val seen = mutableListOf<indi.renakoni.nextvol.data.web.SourceRequestVersion?>()
+        val cancelled = CompletableDeferred<Unit>()
+        coEvery { remote.getBookVolumes("same", any()) } coAnswers {
+            seen += kotlinx.coroutines.currentCoroutineContext()[indi.renakoni.nextvol.data.web.SourceRequestVersion]
+            try { awaitCancellation() } finally { cancelled.complete(Unit) }
+        }
+        val proxy = ProxyCoalescingWebBookDataSource(remote, StandardTestDispatcher(testScheduler))
+        try {
+            val request = async(version) { proxy.getBookVolumes("same", WebDataSourcePriority.Low) }
+            runCurrent()
+            assertEquals(listOf(version), seen)
+            request.cancelAndJoin()
+            assertTrue(cancelled.isCompleted)
+        } finally { proxy.closeAndJoin() }
+    }
+
+    @Test
     fun foregroundOwnershipDoesNotLeakIntoAnIdenticalBackgroundRequest() = runTest {
         val remote = mockk<ProxyWebBookDataSource>()
         val release = CompletableDeferred<Unit>()

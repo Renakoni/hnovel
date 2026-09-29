@@ -240,7 +240,7 @@ class DownloadRecoveryTest {
             queue(); retryAfter = "0"
             for ((index, path) in listOf("/toc2", "/c/2", "/image.png").withIndex()) {
                 failedPath = path
-                assertEquals(Result.retry(), run())
+                assertEquals(path, Result.retry(), run())
                 assertEquals(index + 1, owner().taskRetryCount)
                 assertEquals(listOf(30_000L, 60_000L, 120_000L)[index], owner().taskNextAttemptAt - now)
                 now = owner().taskNextAttemptAt
