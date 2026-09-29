@@ -10,7 +10,7 @@ import io.nightfish.lightnovelreader.api.error.WebRequestError
 /** Only reading UI may use these volumes; downloads and update checks still receive an error. */
 internal class PartialBookVolumesException(val volumes: BookVolumes, val failure: SourceContentException) :
     SourceContentException(failure.code, failure.field, failure.denial, failure.dependency,
-        failure.verification, failure.diagnostic, failure.httpStatus) {
+        failure.verification, failure.diagnostic, failure.httpStatus, failure.retry) {
     init { initCause(failure) }
 }
 

@@ -1,11 +1,17 @@
 package indi.renakoni.nextvol.data.download
 
-/** Older-version fixtures must remove v25 columns before exercising the real migration chain. */
+/** Older-version fixtures must remove later additions before exercising the real migration chain. */
 internal fun restorePre25DownloadSchema(execSql: (String) -> Unit) {
     execSql("ALTER TABLE book_download RENAME TO book_download_v25")
     execSql("CREATE TABLE book_download (bookId TEXT NOT NULL PRIMARY KEY, revision TEXT NOT NULL, directoryHash TEXT NOT NULL, phase TEXT NOT NULL, generation INTEGER NOT NULL, attempt TEXT NOT NULL, coverUri TEXT NOT NULL)")
     execSql("INSERT INTO book_download SELECT bookId, revision, directoryHash, phase, generation, attempt, coverUri FROM book_download_v25")
     execSql("DROP TABLE book_download_v25")
+    execSql("ALTER TABLE downloaded_chapter RENAME TO downloaded_chapter_v27")
+    execSql("CREATE TABLE downloaded_chapter (id TEXT NOT NULL PRIMARY KEY, bookId TEXT NOT NULL, signature TEXT NOT NULL, images TEXT NOT NULL)")
+    execSql("INSERT INTO downloaded_chapter SELECT id, bookId, signature, images FROM downloaded_chapter_v27")
+    execSql("DROP TABLE downloaded_chapter_v27")
+    execSql("CREATE INDEX index_downloaded_chapter_bookId ON downloaded_chapter (bookId)")
+    execSql("DROP TABLE download_chapter_candidate")
     restorePre28ChapterSchema(execSql)
 }
 

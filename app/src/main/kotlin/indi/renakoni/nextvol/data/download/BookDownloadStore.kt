@@ -236,7 +236,8 @@ class BookDownloadStore @Inject constructor(@ApplicationContext private val cont
         migrateLegacy()
         val canonical = database.bookAliasDao().get(image.book.storageKey)?.let(SourceBookId::fromStorageKey) ?: image.book
         val owner = dao.get(canonical.storageKey) ?: return@withLock null
-        val chapter = if (image.cover) null else if (image.chapterId != null) dao.chapter(image.chapterId)
+        val chapter = if (image.cover) null else if (image.chapterId != null) dao.chapter(
+            SourceChapterId(canonical, BookIdentity.chapter(image.chapterId, image.book).remoteId).storageKey)
             ?.takeIf { it.bookId == canonical.storageKey } else dao.chapters(canonical.storageKey).firstOrNull {
                 image.uri in Json.decodeFromString<List<String>>(it.images)
             }
