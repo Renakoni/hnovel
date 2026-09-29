@@ -163,7 +163,8 @@ class NativeBrowserInstrumentedTest {
 
     @Test fun desktopUserAgentReachesNativeNavigationAndClientHints(): Unit = runBlocking { fixture { broker, server ->
         server.dispatcher = object : Dispatcher() {
-            override fun dispatch(request: RecordedRequest) = MockResponse().setHeader("Content-Type", "text/html").setBody("""
+            override fun dispatch(request: RecordedRequest) = MockResponse().setHeader("Content-Type", "text/html")
+                .setHeader("Set-Cookie", "private-probe=private-token; Path=/; SameSite=Lax").setBody("""
                 <html><head><link rel="icon" href="data:,"></head><body><script>
                 window.answer=JSON.stringify({http:${JsonPrimitive(request.getHeader("User-Agent"))},
                     dom:navigator.userAgent,hints:navigator.userAgentData ? navigator.userAgentData.toJSON() : null});
@@ -180,6 +181,17 @@ class NativeBrowserInstrumentedTest {
         val settings = checkNotNull(events.single { it.evidence == RequestEvidence.WebViewSettings }.webView)
         assertEquals(true, settings.matchesRequested)
         assertEquals(UserAgentSummary.from(ua), settings.userAgent)
+        val environment = checkNotNull(settings.environment)
+        assertNotNull(environment.packageName)
+        assertNotNull(environment.versionName)
+        assertEquals(androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.USER_AGENT_METADATA), environment.userAgentMetadata)
+        assertEquals(androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.GET_COOKIE_INFO), environment.cookieInfo)
+        val snapshots = events.filter { it.evidence == RequestEvidence.CookieSnapshot }.map { checkNotNull(it.cookies) }
+        assertTrue(snapshots.isNotEmpty())
+        assertTrue(snapshots.all { it.store == CookieStore.NativeBrowser && it.completeMetadata == environment.cookieInfo })
+        assertTrue(snapshots.any { (it.selected ?: 0) > 0 })
+        assertFalse(events.toString().contains("private-probe"))
+        assertFalse(events.toString().contains("private-token"))
         assertEquals(1, events.map { it.requestId }.distinct().size)
         assertTrue(events.none { it.evidence == RequestEvidence.TransportHeaders })
         assertFalse(events.toString().contains(ua))
