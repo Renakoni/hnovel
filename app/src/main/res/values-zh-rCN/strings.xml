@@ -604,4 +604,20 @@
     <string name="log_empty_file_desc">这份文件没有日志内容</string>
     <string name="log_empty_current_desc">新的日志会显示在这里，修改等级后需重启应用</string>
     <string name="book_directory_incomplete">目录未加载完整，当前仅显示已获取的章节。</string>
+    <string name="pixiv_block_manager">屏蔽管理</string>
+    <string name="pixiv_block_book">屏蔽这本书</string>
+    <string name="pixiv_block_author">屏蔽此作者</string>
+    <string name="pixiv_block_tags">屏蔽标签…</string>
+    <string name="pixiv_block_confirm">屏蔽</string>
+    <string name="pixiv_block_remove">解除</string>
+    <string name="pixiv_block_added">已屏蔽</string>
+    <string name="pixiv_block_removed">已解除屏蔽</string>
+    <string name="pixiv_block_already">已屏蔽</string>
+    <string name="pixiv_block_empty">暂无屏蔽</string>
+    <string name="pixiv_block_books">作品</string>
+    <string name="pixiv_block_authors">作者</string>
+    <string name="pixiv_block_tag_rules">标签</string>
+    <string name="pixiv_block_legacy_captions">简介关键词 · 旧规则</string>
+    <string name="pixiv_block_scope">仅在 Pixiv 搜索与发现中隐藏，不影响书架、历史、下载或账号收藏。</string>
+    <string name="pixiv_block_tag_hint">匹配任一所选标签的作品，会在 Pixiv 搜索与发现中隐藏。</string>
 </resources>

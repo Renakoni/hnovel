@@ -46,6 +46,9 @@ fun NavGraphBuilder.bookDetailDestination() {
         val navController = LocalNavController.current
         val bookId = BookIdentity.bookKey(entry.toRoute<Route.Book.Detail>().bookId)
         val viewModel = hiltViewModel<DetailViewModel>(entry)
+        val blocking = hiltViewModel<PixivBlockingViewModel>(entry)
+        PixivBlockingFeedback(blocking)
+        PixivBlockConfirmation(blocking)
         androidx.lifecycle.compose.LifecycleStartEffect(viewModel) {
             viewModel.setActive(true)
             onStopOrDispose { viewModel.setActive(false, navController.currentBackStackEntry?.id == entry.id) }
@@ -56,6 +59,11 @@ fun NavGraphBuilder.bookDetailDestination() {
         val context = LocalContext.current
         val coroutineScope = rememberCoroutineScope()
         val lifecycleOwner = LocalLifecycleOwner.current
+        LaunchedEffect(bookId, viewModel.uiState.bookInformation, lifecycleOwner) {
+            lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                viewModel.uiState.bookInformation?.onOk { blocking.loadBook(BookIdentity.book(it.id)) }
+            }
+        }
         val exportResult = viewModel.exportResult
         val submissionFailed = viewModel.exportSubmissionFailed
         LaunchedEffect(exportResult, submissionFailed, lifecycleOwner) {
@@ -98,6 +106,7 @@ fun NavGraphBuilder.bookDetailDestination() {
             onConfirmLegacy = relinkViewModel::confirmLegacy,
         )
         DetailScreen(
+            blockingMenu = if (blocking.state.book == null) null else { dismiss -> PixivBlockMenu(blocking, dismiss) },
             localFileMissing = LocalBookStore.isLocal(BookIdentity.book(bookId)) && !viewModel.uiState.readingAvailable,
             onRelink = { relinkPicker.launch(arrayOf("text/plain", "application/epub+zip")) },
             uiState = viewModel.uiState,

@@ -53,6 +53,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
@@ -157,6 +158,7 @@ fun DetailScreen(
     onRelink: () -> Unit = {},
     onMarkChaptersUnread: suspend (Set<String>) -> Unit = {},
     onRetryVolumes: () -> Unit = onRetry,
+    blockingMenu: (@Composable (() -> Unit) -> Unit)? = null,
 ) {
     val navController = LocalNavController.current
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
@@ -328,6 +330,7 @@ fun DetailScreen(
                     selectingChapters = true
                 },
                 canMarkUnread = catalogIds.isNotEmpty() && uiState.userReadingData != null,
+                blockingMenu = blockingMenu,
                 scrollBehavior = scrollBehavior,
                 isCollapsed = isCollapsed
             )
@@ -721,7 +724,8 @@ private fun TopBar(
     onClickMarkAsUnread: () -> Unit,
     canMarkUnread: Boolean,
     scrollBehavior: TopAppBarScrollBehavior,
-    isCollapsed: Boolean
+    isCollapsed: Boolean,
+    blockingMenu: (@Composable (() -> Unit) -> Unit)?,
 ) {
     val titleProgress by animateFloatAsState(
         targetValue = if (isCollapsed) 1f else 0f,
@@ -786,13 +790,14 @@ private fun TopBar(
                 }
             },
             actions = {
-                if (readingAvailable) TopBarActions(
-                    volumesEmpty = volumesEmpty,
+                if (readingAvailable || blockingMenu != null) TopBarActions(
+                    volumesEmpty = volumesEmpty || !readingAvailable,
                     onClickExport = onClickExport,
                     onClickTextFormatting = onClickTextFormatting,
                     onClickMarkAsRead = onClickMarkAsRead,
                     onClickMarkAsUnread = onClickMarkAsUnread,
                     canMarkUnread = canMarkUnread,
+                    blockingMenu = blockingMenu,
                 )
             },
             scrollBehavior = scrollBehavior
@@ -829,6 +834,7 @@ private fun TopBarActions(
     onClickMarkAsRead: () -> Unit,
     onClickMarkAsUnread: () -> Unit,
     canMarkUnread: Boolean,
+    blockingMenu: (@Composable (() -> Unit) -> Unit)?,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
 
@@ -839,13 +845,13 @@ private fun TopBarActions(
         Icon(painterResource(id = R.drawable.find_replace_24px), contentDescription = stringResource(R.string.settings_text_formatting))
     }
     Box {
-        IconButton(enabled = !volumesEmpty, onClick = { menuExpanded = true }) {
+        IconButton(enabled = !volumesEmpty || blockingMenu != null, onClick = { menuExpanded = true }) {
             Icon(painterResource(id = R.drawable.more_vert_24px), contentDescription = stringResource(R.string.action_more_options))
         }
         DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.mark_as_unread), style = typography.bodyLarge) },
-                enabled = canMarkUnread,
+                enabled = !volumesEmpty && canMarkUnread,
                 onClick = {
                     menuExpanded = false
                     onClickMarkAsUnread()
@@ -853,11 +859,16 @@ private fun TopBarActions(
             )
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.mark_as_read), style = typography.bodyLarge) },
+                enabled = !volumesEmpty,
                 onClick = {
                     menuExpanded = false
                     onClickMarkAsRead()
                 }
             )
+            if (blockingMenu != null) {
+                HorizontalDivider()
+                blockingMenu { menuExpanded = false }
+            }
         }
     }
 }

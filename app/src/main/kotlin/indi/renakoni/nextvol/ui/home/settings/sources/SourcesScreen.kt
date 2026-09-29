@@ -1,5 +1,8 @@
 package indi.renakoni.nextvol.ui.home.settings.sources
 
+import indi.renakoni.nextvol.ui.book.detail.PixivBlockManager
+import indi.renakoni.nextvol.ui.book.detail.PixivBlockingViewModel
+
 import android.widget.Toast
 import indi.renakoni.nextvol.utils.textToast
 import androidx.activity.compose.BackHandler
@@ -60,6 +63,8 @@ import io.nightfish.lightnovelreader.api.Route
 import io.nightfish.lightnovelreader.api.identifier.Identifier
 import io.nightfish.lightnovelreader.api.ui.LocalNavController
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 
 fun NavGraphBuilder.settingsSourcesDestination() {
     composable<Route.Main.Settings.SourceImport> { entry ->
@@ -531,10 +536,24 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
         SourceGroupDeleteDialog(group, state.busy, state.message, onDismiss = { deletingGroup = null },
             onDelete = { model.deleteGroup(group.id) })
     }
-    if (state.configurationPanel) SourceConfigurationSheet(state.loginForm, state.busy, { values, action, formId ->
-            val link = model.configurationLink(action, formId)
-            if (link == null) model.submitLogin(values, action, formId) else try { uriHandler.openUri(link) }
-            catch (_: IllegalArgumentException) { textToast(context, R.string.sources_action_failed, Toast.LENGTH_SHORT).show() }
+    var blockingSource by remember { mutableStateOf<io.nightfish.lightnovelreader.api.identifier.Identifier?>(null) }
+    val configurationScope = rememberCoroutineScope()
+    LaunchedEffect(state.configurationPanel, state.loginForm?.id) { blockingSource = null }
+    if (state.configurationPanel && blockingSource != null) {
+        PixivBlockManager(blockingSource!!, hiltViewModel<PixivBlockingViewModel>()) { blockingSource = null }
+    } else if (state.configurationPanel) SourceConfigurationSheet(state.loginForm, state.busy, { values, action, formId ->
+        configurationScope.launch {
+            try {
+                val manager = model.configurationBlockManager(action, formId)
+                val link = model.configurationLink(action, formId)
+                if (manager != null) blockingSource = manager
+                else if (link == null) model.submitLogin(values, action, formId) else uriHandler.openUri(link)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                textToast(context, R.string.sources_action_failed, Toast.LENGTH_SHORT).show()
+            }
+        }
         }, model::cancelLogin)
     else state.loginForm?.let { form ->
         SourceLoginDialog(form, state.busy, model::submitLogin, model::cancelLogin,

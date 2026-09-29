@@ -605,4 +605,20 @@
     <string name="source_verification_failed">驗證未完成，或書源帳號已變更。請從該書源重試。</string>
     <string name="discovery_verification_required">網站驗證尚未完成，請重試以開啟驗證頁面。</string>
     <string name="book_directory_incomplete">目錄尚未載入完整，目前僅顯示已取得的章節。</string>
+    <string name="pixiv_block_manager">封鎖管理</string>
+    <string name="pixiv_block_book">封鎖這本書</string>
+    <string name="pixiv_block_author">封鎖此作者</string>
+    <string name="pixiv_block_tags">封鎖標籤…</string>
+    <string name="pixiv_block_confirm">封鎖</string>
+    <string name="pixiv_block_remove">解除</string>
+    <string name="pixiv_block_added">已封鎖</string>
+    <string name="pixiv_block_removed">已解除封鎖</string>
+    <string name="pixiv_block_already">已封鎖</string>
+    <string name="pixiv_block_empty">尚無封鎖</string>
+    <string name="pixiv_block_books">作品</string>
+    <string name="pixiv_block_authors">作者</string>
+    <string name="pixiv_block_tag_rules">標籤</string>
+    <string name="pixiv_block_legacy_captions">簡介關鍵字 · 舊規則</string>
+    <string name="pixiv_block_scope">僅在 Pixiv 搜尋與探索中隱藏，不影響書架、歷史、下載或帳號收藏。</string>
+    <string name="pixiv_block_tag_hint">符合任一所選標籤的作品，會在 Pixiv 搜尋與探索中隱藏。</string>
 </resources>
