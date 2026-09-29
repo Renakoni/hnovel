@@ -57,6 +57,29 @@ class BackupWorkerTest {
         }
     }
 
+    @Test fun deeplyNestedManifestReportsInvalidWithoutRestoringAndCleansCache() = runBlocking {
+        val nested = "[".repeat(3900) + "0" + "]".repeat(3900)
+        val text = """{"format":"nextvol-backup","version":1,"kind":"user-data","contents":[],"padding":$nested}"""
+        val bytes = ByteArrayOutputStream().also { output ->
+            ZipOutputStream(output).use { zip ->
+                zip.putNextEntry(ZipEntry("manifest.json"))
+                zip.write(text.toByteArray())
+                zip.closeEntry()
+                zip.putNextEntry(ZipEntry("data.cbor"))
+                zip.closeEntry()
+            }
+        }.toByteArray()
+        val manager = mockk<LocalDataManager>(relaxed = true)
+        val uri = Uri.parse("content://backup-test/deep-manifest")
+        shadowOf(context.contentResolver).registerInputStream(uri, bytes.inputStream())
+        val cachedFiles = context.cacheDir.listFiles()!!.toSet()
+        val worker = ImportDataWork(context, workerParameters(workDataOf("uri" to uri.toString(), "overwrite" to true)), manager)
+        assertEquals(ListenableWorker.Result.failure(workDataOf(BackupException.ERROR_KEY to BackupFailure.INVALID.name)), worker.doWork())
+        verify(exactly = 0) { manager.validateBackup(any()) }
+        coVerify(exactly = 0) { manager.importAppLocalData(any(), any()) }
+        assertEquals(cachedFiles, context.cacheDir.listFiles()!!.toSet())
+    }
+
     @Test fun businessDataVersionRemainsCheckedIndependentlyOfEnvelopeVersion() = runBlocking {
         val manager = mockk<LocalDataManager>(relaxed = true)
         every { manager.currentAppDataVersion } returns 1

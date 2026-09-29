@@ -5,6 +5,9 @@ import indi.renakoni.nextvol.data.local.cbor.AppLocalData
 import indi.renakoni.nextvol.data.local.cbor.LocalData
 import indi.renakoni.nextvol.data.local.room.entity.UserDataEntity
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Rule
@@ -92,6 +95,42 @@ class BackupFilesTest {
         }
         assertTrue(destination.exists())
         assertEquals(7L, destination.length())
+        assertTrue(cache.listFiles()!!.isEmpty())
+    }
+
+    @Test fun destinationCloseFailureIsNotReportedAsSuccessAndCleansCache() = runBlocking {
+        val cache = temporary.newFolder()
+        try {
+            BackupFiles.write(cache, data, manifest) {
+                object : ByteArrayOutputStream() {
+                    override fun close() { throw IOException("close failure") }
+                }
+            }
+            fail("Close failure must propagate")
+        } catch (failure: IOException) {
+            assertEquals("close failure", failure.message)
+        }
+        assertTrue(cache.listFiles()!!.isEmpty())
+    }
+
+    @Test fun cancellationDuringTransferPropagatesAndCleansCache() = runBlocking {
+        val cache = temporary.newFolder()
+        var wrote = false
+        val job = launch {
+            val caller = currentCoroutineContext()
+            BackupFiles.write(cache, data, manifest) {
+                object : ByteArrayOutputStream() {
+                    override fun write(bytes: ByteArray, offset: Int, length: Int) {
+                        super.write(bytes, offset, length)
+                        wrote = true
+                        caller.cancel(CancellationException("cancel during transfer"))
+                    }
+                }
+            }
+        }
+        job.join()
+        assertTrue(wrote)
+        assertTrue(job.isCancelled)
         assertTrue(cache.listFiles()!!.isEmpty())
     }
 

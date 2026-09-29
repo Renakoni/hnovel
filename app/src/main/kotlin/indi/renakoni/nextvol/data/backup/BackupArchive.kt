@@ -67,6 +67,7 @@ object BackupArchive {
     const val MAX_PAYLOAD_BYTES = 64L * 1024 * 1024
     const val MAX_ARCHIVE_BYTES = MAX_PAYLOAD_BYTES + 1024 * 1024
     private const val MAX_MANIFEST_BYTES = 8L * 1024
+    private const val MAX_MANIFEST_DEPTH = 16
     private const val MANIFEST_ENTRY = "manifest.json"
     private const val DATA_ENTRY = "data.cbor"
     private const val LEGACY_ENTRY = "data"
@@ -125,7 +126,9 @@ object BackupArchive {
     }
 
     private fun readManifest(bytes: ByteArray) {
-        val fields = Json.parseToJsonElement(bytes.toString(Charsets.UTF_8)) as? JsonObject
+        val text = bytes.toString(Charsets.UTF_8)
+        checkManifestDepth(text)
+        val fields = Json.parseToJsonElement(text) as? JsonObject
             ?: throw BackupException(BackupFailure.INVALID)
         val format = fields["format"] as? JsonPrimitive
         if (format?.isString != true || format.content != FORMAT) throw BackupException(BackupFailure.INVALID)
@@ -134,6 +137,28 @@ object BackupArchive {
         // Inspect the envelope version before decoding version-specific fields or any business data.
         if (version.intOrNull != VERSION) throw BackupException(BackupFailure.UNSUPPORTED_VERSION)
         validateManifest(Json.decodeFromJsonElement<BackupManifest>(fields))
+    }
+
+    private fun checkManifestDepth(text: String) {
+        // Bound recursion before the JSON tree parser; quoted brackets are not containers.
+        var depth = 0
+        var inString = false
+        var escaped = false
+        for (char in text) {
+            if (inString) {
+                when {
+                    escaped -> escaped = false
+                    char == '\\' -> escaped = true
+                    char == '"' -> inString = false
+                }
+            } else {
+                when (char) {
+                    '"' -> inString = true
+                    '{', '[' -> if (++depth > MAX_MANIFEST_DEPTH) throw BackupException(BackupFailure.INVALID)
+                    '}', ']' -> if (--depth < 0) throw BackupException(BackupFailure.INVALID)
+                }
+            }
+        }
     }
 
     private fun validateManifest(manifest: BackupManifest) {

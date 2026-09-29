@@ -143,6 +143,61 @@ class BackupArchiveTest {
         expectFailure(BackupFailure.UNSUPPORTED_VERSION, archive("manifest.json" to future.toByteArray(), "data.cbor" to byteArrayOf()))
     }
 
+    @Test fun deeplyNestedManifestIsRejectedWithoutCrashing() {
+        val nested = listOf(
+            "[".repeat(3900) + "0" + "]".repeat(3900),
+            """{"x":""".repeat(1000) + "0" + "}".repeat(1000),
+        )
+        nested.forEach { value ->
+            val text = """{"format":"nextvol-backup","version":1,"kind":"user-data","contents":[],"padding":$value}"""
+            assertTrue(text.toByteArray().size < 8192)
+            expectFailure(BackupFailure.INVALID, archive("manifest.json" to text.toByteArray(), "data.cbor" to payload()))
+        }
+    }
+
+    @Test fun manifestDepthAllowsSixteenContainersAndRejectsSeventeen() {
+        for (shape in 0..2) {
+            for (levels in 15..16) {
+                val nested = (0 until levels).fold("0") { value, index ->
+                    if (shape == 0 || shape == 2 && index % 2 == 0) "[$value]" else """{"nested":$value}"""
+                }
+                val text = """{"format":"nextvol-backup","version":99,"extension":$nested}"""
+                // The root object adds one level; safe future metadata still reports its version.
+                val reason = if (levels == 15) BackupFailure.UNSUPPORTED_VERSION else BackupFailure.INVALID
+                expectFailure(reason, archive("manifest.json" to text.toByteArray(), "data.cbor" to byteArrayOf()))
+            }
+        }
+    }
+
+    @Test fun quotedBracketsAndEscapesDoNotCountAsContainers() {
+        val quote = '"'
+        val slash = '\\'
+        val values = listOf(
+            "[{".repeat(100), "]}".repeat(100), "$quote[{".repeat(100),
+            "$slash[{".repeat(100), "$slash$quote[{".repeat(100), "$slash$slash", "$slash",
+        )
+        values.forEach { value ->
+            val text = """{"format":"nextvol-backup","version":99,"kind":${Json.encodeToString(value)},"contents":[]}"""
+            expectFailure(BackupFailure.UNSUPPORTED_VERSION, archive("manifest.json" to text.toByteArray(), "data.cbor" to byteArrayOf()))
+        }
+    }
+
+    @Test fun escapedBackslashesCannotHideFollowingContainers() {
+        for (slashes in 1..4) {
+            val quoted = Json.encodeToString("\\".repeat(slashes))
+            val nested = "[".repeat(16) + "0" + "]".repeat(16)
+            val text = """{"format":"nextvol-backup","version":99,"label":$quoted,"padding":$nested}"""
+            expectFailure(BackupFailure.INVALID, archive("manifest.json" to text.toByteArray(), "data.cbor" to byteArrayOf()))
+        }
+    }
+
+    @Test fun shallowMalformedManifestStillFailsJsonValidation() {
+        val text = metadata().toString(Charsets.UTF_8)
+        listOf(text.dropLast(1), "}$text", text.replace('[', '{'), "[]", "null").forEach { invalid ->
+            expectFailure(BackupFailure.INVALID, archive("manifest.json" to invalid.toByteArray(), "data.cbor" to payload()))
+        }
+    }
+
     @Test fun truncatedCentralDirectoryAndIncorrectCrcAreRejected() {
         val truncated = archive("data" to payload())
         truncated.writeBytes(truncated.readBytes().dropLast(22).toByteArray())
