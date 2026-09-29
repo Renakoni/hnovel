@@ -651,7 +651,10 @@
     "subtitle": "综合网文",
     "index": 0,
     "host": "biqusa.com",
-    "available": true
+    "available": true,
+    "replaces": [
+      "27c7313d06f8a50749961efe8441ab5671c71fb13c7a723e726daa80af4b8ca5"
+    ]
   },
   {
     "key": "https://www.xbiquge.la",
@@ -797,8 +800,11 @@
     "name": "第一版主",
     "subtitle": "成人向文字",
     "index": 4,
-    "host": "m.diyibanzhu.buzz",
-    "available": true
+    "host": "www.diyibanzi.com",
+    "available": true,
+    "replaces": [
+      "2359149f392914afe8ddbb317d37d584734a5535acf734206fd41e6d0a27368a"
+    ]
   },
   {
     "key": "https://www.htlvbooks.com",
@@ -846,7 +852,10 @@
     "subtitle": "榜单与分类阅读",
     "index": 12,
     "host": "m.shuhaige.net",
-    "available": true
+    "available": true,
+    "replaces": [
+      "e92cc17827b6cd79448678b3481bc1d3b434076850d59a6f09f9f168fd299fad"
+    ]
   },
   {
     "key": "https://m.x33yq.org/",
@@ -855,7 +864,10 @@
     "subtitle": "人气榜单 · 都市、玄幻、多题材",
     "index": 6,
     "host": "m.x33yq.org",
-    "available": true
+    "available": true,
+    "replaces": [
+      "b5bfe01dcd9dc77018a9e0d7f0ab25a48d428868311b24ede006c6dc0cacc009"
+    ]
   },
   {
     "key": "http://m.bgnovel.com",

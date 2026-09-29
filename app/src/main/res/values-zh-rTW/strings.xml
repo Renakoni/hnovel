@@ -315,7 +315,6 @@
     <string name="detail_introduction">介紹</string>
     <string name="detail_contents">目錄</string>
     <string name="detail_title">詳情</string>
-    <string name="detail_info_word_count_content">%1$s 字</string>
     <string name="detail_info_stats_count_content">共 %1$d卷，%2$d章</string>
     <string name="local_book_info_title">書本快取詳情</string>
     <string name="local_book_info_book_information">書本資料</string>

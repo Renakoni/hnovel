@@ -168,6 +168,34 @@ class SourceCatalogTest {
         assertEquals("[]", liancheng.getValue("homepageModules").jsonPrimitive.content)
     }
 
+    @Test fun metadataRepairsRecognizeThePreviouslyBundledDefinitions() {
+        val oldKinds = mapOf(
+            "https://www.biqusa.com/#" to "id.info@tag.p.2@text##最后更新：",
+            "https://m.shuhaige.net/" to "tag.p.2@tag.a@text&&\ntag.p.2@tag.span.0@text&&\ntag.p.4@text##最后更新：",
+            "https://m.x33yq.org/" to ".layui-btn-radius@text&&\n.new + p@text##最后更新："
+        )
+        for ((key, oldKind) in oldKinds) {
+            val entry = catalog.entries.single { it.key == key }
+            val current = raw(entry)
+            val oldFields = buildJsonObject {
+                for ((name, value) in current.getValue("ruleBookInfo").jsonObject) when {
+                    name == "kind" || name == "updateTime" && key.contains("biqusa") -> put("kind", oldKind)
+                    name != "updateTime" -> put(name, value)
+                }
+            }
+            val old = JsonObject(current + ("ruleBookInfo" to oldFields))
+            val store = SourceDefinitionStore(folder.newFolder().toPath())
+            val importer = SourceDefinitionImporter(store)
+            val preview = importer.preview(old.toString(), AUTO_PROFILE)
+            assertTrue(preview.issues.toString(), preview.issues.isEmpty())
+            assertNull(importer.commit(preview, listOf(ImportSelection(0, ImportDecision.Add))).error)
+            val installed = store.list().single()
+            assertTrue(key, installed.contentDigest in entry.replaces)
+            assertEquals(catalog.definitions(setOf(key)), catalog.replacement(installed))
+            assertNull(catalog.replacement(installed.copy(contentDigest = "user-edited")))
+        }
+    }
+
     @Test fun bundledDefinitionsExcludeFixedAccountAndTrackingHeaders() {
         val entries = listOf(
             allEntries().single { it.key.startsWith("https://api.uaa.com") } to setOf("cookie", "token"),

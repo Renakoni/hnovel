@@ -117,8 +117,9 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
         mutable.update { it.copy(installed = installed, groups = groups, catalog = catalog.entries) }
     }
     fun refresh() = launch { reload() }
-    fun createGroup(name: String, members: Set<Identifier> = emptySet()) = launch(showProgress = false) {
-        sources.createGroup(name, members); reload()
+    fun createGroup(name: String, members: Set<Identifier> = emptySet(),
+        added: Set<String> = emptySet(), removed: Set<String> = emptySet()) = launch(showProgress = false) {
+        sources.createGroup(name, members, added, removed); reload()
         mutable.update { it.copy(message = R.string.source_groups_saved, groupRevision = it.groupRevision + 1) }
     }
     fun renameGroup(id: String, name: String) = launch(showProgress = false) {
@@ -129,8 +130,8 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
         sources.deleteGroup(id); reload()
         mutable.update { it.copy(message = R.string.source_groups_saved, groupRevision = it.groupRevision + 1) }
     }
-    fun moveToGroup(members: Set<Identifier>, groupId: String?) = launch(showProgress = false) {
-        sources.moveToGroup(members, groupId); reload()
+    fun updateGroups(members: Set<Identifier>, added: Set<String>, removed: Set<String>) = launch(showProgress = false) {
+        sources.updateGroups(members, added, removed); reload()
         mutable.update { it.copy(message = R.string.source_groups_saved, groupRevision = it.groupRevision + 1) }
     }
     fun select(id: Identifier?) = launch(showProgress = false) { selectSource(id) }

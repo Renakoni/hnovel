@@ -1,6 +1,7 @@
 package indi.renakoni.nextvol.sourceexecution
 
 import android.content.ContextWrapper
+import android.view.MotionEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -18,10 +19,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.*
 import okhttp3.mockwebserver.*
 import org.junit.Assert.*
-import org.junit.Rule
 import org.junit.Test
-import org.junit.rules.TestRule
-import org.junit.runners.model.Statement
 import org.junit.runner.RunWith
 import java.io.File
 import java.util.UUID
@@ -31,12 +29,6 @@ import java.util.UUID
 class SourceVerificationInstrumentedTest {
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
 
-    // The emulator WebView occasionally commits the fixture's scripted location.replace() to
-    // its 401 page as an empty document that never parses, after the server has served it.
-    // No app code runs on that path; each attempt uses a fresh server, source and profile.
-    @get:Rule val retryStalledFixture = TestRule { base, _ -> object : Statement() {
-        override fun evaluate() = try { base.evaluate() } catch (_: TimeoutCancellationException) { base.evaluate() }
-    } }
     private val context get() = instrumentation.targetContext
 
     private fun find(node: AccessibilityNodeInfo?, text: String): AccessibilityNodeInfo? {
@@ -95,6 +87,7 @@ class SourceVerificationInstrumentedTest {
             val allowVerification = java.util.concurrent.atomic.AtomicBoolean()
             val started = CompletableDeferred<Unit>()
             val wafLoaded = CompletableDeferred<Unit>()
+            val captchaRequests = java.util.concurrent.atomic.AtomicInteger()
             val postBodies = java.util.concurrent.CopyOnWriteArrayList<String>()
             val verifiedPaths = java.util.concurrent.CopyOnWriteArrayList<String>()
             val releaseChallenge = java.util.concurrent.CountDownLatch(1)
@@ -102,19 +95,28 @@ class SourceVerificationInstrumentedTest {
                 override fun dispatch(request: RecordedRequest): MockResponse {
                     val path = request.path.orEmpty().substringBefore('?')
                     if (path == "/search" && request.method == "POST") postBodies += request.body.clone().readUtf8()
+                    // Poll serially and stop before navigation, or pending challenge responses can be cancelled by the next tick.
                     return when {
                         path == "/@wafjs" -> MockResponse().setHeader("Content-Type", "application/javascript")
-                            .setBody("setInterval(function(){fetch('/fixture-status').then(r=>r.text()).then(v=>{if(v==='ok')location.replace('/captcha?_waform')})},200)")
+                            .setBody("(function poll(){fetch('/fixture-status').then(r=>r.text()).then(v=>{if(v==='ok')location.replace('/captcha?_waform');else setTimeout(poll,200)})})()")
                             .also { wafLoaded.complete(Unit) }
+                        // The broker browser's CSP allows same-origin stylesheets, not inline styles.
+                        path == "/fixture.css" -> MockResponse().setHeader("Content-Type", "text/css")
+                            .setBody("button{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);min-width:160px;min-height:48px}")
                         path == "/captcha" -> MockResponse().setResponseCode(401).setHeader("Content-Type", "text/html")
-                            .setBody("<html><head><link rel='icon' href='data:,'></head><body>" +
+                            // Exceed the poll interval so repeated navigation cannot pass unnoticed.
+                            .setHeadersDelay(500, java.util.concurrent.TimeUnit.MILLISECONDS)
+                            .setBody("<html><head><link rel='icon' href='data:,'>" +
+                                "<link rel='stylesheet' href='/fixture.css'>" +
+                                "<meta name='viewport' content='width=device-width, initial-scale=1'></head><body>" +
                                 "<form action='/accepted?_waform' method='post'><input name='__input' value='fixture'>" +
                                 "<button>Accept fixture</button></form></body></html>")
+                            .also { captchaRequests.incrementAndGet() }
                         // The owned fixture waits until the test observes a visible browser.
                         // No external CAPTCHA is automated.
                         path == "/antibot" -> MockResponse().setHeader("Content-Type", "text/html").setHeader("Cache-Control", "no-store").setBody(
                             "<html><title>Site verification</title><p>Verification fixture</p>" +
-                                "<script>setInterval(function(){fetch('/fixture-status').then(r=>r.text()).then(v=>{if(v==='ok')location.replace('/accepted')})},200)</script></html>")
+                                "<script>(function poll(){fetch('/fixture-status').then(r=>r.text()).then(v=>{if(v==='ok')location.replace('/accepted');else setTimeout(poll,200)})})()</script></html>")
                         path == "/fixture-status" -> MockResponse().setBody(if (allowVerification.get()) "ok" else "wait")
                         path == "/accepted" && waf && (request.method != "POST" || request.body.clone().readUtf8() != "__input=fixture") ->
                             MockResponse().setResponseCode(403)
@@ -194,14 +196,29 @@ class SourceVerificationInstrumentedTest {
                     }
                     allowVerification.set(true)
                     if (waf) {
-                        awaitVisible("Accept fixture")
+                        withTimeout(20000) { while (captchaRequests.get() == 0) delay(100) }
                         delay(1500)
                         assertFalse(request.isCompleted)
+                        assertEquals("Captcha navigation must not repeat while its response is pending", 1, captchaRequests.get())
+                        // The owned fixture centers its submit button in the viewport. Use real touch input:
+                        // WebView can render the form without publishing its virtual accessibility children.
+                        val automation = instrumentation.uiAutomation
                         withTimeout(10000) {
-                            while (true) {
-                                var button = instrumentation.uiAutomation.windows.firstNotNullOfOrNull { find(it.root, "Accept fixture") }
-                                while (button != null && !button.isClickable) button = button.parent
-                                if (button?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true) break
+                            while (!accepted.isCompleted) {
+                                val view = automation.windows.firstNotNullOfOrNull { window ->
+                                    find(window.root?.takeIf { it.packageName == context.packageName }, "android.webkit.WebView")
+                                }
+                                if (view != null) {
+                                    val bounds = android.graphics.Rect().also(view::getBoundsInScreen)
+                                    val downTime = android.os.SystemClock.uptimeMillis()
+                                    for (action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) {
+                                        val event = MotionEvent.obtain(downTime, android.os.SystemClock.uptimeMillis(),
+                                            action, bounds.exactCenterX(), bounds.exactCenterY(), 0).apply {
+                                            source = android.view.InputDevice.SOURCE_TOUCHSCREEN
+                                        }
+                                        try { assertTrue(automation.injectInputEvent(event, true)) } finally { event.recycle() }
+                                    }
+                                }
                                 delay(100)
                             }
                         }

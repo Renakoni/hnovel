@@ -150,7 +150,7 @@ class SourcesViewModelTest {
                 assertEquals(2, saved.groups.size)
                 saved.installed.forEach { source ->
                     val category = chosen.single { it.key == source.definition.importKey }.category
-                    assertEquals(context.getString(category.title), saved.groups.single { it.id == source.preferences.groupId }.name)
+                    assertEquals(context.getString(category.title), saved.groups.single { it.id in source.preferences.groupIds }.name)
                 }
                 assertEquals(0, fixture.server.requestCount)
             } finally { model.cancel(); sources.stop(); Dispatchers.resetMain(); root.deleteRecursively() }
