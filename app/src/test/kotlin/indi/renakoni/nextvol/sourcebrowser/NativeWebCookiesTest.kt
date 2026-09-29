@@ -30,6 +30,46 @@ class NativeWebCookiesTest {
         assertThrows(IllegalArgumentException::class.java) { nativeCookieSnapshot(url, listOf("a=" + "x".repeat(65536)), false) }
     }
 
+    @Test fun optionalCountsDoNotConsumeTheCookiePayloadBudget() {
+        val plain = boundarySnapshots(observe = false)
+        val observed = boundarySnapshots(observe = true)
+        val original = Json.encodeToString(plain)
+        assertTrue(original.length <= NATIVE_COOKIE_PAYLOAD_LIMIT)
+        assertTrue(Json.encodeToString(observed).length > NATIVE_COOKIE_PAYLOAD_LIMIT)
+        val payload = nativeCookieSnapshotPayload(observed)
+        assertEquals(original, payload)
+        assertEquals(plain, Json.decodeFromString<List<NativeCookieSnapshot>>(payload))
+    }
+
+    @Test fun payloadWithinBudgetKeepsOptionalCounts() {
+        val values = listOf("sid=keep; Path=/", "partitioned=skip; Secure; Partitioned")
+        for (observe in listOf(false, true)) {
+            val snapshots = listOf(nativeCookieSnapshot(url, values, true, observe))
+            assertEquals(Json.encodeToString(snapshots), nativeCookieSnapshotPayload(snapshots))
+        }
+    }
+
+    @Test fun payloadExactlyAtLimitKeepsOptionalCounts() {
+        val snapshots = boundarySnapshots(observe = true, extra = -24).toMutableList()
+        val padding = NATIVE_COOKIE_PAYLOAD_LIMIT - Json.encodeToString(snapshots).length
+        val first = snapshots.first()
+        val values = first.cookies.toMutableList()
+        values[0] = values[0].replaceFirst("=", "=" + "a".repeat(padding))
+        snapshots[0] = nativeCookieSnapshot(first.url, values, true, observe = true)
+        val encoded = Json.encodeToString(snapshots)
+        assertEquals(NATIVE_COOKIE_PAYLOAD_LIMIT, encoded.length)
+        assertEquals(encoded, nativeCookieSnapshotPayload(snapshots))
+        assertTrue(encoded.contains("partitionedExcluded"))
+    }
+
+    @Test fun oversizedCookieDataIsNotTruncatedToFitThePayloadLimit() {
+        val plain = boundarySnapshots(observe = false, extra = 32)
+        val original = Json.encodeToString(plain)
+        assertTrue(original.length > NATIVE_COOKIE_PAYLOAD_LIMIT)
+        assertEquals(original, nativeCookieSnapshotPayload(plain))
+        assertEquals(original, nativeCookieSnapshotPayload(boundarySnapshots(observe = true, extra = 32)))
+    }
+
     @Test fun explicitValuesPreserveBrowserAttributesAndNewCookiesStayHostOnly() {
         val snapshot = NativeCookieSnapshot(url, listOf(
             "sid=old; Domain=example.org; Path=/account; Secure; HttpOnly; SameSite=Strict; Expires=Wed, 21 Oct 2037 07:28:00 GMT",
@@ -58,5 +98,15 @@ class NativeWebCookiesTest {
             assertTrue(header.take(20), runCatching { nativeWebCookieUpdates(url, header, snapshot) }.isFailure)
         }
         assertTrue(nativeWebCookieUpdates(url, "", snapshot).isEmpty())
+    }
+
+    private fun boundarySnapshots(observe: Boolean, extra: Int = 0): List<NativeCookieSnapshot> {
+        val suffix = "; Path=/; Secure; SameSite=Lax"
+        val values = (1..16).map {
+            val prefix = "k$it="
+            prefix + "a".repeat(3900 - prefix.length - suffix.length) + suffix
+        } + ("last=" + "a".repeat(2974 + extra) + suffix)
+        return listOf("https://one.example/", "https://one.example/page", "https://two.example/", "https://two.example/page")
+            .map { nativeCookieSnapshot(it, values, true, observe) }
     }
 }

@@ -51,7 +51,9 @@ not install an observer. Wenku8 and the browser identity/routing/cookie policies
 - `CookieSnapshot` describes an admitted native-browser snapshot received by the host.
   `selected` counts exported entries, not Chromium's outbound Cookie header. With full
   metadata, `partitionedExcluded` counts the existing Partitioned filter; header-only
-  fallbacks cannot know that count and leave it absent. `completeMetadata` describes the
+  fallbacks cannot know that count and leave it absent. Optional counts are also omitted
+  when they would exceed the existing IPC payload limit; Cookie data and its limits are
+  unchanged, and an absent count remains unknown rather than zero. `completeMetadata` describes the
   export interface, not HTTP preservation of browser semantics. A received snapshot can
   still be rejected by the existing version fence; the event is not proof of application,
   transmission, authentication or challenge clearance.

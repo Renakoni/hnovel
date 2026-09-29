@@ -145,7 +145,7 @@ internal class NativeSourceBrowser(private val context: Context, private val net
                     if (diagnosticReported.compareAndSet(false, true)) observation.recordWebViewUserAgent(arguments)
                     return BrowserWire.pipe("true")
                 }
-                require(operation == "cookies" && arguments.length <= 262144)
+                require(operation == "cookies" && arguments.length <= NATIVE_COOKIE_PAYLOAD_LIMIT)
                 val snapshots = Json.decodeFromString<List<NativeCookieSnapshot>>(arguments)
                 require(snapshots.size <= 4)
                 guard.commit {

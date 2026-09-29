@@ -494,7 +494,7 @@ class NativeSourceBrowserService : Service() {
                 val urls = listOf(job.request.url, result.response.finalUrl).mapNotNull { it.toHttpUrlOrNull() }
                     .flatMap { listOf(it.newBuilder().encodedPath("/").query(null).fragment(null).build().toString(),
                         it.newBuilder().query(null).fragment(null).build().toString()) }.distinct()
-                BrowserWire.read(host.call("cookies", Json.encodeToString(urls.map(::cookies))))
+                BrowserWire.read(host.call("cookies", nativeCookieSnapshotPayload(urls.map(::cookies))))
                 result
             } catch (_: Exception) { BrokerResult.Failure(RequestStage.Storage, FailureCode.StorageUnavailable) }
             else result
