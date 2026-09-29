@@ -11,5 +11,12 @@
                 <action android:name="indi.renakoni.nextvol.benchmark.SPEECH_ENGINE" />
             </intent-filter>
         </receiver>
+        <receiver android:name=".benchmark.StartupBrowserProbeReceiver"
+            android:exported="true" android:process=":source_browser" />
+        <receiver android:name=".benchmark.StartupNativeBrowserProbeReceiver"
+            android:exported="true" android:process=":source_browser_native" />
+        <service android:name=".benchmark.StartupIsolatedProbeService"
+            android:exported="false" android:isolatedProcess="true"
+            android:process=":startup_probe_isolated" />
     </application>
 </manifest>

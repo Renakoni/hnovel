@@ -11,6 +11,7 @@ import indi.renakoni.nextvol.data.local.room.entity.UserDataEntity
 import indi.renakoni.nextvol.data.local.room.entity.UserReadingDataEntity
 import indi.renakoni.nextvol.data.localbook.LocalBookStore
 import indi.renakoni.nextvol.data.web.rules.ImportedRuleSources
+import io.nightfish.lightnovelreader.api.identifier.Identifier
 import java.io.File
 import java.time.LocalDateTime
 import java.util.zip.CRC32
@@ -18,6 +19,26 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+
+/** A real imported source restricted to a controlled, device-local HTTP server. */
+internal suspend fun seedStartupNetworkSource(sources: ImportedRuleSources, port: Int): Identifier {
+    val origin = "http://127.0.0.1:$port/"
+    val raw = buildJsonObject {
+        put("bookSourceUrl", origin)
+        put("bookSourceName", "Startup network fixture")
+        put("bookSourceType", 0)
+        put("ruleBookInfo", buildJsonObject { put("name", "h1@text"); put("tocUrl", "a@href") })
+        put("ruleToc", buildJsonObject {
+            put("chapterList", "li"); put("chapterName", "a@text"); put("chapterUrl", "a@href")
+        })
+        put("ruleContent", buildJsonObject { put("content", "article@html") })
+    }
+    val preview = sources.importer.preview(raw.toString())
+    check(preview.issues.isEmpty())
+    check(sources.importer.commit(preview, listOf(ImportSelection(0, ImportDecision.Add))).error == null)
+    val definition = sources.definitions.list().single { it.importKey == origin }
+    return sources.activate(definition.reference(), listOf(NetworkGrant(origin, allowPrivateAddresses = true)))
+}
 
 /** Ten ordinary-sized definitions, never a live-site or thousand-source stress fixture. */
 internal suspend fun seedStartupSources(sources: ImportedRuleSources) {
