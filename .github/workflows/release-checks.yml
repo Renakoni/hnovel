@@ -79,9 +79,12 @@ jobs:
       - name: Run minified tests on the fixed Android emulator
         run: >-
           bash .github/scripts/run-static-emulator.sh 35
-          bash .github/scripts/emulator-tests.sh ./gradlew --no-daemon :benchmark:connectedBenchmarkAndroidTest
-          -Pandroid.testInstrumentationRunnerArguments.class=indi.renakoni.nextvol.benchmark.explore.MinifiedSourceRuntimeTest,indi.renakoni.nextvol.benchmark.tts.ReadAloudSmokeTest
-          --console=plain --stacktrace --max-workers=2
+          bash .github/scripts/emulator-tests.sh bash .github/scripts/run-prebuilt-tests.sh
+          app/build/outputs/apk/benchmark tests/benchmark/build/outputs/apk/benchmark
+          tests/benchmark/build/outputs/androidTest-results/connected/benchmark
+          indi.renakoni.nextvol.benchmark.explore.MinifiedSourceRuntimeTest,indi.renakoni.nextvol.benchmark.tts.ReadAloudSmokeTest
+          -e androidx.benchmark.suppressErrors EMULATOR,DEVICE-TRACING-MISCONFIGURED
+          -e androidx.benchmark.output.enable true
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:

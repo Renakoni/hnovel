@@ -8,8 +8,6 @@
     <string name="sources_account_required">需要重新登入</string>
     <string name="sources_account_loading">正在讀取帳號狀態…</string>
     <string name="sources_account_unknown">無法讀取帳號狀態</string>
-    <string name="sources_plugins_group">外掛書源</string>
-    <string name="sources_network_plugin">此外掛自行管理網路，暫不支援此略過開關。</string>
     <string name="sources_login_definition_error">書源登入宣告的 %1$s 欄位無效，請檢查書源定義。</string>
     <string name="sources_account_unavailable">帳號操作暫不可用</string>
     <string name="sources_session_saved">工作階段已儲存</string>
@@ -41,7 +39,7 @@
     <string name="sources_title">書源</string>
     <string name="sources_manage_help">新增、設定、登入與更新書源</string>
     <string name="sources_add">新增書源</string>
-    <string name="sources_add_help">透過 URL、本機檔案或貼上文字新增 JSON 書源，也可從本機匯入已適配版本的 .lnrp / APK 書源套件。</string>
+    <string name="sources_add_help">透過連結、本機檔案或貼上文字匯入 JSON 書源。</string>
     <string name="sources_url">書源檔案 URL</string>
     <string name="sources_preview_url">下載並預覽</string>
     <string name="sources_file">選擇本機檔案</string>

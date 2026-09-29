@@ -1,5 +1,7 @@
 package indi.renakoni.nextvol.ui.book.detail
 
+import indi.renakoni.nextvol.data.export.ExportType
+
 import android.app.Application
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent

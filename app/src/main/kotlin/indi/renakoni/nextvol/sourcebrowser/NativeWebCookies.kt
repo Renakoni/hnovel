@@ -1,7 +1,31 @@
 package indi.renakoni.nextvol.sourcebrowser
 
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import okhttp3.Cookie
 import okhttp3.HttpUrl.Companion.toHttpUrl
+
+internal const val NATIVE_COOKIE_PAYLOAD_LIMIT = 262144
+
+/** Optional evidence must not turn an otherwise valid cookie handoff into a failure. */
+internal fun nativeCookieSnapshotPayload(snapshots: List<NativeCookieSnapshot>): String {
+    val payload = Json.encodeToString(snapshots)
+    return if (payload.length > NATIVE_COOKIE_PAYLOAD_LIMIT && snapshots.any { it.partitionedExcluded != null })
+        Json.encodeToString(snapshots.map { it.copy(partitionedExcluded = null) })
+    else payload
+}
+
+/** Filtering is unchanged; the optional count describes an export, not cookies sent by Chromium. */
+internal fun nativeCookieSnapshot(url: String, values: List<String>, completeMetadata: Boolean, observe: Boolean = false): NativeCookieSnapshot {
+    var excluded = if (observe && completeMetadata) 0 else null
+    val cookies = if (completeMetadata) values.filterNot { value ->
+        val partitioned = value.split(';').any { it.trim().equals("Partitioned", true) }
+        if (partitioned) excluded = excluded?.plus(1)
+        partitioned
+    } else values
+    require(cookies.size <= 256 && cookies.sumOf(String::length) <= 65536)
+    return NativeCookieSnapshot(url, cookies, completeMetadata, excluded)
+}
 
 /** The compatibility input is a Cookie request header, not a Set-Cookie attribute list. */
 internal fun nativeWebCookieUpdates(url: String, header: String, snapshot: NativeCookieSnapshot): List<String> {

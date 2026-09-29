@@ -20,7 +20,7 @@ import indi.renakoni.nextvol.data.statistics.StatisticsWriteCoordinator
 import indi.renakoni.nextvol.data.statistics.StatsRepository
 import indi.renakoni.nextvol.data.work.ExportDataWork
 import indi.renakoni.nextvol.data.work.workerParameters
-import indi.renakoni.nextvol.utils.readAppLocalData
+import indi.renakoni.nextvol.data.backup.BackupFiles
 import io.mockk.mockk
 import io.nightfish.lightnovelreader.api.identifier.Identifier
 import kotlinx.coroutines.flow.first
@@ -114,7 +114,7 @@ class ReadingBookmarkTest {
                 "exportBookmark" to include, "exportLocalBookCache" to false, "exportBookshelf" to false,
                 "exportReadingData" to false, "exportSetting" to false)), manager)
             assertEquals(ListenableWorker.Result.success(), worker.doWork())
-            val decoded = Cbor.decodeFromByteArray<AppLocalData>(bytes.toByteArray().inputStream().readAppLocalData())
+            val decoded = BackupFiles.read(context.cacheDir) { bytes.toByteArray().inputStream() }
             assertEquals(if (include) listOf(saved) else emptyList(), decoded.localDataList.flatMap { it.readingBookmarks })
         }
         val newBackup = Cbor.decodeFromByteArray<AppLocalData>(Cbor.encodeToByteArray(manager.exportAppLocalData().get()!!))

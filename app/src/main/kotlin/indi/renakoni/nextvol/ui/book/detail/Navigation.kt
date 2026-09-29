@@ -1,5 +1,6 @@
 package indi.renakoni.nextvol.ui.book.detail
 
+import indi.renakoni.nextvol.data.book.availableVolumes
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import indi.renakoni.nextvol.data.localbook.LocalBookStore
@@ -119,17 +120,13 @@ fun NavGraphBuilder.bookDetailDestination() {
                 navController.navigateToBookReaderDestination(bookId, it, context)
             },
             onClickRead = {
-                if (viewModel.uiState.userReadingData?.lastReadChapterId == null)
-                    viewModel.uiState.bookVolumes
-                        ?.map {
-                            it.volumes.firstNotNullOfOrNull { volume -> volume.chapters.firstOrNull()?.id }
-                        }?.onOk { id ->
-                            id?.let {
-                                navController.navigateToBookReaderDestination(bookId, it, context)
-                            }
-                        }?.onErr {
-                            Toast.makeText(context, it.message, Toast.LENGTH_SHORT).show()
-                        }
+                if (viewModel.uiState.userReadingData?.lastReadChapterId == null) {
+                    val result = viewModel.uiState.bookVolumes
+                    val firstChapter = result?.availableVolumes()?.volumes
+                        ?.firstNotNullOfOrNull { volume -> volume.chapters.firstOrNull()?.id }
+                    if (firstChapter != null) navController.navigateToBookReaderDestination(bookId, firstChapter, context)
+                    else result?.onErr { Toast.makeText(context, it.message, Toast.LENGTH_SHORT).show() }
+                }
                 else {
                     navController.navigateToBookReaderDestination(bookId, viewModel.uiState.userReadingData!!.lastReadChapterId!!, context)
                 }

@@ -22,8 +22,8 @@ may differ. English needs `one/other`, Chinese `other`, and Russian
 
 This is a resource contract check, not a full Java Formatter implementation,
 call-site type analysis, or language-quality assessment. Android Lint and actual
-resource/Compose tests remain necessary. Dynamic website content and plugin
-messages are outside this XML check. Other modules and qualified resource
+resource/Compose tests remain necessary. Dynamic website content is outside
+this XML check. Other modules and qualified resource
 overrides beyond the listed directories are outside its coverage.
 
 Identical text is reviewed, not automatically treated as missing translation.
@@ -37,7 +37,6 @@ fallback. Do not copy English interface sentences to satisfy coverage.
 
 `RussianQuantityResourcesTest` checks actual Android selection for `ru` and
 `ru-RU` on API 24/35, TTS counts 1/2/5/21, and integer/string/decimal formatting.
-`PluginSignatureResourcesTest` checks the mixed integer/string signature label
-in all supported languages. Compose tests cover representative long translated
+Compose tests cover representative long translated
 source controls at 320dp with 1.6× font size; this does not assert that every
 screen or device configuration has been visually tested.

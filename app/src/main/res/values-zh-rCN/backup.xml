@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backup_invalid">备份文件损坏或格式不正确。请选择 NextVol 备份或受支持的旧版 .lnr 文件。</string>
+    <string name="backup_unsupported_version">暂不支持此备份版本。请使用支持该版本的 NextVol。</string>
+    <string name="backup_too_large">备份超出支持的大小。请尝试不包含章节缓存的备份。</string>
+    <string name="backup_export_failed">备份导出失败，目标文件可能不完整，请重新导出。</string>
+</resources>

@@ -16,15 +16,11 @@
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
   <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"
       tools:ignore="RequestInstallPackagesPolicy" />
-  <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
   <uses-permission android:name="com.google.android.c2dm.permission.RECEIVE" />
 
   <queries>
     <intent>
       <action android:name="android.intent.action.TTS_SERVICE" />
-    </intent>
-    <intent>
-      <action android:name="io.nightfish.lightnovelreader.PLUGIN_DISCOVERY" />
     </intent>
   </queries>
 
@@ -60,34 +56,10 @@
         <action android:name="android.intent.action.VIEW"/>
         <category android:name="android.intent.category.DEFAULT"/>
         <category android:name="android.intent.category.BROWSABLE"/>
-        <data android:scheme="lightnovelreader"/>
-      </intent-filter>
-      <intent-filter>
-        <action android:name="android.intent.action.VIEW"/>
-        <category android:name="android.intent.category.DEFAULT"/>
-        <category android:name="android.intent.category.BROWSABLE"/>
         <data android:scheme="legado" android:host="import" android:path="/bookSource"/>
       </intent-filter>
     </activity>
     <activity android:name=".ui.book.detail.EpubShareActivity" android:exported="false" />
-    <activity-alias
-        android:name=".PluginInstallAlias"
-        android:exported="true"
-        android:icon="@mipmap/ic_launcher"
-        android:label="@string/plugin_install_alias_label"
-        android:roundIcon="@mipmap/ic_launcher"
-        android:targetActivity=".MainActivity">
-      <intent-filter>
-        <action android:name="android.intent.action.VIEW"/>
-        <category android:name="android.intent.category.DEFAULT"/>
-        <category android:name="android.intent.category.BROWSABLE"/>
-        <data android:scheme="file"/>
-        <data android:scheme="content"/>
-        <data android:host="*"/>
-        <data android:mimeType="*/*"/>
-        <data android:pathSuffix=".lnrp"/>
-      </intent-filter>
-    </activity-alias>
     <provider
         android:name="androidx.core.content.FileProvider"
         android:authorities="${applicationId}.provider"

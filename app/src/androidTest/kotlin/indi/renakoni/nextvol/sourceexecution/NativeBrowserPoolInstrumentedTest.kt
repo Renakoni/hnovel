@@ -2,23 +2,17 @@ package indi.renakoni.nextvol.sourceexecution
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import android.os.Bundle
-import android.os.Debug
-import android.os.ParcelFileDescriptor
-import android.view.Choreographer
 import hnovel.network.*
 import indi.renakoni.nextvol.sourcebrowser.AndroidSourceBrowser
 import kotlinx.coroutines.*
 import okhttp3.mockwebserver.*
 import org.junit.Assert.*
 import org.junit.Test
-import org.junit.Assume.assumeTrue
 import org.junit.runner.RunWith
 import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
-import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.serialization.json.*
 
 @RunWith(AndroidJUnit4::class)
@@ -187,126 +181,4 @@ class NativeBrowserPoolInstrumentedTest {
         }
     }
 
-    @Test fun removedScriptsAndEventHandlersStillGetTheirPostLoadUpdates() = runBlocking {
-        fixture { session, server ->
-            val append = "var li=document.createElement('li');li.textContent='complete';document.querySelector('ul').appendChild(li)"
-            server.dispatcher = object : Dispatcher() {
-                override fun dispatch(request: RecordedRequest): MockResponse {
-                    val body = when (request.path) {
-                        "/script" -> html("<ul></ul><script>" +
-                            "addEventListener('load',function(){setTimeout(function(){$append},650)});" +
-                            "document.currentScript.remove()</script>")
-                        "/handler" -> html("<ul></ul>").replace("<body>",
-                            "<body onload=\"document.body.removeAttribute('onload');setTimeout(function(){$append},650)\">")
-                        "/fetch" -> html("<ul></ul><script>" +
-                            "addEventListener('load',function(){fetch('/data').then(r=>r.text()).then(function(){$append})});" +
-                            "document.currentScript.remove()</script>")
-                        "/data" -> return MockResponse().setBody("ready").setBodyDelay(650, TimeUnit.MILLISECONDS)
-                        else -> error("Unexpected fixture request")
-                    }
-                    return MockResponse().setHeader("Content-Type", "text/html").setBody(body)
-                }
-            }
-            for (path in listOf("/script", "/handler", "/fetch")) {
-                val document = org.jsoup.Jsoup.parse(read(session, server, path).text())
-                assertEquals(path, listOf("complete"), document.select("li").eachText())
-            }
-        }
-    }
-
-    @Test fun navigationCancelsThePreviousDocumentsCompletionTimer() = runBlocking {
-        fixture { session, server ->
-            server.dispatcher = object : Dispatcher() {
-                override fun dispatch(request: RecordedRequest) = MockResponse().setHeader("Content-Type", "text/html").setBody(
-                    if (request.path == "/redirect") html("<script>" +
-                        "addEventListener('load',function(){setTimeout(function(){location.replace('/ready')},350)})</script>")
-                    else html("<ul></ul><script>addEventListener('load',function(){setTimeout(function(){" +
-                        "var li=document.createElement('li');li.textContent='complete';document.querySelector('ul').appendChild(li)" +
-                        "},800)})</script>"))
-            }
-            val response = read(session, server, "/redirect")
-            assertEquals(server.url("/ready").toString(), response.finalUrl)
-            assertEquals(listOf("complete"), org.jsoup.Jsoup.parse(response.text()).select("li").eachText())
-        }
-    }
-
-    @Test fun staticDocumentsKeepTheSourcesExplicitDelayWithoutHoldingOtherPages() = runBlocking {
-        fixture { session, server ->
-            val entered = CompletableDeferred<Long>()
-            server.dispatcher = object : Dispatcher() {
-                override fun dispatch(request: RecordedRequest): MockResponse {
-                    if (request.path == "/delayed") entered.complete(android.os.SystemClock.elapsedRealtime())
-                    return MockResponse().setHeader("Content-Type", "text/html").setBody(html("<p>${request.path}</p>"))
-                }
-            }
-            read(session, server, "/warm")
-            val delayed = async {
-                session.execute(BrokerRequest("delayed", server.url("/delayed").toString(), timeoutMillis = 30000,
-                    browser = BrowserOptions(delayMillis = 2000)))
-            }
-            val started = withTimeout(10000) { entered.await() }
-            assertTrue(read(session, server, "/fast").text().contains("/fast"))
-            assertFalse("An explicit delay must not delay the other page", delayed.isCompleted)
-            assertTrue(withTimeout(10000) { delayed.await() } is BrokerResult.Success)
-            assertTrue(android.os.SystemClock.elapsedRealtime() - started >= 2000)
-        }
-    }
-
-    /** Separate from latency samples: memory capture itself adds work. Frame gaps measure host
-     * main-loop scheduling, not the discovery screen's rendered-frame jank rate. */
-    @Test fun measureBoundedPageResources() = runBlocking {
-        val instrumentation = InstrumentationRegistry.getInstrumentation()
-        val args = InstrumentationRegistry.getArguments()
-        assumeTrue(args.getString("nativePoolResources") == "true")
-        val count = requireNotNull(args.getString("nativePoolPages")).toInt().also { require(it in listOf(1, 2, 4)) }
-        repeat(3) { iteration -> fixture { session, server ->
-            val loaded = CountDownLatch(count)
-            val release = CountDownLatch(1)
-            server.dispatcher = object : Dispatcher() {
-                override fun dispatch(request: RecordedRequest): MockResponse {
-                    if (request.path!!.startsWith("/hold/")) {
-                        loaded.countDown(); check(release.await(25, TimeUnit.SECONDS))
-                        return MockResponse().setResponseCode(404)
-                    }
-                    val rows = (1..30).joinToString("") { "<li><a href='/book/$it'>Book $it</a></li>" }
-                    return MockResponse().setHeader("Content-Type", "text/html").setBody(html("<ul>$rows</ul><img src='/hold${request.path}'>"))
-                }
-            }
-            val gaps = CopyOnWriteArrayList<Long>()
-            var previous = 0L
-            val frames = object : Choreographer.FrameCallback {
-                override fun doFrame(time: Long) {
-                    if (previous != 0L) gaps += time - previous
-                    previous = time
-                    Choreographer.getInstance().postFrameCallback(this)
-                }
-            }
-            instrumentation.runOnMainSync { Choreographer.getInstance().postFrameCallback(frames) }
-            val gcBefore = Debug.getRuntimeStats()["art.gc.gc-count"]?.toLongOrNull() ?: 0
-            val reads = (1..4).map { async { read(session, server, "/page$it") } }
-            try {
-                try {
-                    withContext(Dispatchers.IO) { assertTrue(loaded.await(20, TimeUnit.SECONDS)) }
-                    val packages = listOfNotNull(context.packageName,
-                        androidx.webkit.WebViewCompat.getCurrentWebViewPackage(context)?.packageName).distinct()
-                    val memory = packages.joinToString("\n") { name ->
-                        "PACKAGE_SCOPE $name\n" + ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand(
-                            "dumpsys meminfo -s --package $name")).bufferedReader().use { it.readText() }
-                    }
-                    File(context.filesDir, "native-pool-memory-$iteration.txt").writeText(memory)
-                } finally { release.countDown() }
-                withTimeout(15000) { reads.awaitAll() }
-            }
-            finally { instrumentation.runOnMainSync { Choreographer.getInstance().removeFrameCallback(frames) } }
-            val report = buildJsonObject {
-                put("label", args.getString("nativePoolLabel") ?: "local")
-                put("pages", count); put("iteration", iteration)
-                put("mainGcCount", (Debug.getRuntimeStats()["art.gc.gc-count"]?.toLongOrNull() ?: 0) - gcBefore)
-                put("mainFrameIntervals", gaps.size)
-                put("mainGapsOver32ms", gaps.count { it > 32_000_000 })
-                put("mainMaxGapMs", (gaps.maxOrNull() ?: 0) / 1_000_000.0)
-            }
-            instrumentation.sendStatus(0, Bundle().apply { putString("nativePoolResources", report.toString()) })
-        } }
-    }
 }
