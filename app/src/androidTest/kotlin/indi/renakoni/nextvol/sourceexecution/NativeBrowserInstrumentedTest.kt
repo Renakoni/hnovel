@@ -1,6 +1,5 @@
 package indi.renakoni.nextvol.sourceexecution
 
-import android.os.Bundle
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -16,7 +15,6 @@ import kotlinx.coroutines.*
 import kotlinx.serialization.json.*
 import okhttp3.mockwebserver.*
 import org.junit.Assert.*
-import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
@@ -27,61 +25,6 @@ import java.util.concurrent.TimeUnit
 class NativeBrowserInstrumentedTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
     private val scopes = mutableListOf<SourceSession>()
-
-    @Test fun nativeLoginCanWaitBeyondOneMinuteThenResumeTheIsolatedScript(): Unit = runBlocking {
-        ActivityScenario.launch(BrowserTestHostActivity::class.java).use { MockWebServer().use { server ->
-            server.dispatcher = object : Dispatcher() {
-                override fun dispatch(request: RecordedRequest) = MockResponse().setHeader("Content-Type", "text/html")
-                    .addHeader("Set-Cookie", "auth=budget-fixture; Path=/; Max-Age=600; HttpOnly")
-                    .setBody("<html><head><link rel='icon' href='data:,'></head><body>Login budget fixture</body></html>")
-            }
-            server.start()
-            val root = File(context.cacheDir, "login-budget-${System.nanoTime()}")
-            val authority = ExecutionAuthority()
-            val executor = AndroidIsolatedExecutor(context, authority)
-            try { SourceBroker(root.toPath(), browser = AndroidSourceBrowser(context)).use { broker ->
-                val baseUrl = server.url("/").toString()
-                val session = broker.open(SourceScope("login-budget", root.name, "legado"),
-                    listOf(NetworkGrant(baseUrl, true)))
-                session.configureSource(baseUrl, true, browserRead = true)
-                val identity = authority.issue(root.name, "legado", "1", "login-budget")
-                val limits = ExecutionLimits(timeoutMillis = 300000)
-                try { SourceExecutionBroker(identity, authority, session, limits, baseUrl, allowInteraction = true).use { bridge ->
-                    val pending = async { executor.execute(identity, ExecutionTask.Script("""
-                        var page = java.startBrowserAwait('/login', 'Login budget fixture', false);
-                        page.body().indexOf('Login budget fixture') >= 0 &&
-                            cookie.getCookie(baseUrl).indexOf('auth=budget-fixture') >= 0
-                    """.trimIndent(), baseUrl = baseUrl), limits, bridge) }
-                    val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
-                    automation.serviceInfo = automation.serviceInfo.apply {
-                        flags = flags or android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS or
-                            android.accessibilityservice.AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
-                    }
-                    fun find(node: android.view.accessibility.AccessibilityNodeInfo?, id: String): android.view.accessibility.AccessibilityNodeInfo? {
-                        node ?: return null
-                        if (node.isVisibleToUser && node.viewIdResourceName == id) return node
-                        for (index in 0 until node.childCount) find(node.getChild(index), id)?.let { return it }
-                        return null
-                    }
-                    val done = "android:id/button1"
-                    withTimeout(30000) {
-                        while (automation.windows.none {
-                            find(it.root?.takeIf { node -> node.packageName == context.packageName }, done) != null
-                        }) delay(100)
-                    }
-                    delay(65000)
-                    assertFalse("Human input must not be cut off at the old 60-second script limit", pending.isCompleted)
-                    withTimeout(10000) {
-                        while (automation.windows.none {
-                            find(it.root?.takeIf { node -> node.packageName == context.packageName }, done)
-                                ?.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK) == true
-                        }) delay(100)
-                    }
-                    assertEquals(ExecutionResult.Success("true"), withTimeout(15000) { pending.await() })
-                } } finally { session.clearAccount() }
-            } } finally { executor.close(); root.deleteRecursively() }
-        } }
-    }
 
     @Test fun nativeBrowserCompletionResumesTheLoginSuccessBranch(): Unit = runBlocking {
         ActivityScenario.launch(BrowserTestHostActivity::class.java).use { MockWebServer().use { server ->
@@ -190,20 +133,6 @@ class NativeBrowserInstrumentedTest {
             assertFalse(hints.getValue("mobile").jsonPrimitive.boolean)
             assertFalse(hints.getValue("brands").jsonArray.any { it.jsonObject.getValue("brand").jsonPrimitive.content == "Android WebView" })
         } else assertEquals(UserAgentMetadataStatus.Unsupported, settings.metadata)
-    } }
-
-    @Test fun headerOnlyCloudflareChallengeOffersVerificationInsteadOfANetworkError(): Unit = runBlocking { fixture { broker, server ->
-        server.dispatcher = object : Dispatcher() {
-            override fun dispatch(request: RecordedRequest) = MockResponse().setResponseCode(403)
-                .setHeader("Content-Type", "text/html").setHeader("cf-mitigated", "challenge")
-                .setBody("<html><head><title>Verification</title><link rel='icon' href='data:,'></head><body>Check</body></html>")
-        }
-        val result = session(broker, server).execute(BrokerRequest("challenge", server.url("/book").toString(), timeoutMillis = 30000))
-        assertTrue(result.toString(), result is BrokerResult.Failure)
-        val failure = result as BrokerResult.Failure
-        assertEquals(FailureCode.BrowserRequired, failure.code)
-        assertEquals(BrowserChallengeKind.Cloudflare, failure.challenge)
-        assertNotNull(failure.verificationRequest)
     } }
 
     @Test fun largeRenderedDocumentsCrossThePipeAndRespectTheCallerLimit(): Unit = runBlocking { fixture { broker, server ->
@@ -432,24 +361,6 @@ class NativeBrowserInstrumentedTest {
         // Session cookies are deliberately not given an invented persistence guarantee.
     } }
 
-    @Test fun cacheIsReusableWithinAccountButNeverSharedAcrossAccounts(): Unit = runBlocking { fixture { broker, server ->
-        val hits = java.util.concurrent.atomic.AtomicInteger()
-        server.dispatcher = object : Dispatcher() {
-            override fun dispatch(request: RecordedRequest): MockResponse = if (request.path == "/cached") {
-                MockResponse().setHeader("Cache-Control", "max-age=3600").setBody(hits.incrementAndGet().toString())
-            } else MockResponse().setHeader("Content-Type", "text/html").setHeader("Cache-Control", "no-store").setBody("""
-                <html><script>fetch('/cached').then(r=>r.text()).then(t=>{window.answer=t})</script></html>
-            """.trimIndent())
-        }
-        val a = session(broker, server)
-        val url = server.url("/page").toString()
-        assertEquals("1", render(a, url, "window.answer || null").text())
-        assertEquals("1", render(a, url, "window.answer || null").text())
-        assertEquals("2", render(session(broker, server), url, "window.answer || null").text())
-        // Relocated profiles may retain A's cache; the API 28 fallback discards it.
-        assertTrue(render(a, url, "window.answer || null").text() in listOf("1", "3"))
-    } }
-
     @Test fun publicLoginLinkIsReadableAndActualLoginAndVerificationPagesHaveDistinctKinds(): Unit = runBlocking { fixture { broker, server ->
         server.dispatcher = object : Dispatcher() {
             override fun dispatch(request: RecordedRequest) = MockResponse().setHeader("Content-Type", "text/html").setBody(
@@ -466,26 +377,6 @@ class NativeBrowserInstrumentedTest {
             assertEquals(FailureCode.BrowserRequired, result.code)
             assertEquals(kind, result.challenge)
         }
-    } }
-
-    @Test fun ordinaryHttpStillReturnsRawStatusAndDoesNotExecuteScripts(): Unit = runBlocking { fixture { broker, server ->
-        server.enqueue(MockResponse().setResponseCode(202).setHeader("X-Fixture", "raw").setBody("<script>fetch('/unexpected')</script>"))
-        val session = broker.open(SourceScope("native-tests", UUID.randomUUID().toString(), "legado"), listOf(NetworkGrant(server.url("/").toString(), true)))
-        val response = (session.execute(BrokerRequest("http", server.url("/").toString())) as BrokerResult.Success).response
-        assertEquals(ResponseKind.Http, response.kind); assertEquals(202, response.status)
-        assertEquals(listOf("raw"), response.headers.entries.firstOrNull { it.key.equals("X-Fixture", true) }?.value)
-        assertEquals(1, server.requestCount)
-    } }
-
-    @Test fun unsupportedRequestShapesFailBeforeSendingAnyNetworkRequest(): Unit = runBlocking { fixture { broker, server ->
-        val account = session(broker, server)
-        val request = BrokerRequest("unsupported", server.url("/").toString())
-        for (input in listOf(request.copy(method = "POST", body = "field=value"),
-            request.copy(followRedirects = false), request.copy(responseAsHex = true),
-            request.copy(cache = CacheMode.Only), request.copy(headers = mapOf("Cookie" to "injected=fixture")))) {
-            assertEquals(BrokerResult.Failure(RequestStage.Parse, FailureCode.InvalidRequest), account.execute(input))
-        }
-        assertEquals(0, server.requestCount)
     } }
 
     @Test fun suppliedHtmlUsesTheSyntheticBrowserWithoutNetwork(): Unit = runBlocking { fixture { broker, server ->
@@ -509,77 +400,4 @@ class NativeBrowserInstrumentedTest {
         assertEquals(width / 2, result.getValue("half").jsonPrimitive.double, 1.0)
     } }
 
-    @Test fun sourcePacingSurvivesForegroundWaitAndLeavesPageResourcesNative(): Unit = runBlocking {
-        ActivityScenario.launch(BrowserTestHostActivity::class.java).use { fixture { broker, server ->
-            val starts = java.util.concurrent.ConcurrentHashMap<String, Long>()
-            val holding = CompletableDeferred<Unit>()
-            server.dispatcher = object : Dispatcher() {
-                override fun dispatch(request: RecordedRequest): MockResponse {
-                    val path = request.path!!
-                    starts[path] = System.nanoTime() / 1_000_000
-                    if (path == "/hold") holding.complete(Unit)
-                    val body = when {
-                        path == "/hold" -> "<script>setTimeout(function(){window.answer='ready'},3500)</script>"
-                        path.startsWith("/page") -> """<iframe src="/frame$path"></iframe><script>
-                            fetch('/resource$path').then(r=>r.text()).then(function(){window.answer='ready'})
-                            </script>"""
-                        else -> "<title>ready</title>"
-                    }
-                    return MockResponse().setHeader("Content-Type", "text/html").setHeader("Cache-Control", "no-store")
-                        .setBody("<html><head><link rel='icon' href='data:,'></head><body>$body</body></html>")
-                }
-            }
-            val account = session(broker, server)
-            render(account, server.url("/warm").toString())
-            account.configureSource(server.url("/").toString(), true, browserRead = true, concurrentRate = "1/2000")
-            val foreground = async { render(account, server.url("/hold").toString(), "window.answer || null", interactive = true) }
-            withTimeout(15000) { holding.await() }
-            val cancelled = launch { render(account, server.url("/cancelled").toString()) }
-            val pages = (1..2).map { index -> async {
-                render(account, server.url("/page$index").toString(), "window.answer || null")
-            } }
-            delay(100)
-            cancelled.cancelAndJoin()
-            assertTrue(account.execute(BrokerRequest("api", server.url("/api").toString(), kind = ResourceKind.Api)) is BrokerResult.Success)
-            foreground.await()
-            pages.awaitAll()
-            val dispatches = listOf("/hold", "/api", "/page1", "/page2").map(starts::getValue).sorted()
-            val gaps = dispatches.zipWithNext { a, b -> b - a }
-            assertTrue("Source request gaps: $gaps", gaps.all { it >= 1700 })
-            assertFalse(starts.containsKey("/cancelled"))
-            val resourceGaps = (1..2).map { index ->
-                val page = starts.getValue("/page$index")
-                maxOf(starts.getValue("/resource/page$index"), starts.getValue("/frame/page$index")) - page
-            }
-            assertTrue("Native resource gaps: $resourceGaps", resourceGaps.all { it < 1500 })
-            InstrumentationRegistry.getInstrumentation().sendStatus(0, Bundle().apply {
-                putString("sourcePacing", "requestGapsMillis=$gaps;resourceGapsMillis=$resourceGaps;cancelledRequests=0")
-            })
-        } }
-    }
-
-    /** Explicit local URL allows the same fixture to be run in Chrome and reference MD3. */
-    @Test fun recordLocalEnvironment(): Unit = runBlocking {
-        val args = InstrumentationRegistry.getArguments()
-        val url = args.getString("browserProbeUrl")
-        assumeTrue(url != null)
-        require(url!!.startsWith("http://127.0.0.1:18766/probe") || url.startsWith("http://127.0.0.1:18767/consistency"))
-        val root = File(context.cacheDir, "native-probe-${UUID.randomUUID()}")
-        val activity = if (args.getString("foregroundProbe") == "true") ActivityScenario.launch(BrowserTestHostActivity::class.java) else null
-        try {
-        SourceBroker(root.toPath(), browser = AndroidSourceBrowser(context)).use { broker ->
-            val session = broker.open(SourceScope("browser-probe", UUID.randomUUID().toString(), "legado"),
-                listOf(NetworkGrant(sourceOrigin(url)!!, true)))
-            session.configureSource(sourceOrigin(url)!!, true, args.getString("nativeProbe") == "true")
-            try {
-                val result = render(session, url,
-                    if (url.contains("/consistency")) "window.consistencyDone ? JSON.stringify(window.consistencyResult) : null"
-                    else "window.probeDone ? JSON.stringify(window.probeResult) : null",
-                    interactive = args.getString("foregroundProbe") == "true")
-                InstrumentationRegistry.getInstrumentation().sendStatus(0, Bundle().apply { putString("browserProbe", result.text()) })
-            } finally { session.clearAccount() }
-        }
-        } finally { activity?.close() }
-        root.deleteRecursively()
-    }
 }

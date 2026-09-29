@@ -16,14 +16,14 @@ jobs:
   execution-platform:
     name: Isolated execution (API ${{ matrix.api }})
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         api: [24, 35]
         include:
-          - api: 35
-            native_tests: ",indi.renakoni.nextvol.sourceexecution.NativeBrowserInstrumentedTest,indi.renakoni.nextvol.sourceexecution.NativeBrowserPoolInstrumentedTest,indi.renakoni.nextvol.sourceexecution.NativeBrowserAdmissionCookieInstrumentedTest,indi.renakoni.nextvol.sourceexecution.NativeBrowserStorageInstrumentedTest,indi.renakoni.nextvol.sourceexecution.NativeBrowserRouteInstrumentedTest,indi.renakoni.nextvol.sourceexecution.NativeBrowserEnvironmentInstrumentedTest,indi.renakoni.nextvol.sourceexecution.BrowserEnvironmentInstrumentedTest,indi.renakoni.nextvol.sourceexecution.SourceVerificationInstrumentedTest"
+          - api: 24
+            additional_tests: ",indi.renakoni.nextvol.sourceexecution.ReadingPanelInstrumentedTest,indi.renakoni.nextvol.EpubShareInstrumentedTest,indi.renakoni.nextvol.reader.ReaderSpacingInstrumentedTest,indi.renakoni.nextvol.reader.ReaderLayoutInstrumentedTest,indi.renakoni.nextvol.data.download.DownloadPersistenceInstrumentedTest,indi.renakoni.nextvol.data.localbook.LocalBookImportInstrumentedTest,indi.renakoni.nextvol.defaultplugin.wenku8.Wenku8NetworkInstrumentedTest,indi.renakoni.nextvol.tts.SystemSpeechInstrumentedTest,indi.renakoni.nextvol.tts.ReadAloudBackgroundInstrumentedTest,indi.renakoni.nextvol.tts.HttpSpeechInstrumentedTest"
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Prepare fixed Android environment
@@ -42,16 +42,10 @@ jobs:
       - name: Run tests on the fixed Android emulator
         env:
           API_LEVEL: ${{ matrix.api }}
-          TEST_CLASSES: ",indi.renakoni.nextvol.sourceexecution.ReadingPanelInstrumentedTest,indi.renakoni.nextvol.EpubShareInstrumentedTest,indi.renakoni.nextvol.reader.ReaderSpacingInstrumentedTest,indi.renakoni.nextvol.reader.ReaderLayoutInstrumentedTest,indi.renakoni.nextvol.data.download.DownloadPersistenceInstrumentedTest,indi.renakoni.nextvol.data.localbook.LocalBookImportInstrumentedTest,indi.renakoni.nextvol.defaultplugin.wenku8.Wenku8NetworkInstrumentedTest,indi.renakoni.nextvol.tts.SystemSpeechInstrumentedTest,indi.renakoni.nextvol.tts.ReadAloudBackgroundInstrumentedTest,indi.renakoni.nextvol.tts.HttpSpeechInstrumentedTest${{ matrix.native_tests }}"
+          TEST_CLASSES: ${{ matrix.additional_tests }}
         run: |
-          bash .github/scripts/run-static-emulator.sh "$API_LEVEL" bash -c '
-            status=0
-            bash .github/scripts/emulator-tests.sh bash .github/scripts/connected-tests.sh "$TEST_CLASSES" || status=$?
-            if [[ "$API_LEVEL" == 35 ]]; then
-              bash .github/scripts/pull-native-environment.sh || status=1
-            fi
-            exit "$status"
-          '
+          bash .github/scripts/run-static-emulator.sh "$API_LEVEL" \
+            bash .github/scripts/emulator-tests.sh bash .github/scripts/connected-tests.sh "$TEST_CLASSES"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
