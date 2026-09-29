@@ -92,10 +92,12 @@
     <string name="sources_network_help">Поддерживаются VPN/TUN, включая Fake-IP DNS. Ограничения для локальных адресов сохраняются.</string>
     <string name="sources_revision_failed">Редакция не включена, прежний источник сохранён. Проверьте настройки и повторите обновление.</string>
     <string name="sources_no_update_url">У источника нет адреса обновления. Импортируйте новый файл или вставьте обновлённое определение.</string>
-    <string name="sources_up_to_date">Обновлений нет.</string>
+    <string name="sources_up_to_date">Установлена последняя версия</string>
     <string name="sources_saved">Изменения источника сохранены.</string>
     <string name="sources_removed">Источник удалён. Сохранённые книги и история чтения остались.</string>
     <string name="sources_invalid_permission_lines">Недопустимый адрес сайта, строки: %1$s</string>
     <string name="sources_configuration_result">Результат действия</string>
     <string name="sources_configuration_dismiss_result">Скрыть результат</string>
+    <string name="sources_pixiv_update_unsupported">Ошибка адаптации. Не обновлено</string>
+    <string name="sources_pixiv_update_failed">Ошибка сети. Повторите попытку</string>
 </resources>

@@ -11,6 +11,7 @@ import hnovel.rules.OutputKind
 import hnovel.rules.RuleValue
 import indi.renakoni.nextvol.data.web.SourceSessionManager
 import indi.renakoni.nextvol.data.web.SourceNetworkSettings
+import indi.renakoni.nextvol.data.web.SourceCatalog
 import io.nightfish.lightnovelreader.api.identifier.Identifier
 import kotlinx.coroutines.*
 import kotlinx.serialization.json.*
@@ -20,7 +21,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 enum class RevisionError { NotInstalled, NoUpdateAddress, InvalidCandidate, IdentityChanged, ProfileChanged,
-    PermissionRequired, InitializationFailed, Stale, NoPreviousRevision }
+    PermissionRequired, InitializationFailed, Stale, NoPreviousRevision, UpstreamNotAdapted, UpdateDownloadFailed }
 class RevisionException(val code: RevisionError) : Exception(code.name)
 data class RevisionCheck(val installed: SourceDefinition, val preview: ImportPreview, val unchanged: Boolean)
 
@@ -29,26 +30,29 @@ data class RevisionCheck(val installed: SourceDefinition, val preview: ImportPre
 class SourceRevisionUpdates @Inject constructor(@ApplicationContext context: Context,
     private val sources: ImportedRuleSources, private val accounts: SourceSessionManager,
     private val runner: RuleTaskRunner, private val authority: ExecutionAuthority,
-    private val networkSettings: SourceNetworkSettings? = null) {
+    private val networkSettings: SourceNetworkSettings? = null,
+    catalog: SourceCatalog = SourceCatalog(context),
+    private val downloader: SourceUpdateDownloader = SourceUpdateDownloader(context)) {
     private val temporary = File(context.cacheDir, "source-revision-checks")
+    private val pixiv = PixivUpdateAdapter(catalog)
 
-    suspend fun check(source: Identifier, downloadGrant: NetworkGrant? = null): RevisionCheck = withContext(Dispatchers.IO) {
+    fun manages(definition: SourceDefinition): Boolean = pixiv.manages(definition)
+
+    suspend fun check(source: Identifier, downloadGrant: NetworkGrant? = null,
+        expected: DefinitionReference? = null): RevisionCheck = withContext(Dispatchers.IO) {
         val installed = installed(source).definition
-        val address = installed.origin.takeIf { it.kind == ImportOrigin.Kind.Url }?.location
+        if (expected != null && installed.reference() != expected) throw RevisionException(RevisionError.Stale)
+        val managed = pixiv.manages(installed)
+        val address = if (managed) PixivUpdateAdapter.UPDATE_URL else installed.origin.takeIf { it.kind == ImportOrigin.Kind.Url }?.location
             ?: throw RevisionException(RevisionError.NoUpdateAddress)
-        val root = scratch()
-        try {
-            SourceBroker(root.toPath(), limits = BrokerLimits(maxResponseBytes = ImportLimits().maxBytes)).use { broker ->
-                val grant = downloadGrant ?: NetworkGrant(origin(address))
-                require(origin(grant.origin) == origin(address) && grant.headers.isEmpty())
-                val session = broker.open(SourceScope("update-download", UUID.randomUUID().toString(), installed.profile),
-                    listOf(grant))
-                val preview = sources.importer.previewUrl(address, session, installed.profile)
-                RevisionCheck(installed, preview, preview.candidates.deduplicated().any {
-                    it.importKey == installed.importKey && it.rawJson == installed.rawJson
-                })
-            }
-        } finally { root.deleteRecursively() }
+        val downloaded = downloader.preview(sources.importer, address, installed.profile, downloadGrant)
+        if (managed && downloaded.issues.any { it.code in setOf(ImportCode.DownloadFailed, ImportCode.ReadFailed) })
+            throw RevisionException(RevisionError.UpdateDownloadFailed)
+        val preview = if (managed) sources.importer.preview(pixiv.adapt(downloaded), installed.profile) else downloaded
+        if (installed(source).definition.reference() != installed.reference()) throw RevisionException(RevisionError.Stale)
+        RevisionCheck(installed, preview, preview.candidates.deduplicated().any {
+            it.importKey == installed.importKey && it.rawJson == installed.rawJson
+        })
     }
 
     /** Candidate has been explicitly selected in import preview. A changed key requires a separate explicit approval. */
@@ -78,6 +82,9 @@ class SourceRevisionUpdates @Inject constructor(@ApplicationContext context: Con
 
     private suspend fun replace(before: InstalledRuleSource, next: SourceDefinition, grants: List<NetworkGrant>) {
         if (next.profile != before.definition.profile) throw RevisionException(RevisionError.ProfileChanged)
+        // Also guard direct update/rollback calls; a preview is not permission to restore removed code.
+        if (pixiv.manages(before.definition) && next.contentDigest != before.definition.contentDigest && !pixiv.accepts(next))
+            throw RevisionException(RevisionError.UpstreamNotAdapted)
         if (grants.size > 32) throw RevisionException(RevisionError.InvalidCandidate)
         if (next.contentDigest == before.definition.contentDigest && grants == before.origins) return
         val id = ImportedRuleSources.id(before.definition)
@@ -131,10 +138,5 @@ class SourceRevisionUpdates @Inject constructor(@ApplicationContext context: Con
     private fun scratch(): File {
         temporary.mkdirs()
         return File(temporary, UUID.randomUUID().toString()).apply { check(mkdir()) }
-    }
-    private fun origin(address: String): String {
-        val uri = java.net.URI(address)
-        require(uri.scheme?.lowercase() in setOf("http", "https") && uri.host != null && uri.userInfo == null)
-        return java.net.URI(uri.scheme.lowercase(), null, uri.host, uri.port, "/", null, null).toString()
     }
 }

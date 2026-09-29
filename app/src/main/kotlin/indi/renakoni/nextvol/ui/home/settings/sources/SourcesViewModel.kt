@@ -102,6 +102,8 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
                 is RevisionException -> when (failure.code) {
                     RevisionError.NoUpdateAddress -> R.string.sources_no_update_url
                     RevisionError.PermissionRequired -> R.string.sources_permission_denied
+                    RevisionError.UpstreamNotAdapted -> R.string.sources_pixiv_update_unsupported
+                    RevisionError.UpdateDownloadFailed -> R.string.sources_pixiv_update_failed
                     else -> R.string.sources_revision_failed
                 }
                 is SourceContentException -> sourceFailureMessage(failure)
@@ -261,7 +263,9 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
         mutable.update { it.copy(message = if (failed) R.string.sources_import_partial else R.string.sources_saved) }
     }
     fun checkUpdate(id: Identifier) = launch {
-        val checked = updates.check(id)
+        showUpdate(updates.check(id), id)
+    }
+    private fun showUpdate(checked: RevisionCheck, id: Identifier) {
         if (checked.unchanged) mutable.update { it.copy(message = R.string.sources_up_to_date) }
         else showPreview(checked.preview, id)
     }
@@ -369,6 +373,23 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
         val submittedForm = state.value.loginForm
         mutable.update { it.copy(loginMessages = emptyList()) }
         try {
+            val update = submittedForm?.takeIf { it.id == formId }?.fields?.singleOrNull {
+                it.id == action && it.enabled && it.type == "button" &&
+                    it.action?.trim()?.removeSuffix(";")?.trim() == "updateSource()"
+            }
+            val definition = state.value.installed.singleOrNull { ImportedRuleSources.id(it.definition) == active.source }?.definition
+            if (state.value.configurationPanel && update != null && definition != null && updates.manages(definition)) {
+                val checked = login.withAttempt(active) { updates.check(active.source, expected = definition.reference()) }
+                if (checked.unchanged) {
+                    mutable.update { it.copy(loginMessages = listOf(context.getString(R.string.sources_up_to_date))) }
+                    return@launch
+                }
+                withContext(NonCancellable) { login.cancel(active) }
+                attempt = null
+                mutable.update { it.copy(loginForm = null) }
+                showUpdate(checked, active.source)
+                return@launch
+            }
             val result = login.submit(active, values, action, formId)
             val form = if (action == null) null else login.form(active)
             if (action == null) { login.cancel(active); attempt = null }
