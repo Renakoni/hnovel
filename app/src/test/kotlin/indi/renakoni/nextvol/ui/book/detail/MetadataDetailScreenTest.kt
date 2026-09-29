@@ -12,8 +12,11 @@ import androidx.navigation.NavHostController
 import com.github.michaelbull.result.Err
 import com.github.michaelbull.result.Ok
 import com.github.michaelbull.result.map
+import hnovel.content.ContentError
+import hnovel.content.SourceContentException
 import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.data.book.SourceBookId
+import indi.renakoni.nextvol.data.book.PartialBookVolumesException
 import indi.renakoni.nextvol.data.book.UNKNOWN_BOOK_UPDATE_TIME
 import indi.renakoni.nextvol.data.download.BookDownloadState
 import indi.renakoni.nextvol.data.download.BookDownloadPhase
@@ -25,6 +28,8 @@ import indi.renakoni.nextvol.utils.LocalSnackbarHost
 import indi.renakoni.nextvol.utils.dateFormatter
 import io.nightfish.lightnovelreader.api.book.BookInformation
 import io.nightfish.lightnovelreader.api.book.BookVolumes
+import io.nightfish.lightnovelreader.api.book.ChapterInformation
+import io.nightfish.lightnovelreader.api.book.Volume
 import io.nightfish.lightnovelreader.api.book.WordCount
 import io.nightfish.lightnovelreader.api.error.WebRequestError
 import io.nightfish.lightnovelreader.api.ui.LocalNavController
@@ -62,11 +67,12 @@ class MetadataDetailScreenTest {
         userReadingData = io.nightfish.lightnovelreader.api.book.UserReadingData(key)
     }
 
-    private fun show(state: MutableDetailUiState, retry: () -> Unit = {}, bookmark: (String) -> Unit = {}, cache: (String) -> Unit = {}) {
+    private fun show(state: MutableDetailUiState, retry: () -> Unit = {}, bookmark: (String) -> Unit = {}, cache: (String) -> Unit = {},
+        chapter: (String) -> Unit = {}) {
         activity.get().setContent {
             CompositionLocalProvider(LocalNavController provides NavHostController(activity.get()),
                 LocalSnackbarHost provides SnackbarHostState(), LocalClaimSnackbarHost provides {}) {
-                MaterialTheme { DetailScreen(state, {}, {}, {}, {}, cache, bookmark, {}, {}, {}, retry) }
+                MaterialTheme { DetailScreen(state, {}, {}, chapter, {}, cache, bookmark, {}, {}, {}, retry) }
             }
         }
     }
@@ -164,6 +170,36 @@ class MetadataDetailScreenTest {
         compose.onNodeWithText(activity.get().getString(R.string.start_reading)).assertDoesNotExist()
         compose.onNodeWithText(activity.get().getString(R.string.discovery_retry)).performClick()
         assertEquals(1, retries)
+    }
+
+    @Test fun partialDirectoryShowsWarningAndReadableChaptersUntilRetrySucceeds() {
+        val state = readingState(0, UNKNOWN_BOOK_UPDATE_TIME)
+        val key = SourceBookId(io.nightfish.lightnovelreader.api.identifier.Identifier("rules", "metadata"), "book").storageKey
+        val partial = BookVolumes(key, listOf(Volume("volume", "Volume", listOf(ChapterInformation("one", "Chapter one")))))
+        state.bookVolumes = Err(WebRequestError("Directory failed", "HTTP 502",
+            PartialBookVolumesException(partial, SourceContentException(ContentError.Network, "ruleToc.chapterList", httpStatus = 502))))
+        var retries = 0
+        var selected = ""
+        show(state, retry = {
+            retries++
+            state.bookVolumes = Ok(partial.copy(volumes = listOf(partial.volumes.single().copy(
+                chapters = partial.volumes.single().chapters + ChapterInformation("two", "Chapter two")))))
+        }, chapter = { selected = it })
+        compose.mainClock.advanceTimeBy(500)
+        val warning = activity.get().getString(R.string.book_directory_incomplete)
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(warning))
+        compose.onNodeWithText(warning).assertIsDisplayed()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Chapter one"))
+        compose.onNodeWithText("Chapter one").assertIsDisplayed().performClick()
+        assertEquals("one", selected)
+        assertTrue(state.bookVolumes!!.isErr)
+        val retry = activity.get().getString(R.string.discovery_retry)
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(retry))
+        compose.onNodeWithText(retry).performClick()
+        assertEquals(1, retries)
+        compose.onNodeWithText(warning).assertDoesNotExist()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Chapter two"))
+        compose.onNodeWithText("Chapter two").assertIsDisplayed()
     }
 
     @Test fun completedDownloadsCanUpdateAndFailuresCanRetryWithoutNegativeProgress() {

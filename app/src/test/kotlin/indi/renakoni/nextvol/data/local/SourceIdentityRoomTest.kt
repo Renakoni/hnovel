@@ -85,6 +85,11 @@ class SourceIdentityRoomTest {
         try { db.close() } finally { Dispatchers.resetMain() }
     }
 
+    @Test fun missingDirectoryIsACacheMissRatherThanAnEmptySuccess() = runBlocking {
+        assertNull(db.bookVolumesDao().getBookVolumes(a.storageKey))
+        assertNull(local.getBookVolumes(a.storageKey))
+    }
+
     private fun info(book: SourceBookId, title: String) = book.bind(BookInformation(
         id = book.remoteId, title = title, author = "author", description = "", publishingHouse = "",
         wordCount = WordCount(1), lastUpdated = LocalDateTime.of(2026, 9, 8, 0, 0), isComplete = false))

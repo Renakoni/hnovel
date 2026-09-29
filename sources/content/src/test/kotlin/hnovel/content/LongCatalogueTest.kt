@@ -10,6 +10,107 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class LongCatalogueTest {
+    @Test fun failedLaterPageKeepsEarlierChaptersReadableAndCanBeRetried() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            val rules = catalogue(fixture, chapters = 3, perPage = 2)
+            val original = fixture.server.dispatcher
+            var failSecondPage = true
+            fixture.server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest) =
+                    if (failSecondPage && request.path == "/toc/2") MockResponse().setResponseCode(502)
+                    else original.dispatch(request)
+            }
+            fixture.source(customize = rules).use { source ->
+                val bookId = fixture.server.url("/book/one").toString()
+                try {
+                    source.directory(bookId)
+                    fail("An incomplete catalogue must not be returned as a successful directory")
+                } catch (failure: SourceContentException) {
+                    assertEquals(ContentError.Network, failure.code)
+                    assertEquals(502, failure.httpStatus)
+                    assertEquals(listOf("Chapter 1", "Chapter 2"), (failure as PartialDirectoryException).chapters.map { it.title })
+                }
+                val requests = fixture.server.requestCount
+                val chapter = source.content(bookId, fixture.server.url("/c/1").toString())
+                assertEquals(requests + 1, fixture.server.requestCount)
+                assertTrue(chapter.parts.any { it.text == "Body 1" })
+                assertTrue(chapter.parts.any { it.text == "Chapter 1" })
+                failSecondPage = false
+                assertEquals(listOf("Chapter 1", "Chapter 2", "Chapter 3"), source.directory(bookId).map { it.title })
+            }
+        }
+    }
+
+    @Test fun partialSnapshotsRemainIncompleteAfterReadingAndReopening() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            val baseRules = catalogue(fixture, chapters = 3, perPage = 2)
+            val rules = { raw: JsonObject -> baseRules(raw).let { definition -> JsonObject(definition +
+                ("ruleContent" to JsonObject(definition.getValue("ruleContent").jsonObject +
+                    ("nextContentUrl" to JsonPrimitive("a.next@href"))))) } }
+            val original = fixture.server.dispatcher
+            var failSecondPage = true
+            fixture.server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest) = when {
+                    failSecondPage && request.path == "/toc/2" -> MockResponse().setResponseCode(502)
+                    request.path == "/c/2" -> MockResponse().setBody("<article>Body 2</article><a class='next' href='/c/3'>next</a>")
+                    else -> original.dispatch(request)
+                }
+            }
+            val id = fixture.server.url("/book/one").toString()
+            fixture.source(customize = rules).use { source ->
+                assertTrue(runCatching { source.directory(id) }.exceptionOrNull() is PartialDirectoryException)
+                assertTrue(source.content(id, fixture.server.url("/c/1").toString()).parts.any { it.text == "Body 1" })
+            }
+            fixture.source(customize = rules).use { source ->
+                val requests = fixture.server.requestCount
+                assertTrue(source.content(id, fixture.server.url("/c/1").toString()).parts.any { it.text == "Body 1" })
+                assertEquals(requests + 1, fixture.server.requestCount)
+                val failure = runCatching { source.content(id, fixture.server.url("/c/2").toString()) }.exceptionOrNull()
+                assertEquals("ruleToc.nextTocUrl", (failure as SourceContentException).field)
+                assertEquals(requests + 2, fixture.server.requestCount)
+                assertTrue(runCatching { source.directory(id) }.exceptionOrNull() is PartialDirectoryException)
+                failSecondPage = false
+                assertEquals(3, source.directory(id).size)
+                assertTrue(source.content(id, fixture.server.url("/c/2").toString()).parts.any { it.text == "Body 2" })
+            }
+        }
+    }
+
+    @Test fun laterPageFailureDoesNotReplaceAnExistingCompleteSnapshotOrFailBookInformation() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            val rules = catalogue(fixture, chapters = 3, perPage = 2)
+            val original = fixture.server.dispatcher
+            val id = fixture.server.url("/book/one").toString()
+            fixture.source(customize = rules).use { source ->
+                source.information(id)
+                assertEquals(3, source.directory(id).size)
+                val update = source.cachedInformation(id)!!.observedUpdate
+                fixture.server.dispatcher = object : Dispatcher() {
+                    override fun dispatch(request: RecordedRequest) = if (request.path == "/toc/2")
+                        MockResponse().setResponseCode(502) else original.dispatch(request)
+                }
+                assertTrue(runCatching { source.directory(id) }.exceptionOrNull() is PartialDirectoryException)
+                assertEquals(update, source.information(id).observedUpdate)
+                assertTrue(source.content(id, fixture.server.url("/c/3").toString()).parts.any { it.text == "Body 3" })
+            }
+        }
+    }
+
+    @Test fun firstPageFailureDoesNotClaimToHaveAPartialDirectory() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            val original = fixture.server.dispatcher
+            fixture.server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest) = if (request.path == "/toc/1")
+                    MockResponse().setResponseCode(502) else original.dispatch(request)
+            }
+            fixture.source().use { source ->
+                val failure = runCatching { source.directory(fixture.server.url("/book/one").toString()) }.exceptionOrNull()
+                assertTrue(failure is SourceContentException)
+                assertFalse(failure is PartialDirectoryException)
+            }
+        }
+    }
+
     @Test fun legacySnapshotsRemainReadableAndMoveOnlyAfterASuccessfulWrite() = runBlocking {
         RuleSourceFixture().use { fixture ->
             val id = fixture.server.url("/book/one").toString()

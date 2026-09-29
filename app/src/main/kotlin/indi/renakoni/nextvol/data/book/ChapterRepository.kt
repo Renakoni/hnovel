@@ -5,6 +5,7 @@ import com.github.michaelbull.result.Ok
 import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.andThen
 import com.github.michaelbull.result.map
+import com.github.michaelbull.result.mapError
 import com.github.michaelbull.result.onErr
 import com.github.michaelbull.result.onOk
 import indi.renakoni.nextvol.BuildConfig
@@ -45,7 +46,7 @@ class ChapterRepository @Inject constructor(
             emit(localBooks.readVolumes(book))
             return@flow
         }
-        val local = localBookDataSource.getBookVolumes(book.storageKey)
+        val local = localBookDataSource.getBookVolumes(book.storageKey)?.takeIf { it.volumes.isNotEmpty() }
         local?.also {
             emit(Ok(it))
             if (BuildConfig.BENCHMARK) return@flow
@@ -59,14 +60,16 @@ class ChapterRepository @Inject constructor(
     }.map { result ->
         result.map {
             textProcessingRepository.processBookVolumes { it }
-        }
+        }.mapError { error -> error.mapAvailableVolumes { volumes -> textProcessingRepository.processBookVolumes { volumes } } }
     }
 
     internal suspend fun refreshBookVolumes(book: SourceBookId, priority: WebDataSourcePriority, fresh: Boolean = false,
         expectedRuntime: indi.renakoni.nextvol.data.web.SourceRuntime? = null): Result<BookVolumes, WebRequestError> {
         val requested = localBookDataSource.aliases.resolve(book)
         return sourceRegistry.request(requested, expectedRuntime) { runtime -> runtime.execute {
-            runtime.getBookVolumes(requested.remoteId, priority, refresh = fresh).andThen { remote ->
+            runtime.getBookVolumes(requested.remoteId, priority, refresh = fresh).mapError { error ->
+                error.mapAvailableVolumes { requested.bind(it).rebind(requested, book) }
+            }.andThen { remote ->
                 runtime.persistCanonicalBook(requested, localBookDataSource, downloads).map { canonical ->
                     val volumes = requested.bind(remote)
                     if (canonical == requested && (!fresh || volumes.volumes.any { it.chapters.isNotEmpty() }))

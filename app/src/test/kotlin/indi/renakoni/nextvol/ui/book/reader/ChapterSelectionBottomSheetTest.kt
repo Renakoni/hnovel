@@ -21,6 +21,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.unit.Density
+import indi.renakoni.nextvol.R
 import io.nightfish.lightnovelreader.api.book.BookVolumes
 import io.nightfish.lightnovelreader.api.book.ChapterInformation
 import io.nightfish.lightnovelreader.api.book.Volume
@@ -151,13 +152,20 @@ class ChapterSelectionBottomSheetTest {
 
     private fun list() = compose.onNode(hasScrollToIndexAction())
 
-    private fun show(skipPartiallyExpanded: Boolean = true) {
+    @Test fun partialDirectoryWarnsWithoutDisablingLoadedChapters() {
+        show(directoryIncomplete = true)
+        compose.onNodeWithText(activity.get().getString(R.string.book_directory_incomplete)).assertIsDisplayed()
+        compose.onNodeWithText("Chapter a-80").assertIsDisplayed().performClick()
+        assertEquals("a-80", selected)
+    }
+
+    private fun show(skipPartiallyExpanded: Boolean = true, directoryIncomplete: Boolean = false) {
         compose.runOnUiThread {
             activity.get().setContent {
                 CompositionLocalProvider(LocalDensity provides Density(1f, fontScale)) {
                     MaterialTheme {
                         ChapterSelectionBottomSheet(rememberModalBottomSheetState(skipPartiallyExpanded = skipPartiallyExpanded),
-                            expanded, volumes, current, {}, { selected = it }, { expanded = it })
+                            expanded, volumes, current, {}, { selected = it }, { expanded = it }, directoryIncomplete)
                     }
                 }
             }
