@@ -602,4 +602,5 @@
     <string name="source_verification_background">Для %1$s требуется проверка. Фоновое чтение остановлено; после проверки повторите загрузку.</string>
     <string name="source_verification_failed">Проверка не завершена или учётная запись источника изменилась. Повторите попытку из источника.</string>
     <string name="discovery_verification_required">Проверка на сайте не завершена. Повторите попытку, чтобы открыть страницу проверки.</string>
+    <string name="book_directory_incomplete">Список глав загружен не полностью. Показаны только загруженные главы.</string>
 </resources>

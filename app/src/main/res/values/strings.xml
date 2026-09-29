@@ -630,4 +630,5 @@
     <string name="log_recording_off_desc">Choose a log level and restart the app to record logs.</string>
     <string name="log_empty_file_desc">This file has no log entries.</string>
     <string name="log_empty_current_desc">New logs appear here. Restart after changing the log level.</string>
+    <string name="book_directory_incomplete">The chapter list is incomplete. Only loaded chapters are shown.</string>
 </resources>

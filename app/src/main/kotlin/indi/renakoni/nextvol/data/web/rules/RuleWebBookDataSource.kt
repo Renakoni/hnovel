@@ -4,12 +4,14 @@ import android.net.Uri
 import com.github.michaelbull.result.Err
 import com.github.michaelbull.result.Ok
 import com.github.michaelbull.result.Result
+import com.github.michaelbull.result.mapError
 import com.github.michaelbull.result.onErr
 import com.github.michaelbull.result.onOk
 import com.github.michaelbull.result.getOrElse
 import hnovel.content.*
 import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.data.book.UNKNOWN_BOOK_UPDATE_TIME
+import indi.renakoni.nextvol.data.book.PartialBookVolumesException
 import indi.renakoni.nextvol.data.explore.PagedSearchProvider
 import indi.renakoni.nextvol.data.explore.SearchPage
 import indi.renakoni.nextvol.data.web.EmptyWebDataSource
@@ -86,16 +88,20 @@ internal class RuleWebBookDataSource(override val id: Identifier, private val so
         // The legacy source API keeps the caller's remote ID; migration is a separate host operation.
         source.information(id).information().copy(id = id)
     }
-    override suspend fun getBookVolumes(id: String) = request {
+    override suspend fun getBookVolumes(id: String) = request { source.directory(id).volumes(id) }.mapError { error ->
+        val partial = error.throwable as? PartialDirectoryException
+        if (partial == null) error else error.copy(throwable = PartialBookVolumesException(partial.chapters.volumes(id), partial))
+    }
+    private fun List<RuleChapter>.volumes(id: String): BookVolumes {
         val volumes = mutableListOf<Volume>()
         var volumeId = "default"; var title = ""; var chapters = mutableListOf<ChapterInformation>()
         fun finish() { if (chapters.isNotEmpty()) volumes += Volume(volumeId, title, chapters.toList()) }
-        for (chapter in source.directory(id)) {
+        for (chapter in this) {
             if (chapter.isVolume) { finish(); volumeId = chapter.id; title = chapter.title; chapters = mutableListOf() }
             else chapters += ChapterInformation(chapter.id, chapter.title)
         }
         finish()
-        BookVolumes(id, volumes)
+        return BookVolumes(id, volumes)
     }
     override suspend fun getChapterContent(chapterId: String, bookId: String) = request {
         val chapter = source.content(bookId, chapterId)
