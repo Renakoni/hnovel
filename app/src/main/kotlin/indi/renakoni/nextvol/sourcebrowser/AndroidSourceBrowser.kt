@@ -3,6 +3,7 @@ package indi.renakoni.nextvol.sourcebrowser
 import android.content.*
 import android.os.*
 import android.widget.Toast
+import indi.renakoni.nextvol.utils.textToast
 import dagger.hilt.android.qualifiers.ApplicationContext
 import androidx.webkit.WebViewFeature
 import indi.renakoni.nextvol.data.web.AndroidSourceNetworks
@@ -41,7 +42,7 @@ class AndroidSourceBrowser @Inject constructor(@ApplicationContext private val c
         guard.commit {
             scriptToast?.cancel()
             scriptToast = message.trim().takeIf { it.isNotEmpty() }?.let {
-                Toast.makeText(context, it, if (long) Toast.LENGTH_LONG else Toast.LENGTH_SHORT).also { toast -> toast.show() }
+                textToast(context, it, if (long) Toast.LENGTH_LONG else Toast.LENGTH_SHORT).also { toast -> toast.show() }
             }
         }
     }

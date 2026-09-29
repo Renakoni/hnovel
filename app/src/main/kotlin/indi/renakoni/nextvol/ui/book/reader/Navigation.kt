@@ -5,6 +5,7 @@ import android.content.Context
 import android.net.Uri
 import android.util.Log
 import android.widget.Toast
+import indi.renakoni.nextvol.utils.textToast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.getValue
@@ -83,7 +84,7 @@ fun NavGraphBuilder.bookReaderDestination(onReaderActiveChanged: (Boolean) -> Un
         val notice = panelModel.notice?.let { stringResource(it) }
         LaunchedEffect(notice, panelModel.visible) {
             if (notice != null && !panelModel.visible) {
-                Toast.makeText(navController.context, notice, Toast.LENGTH_LONG).show()
+                textToast(navController.context, notice, Toast.LENGTH_LONG).show()
                 panelModel.clearNotice()
             }
         }
@@ -219,7 +220,7 @@ private fun NavGraphBuilder.imageViewerDialog() {
                         }
                         result.onSuccess {
                             withContext(Dispatchers.Main) {
-                                Toast.makeText(
+                                textToast(
                                     context,
                                     savedToPicturesDir,
                                     Toast.LENGTH_LONG
@@ -227,7 +228,7 @@ private fun NavGraphBuilder.imageViewerDialog() {
                             }
                         }.onFailure {
                             withContext(Dispatchers.Main) {
-                                Toast.makeText(
+                                textToast(
                                     context,
                                     saveFailed,
                                     Toast.LENGTH_SHORT
@@ -236,7 +237,7 @@ private fun NavGraphBuilder.imageViewerDialog() {
                         }
                     }.onErr {
                         withContext(Dispatchers.Main) {
-                            Toast.makeText(
+                            textToast(
                                 context,
                                 saveFailed,
                                 Toast.LENGTH_SHORT
@@ -260,14 +261,14 @@ private fun NavGraphBuilder.imageViewerDialog() {
                         coroutineScope.launch {
                             saveBitmapAsPng(context, it)
                                 .onOk { path ->
-                                    Toast.makeText(
+                                    textToast(
                                         context,
                                         context.getString(R.string.saved_to_pictures_dir, path),
                                         Toast.LENGTH_LONG
                                     ).show()
                                 }
                                 .onErr {
-                                    Toast.makeText(
+                                    textToast(
                                         context,
                                         saveFailed,
                                         Toast.LENGTH_SHORT
@@ -276,7 +277,7 @@ private fun NavGraphBuilder.imageViewerDialog() {
                         }
                     }.onErr {
                         Log.d("ImageViewer", "Failed to save image: ${it.message}")
-                        Toast.makeText(
+                        textToast(
                             context,
                             context.getString(R.string.save_failed),
                             Toast.LENGTH_SHORT

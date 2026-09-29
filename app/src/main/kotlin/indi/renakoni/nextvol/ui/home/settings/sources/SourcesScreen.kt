@@ -1,6 +1,7 @@
 package indi.renakoni.nextvol.ui.home.settings.sources
 
 import android.widget.Toast
+import indi.renakoni.nextvol.utils.textToast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -178,11 +179,17 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
             snackbar.showSnackbar(groupsSavedMessage)
         }
     }
+    val updateMessage = state.message?.takeIf { it == R.string.sources_up_to_date ||
+        it == R.string.sources_pixiv_update_unsupported || it == R.string.sources_pixiv_update_failed }
+    val inlineMessage = state.message?.takeUnless { it == updateMessage }
     LaunchedEffect(state.message) {
         if (state.message == R.string.sources_saved) {
             adding = false; category = null; chosen = emptyList()
-            Toast.makeText(context.applicationContext, R.string.sources_saved, Toast.LENGTH_SHORT).show()
+            textToast(context.applicationContext, R.string.sources_saved, Toast.LENGTH_SHORT).show()
             model.consumeSavedMessage()
+        } else if (updateMessage != null) {
+            textToast(context.applicationContext, updateMessage, Toast.LENGTH_SHORT).show()
+            model.consumeMessage(updateMessage)
         }
     }
     LaunchedEffect(state.installed) {
@@ -303,7 +310,7 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
             }
         } else LazyColumn(Modifier.fillMaxSize().padding(padding), state = page.listState, contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (state.busy && state.showProgress) item { LinearProgressIndicator(Modifier.fillMaxWidth()); TextButton(onClick = model::cancel) { Text(stringResource(android.R.string.cancel)) } }
-            state.message?.takeUnless { it == R.string.sources_saved || it == R.string.source_groups_saved }?.let { message ->
+            inlineMessage?.takeUnless { it == R.string.sources_saved || it == R.string.source_groups_saved }?.let { message ->
                 item { Text(stringResource(message), color = MaterialTheme.colorScheme.primary) }
             }
             if (state.loginForm == null && state.loginMessages.isNotEmpty()) item {
@@ -535,9 +542,9 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
     }
     state.loginForm?.let { form ->
         if (state.configurationPanel) SourceConfigurationSheet(form, state.busy, model::submitLogin, model::cancelLogin,
-            message = state.message?.let { stringResource(it) }, feedback = state.loginMessages)
+            message = inlineMessage?.let { stringResource(it) }, feedback = state.loginMessages)
         else SourceLoginDialog(form, state.busy, model::submitLogin, model::cancelLogin,
-            message = state.message?.let { stringResource(it) }, feedback = state.loginMessages)
+            message = inlineMessage?.let { stringResource(it) }, feedback = state.loginMessages)
     }
 }
 

@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
 import android.widget.Toast
+import indi.renakoni.nextvol.utils.textToast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -420,7 +421,7 @@ private fun PluginInfoItem(
                 onLongClick = {
                     coroutineScope.launch {
                         clipboard.setClipEntry(ClipEntry(ClipData.newPlainText(title, content)))
-                        Toast.makeText(context, copiedText, Toast.LENGTH_SHORT).show()
+                        textToast(context, copiedText, Toast.LENGTH_SHORT).show()
                     }
                 }
             )

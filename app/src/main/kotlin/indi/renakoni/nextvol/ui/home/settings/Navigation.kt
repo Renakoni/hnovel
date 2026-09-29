@@ -4,6 +4,7 @@ import android.content.Intent
 import android.os.Build
 import android.provider.DocumentsContract
 import android.widget.Toast
+import indi.renakoni.nextvol.utils.textToast
 import androidx.activity.compose.ManagedActivityResultLauncher
 import androidx.activity.result.ActivityResult
 import androidx.compose.animation.ExperimentalSharedTransitionApi
@@ -148,10 +149,10 @@ private fun NavGraphBuilder.exportUserDataDialog() {
                 workManager.getWorkInfoByIdFlow(viewModel.exportToFile(uri, exportContext).id).collect {
                     when (it?.state) {
                         WorkInfo.State.FAILED -> {
-                            Toast.makeText(context.applicationContext, R.string.data_export_failed, Toast.LENGTH_SHORT).show()
+                            textToast(context.applicationContext, R.string.data_export_failed, Toast.LENGTH_SHORT).show()
                         }
                         WorkInfo.State.SUCCEEDED -> {
-                            Toast.makeText(context.applicationContext, R.string.data_export_success, Toast.LENGTH_SHORT).show()
+                            textToast(context.applicationContext, R.string.data_export_success, Toast.LENGTH_SHORT).show()
                         }
                         else -> {}
                     }

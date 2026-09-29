@@ -69,8 +69,9 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
     private val foreground = ForegroundSourceRequest()
     fun setActive(value: Boolean, retainBrowser: Boolean = false) = foreground.setActive(value, retainBrowser)
 
-    fun consumeSavedMessage() {
-        mutable.update { if (it.message == R.string.sources_saved) it.copy(message = null) else it }
+    fun consumeSavedMessage() = consumeMessage(R.string.sources_saved)
+    fun consumeMessage(message: Int) {
+        mutable.update { if (it.message == message) it.copy(message = null) else it }
     }
 
     init {
@@ -381,7 +382,7 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
             if (state.value.configurationPanel && update != null && definition != null && updates.manages(definition)) {
                 val checked = login.withAttempt(active) { updates.check(active.source, expected = definition.reference()) }
                 if (checked.unchanged) {
-                    mutable.update { it.copy(loginMessages = listOf(context.getString(R.string.sources_up_to_date))) }
+                    mutable.update { it.copy(message = R.string.sources_up_to_date) }
                     return@launch
                 }
                 withContext(NonCancellable) { login.cancel(active) }

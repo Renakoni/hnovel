@@ -8,6 +8,7 @@ import indi.renakoni.nextvol.ui.localbook.LocalBookImportState
 import indi.renakoni.nextvol.ui.localbook.LocalBookRelinkViewModel
 import android.annotation.SuppressLint
 import android.widget.Toast
+import indi.renakoni.nextvol.utils.textToast
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
@@ -63,7 +64,7 @@ fun NavGraphBuilder.bookDetailDestination() {
                 if (exportResult?.state == WorkInfo.State.SUCCEEDED) {
                     context.startActivity(EpubShareActivity.intent(context, exportResult.id, automatic = true))
                 } else {
-                    Toast.makeText(context, exportResult?.outputData?.getString("message")
+                    textToast(context, exportResult?.outputData?.getString("message")
                         ?: context.getString(R.string.epub_export_notification_failed), Toast.LENGTH_LONG).show()
                 }
             }
@@ -109,9 +110,9 @@ fun NavGraphBuilder.bookDetailDestination() {
                     ?.map { it.title }
                     ?.onOk { title ->
                         viewModel.startEpubExport(bookId, title)
-                        Toast.makeText(context, context.getString(R.string.export_book_started, title), Toast.LENGTH_SHORT).show()
+                        textToast(context, context.getString(R.string.export_book_started, title), Toast.LENGTH_SHORT).show()
                     }?.onErr {
-                        Toast.makeText(context, it.message, Toast.LENGTH_SHORT).show()
+                        textToast(context, it.message, Toast.LENGTH_SHORT).show()
                     }
             },
             onClickBackButton = navController::popBackStackIfResumed,
@@ -128,7 +129,7 @@ fun NavGraphBuilder.bookDetailDestination() {
                                 navController.navigateToBookReaderDestination(bookId, it, context)
                             }
                         }?.onErr {
-                            Toast.makeText(context, it.message, Toast.LENGTH_SHORT).show()
+                            textToast(context, it.message, Toast.LENGTH_SHORT).show()
                         }
                 else {
                     navController.navigateToBookReaderDestination(bookId, viewModel.uiState.userReadingData!!.lastReadChapterId!!, context)

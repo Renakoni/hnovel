@@ -193,6 +193,38 @@ class SourcesScreenTest {
         verify(exactly = 2) { model.consumeSavedMessage() }
     }
 
+    @Suppress("DEPRECATION")
+    @Test @Config(qualifiers = "en-rUS-w360dp-h800dp")
+    fun updateResultsUseShortToastsWithoutClosingConfigurationOrLeavingInlineText() {
+        ShadowToast.reset()
+        val form = LoginForm(listOf(LoginField("Update source", "button", action = "updateSource()")), null)
+        var state by mutableStateOf(SourceManagementState(loginForm = form, configurationPanel = true))
+        every { model.consumeMessage(any()) } answers {
+            if (state.message == firstArg<Int>()) state = state.copy(message = null)
+        }
+        activity.get().setContent { MaterialTheme { SourcesScreen(state, model, onDiagnostics = {}) {} } }
+        val messages = listOf(indi.renakoni.nextvol.R.string.sources_up_to_date,
+            indi.renakoni.nextvol.R.string.sources_up_to_date,
+            indi.renakoni.nextvol.R.string.sources_pixiv_update_unsupported,
+            indi.renakoni.nextvol.R.string.sources_pixiv_update_failed)
+        messages.forEachIndexed { index, message ->
+            compose.runOnIdle { state = state.copy(message = message) }
+            compose.onNodeWithText("Source configuration").assertIsDisplayed()
+            compose.onNodeWithText(activity.get().getString(message)).assertDoesNotExist()
+            compose.onNodeWithText(activity.get().getString(indi.renakoni.nextvol.R.string.sources_configuration_result)).assertDoesNotExist()
+            compose.runOnIdle {
+                org.junit.Assert.assertNull(state.message)
+                org.junit.Assert.assertEquals(index + 1, ShadowToast.shownToastCount())
+                org.junit.Assert.assertEquals(activity.get().getString(message), ShadowToast.getTextOfLatestToast())
+                org.junit.Assert.assertEquals(android.widget.Toast.LENGTH_SHORT, ShadowToast.getLatestToast().duration)
+                val content = ShadowToast.getLatestToast().view
+                org.junit.Assert.assertTrue(content is android.widget.TextView)
+                org.junit.Assert.assertEquals(activity.get().getString(message), (content as android.widget.TextView).text.toString())
+            }
+        }
+        verify(exactly = 4) { model.consumeMessage(any()) }
+    }
+
     @Test fun failedAndPartialImportsStayVisibleWithoutBeingConsumedAsSuccess() {
         ShadowToast.reset()
         var state by mutableStateOf(SourceManagementState())

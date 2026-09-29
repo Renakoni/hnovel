@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.widget.Toast
+import indi.renakoni.nextvol.utils.textToast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -76,7 +77,7 @@ internal fun ReaderFontEntry(settings: ReaderSettingsEditor, modifier: Modifier 
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
-                Toast.makeText(context, R.string.font_file_error, Toast.LENGTH_SHORT).show()
+                textToast(context, R.string.font_file_error, Toast.LENGTH_SHORT).show()
             }
         }
     }
