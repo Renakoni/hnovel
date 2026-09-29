@@ -42,10 +42,18 @@ class SourceVerification internal constructor(val kind: hnovel.network.BrowserCh
 }
 
 /** Logs expose stable codes/fields; verification is an opaque action bound to the failed account. */
-class SourceContentException(val code: ContentError, val field: String,
+open class SourceContentException(val code: ContentError, val field: String,
     val denial: hnovel.network.OriginDenial? = null, val dependency: hnovel.rules.ScriptDependency? = null,
     val verification: SourceVerification? = null, val diagnostic: hnovel.execution.ExecutionResult.Failure? = null,
     val httpStatus: Int? = null, val retry: hnovel.network.RequestRetryHint? = null) : Exception("${code.name}: $field")
+
+/** Readable chapters do not turn a failed catalogue into a successful refresh. */
+class PartialDirectoryException internal constructor(internal val snapshot: DirectorySnapshot,
+    val failure: SourceContentException) : SourceContentException(failure.code, failure.field, failure.denial,
+    failure.dependency, failure.verification, failure.diagnostic, failure.httpStatus) {
+    val chapters: List<RuleChapter> get() = snapshot.chapters
+    init { initCause(failure) }
+}
 
 @Serializable data class ScriptState(
     val metadata: JsonObject = JsonObject(emptyMap()),
@@ -57,7 +65,8 @@ class SourceContentException(val code: ContentError, val field: String,
 @Serializable data class RuleBook(val id: String, val title: String = "", val author: String = "",
     val description: String = "", val coverUrl: String = "", val tocUrl: String = id,
     val tags: List<String> = emptyList(), val wordCount: String = "", val latestChapter: String = "",
-    val updateTime: String = "", val state: ScriptState = ScriptState(), val observedUpdate: Long = 0)
+    val updateTime: String = "", val state: ScriptState = ScriptState(), val observedUpdate: Long = 0,
+    val lastValidWordCount: String = "", val lastValidUpdateTime: String = "")
 
 @Serializable data class RuleChapter(val id: String, val title: String, val isVolume: Boolean = false,
     val isVip: Boolean = false, val isPay: Boolean = false, val updateTime: String = "",
@@ -71,6 +80,8 @@ data class RuleContent(val id: String, val title: String, val parts: List<Conten
     @kotlinx.serialization.Transient val successfulResponse: Boolean = false,
     @kotlinx.serialization.Transient val httpErrorStatus: Int? = null)
 @Serializable internal data class BookPreview(val input: hnovel.rules.RuleValue, val baseUrl: String, val accountGeneration: Long)
+@Serializable internal data class DirectorySnapshot(val chapters: List<RuleChapter>, val state: ScriptState)
 @Serializable internal data class BookRecord(val revision: String, val book: RuleBook,
     val informationLoaded: Boolean = false, val document: PageDocument? = null,
-    val chapters: List<RuleChapter> = emptyList(), val preview: BookPreview? = null)
+    val chapters: List<RuleChapter> = emptyList(), val preview: BookPreview? = null,
+    val partialDirectory: DirectorySnapshot? = null)

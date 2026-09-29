@@ -37,6 +37,9 @@ class RequestTraceTest {
                 assertEquals(ua, received.getHeader("User-Agent"))
                 assertEquals("token-secret", received.getHeader("Authorization"))
                 val resolved = events.last { it.evidence == RequestEvidence.HeadersResolved }
+                assertEquals("secret-cookie=1", received.getHeader("Cookie"))
+                assertEquals(CookieDiagnostic(CookieStore.HttpJar, selected = 1, explicit = 1, expired = 0,
+                    unmatched = 0, overridden = 0, automaticCapture = true), resolved.cookies)
                 assertEquals(listOf(UserAgentSource.SessionDefault, UserAgentSource.OriginGrant, UserAgentSource.AccountLogin,
                     UserAgentSource.RequestHeaders), resolved.userAgentSources)
                 val transport = events.single { it.evidence == RequestEvidence.TransportHeaders }
@@ -58,6 +61,27 @@ class RequestTraceTest {
                 success(session.execute(BrokerRequest("same-id", server.url("/origin").toString())))
                 assertEquals("origin-secret", server.takeRequest().getHeader("User-Agent"))
                 assertEquals(UserAgentSource.OriginGrant, events.last { it.evidence == RequestEvidence.HeadersResolved }.userAgentSources.last())
+            }
+        }
+    }
+
+    @Test fun disabledAutomaticCaptureDoesNotMeanExplicitCookiesWereNotSelected() = runBlocking {
+        MockWebServer().use { server ->
+            server.start(); server.enqueue(MockResponse().setBody("ok"))
+            SourceBroker(directory.root.toPath()).use { broker ->
+                val session = broker.open(scope, listOf(NetworkGrant(server.url("/").toString(), true)))
+                session.configureSource(server.url("/").toString(), false)
+                val events = events(); session.observe(events)
+                success(session.execute(BrokerRequest("cookie", server.url("/").toString(),
+                    headers = mapOf("Cookie" to "private-session=private-token"))))
+                assertEquals("private-session=private-token", server.takeRequest().getHeader("Cookie"))
+                val cookies = checkNotNull(events.single {
+                    it.evidence == RequestEvidence.HeadersResolved && it.attempt == 0 && it.hop == 0
+                }.cookies)
+                assertEquals(false, cookies.automaticCapture)
+                assertEquals(1, cookies.selected)
+                assertEquals(1, cookies.explicit)
+                assertFalse(Json.encodeToString(events.toList()).contains("private-"))
             }
         }
     }

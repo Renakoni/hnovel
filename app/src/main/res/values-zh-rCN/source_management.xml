@@ -8,8 +8,6 @@
     <string name="sources_account_required">需要重新登录</string>
     <string name="sources_account_loading">正在读取账户状态…</string>
     <string name="sources_account_unknown">无法读取账户状态</string>
-    <string name="sources_plugins_group">插件书源</string>
-    <string name="sources_network_plugin">此插件自行管理网络，暂不支持此绕过开关。</string>
     <string name="sources_login_definition_error">书源登录声明的 %1$s 字段无效，请检查书源定义。</string>
     <string name="sources_account_unavailable">账户操作暂不可用</string>
     <string name="sources_session_saved">会话已保存</string>
@@ -41,7 +39,7 @@
     <string name="sources_title">书源</string>
     <string name="sources_manage_help">添加、配置、登录和更新书源</string>
     <string name="sources_add">添加书源</string>
-    <string name="sources_add_help">通过 URL、本地文件或粘贴文本添加 JSON 书源，也可从本地导入已适配版本的 .lnrp / APK 书源包。</string>
+    <string name="sources_add_help">通过链接、本地文件或粘贴文本导入 JSON 书源。</string>
     <string name="sources_url">书源文件 URL</string>
     <string name="sources_preview_url">下载并预览</string>
     <string name="sources_file">选择本地文件</string>

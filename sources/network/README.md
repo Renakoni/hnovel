@@ -28,6 +28,14 @@ not install an observer. Wenku8 and the browser identity/routing/cookie policies
   rules and URL-option overrides are already merged at this boundary and are not falsely
   attributed separately. An absent override is explicitly transport/WebView default.
   Web-cookie-only operations bypass source headers as before and do not imply navigation.
+- `HeadersResolved.cookies` describes HTTP selection, not browser storage or server receipt.
+  `HttpJar` counts selected entries (including explicit pairs), parsed explicit pairs, expired
+  entries removed in this selection, remaining unmatched entries, and same-name jar entries
+  overridden by explicit pairs. Unmatched includes URL/expiry checks, not a fabricated
+  SameSite/partition decision. The jar may contain browser handoffs; this is the selecting
+  store, not original issuance provenance. `ExplicitHeaderOnly` means the existing image
+  policy bypassed jar selection; absent counts are unknown, not zero. `automaticCapture`
+  reports HTTP response capture policy; false does not disable sending login/explicit cookies.
 - `TransportHeaders` observes OkHttp's locally prepared UA after its default header handling,
   with broker retry attempt and redirect hop. OkHttp connection retries can share these
   coordinates. It is not evidence that a server received the bytes.
@@ -37,10 +45,26 @@ not install an observer. Wenku8 and the browser identity/routing/cookie policies
   Metadata status is `ProviderDefault`, `Unsupported`, `UnhandledUserAgent`, `Applied` or
   `Rejected`. `Applied` means the metadata setter returned successfully, not a page/worker,
   UA-CH header, or server-side observation. No event means unknown, not unsupported.
+  Optional `environment` reports the installed WebView package/version (not the UA's claimed
+  version), and support for UA metadata and full Cookie information. Package/version strings
+  have bounded formats. Environment lookup failure omits only that evidence.
+- `CookieSnapshot` describes an admitted native-browser snapshot received by the host.
+  `selected` counts exported entries, not Chromium's outbound Cookie header. With full
+  metadata, `partitionedExcluded` counts the existing Partitioned filter; header-only
+  fallbacks cannot know that count and leave it absent. Optional counts are also omitted
+  when they would exceed the existing IPC payload limit; Cookie data and its limits are
+  unchanged, and an absent count remains unknown rather than zero. `completeMetadata` describes the
+  export interface, not HTTP preservation of browser semantics. A received snapshot can
+  still be rejected by the existing version fence; the event is not proof of application,
+  transmission, authentication or challenge clearance.
 
-Only known enums, numeric browser majors and request-local IDs are retained: no raw UA,
-stable fingerprint/hash, URLs, headers, credentials, script or response text. Callback
-failures cannot fail a request; browser callbacks are bounded and accepted once per job.
+Only enums, counts, booleans, bounded provider identity and request-local IDs are retained:
+no raw UA, cookie names/values, stable fingerprint/hash, URLs, headers, credentials, script
+or response text. Callback failures cannot fail a request; UA/environment callbacks are
+bounded and accepted once per job. Cookie evidence reuses the existing bounded handoff.
+No extra IPC, persistent store, background task or dependency is introduced. With observation
+disabled, no added diagnostic object/provider lookup or extra Cookie scan occurs; selection
+counts reuse existing collection sizes and partition counts reuse the existing filter.
 The existing report event cap/truncation flag still applies, so a truncated report is not
 a complete request history. Real page/client-hint observations require owned browser
 fixtures; neither these diagnostics nor their unit tests claim improved site acceptance.
@@ -105,8 +129,7 @@ child HTTP request. The separate persistent **native Chromium** process binds it
 before Chromium initialization and uses a direct proxy override when bypassing VPN (#219).
 Unsupported Android/WebView combinations report `RouteUnsupported`; no route fallback is
 implied. Native page subrequests use Chromium's networking, not the broker's per-peer checks.
-Cookie handoff still validates the current source/account and authorized origins. A plugin's
-private transport is not host-controlled.
+Cookie handoff still validates the current source/account and authorized origins.
 
 Broker HTTP address and origin enforcement applies to both default and bypass routes.
 Do not grant private-address access

@@ -1,4 +1,11 @@
-# Plugin API changes
+# Internal API changes
+
+## Unreleased — remove external extensions
+
+The `api` module contains shared in-tree reader and source contracts, not an
+external extension SDK. The package loader, registration API, installer and
+extension routes have been removed. Earlier entries below describe historical
+interface changes, not current external binary compatibility or publication support.
 
 ## Unreleased — independent homepage catalogue and verification errors
 
@@ -93,13 +100,6 @@ plugin compatibility groups.
   source runtime retains identity, revision/account, and network/storage authority;
   providers must not retain Android UI objects in those values. Stateful providers
   should return a new provider from `openSession` rather than share page drafts.
-
-Before publishing an API release, record these changes in its versioned release
-notes, verify representative independently compiled plugins and exhaustive filter
-consumers, and select the artifact/API compatibility version according to those
-results. Do not republish this as an undocumented compatible replacement or infer
-external plugin ABI support from the monorepo's passing tests. No plugin binary
-compatibility verification or release is claimed by this PR.
 
 See [the discovery protocol](../sources/content/DISCOVERY.md) for input-key identity,
 catalogue persistence, source-local search, and browser lifecycle semantics.

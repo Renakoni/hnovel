@@ -459,12 +459,13 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
                 if (book.title.isBlank()) throw SourceContentException(ContentError.EmptyContent, "ruleBookInfo.name")
                 val old = store.read(id)
                 if (old?.informationLoaded != true || old.revision != identity.revision) {
-                    val record = BookRecord(identity.revision, book)
+                    val record = BookRecord(identity.revision, book.preservingValidMetadata(old?.book))
                     if (record != old) store.write(record)
                 }
                 return listOf(book)
             }
-            val record = saveInformation(id, BookRecord(identity.revision, RuleBook(id, state = context.book)), document)
+            val seed = RuleBook(id, state = context.book).preservingValidMetadata(store.read(id)?.book)
+            val record = saveInformation(id, BookRecord(identity.revision, seed), document)
             return listOf(record.book)
         }
         val items = responseRule(document.httpErrorStatus) {
@@ -508,7 +509,8 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             store.write(ordered.mapNotNull { book ->
                 val old = store.read(book.id)
                 if (old?.informationLoaded != true || old.revision != identity.revision)
-                    BookRecord(identity.revision, book, preview = previews[book.id]).takeUnless { it == old } else null
+                    BookRecord(identity.revision, book.preservingValidMetadata(old?.book), preview = previews[book.id])
+                        .takeUnless { it == old } else null
             })
         }
         return ordered
@@ -516,6 +518,11 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
 
     suspend fun canonicalBookId(bookId: String): String = operation("bookAlias") {
         store.canonicalId(sourceLink(spec.baseUrl, bookId))
+    }
+
+    /** Read saved metadata without executing rules or requesting a document. */
+    suspend fun cachedInformation(bookId: String): RuleBook? = withContext(Dispatchers.IO) {
+        store.read(sourceLink(spec.baseUrl, bookId))?.book
     }
 
     suspend fun information(bookId: String): RuleBook = operation("ruleBookInfo", timeoutMillis = DIRECTORY_TIMEOUT_MILLIS) {
@@ -533,13 +540,19 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         // A script-provided bookUrl is an alias proposal, not permission to move unreadable content.
         val loadDirectory = refreshed.book.id != id ||
             (inferUpdate && refreshed.book.latestChapter.isBlank() && refreshed.book.updateTime.isBlank())
-        if (loadDirectory) {
+        var directoryLoaded = false
+        if (loadDirectory) try {
             refreshed = directory(refreshed)
+            directoryLoaded = true
             if (old?.chapters?.map { it.id } != refreshed.chapters.map { it.id })
                 refreshed = refreshed.copy(book = refreshed.book.copy(observedUpdate = System.currentTimeMillis()))
+        } catch (failure: PartialDirectoryException) {
+            // Alias migration still requires a fully validated destination catalogue.
+            if (refreshed.book.id != id) throw failure.failure
+            refreshed = refreshed.copy(partialDirectory = retainLongerPartialDirectory(refreshed.partialDirectory, failure).snapshot)
         }
         store.write(refreshed, id)
-        prefetchedDirectoryId = if (loadDirectory) refreshed.book.id else null
+        prefetchedDirectoryId = if (directoryLoaded) refreshed.book.id else null
         return refreshed
     }
 
@@ -548,12 +561,35 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val book = record(id)
         val prefetched = prefetchedDirectoryId == book.book.id
         prefetchedDirectoryId = null
-        if (prefetched) book.chapters else directory(book).also(store::write).chapters
+        try {
+            if (prefetched) book.chapters else directory(book).also(store::write).chapters
+        } catch (failure: PartialDirectoryException) {
+            val retained = retainLongerPartialDirectory(book.partialDirectory, failure)
+            store.write(book.copy(partialDirectory = retained.snapshot))
+            throw retained
+        }
+    }
+
+    private fun retainLongerPartialDirectory(previous: DirectorySnapshot?, failure: PartialDirectoryException): PartialDirectoryException {
+        if (previous == null || previous.chapters.size <= failure.chapters.size) return failure
+        val cached = previous.chapters.map { it.id to it.isVolume }
+        val incoming = failure.chapters.map { it.id to it.isVolume }
+        // Reverse catalogues retain a suffix. Keep the matching snapshot and its script state together.
+        return if (cached.take(incoming.size) == incoming || cached.takeLast(incoming.size) == incoming)
+            PartialDirectoryException(previous, failure.failure) else failure
     }
 
     suspend fun content(bookId: String, chapterId: String): RuleContent = operation("ruleContent", timeoutMillis = DIRECTORY_TIMEOUT_MILLIS) {
         val id = sourceLink(spec.baseUrl, bookId)
-        var record = record(id)
+        val saved = record(id)
+        var record = saved
+        var usingPartialDirectory = false
+        if (record.chapters.none { it.id == chapterId && !it.isVolume }) {
+            record.partialDirectory?.takeIf { snapshot -> snapshot.chapters.any { it.id == chapterId && !it.isVolume } }?.let {
+                record = record.copy(book = record.book.copy(state = it.state), chapters = it.chapters)
+                usingPartialDirectory = true
+            }
+        }
         if (record.chapters.isEmpty()) record = directory(record)
         val index = record.chapters.indexOfFirst { it.id == chapterId && !it.isVolume }
         if (index < 0) throw SourceContentException(ContentError.Unavailable, "chapter")
@@ -596,6 +632,9 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             if (pages.sumOf { it.length.toLong() } > 512000) throw SourceContentException(ContentError.Limit, "ruleContent.content")
             if (!completePageList) {
                 val following = links(context, spec.content.string("nextContentUrl"), document, "ruleContent.nextContentUrl")
+                // Without the next catalogue row, an unknown link might be the next chapter, not another page.
+                if (usingPartialDirectory && next == null && following.any { it != document.url && it !in visited })
+                    throw SourceContentException(ContentError.Unavailable, "ruleToc.nextTocUrl")
                 completePageList = context.page == 1 && following.size > 1
                 (if (completePageList) following else following.take(1)).forEach(queue::addLast)
             }
@@ -623,8 +662,9 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         if (parts.isEmpty()) throw SourceContentException(ContentError.EmptyContent, "ruleContent.content")
         title = context.chapter.metadata["title"]?.jsonPrimitive?.content ?: title
         val updated = chapter.copy(title = title, state = context.chapter)
-        store.write(record.copy(book = record.book.copy(state = context.book),
-            chapters = record.chapters.toMutableList().apply { set(index, updated) }))
+        val updatedChapters = record.chapters.toMutableList().apply { set(index, updated) }
+        if (usingPartialDirectory) store.write(saved.copy(partialDirectory = DirectorySnapshot(updatedChapters, context.book)))
+        else store.write(record.copy(book = record.book.copy(state = context.book), chapters = updatedChapters))
         RuleContent(chapter.id, title, parts, previous, next)
     }
 
@@ -680,7 +720,8 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val changed = old?.informationLoaded != true || initial.latestChapter != book.latestChapter || initial.updateTime != book.updateTime
         book = book.copy(id = canonicalId, tocUrl = tocUrl, state = context.book,
             observedUpdate = if (changed) System.currentTimeMillis() else initial.observedUpdate)
-        return BookRecord(identity.revision, book, true, document, old?.takeIf { it.revision == identity.revision }?.chapters.orEmpty())
+        return BookRecord(identity.revision, book, true, document, old?.takeIf { it.revision == identity.revision }?.chapters.orEmpty(),
+            partialDirectory = old?.takeIf { it.revision == identity.revision && it.book.id == canonicalId && it.book.tocUrl == tocUrl }?.partialDirectory)
     }
 
     private suspend fun bookFields(context: RuleEvaluation, input: RuleValue, rules: JsonObject, prefix: String, seed: RuleBook,
@@ -698,7 +739,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             } catch (failure: SourceContentException) {
                 // BookList/BookInfo tolerate optional metadata errors. Keep the trace, and
                 // still surface cancellation, limits, missing dependencies and login/permissions.
-                if (name !in setOf("kind", "wordCount", "lastChapter", "intro", "coverUrl") || failure.code != ContentError.InvalidRule) throw failure
+                if (name !in setOf("kind", "wordCount", "updateTime", "lastChapter", "intro", "coverUrl") || failure.code != ContentError.InvalidRule) throw failure
                 ""
             }
             val value = extracted.ifBlank {
@@ -729,7 +770,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val time = field("updateTime", seed.updateTime)
         return seed.copy(title = finalTitle, author = finalAuthor, description = intro, coverUrl = cover,
             tags = if (kind.isBlank()) seed.tags else kind.split('\n', ','), wordCount = wordCount,
-            latestChapter = latest, updateTime = time, state = context.book)
+            latestChapter = latest, updateTime = time, state = context.book).preservingValidMetadata(seed)
     }
 
     private suspend fun directory(initial: BookRecord): BookRecord {
@@ -744,12 +785,19 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val visited = linkedSetOf<String>()
         val chapters = mutableListOf<RuleChapter>()
         var completePageList = false
+        var interrupted: SourceContentException? = null
         while (queue.isNotEmpty()) {
             val url = queue.removeFirst()
             if (url in visited) continue
             visit(visited, url, "ruleToc.nextTocUrl", DIRECTORY_MAX_PAGES)
-            val document = initial.document?.takeIf { visited.size == 1 && it.url == url }
-                ?: fetch(context, url, "ruleToc.chapterList")
+            val document = try {
+                initial.document?.takeIf { visited.size == 1 && it.url == url }
+                    ?: fetch(context, url, "ruleToc.chapterList")
+            } catch (failure: SourceContentException) {
+                if (failure.code != ContentError.Network || chapters.none { !it.isVolume }) throw failure
+                interrupted = failure
+                break
+            }
             context.baseUrl = document.ruleUrl
             if (!document.inline && document.url != url && !visited.add(document.url)) continue
             val items = context.value(rule.removePrefix("-").removePrefix("+"), document.input(), "ruleToc.chapterList", OutputKind.Elements).items()
@@ -823,7 +871,8 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             formatted += chapter.copy(title = title, state = row.chapter)
             context.book = row.book
         }
-        return initial.copy(book = initial.book.copy(state = context.book), chapters = formatted, document = null)
+        interrupted?.let { throw PartialDirectoryException(DirectorySnapshot(formatted, context.book), it) }
+        return initial.copy(book = initial.book.copy(state = context.book), chapters = formatted, document = null, partialDirectory = null)
     }
 
     private suspend fun record(id: String): BookRecord {

@@ -80,7 +80,7 @@ class BuiltInContentRenderingTest {
     fun tearDown() { activity.pause().stop().destroy() }
 
     @Test
-    fun textPluginEntryPointForwardsModifierAndTracksReaderStyleAndThemeFallbacks() {
+    fun textComponentForwardsModifierAndTracksReaderStyleAndThemeFallbacks() {
         val component = SimpleTextComponent(SimpleTextComponentData("Reader body"), mockk(relaxed = true), activity.get())
         every { component.fontFamilyUriUserData.getFlowWithDefault(Uri.EMPTY) } returns flowOf(Uri.EMPTY)
         var style by mutableStateOf(ReaderStyle(18f, 4f, 600f, Color.Unspecified, Color.Unspecified))

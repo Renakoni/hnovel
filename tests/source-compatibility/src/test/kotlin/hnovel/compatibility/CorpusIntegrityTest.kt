@@ -85,7 +85,7 @@ class CorpusIntegrityTest {
         "WEBVIEW", "WEBVIEW-ISOLATION", "EXTENSION-LOGIN-UI", "DIAGNOSTICS", "REVISIONS", "INTEGRATION")
 
     @Test
-    fun syntheticSourcesCoverTheRequiredFamiliesWithoutPluginPackages() {
+    fun syntheticSourcesCoverTheRequiredFamilies() {
         val sources = FixtureCorpus.json("sources.json").getAsJsonArray("sources")
         assertEquals(6, sources.size())
         val keys = mutableSetOf<String>()

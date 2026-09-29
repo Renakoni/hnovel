@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="local_file_backup_scope">.lnr 备份保存所选的书库数据，不包含 EPUB、TXT 原文件。请另行保管原文件；在新设备恢复后，可在本地书详情中“重新关联原文件”，保留原有阅读进度和书签。</string>
+    <string name="local_file_backup_scope">NextVol 备份保存所选的书库数据，不包含 EPUB、TXT 原文件。请另行保管原文件；在新设备恢复后，可在本地书详情中“重新关联原文件”，保留原有阅读进度和书签。</string>
     <string name="local_file_missing_title">需要原文件</string>
     <string name="local_file_missing_body">书架、阅读进度和书签已保留。选择原始 EPUB 或 TXT 文件，即可在此设备继续阅读。</string>
     <string name="local_file_relink_action">重新关联原文件</string>

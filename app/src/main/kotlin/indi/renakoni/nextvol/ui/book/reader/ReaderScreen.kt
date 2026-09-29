@@ -1,5 +1,6 @@
 package indi.renakoni.nextvol.ui.book.reader
 
+import indi.renakoni.nextvol.data.book.availableVolumes
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context.BATTERY_SERVICE
@@ -81,8 +82,6 @@ import androidx.lifecycle.Lifecycle
 import coil3.compose.AsyncImagePainter
 import com.github.michaelbull.result.get
 import com.github.michaelbull.result.map
-import com.github.michaelbull.result.onErr
-import com.github.michaelbull.result.onOk
 import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.tts.ReadAloudState
 import indi.renakoni.nextvol.tts.SpeechAction
@@ -398,12 +397,13 @@ fun ReaderScreen(
         exit = if (settingState.reduceMotion) ExitTransition.None else shrinkOut() + fadeOut(),
     ) {
         readingScreenUiState.contentUiState?.let { contentUiState ->
-            readingScreenUiState.bookVolumes?.onOk { bookVolumes ->
+            readingScreenUiState.bookVolumes?.availableVolumes()?.let { bookVolumes ->
                 contentUiState.readingChapterId?.let { readingChapterId ->
                     ChapterSelectionBottomSheet(
                         sheetState = chaptersBottomSheetState,
                         selectedVolumeId = selectedVolumeId,
                         bookVolumes = bookVolumes,
+                        directoryIncomplete = readingScreenUiState.bookVolumes?.isErr == true,
                         readingChapterId = readingChapterId,
                         onDismissRequest = {
                             coroutineScope.launch { chaptersBottomSheetState.hide() }
@@ -426,10 +426,6 @@ fun ReaderScreen(
                         }
                     )
                 }
-            }?.onErr {
-                //TODO 错误显示
-            } ?: {
-                //TODO 加载显示
             }
         }
     }

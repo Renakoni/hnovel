@@ -38,11 +38,7 @@ class SourceManagerRegistrationTest {
             manager.unregisterWebDataSource(other.id)
             assertTrue(runtime.isAvailable)
             assertEquals(0, other.loads.get())
-            manager.unloadWebDataSourcesFromClassLoader(requireNotNull(BuiltInFixture::class.java.`package`).name)
-            assertTrue(manager.webDataSourceItems.isEmpty())
-            assertFalse(runtime.isAvailable)
-            withTimeout(3000) { source.closed.await(); other.closed.await() }
-            assertEquals(1, source.closes.get())
+            withTimeout(3000) { other.closed.await() }
             assertEquals(1, other.closes.get())
         } finally {
             manager.unregisterWebDataSource(source.id)
@@ -58,26 +54,6 @@ class SourceManagerRegistrationTest {
             assertTrue(manager.registry.resolve(Identifier("fixture", "missing")) is SourceResolution.Missing)
             assertEquals(0, source.loads.get())
         } finally { manager.unregisterWebDataSource(source.id) }
-    }
-
-    @Test(timeout = 10000)
-    fun unloadingAnOldPackageDoesNotRemoveAReplacementWithTheSameIdentity() = runBlocking {
-        val manager = WebBookDataSourceManager(WebSourceRegistry())
-        val old = BuiltInFixture()
-        manager.loadBuiltInSource(old)
-        val oldRuntime = (manager.registry.resolve(old.id) as SourceResolution.Ready).runtime
-        manager.unregisterWebDataSource(old.id)
-        val replacement = BuiltInFixture()
-        manager.registerWebDataSource(replacement, WebDataSourceItem(replacement.id, "Replacement", "fixture"))
-        try {
-            manager.unloadWebDataSourcesFromClassLoader(requireNotNull(BuiltInFixture::class.java.`package`).name)
-            assertFalse(oldRuntime.isAvailable)
-            assertEquals(1, manager.webDataSourceItems.size)
-            assertTrue(manager.registry.resolve(replacement.id) is SourceResolution.Ready)
-            assertEquals(1, replacement.loads.get())
-            withTimeout(3000) { old.closed.await() }
-            assertEquals(0, replacement.closes.get())
-        } finally { manager.unregisterWebDataSource(replacement.id) }
     }
 
     @WebDataSource("Fixture", "Built-in fixture")

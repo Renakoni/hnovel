@@ -10,10 +10,6 @@
     <string name="action_clear_text">Clear text</string>
     <string name="action_retry">Retry</string>
     <string name="image_load_failed">Image could not be loaded</string>
-    <string name="plugin_signature_invalid">Invalid signature</string>
-    <string name="plugin_runtime_error">Runtime error</string>
-    <string name="plugin_incompatible">Incompatible</string>
-    <string name="plugin_app_badge">App</string>
     <string name="dialog_value">Value</string>
     <string name="paper_background_downloading">Downloading paper background…</string>
     <string name="data_export_failed">Export failed</string>
@@ -41,8 +37,6 @@
         <item quantity="one">%1$d rule</item>
         <item quantity="other">%1$d rules</item>
     </plurals>
-    <string name="plugin_delete_action">Delete plugin</string>
-    <string name="plugin_uninstall_action">Uninstall and delete</string>
     <string name="stats_total">Total</string>
     <string name="reader_chapter">Chapter</string>
     <string name="reader_empty_chapter">This chapter has no readable content.</string>
