@@ -59,7 +59,7 @@ class SearchCoordinator internal constructor(private val explore: ExploreReposit
                         failure = SourceSearchFailure(DiscoveryError.InvalidResponse)
                     }
                 } else {
-                    // Legacy plugins have no page cursor. Consume their stream once, retaining partial
+                    // Streaming providers have no page cursor. Consume their stream once, retaining partial
                     // results on failure and stopping even if the provider ignores its terminal event.
                     session.search(session.types.first(), keyword).buffer(0).transformWhile { event ->
                         emit(event)

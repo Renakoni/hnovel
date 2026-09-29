@@ -129,8 +129,7 @@ child HTTP request. The separate persistent **native Chromium** process binds it
 before Chromium initialization and uses a direct proxy override when bypassing VPN (#219).
 Unsupported Android/WebView combinations report `RouteUnsupported`; no route fallback is
 implied. Native page subrequests use Chromium's networking, not the broker's per-peer checks.
-Cookie handoff still validates the current source/account and authorized origins. A plugin's
-private transport is not host-controlled.
+Cookie handoff still validates the current source/account and authorized origins.
 
 Broker HTTP address and origin enforcement applies to both default and bypass routes.
 Do not grant private-address access

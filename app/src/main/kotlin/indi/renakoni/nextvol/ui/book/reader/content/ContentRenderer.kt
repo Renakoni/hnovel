@@ -8,7 +8,7 @@ import kotlinx.serialization.json.JsonObject
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** Reader composition root for JSON decoding, plugin construction and visible error components. */
+/** Reader composition root for JSON decoding, built-in construction and visible error components. */
 @Singleton
 class ContentRenderer @Inject constructor(
     private val decoder: ContentJsonDecoder,

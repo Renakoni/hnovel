@@ -80,11 +80,6 @@ class StorageManagerViewModel @Inject constructor(
                 size = snapshot.databaseDiskBytes
             ),
             StorageManagerSection(
-                title = R.string.storage_manager_section_plugins_title,
-                description = R.string.storage_manager_section_plugins_description,
-                size = snapshot.pluginBytes
-            ),
-            StorageManagerSection(
                 title = R.string.storage_manager_section_cache_title,
                 description = R.string.storage_manager_section_cache_description,
                 size = snapshot.cacheBytes

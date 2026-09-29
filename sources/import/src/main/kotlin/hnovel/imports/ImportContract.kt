@@ -13,7 +13,7 @@ data class ImportOrigin(val kind: Kind, val location: String? = null, val finalU
     override fun toString() = "ImportOrigin(kind=$kind)"
 }
 
-/** Definition data only: no account, progress, current tab, runtime or plugin instance. */
+/** Definition data only: no account, progress, current tab or runtime instance. */
 @Serializable
 data class SourceDefinition(
     val sourceId: String,
@@ -36,7 +36,7 @@ data class DefinitionReference(val sourceId: String, val revision: Long)
 
 enum class ImportCode {
     InvalidJson, DuplicateField, TooDeep, TooLarge, TooMany, InvalidShape,
-    MissingIdentity, InvalidField, UnsupportedFormat, UnsupportedProfile, UnsupportedType, PluginPackage,
+    MissingIdentity, InvalidField, UnsupportedFormat, UnsupportedProfile, UnsupportedType,
     ReadFailed, DownloadFailed, StorageUnavailable, StorageQuota, Conflict, StalePreview,
     DuplicateSelection, InvalidSelection,
 }

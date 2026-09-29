@@ -39,7 +39,6 @@
     <string name="sources_import_invalid_format">Неверный формат JSON или обязательные поля источника. Проверьте определение.</string>
     <string name="sources_import_limit">Размер файла, глубина вложенности или число источников превышают лимит импорта.</string>
     <string name="sources_import_unsupported">Формат источника, режим совместимости или тип содержимого пока не поддерживаются.</string>
-    <string name="sources_import_package">Пакет источников или его версия пока не поддерживаются. Только адаптированные версии LNRP позволяют импортировать определения приложения. Также можно импортировать JSON-источники.</string>
     <string name="sources_import_read_failed">Не удалось прочитать файл источника. Выберите его снова.</string>
     <string name="sources_import_download_failed">Не удалось скачать файл источника. Проверьте адрес, сеть и разрешения.</string>
     <string name="sources_import_storage_failed">Не удалось сохранить источник. Проверьте свободное место и повторите попытку.</string>

@@ -273,7 +273,7 @@ class MixedSourceAcceptanceTest {
                 for (id in listOf(a, b, searchOnly)) sources.remove(id)
                 registry.unregister(native.id)
                 val requests = fixture.documents.get(); val nativeRequests = nativeReads.get()
-                val rendering = ContentTestHost().apply { initializeInjector() }
+                val rendering = ContentTestHost()
                 val chapterLoader = ReaderChapterLoader(chapters, rendering.renderer)
                 for ((index, book) in identities.withIndex()) {
                     val reading = books.getUserReadingData(book.storageKey)

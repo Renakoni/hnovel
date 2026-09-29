@@ -15,7 +15,7 @@ import indi.renakoni.nextvol.data.web.SourceListing
 import indi.renakoni.nextvol.data.web.SourceStatus
 import indi.renakoni.nextvol.ui.components.SectionHeader
 
-/** Existing built-ins/plugins expose metadata and supported actions, without loading their runtime. */
+/** Registered sources expose metadata and supported actions without loading their runtime. */
 @Composable
 internal fun RegisteredSourceSettings(entry: SourceListing?, network: SourceNetworkState?, busy: Boolean,
     onSearch: () -> Unit, onBypassVpn: (Boolean) -> Unit) {
