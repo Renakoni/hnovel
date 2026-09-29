@@ -46,7 +46,7 @@ class ChapterRepository @Inject constructor(
             emit(localBooks.readVolumes(book))
             return@flow
         }
-        val local = localBookDataSource.getBookVolumes(book.storageKey)?.takeIf { it.volumes.isNotEmpty() }
+        val local = localBookDataSource.getBookVolumes(book.storageKey)?.takeIf { it.volumes.any { volume -> volume.chapters.isNotEmpty() } }
         local?.also {
             emit(Ok(it))
             if (BuildConfig.BENCHMARK) return@flow

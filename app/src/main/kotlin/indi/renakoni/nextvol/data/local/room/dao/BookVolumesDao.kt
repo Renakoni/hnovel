@@ -52,7 +52,7 @@ interface BookVolumesDao {
 
     @Transaction
     suspend fun getBookVolumes(bookId: String): BookVolumes? {
-        val entities = getVolumeEntitiesByBookId(bookId).takeIf { it.isNotEmpty() } ?: return null
+        val entities = getVolumeEntitiesByBookId(bookId).takeIf { volumes -> volumes.any { it.chapterIds.isNotEmpty() } } ?: return null
         return BookVolumes(
             bookId,
             entities

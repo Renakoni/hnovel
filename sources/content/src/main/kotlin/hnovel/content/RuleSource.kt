@@ -540,7 +540,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         } catch (failure: PartialDirectoryException) {
             // Alias migration still requires a fully validated destination catalogue.
             if (refreshed.book.id != id) throw failure.failure
-            refreshed = refreshed.copy(partialDirectory = failure.snapshot)
+            refreshed = refreshed.copy(partialDirectory = retainLongerPartialDirectory(refreshed.partialDirectory, failure).snapshot)
         }
         store.write(refreshed, id)
         prefetchedDirectoryId = if (directoryLoaded) refreshed.book.id else null
@@ -555,9 +555,19 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         try {
             if (prefetched) book.chapters else directory(book).also(store::write).chapters
         } catch (failure: PartialDirectoryException) {
-            store.write(book.copy(partialDirectory = failure.snapshot))
-            throw failure
+            val retained = retainLongerPartialDirectory(book.partialDirectory, failure)
+            store.write(book.copy(partialDirectory = retained.snapshot))
+            throw retained
         }
+    }
+
+    private fun retainLongerPartialDirectory(previous: DirectorySnapshot?, failure: PartialDirectoryException): PartialDirectoryException {
+        if (previous == null || previous.chapters.size <= failure.chapters.size) return failure
+        val cached = previous.chapters.map { it.id to it.isVolume }
+        val incoming = failure.chapters.map { it.id to it.isVolume }
+        // Reverse catalogues retain a suffix. Keep the matching snapshot and its script state together.
+        return if (cached.take(incoming.size) == incoming || cached.takeLast(incoming.size) == incoming)
+            PartialDirectoryException(previous, failure.failure) else failure
     }
 
     suspend fun content(bookId: String, chapterId: String): RuleContent = operation("ruleContent", timeoutMillis = DIRECTORY_TIMEOUT_MILLIS) {
@@ -702,7 +712,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         book = book.copy(id = canonicalId, tocUrl = tocUrl, state = context.book,
             observedUpdate = if (changed) System.currentTimeMillis() else initial.observedUpdate)
         return BookRecord(identity.revision, book, true, document, old?.takeIf { it.revision == identity.revision }?.chapters.orEmpty(),
-            partialDirectory = old?.takeIf { it.revision == identity.revision }?.partialDirectory)
+            partialDirectory = old?.takeIf { it.revision == identity.revision && it.book.id == canonicalId && it.book.tocUrl == tocUrl }?.partialDirectory)
     }
 
     private suspend fun bookFields(context: RuleEvaluation, input: RuleValue, rules: JsonObject, prefix: String, seed: RuleBook,

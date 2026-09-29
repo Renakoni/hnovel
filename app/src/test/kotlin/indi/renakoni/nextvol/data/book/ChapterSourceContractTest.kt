@@ -43,8 +43,9 @@ abstract class ChapterSourceContractTest {
     private val events = mutableListOf<String>()
     private val localChapter = ChapterContent(chapter.storageKey, "local", JsonObject(emptyMap()))
     private val remoteChapter = localChapter.copy(id = "chapter", title = "remote", nextChapter = "next")
-    private val localVolumes = BookVolumes(book.storageKey, listOf(Volume(BookIdentity.volumeKey(book, "volume"), "local", emptyList())))
-    private val remoteVolumes = BookVolumes("book", listOf(Volume("volume", "remote", emptyList())))
+    private val localVolumes = BookVolumes(book.storageKey, listOf(Volume(BookIdentity.volumeKey(book, "volume"), "local",
+        listOf(ChapterInformation(chapter.storageKey, "One")))))
+    private val remoteVolumes = BookVolumes("book", listOf(Volume("volume", "remote", listOf(ChapterInformation("chapter", "One")))))
     private val error = WebRequestError("offline", "request failed")
 
     protected abstract fun source(): ChapterSource
@@ -97,8 +98,8 @@ abstract class ChapterSourceContractTest {
             events += "emit"
         }
         assertEquals(
-            listOf(Ok(BookVolumes(book.storageKey, listOf(Volume(BookIdentity.volumeKey(book, "volume"), "processed:local", emptyList())))),
-                Ok(BookVolumes(book.storageKey, listOf(Volume(BookIdentity.volumeKey(book, "volume"), "processed:remote", emptyList()))))),
+            listOf(Ok(BookVolumes(book.storageKey, listOf(Volume(BookIdentity.volumeKey(book, "volume"), "processed:local", localVolumes.volumes.single().chapters)))),
+                Ok(BookVolumes(book.storageKey, listOf(Volume(BookIdentity.volumeKey(book, "volume"), "processed:remote", localVolumes.volumes.single().chapters))))),
             actual,
         )
         assertEquals(listOf("local", "process:local", "emit", "remote", "store:remote", "process:remote", "emit"), events)
@@ -114,7 +115,7 @@ abstract class ChapterSourceContractTest {
         val volumes = source().getBookVolumesFlow("book").toList()
         assertEquals(listOf(Ok(localChapter.copy(title = "processed:local"))), chapter)
         assertEquals(
-            listOf(Ok(BookVolumes(book.storageKey, listOf(Volume(BookIdentity.volumeKey(book, "volume"), "processed:local", emptyList()))))),
+            listOf(Ok(BookVolumes(book.storageKey, listOf(Volume(BookIdentity.volumeKey(book, "volume"), "processed:local", localVolumes.volumes.single().chapters))))),
             volumes,
         )
         coVerify(exactly = 1) { fixture.remote.getChapterContent("chapter", "book", WebDataSourcePriority.Default) }
@@ -142,6 +143,27 @@ abstract class ChapterSourceContractTest {
         coEvery { fixture.remote.getBookVolumes(any(), any()) } returns Err(error)
         every { fixture.text.processBookVolumes(any()) } answers { firstArg<() -> BookVolumes>()() }
         assertEquals(listOf(Err(error)), source().getBookVolumesFlow("book").toList())
+        coVerify(exactly = 0) { fixture.local.updateBookVolumes(any()) }
+    }
+
+    @Test
+    fun emptyVolumesCacheDoesNotSuppressRemoteFailure() = runTest {
+        val empty = localVolumes.volumes.single().copy(chapters = emptyList())
+        coEvery { fixture.local.getBookVolumes(any()) } returns localVolumes.copy(volumes =
+            listOf(empty, empty.copy(volumeId = BookIdentity.volumeKey(book, "other"))))
+        coEvery { fixture.remote.getBookVolumes(any(), any()) } returns Err(error)
+        assertEquals(listOf(Err(error)), source().getBookVolumesFlow("book").toList())
+        coVerify(exactly = 0) { fixture.local.updateBookVolumes(any()) }
+        verify(exactly = 0) { fixture.text.processBookVolumes(any()) }
+    }
+
+    @Test
+    fun emptyVolumeAlongsideReadableChaptersRemainsUsable() = runTest {
+        val mixed = localVolumes.copy(volumes = listOf(Volume(BookIdentity.volumeKey(book, "empty"), "empty", emptyList())) + localVolumes.volumes)
+        coEvery { fixture.local.getBookVolumes(any()) } returns mixed
+        coEvery { fixture.remote.getBookVolumes(any(), any()) } returns Err(error)
+        every { fixture.text.processBookVolumes(any()) } answers { firstArg<() -> BookVolumes>()() }
+        assertEquals(listOf(Ok(mixed)), source().getBookVolumesFlow("book").toList())
         coVerify(exactly = 0) { fixture.local.updateBookVolumes(any()) }
     }
 
