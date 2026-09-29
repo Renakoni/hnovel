@@ -258,6 +258,7 @@ class NativeSourceBrowserService : Service() {
                 setAcceptThirdPartyCookies(view, true)
             }
             job.options.webCookie?.let { header ->
+                if (job.observeUserAgent) reportSourceUserAgent(host, view.settings, null, hnovel.network.UserAgentMetadataStatus.ProviderDefault)
                 // Complete after openPage has registered this page; finishing inside open() would leave it active.
                 val updates = try { nativeWebCookieUpdates(job.request.url, header, cookies(job.request.url)) } catch (failure: Exception) {
                     handler.post { fail(if (failure is IllegalArgumentException) FailureCode.InvalidRequest else FailureCode.StorageUnavailable) }
@@ -286,7 +287,7 @@ class NativeSourceBrowserService : Service() {
                 allowUniversalAccessFromFileURLs = false
                 mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
                 cacheMode = WebSettings.LOAD_DEFAULT
-                job.request.headers.entries.firstOrNull { it.key.equals("User-Agent", true) }?.let { applySourceUserAgent(it.value) }
+                configureSourceUserAgent(job, host)
                 javaScriptCanOpenWindowsAutomatically = false
                 setSupportMultipleWindows(false)
                 mediaPlaybackRequiresUserGesture = true

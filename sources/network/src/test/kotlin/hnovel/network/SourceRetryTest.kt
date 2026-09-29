@@ -65,6 +65,8 @@ class SourceRetryTest {
 
     @Test(timeout = 15000) fun taskOwnedReadsDoNotNestHttpOrConnectionRetries() = runBlocking {
         fixture { server, session, clock ->
+            val events = java.util.Collections.synchronizedList(mutableListOf<RequestDiagnostic>())
+            session.traceRequests { events += it }
             server.enqueue(MockResponse().setResponseCode(503).setHeader("Retry-After", "0"))
             val owner = RequestRetryContext()
             assertEquals(503, response(withContext(owner) { session.execute(request(server, 3)) }).status)
@@ -79,6 +81,8 @@ class SourceRetryTest {
             withContext(owner) { session.execute(request(server, 3).copy(method = "POST", body = "action")) }
             assertFalse(owner.replaySafe)
             assertEquals(3, server.requestCount)
+            assertEquals(3, events.count { it.evidence == RequestEvidence.Completed })
+            assertEquals(listOf(0, 0, 0), events.filter { it.evidence == RequestEvidence.TransportHeaders }.map { it.attempt })
         }
     }
 
@@ -131,6 +135,8 @@ class SourceRetryTest {
     }
 
     @Test(timeout = 10000) fun okhttp503FollowUpsCannotMultiplyTheBrokerBudget() = runBlocking { fixture { server, session, clock ->
+        val events = java.util.Collections.synchronizedList(mutableListOf<RequestDiagnostic>())
+        session.traceRequests { events += it }
         repeat(4) { server.enqueue(MockResponse().setResponseCode(503).setHeader("Retry-After", "0")) }
         val pending = async { session.execute(request(server, 3)) }
         for ((index, wait) in listOf(500L, 1000L, 2000L).withIndex()) {
@@ -144,6 +150,9 @@ class SourceRetryTest {
         assertEquals(4, server.requestCount)
         assertEquals(3500L, clock.scheduler.currentTime)
         assertTrue(clock.waits.tryReceive().isFailure)
+        assertEquals(listOf(0, 1, 2, 3), events.filter { it.evidence == RequestEvidence.TransportHeaders }.map { it.attempt })
+        assertEquals(1, events.map { it.requestId }.distinct().size)
+        assertEquals(1, events.count { it.evidence == RequestEvidence.Completed })
     } }
 
     @Test(timeout = 10000) fun zeroHttpBudgetDoesNotSpendTheConnectionRecoveryCreditOn503() = runBlocking { fixture { server, session, clock ->

@@ -239,6 +239,9 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             session.scope.profile == identity.profile && session.scope.accountGeneration == identity.accountGeneration)
         session.configureSource(spec.baseUrl, spec.cookiesEnabled, spec.browserRead, spec.concurrentRate,
             spec.localStorageRetention, defaultUserAgent = DESKTOP_USER_AGENT)
+        session.traceRequests(if (trace === ContentTrace.None) hnovel.network.RequestTrace.None else hnovel.network.RequestTrace { event ->
+            trace.record(ContentTraceEvent("requestDiagnostic", "request", 0, result = event.evidence.name, requestDiagnostic = event))
+        })
     }
 
     private var cachedLoginForm: LoginForm? = null
