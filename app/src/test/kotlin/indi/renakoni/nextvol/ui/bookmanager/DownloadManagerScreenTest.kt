@@ -8,16 +8,25 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavHostController
 import com.github.michaelbull.result.Err
 import indi.renakoni.nextvol.R
+import indi.renakoni.nextvol.data.book.BookRepository
 import indi.renakoni.nextvol.data.book.SourceBookId
 import indi.renakoni.nextvol.data.download.*
+import indi.renakoni.nextvol.data.storage.StorageUsageRepository
 import indi.renakoni.nextvol.utils.LocalClaimSnackbarHost
 import indi.renakoni.nextvol.utils.LocalSnackbarHost
+import io.mockk.coEvery
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.verify
 import io.nightfish.lightnovelreader.api.error.WebRequestError
 import io.nightfish.lightnovelreader.api.identifier.Identifier
 import io.nightfish.lightnovelreader.api.ui.LocalNavController
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.flowOf
 import org.junit.After
 import org.junit.Assert.assertSame
@@ -91,5 +100,29 @@ class DownloadManagerScreenTest {
         }
         compose.onNodeWithText(activity.get().getString(R.string.book_download_continue)).assertDoesNotExist()
         compose.onNodeWithContentDescription(activity.get().getString(R.string.download_task_remove)).assertExists()
+    }
+
+    @Test fun completedTaskRefreshesButIncompleteTaskResumesFromTheManager() {
+        val repository = mockk<BookRepository>()
+        every { repository.cacheBook(any(), any()) } returns flowOf(null)
+        val usage = mockk<StorageUsageRepository>()
+        coEvery { usage.getCachedSnapshot() } coAnswers { awaitCancellation() }
+        val model = BookManagerViewModel(repository, mockk(), mockk(), usage, mockk(), mockk(), mockk())
+        try {
+            val status = BookDownloadStatus(BookDownloadState(BookDownloadPhase.Complete, 3, 3),
+                DownloadTaskState(DownloadTaskStatus.Complete, DownloadStage.Body))
+            val item = item(status).apply { progress = 1f }
+            show(item, retry = model::onClickRetry)
+            compose.onNodeWithText(activity.get().getString(R.string.book_download_check_updates)).performClick()
+            verify(exactly = 1) { repository.cacheBook(book.storageKey, true) }
+            compose.runOnIdle {
+                item.status = status.copy(task = status.task.copy(status = DownloadTaskStatus.Failed))
+                item.progress = -1f
+            }
+            compose.onNodeWithText(activity.get().getString(R.string.book_download_continue)).performClick()
+            verify(exactly = 1) { repository.cacheBook(book.storageKey, false) }
+        } finally {
+            model.viewModelScope.cancel()
+        }
     }
 }

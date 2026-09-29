@@ -77,7 +77,7 @@ class BookManagerViewModel @Inject constructor(
     fun onClickClearCompleted() = downloadProgressRepository.clearCompleted()
 
     fun onClickRetry(item: DownloadItem) {
-        if (item.type == DownloadType.CACHE) bookRepository.cacheBook(item.bookId)
+        if (item.type == DownloadType.CACHE) bookRepository.cacheBook(item.bookId, refresh = item.progress >= 1f)
     }
 
     fun loadLocalBooks() {
