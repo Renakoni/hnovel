@@ -13,6 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -22,6 +23,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner
+import androidx.navigationevent.findViewTreeNavigationEventDispatcherOwner
 import hnovel.content.LoginField
 import hnovel.content.LoginForm
 import indi.renakoni.nextvol.R
@@ -60,7 +63,11 @@ internal fun SourceConfigurationSheet(
     ModalBottomSheet(onDismissRequest = ::back, sheetState = sheetState,
         properties = ModalBottomSheetProperties(shouldDismissOnBackPress = !hasPage),
         containerColor = MaterialTheme.colorScheme.surface) {
-        BackHandler(enabled = hasPage, onBack = ::parent)
+        // The sheet owns a separate window, not the parent screen's navigation dispatcher.
+        val backOwner = requireNotNull(LocalView.current.findViewTreeNavigationEventDispatcherOwner())
+        CompositionLocalProvider(LocalNavigationEventDispatcherOwner provides backOwner) {
+            BackHandler(enabled = hasPage, onBack = ::parent)
+        }
         Column(Modifier.fillMaxWidth().fillMaxHeight(0.88f)) {
             Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
                 verticalAlignment = Alignment.CenterVertically) {
