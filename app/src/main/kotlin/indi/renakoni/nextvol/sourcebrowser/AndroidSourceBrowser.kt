@@ -46,19 +46,27 @@ class AndroidSourceBrowser @Inject constructor(@ApplicationContext private val c
 
     override suspend fun execute(session: SourceSession, request: BrokerRequest, options: BrowserOptions,
         guard: RequestCommitGuard, route: SourceNetworkRoute): BrokerResult = withContext(Dispatchers.IO) {
+        val observation = currentCoroutineContext()[RequestObservation]
         require(options.title.length <= 1024 && options.script.length <= 65536 && options.sourceRegex.length <= 2048 &&
             options.delayMillis in 0..30000 && (options.html?.length ?: 0) <= 196608 && (options.webCookie?.length ?: 0) <= 65536)
         require(!options.verificationCode || options.interactive)
-        val nativeRequest = NativeBrowserFiles(context).supported && request.method == "GET" && request.followRedirects && !request.responseAsHex &&
+        val nativeSupported = NativeBrowserFiles(context).supported
+        val nativeRequest = nativeSupported && request.method == "GET" && request.followRedirects && !request.responseAsHex &&
             request.cache != CacheMode.Only && request.headers.keys.none { it.equals("Cookie", true) }
         if (options.webCookie != null && (!nativeRequest || options.html != null || options.verificationCode || options.interactive))
             return@withContext BrokerResult.Failure(RequestStage.Parse, FailureCode.BrowserRequired)
         if ((session.browserRead || nativeRequest && (options.interactive || options.nativeWebsite)) &&
             !options.verificationCode && options.html == null) {
+            observation?.record(RequestEvidence.Selected, RequestPath.NativeWebView, when {
+                session.browserRead -> RequestReason.NativeSourceRead
+                options.interactive -> RequestReason.InteractiveBrowser
+                else -> RequestReason.NativeWebsite
+            })
             if (route.mode == SourceNetworkMode.BypassVpn && !supportsVpnBypass(context))
                 return@withContext BrokerResult.Failure(RequestStage.Connect, FailureCode.RouteUnsupported)
             return@withContext native.execute(session, request, options, guard, route)
         }
+        observation?.record(RequestEvidence.Selected, RequestPath.MediatedWebView, mediatedBrowserReason(request, options, nativeSupported))
         serial.withLock { executeBrokerBrowser(session, request, options, guard, route) }
     }
 
@@ -69,6 +77,8 @@ class AndroidSourceBrowser @Inject constructor(@ApplicationContext private val c
         val result = CompletableDeferred<BrokerResult>()
         val alive = AtomicBoolean(true)
         val calls = AtomicInteger()
+        val observation = currentCoroutineContext()[RequestObservation]
+        val diagnosticReported = AtomicBoolean()
         val work = CoroutineScope(currentCoroutineContext() + SupervisorJob(currentCoroutineContext()[Job]))
         fun current(action: () -> Unit = {}) { check(alive.get() && !session.closed); guard.commit(action) }
         val host = object : IBrowserHost.Stub() {
@@ -76,6 +86,11 @@ class AndroidSourceBrowser @Inject constructor(@ApplicationContext private val c
                 check(Binder.getCallingUid() == context.applicationInfo.uid)
                 val answer = runCatching { runBlocking {
                     work.async {
+                        if (operation == "userAgentDiagnostic") {
+                            current()
+                            if (diagnosticReported.compareAndSet(false, true)) observation.recordWebViewUserAgent(arguments)
+                            return@async "true"
+                        }
                         current(); require(arguments.length <= 65536 && calls.incrementAndGet() <= 1024)
                         val args = Json.parseToJsonElement(arguments).jsonObject
                         val url = args.getValue("url").jsonPrimitive.content.toHttpUrl()
@@ -152,7 +167,7 @@ class AndroidSourceBrowser @Inject constructor(@ApplicationContext private val c
             remote = withTimeout(15000) { connected.await() }
             if (options.html == null) session.awaitBrowserAdmission()
             current()
-            remote.start(Json.encodeToString(BrowserJob(request, options)), host)
+            remote.start(Json.encodeToString(BrowserJob(request, options, observeUserAgent = observation != null)), host)
             result.await().also { current() }
         } finally {
             alive.set(false); work.cancel()

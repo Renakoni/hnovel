@@ -327,7 +327,6 @@
     <string name="detail_introduction">Introduction</string>
     <string name="detail_contents">Contents</string>
     <string name="detail_title">Detail</string>
-    <string name="detail_info_word_count_content">%1$s words</string>
     <string name="detail_info_stats_count_content">Total %1$d volumes, %2$d chapters</string>
     <string name="local_book_info_title">Book Cache Details</string>
     <string name="local_book_info_book_information">Book information</string>

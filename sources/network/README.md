@@ -10,6 +10,41 @@ Imported rules reach this broker through `source-content` and the execution brid
 The Android app supplies the optional browser port. Current integration evidence and
 account semantics are covered by the module tests.
 
+## Request diagnostics
+
+Imported-source diagnostics reuse `ContentTraceEvent.requestDiagnostic` in the existing
+diagnostic screen/export and debug-only `RuleSourceTrace` log. Normal release reading does
+not install an observer. Wenku8 and the browser identity/routing/cookie policies are unchanged.
+
+- Each `SourceSession.execute` assigns a fresh local `requestId`, not the caller's often-reused
+  request ID. Browser-mediated HTTP requests carry a `parentRequestId` from their owning
+  browser operation. Script bridge calls are also observed, but do not claim a parent when
+  the execution bridge did not preserve that context. IDs are never website headers.
+- `Selected` records intent and the chosen executor/reason, not proof of navigation.
+  Browser reasons distinguish source browser-read, native website/interactive selection,
+  rendering, synthetic/verification documents and unmet native transport requirements.
+- `HeadersResolved.userAgentSources` lists present layers from lowest priority to winner:
+  session default, origin grant, same-origin login headers, request headers. Source header
+  rules and URL-option overrides are already merged at this boundary and are not falsely
+  attributed separately. An absent override is explicitly transport/WebView default.
+  Web-cookie-only operations bypass source headers as before and do not imply navigation.
+- `TransportHeaders` observes OkHttp's locally prepared UA after its default header handling,
+  with broker retry attempt and redirect hop. OkHttp connection retries can share these
+  coordinates. It is not evidence that a server received the bytes.
+  Cached and inline responses have no transport event; `Completed.path` identifies them.
+- `WebViewSettings` is a trusted service callback, not a public JavaScript bridge operation.
+  It includes a bounded UA summary and whether settings readback matches the requested UA.
+  Metadata status is `ProviderDefault`, `Unsupported`, `UnhandledUserAgent`, `Applied` or
+  `Rejected`. `Applied` means the metadata setter returned successfully, not a page/worker,
+  UA-CH header, or server-side observation. No event means unknown, not unsupported.
+
+Only known enums, numeric browser majors and request-local IDs are retained: no raw UA,
+stable fingerprint/hash, URLs, headers, credentials, script or response text. Callback
+failures cannot fail a request; browser callbacks are bounded and accepted once per job.
+The existing report event cap/truncation flag still applies, so a truncated report is not
+a complete request history. Real page/client-hint observations require owned browser
+fixtures; neither these diagnostics nor their unit tests claim improved site acceptance.
+
 ## URL compilation
 
 `RequestCompiler` handles static relative/absolute HTTP(S) URLs, `{{key}}`, `{{page}}`,
