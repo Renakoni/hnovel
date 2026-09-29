@@ -540,9 +540,7 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
     var blockingSource by remember { mutableStateOf<io.nightfish.lightnovelreader.api.identifier.Identifier?>(null) }
     val configurationScope = rememberCoroutineScope()
     LaunchedEffect(state.configurationPanel, state.loginForm?.id) { blockingSource = null }
-    if (state.configurationPanel && blockingSource != null) {
-        PixivBlockManager(blockingSource!!, hiltViewModel<PixivBlockingViewModel>()) { blockingSource = null }
-    } else if (state.configurationPanel) SourceConfigurationSheet(state.loginForm, state.busy, { values, action, formId ->
+    if (state.configurationPanel) SourceConfigurationSheet(state.loginForm, state.busy, { values, action, formId ->
         configurationScope.launch {
             try {
                 val manager = model.configurationBlockManager(action, formId)
@@ -555,7 +553,10 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                 textToast(context, R.string.sources_action_failed, Toast.LENGTH_SHORT).show()
             }
         }
-        }, model::cancelLogin)
+        }, model::cancelLogin,
+        pageTitle = blockingSource?.let { stringResource(R.string.pixiv_block_manager) },
+        onPageBack = { blockingSource = null },
+        pageContent = blockingSource?.let { id -> { PixivBlockManager(id, hiltViewModel<PixivBlockingViewModel>()) } })
     else state.loginForm?.let { form ->
         SourceLoginDialog(form, state.busy, model::submitLogin, model::cancelLogin,
             message = inlineMessage?.let { stringResource(it) })

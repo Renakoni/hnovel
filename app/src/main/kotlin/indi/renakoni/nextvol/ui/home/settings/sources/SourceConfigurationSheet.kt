@@ -1,5 +1,6 @@
 package indi.renakoni.nextvol.ui.home.settings.sources
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -32,47 +33,55 @@ import kotlinx.coroutines.launch
 internal fun SourceConfigurationSheet(
     form: LoginForm?, busy: Boolean,
     onSubmit: (Map<String, String>, String?, String) -> Unit, onCancel: () -> Unit,
+    pageTitle: String? = null, onPageBack: () -> Unit = {}, pageContent: (@Composable () -> Unit)? = null,
 ) {
     val values = remember(form) { mutableStateMapOf<String, String>().apply { putAll(form?.values.orEmpty()) } }
     val fields = form?.fields.orEmpty().filterNot { it.type == "button" &&
         it.action?.trim()?.removeSuffix(";")?.trim() in setOf("login()", "logout()") }
     val sections = fields.mapNotNull { it.section }.distinct()
+    val managerFields = fields.filter { it.section == null && it.type == "button" &&
+        it.action?.trim()?.removeSuffix(";")?.trim() == "pixivBlockManager()" }
     var selectedSection by remember { mutableStateOf<String?>(null) }
     val section = selectedSection?.takeIf { it in sections }
     val scrollState = rememberLazyListState()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
-    LaunchedEffect(section) { scrollState.scrollToItem(0) }
+    val hasPage = pageTitle != null || section != null
+    LaunchedEffect(section, pageTitle) { scrollState.scrollToItem(0) }
+    fun parent() {
+        if (pageTitle != null) onPageBack() else selectedSection = null
+    }
     fun back() {
-        if (section == null) onCancel() else {
-            selectedSection = null
+        if (!hasPage) onCancel() else {
+            parent()
             scope.launch { sheetState.show() }
         }
     }
     ModalBottomSheet(onDismissRequest = ::back, sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surface) {
+        BackHandler(enabled = hasPage, onBack = ::parent)
         Column(Modifier.fillMaxWidth().fillMaxHeight(0.88f)) {
             Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
                 verticalAlignment = Alignment.CenterVertically) {
-                if (section != null) IconButton(onClick = { selectedSection = null }) {
+                if (hasPage) IconButton(onClick = ::parent) {
                     Icon(painterResource(R.drawable.arrow_back_24px), stringResource(R.string.import_back))
                 }
-                Text(section ?: stringResource(R.string.sources_configuration),
-                    Modifier.weight(1f).padding(start = if (section == null) 12.dp else 4.dp).semantics { heading() },
+                Text(pageTitle ?: section ?: stringResource(R.string.sources_configuration),
+                    Modifier.weight(1f).padding(start = if (hasPage) 4.dp else 12.dp).semantics { heading() },
                     style = MaterialTheme.typography.titleLarge)
                 IconButton(onClick = onCancel) {
                     Icon(painterResource(R.drawable.close_24px), stringResource(R.string.close))
                 }
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = scrollState,
+            if (pageContent != null) pageContent() else LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = scrollState,
                 contentPadding = PaddingValues(vertical = 8.dp)) {
                 if (form == null) item {
                     Box(Modifier.fillParentMaxSize(), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator()
                     }
                 }
-                items(fields.filter { it.section == section }, key = { it.id }) { field ->
+                items(fields.filter { it.section == section && it !in managerFields }, key = { it.id }) { field ->
                     SourceConfigurationField(field, values[field.name].orEmpty(), !busy && field.enabled,
                         onChange = { values[field.name] = it },
                         onAction = { form?.let { onSubmit(values.toMap(), field.id, it.id) } })
@@ -87,6 +96,11 @@ internal fun SourceConfigurationSheet(
                             modifier = Modifier.clickable { selectedSection = name }.padding(horizontal = 8.dp))
                     }
                 }
+                if (section == null) items(managerFields, key = { it.id }) { field ->
+                    SourceConfigurationField(field, values[field.name].orEmpty(), !busy && field.enabled,
+                        onChange = { values[field.name] = it },
+                        onAction = { form?.let { onSubmit(values.toMap(), field.id, it.id) } }, navigates = true)
+                }
             }
         }
     }
@@ -94,7 +108,7 @@ internal fun SourceConfigurationSheet(
 
 @Composable
 private fun SourceConfigurationField(field: LoginField, value: String, enabled: Boolean,
-    onChange: (String) -> Unit, onAction: () -> Unit) {
+    onChange: (String) -> Unit, onAction: () -> Unit, navigates: Boolean = false) {
     // Decorative emoji are removed from display only, never from input bindings.
     val label = field.label.dropWhile { !it.isLetterOrDigit() }.ifBlank { field.label }
     val supporting: (@Composable () -> Unit)? = field.description?.let { { Text(it) } }
@@ -108,7 +122,10 @@ private fun SourceConfigurationField(field: LoginField, value: String, enabled: 
                 colors = colors, modifier = row.toggleable(checked, enabled = enabled, role = Role.Switch,
                     onValueChange = { onAction() }).padding(horizontal = 8.dp))
         } else {
-            ListItem(headlineContent = { Text(label) }, supportingContent = supporting, colors = colors,
+            ListItem(headlineContent = { Text(label) }, supportingContent = if (navigates) null else supporting, colors = colors,
+                trailingContent = if (navigates) { {
+                    Icon(painterResource(R.drawable.arrow_forward_ios_24px), null, Modifier.size(16.dp))
+                } } else null,
                 modifier = row.clickable(enabled = enabled, role = Role.Button, onClick = onAction).padding(horizontal = 8.dp))
         }
         "toggle", "select" -> {

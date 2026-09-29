@@ -4,15 +4,16 @@ import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import indi.renakoni.nextvol.R
@@ -90,25 +91,40 @@ internal fun PixivBlockConfirmation(model: PixivBlockingViewModel) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun PixivBlockManager(id: Identifier, model: PixivBlockingViewModel, onDismiss: () -> Unit) {
+internal fun PixivBlockManager(id: Identifier, model: PixivBlockingViewModel) {
     val state = model.state
     val scope = rememberCoroutineScope()
     LaunchedEffect(id) { model.loadManager(id) }
     PixivBlockingFeedback(model)
-    ModalBottomSheet(onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = MaterialTheme.colorScheme.surface) {
-        Column(Modifier.fillMaxWidth().fillMaxHeight(0.88f)) {
-            Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
-                verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onDismiss) { Icon(painterResource(R.drawable.arrow_back_24px), stringResource(R.string.import_back)) }
-                Text(stringResource(R.string.pixiv_block_manager), Modifier.weight(1f).padding(start = 4.dp),
-                    style = MaterialTheme.typography.titleLarge)
+    val kinds = listOf(PixivBlockKind.Author, PixivBlockKind.Tag, PixivBlockKind.Book) +
+        listOfNotNull(PixivBlockKind.Caption.takeIf { state.rules.any { it.kind == PixivBlockKind.Caption } })
+    var selected by remember(id) { mutableStateOf(PixivBlockKind.Author) }
+    val kind = selected.takeIf { it in kinds } ?: PixivBlockKind.Author
+    val rows = state.rules.filter { it.kind == kind }
+    val counts = state.rules.groupingBy { it.kind }.eachCount()
+    Column(Modifier.fillMaxSize()) {
+        PrimaryTabRow(selectedTabIndex = kinds.indexOf(kind), containerColor = MaterialTheme.colorScheme.surface) {
+            kinds.forEach { tab ->
+                Tab(selected = kind == tab, onClick = { selected = tab },
+                    selectedContentColor = MaterialTheme.colorScheme.onSurface,
+                    unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant, text = {
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(stringResource(when (tab) {
+                                PixivBlockKind.Author -> R.string.pixiv_block_authors
+                                PixivBlockKind.Tag -> R.string.pixiv_block_tag_rules
+                                PixivBlockKind.Book -> R.string.pixiv_block_books
+                                PixivBlockKind.Caption -> R.string.pixiv_block_legacy_captions
+                            }), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                            if (!state.busy || state.rules.isNotEmpty()) Text((counts[tab] ?: 0).toString(),
+                                style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    })
             }
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        }
+        key(kind) {
             LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(vertical = 16.dp)) {
                 item { Text(stringResource(R.string.pixiv_block_scope), Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
-                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 if (state.busy && state.rules.isEmpty()) item {
                     Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                 } else if (state.failed) item {
@@ -116,31 +132,25 @@ internal fun PixivBlockManager(id: Identifier, model: PixivBlockingViewModel, on
                         Text(stringResource(R.string.sources_action_failed))
                         TextButton(onClick = { scope.launch { model.loadManager(id) } }) { Text(stringResource(R.string.action_retry)) }
                     }
-                } else if (state.rules.isEmpty()) item {
-                    Text(stringResource(R.string.pixiv_block_empty), Modifier.padding(24.dp), style = MaterialTheme.typography.bodyLarge)
-                }
-                PixivBlockKind.entries.forEach { kind ->
-                    val rows = state.rules.filter { it.kind == kind }
-                    if (rows.isNotEmpty()) {
-                        item(key = kind.name) {
-                            Text(stringResource(when (kind) {
-                                PixivBlockKind.Book -> R.string.pixiv_block_books
-                                PixivBlockKind.Author -> R.string.pixiv_block_authors
-                                PixivBlockKind.Tag -> R.string.pixiv_block_tag_rules
-                                PixivBlockKind.Caption -> R.string.pixiv_block_legacy_captions
-                            }), Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
-                                style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
-                        }
-                        items(rows, key = { it.kind.name + ":" + it.value }) { rule ->
-                            ListItem(headlineContent = { Text(rule.label, maxLines = 3, overflow = TextOverflow.Ellipsis) },
-                                supportingContent = if (kind == PixivBlockKind.Author && rule.value != rule.label)
-                                    { { Text(rule.value) } } else null,
-                                trailingContent = { TextButton(enabled = !state.busy, onClick = { model.remove(rule) }) {
-                                    Text(stringResource(R.string.pixiv_block_remove))
-                                } }, colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
-                                modifier = Modifier.padding(horizontal = 8.dp))
-                        }
+                } else if (rows.isEmpty()) item {
+                    Column(Modifier.fillMaxWidth().fillParentMaxHeight(0.52f).padding(horizontal = 32.dp),
+                        verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(stringResource(R.string.pixiv_block_empty), style = MaterialTheme.typography.titleMedium)
+                        Text(stringResource(R.string.pixiv_block_empty_hint), Modifier.padding(top = 8.dp).widthIn(max = 280.dp),
+                            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center)
                     }
+                }
+                itemsIndexed(rows, key = { _, rule -> rule.kind.name + ":" + rule.value }) { index, rule ->
+                    ListItem(headlineContent = { Text(rule.label, maxLines = 3, overflow = TextOverflow.Ellipsis) },
+                        supportingContent = if (kind == PixivBlockKind.Author && rule.value != rule.label)
+                            { { Text(rule.value) } } else null,
+                        trailingContent = { TextButton(enabled = !state.busy, onClick = { model.remove(rule) }) {
+                            Text(stringResource(R.string.pixiv_block_remove))
+                        } }, colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
+                        modifier = Modifier.padding(horizontal = 8.dp))
+                    if (index < rows.lastIndex) HorizontalDivider(Modifier.padding(horizontal = 24.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant)
                 }
             }
         }

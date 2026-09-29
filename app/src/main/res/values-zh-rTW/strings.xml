@@ -615,6 +615,7 @@
     <string name="pixiv_block_removed">已解除封鎖</string>
     <string name="pixiv_block_already">已封鎖</string>
     <string name="pixiv_block_empty">尚無封鎖</string>
+    <string name="pixiv_block_empty_hint">可在作品詳情右上角選單中新增封鎖。</string>
     <string name="pixiv_block_books">作品</string>
     <string name="pixiv_block_authors">作者</string>
     <string name="pixiv_block_tag_rules">標籤</string>

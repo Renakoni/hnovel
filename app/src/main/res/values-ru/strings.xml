@@ -613,6 +613,7 @@
     <string name="pixiv_block_removed">Блокировка снята</string>
     <string name="pixiv_block_already">Уже заблокировано</string>
     <string name="pixiv_block_empty">Нет блокировок</string>
+    <string name="pixiv_block_empty_hint">Добавить блокировку можно через меню в правом верхнем углу страницы книги.</string>
     <string name="pixiv_block_books">Произведения</string>
     <string name="pixiv_block_authors">Авторы</string>
     <string name="pixiv_block_tag_rules">Теги</string>

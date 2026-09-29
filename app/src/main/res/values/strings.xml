@@ -641,6 +641,7 @@
     <string name="pixiv_block_removed">Unblocked</string>
     <string name="pixiv_block_already">Already blocked</string>
     <string name="pixiv_block_empty">No blocked content</string>
+    <string name="pixiv_block_empty_hint">Block content from the menu at the top right of a book’s details.</string>
     <string name="pixiv_block_books">Books</string>
     <string name="pixiv_block_authors">Authors</string>
     <string name="pixiv_block_tag_rules">Tags</string>

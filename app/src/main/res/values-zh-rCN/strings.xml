@@ -614,6 +614,7 @@
     <string name="pixiv_block_removed">已解除屏蔽</string>
     <string name="pixiv_block_already">已屏蔽</string>
     <string name="pixiv_block_empty">暂无屏蔽</string>
+    <string name="pixiv_block_empty_hint">可在作品详情右上角菜单中添加屏蔽。</string>
     <string name="pixiv_block_books">作品</string>
     <string name="pixiv_block_authors">作者</string>
     <string name="pixiv_block_tag_rules">标签</string>
