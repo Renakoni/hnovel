@@ -111,6 +111,8 @@ android {
             it.jvmArgs(
                 // JDK 22 C2 crashes in Node::uncast in test workers; leave app/runtime compilation unchanged.
                 "-XX:TieredStopAtLevel=1",
+                // Robolectric/Compose exhaust C1's code cache across the full test suite.
+                "-XX:ReservedCodeCacheSize=256m",
                 "--add-opens=java.base/java.lang=ALL-UNNAMED",
                 "--add-opens=java.base/java.util=ALL-UNNAMED",
                 "--add-opens=java.base/java.io=ALL-UNNAMED",

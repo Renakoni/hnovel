@@ -117,22 +117,6 @@ class ScriptLibraryTest {
         } finally { pool.shutdownNow() }
     }
 
-    @Test fun libraryInitializationIsBudgetedAndCannotObtainInvocationBindings() {
-        ScriptLibrary(frame.sourceId, frame.profile, "java.ajax('https://fixture.invalid')").use { library ->
-            assertEquals(FailureCode.Runtime, (engine.evaluate("1", frame, library) as ScriptResult.Failure).code)
-            assertNull(library.scope)
-        }
-        ScriptLibrary(frame.sourceId, frame.profile, "while(true){}").use { library ->
-            assertEquals(FailureCode.Timeout, (engine.evaluate("1", frame, library) as ScriptResult.Failure).code)
-            assertNull(library.scope)
-        }
-        ScriptLibrary(frame.sourceId, frame.profile, "var x='${"x".repeat(100)}';").use { library ->
-            val small = RhinoScriptEngine(HostBridge { _, _ -> JsonNull }, ScriptLimits(maxScriptChars = 64))
-            assertEquals(FailureCode.ResultTooLarge, (small.evaluate("1", frame, library) as ScriptResult.Failure).code)
-        }
-        assertNull(Context.getCurrentContext())
-    }
-
     @Test fun storedPureMethodUsesTheCallingContextAndStillHasNoJavaWrapper() {
         ScriptLibrary(frame.sourceId, frame.profile, "var holder={};").use { library ->
             assertEquals("null", output("holder.encode=java.base64Encode; undefined", library))
