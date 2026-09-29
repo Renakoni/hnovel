@@ -222,9 +222,9 @@
     <string name="settings_theme_text_font_weight">字重</string>
     <string name="data_settings">資料</string>
     <string name="settings_snap_data">備份資料</string>
-    <string name="settings_snap_data_desc">將應用程式內的使用者資料匯出為 .lnr 檔案</string>
+    <string name="settings_snap_data_desc">將使用者資料匯出為 NextVol 備份（.nvbackup）</string>
     <string name="settings_import_data">匯入資料</string>
-    <string name="settings_import_data_desc">從選定的 .lnr 檔案匯入使用者資料</string>
+    <string name="settings_import_data_desc">匯入 NextVol 備份（.nvbackup）或受支援的舊版 .lnr 備份</string>
     <string name="settings_storage_manager">儲存與清理</string>
     <string name="settings_storage_manager_desc">查看儲存空間用量，清理閱讀快取或下載內容</string>
     <string name="settings_plugins">外掛管理</string>
@@ -689,7 +689,7 @@
     <string name="local_book_preview_hint">點擊章節即可檢查正文與標題是否正確。</string>
     <string name="local_book_image_chapter">本章包含插圖。</string>
     <string name="local_book_empty_chapter">本章只有標題。</string>
-    <string name="local_book_backup_note">本機檔案儲存在目前裝置中，現有 .lnr 分享與備份不包含這些檔案。更換裝置時請使用原始 EPUB 或 TXT 檔案。</string>
+    <string name="local_book_backup_note">本機檔案儲存在目前裝置中，NextVol 備份與書架分享不包含這些檔案。更換裝置時請使用原始 EPUB 或 TXT 檔案。</string>
     <string name="local_book_stored_files">匯入原檔與解析內容</string>
     <string name="local_book_delete_title">刪除本機書籍？</string>
     <string name="local_book_delete_originals">選取的匯入書籍將從所有書架移除，並永久刪除本應用程式內對應的原檔與解析內容。其他匯入副本及應用程式外的原檔會保留。線上書籍僅清除選取的本機快取。</string>
