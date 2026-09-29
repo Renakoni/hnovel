@@ -8,6 +8,7 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import androidx.work.ListenableWorker
 import androidx.work.workDataOf
+import com.google.common.util.concurrent.SettableFuture
 import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.data.book.BookIdentity
 import indi.renakoni.nextvol.data.book.SourceBookId
@@ -31,7 +32,7 @@ import java.util.UUID
 class EpubExportWorkerAdapterTest {
     private val context = RuntimeEnvironment.getApplication()
     private val book = SourceBookId(Identifier("fixture", "adapter"), "book")
-    private val useCase = mockk<ExportBookToEpubUseCase>()
+    private val useCase = spyk(ExportBookToEpubUseCase(context, mockk(), mockk(), mockk(), mockk()))
     private val notifications = shadowOf(context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
 
     @Test fun persistedKeysMapToTypedRequestAndCompletionIntentKeepsRequestId() = runTest {
@@ -130,5 +131,59 @@ class EpubExportWorkerAdapterTest {
         assertTrue(text.contains(context.getString(R.string.epub_export_error_cancelled)))
         assertTrue(text.contains("Volume / Chapter"))
         assertNull(notification.contentIntent)
+    }
+
+    @Test fun foregroundFailureClearsInterruptedStagingWithoutTouchingOtherExports() = runTest {
+        assertForegroundCleanup(cancel = false)
+    }
+
+    @Test fun cancellationWhileStartingForegroundClearsInterruptedStagingWithoutTouchingOtherExports() = runTest {
+        assertForegroundCleanup(cancel = true)
+    }
+
+    private suspend fun assertForegroundCleanup(cancel: Boolean): Unit = coroutineScope {
+        val id = UUID.randomUUID()
+        val otherBook = SourceBookId(Identifier("fixture", "other"), "book")
+        val staging = context.cacheDir.resolve("epub/${book.fileKey}/$id")
+        val otherRequestStaging = context.cacheDir.resolve("epub/${book.fileKey}/${UUID.randomUUID()}")
+        val otherBookStaging = context.cacheDir.resolve("epub/${otherBook.fileKey}/$id")
+        val published = EpubShareFiles.directory(context, id)
+        try {
+            staging.resolve("outputs/interrupted.epub").apply { parentFile!!.mkdirs(); writeText("unfinished") }
+            val retained = listOf(otherRequestStaging.resolve("keep"), otherBookStaging.resolve("keep"),
+                published.resolve("Book.epub"))
+            retained.forEach { it.parentFile!!.mkdirs(); it.writeText("keep") }
+            published.resolve(".count").writeText("1")
+            val foreground = SettableFuture.create<Void>()
+            val started = CompletableDeferred<Unit>()
+            val parameters = workerParameters(workDataOf("bookId" to book.storageKey, "exportType" to "BOOK"), id)
+            every { parameters.foregroundUpdater.setForegroundAsync(context, id, any()) } answers {
+                started.complete(Unit)
+                foreground
+            }
+            val worker = ExportBookToEPUBWork(context, parameters, useCase)
+            if (cancel) {
+                val job = launch { worker.doWork(); fail("Cancellation must not produce a worker result") }
+                started.await()
+                job.cancelAndJoin()
+                assertTrue(job.isCancelled)
+                assertTrue(foreground.isCancelled)
+            } else {
+                foreground.setException(IllegalStateException("Foreground unavailable"))
+                val result = worker.doWork() as ListenableWorker.Result.Failure
+                assertEquals("export_failed", result.outputData.getString("reason"))
+                assertEquals("preparing", result.outputData.getString("stage"))
+            }
+            coVerify(exactly = 0) { useCase.execute(any(), any()) }
+            assertFalse("Interrupted staging must be removed even before the use case starts", staging.exists())
+            retained.forEach { assertEquals("keep", it.readText()) }
+            assertEquals(listOf(published.resolve("Book.epub")), EpubShareFiles.files(context, id))
+            val notification = notifications.getNotification(ExportBookToEPUBWork.ofId(book.storageKey), 0)
+            assertNull(notification.contentIntent)
+            if (cancel) assertTrue(notification.extras.getCharSequence(Notification.EXTRA_TEXT).toString()
+                .contains(context.getString(R.string.epub_export_error_cancelled)))
+        } finally {
+            listOf(staging, otherRequestStaging, otherBookStaging, published).forEach { it.deleteRecursively() }
+        }
     }
 }

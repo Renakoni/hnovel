@@ -154,6 +154,9 @@ class ExportBookToEPUBWork @AssistedInject constructor(
         } catch (problem: Exception) {
             Log.e(TAG, "Export adapter failed for ${book.fileKey}: ${problem.javaClass.simpleName}")
             EpubExportResult.Failure(book, "export_failed")
+        } finally {
+            // Foreground setup may fail or be cancelled before execute() can run its own cleanup.
+            exportBook.clearTemporaryFiles(request)
         }
         return when (result) {
             is EpubExportResult.Success -> {

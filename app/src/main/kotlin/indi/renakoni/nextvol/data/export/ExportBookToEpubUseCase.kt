@@ -62,6 +62,14 @@ class ExportBookToEpubUseCase @Inject constructor(
         onProgress: (EpubExportProgress) -> Unit = {},
     ): EpubExportResult = ExportAttempt(request, onProgress).run()
 
+    /** Also safe before execution starts; published recipient files are never removed here. */
+    internal fun clearTemporaryFiles(request: EpubExportRequest) {
+        temporaryDirectory(request).deleteRecursively()
+    }
+
+    private fun temporaryDirectory(request: EpubExportRequest): File =
+        appContext.cacheDir.resolve("epub/${request.book.fileKey}/${request.id}")
+
     private data class PreparedBook(
         val information: BookInformation,
         val volumes: List<IndexedValue<Volume>>,
@@ -91,7 +99,7 @@ class ExportBookToEpubUseCase @Inject constructor(
             var book = requested
             val type = request.type
             val selected = request.selectedVolumeIds
-            val tempDir = appContext.cacheDir.resolve("epub/${book.fileKey}/$id")
+            val tempDir = temporaryDirectory(request)
             var complete = false
             try {
                 // A restarted request owns only its own temporary directory.
@@ -175,7 +183,7 @@ class ExportBookToEpubUseCase @Inject constructor(
                     EpubShareFiles.directory(appContext, id).deleteRecursively()
                     activeDownloadItem?.progress = -1f
                 }
-                tempDir.deleteRecursively()
+                clearTemporaryFiles(request)
             }
         }
 
