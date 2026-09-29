@@ -328,8 +328,12 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val form = (cachedLoginForm ?: loadLoginForm()).withValues(loginValues())
         // Trusted callers without a UI snapshot retain the unique-name API. UI submissions
         // always carry a form ID and can only address an opaque control ID from that form.
-        val fieldAction = action?.let { id -> form.fields.singleOrNull { if (formId == null) it.name == id else it.id == id }?.action
-            ?: throw SourceContentException(ContentError.InvalidRule, "loginUi.action") }
+        val fieldAction = action?.let { id ->
+            val field = form.fields.singleOrNull { if (formId == null) it.name == id else it.id == id }
+                ?: throw SourceContentException(ContentError.InvalidRule, "loginUi.action")
+            if (!field.enabled) throw SourceContentException(ContentError.Unavailable, "loginUi.action")
+            field.action ?: throw SourceContentException(ContentError.InvalidRule, "loginUi.action")
+        }
         form.validate(values)
         val submitted = form.values + values
         form.validate(submitted, allowAdditional = true)

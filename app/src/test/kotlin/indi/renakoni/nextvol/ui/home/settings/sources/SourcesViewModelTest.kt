@@ -34,30 +34,29 @@ import java.nio.file.Files
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [27], application = Application::class)
 class SourcesViewModelTest {
-    @Test fun bundledPixivKeepsItsLoginActionWhenSettingsExpandAndReportsSettingsFeedback(): Unit = runBlocking {
+    @Test fun bundledPixivKeepsAccountAndUpdateActionsWithSectionedSettingsAndFeedback(): Unit = runBlocking {
         val original = RuntimeEnvironment.getApplication().assets.open("source-catalog/Adult.json").bufferedReader().use {
             Json.parseToJsonElement(it.readText()).jsonArray.map { entry -> entry.jsonObject }
                 .single { entry -> entry["bookSourceUrl"]?.jsonPrimitive?.content == "https://www.pixiv.net/novel" }
         }
         RuleSourceFixture().use { fixture ->
-            fixture.source(profile = EXTENSION_PROFILE) { original }.use { source ->
+            fixture.source(profile = EXTENSION_PROFILE) {
+                Json.parseToJsonElement(original.toString().replace("https://www.pixiv.net", fixture.server.url("/").toString().removeSuffix("/"))).jsonObject
+            }.use { source ->
                 val collapsed = source.loginForm()
                 val login = SourceLoginService.directLoginAction(collapsed)
                 assertNotNull(login)
                 assertTrue(collapsed.fields.none { it.action == "startGithubIssue()" })
                 assertTrue(collapsed.fields.any { it.action == "updateSource()" })
-                val expand = collapsed.fields.single { it.action == "editSettings('SHOW_SETTINGS')" }
-                source.login(collapsed.values, expand.id, collapsed.id)
-                val expanded = source.loginForm()
-                assertTrue(expanded.fields.size > collapsed.fields.size)
-                assertEquals(login, SourceLoginService.directLoginAction(expanded))
-                assertTrue(expanded.fields.none { it.action == "startGithubIssue()" })
-                assertTrue(expanded.fields.any { it.action == "updateSource()" })
+                assertEquals(3, collapsed.fields.mapNotNull { it.section }.distinct().size)
+                assertFalse(collapsed.fields.single { it.action == "startPixivSettings()" }.enabled)
+                val expanded = collapsed
                 val fast = expanded.fields.single { it.action == "editSettings('FAST')" }
                 val feedback = source.login(expanded.values, fast.id, expanded.id).messages
                 assertEquals(1, feedback.size)
                 assertTrue(feedback.single().contains("快速模式"))
                 assertTrue(feedback.single().startsWith("✅ 已开启"))
+                assertEquals(login, SourceLoginService.directLoginAction(source.loginForm()))
                 assertEquals(0, fixture.server.requestCount)
             }
         }

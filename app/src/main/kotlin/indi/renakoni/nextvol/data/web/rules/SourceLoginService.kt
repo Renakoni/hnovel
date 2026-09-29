@@ -104,7 +104,7 @@ class SourceLoginService @Inject constructor(private val sources: ImportedRuleSo
             if (form.fields.any { it.type == "password" ||
                 it.type == "text" && it.name.trim().lowercase(java.util.Locale.ROOT) in accountNames }) return null
             return form.fields.singleOrNull {
-                it.type == "button" && it.action?.trim()?.removeSuffix(";")?.trim() == "login()"
+                it.enabled && it.type == "button" && it.action?.trim()?.removeSuffix(";")?.trim() == "login()"
             }?.id
         }
 

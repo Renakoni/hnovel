@@ -13,6 +13,49 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RuleLoginFormTest {
+    @Test fun configurationMetadataIsStrictOptionalAndDoesNotChangeActionIdentity() {
+        val plain = LoginForm.parse("""[{"name":"Setting","type":"button","action":"configure()"}]""", "").fields.single()
+        assertTrue(plain.enabled)
+        assertNull(plain.section)
+        assertNull(plain.checked)
+        val row = """[{"name":"Setting","type":"button","action":"configure()","enabled":false,"section":"Discovery","checked":true,"description":"Explanation"}]"""
+        val field = LoginForm.parse(row, "", extended = true).fields.single()
+        assertFalse(field.enabled)
+        assertEquals("Discovery", field.section)
+        assertEquals(true, field.checked)
+        assertEquals("Explanation", field.description)
+        assertEquals(plain.id, field.id)
+        assertTrue(runCatching { LoginForm.parse(row, "") }.exceptionOrNull() is SourceContentException)
+        listOf(
+            """"enabled":"false"""", """"enabled":0""", """"checked":"true"""",
+            """"section":" """", """"section":"${"x".repeat(129)}"""",
+            """"description":"${"x".repeat(513)}"""", """"description":12"""
+        ).forEach { metadata ->
+            assertTrue(metadata, runCatching {
+                LoginForm.parse("""[{"name":"Setting","type":"button",$metadata}]""", "", extended = true)
+            }.exceptionOrNull() is SourceContentException)
+        }
+        assertTrue(runCatching { LoginForm.parse("""[{"name":"Input","checked":true}]""", "", true) }.isFailure)
+    }
+
+    @Test fun disabledActionCannotSaveInputsOrRunScripts() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            fixture.source(profile = EXTENSION_PROFILE) { raw -> JsonObject(raw + mapOf(
+                "loginUrl" to JsonPrimitive("function login(){}"),
+                "loginUi" to JsonPrimitive("""[
+                    {"name":"value","type":"text","default":"original"},
+                    {"name":"Account","type":"button","enabled":false,"action":"java.ajax('/should-not-run')"}
+                ]""")
+            )) }.use { source ->
+                val form = source.loginForm()
+                val failure = runCatching { source.login(mapOf("value" to "changed"), form.fields.last().id, form.id) }.exceptionOrNull()
+                assertTrue(failure is SourceContentException)
+                assertEquals("original", source.loginForm().values["value"])
+                assertEquals(0, fixture.server.requestCount)
+            }
+        }
+    }
+
     @Test fun actionFeedbackIsTrimmedOrderedBoundedAndNotReplayedByTheNextAction() = runBlocking {
         RuleSourceFixture().use { fixture ->
             fixture.source { raw -> JsonObject(raw + mapOf(

@@ -21,11 +21,8 @@ import indi.renakoni.nextvol.R
 internal fun SourceLoginDialog(form: LoginForm, busy: Boolean,
     onSubmit: (Map<String, String>, String?, String) -> Unit, onCancel: () -> Unit,
     title: String = stringResource(R.string.sources_login), message: String? = null,
-    showLoginAction: Boolean = true, feedback: List<String> = emptyList(), hideAccountActions: Boolean = false) {
+    showLoginAction: Boolean = true, feedback: List<String> = emptyList()) {
     val values = remember(form) { mutableStateMapOf<String, String>().apply { putAll(form.values) } }
-    // Native account controls still use the original form and action IDs.
-    val fields = form.fields.filterNot { hideAccountActions && it.type == "button" &&
-        it.action?.trim()?.removeSuffix(";")?.trim() in setOf("login()", "logout()") }
     AlertDialog(onDismissRequest = onCancel, title = { Text(title) },
         text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             message?.let { Text(it) }
@@ -39,31 +36,31 @@ internal fun SourceLoginDialog(form: LoginForm, busy: Boolean,
             }
             Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (form.browserUrl != null) Text(stringResource(R.string.sources_browser_login))
-            fields.forEach { field -> key(field.id) {
+            form.fields.forEach { field -> key(field.id) {
                 fun change(value: String) {
                     values[field.name] = value
                     if (field.action != null) onSubmit(values.toMap(), field.id, form.id)
                 }
                 when (field.type) {
-                    "button" -> OutlinedButton(onClick = { onSubmit(values.toMap(), field.id, form.id) }, enabled = !busy) { Text(field.label) }
+                    "button" -> OutlinedButton(onClick = { onSubmit(values.toMap(), field.id, form.id) }, enabled = !busy && field.enabled) { Text(field.label) }
                     "toggle" -> OutlinedButton(onClick = {
                         change(field.choices[(field.choices.indexOf(values[field.name]) + 1) % field.choices.size])
-                    }, enabled = !busy) { Text("${field.label}: ${values[field.name].orEmpty()}") }
+                    }, enabled = !busy && field.enabled) { Text("${field.label}: ${values[field.name].orEmpty()}") }
                     "select" -> {
                         var expanded by remember(field.name) { mutableStateOf(false) }
                         Box {
-                            OutlinedButton(onClick = { expanded = true }, enabled = !busy) { Text("${field.label}: ${values[field.name].orEmpty()}") }
+                            OutlinedButton(onClick = { expanded = true }, enabled = !busy && field.enabled) { Text("${field.label}: ${values[field.name].orEmpty()}") }
                             DropdownMenu(expanded, onDismissRequest = { expanded = false }) {
-                                field.choices.forEach { choice -> DropdownMenuItem(text = { Text(choice) }, enabled = !busy, onClick = { expanded = false; change(choice) }) }
+                                field.choices.forEach { choice -> DropdownMenuItem(text = { Text(choice) }, enabled = !busy && field.enabled, onClick = { expanded = false; change(choice) }) }
                             }
                         }
                     }
                     else -> {
                         OutlinedTextField(values[field.name].orEmpty(), { values[field.name] = it.take(4096) },
-                            label = { Text(field.label) }, enabled = !busy,
+                            label = { Text(field.label) }, enabled = !busy && field.enabled,
                             visualTransformation = if (field.type == "password") PasswordVisualTransformation() else VisualTransformation.None,
                             keyboardOptions = KeyboardOptions(keyboardType = if (field.type == "password") KeyboardType.Password else KeyboardType.Text))
-                        if (field.action != null) TextButton(onClick = { onSubmit(values.toMap(), field.id, form.id) }, enabled = !busy) {
+                        if (field.action != null) TextButton(onClick = { onSubmit(values.toMap(), field.id, form.id) }, enabled = !busy && field.enabled) {
                             Text(stringResource(R.string.sources_apply_field))
                         }
                     }

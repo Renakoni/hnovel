@@ -81,8 +81,8 @@ class PixivPresentationTest {
                     val form = panel.loginForm()
                     val names = form.fields.map { it.name.substringAfterLast(' ') }
                     assertEquals("updateSource()", form.fields.single { it.name.endsWith("更新书源") }.action)
-                    assertTrue(names.containsAll(listOf("章节编号", "快速模式", "自动收藏", "分类设置",
-                        "排行榜单", "原创热门", "添加屏蔽", "喜欢标签", "他人收藏", "文本框")))
+                    assertTrue(names.containsAll(listOf("章节编号", "快速模式", "自动收藏",
+                        "成人排行榜单", "常规原创热门", "添加屏蔽", "喜欢标签", "他人收藏", "文本框")))
                     assertTrue(names.none { it in listOf("章节名称", "收藏本章", "刷新本章", "发送评论",
                         "删除评论", "显示评论", "调试模式", "备份恢复", "反馈问题", "显示投票", "兽人小说", "兽人作者") })
                     assertEquals(0, fixture.server.requestCount)
@@ -91,25 +91,40 @@ class PixivPresentationTest {
         }
     }
 
-    @Test fun settingsGroupsStillExpandAndCollapseWithoutRequests() = runBlocking {
+    @Test fun settingsAreSectionedAndAccountAvailabilityComesFromLocalSession() = runBlocking {
         RuleSourceFixture(browser).use { fixture ->
             fixture.source(profile = EXTENSION_PROFILE) { definition(fixture) }.use { source ->
                 source.openLoginSession().use { panel ->
-                    var form = panel.loginForm()
-                    assertTrue(form.fields.none { it.name.endsWith("章节编号") })
-                    val expand = form.fields.single { it.name == "👀 书源设置" }
-                    panel.login(form.values, expand.id, form.id)
-                    form = panel.loginForm()
-                    assertTrue(form.fields.any { it.name.endsWith("章节编号") })
-                    val categories = form.fields.single { it.name == "👀 分类设置" }
-                    panel.login(form.values, categories.id, form.id)
-                    form = panel.loginForm()
-                    assertTrue(form.fields.any { it.name.endsWith("原创热门") })
-                    val collapse = form.fields.single { it.name == "👀 书源设置" }
-                    panel.login(form.values, collapse.id, form.id)
-                    assertTrue(panel.loginForm().fields.none { it.name.endsWith("章节编号") })
+                    val form = panel.loginForm()
+                    assertEquals(listOf("阅读与搜索", "发现页设置", "屏蔽与收藏"), form.fields.mapNotNull { it.section }.distinct())
+                    assertEquals("阅读与搜索", form.fields.single { it.name.endsWith("章节编号") }.section)
+                    assertEquals("发现页设置", form.fields.single { it.name == "成人原创热门" }.section)
+                    assertTrue(form.fields.single { it.action == "startPixivSettings()" }.enabled)
+                    assertTrue(form.fields.none { it.action?.contains("SHOW_SETTINGS") == true || it.action?.contains("SHOW_DISCOVER") == true })
+                    assertTrue(form.fields.none { it.name == "分类设置" })
+                    val fast = form.fields.single { it.action == "editSettings('FAST')" }
+                    assertEquals(false, fast.checked)
+                    panel.login(form.values, fast.id, form.id)
+                    val updated = panel.loginForm()
+                    assertEquals(true, updated.fields.single { it.id == fast.id }.checked)
+                    assertEquals(false, updated.fields.single { it.action == "editSettings('SHOW_PICTURES')" }.checked)
                     assertEquals(0, fixture.server.requestCount)
                 }
+            }
+        }
+    }
+
+    @Test fun loggedOutAccountSettingsAreDisabledWithoutRequests() = runBlocking {
+        RuleSourceFixture(browser).use { fixture ->
+            fixture.source(profile = EXTENSION_PROFILE) {
+                Json.parseToJsonElement(original.toString().replace("https://www.pixiv.net", fixture.server.url("/").toString().removeSuffix("/"))).jsonObject
+            }.use { source ->
+                val form = source.loginForm()
+                val account = form.fields.single { it.action == "startPixivSettings()" }
+                assertFalse(account.enabled)
+                assertTrue(account.description.orEmpty().contains("登录后"))
+                assertTrue(runCatching { source.login(form.values, account.id, form.id) }.isFailure)
+                assertEquals(0, fixture.server.requestCount)
             }
         }
     }

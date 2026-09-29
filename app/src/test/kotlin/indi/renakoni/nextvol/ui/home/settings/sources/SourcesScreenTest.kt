@@ -71,15 +71,16 @@ class SourcesScreenTest {
         var submitted = false
         var closed = false
         activity.get().setContent { MaterialTheme {
-            SourceLoginDialog(form, false, { _, _, _ -> submitted = true }, { closed = true },
-                title = "Source configuration", message = "Action feedback", showLoginAction = false, feedback = listOf(feedback))
+            SourceConfigurationSheet(form, false, { _, _, _ -> submitted = true }, { closed = true },
+                message = "Action feedback", feedback = listOf(feedback))
         } }
         compose.onNodeWithText("Source configuration").assertIsDisplayed()
         compose.onNodeWithText("Sign in").assertDoesNotExist()
-        compose.onNodeWithText("Control 40").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText(feedback).assertIsDisplayed()
         compose.onNodeWithText("Action feedback").assertIsDisplayed()
-        compose.onNodeWithText("OK").performClick()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Control 40"))
+        compose.onNodeWithText("Control 40").assertIsDisplayed()
+        compose.onNodeWithText(feedback).assertIsDisplayed()
+        compose.onNodeWithContentDescription("Close").performClick()
         org.junit.Assert.assertTrue(closed)
         org.junit.Assert.assertFalse(submitted)
     }
@@ -94,15 +95,61 @@ class SourcesScreenTest {
             LoginField("Login settings", "button", action = "configureAccount()"),
             update), null, mapOf("Preference" to "saved"))
         activity.get().setContent { MaterialTheme {
-            SourceLoginDialog(form, false, model::submitLogin, model::cancelLogin,
-                title = "Source configuration", showLoginAction = false, hideAccountActions = true)
+            SourceConfigurationSheet(form, false, model::submitLogin, model::cancelLogin)
         } }
         compose.onNodeWithText("Source sign in").assertDoesNotExist()
         compose.onNodeWithText("Source sign out").assertDoesNotExist()
         compose.onNodeWithText("Login settings").assertIsDisplayed()
-        compose.onNodeWithText("Preference: saved").assertIsDisplayed()
+        compose.onNodeWithText("saved").assertIsDisplayed()
         compose.onNodeWithText("Update source").performClick()
         verify(exactly = 1) { model.submitLogin(form.values, update.id, form.id) }
+    }
+
+    @Test @Config(qualifiers = "en-rUS-w360dp-h800dp")
+    fun configurationDisablesAccountAndNavigatesWithoutSubmitting() {
+        val account = LoginField("Account settings", "button", action = "account()", enabled = false)
+        val setting = LoginField("General novels", "button", action = "configure()", section = "Discovery", checked = true)
+        val form = LoginForm(listOf(account, setting), null)
+        activity.get().setContent { MaterialTheme {
+            SourceConfigurationSheet(form, false, model::submitLogin, model::cancelLogin)
+        } }
+        compose.onNodeWithText("Account settings").assertIsNotEnabled().performClick()
+        compose.onNodeWithText("General novels").assertDoesNotExist()
+        compose.onNodeWithText("Discovery").performClick()
+        compose.onNodeWithText("General novels").assertIsOn()
+        verify(exactly = 0) { model.submitLogin(any(), any(), any()) }
+        compose.onNodeWithText("General novels").performClick()
+        verify(exactly = 1) { model.submitLogin(form.values, setting.id, form.id) }
+        compose.onNodeWithContentDescription("Back").performClick()
+        compose.onNodeWithText("Account settings").assertIsDisplayed()
+        compose.onNodeWithText("General novels").assertDoesNotExist()
+        verify(exactly = 0) { model.cancelLogin() }
+    }
+
+    @Test @Config(qualifiers = "en-rUS-w360dp-h800dp")
+    fun configurationRefreshKeepsSectionAndShowsUpdatedState() {
+        val field = LoginField("General novels", "button", action = "configure()", section = "Discovery", checked = true)
+        val original = LoginForm(listOf(field), null, id = "original")
+        var form by mutableStateOf(original)
+        var feedback by mutableStateOf(emptyList<String>())
+        var submitted: Pair<String?, String>? = null
+        activity.get().setContent { MaterialTheme {
+            SourceConfigurationSheet(form, false, { _, action, formId ->
+                submitted = action to formId
+                form = form.copy(fields = listOf(field.copy(checked = false)), id = form.id + "-refreshed")
+                feedback = listOf("Saved")
+            }, {}, feedback = feedback)
+        } }
+        compose.onNodeWithText("Discovery").performClick()
+        compose.onNodeWithText("General novels").assertIsOn().performClick()
+        compose.onNodeWithText("General novels").assertIsOff()
+        compose.onNodeWithText("Saved").assertIsDisplayed()
+        org.junit.Assert.assertEquals(field.id to original.id, submitted)
+        compose.onNodeWithContentDescription("Dismiss result").performClick()
+        compose.onNodeWithText("Saved").assertDoesNotExist()
+        compose.onNodeWithText("General novels").performClick()
+        org.junit.Assert.assertEquals(field.id to "original-refreshed", submitted)
+        compose.onNodeWithText("Saved").assertIsDisplayed()
     }
 
     @Test @Config(qualifiers = "en-rUS-w360dp-h800dp")

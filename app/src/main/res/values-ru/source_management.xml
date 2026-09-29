@@ -96,4 +96,6 @@
     <string name="sources_saved">Изменения источника сохранены.</string>
     <string name="sources_removed">Источник удалён. Сохранённые книги и история чтения остались.</string>
     <string name="sources_invalid_permission_lines">Недопустимый адрес сайта, строки: %1$s</string>
+    <string name="sources_configuration_result">Результат действия</string>
+    <string name="sources_configuration_dismiss_result">Скрыть результат</string>
 </resources>

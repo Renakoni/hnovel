@@ -439,10 +439,10 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
             onCreate = { model.createGroup(it, members) }, onRename = model::renameGroup, onDelete = model::deleteGroup)
     }
     state.loginForm?.let { form ->
-        SourceLoginDialog(form, state.busy, model::submitLogin, model::cancelLogin,
-            title = stringResource(if (state.configurationPanel) R.string.sources_configuration else R.string.sources_login),
-            message = state.message?.let { stringResource(it) }, showLoginAction = !state.configurationPanel, feedback = state.loginMessages,
-            hideAccountActions = state.configurationPanel)
+        if (state.configurationPanel) SourceConfigurationSheet(form, state.busy, model::submitLogin, model::cancelLogin,
+            message = state.message?.let { stringResource(it) }, feedback = state.loginMessages)
+        else SourceLoginDialog(form, state.busy, model::submitLogin, model::cancelLogin,
+            message = state.message?.let { stringResource(it) }, feedback = state.loginMessages)
     }
 }
 
