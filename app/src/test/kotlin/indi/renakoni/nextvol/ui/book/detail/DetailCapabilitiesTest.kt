@@ -54,6 +54,7 @@ class DetailCapabilitiesTest {
         every { repository.readingAvailability(key) } returns flowOf(BookReadingAvailability(false, false, false, null))
         every { repository.getUserReadingDataFlow(key) } returns emptyFlow()
         every { repository.downloadChanges(key) } returns emptyFlow()
+        every { repository.downloadStatusFlow(key) } returns emptyFlow()
         every { work.getWorkInfosForUniqueWorkFlow(any()) } returns flowOf(emptyList())
         coEvery { shelves.getBookshelfBookMetadata(key) } returns mockk { every { bookShelfIds } returns listOf(1) }
         every { shelves.getBookshelfBookMetadataFlow(key) } returns flowOf(null)
