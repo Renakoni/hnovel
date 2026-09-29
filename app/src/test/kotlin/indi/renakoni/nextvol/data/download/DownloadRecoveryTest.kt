@@ -71,6 +71,7 @@ class DownloadRecoveryTest {
         var retryAfter = "90"
         var withImages = true
         var unsafeChapter = false
+        var singleQuotedOptions = false
         var thirdChapter = false
         var now = 1_800_000_000_000L
         lateinit var db: NextVolDatabase
@@ -93,7 +94,9 @@ class DownloadRecoveryTest {
                         "/book" -> "<h1>Book</h1><a class='toc' href='/toc'>toc</a>" +
                             if (withImages) "<img src='/cover.png'>" else ""
                         "/toc" -> "<li><a href='/c/1'>One</a></li><a class='next' href='/toc2'>next</a>"
-                        "/toc2" -> "<li><a href='/c/2,{\"retry\":3${if (unsafeChapter) ",\"method\":\"POST\",\"body\":\"submit\"" else ""}}'>Two</a></li>" +
+                        "/toc2" -> "<li><a href='/c/2," +
+                            (if (singleQuotedOptions) "{'retry':3,'method':'POST','body':'submit'}".replace("'", "&#39;")
+                            else "{\"retry\":3${if (unsafeChapter) ",\"method\":\"POST\",\"body\":\"submit\"" else ""}}") + "'>Two</a></li>" +
                             if (thirdChapter) "<li><a href='/c/3'>Three</a></li>" else ""
                         "/c/1" -> "<article><p>first</p></article>"
                         "/c/2" -> "<article><p>second</p>${if (withImages) "<img src='/image.png'>" else ""}</article>"
@@ -226,12 +229,18 @@ class DownloadRecoveryTest {
     }
 
     @Test fun independentMissingChapterDoesNotBlockLaterChaptersButStatefulRulesStillStop() = runBlocking {
-        for (mode in listOf("static", "script", "post")) {
+        for (mode in listOf("static", "script", "post", "single-quoted-post")) {
             RuleSourceFixture().use { fixture -> Library(fixture).use { library -> with(library) {
                 thirdChapter = true; withImages = false; status = 404
                 if (mode == "script") register(script = true)
                 if (mode == "post") unsafeChapter = true
+                if (mode == "single-quoted-post") singleQuotedOptions = true
                 queue(); assertTrue(mode, run() is Result.Failure)
+                if (singleQuotedOptions) {
+                    val chapterRequest = List(fixture.server.requestCount) { fixture.server.takeRequest() }
+                        .single { it.path == "/c/2" }
+                    assertEquals("POST", chapterRequest.method)
+                }
                 assertEquals(mode, 1, calls("/c/1"))
                 assertEquals(mode, if (mode == "static") 1 else 0, calls("/c/3"))
                 assertEquals(mode, if (mode == "static") 2 else 1, db.bookDownloadDao().chapters(book.storageKey).size)
