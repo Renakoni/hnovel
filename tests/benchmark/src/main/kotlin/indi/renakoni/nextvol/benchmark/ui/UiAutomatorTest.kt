@@ -1,13 +1,14 @@
 package indi.renakoni.nextvol.benchmark.ui
 
 import android.graphics.Rect
-import android.os.SystemClock
+import android.os.Build
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.Direction
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiObject2
 import androidx.test.uiautomator.Until
+import androidx.test.uiautomator.waitForStableInActiveWindow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -23,10 +24,13 @@ abstract class UiAutomatorTest {
     fun resetTargetApp() {
         device.pressHome()
         shell("pm clear $TARGET_PACKAGE")
-        shell("cmd locale set-app-locales $TARGET_PACKAGE --user 0 --locales en-US")
+        // Older Android versions require an English device locale for these UI tests.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            shell("cmd locale set-app-locales $TARGET_PACKAGE --user 0 --locales en-US")
+            shell("pm grant $TARGET_PACKAGE android.permission.POST_NOTIFICATIONS")
+        }
         // The one-time Android fullscreen tutorial otherwise covers the reader controls.
         shell("settings put secure immersive_mode_confirmations confirmed")
-        shell("pm grant $TARGET_PACKAGE android.permission.POST_NOTIFICATIONS")
         shell(
             "am broadcast -W -n $TARGET_PACKAGE/.benchmark.BenchmarkFixtureReceiver " +
                 "-a $SEED_ACTION"
@@ -130,38 +134,43 @@ abstract class UiAutomatorTest {
         device.waitForIdle()
     }
 
-    protected fun scrollToText(text: String, attempts: Int = 12): UiObject2 {
+    protected fun scrollToText(
+        text: String,
+        attempts: Int = 12,
+        direction: Direction = Direction.DOWN,
+    ): UiObject2 {
         repeat(attempts) {
             try {
                 device.findObject(By.text(text))?.let {
-                    val bounds = it.visibleBounds
-                    val safeTop = (device.displayHeight * 0.12f).toInt()
-                    val safeBottom = (device.displayHeight * 0.88f).toInt()
-                    if (bounds.centerY() in safeTop..safeBottom) return assertText(text)
+                    if (!it.visibleBounds.isEmpty) return assertText(text)
                 }
+                val bounds = device.findObjects(By.scrollable(true))
+                    .map { it.visibleBounds }
+                    .filterNot { it.isEmpty }
+                    .maxByOrNull { it.height() }
+                    ?: Rect(0, 0, device.displayWidth, device.displayHeight)
+                // Keep the swipe inside the visible list instead of surrounding controls.
+                val start = if (direction == Direction.UP) 0.22 else 0.78
+                val end = if (direction == Direction.UP) 0.78 else 0.22
+                device.swipe(
+                    bounds.centerX(),
+                    bounds.top + (bounds.height() * start).toInt(),
+                    bounds.centerX(),
+                    bounds.top + (bounds.height() * end).toInt(),
+                    40,
+                )
             } catch (_: androidx.test.uiautomator.StaleObjectException) {
                 // Compose may replace semantics nodes during a scroll animation.
             }
-            val scrolled = device.findObjects(By.scrollable(true))
-                .sortedByDescending { it.visibleBounds.height() }
-                .any { it.scroll(Direction.UP, 0.35f) }
-            if (!scrolled) {
-                device.swipe(
-                    device.displayWidth / 2,
-                    (device.displayHeight * 0.78).toInt(),
-                    device.displayWidth / 2,
-                    (device.displayHeight * 0.32).toInt(),
-                    40,
-                )
-            }
             device.waitForIdle()
+            device.waitForStableInActiveWindow()
         }
         return assertText(text)
     }
 
-    protected fun clickScrolledText(text: String) {
-        scrollToText(text)
-        SystemClock.sleep(1_000)
+    protected fun clickScrolledText(text: String, direction: Direction = Direction.DOWN) {
+        scrollToText(text, direction = direction)
+        device.waitForStableInActiveWindow()
         clickCenter(assertText(text))
         device.waitForIdle()
     }
