@@ -13,6 +13,7 @@ import indi.renakoni.nextvol.data.download.DownloadTaskStatus
 fun downloadStatusLabel(status: BookDownloadStatus): String = stringResource(when (status.task.status) {
     DownloadTaskStatus.Queued -> R.string.download_task_queued
     DownloadTaskStatus.WaitingRetry -> R.string.download_task_waiting_retry
+    DownloadTaskStatus.WaitingVerification -> R.string.download_task_waiting_verification
     DownloadTaskStatus.Running -> R.string.book_download_updating
     DownloadTaskStatus.Interrupted -> R.string.download_task_interrupted
     DownloadTaskStatus.Cancelled -> R.string.download_task_cancelled

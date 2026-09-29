@@ -85,9 +85,9 @@ class BookDownloadStore @Inject constructor(@ApplicationContext private val cont
         if (generation != this@BookDownloadStore.generation()) throw CancellationException("Download was cleared")
         val owner = dao.get(book.storageKey) ?: if (legacy) BookDownloadEntity(book.storageKey, generation = generation)
             else throw CancellationException("Download task was removed")
-        if (owner.taskHidden || owner.taskStatus == DownloadTaskStatus.Cancelled.name ||
+        if (owner.taskHidden || owner.taskStatus in setOf(DownloadTaskStatus.Cancelled.name, DownloadTaskStatus.WaitingVerification.name) ||
             owner.taskWorkId != workId && !(legacy && owner.taskStatus !in
-                listOf(DownloadTaskStatus.Queued.name, DownloadTaskStatus.Running.name, DownloadTaskStatus.WaitingRetry.name)))
+                listOf(DownloadTaskStatus.Queued.name, DownloadTaskStatus.Running.name, DownloadTaskStatus.WaitingRetry.name, DownloadTaskStatus.WaitingVerification.name)))
             throw CancellationException("Download task was replaced")
         if (owner.taskWorkId == workId && owner.taskStatus in
             setOf(DownloadTaskStatus.Complete.name, DownloadTaskStatus.Failed.name, DownloadTaskStatus.Interrupted.name))
@@ -118,7 +118,11 @@ class BookDownloadStore @Inject constructor(@ApplicationContext private val cont
     }
 
     suspend fun finishTask(task: Task, failure: DownloadFailure? = null) = updateTask(task) {
-        it.copy(taskStatus = if (failure == null) DownloadTaskStatus.Complete.name else DownloadTaskStatus.Failed.name,
+        it.copy(taskStatus = when (failure) {
+            null -> DownloadTaskStatus.Complete.name
+            DownloadFailure.Authentication, DownloadFailure.Verification -> DownloadTaskStatus.WaitingVerification.name
+            else -> DownloadTaskStatus.Failed.name
+        },
             taskError = failure?.name.orEmpty(), taskNextAttemptAt = 0)
     }
 
@@ -130,6 +134,18 @@ class BookDownloadStore @Inject constructor(@ApplicationContext private val cont
         it.copy(taskStatus = DownloadTaskStatus.Interrupted.name,
             taskError = failure.name, taskNextAttemptAt = 0)
     }
+
+    /** A verification result can replace only the captured task, never a cancelled or newer one. */
+    suspend fun queueVerifiedTask(expected: BookDownloadEntity, workId: String): Boolean = withContext(Dispatchers.IO) { lock.withLock {
+        val owner = dao.get(expected.bookId) ?: return@withLock false
+        if (owner.taskHidden || owner.generation != generation() || owner.generation != expected.generation ||
+            owner.taskWorkId != expected.taskWorkId || owner.taskSourceRevision != expected.taskSourceRevision ||
+            owner.taskAccountGeneration != expected.taskAccountGeneration || owner.taskStatus !in
+                setOf(DownloadTaskStatus.WaitingVerification.name, DownloadTaskStatus.Running.name)) return@withLock false
+        dao.put(owner.copy(taskWorkId = workId, taskStatus = DownloadTaskStatus.Queued.name, attempt = "",
+            taskError = "", taskRunAttempt = 0, taskRetryCount = 0, taskNextAttemptAt = 0))
+        true
+    } }
 
     /** Reserve the next recovery before returning control to WorkManager; restart never refunds it. */
     suspend fun deferTaskRetry(task: Task, expectedRetries: Int, nextAttemptAt: Long, failure: DownloadFailure) = updateTask(task) {
@@ -144,7 +160,7 @@ class BookDownloadStore @Inject constructor(@ApplicationContext private val cont
             for (owner in dao.getAll()) {
                 if (BookIdentity.book(owner.bookId).sourceId == source && owner.taskStatus in
                     setOf(DownloadTaskStatus.Queued.name, DownloadTaskStatus.Running.name, DownloadTaskStatus.WaitingRetry.name,
-                        DownloadTaskStatus.Interrupted.name)) {
+                        DownloadTaskStatus.Interrupted.name, DownloadTaskStatus.WaitingVerification.name)) {
                     dao.put(owner.copy(taskWorkId = "", attempt = "", taskStatus = DownloadTaskStatus.Cancelled.name,
                         taskError = DownloadFailure.SourceUnavailable.name, taskNextAttemptAt = 0))
                 }
@@ -154,7 +170,7 @@ class BookDownloadStore @Inject constructor(@ApplicationContext private val cont
     /** Hiding/cancelling a task does not delete its downloaded chapters or images. */
     suspend fun dismissTask(book: SourceBookId, cancel: Boolean = true) = withContext(Dispatchers.IO) { lock.withLock {
         val owner = dao.get(book.storageKey) ?: return@withLock
-        if (!cancel && owner.taskStatus in listOf(DownloadTaskStatus.Queued.name, DownloadTaskStatus.Running.name, DownloadTaskStatus.WaitingRetry.name)) return@withLock
+        if (!cancel && owner.taskStatus in listOf(DownloadTaskStatus.Queued.name, DownloadTaskStatus.Running.name, DownloadTaskStatus.WaitingRetry.name, DownloadTaskStatus.WaitingVerification.name)) return@withLock
         dao.put(owner.copy(taskHidden = true,
             taskStatus = if (cancel) DownloadTaskStatus.Cancelled.name else owner.taskStatus,
             attempt = if (cancel && owner.attempt == owner.taskWorkId) "" else owner.attempt))

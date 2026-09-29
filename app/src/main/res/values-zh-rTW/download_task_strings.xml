@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="download_task_waiting_verification">等待登入或驗證</string>
+    <string name="download_task_verify">繼續並進入驗證</string>
     <string name="download_task_waiting_retry">等待重試</string>
     <string name="download_task_retry_time">第 %1$d 次重試：不早於 %2$s</string>
     <string name="download_error_rate_limited">書源暫時限制請求或無法使用</string>

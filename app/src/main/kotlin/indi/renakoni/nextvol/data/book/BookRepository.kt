@@ -25,6 +25,7 @@ import indi.renakoni.nextvol.data.download.BookDownloadStore
 import indi.renakoni.nextvol.data.download.BookDownloadScheduler
 import indi.renakoni.nextvol.data.download.BookDownloadStatus
 import indi.renakoni.nextvol.data.download.DownloadTaskState
+import indi.renakoni.nextvol.data.download.DownloadTaskStatus
 import indi.renakoni.nextvol.data.download.taskState
 import io.nightfish.lightnovelreader.api.book.BookInformation
 import io.nightfish.lightnovelreader.api.book.BookRepositoryApi
@@ -209,6 +210,20 @@ class BookRepository @Inject constructor(
     fun cacheBook(bookId: String): Flow<WorkInfo?> = downloadScheduler.enqueue(BookIdentity.book(bookId))
 
     suspend fun dismissDownload(bookId: String): Unit = downloadScheduler.dismiss(BookIdentity.book(bookId))
+
+    internal suspend fun prepareDownloadVerification(book: SourceBookId, workId: String, revision: String,
+        accountGeneration: Long): (suspend () -> Unit)? {
+        fun currentSource() = sourceRegistry.sources.value.any { it.metadata.id == book.sourceId &&
+            it.status == indi.renakoni.nextvol.data.web.SourceStatus.Ready &&
+            it.metadata.revision == revision && it.metadata.accountGeneration == accountGeneration }
+        if (!currentSource()) return null
+        val waiting = downloads.entries().filter { !it.taskHidden && BookIdentity.book(it.bookId).sourceId == book.sourceId &&
+            it.taskSourceRevision == revision && it.taskAccountGeneration == accountGeneration &&
+            (it.taskStatus == DownloadTaskStatus.WaitingVerification.name ||
+                it.taskWorkId == workId && it.taskStatus == DownloadTaskStatus.Running.name) }
+        if (waiting.none { it.taskWorkId == workId }) return null
+        return { downloadScheduler.resumeVerified(waiting, ::currentSource) }
+    }
 
     /** Download cards must remain renderable without making a successful source request. */
     fun downloadInformationFlow(bookId: String): Flow<Result<BookInformation, WebRequestError>> = downloadChanges(bookId).map {

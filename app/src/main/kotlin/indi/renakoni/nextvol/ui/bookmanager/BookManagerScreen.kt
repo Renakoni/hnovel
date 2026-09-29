@@ -507,7 +507,8 @@ private fun Card(
             }
             if (downloadItem.type == DownloadType.CACHE && downloadItem.status?.task?.active == false)
                 TextButton(onClickRetry) {
-                    Text(stringResource(if (downloadItem.progress >= 1f) R.string.book_download_check_updates
+                    Text(stringResource(if (downloadItem.status?.task?.status == indi.renakoni.nextvol.data.download.DownloadTaskStatus.WaitingVerification) R.string.download_task_verify
+                        else if (downloadItem.progress >= 1f) R.string.book_download_check_updates
                         else R.string.book_download_continue))
                 }
             if (downloadItem.progress < 1 || downloadItem.type == DownloadType.CACHE)

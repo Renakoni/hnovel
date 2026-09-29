@@ -59,7 +59,8 @@ class SourceRuntime internal constructor(
         version?.check(metadata)
         val interaction = currentCoroutineContext()[ForegroundSourceRequest] ?: kotlin.coroutines.EmptyCoroutineContext
         val retry = currentCoroutineContext()[hnovel.network.RequestRetryContext] ?: kotlin.coroutines.EmptyCoroutineContext
-        val request = lifetime.async(interaction + retry + (version ?: kotlin.coroutines.EmptyCoroutineContext) + SourceRequestOwner(id)) { block() }
+        val background = currentCoroutineContext()[BackgroundSourceRequest] ?: kotlin.coroutines.EmptyCoroutineContext
+        val request = lifetime.async(interaction + retry + background + (version ?: kotlin.coroutines.EmptyCoroutineContext) + SourceRequestOwner(id)) { block() }
         return try {
             request.await().also { checkAvailable() }
         } finally {

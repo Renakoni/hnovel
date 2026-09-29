@@ -21,6 +21,16 @@ class DownloadTaskStateTest {
         assertEquals(DownloadTaskStatus.Cancelled, owner.taskState(WorkInfo.State.CANCELLED).status)
     }
 
+    @Test fun verificationWaitSurvivesFinishedOrMissingExecutorWithoutBecomingActive() {
+        val owner = BookDownloadEntity("book", taskStatus = DownloadTaskStatus.WaitingVerification.name)
+        for (work in listOf(null, WorkInfo.State.FAILED, WorkInfo.State.RUNNING)) {
+            val state = owner.taskState(work)
+            assertEquals(DownloadTaskStatus.WaitingVerification, state.status)
+            assertTrue(state.canResume)
+            assertFalse(state.active)
+        }
+    }
+
     @Test fun orphanedRunningAndQueuedRecordsAreResumableNotActive() {
         for (status in listOf(DownloadTaskStatus.Running, DownloadTaskStatus.Queued)) {
             val owner = BookDownloadEntity("book", taskStatus = status.name)
@@ -54,5 +64,7 @@ class DownloadTaskStateTest {
         assertEquals(DownloadFailure.Verification, downloadFailure(sensitive.copy(kind = WebRequestErrorKind.VerificationRequired), DownloadStage.Body))
         assertEquals(DownloadFailure.Authentication, downloadFailure(sensitive.copy(kind = WebRequestErrorKind.AuthenticationRequired), DownloadStage.Details))
         assertEquals(DownloadFailure.SourceUnavailable, downloadFailure(sensitive.copy(kind = WebRequestErrorKind.SourceUnavailable), DownloadStage.Directory))
+        assertEquals(DownloadFailure.Verification, downloadFailure(sensitive.copy(throwable =
+            hnovel.content.SourceContentException(hnovel.content.ContentError.Certificate, "certificate")), DownloadStage.Body))
     }
 }

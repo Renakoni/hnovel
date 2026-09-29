@@ -41,6 +41,7 @@ import indi.renakoni.nextvol.data.download.MutableDownloadItem
 import indi.renakoni.nextvol.data.download.downloadChapterSignature
 import indi.renakoni.nextvol.data.image.SourceImage
 import indi.renakoni.nextvol.data.web.SourceRequestVersion
+import indi.renakoni.nextvol.data.web.BackgroundSourceRequest
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
@@ -130,6 +131,9 @@ class CacheBookWork @AssistedInject constructor(
             }
             val retry = if (replaySafe) RequestRetryContext() else null
             val version = source?.let(::SourceRequestVersion)
+            val verification = source?.let { metadata -> BackgroundSourceRequest {
+                bookRepository.prepareDownloadVerification(initial, id.toString(), metadata.revision, metadata.accountGeneration)
+            } }
             version?.check(bookRepository.downloadSource(initial))
             try {
                 setForeground(getForegroundInfo())
@@ -140,7 +144,7 @@ class CacheBookWork @AssistedInject constructor(
                 return bookWorkFailure("background_restricted", initial)
             }
             return withContext((retry ?: kotlin.coroutines.EmptyCoroutineContext) +
-                (version ?: kotlin.coroutines.EmptyCoroutineContext)) {
+                (version ?: kotlin.coroutines.EmptyCoroutineContext) + (verification ?: kotlin.coroutines.EmptyCoroutineContext)) {
                 // Record the task before details; identity promotion transfers it without owning files yet.
                 val information = bookRepository.refreshBookInformation(initial, fresh = true)
                 val book = bookRepository.canonicalBook(initial)

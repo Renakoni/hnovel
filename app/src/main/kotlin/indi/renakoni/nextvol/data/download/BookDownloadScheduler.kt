@@ -10,6 +10,7 @@ import androidx.work.await
 import androidx.work.workDataOf
 import indi.renakoni.nextvol.data.book.BookAliasStore
 import indi.renakoni.nextvol.data.book.SourceBookId
+import indi.renakoni.nextvol.data.local.room.entity.BookDownloadEntity
 import indi.renakoni.nextvol.data.localbook.LocalBookStore
 import indi.renakoni.nextvol.data.work.CacheBookWork
 import kotlinx.coroutines.CoroutineScope
@@ -63,6 +64,19 @@ class BookDownloadScheduler @Inject constructor(
             request.id
         } }
         return flow { emitAll(workManager.getWorkInfoByIdFlow(submission.await())) }
+    }
+
+    internal suspend fun resumeVerified(expected: List<BookDownloadEntity>, sourceIsCurrent: () -> Boolean): Unit = lock.withLock {
+        if (sourceIsCurrent()) for (owner in expected) {
+            val request = OneTimeWorkRequestBuilder<CacheBookWork>()
+                .addTag(CacheBookWork.generationTag(owner.generation))
+                .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+                .setInputData(workDataOf("bookId" to owner.bookId, "downloadGeneration" to owner.generation, "persistedTask" to true))
+                .build()
+            if (downloads.queueVerifiedTask(owner, request.id.toString())) {
+                workManager.enqueueUniqueWork(CacheBookWork.ofId(owner.bookId), ExistingWorkPolicy.REPLACE, request).await()
+            }
+        }
     }
 
     suspend fun dismiss(requested: SourceBookId, expectedWorkId: String? = null): Unit = lock.withLock {

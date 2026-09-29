@@ -3,6 +3,7 @@ package indi.renakoni.nextvol.data.web.rules
 import hnovel.content.SourceContentException
 import hnovel.content.SourceVerification
 import indi.renakoni.nextvol.data.web.ForegroundSourceRequest
+import indi.renakoni.nextvol.data.web.BackgroundSourceRequest
 import indi.renakoni.nextvol.data.web.WebSourceRegistry
 import indi.renakoni.nextvol.data.web.SourceStatus
 import io.nightfish.lightnovelreader.api.identifier.Identifier
@@ -25,7 +26,10 @@ data class VerificationPrompt(val id: String, val owner: VerificationOwner, val 
 class SourceVerificationCoordinator @Inject constructor(private val registry: WebSourceRegistry) {
     private data class Pending(val prompt: VerificationPrompt, val verification: SourceVerification,
         val approval: CompletableDeferred<Boolean> = CompletableDeferred(),
-        val retryAfterVerification: AtomicBoolean = AtomicBoolean())
+        val retryAfterVerification: AtomicBoolean = AtomicBoolean(),
+        val background: BackgroundSourceRequest? = null,
+        val recheck: (suspend () -> Unit)? = null,
+        val claimed: AtomicBoolean = AtomicBoolean())
     private val lock = Any()
     private val pending = linkedMapOf<String, Pending>()
     private val mutable = MutableStateFlow<List<VerificationPrompt>>(emptyList())
@@ -43,7 +47,9 @@ class SourceVerificationCoordinator @Inject constructor(private val registry: We
 
     /** Expiry must not cancel a browser or certificate confirmation opened at the deadline. */
     fun expireBackgroundNotice(id: String) = synchronized(lock) {
-        val prompt = pending[id]?.prompt ?: return@synchronized
+        val entry = pending[id] ?: return@synchronized
+        if (entry.background != null) return@synchronized
+        val prompt = entry.prompt
         if (!prompt.foreground && !prompt.opening && !prompt.confirmingCertificate) remove(id)
     }
 
@@ -123,8 +129,16 @@ class SourceVerificationCoordinator @Inject constructor(private val registry: We
 
     /** A background failure exposes an action, but never waits or opens an Activity itself. */
     suspend fun verifyBackground(id: String) {
-        val entry = synchronized(lock) { pending[id]?.takeIf { !it.prompt.foreground && !it.prompt.opening && !it.prompt.confirmingCertificate } } ?: return
-        try { withTimeout(300000) { open(entry) } }
+        val entry = synchronized(lock) { pending[id]?.takeIf { !it.prompt.foreground && !it.prompt.opening &&
+            !it.prompt.confirmingCertificate && it.claimed.compareAndSet(false, true) } } ?: return
+        try { withTimeout(300000) {
+            val resume = entry.background?.let { it.prepareResume() ?: return@withTimeout }
+            open(entry)
+            // Closing the browser is not proof of authentication. Retry this request once.
+            entry.recheck?.invoke()
+            if (!current(entry.prompt.owner)) throw SourceContentException(hnovel.content.ContentError.Unavailable, "browser.verification")
+            resume?.invoke()
+        } }
         finally { remove(id) }
     }
 
@@ -133,8 +147,10 @@ class SourceVerificationCoordinator @Inject constructor(private val registry: We
         val verification = failure.verification ?: throw failure
         if (!current(owner)) throw failure
         val foreground = currentCoroutineContext()[ForegroundSourceRequest]?.takeIf { it.allowsInteraction }
+        val background = currentCoroutineContext()[BackgroundSourceRequest]?.takeIf { foreground == null }
         val entry = Pending(VerificationPrompt(UUID.randomUUID().toString(), owner, name,
-            verification.kind, foreground != null, certificate = verification.certificate), verification)
+            verification.kind, foreground != null, certificate = verification.certificate), verification,
+            background = background, recheck = background?.let { { block(); Unit } })
         synchronized(lock) {
             // Background notifications can replace an older notice for the same account;
             // foreground continuations always keep their own request and cancellation.
