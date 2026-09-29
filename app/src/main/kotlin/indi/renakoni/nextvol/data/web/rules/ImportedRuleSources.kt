@@ -38,7 +38,8 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext private val co
     private val browser: hnovel.network.BrowserExecutor? = null,
     private val verification: SourceVerificationCoordinator? = null,
     private val networkSettings: SourceNetworkSettings? = null,
-    private val catalog: SourceCatalog = SourceCatalog(context)) {
+    private val catalog: SourceCatalog = SourceCatalog(context),
+    private val downloads: indi.renakoni.nextvol.data.download.BookDownloadStore? = null) {
     private val directory = File(context.filesDir, "rule-sources")
     val definitions by lazy { SourceDefinitionStore(File(directory, "definitions").toPath()) }
     val importer by lazy { SourceDefinitionImporter(definitions) }
@@ -58,6 +59,7 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext private val co
                 for ((id, generation) in generations) {
                     val current = active[id] ?: continue
                     if (current.session != null && current.session.scope.accountGeneration != generation) {
+                        downloads?.revokeSourceTasks(id)
                         runCatching { current.session.clearAccount() }.onFailure {
                             android.util.Log.w("ImportedRuleSources", "Retired account cleanup failed")
                         }
@@ -207,6 +209,7 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext private val co
         restore()
         lock.withLock {
         val old = active[source] ?: return@withLock
+        downloads?.revokeSourceTasks(source)
         val previousMode = networkSettings?.mode(source)
         networkSettings?.setBypassVpn(source, false)
         try { save(active.filterKeys { it != source }.values.map { it.installed }) }
@@ -296,6 +299,7 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext private val co
         val old = checkNotNull(active[id]) { "Source is not installed" }
         check(old.installed.definition == expected) { "Installed revision changed" }
         require(next.sourceId == expected.sourceId && next.profile == expected.profile && origins.size <= 32)
+        if (next != expected || origins != old.installed.origins) downloads?.revokeSourceTasks(id)
         val installed = InstalledSource(next, origins.map { it.copy(headers = it.headers.toMap()) },
             if (next == expected) old.installed.previous else SavedRevision(expected, old.installed.origins), old.installed.preferences(),
             old.installed.bundledRepairs)
@@ -316,6 +320,7 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext private val co
                 discoveryVisible = discoveryVisible ?: current.discoveryVisible,
                 enabledSetByUser = enabled != null || current.enabledSetByUser)
             if (next == current) return@withLock
+            if (!next.enabled) downloads?.revokeSourceTasks(source)
             replace(old, old.installed.copy(preferences = next))
         }
     }
@@ -475,6 +480,7 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext private val co
             val current = checkNotNull(active[id]) { "Source is not installed" }
             check(current.rule != null) { "Source is disabled or unavailable" }
             if (expectedGeneration != null) check(accounts.current(id).generation == expectedGeneration) { "Login attempt is stale" }
+            downloads?.revokeSourceTasks(id)
             accounts.begin(id)
             try { current.session?.clearAccount() } finally {
                 current.broker?.close()

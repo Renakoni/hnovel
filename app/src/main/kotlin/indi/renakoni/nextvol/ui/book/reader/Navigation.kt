@@ -218,7 +218,8 @@ private fun NavGraphBuilder.imageViewerDialog() {
                         imageUri = route.imageUri.toUri(),
                         context = context,
                         bookId = route.bookId,
-                        cover = route.cover
+                        cover = route.cover,
+                        chapterId = route.chapterId
                     ).onOk { bitmap ->
                         val result = runCatching {
                             context.contentResolver.openOutputStream(targetUri)?.use { out ->
@@ -263,7 +264,8 @@ private fun NavGraphBuilder.imageViewerDialog() {
                         imageUri = route.imageUri.toUri(),
                         context = context,
                         bookId = route.bookId,
-                        cover = route.cover
+                        cover = route.cover,
+                        chapterId = route.chapterId
                     ).onOk {
                         coroutineScope.launch {
                             saveBitmapAsPng(context, it)
@@ -297,7 +299,8 @@ private fun NavGraphBuilder.imageViewerDialog() {
                 createDocumentLauncher.launch(defaultName)
             },
             bookId = route.bookId,
-            cover = route.cover
+            cover = route.cover,
+            chapterId = route.chapterId
         )
     }
 }
@@ -305,13 +308,15 @@ private fun NavGraphBuilder.imageViewerDialog() {
 fun NavController.navigateToImageViewerDialog(
     imageUri: Uri,
     bookId: String,
-    cover: Boolean = false
+    cover: Boolean = false,
+    chapterId: String? = null
 ) {
     navigate(
         Route.Book.ImageViewerDialog(
             imageUri = imageUri.toString(),
             bookId = BookIdentity.bookKey(bookId),
-            cover = cover
+            cover = cover,
+            chapterId = chapterId
         )
     )
 }

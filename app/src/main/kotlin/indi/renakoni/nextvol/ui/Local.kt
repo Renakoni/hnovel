@@ -22,3 +22,4 @@ val LocalBottomBarController = staticCompositionLocalOf<(Boolean) -> Unit> {
 }
 
 val LocalReaderBookId = staticCompositionLocalOf<String?> { null }
+val LocalReaderChapterId = staticCompositionLocalOf<String?> { null }

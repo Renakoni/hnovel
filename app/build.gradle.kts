@@ -109,11 +109,10 @@ android {
             // Multi-SDK Robolectric resource tests exceed Gradle's default 512 MiB heap.
             it.maxHeapSize = "2g"
             it.jvmArgs(
-                // JDK 22 C2 crashes in Node::uncast while inlining Robolectric SQLite methods.
-                // Keep Java 22 compatibility, but use C1 for these host-side tests only.
+                // JDK 22 C2 crashes in Node::uncast in test workers; leave app/runtime compilation unchanged.
                 "-XX:TieredStopAtLevel=1",
-                // C1 defaults to 48 MiB; retain the normal tiered JVM budget for the full suite.
-                "-XX:ReservedCodeCacheSize=240m",
+                // Robolectric/Compose exhaust C1's code cache across the full test suite.
+                "-XX:ReservedCodeCacheSize=256m",
                 "--add-opens=java.base/java.lang=ALL-UNNAMED",
                 "--add-opens=java.base/java.util=ALL-UNNAMED",
                 "--add-opens=java.base/java.io=ALL-UNNAMED",

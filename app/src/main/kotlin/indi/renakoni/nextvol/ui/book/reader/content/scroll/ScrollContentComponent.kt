@@ -511,7 +511,8 @@ private fun TextContent(
             Box(Modifier.onGloballyPositioned {
                 prepared.componentOffsets[componentIndex] = it.positionInParent().y.toInt()
             }) {
-                CompositionLocalProvider(LocalReaderSpeechRanges provides speechRanges) {
+                CompositionLocalProvider(LocalReaderSpeechRanges provides speechRanges,
+                    indi.renakoni.nextvol.ui.LocalReaderChapterId provides content.id) {
                     if (text != null) ScrollTextContent(text, readerContentTextColor(colors.textColor, colors.textDarkColor), modifier)
                     else component.Content(modifier)
                 }

@@ -35,6 +35,7 @@ internal class RuleWebBookDataSource(override val id: Identifier, private val so
     private val recovery: RuleRequestRecovery? = null, private val pixivFilter: PixivBookFilter? = null) :
     WebBookDataSource by EmptyWebDataSource, SourceImageProvider, AutoCloseable {
     override val permits = 1
+    internal val canReplayDownloads get() = source.canReplayDownloads
     override val offLine = false
     override val isOffLineFlow = MutableStateFlow(false)
     override suspend fun isOffLine() = false
