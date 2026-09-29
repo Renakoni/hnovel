@@ -1,5 +1,7 @@
 package indi.renakoni.nextvol.data.work
 
+import indi.renakoni.nextvol.data.export.ExportBookToEpubUseCase
+
 import android.app.Application
 import android.graphics.Bitmap
 import android.graphics.Color
@@ -102,7 +104,7 @@ class EpubExportRegressionTest {
         ExportBookToEPUBWork(context, workerParameters(workDataOf(
             "bookId" to book.storageKey, "title" to "Probe book", "exportType" to type,
             "selectedVolume" to selected, "includeImages" to images
-        )), repository, progress, decoder, exportDownloads()).also { lastWorker = it }
+        )), ExportBookToEpubUseCase(context, repository, progress, decoder, exportDownloads())).also { lastWorker = it }
 
     private fun bodies(file: File): List<String> = ZipFile(file).use { zip ->
         val opf = DocumentHelper.parseText(zip.getInputStream(zip.getEntry("EPUB/content.opf")).reader().readText())
@@ -160,7 +162,7 @@ class EpubExportRegressionTest {
 
     @Test fun unknownBodyComponentsFailWithChapterLocationBeforePublishing() = runTest {
         startCase("silent-body-loss")
-        setBody(textBody("This text must not disappear", "missing-plugin:text"))
+        setBody(textBody("This text must not disappear", "unknown:text"))
         val result = worker().doWork() as ListenableWorker.Result.Failure
         assertEquals("invalid_content", result.outputData.getString("reason"))
         assertEquals("Chapter 1", result.outputData.getString("chapter"))
@@ -253,7 +255,7 @@ class EpubExportRegressionTest {
         interrupted.parentFile!!.mkdirs()
         interrupted.writeText("interrupted")
         val retry = ExportBookToEPUBWork(context, workerParameters(first.inputData, first.id),
-            repository, progress, decoder, exportDownloads())
+            ExportBookToEpubUseCase(context, repository, progress, decoder, exportDownloads()))
         assertTrue(retry.doWork() is ListenableWorker.Result.Success)
         assertEquals(original, files.map { it.readBytes().toList() })
         assertFalse(interrupted.exists())

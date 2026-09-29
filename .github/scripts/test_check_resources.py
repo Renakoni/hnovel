@@ -32,10 +32,6 @@ class ResourceContractTest(unittest.TestCase):
         self.assertEqual(3, len(failures))
         self.assertTrue(all('missing new_action' in failure for failure in failures))
 
-    def test_integer_and_string_swap_reproduces_plugin_contract_failure(self):
-        self.write('values-zh-rTW', '<string name="message">%1$s / %2$d</string>')
-        self.assertTrue(any('arguments' in failure for failure in check(self.root)))
-
     def test_missing_argument_and_invalid_conversion_fail(self):
         for template in ['%1$d', '%1$q / %2$s', '%1$d / %2$', '%0$d / %2$s', '%-s', '%+s',
                          '%1$.2d', '%+%', '%-05d', '%+ d', '%#g', '%,e', '%(a']:

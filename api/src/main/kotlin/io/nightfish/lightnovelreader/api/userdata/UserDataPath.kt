@@ -141,8 +141,6 @@ sealed class UserDataPath(
             data object DarkMode : UserDataPath("dark_mode", Display)
             /** 动态颜色设置 @since Api 2 */
             data object DynamicColors : UserDataPath("dynamic_color", Display)
-            /** Legacy identifier retained for plugin compatibility; the app no longer reads this preference. */
-            data object EnableM3E : UserDataPath("enable_m3_expressive", Display)
             /** 应用语言设置 @since Api 2 */
             data object AppLocale : UserDataPath("app_locale", Display)
             /** 浅色主题名称 @since Api 2 */
@@ -162,20 +160,12 @@ sealed class UserDataPath(
         data object Data: UserDataPath("data", Settings) {
             /** 日志级别设置 @since Api 2 */
             data object LogLevel : UserDataPath("log_level", Data)
-            /** 已退役的自动公共代理设置；保留类和路径以兼容旧插件。@since Api 2 */
-            @Deprecated("The host no longer uses the automatic public proxy pool")
-            data object IsUseProxy : UserDataPath("is_use_proxy", Data)
             /** 存储统计快照缓存 @since Api 4 */
             data object StorageUsageSnapshot : UserDataPath("storage_usage_snapshot", Data)
         }
     }
     /** 已完成下载的书籍列表路径 @since Api 2 */
     data object CompletedDownloadBookList: UserDataPath("completedDownloadBookList")
-    /** 插件相关用户数据路径组 @since Api 2 */
-    data object Plugin: UserDataPath("plugin") {
-        /** 已启用的插件列表 @since Api 2 */
-        data object EnabledPlugins: UserDataPath("enabledPlugins", Plugin)
-    }
     /** 本地书籍相关用户数据路径组 @since Api 2 */
     data object LocalBook: UserDataPath("localBook") {
         /** 本地书籍 ID 列表 @since Api 2 */

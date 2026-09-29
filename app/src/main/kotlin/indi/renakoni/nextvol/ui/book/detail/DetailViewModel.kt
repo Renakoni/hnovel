@@ -1,5 +1,6 @@
 package indi.renakoni.nextvol.ui.book.detail
 
+import indi.renakoni.nextvol.data.book.availableVolumes
 import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -13,6 +14,7 @@ import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.workDataOf
 import com.github.michaelbull.result.onOk
+import com.github.michaelbull.result.map
 import com.github.michaelbull.result.get
 import dagger.hilt.android.lifecycle.HiltViewModel
 import indi.renakoni.nextvol.data.book.BookRepository
@@ -98,7 +100,7 @@ class DetailViewModel @Inject constructor(
 
     suspend fun markChaptersUnread(chapterIds: Set<String>) {
         val bookId = checkNotNull(book).storageKey
-        val volumes = checkNotNull(_uiState.bookVolumes?.get())
+        val volumes = checkNotNull(_uiState.bookVolumes?.availableVolumes())
         val catalogIds = volumes.volumes.flatMap { it.chapters }.mapTo(mutableSetOf()) { it.id }
         withContext(Dispatchers.IO) {
             readingDataRepository.markChaptersUnread(bookId, chapterIds, catalogIds)
@@ -114,9 +116,10 @@ class DetailViewModel @Inject constructor(
                 result.onOk {
                     val metadata = bookshelfRepository.getBookshelfBookMetadata(bookId) ?: return@onOk
                     metadata.bookShelfIds.forEach { shelf -> bookshelfRepository.deleteBookFromBookshelfUpdatedBookIds(shelf, bookId) }
-                    bookshelfRepository.updateBookshelfBookMetadataLastUpdateTime(bookId, it.lastUpdated)
+                    if (it.lastUpdated.year > 1970)
+                        bookshelfRepository.updateBookshelfBookMetadataLastUpdateTime(bookId, it.lastUpdated)
                 }
-                _uiState.bookInformation = result
+                _uiState.bookInformation = result.map { bookRepository.bookInformationForDisplay(it) }
             }
         }
     }

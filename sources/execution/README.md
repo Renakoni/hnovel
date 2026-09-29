@@ -14,7 +14,7 @@ Library loading shares the total invocation deadline and cancellation scope. Com
 
 Each Binder invocation still receives a fresh result callback, reverse broker endpoint and budget. Completion retires those endpoints even when the worker remains alive. A function saved in a library cannot reuse a completed invocation's network grant: the old endpoint checks its finished flag and the original broker is closed. The service marks the executor slot available before delivering a result, avoiding a false Busy response from the immediately following call.
 
-The Application skips Hilt and host/plugin initialization in isolated UIDs. Both service process names use Android-compatible underscores; hyphens caused an APK installation failure on API 24 despite successful compilation.
+The Application skips Hilt and host initialization in isolated UIDs. Both service process names use Android-compatible underscores; hyphens caused an APK installation failure on API 24 despite successful compilation.
 
 `ExecutionTask.Script` executes Rhino 1.8.1 inside the worker with JSON input/output and source globals derived from the host-issued identity. A reverse AIDL broker accepts only an operation and bounded JSON arguments. Its host endpoint authenticates the calling worker UID and the live invocation before dispatch. Before binding, the task and broker must agree on key/page/baseUrl; a mismatch returns InvalidTask with no request, for Script and Rule tasks alike. The worker receives no SourceSession, OkHttp client, storage path or credential manager.
 

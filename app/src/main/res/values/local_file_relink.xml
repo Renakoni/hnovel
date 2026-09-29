@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="local_file_backup_scope">The .lnr backup contains selected library data, not the original EPUB or TXT files. Keep those files separately. After restoring on another device, use “Relink original file” on each local book to keep its reading position and bookmarks.</string>
+    <string name="local_file_backup_scope">A NextVol backup contains selected library data, not the original EPUB or TXT files. Keep those files separately. After restoring on another device, use “Relink original file” on each local book to keep its reading position and bookmarks.</string>
     <string name="local_file_missing_title">Original file needed</string>
     <string name="local_file_missing_body">Your bookshelf, reading progress and bookmarks are saved. Select the original EPUB or TXT file to read this book on this device.</string>
     <string name="local_file_relink_action">Relink original file</string>

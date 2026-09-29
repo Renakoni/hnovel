@@ -151,7 +151,6 @@ private fun ImportField(field: String?) {
 }
 
 private fun importNotice(code: String): Int = when (code) {
-    "KnownPackageAdaptation" -> R.string.sources_notice_known_package
     "ExecutionCompatibilityPending" -> R.string.sources_notice_execution
     "UnclassifiedField" -> R.string.sources_notice_unknown
     "ExternalOrderRetainedNotApplied" -> R.string.sources_notice_order
@@ -162,7 +161,6 @@ private fun importNotice(code: String): Int = when (code) {
 private fun importProblem(code: ImportCode): Int = when (code) {
     ImportCode.TooDeep, ImportCode.TooLarge, ImportCode.TooMany -> R.string.sources_import_limit
     ImportCode.UnsupportedFormat, ImportCode.UnsupportedProfile, ImportCode.UnsupportedType -> R.string.sources_import_unsupported
-    ImportCode.PluginPackage -> R.string.sources_import_package
     ImportCode.ReadFailed -> R.string.sources_import_read_failed
     ImportCode.DownloadFailed -> R.string.sources_import_download_failed
     ImportCode.StorageUnavailable, ImportCode.StorageQuota -> R.string.sources_import_storage_failed

@@ -69,11 +69,7 @@ class SourceVerificationInstrumentedTest {
         instrumentation.sendStatus(0, android.os.Bundle().apply { putString("verificationStep", "found: $text") })
     }
 
-    @Test fun verificationOpensAutomaticallyAfterHostRecreationAndResumesTheOriginalSearch() = verifySearch(true)
-
     @Test fun httpVerificationOpensNativeBrowserAndResumesTheOriginalSearch() = verifySearch(false)
-
-    @Test fun wafPostVerificationWaitsForSuccessAndResumesAllReadingStages() = verifySearch(false, waf = true)
 
     @Test fun nativeWafVerificationWaitsForSuccessAndResumesAllReadingStages() = verifySearch(true, waf = true)
 

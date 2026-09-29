@@ -288,7 +288,6 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
                 !AndroidSourceBrowser.supportsVpnBypass(context)) R.string.sources_network_native else null
             id == ZLibrarySources.ID -> null
             id == "Wenku8".ofId() && listing?.metadata?.builtIn == true -> null
-            listing?.metadata?.builtIn == false -> R.string.sources_network_plugin
             else -> R.string.sources_network_unsupported
         }
         return SourceNetworkState(networkSettings.mode(id) == SourceNetworkMode.BypassVpn, limitation,

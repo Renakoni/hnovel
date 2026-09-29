@@ -4,11 +4,14 @@ import android.net.Uri
 import com.github.michaelbull.result.Err
 import com.github.michaelbull.result.Ok
 import com.github.michaelbull.result.Result
+import com.github.michaelbull.result.mapError
 import com.github.michaelbull.result.onErr
 import com.github.michaelbull.result.onOk
 import com.github.michaelbull.result.getOrElse
 import hnovel.content.*
 import indi.renakoni.nextvol.R
+import indi.renakoni.nextvol.data.book.UNKNOWN_BOOK_UPDATE_TIME
+import indi.renakoni.nextvol.data.book.PartialBookVolumesException
 import indi.renakoni.nextvol.data.explore.PagedSearchProvider
 import indi.renakoni.nextvol.data.explore.SearchPage
 import indi.renakoni.nextvol.data.web.EmptyWebDataSource
@@ -71,20 +74,34 @@ internal class RuleWebBookDataSource(override val id: Identifier, private val so
     }
     internal suspend fun canonicalBookId(id: String) = source.canonicalBookId(id)
 
+    internal suspend fun informationForDisplay(id: String, information: BookInformation): BookInformation {
+        val saved = source.cachedInformation(id)
+        return information.copy(
+            wordCount = saved?.let { WordCount(parseBookWordCount(it.wordCount) ?: parseBookWordCount(it.lastValidWordCount) ?: 0) }
+                ?: information.wordCount,
+            lastUpdated = saved?.let { parseBookUpdateTime(it.updateTime) ?: parseBookUpdateTime(it.lastValidUpdateTime) }
+                ?: UNKNOWN_BOOK_UPDATE_TIME
+        )
+    }
+
     override suspend fun getBookInformation(id: String) = request {
         // The legacy source API keeps the caller's remote ID; migration is a separate host operation.
         source.information(id).information().copy(id = id)
     }
-    override suspend fun getBookVolumes(id: String) = request {
+    override suspend fun getBookVolumes(id: String) = request { source.directory(id).volumes(id) }.mapError { error ->
+        val partial = error.throwable as? PartialDirectoryException
+        if (partial == null) error else error.copy(throwable = PartialBookVolumesException(partial.chapters.volumes(id), partial))
+    }
+    private fun List<RuleChapter>.volumes(id: String): BookVolumes {
         val volumes = mutableListOf<Volume>()
         var volumeId = "default"; var title = ""; var chapters = mutableListOf<ChapterInformation>()
         fun finish() { if (chapters.isNotEmpty()) volumes += Volume(volumeId, title, chapters.toList()) }
-        for (chapter in source.directory(id)) {
+        for (chapter in this) {
             if (chapter.isVolume) { finish(); volumeId = chapter.id; title = chapter.title; chapters = mutableListOf() }
             else chapters += ChapterInformation(chapter.id, chapter.title)
         }
         finish()
-        BookVolumes(id, volumes)
+        return BookVolumes(id, volumes)
     }
     override suspend fun getChapterContent(chapterId: String, bookId: String) = request {
         val chapter = source.content(bookId, chapterId)
@@ -98,7 +115,7 @@ internal class RuleWebBookDataSource(override val id: Identifier, private val so
     override suspend fun getImage(bookId: String, url: String, cover: Boolean) = request { source.image(bookId, url, cover) }
     private fun RuleBook.information() = BookInformation(id, title, author = author,
         description = description, coverUri = if (coverUrl.isBlank()) Uri.EMPTY else Uri.parse(coverUrl),
-        tags = tags, publishingHouse = "", wordCount = WordCount(wordCount.toIntOrNull() ?: 0),
+        tags = tags, publishingHouse = "", wordCount = WordCount(parseBookWordCount(wordCount) ?: parseBookWordCount(lastValidWordCount) ?: 0),
         lastUpdated = LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(observedUpdate), java.time.ZoneOffset.UTC), isComplete = false)
     override fun close() = source.close()
     private suspend fun <T> request(block: suspend () -> T): Result<T, WebRequestError> = try {
