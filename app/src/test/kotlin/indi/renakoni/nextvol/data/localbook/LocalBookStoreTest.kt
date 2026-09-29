@@ -246,7 +246,7 @@ class LocalBookStoreTest {
         }
         database.close()
         openDatabase()
-        assertEquals(27, database.openHelper.writableDatabase.version)
+        assertEquals(28, database.openHelper.writableDatabase.version)
         assertEquals("Imported novel", database.bookInformationDao().get(oldBook.storageKey)!!.title)
         assertEquals(91, books.getUserReadingData(oldBook.storageKey).totalReadTime)
         assertNotNull(database.bookshelfDao().getBookshelf(7))

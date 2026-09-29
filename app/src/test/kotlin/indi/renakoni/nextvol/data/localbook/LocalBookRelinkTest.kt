@@ -350,7 +350,7 @@ class LocalBookRelinkTest {
         }
         library.db.close()
         val reopened = Library("library")
-        assertEquals(27, reopened.db.openHelper.writableDatabase.version)
+        assertEquals(28, reopened.db.openHelper.writableDatabase.version)
         assertTrue(reopened.store.contains(book))
         assertTrue(reopened.db.localBookFileManifestDao().all().isEmpty())
         assertEquals(81, reopened.db.userReadingDataDao().getEntity(book.storageKey)!!.totalReadTime)
