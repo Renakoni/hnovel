@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="download_task_waiting_verification">Waiting for login or verification</string>
+    <string name="download_task_verify">Continue to verification</string>
     <string name="download_task_waiting_retry">Waiting to retry</string>
     <string name="download_task_retry_time">Retry %1$d: no earlier than %2$s</string>
     <string name="download_error_rate_limited">The source is temporarily limiting requests or unavailable</string>

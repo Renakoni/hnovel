@@ -1117,7 +1117,9 @@ private fun QuickOperationsBlock(
 
         val phase = downloadState.displayPhase
         if (canCache || phase != BookDownloadPhase.None) {
-            val action = if (downloadState.task.canResume) {
+            val action = if (downloadState.task.status == indi.renakoni.nextvol.data.download.DownloadTaskStatus.WaitingVerification) {
+                R.string.download_task_verify
+            } else if (downloadState.task.canResume) {
                 if (phase == BookDownloadPhase.Failed) R.string.book_download_retry else R.string.book_download_continue
             } else when (phase) {
                 BookDownloadPhase.None, BookDownloadPhase.Updating -> null

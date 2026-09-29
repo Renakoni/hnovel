@@ -7,7 +7,7 @@ import io.nightfish.lightnovelreader.api.error.WebRequestError
 import io.nightfish.lightnovelreader.api.error.WebRequestErrorKind
 import java.io.IOException
 
-enum class DownloadTaskStatus { None, Queued, Running, WaitingRetry, Interrupted, Failed, Cancelled, Complete }
+enum class DownloadTaskStatus { None, Queued, Running, WaitingRetry, WaitingVerification, Interrupted, Failed, Cancelled, Complete }
 enum class DownloadStage { Unknown, Details, Directory, Body, Image, Cover, Storage }
 enum class DownloadFailure { Network, RateLimited, RetryExhausted, Authentication, Verification, SourceUnavailable, SourceRequest, Storage }
 
@@ -22,7 +22,7 @@ data class DownloadTaskState(
     val nextAttemptAt: Long = 0,
 ) {
     val active get() = status == DownloadTaskStatus.Queued || status == DownloadTaskStatus.Running
-    val canResume get() = status in setOf(DownloadTaskStatus.WaitingRetry, DownloadTaskStatus.Interrupted, DownloadTaskStatus.Failed, DownloadTaskStatus.Cancelled)
+    val canResume get() = status in setOf(DownloadTaskStatus.WaitingRetry, DownloadTaskStatus.WaitingVerification, DownloadTaskStatus.Interrupted, DownloadTaskStatus.Failed, DownloadTaskStatus.Cancelled)
 }
 
 data class BookDownloadStatus(
@@ -45,6 +45,7 @@ internal fun downloadFailure(error: WebRequestError?, stage: DownloadStage): Dow
         WebRequestErrorKind.VerificationRequired -> DownloadFailure.Verification
         WebRequestErrorKind.SourceUnavailable -> DownloadFailure.SourceUnavailable
         else -> if (error?.throwable is indi.renakoni.nextvol.data.web.SourceUnavailableException) DownloadFailure.SourceUnavailable
+            else if (content?.code == hnovel.content.ContentError.Certificate || image?.contentError == hnovel.content.ContentError.Certificate) DownloadFailure.Verification
             else if (content?.httpStatus in setOf(429, 503) || image?.httpStatus in setOf(429, 503)) DownloadFailure.RateLimited
             else if (stage == DownloadStage.Storage || error?.throwable is android.database.sqlite.SQLiteException ||
                 content?.code == hnovel.content.ContentError.Storage || image?.contentError == hnovel.content.ContentError.Storage) DownloadFailure.Storage
@@ -59,6 +60,7 @@ internal fun BookDownloadEntity.taskState(work: WorkInfo.State?): DownloadTaskSt
     val stored = DownloadTaskStatus.entries.firstOrNull { it.name == taskStatus } ?: DownloadTaskStatus.None
     val resolved = when {
         stored == DownloadTaskStatus.Cancelled -> stored
+        stored == DownloadTaskStatus.WaitingVerification -> stored
         stored == DownloadTaskStatus.WaitingRetry && work !in setOf(WorkInfo.State.FAILED, WorkInfo.State.CANCELLED, WorkInfo.State.SUCCEEDED) -> stored
         work == WorkInfo.State.RUNNING -> DownloadTaskStatus.Running
         work == WorkInfo.State.ENQUEUED || work == WorkInfo.State.BLOCKED -> DownloadTaskStatus.Queued

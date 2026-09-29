@@ -31,6 +31,7 @@ import indi.renakoni.nextvol.data.web.*
 import indi.renakoni.nextvol.data.work.CacheBookWork
 import indi.renakoni.nextvol.data.work.workerParameters
 import io.mockk.every
+import io.mockk.coEvery
 import io.mockk.mockk
 import io.nightfish.lightnovelreader.api.book.*
 import io.nightfish.lightnovelreader.api.content.builder.ContentBuilder
@@ -82,6 +83,7 @@ class BookDownloadTest {
     private lateinit var local: LocalBookDataSource
     private lateinit var downloads: BookDownloadStore
     private lateinit var books: BookRepository
+    private lateinit var workManager: androidx.work.WorkManager
     private lateinit var cache: DiskCache
     private lateinit var loader: ImageLoader
     private val progress = mockk<DownloadProgressRepository>(relaxed = true)
@@ -104,7 +106,7 @@ class BookDownloadTest {
         val shelves = BookshelfRepository(db.bookshelfDao(), mockk(relaxed = true), registry, downloads, local.aliases)
         val text = TextProcessingRepository(mockk { every { enabled } returns false },
             mockk { every { enabled } returns false }, ContentComponentRegistry())
-        val workManager = mockk<androidx.work.WorkManager>(relaxed = true) {
+        workManager = mockk<androidx.work.WorkManager>(relaxed = true) {
             every { getWorkInfoByIdFlow(any()) } returns flowOf(null)
             every { getWorkInfosForUniqueWorkFlow(any()) } returns flowOf(emptyList())
         }
@@ -137,6 +139,100 @@ class BookDownloadTest {
 
     private suspend fun state(book: SourceBookId = a) = books.downloadState(book.storageKey)
     private suspend fun chapter(book: SourceBookId, id: String) = local.getChapterContent(SourceChapterId(book, id).storageKey)
+
+    private fun captureQueuedDownloads(): List<androidx.work.OneTimeWorkRequest> {
+        val requests = mutableListOf<androidx.work.OneTimeWorkRequest>()
+        val completion = androidx.concurrent.futures.ResolvableFuture.create<androidx.work.Operation.State.SUCCESS>()
+            .apply { set(androidx.work.Operation.SUCCESS) }
+        every { workManager.enqueueUniqueWork(any(), any(), any<androidx.work.OneTimeWorkRequest>()) } answers {
+            requests += thirdArg<androidx.work.OneTimeWorkRequest>()
+            mockk<androidx.work.Operation> { every { result } returns completion }
+        }
+        return requests
+    }
+
+    @Test fun verificationWaitSurvivesReconstructionAndResumesOnlyMissingChapters() = runBlocking {
+        val source = Remote(a)
+        var coordinator = indi.renakoni.nextvol.data.web.rules.SourceVerificationCoordinator(registry)
+        val owner = indi.renakoni.nextvol.data.web.rules.VerificationOwner(a.sourceId, "1", 0)
+        var verified = false
+        val verification = mockk<hnovel.content.SourceVerification> {
+            every { kind } returns hnovel.network.BrowserChallengeKind.Login
+            every { certificate } returns null
+            every { origin } returns "https://fixture.invalid/"
+            coEvery { complete() } coAnswers { verified = true }
+        }
+        val challenge = hnovel.content.SourceContentException(hnovel.content.ContentError.BrowserRequired,
+            "chapter", verification = verification)
+        registry.register(object : WebBookDataSource by source {
+            override suspend fun getChapterContent(chapterId: String, bookId: String): com.github.michaelbull.result.Result<ChapterContent, WebRequestError> = try {
+                coordinator.execute(owner, "Fixture") {
+                    if (chapterId == "2" && !verified) throw challenge
+                    source.getChapterContent(chapterId, bookId)
+                }
+            } catch (error: hnovel.content.SourceContentException) {
+                Err(WebRequestError("Verification", "Required", error,
+                    kind = io.nightfish.lightnovelreader.api.error.WebRequestErrorKind.VerificationRequired))
+            }
+        }, SourceMetadata(WebDataSourceItem(a.sourceId, "Fixture", "fixture"),
+            setOf(SourceCapability.BookInformation, SourceCapability.Directory, SourceCapability.ChapterContent), revision = "1"))
+        assertTrue(download() is ListenableWorker.Result.Failure)
+        assertEquals(DownloadTaskStatus.WaitingVerification.name, downloads.entry(a)!!.taskStatus)
+        assertNotNull(chapter(a, "1"))
+        db.close(); openLibrary()
+        coordinator = indi.renakoni.nextvol.data.web.rules.SourceVerificationCoordinator(registry)
+        assertTrue(coordinator.prompts.value.isEmpty())
+        assertEquals(DownloadTaskStatus.WaitingVerification, books.downloadStatusFlow(a.storageKey).first().task.status)
+        val queued = captureQueuedDownloads()
+        books.cacheBook(a.storageKey).first() // The persistent card recreates the challenge after process reconstruction.
+        suspend fun runQueued() = queued.last().let { request -> CacheBookWork(context,
+            workerParameters(request.workSpec.input, request.id), progress, books, downloads).doWork() }
+        assertTrue(runQueued() is ListenableWorker.Result.Failure)
+        val prompt = coordinator.prompts.value.single().id
+        coordinator.verifyBackground(prompt)
+        coordinator.verifyBackground(prompt)
+        assertEquals(2, queued.size)
+        assertEquals(DownloadTaskStatus.Queued.name, downloads.entry(a)!!.taskStatus)
+        assertEquals(ListenableWorker.Result.success(), runQueued())
+        assertEquals(1, source.chapterCalls["1"])
+        assertEquals(DownloadTaskStatus.Complete.name, downloads.entry(a)!!.taskStatus)
+    }
+
+    @Test fun verificationSnapshotsIgnoreCancelledReplacedAndRetiredTasksWithoutDeletingContent() = runBlocking {
+        register(a)
+        assertEquals(ListenableWorker.Result.success(), download())
+        val other = SourceBookId(a.sourceId, "other")
+        suspend fun waiting(book: SourceBookId): String {
+            val id = java.util.UUID.randomUUID().toString()
+            downloads.queueTask(book, downloads.generation(), id)
+            val task = downloads.startTask(book, downloads.generation(), id, 0)
+            downloads.bindTaskSource(task, "1", 0)
+            downloads.finishTask(task, DownloadFailure.Verification)
+            return id
+        }
+        val id = waiting(a)
+        waiting(other)
+        val resume = checkNotNull(books.prepareDownloadVerification(a, id, "1", 0))
+        downloads.dismissTask(a)
+        val newer = waiting(other)
+        val queued = captureQueuedDownloads()
+        resume()
+        assertTrue(queued.isEmpty())
+        assertEquals(DownloadTaskStatus.Cancelled.name, downloads.entry(a)!!.taskStatus)
+        assertEquals(newer, downloads.entry(other)!!.taskWorkId)
+        assertNotNull(chapter(a, "1"))
+        val afterAccountChange = checkNotNull(books.prepareDownloadVerification(other, newer, "1", 0))
+        registry.unregister(a.sourceId)
+        registry.register(Remote(a), SourceMetadata(WebDataSourceItem(a.sourceId, "Fixture", "fixture"),
+            setOf(SourceCapability.BookInformation, SourceCapability.Directory, SourceCapability.ChapterContent),
+            revision = "1", accountGeneration = 1))
+        afterAccountChange()
+        assertTrue(queued.isEmpty())
+        assertNotNull(chapter(a, "1"))
+        downloads.clearDownloads()
+        assertFalse(downloads.queueVerifiedTask(indi.renakoni.nextvol.data.local.room.entity.BookDownloadEntity(
+            other.storageKey, taskWorkId = newer, taskStatus = DownloadTaskStatus.WaitingVerification.name), "stale-result"))
+    }
 
     @Test fun downloadsSurviveReadingCacheClearSourceRemovalAndHostReconstruction() = runBlocking {
         for (book in listOf(a, b)) {

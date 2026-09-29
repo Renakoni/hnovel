@@ -48,6 +48,7 @@ class ProxyCoalescingWebBookDataSource(
         if (currentCoroutineContext()[indi.renakoni.nextvol.data.web.ForegroundSourceRequest]?.allowsInteraction == true) return block()
         // A durable task owns its retry budget and cancellation; detached sharing loses both.
         if (currentCoroutineContext()[hnovel.network.RequestRetryContext] != null) return block()
+        if (currentCoroutineContext()[indi.renakoni.nextvol.data.web.BackgroundSourceRequest] != null) return block()
         val owner = currentCoroutineContext()[SourceRequestOwner] ?: kotlin.coroutines.EmptyCoroutineContext
         return withContext(RequestContext(key)) { coalescing.execute { withContext(owner) { block() } } }
     }

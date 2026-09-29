@@ -224,6 +224,30 @@ class BookRepository @Inject constructor(
         return flow { emitAll(workManager.getWorkInfoByIdFlow(submission.await())) }
     }
 
+    internal suspend fun prepareDownloadVerification(book: SourceBookId, workId: String, revision: String,
+        accountGeneration: Long): (suspend () -> Unit)? {
+        fun currentSource() = sourceRegistry.sources.value.any { it.metadata.id == book.sourceId &&
+            it.status == indi.renakoni.nextvol.data.web.SourceStatus.Ready &&
+            it.metadata.revision == revision && it.metadata.accountGeneration == accountGeneration }
+        if (!currentSource()) return null
+        val waiting = downloads.entries().filter { !it.taskHidden && BookIdentity.book(it.bookId).sourceId == book.sourceId &&
+            it.taskSourceRevision == revision && it.taskAccountGeneration == accountGeneration &&
+            (it.taskStatus == DownloadTaskStatus.WaitingVerification.name ||
+                it.taskWorkId == workId && it.taskStatus == DownloadTaskStatus.Running.name) }
+        if (waiting.none { it.taskWorkId == workId }) return null
+        return { downloadSubmissionLock.withLock {
+            if (currentSource()) for (owner in waiting) {
+                val request = OneTimeWorkRequestBuilder<CacheBookWork>()
+                    .addTag(CacheBookWork.generationTag(owner.generation))
+                    .setInputData(workDataOf("bookId" to owner.bookId, "downloadGeneration" to owner.generation, "persistedTask" to true))
+                    .build()
+                if (downloads.queueVerifiedTask(owner, request.id.toString())) {
+                    workManager.enqueueUniqueWork(CacheBookWork.ofId(owner.bookId), ExistingWorkPolicy.REPLACE, request).await()
+                }
+            }
+        } }
+    }
+
     suspend fun dismissDownload(bookId: String): Unit = downloadSubmissionLock.withLock {
         val book = canonicalBook(BookIdentity.book(bookId))
         val workId = downloads.entry(book)?.taskWorkId?.takeIf { it.isNotEmpty() }
