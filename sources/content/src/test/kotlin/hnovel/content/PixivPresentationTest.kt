@@ -81,7 +81,7 @@ class PixivPresentationTest {
                     val form = panel.loginForm()
                     val names = form.fields.map { it.name.substringAfterLast(' ') }
                     assertEquals("updateSource()", form.fields.single { it.name.endsWith("更新书源") }.action)
-                    assertTrue(names.containsAll(listOf("章节编号", "快速模式", "自动收藏",
+                    assertTrue(names.containsAll(listOf("整合系列", "快速模式", "搜索作者", "繁简通搜", "显示描述", "显示插图",
                         "成人排行榜单", "常规原创热门", "添加屏蔽", "喜欢标签", "他人收藏", "文本框")))
                     assertTrue(names.none { it in listOf("章节名称", "收藏本章", "刷新本章", "发送评论",
                         "删除评论", "显示评论", "调试模式", "备份恢复", "反馈问题", "显示投票", "兽人小说", "兽人作者") })
@@ -97,7 +97,7 @@ class PixivPresentationTest {
                 source.openLoginSession().use { panel ->
                     val form = panel.loginForm()
                     assertEquals(listOf("阅读与搜索", "发现页设置", "屏蔽与收藏"), form.fields.mapNotNull { it.section }.distinct())
-                    assertEquals("阅读与搜索", form.fields.single { it.name.endsWith("章节编号") }.section)
+                    assertEquals("阅读与搜索", form.fields.single { it.name.endsWith("显示描述") }.section)
                     assertEquals("发现页设置", form.fields.single { it.name == "成人原创热门" }.section)
                     assertTrue(form.fields.single { it.action == "startPixivSettings()" }.enabled)
                     assertTrue(form.fields.none { it.action?.contains("SHOW_SETTINGS") == true || it.action?.contains("SHOW_DISCOVER") == true })
@@ -253,7 +253,10 @@ class PixivPresentationTest {
             "backupRestore", "backupData", "restoreData", "stripCfCookies", "备份恢复",
             "startGithubIssue", "反馈问题", "github.com/DowneyRem/PixivSource/issues",
             "SHOW_COMMENTS", "urlNovelComments", "getComment", "processComment", "formatComment",
-            "/novels/comments/", "urlEmojiUrl", "urlStampUrl", "let emoji =", "发送评论", "显示评论")) {
+            "/novels/comments/", "urlEmojiUrl", "urlStampUrl", "let emoji =", "发送评论", "显示评论",
+            "MORE_INFORMATION", "ADD_CHAPTER_INDEX", "SHOW_UPDATE_TIME", "SHOW_ORIGINAL_LINK",
+            "REPLACE_TITLE_MARKS", "AUTO_LIKE_NOVELS", "AUTO_DISLIKE_NOVELS",
+            "HIDE_LIKE_NOVELS", "HIDE_WATCHED_SERIES", "function addBookShelf(", "function delBookShelf(")) {
             assertFalse(removed, serialized.contains(removed))
         }
         assertTrue(original.getValue("jsLib").jsonPrimitive.content.contains("function updateSource()"))
@@ -261,6 +264,6 @@ class PixivPresentationTest {
         assertTrue(original.getValue("exploreUrl").jsonPrimitive.content
             .contains("https://cdn.jsdelivr.net/gh/DowneyRem/PixivSource@main/pixiv.json"))
         assertTrue(original.getValue("ruleToc").jsonObject.getValue("chapterList").jsonPrimitive.content
-            .contains("ADD_CHAPTER_INDEX"))
+            .contains("urlSeriesNovelsTitles"))
     }
 }
