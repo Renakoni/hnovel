@@ -29,6 +29,15 @@ compiler and 22.0.2+9 for Gradle/tests, plus the repository's Gradle wrapper.
 that job. Actions are pinned to commits and runners use `ubuntu-24.04`; GitHub
 still updates the hosted OS, so this is not an immutable machine image.
 
+App JVM unit tests use `-XX:TieredStopAtLevel=1` to avoid a JDK 22 C2
+`Node::uncast` crash while inlining Robolectric-instrumented SQLite methods.
+They retain Java 22 for PotatoEPUB bytecode compatibility and run all assertions
+with C1 compilation. This test-only setting does not change the Gradle daemon,
+other modules' JVM tests, Android compilation, or device/runtime behavior.
+`-XX:ReservedCodeCacheSize=240m` retains the normal tiered JVM's code cache
+budget: C1 otherwise reduces it to 48 MiB, which the full Robolectric suite
+exhausts with `Out of space in CodeCache for adapters`. The Java heap is unchanged.
+
 `prepare-android-sdk.sh` names exact upstream ZIP revisions: SDK platform 37.0 r2,
 Build Tools 36.0.0, Platform Tools 37.0.1, Emulator 37.1.11 (build 15917651), and
 Google APIs x86_64 images API 24 r27 / API 35 r9. A cache miss downloads only the
