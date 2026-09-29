@@ -92,6 +92,7 @@
     <string name="offline_desc">Проверьте доступность сайта и настройки прокси.</string>
     <string name="saved_to_pictures_dir">Сохранено в Pictures/NextVol/%s</string>
     <string name="save_failed">Не удалось сохранить</string>
+    <string name="bookshelf_load_failed">Не удалось загрузить полки. Закройте диалог и попробуйте ещё раз.</string>
     <string name="reader_custom_font_load_failed">Не удалось загрузить шрифт. Используется стандартный. Выберите другой шрифт.</string>
     <string name="reader_custom_background_load_failed">Не удалось загрузить фоновое изображение. Выберите другое изображение.</string>
     <string name="reader_first_page">Вы на первой странице</string>
@@ -442,7 +443,6 @@
     <string name="dialog_about_version">Версия</string>
     <string name="dialog_delete_bookshelf">Удалить полку</string>
     <string name="dialog_delete_bookshelf_text">Вы уверены, что хотите удалить эту полку? Она будет потеряна навсегда! (Очень надолго!)</string>
-    <string name="dialog_add_to_bookshelf_text">Добавить книгу на следующие полки</string>
     <string name="dialog_export_to_epub">Экспорт в EPUB</string>
     <string name="dialog_export_to_epub_text">EPUB (Electronic Publication) — открытый стандарт электронных книг с форматом .epub.\n\nХотите экспортировать книгу в EPUB?</string>
     <string name="dialog_updates_available">Доступны обновления</string>

@@ -95,6 +95,7 @@
     <string name="offline_desc">Please check the availability of the source website and your proxy settings.</string>
     <string name="saved_to_pictures_dir">Saved to Pictures/NextVol/%s</string>
     <string name="save_failed">Save failed</string>
+    <string name="bookshelf_load_failed">Could not load bookshelves. Close this dialog and try again.</string>
     <string name="reader_custom_font_load_failed">Font could not load. Using the default font. Choose another font.</string>
     <string name="reader_custom_background_load_failed">Background image could not load. Choose another image.</string>
     <string name="reader_first_page">You are on the first page</string>
@@ -461,7 +462,6 @@
     <string name="dialog_about_version">Version</string>
     <string name="dialog_delete_bookshelf">Delete Bookshelf</string>
     <string name="dialog_delete_bookshelf_text">Are you sure you want to delete this bookshelf? This bookshelf will be lost forever! (A long time!)</string>
-    <string name="dialog_add_to_bookshelf_text">Add this book to the following bookshelves</string>
     <string name="dialog_export_to_epub">Export as EPUB</string>
     <string name="dialog_export_to_epub_text">EPUB (Electronic Publication) is an open e-book standard with a .epub format.\n\nDo you want to export this book as an EPUB?</string>
     <string name="dialog_updates_available">Update Available</string>

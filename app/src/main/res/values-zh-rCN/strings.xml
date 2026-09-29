@@ -92,6 +92,7 @@
     <string name="offline_desc">当前无法获取在线数据，请刷新重试\n检查源网站连通性，或者换个网络试试</string>
     <string name="saved_to_pictures_dir">已保存到 Pictures/NextVol/%s</string>
     <string name="save_failed">保存失败</string>
+    <string name="bookshelf_load_failed">书架加载失败，请关闭后重试。</string>
     <string name="reader_custom_font_load_failed">字体加载失败，已恢复默认字体。请重新选择字体。</string>
     <string name="reader_custom_background_load_failed">背景图片加载失败，请重新选择图片。</string>
     <string name="reader_first_page">已经是第一页了</string>
@@ -447,7 +448,6 @@
     <string name="dialog_about_version">版本</string>
     <string name="dialog_delete_bookshelf">删除书架</string>
     <string name="dialog_delete_bookshelf_text">确定要删除这个书架吗？它将会永久失去！（真的很久！）</string>
-    <string name="dialog_add_to_bookshelf_text">将这本书添加至以下书架</string>
     <string name="dialog_export_to_epub">导出为 EPUB</string>
     <string name="dialog_export_to_epub_text">EPUB (Electronic Publication) 是一种开放的电子书标准，格式为 .epub。\n\n要将这本书导出为 EPUB 吗？</string>
     <string name="dialog_updates_available">更新可用</string>
