@@ -383,8 +383,16 @@ class SourceBrowserInstrumentedTest {
 
     @Test fun inlineBrowserPostCrossesWorkerAndAllowsExplicitConfirmation(): Unit = runBlocking {
         ActivityScenario.launch(BrowserTestHostActivity::class.java).use { MockWebServer().use { server ->
-            server.enqueue(MockResponse().setHeader("Content-Type", "text/html")
-                .setBody("<html><head><link rel='icon' href='data:,'></head><body>Signed in</body></html>"))
+            val pageLoaded = CompletableDeferred<Unit>()
+            server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse = when (request.path) {
+                    "/" -> MockResponse().setHeader("Content-Type", "text/html").setBody(
+                        "<html><head><link rel='icon' href='data:,'></head><body>Signed in" +
+                            "<script>window.addEventListener('load',function(){fetch('/loaded')});</script></body></html>")
+                    "/loaded" -> MockResponse().setResponseCode(204).also { pageLoaded.complete(Unit) }
+                    else -> MockResponse().setResponseCode(404)
+                }
+            }
             server.start()
             val root = File(context.cacheDir, "browser-confirm-${System.nanoTime()}")
             val authority = ExecutionAuthority()
@@ -409,11 +417,9 @@ class SourceBrowserInstrumentedTest {
                     for (index in 0 until node.childCount) find(node.getChild(index), text)?.let { return it }
                     return null
                 }
-                withTimeout(20000) {
-                    while (automation.windows.none { window ->
-                        find(window.root?.takeIf { it.packageName == context.packageName }, "Signed in") != null
-                    }) delay(100)
-                }
+                // Page readiness must not depend on Chromium publishing its accessibility text.
+                // Keep accessibility for the native confirmation button and verify the returned HTML below.
+                withTimeout(20000) { pageLoaded.await() }
                 assertFalse(pending.isCompleted)
                 withTimeout(10000) {
                     while (automation.windows.none { window ->
@@ -425,11 +431,15 @@ class SourceBrowserInstrumentedTest {
                 assertTrue(result.toString(), result is ExecutionResult.Success)
                 assertTrue((result as ExecutionResult.Success).output.contains("Signed in"))
                 val request = server.takeRequest(1, java.util.concurrent.TimeUnit.SECONDS)!!
+                assertEquals("/", request.path)
                 assertEquals("POST", request.method)
                 assertEquals("user=fixture", request.body.readUtf8())
                 assertEquals("inline-agent", request.getHeader("User-Agent"))
                 assertEquals("kept", request.getHeader("X-Inline"))
-                assertEquals(1, server.requestCount)
+                val loaded = server.takeRequest(1, java.util.concurrent.TimeUnit.SECONDS)!!
+                assertEquals("/loaded", loaded.path)
+                assertEquals("GET", loaded.method)
+                assertEquals(2, server.requestCount)
             } } finally { executor.close(); root.deleteRecursively() }
         } }
     }
