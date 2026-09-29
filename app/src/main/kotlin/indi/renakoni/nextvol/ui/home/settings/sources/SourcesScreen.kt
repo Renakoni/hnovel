@@ -190,15 +190,16 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
     }
     val toastMessage = state.message?.takeIf { state.configurationPanel || it == R.string.sources_saved || it == R.string.sources_up_to_date ||
         it == R.string.sources_pixiv_update_unsupported || it == R.string.sources_pixiv_update_failed }
+    val toastText = toastMessage?.let { stringResource(it) }
     val inlineMessage = state.message?.takeUnless { it == toastMessage }
-    LaunchedEffect(toastMessage) {
+    LaunchedEffect(toastMessage, toastText) {
         val message = toastMessage ?: return@LaunchedEffect
         if (message == R.string.sources_saved) {
             adding = false; category = null; chosen = emptyList()
             model.consumeSavedMessage()
         } else model.consumeMessage(message)
         sourceToast?.cancel()
-        sourceToast = textToast(context.applicationContext, context.getString(message), Toast.LENGTH_SHORT).also { it.show() }
+        sourceToast = textToast(context.applicationContext, toastText, Toast.LENGTH_SHORT).also { it.show() }
     }
     LaunchedEffect(state.installed) {
         if (managementGroup == "" && state.installed.none { it.preferences.groupIds.isEmpty() }) managementGroup = null
