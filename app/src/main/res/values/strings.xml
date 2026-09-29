@@ -95,6 +95,7 @@
     <string name="offline_desc">Please check the availability of the source website and your proxy settings.</string>
     <string name="saved_to_pictures_dir">Saved to Pictures/NextVol/%s</string>
     <string name="save_failed">Save failed</string>
+    <string name="bookshelf_load_failed">Could not load bookshelves. Close this dialog and try again.</string>
     <string name="reader_custom_font_load_failed">Font could not load. Using the default font. Choose another font.</string>
     <string name="reader_custom_background_load_failed">Background image could not load. Choose another image.</string>
     <string name="reader_first_page">You are on the first page</string>
@@ -232,9 +233,9 @@
 
     <string name="data_settings">Data</string>
     <string name="settings_snap_data">Snapshot User Data</string>
-    <string name="settings_snap_data_desc">Create a snapshot of current user data as a .lnr file</string>
+    <string name="settings_snap_data_desc">Export user data as a NextVol Backup (.nvbackup)</string>
     <string name="settings_import_data">Import User Data</string>
-    <string name="settings_import_data_desc">Import user data from a selected .lnr file</string>
+    <string name="settings_import_data_desc">Import a NextVol Backup (.nvbackup) or a supported legacy .lnr backup</string>
     <string name="settings_storage_manager">Storage &amp; cleanup</string>
     <string name="settings_storage_manager_desc">View storage usage and clear reading cache or downloads.</string>
     <string name="settings_plugins">Plugin management</string>
@@ -461,7 +462,6 @@
     <string name="dialog_about_version">Version</string>
     <string name="dialog_delete_bookshelf">Delete Bookshelf</string>
     <string name="dialog_delete_bookshelf_text">Are you sure you want to delete this bookshelf? This bookshelf will be lost forever! (A long time!)</string>
-    <string name="dialog_add_to_bookshelf_text">Add this book to the following bookshelves</string>
     <string name="dialog_export_to_epub">Export as EPUB</string>
     <string name="dialog_export_to_epub_text">EPUB (Electronic Publication) is an open e-book standard with a .epub format.\n\nDo you want to export this book as an EPUB?</string>
     <string name="dialog_updates_available">Update Available</string>
@@ -738,7 +738,7 @@
     <string name="local_book_preview_hint">Tap a chapter to check its text and heading.</string>
     <string name="local_book_image_chapter">This chapter contains illustrations.</string>
     <string name="local_book_empty_chapter">This chapter contains only a heading.</string>
-    <string name="local_book_backup_note">Local files stay on this device. Existing .lnr sharing and backups do not include these files; keep the original EPUB or TXT for transfer to another device.</string>
+    <string name="local_book_backup_note">Local files stay on this device. NextVol backups and bookshelf sharing do not include these files; keep the original EPUB or TXT for transfer to another device.</string>
     <string name="local_book_stored_files">Imported original and parsed files</string>
     <string name="local_book_delete_title">Delete local books?</string>
     <string name="local_book_delete_originals">Selected imports will be removed from every bookshelf, and their original files and parsed content in this app will be permanently deleted. Other imported copies and files outside this app are kept. For online books, only the selected local cache is removed.</string>

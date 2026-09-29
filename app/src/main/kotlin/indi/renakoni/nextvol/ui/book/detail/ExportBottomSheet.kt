@@ -1,5 +1,7 @@
 package indi.renakoni.nextvol.ui.book.detail
 
+import indi.renakoni.nextvol.data.export.ExportType
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column

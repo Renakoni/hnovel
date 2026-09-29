@@ -1,5 +1,7 @@
 package indi.renakoni.nextvol.data.web
 
+import indi.renakoni.nextvol.data.export.ExportBookToEpubUseCase
+
 import android.app.Application
 import android.content.Context
 import android.net.Uri
@@ -87,7 +89,8 @@ class HostMultiSourceIntegrationTest {
             override fun createWorker(appContext: Context, workerClassName: String, workerParameters: WorkerParameters): ListenableWorker? =
                 when (workerClassName) {
                     CacheBookWork::class.java.name -> CacheBookWork(appContext, workerParameters, progress, books, downloads)
-                    ExportBookToEPUBWork::class.java.name -> ExportBookToEPUBWork(appContext, workerParameters, books, progress, decoder, downloads)
+                    ExportBookToEPUBWork::class.java.name -> ExportBookToEPUBWork(appContext, workerParameters,
+                        ExportBookToEpubUseCase(appContext, books, progress, decoder, downloads))
                     CheckUpdateWork::class.java.name -> CheckUpdateWork(appContext, workerParameters, books, shelves)
                     else -> null
                 }

@@ -3,6 +3,7 @@ package indi.renakoni.nextvol.ui.home.settings
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import androidx.core.app.ShareCompat
 import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModel
@@ -15,8 +16,10 @@ import androidx.work.WorkManager
 import androidx.work.workDataOf
 import dagger.hilt.android.lifecycle.HiltViewModel
 import indi.renakoni.nextvol.R
+import indi.renakoni.nextvol.data.backup.BackupArchive
 import indi.renakoni.nextvol.data.work.ExportDataWork
 import indi.renakoni.nextvol.ui.components.ExportContext
+import indi.renakoni.nextvol.ui.components.backupFailureMessage
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.io.File
@@ -50,7 +53,7 @@ class ExportUserDataDialogViewModel @Inject constructor(
         context: Context,
         onFinish: () -> Unit
     ) {
-        val file = File(context.cacheDir, "NextVolData.lnr")
+        val file = File(context.cacheDir, BackupArchive.USER_DATA_FILE_NAME)
         val uri = FileProvider.getUriForFile(
             context,
             "${context.packageName}.provider",
@@ -79,6 +82,8 @@ class ExportUserDataDialogViewModel @Inject constructor(
                 context.startActivity(
                     Intent.createChooser(intent, context.getString(R.string.export_and_share))
                 )
+            } else if (workInfo?.state == WorkInfo.State.FAILED) {
+                Toast.makeText(context, backupFailureMessage(workInfo.outputData, R.string.backup_export_failed), Toast.LENGTH_LONG).show()
             }
             onFinish()
         }
