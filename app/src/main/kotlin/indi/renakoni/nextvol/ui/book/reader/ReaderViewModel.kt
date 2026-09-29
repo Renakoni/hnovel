@@ -2,6 +2,7 @@ package indi.renakoni.nextvol.ui.book.reader
 
 import androidx.annotation.MainThread
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.github.michaelbull.result.getOrElse
 import com.github.michaelbull.result.get
@@ -16,6 +17,7 @@ import indi.renakoni.nextvol.tts.ReadAloudController
 import indi.renakoni.nextvol.ui.book.reader.content.ReaderMode
 import indi.renakoni.nextvol.ui.book.reader.content.ReaderModeFactory
 import indi.renakoni.nextvol.ui.book.reader.content.ReaderModeHost
+import indi.renakoni.nextvol.ui.book.reader.content.ReaderPositionSession
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -32,14 +34,19 @@ class ReaderViewModel @Inject constructor(
     userDataRepository: UserDataRepository,
     private val modeFactory: ReaderModeFactory,
     val readAloud: ReadAloudController,
+    savedStateHandle: SavedStateHandle = SavedStateHandle(),
 ) : ViewModel() {
     private val foreground = indi.renakoni.nextvol.data.web.ForegroundSourceRequest()
     private val readerScope = CoroutineScope(viewModelScope.coroutineContext + foreground)
-    fun setActive(value: Boolean, retainBrowser: Boolean = false) = foreground.setActive(value, retainBrowser)
+    fun setActive(value: Boolean, retainBrowser: Boolean = false) {
+        if (!value) positions.captureNow()
+        foreground.setActive(value, retainBrowser)
+    }
+    internal val positions = ReaderPositionSession(savedStateHandle)
     private val settingState = SettingState(userDataRepository, viewModelScope)
     val readerSettings: ReaderSettingsEditor = settingState
     val fontFamilySettings: ReaderFontFamilySettings = settingState.fontFamilySettings
-    private val modeHost: ReaderModeHost = ReaderModeHost { mode ->
+    private val modeHost: ReaderModeHost = ReaderModeHost(positions) { mode ->
         modeFactory.create(mode, readerScope, settingState.continuousScrollSettings, ::saveReadingProgress)
     }
     private val _uiState = MutableReaderScreenUiState(modeHost.uiState)
@@ -90,8 +97,10 @@ class ReaderViewModel @Inject constructor(
     /** A restored route can reconstruct the session; returning from dialogs keeps progress. */
     fun openBook(id: String, chapter: String) {
         if (bookId == id && chapterId.isNotEmpty()) return
+        val checkpoint = positions.checkpoint?.takeIf { it.bookId == id }
         bookId = id
-        changeChapter(chapter)
+        changeChapter(checkpoint?.chapterId ?: chapter)
+        if (checkpoint != null) positions.restore(checkpoint)
     }
 
     init {

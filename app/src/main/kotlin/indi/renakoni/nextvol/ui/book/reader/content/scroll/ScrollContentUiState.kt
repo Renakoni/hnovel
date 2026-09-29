@@ -19,6 +19,7 @@ interface ScrollContentUiState: ContentUiState {
     val writeProgressRightNow: () -> Unit
     val isRestoringProgress: Boolean get() = false
     val onProgressRestored: (LazyListState) -> Unit get() = {}
+    val onProgressRestoring: (LazyListState) -> Unit get() = {}
     val retryChapter: (String) -> Unit get() = changeChapter
     override val readingChapterContent: Result<ChapterContentUiState, WebRequestError>?
         get() = contentList.firstOrNull { it?.first == readingChapterId }?.second
@@ -32,6 +33,7 @@ class MutableScrollContentUiSate(
     override val writeProgressRightNow: () -> Unit,
     override val retryChapter: (String) -> Unit = changeChapter,
     override val onProgressRestored: (LazyListState) -> Unit = {},
+    override val onProgressRestoring: (LazyListState) -> Unit = {},
 ) : ScrollContentUiState {
     override var isRestoringProgress by mutableStateOf(false)
     override var bookId by mutableStateOf("")
