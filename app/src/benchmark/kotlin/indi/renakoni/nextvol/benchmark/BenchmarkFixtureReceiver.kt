@@ -45,12 +45,36 @@ import kotlinx.serialization.json.put
 class BenchmarkFixtureReceiver : BroadcastReceiver() {
     @Inject lateinit var sources: ImportedRuleSources
     @Inject lateinit var speechSources: indi.renakoni.nextvol.tts.HttpSpeechRepository
+    @Inject lateinit var localBooks: indi.renakoni.nextvol.data.localbook.LocalBookStore
+    @Inject lateinit var registry: indi.renakoni.nextvol.data.web.WebSourceRegistry
 
     override fun onReceive(context: Context, intent: Intent) {
         val pending = goAsync()
         Thread {
             try {
                 val result = when (intent.action) {
+                    ACTION_STARTUP -> {
+                        val fixture = intent.getStringExtra("fixture")
+                        require(fixture in listOf("empty", "cached", "daily", "txt", "epub"))
+                        runBlocking {
+                            if (fixture != "empty") {
+                                val database = NextVolDatabase.getInstance(context)
+                                seed(database)
+                                val revision = registry.sources.value.single {
+                                    it.metadata.id == BookIdentity.book(BOOK_ID).sourceId
+                                }.metadata.revision
+                                for (id in listOf(CHAPTER_ONE_ID, CHAPTER_TWO_ID)) {
+                                    val chapter = requireNotNull(database.chapterContentDao().get(id))
+                                    database.chapterContentDao().update(chapter.copy(sourceRevision = revision))
+                                    check(database.chapterContentDao().reusable(id, revision) != null)
+                                }
+                                if (fixture != "cached") seedStartupSources(sources)
+                                if (fixture == "txt" || fixture == "epub")
+                                    seedStartupLocalBook(context, database, localBooks, fixture, BOOKSHELF_ID)
+                            }
+                        }
+                        "startup=SUCCEEDED fixture=$fixture"
+                    }
                     ACTION_SEED -> {
                         runBlocking {
                             seed(NextVolDatabase.getInstance(context))
@@ -268,6 +292,7 @@ class BenchmarkFixtureReceiver : BroadcastReceiver() {
 
     companion object {
         const val ACTION_SEED = "indi.renakoni.nextvol.benchmark.SEED"
+        const val ACTION_STARTUP = "indi.renakoni.nextvol.benchmark.STARTUP_FIXTURE"
         const val ACTION_SEED_SOURCE = "indi.renakoni.nextvol.benchmark.SEED_SOURCE"
         const val ACTION_SPEECH_ENGINE = "indi.renakoni.nextvol.benchmark.SPEECH_ENGINE"
         const val ACTION_SPEECH_SOURCE = "indi.renakoni.nextvol.benchmark.SPEECH_SOURCE"
