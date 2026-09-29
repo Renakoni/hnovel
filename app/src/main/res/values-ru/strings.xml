@@ -603,4 +603,20 @@
     <string name="source_verification_failed">Проверка не завершена или учётная запись источника изменилась. Повторите попытку из источника.</string>
     <string name="discovery_verification_required">Проверка на сайте не завершена. Повторите попытку, чтобы открыть страницу проверки.</string>
     <string name="book_directory_incomplete">Список глав загружен не полностью. Показаны только загруженные главы.</string>
+    <string name="pixiv_block_manager">Управление блокировками</string>
+    <string name="pixiv_block_book">Заблокировать книгу</string>
+    <string name="pixiv_block_author">Заблокировать автора</string>
+    <string name="pixiv_block_tags">Заблокировать теги…</string>
+    <string name="pixiv_block_confirm">Заблокировать</string>
+    <string name="pixiv_block_remove">Разблокировать</string>
+    <string name="pixiv_block_added">Заблокировано</string>
+    <string name="pixiv_block_removed">Блокировка снята</string>
+    <string name="pixiv_block_already">Уже заблокировано</string>
+    <string name="pixiv_block_empty">Нет блокировок</string>
+    <string name="pixiv_block_books">Произведения</string>
+    <string name="pixiv_block_authors">Авторы</string>
+    <string name="pixiv_block_tag_rules">Теги</string>
+    <string name="pixiv_block_legacy_captions">Ключевые слова в описании · прежние правила</string>
+    <string name="pixiv_block_scope">Скрывает совпадения только в поиске и разделе «Обзор» Pixiv. Полка, история, загрузки и закладки аккаунта остаются без изменений.</string>
+    <string name="pixiv_block_tag_hint">Скрывать в поиске и разделе «Обзор» Pixiv произведения с любым из выбранных тегов.</string>
 </resources>

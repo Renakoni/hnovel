@@ -48,7 +48,8 @@ class SourcesViewModelTest {
                 assertNotNull(login)
                 assertTrue(collapsed.fields.none { it.action == "startGithubIssue()" })
                 assertTrue(collapsed.fields.any { it.action == "updateSource()" })
-                assertEquals(3, collapsed.fields.mapNotNull { it.section }.distinct().size)
+                assertEquals(listOf("阅读与搜索", "发现页设置"), collapsed.fields.mapNotNull { it.section }.distinct())
+                assertNull(collapsed.fields.single { it.action == "pixivBlockManager()" }.section)
                 assertFalse(collapsed.fields.single { it.action == "startPixivSettings()" }.enabled)
                 val expanded = collapsed
                 val fast = expanded.fields.single { it.action == "editSettings('FAST')" }
