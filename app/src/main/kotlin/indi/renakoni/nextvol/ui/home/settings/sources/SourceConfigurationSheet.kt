@@ -1,6 +1,7 @@
 package indi.renakoni.nextvol.ui.home.settings.sources
 
-import androidx.activity.compose.BackHandler
+import androidx.activity.OnBackPressedCallback
+import androidx.activity.findViewTreeOnBackPressedDispatcherOwner
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -23,8 +24,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner
-import androidx.navigationevent.findViewTreeNavigationEventDispatcherOwner
 import hnovel.content.LoginField
 import hnovel.content.LoginForm
 import indi.renakoni.nextvol.R
@@ -64,9 +63,17 @@ internal fun SourceConfigurationSheet(
         properties = ModalBottomSheetProperties(shouldDismissOnBackPress = !hasPage),
         containerColor = MaterialTheme.colorScheme.surface) {
         // The sheet owns a separate window, not the parent screen's navigation dispatcher.
-        val backOwner = requireNotNull(LocalView.current.findViewTreeNavigationEventDispatcherOwner())
-        CompositionLocalProvider(LocalNavigationEventDispatcherOwner provides backOwner) {
-            BackHandler(enabled = hasPage, onBack = ::parent)
+        val backOwner = requireNotNull(LocalView.current.findViewTreeOnBackPressedDispatcherOwner())
+        val onParent by rememberUpdatedState(::parent)
+        val backCallback = remember(backOwner) {
+            object : OnBackPressedCallback(false) {
+                override fun handleOnBackPressed() = onParent()
+            }
+        }
+        SideEffect { backCallback.isEnabled = hasPage }
+        DisposableEffect(backOwner, backCallback) {
+            backOwner.onBackPressedDispatcher.addCallback(backCallback)
+            onDispose { backCallback.remove() }
         }
         Column(Modifier.fillMaxWidth().fillMaxHeight(0.88f)) {
             Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
