@@ -71,6 +71,15 @@ internal class FlipReadingProgress(
         updatePagerState(pagerState, anchored = true, publishInitial = true)
     }
 
+    fun restoring(pagerState: PagerState) {
+        if (uiState.pagerState !== pagerState) return
+        restorationJob?.cancel()
+        restorationJob = null
+        progressPagerState = null
+        // Keep history I/O for an initial layout; only an explicit/anchored position supersedes it.
+        currentPagerState = null
+    }
+
     fun updateAnchoredPageState(pagerState: PagerState) {
         cancelPercentageRecovery()
         updatePagerState(pagerState, anchored = true)
@@ -103,6 +112,11 @@ internal class FlipReadingProgress(
         if (pagerState.pageCount == 0 || uiState.pagerState !== pagerState) return
         progressPagerState = pagerState
         publishProgress(pagerState, pagerState.settledPage)
+    }
+
+    fun writeProgressRightNow() {
+        val pager = uiState.pagerState
+        if (progressPagerState === pager && !pager.isScrollInProgress) publishProgress(pager, pager.settledPage)
     }
 
     private fun publishProgress(pagerState: PagerState, screen: Int) {
@@ -182,6 +196,8 @@ internal class FlipReadingProgress(
                     notRecoveredProgress = 0f
                     restorationApplied = true
                 }
+                restoredPager = pagerState
+                restoredScreen = pagerState.settledPage
                 enableProgressFor(pagerState)
             }
         }

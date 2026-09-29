@@ -41,6 +41,7 @@ class FlipReaderController(
         updatePageState = ::updatePagerState,
         updateAnchoredPageState = { progress.updateAnchoredPageState(it) },
         updateSpeechPageState = { progress.updateSpeechPageState(it) },
+        onProgressRestoring = { progress.restoring(it) },
         commitPendingChapter = ::commitPendingChapter,
         failPendingChapter = ::failPendingChapter,
         retryPendingChapter = {
@@ -59,6 +60,7 @@ class FlipReaderController(
     private fun isCurrent(expected: Request) = request === expected && coroutineScope.isActive
 
     fun updatePagerState(pagerState: PagerState) = progress.updatePagerState(pagerState)
+    override fun flushProgress() = progress.writeProgressRightNow()
 
     override fun changeBookId(id: String) {
         if (uiState.bookId == id) return

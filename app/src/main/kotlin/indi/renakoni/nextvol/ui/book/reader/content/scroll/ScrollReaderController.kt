@@ -33,6 +33,7 @@ class ScrollReaderController(
         loadNextChapter = ::loadNextChapter,
         changeChapter = ::changeChapter,
         setLazyColumnSize = {
+            if (lazyColumnSize != IntSize.Zero && lazyColumnSize != it) progress.restoring(uiState.lazyListState)
             lazyColumnSize = it
         },
         writeProgressRightNow = ::writeProgressRightNow,
@@ -40,8 +41,9 @@ class ScrollReaderController(
             if (uiState.readingChapterId == id) positionNavigation(uiState.bookId, id, true)
             chaptersWindow.retryChapter(id)
         },
-        onProgressRestored = { if (uiState.lazyListState === it) uiState.isRestoringProgress = false },
-        onProgressRestoring = { if (uiState.lazyListState === it) uiState.isRestoringProgress = true },
+        onProgressRestored = { progress.restored(it) },
+        onProgressRestoring = { progress.restoring(it) },
+        onReadingPositioned = { progress.readingPositioned(it) },
     )
 
     private val chaptersWindow = ScrollChapterWindow(
@@ -108,4 +110,5 @@ class ScrollReaderController(
     }
 
     private fun writeProgressRightNow() = progress.writeProgressRightNow()
+    override fun flushProgress() = progress.writeProgressRightNow()
 }

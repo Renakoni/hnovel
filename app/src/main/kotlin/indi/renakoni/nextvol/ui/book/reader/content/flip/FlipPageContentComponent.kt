@@ -181,6 +181,27 @@ private fun SimpleFlipPageTextComponent(
         else ReaderPosition.capture(uiState.bookId, chapterContent, anchor)
     }
     val positionRequest = positions?.pending
+    var followedSpeechPosition by remember(uiState) { mutableStateOf(speech.position) }
+    var positioningOwner by remember(uiState) { mutableStateOf<Any?>(null) }
+    suspend fun positionPager(
+        pager: PagerState, publishReading: Boolean, isCurrent: () -> Boolean, place: suspend () -> Unit,
+    ): Boolean {
+        val attempt = Any().also { positioningOwner = it }
+        var positioned = false
+        uiState.onProgressRestoring(pager)
+        try {
+            place()
+            positioned = positioningOwner === attempt && uiState.pagerState === pager && isCurrent() &&
+                (positions == null || positions.ownsRenderer(uiState, renderer))
+            return positioned
+        } finally {
+            if (positioningOwner === attempt && uiState.pagerState === pager &&
+                (positions == null || positions.ownsRenderer(uiState, renderer))) {
+                if (positioned && publishReading) uiState.updateSpeechPageState(pager)
+                else uiState.updateAnchoredPageState(pager)
+            }
+        }
+    }
     LaunchedEffect(positionRequest, renderedInput, slippedContentComponentList) {
         if (positionRequest == null || renderedInput != paginationInput ||
             !positions.isCurrent(uiState, positionRequest)) return@LaunchedEffect
@@ -191,10 +212,10 @@ private fun SimpleFlipPageTextComponent(
         } ?: -1
         if (target >= 0) {
             val pager = uiState.pagerState
-            if (speech.anchor(chapterContent) != null) uiState.updateSpeechPageState(pager)
-            else uiState.updateAnchoredPageState(pager)
-            pager.scrollToPage(pager.readerLeaves.screenForLeaf(target))
-            if (!positions.isCurrent(uiState, positionRequest)) return@LaunchedEffect
+            val positioned = positionPager(pager, false, { positions.isCurrent(uiState, positionRequest) }) {
+                pager.scrollToPage(pager.readerLeaves.screenForLeaf(target))
+            }
+            if (!positioned) return@LaunchedEffect
             readingAnchor = anchor
             anchoredPage = slippedContentComponentList[target] as ReaderPage
         }
@@ -220,10 +241,10 @@ private fun SimpleFlipPageTextComponent(
         if (target >= 0) {
             val pager = uiState.pagerState
             // Explicit positions, like speech anchors, cancel any late percentage recovery.
-            uiState.updateSpeechPageState(pager)
-            pager.scrollToPage(pager.readerLeaves.screenForLeaf(target))
-            if (bookmarks.pending !== bookmark || positions != null && !positions.ownsRenderer(uiState, renderer))
-                return@LaunchedEffect
+            val positioned = positionPager(pager, true, { bookmarks.pending === bookmark }) {
+                pager.scrollToPage(pager.readerLeaves.screenForLeaf(target))
+            }
+            if (!positioned) return@LaunchedEffect
             readingAnchor = anchor
             anchoredPage = slippedContentComponentList[target] as ReaderPage
             positions?.positioned(uiState, anchor?.let { ReaderPosition.capture(uiState.bookId, chapterContent, it) })
@@ -272,6 +293,8 @@ private fun SimpleFlipPageTextComponent(
             return@LaunchedEffect
         }
         positions?.reflow(uiState)
+        positioningOwner = Any()
+        uiState.onProgressRestoring(uiState.pagerState)
         if (geometry == null) {
             pagination.cancelPending()
             return@LaunchedEffect
@@ -294,8 +317,7 @@ private fun SimpleFlipPageTextComponent(
                 anchoredPage = result[target] as ReaderPage
                 val mapping = ReaderLeafMapping(result.size, geometry.columns)
                 val pager = ReaderSpreadPagerState(mapping, mapping.screenForLeaf(target))
-                if (speechAnchor != null) uiState.updateSpeechPageState(pager)
-                else uiState.updateAnchoredPageState(pager)
+                uiState.updateAnchoredPageState(pager)
             } else {
                 readingAnchor = null
                 anchoredPage = null
@@ -308,17 +330,22 @@ private fun SimpleFlipPageTextComponent(
         slippedContentComponentList.indexOfFirst { (it as? ReaderPage)?.contains(anchor) == true }
     } ?: -1
     LaunchedEffect(speechAnchor, speechPage, uiState.pagerState) {
-        if (speechPage < 0 || positions != null && !positions.ownsRenderer(uiState, renderer)) return@LaunchedEffect
+        if (speechPage < 0 || renderedInput != paginationInput ||
+            positions != null && !positions.ownsRenderer(uiState, renderer)) return@LaunchedEffect
         val pager = uiState.pagerState
         val target = pager.readerLeaves.screenForLeaf(speechPage)
         if (target < 0) return@LaunchedEffect
-        uiState.updateSpeechPageState(pager)
-        if (target != pager.currentPage) {
-            if (settingState.animatePageTurns && (target - pager.currentPage).absoluteValue == 1)
-                pager.animateScrollToPage(target)
-            else pager.scrollToPage(target)
+        val advancesReading = followedSpeechPosition != speech.position
+        val speechPosition = speech.position
+        val positioned = positionPager(pager, advancesReading, { speech.position == speechPosition && speech.following }) {
+            if (target != pager.currentPage) {
+                if (settingState.animatePageTurns && (target - pager.currentPage).absoluteValue == 1)
+                    pager.animateScrollToPage(target)
+                else pager.scrollToPage(target)
+            }
         }
-        if (positions != null && !positions.ownsRenderer(uiState, renderer)) return@LaunchedEffect
+        if (!positioned) return@LaunchedEffect
+        followedSpeechPosition = speech.position
         readingAnchor = speechAnchor
         anchoredPage = slippedContentComponentList.getOrNull(speechPage) as? ReaderPage
         positions?.positioned(uiState, speechAnchor?.let { ReaderPosition.capture(uiState.bookId, chapterContent, it) })

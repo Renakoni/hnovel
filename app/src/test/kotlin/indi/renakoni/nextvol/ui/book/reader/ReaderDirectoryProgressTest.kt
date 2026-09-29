@@ -139,13 +139,15 @@ class ReaderDirectoryProgressTest {
         val contentState = object : ContentUiState by mockk(relaxed = true) {
             override val bookId = book.storageKey
             override val readingChapterId = chapter
-            override val readingProgress = .4f
+            override val readingProgress = .8f
             override val readingChapterContent: Result<ChapterContentUiState, WebRequestError>? =
                 Ok(ChapterContentUiState(chapter, "Current", emptyList(), null, null))
         }
         val controller = mockk<ReaderModeController>(relaxed = true) { every { uiState } returns contentState }
         every { controller.changeChapter(chapter) } answers { assertEquals(.4f, data.get().currentChapterReadingProgressMap[chapter]) }
-        val factory = mockk<ReaderModeFactory> { every { create(any(), any(), any(), any()) } returns controller }
+        val saveProgress = slot<(String, Float) -> Unit>()
+        every { controller.flushProgress() } answers { saveProgress.captured(chapter, .4f) }
+        val factory = mockk<ReaderModeFactory> { every { create(any(), any(), any(), capture(saveProgress)) } returns controller }
         val dao = mockk<UserDataDao>(relaxed = true) { every { getFlow(any()) } returns flowOf(null) }
         coEvery { dao.get(any()) } returns null
         val reader = ReaderViewModel(mockk(relaxed = true), chapters, readingData, UserDataRepository(dao), factory, mockk())
@@ -160,6 +162,7 @@ class ReaderDirectoryProgressTest {
         reader.applySourcePanelRefresh(book.copy(remoteId = "B").storageKey, chapter, update)
         reader.applySourcePanelRefresh(book.storageKey, "other-chapter", update)
         verify(exactly = 1) { controller.changeChapter(chapter) }
+        verify(exactly = 1) { controller.flushProgress() }
         assertEquals(Ok(volumes), reader.uiState.bookVolumes)
     }
 }
