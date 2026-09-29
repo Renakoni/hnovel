@@ -644,7 +644,7 @@ class BookDownloadTest {
         val canonical = SourceBookId(a.sourceId, "series")
         val volumes = canonical.bind(BookVolumes(canonical.remoteId, source.directory().volumes))
         downloads.mergeIdentity(a, canonical, volumes) {
-            local.aliases.merge(a, canonical, canonical.bind(source.information()), volumes)
+            local.aliases.merge(a, canonical, canonical.bind(source.information().copy(id = canonical.remoteId)), volumes)
         }
         val migrated = downloads.image(image)!!
         assertNotEquals(previous.path, migrated.path)
