@@ -4,7 +4,10 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.Direction
+import androidx.test.uiautomator.waitForStableInActiveWindow
 import indi.renakoni.nextvol.benchmark.ui.UiAutomatorTest
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -16,6 +19,23 @@ class BookAndReaderTest : UiAutomatorTest() {
         openBottomNavigation("Bookshelf")
         clickText("Benchmark Sample Novel")
         assertText("Benchmark Sample Novel")
+    }
+
+    private fun openReaderSettings() {
+        device.click(device.displayWidth / 2, device.displayHeight / 2)
+        clickDescription("Settings")
+        clickDescription("Drag handle")
+        device.waitForStableInActiveWindow()
+    }
+
+    private fun assertSettingChecked(text: String, expected: Boolean) {
+        var setting = scrollToText(text)
+        while (!setting.isClickable && setting.parent != null) {
+            setting = setting.parent
+        }
+        val checkable = setting.findObject(By.checkable(true))
+        assertNotNull("No checkable control for setting: $text", checkable)
+        assertEquals("Unexpected state for setting: $text", expected, checkable.isChecked)
     }
 
     @Test
@@ -38,7 +58,7 @@ class BookAndReaderTest : UiAutomatorTest() {
     @Test
     fun chapterSelectionAndReaderControlsWork() {
         openBookDetails()
-        clickText("Benchmark Chapter One")
+        clickScrolledText("Benchmark Chapter One")
         assertTextContains("Benchmark paragraph")
 
         device.click(device.displayWidth / 2, device.displayHeight / 2)
@@ -57,18 +77,17 @@ class BookAndReaderTest : UiAutomatorTest() {
     @Test
     fun readerSettingsExposeAllGroupsAndPageModes() {
         openBookDetails()
-        clickText("Benchmark Chapter One")
+        clickScrolledText("Benchmark Chapter One")
         assertTextContains("Benchmark paragraph")
-        device.click(device.displayWidth / 2, device.displayHeight / 2)
-        clickDescription("Settings")
+        openReaderSettings()
 
         assertText("Reader Settings")
         assertText("Appearance")
         assertText("Controls")
         assertText("Layout")
-        assertText("Keep Screen On")
-        assertText("Hide Status Bar")
-        assertText("Theme Settings…")
+        scrollToText("Theme Settings…")
+        scrollToText("Keep Screen On")
+        scrollToText("Hide Status Bar")
 
         clickText("Controls")
         assertText("Page Turn Mode")
@@ -78,7 +97,7 @@ class BookAndReaderTest : UiAutomatorTest() {
     @Test
     fun scrollingAndVolumeNavigationKeepReaderResponsive() {
         openBookDetails()
-        clickText("Benchmark Chapter One")
+        clickScrolledText("Benchmark Chapter One")
         assertTextContains("Benchmark paragraph")
 
         device.swipe(
@@ -166,20 +185,15 @@ class BookAndReaderTest : UiAutomatorTest() {
     @Test
     fun readerModeSwitchesExposeConditionalControlsAndMargins() {
         openBookDetails()
-        clickText("Benchmark Chapter One")
+        clickScrolledText("Benchmark Chapter One")
         assertTextContains("Benchmark paragraph")
-        device.click(device.displayWidth / 2, device.displayHeight / 2)
-        clickDescription("Settings")
+        openReaderSettings()
 
         clickText("Controls")
         assertText("Page Turn Mode")
         scrollToText("Continuous Scrolling")
-        device.findObjects(By.scrollable(true))
-            .maxByOrNull { it.visibleBounds.height() }
-            ?.scroll(Direction.DOWN, 1f)
-        device.waitForIdle()
-        clickText("Page Turn Mode")
-        assertText("Volume Key Navigation")
+        clickScrolledText("Page Turn Mode", direction = Direction.UP)
+        scrollToText("Volume Key Navigation")
         scrollToText("Tap to Turn Pages")
         scrollToText("Page Turn Animation")
         scrollToText("Quick Chapter Switch")
@@ -195,18 +209,25 @@ class BookAndReaderTest : UiAutomatorTest() {
     @Test
     fun readerAppearanceTogglesPersistAcrossReaderReentry() {
         openBookDetails()
-        clickText("Benchmark Chapter One")
-        device.click(device.displayWidth / 2, device.displayHeight / 2)
-        clickDescription("Settings")
-        assertText("Keep Screen On")
-        clickText("Keep Screen On")
-        assertFirstSwitchChecked(true)
+        clickScrolledText("Benchmark Chapter One")
+        assertTextContains("Benchmark paragraph")
+        openReaderSettings()
+        assertSettingChecked("Keep Screen On", false)
+        clickScrolledText("Keep Screen On")
+        assertSettingChecked("Keep Screen On", true)
 
         pressBack()
+        device.waitForStableInActiveWindow()
+        // An expanded sheet can collapse before the next back press dismisses it.
+        if (device.hasObject(By.text("Reader Settings"))) {
+            pressBack()
+        }
+        assertTextNotVisible("Reader Settings")
         pressBack()
-        clickText("Benchmark Chapter One")
-        device.click(device.displayWidth / 2, device.displayHeight / 2)
-        clickDescription("Settings")
-        assertFirstSwitchChecked(true)
+        assertDescription("Export")
+        clickScrolledText("Benchmark Chapter One")
+        assertTextContains("Benchmark paragraph")
+        openReaderSettings()
+        assertSettingChecked("Keep Screen On", true)
     }
 }

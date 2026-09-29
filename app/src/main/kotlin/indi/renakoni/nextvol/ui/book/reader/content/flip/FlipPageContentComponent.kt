@@ -464,7 +464,8 @@ private fun SimpleFlipPageTextComponent(
                             contentScale = ContentScale.Crop
                         )
                     }
-                    CompositionLocalProvider(LocalReaderSpeechRanges provides speechRanges) {
+                    CompositionLocalProvider(LocalReaderSpeechRanges provides speechRanges,
+                        indi.renakoni.nextvol.ui.LocalReaderChapterId provides chapterContent.id) {
                         slippedContentComponentList.getOrNull(it)?.Content(
                             modifier
                                 .fillMaxSize()

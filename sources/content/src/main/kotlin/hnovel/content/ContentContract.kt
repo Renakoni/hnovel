@@ -45,12 +45,12 @@ class SourceVerification internal constructor(val kind: hnovel.network.BrowserCh
 open class SourceContentException(val code: ContentError, val field: String,
     val denial: hnovel.network.OriginDenial? = null, val dependency: hnovel.rules.ScriptDependency? = null,
     val verification: SourceVerification? = null, val diagnostic: hnovel.execution.ExecutionResult.Failure? = null,
-    val httpStatus: Int? = null) : Exception("${code.name}: $field")
+    val httpStatus: Int? = null, val retry: hnovel.network.RequestRetryHint? = null) : Exception("${code.name}: $field")
 
 /** Readable chapters do not turn a failed catalogue into a successful refresh. */
 class PartialDirectoryException internal constructor(internal val snapshot: DirectorySnapshot,
     val failure: SourceContentException) : SourceContentException(failure.code, failure.field, failure.denial,
-    failure.dependency, failure.verification, failure.diagnostic, failure.httpStatus) {
+    failure.dependency, failure.verification, failure.diagnostic, failure.httpStatus, failure.retry) {
     val chapters: List<RuleChapter> get() = snapshot.chapters
     init { initCause(failure) }
 }
