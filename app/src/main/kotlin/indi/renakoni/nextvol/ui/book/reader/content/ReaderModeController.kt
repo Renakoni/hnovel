@@ -15,6 +15,9 @@ interface ReaderModeController {
     fun loadPrevChapter()
     fun changeChapter(id: String)
 
+    /** The host owns source-position recovery; mode reloads may preserve the current anchor. */
+    fun observeNavigation(listener: (bookId: String, chapterId: String, preservePosition: Boolean) -> Unit) = Unit
+
     /** Stops work owned by this mode when the reader selects another controller. */
     fun close() = Unit
 }

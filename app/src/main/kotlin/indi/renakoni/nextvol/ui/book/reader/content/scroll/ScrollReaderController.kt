@@ -22,6 +22,8 @@ class ScrollReaderController(
     mainDispatcher: CoroutineDispatcher = Dispatchers.Main,
 ) : ReaderModeController {
     private var lazyColumnSize = IntSize(0, 0)
+    private var positionNavigation: (String, String, Boolean) -> Unit = { _, _, _ -> }
+    override fun observeNavigation(listener: (String, String, Boolean) -> Unit) { positionNavigation = listener }
 
     override val requestedChapterId: String?
         get() = uiState.readingChapterId
@@ -34,8 +36,12 @@ class ScrollReaderController(
             lazyColumnSize = it
         },
         writeProgressRightNow = ::writeProgressRightNow,
-        retryChapter = { chaptersWindow.retryChapter(it) },
+        retryChapter = { id ->
+            if (uiState.readingChapterId == id) positionNavigation(uiState.bookId, id, true)
+            chaptersWindow.retryChapter(id)
+        },
         onProgressRestored = { if (uiState.lazyListState === it) uiState.isRestoringProgress = false },
+        onProgressRestoring = { if (uiState.lazyListState === it) uiState.isRestoringProgress = true },
     )
 
     private val chaptersWindow = ScrollChapterWindow(
@@ -53,7 +59,7 @@ class ScrollReaderController(
                     val hasAdjacentChapters = uiState.contentList.getOrNull(0) != null || uiState.contentList.getOrNull(2) != null
                     if (!hasAdjacentChapters) {
                         coroutineScope.launch(mainDispatcher) {
-                            uiState.readingChapterId?.let { id -> changeChapter(id) }
+                            uiState.readingChapterId?.let { id -> reloadChapter(id) }
                         }
                     }
                 } else {
@@ -61,7 +67,7 @@ class ScrollReaderController(
                     val hasAdjacentChapters = uiState.contentList.getOrNull(0) != null || uiState.contentList.getOrNull(2) != null
                     if (hasAdjacentChapters) {
                         coroutineScope.launch(mainDispatcher) {
-                            uiState.readingChapterId?.let { id -> changeChapter(id) }
+                            uiState.readingChapterId?.let { id -> reloadChapter(id) }
                         }
                     }
                 }
@@ -77,18 +83,29 @@ class ScrollReaderController(
     override fun loadNextChapter() {
         uiState.readingChapterContent?.onOk { readingChapterContent ->
             if (!readingChapterContent.hasNextChapter()) return
-            chaptersWindow.changeChapter(readingChapterContent.nextChapter ?: return, restoreProgress = false)
+            positionNavigation(uiState.bookId, readingChapterContent.nextChapter ?: return, false)
+            chaptersWindow.changeChapter(readingChapterContent.nextChapter, restoreProgress = false)
         }
     }
 
     override fun loadPrevChapter() {
         uiState.readingChapterContent?.onOk { readingChapterContent ->
             if (!readingChapterContent.hasPrevChapter()) return
-            chaptersWindow.changeChapter(readingChapterContent.prevChapter ?: return, restoreProgress = false)
+            positionNavigation(uiState.bookId, readingChapterContent.prevChapter ?: return, false)
+            chaptersWindow.changeChapter(readingChapterContent.prevChapter, restoreProgress = false)
         }
     }
 
-    override fun changeChapter(id: String) = chaptersWindow.changeChapter(id)
+    override fun changeChapter(id: String) {
+        if (id.isBlank()) return
+        positionNavigation(uiState.bookId, id, false)
+        chaptersWindow.changeChapter(id)
+    }
+
+    private fun reloadChapter(id: String) {
+        positionNavigation(uiState.bookId, id, true)
+        chaptersWindow.changeChapter(id)
+    }
 
     private fun writeProgressRightNow() = progress.writeProgressRightNow()
 }

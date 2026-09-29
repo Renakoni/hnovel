@@ -7,6 +7,7 @@ enum class ReaderMode { Scroll, Flip }
  * Replacing or closing the host closes the previous controller and its owned tasks.
  */
 internal class ReaderModeHost(
+    private val positions: ReaderPositionSession? = null,
     private val createController: (ReaderMode) -> ReaderModeController,
 ) {
     private var selectedMode: ReaderMode? = null
@@ -17,13 +18,22 @@ internal class ReaderModeHost(
     fun select(mode: ReaderMode, currentBookId: () -> String, currentChapterId: () -> String): Boolean {
         if (selectedMode == mode) return false
         val previousController = controller
+        val checkpoint = positions?.captureNow()
         transitionRequestedChapterId = controller?.requestedChapterId
-        controller = createController(mode)
+        positions?.deactivate()
+        controller = createController(mode).also { next ->
+            next.observeNavigation { book, chapter, preserve ->
+                positions?.navigate(next.uiState, book, chapter, preserve)
+            }
+        }
         selectedMode = mode
         try {
             previousController?.close()
-            controller?.changeBookId(currentBookId())
-            controller?.changeChapter(currentChapterId())
+            val book = currentBookId()
+            controller?.changeBookId(book)
+            val chapter = currentChapterId()
+            controller?.changeChapter(chapter)
+            controller?.let { positions?.activate(it.uiState, book, chapter, checkpoint) }
         } finally {
             transitionRequestedChapterId = null
         }
@@ -31,6 +41,8 @@ internal class ReaderModeHost(
     }
 
     fun close() {
+        positions?.captureNow()
+        positions?.deactivate()
         controller?.close()
         controller = null
         selectedMode = null

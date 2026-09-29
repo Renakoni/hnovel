@@ -1,0 +1,301 @@
+package indi.renakoni.nextvol.reader
+
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.*
+import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.room.Room
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import com.github.michaelbull.result.Err
+import com.github.michaelbull.result.Ok
+import indi.renakoni.nextvol.data.book.BookReadingDataAccess
+import indi.renakoni.nextvol.data.book.ChapterSource
+import indi.renakoni.nextvol.data.content.component.SimpleTextComponent
+import indi.renakoni.nextvol.data.local.room.NextVolDatabase
+import indi.renakoni.nextvol.data.userdata.UserDataRepository
+import indi.renakoni.nextvol.theme.AppTheme
+import indi.renakoni.nextvol.tts.SpeechPosition
+import indi.renakoni.nextvol.ui.LocalAppTheme
+import indi.renakoni.nextvol.ui.book.reader.*
+import indi.renakoni.nextvol.ui.book.reader.content.*
+import indi.renakoni.nextvol.ui.book.reader.content.flip.FlipPageContentComponent
+import indi.renakoni.nextvol.ui.book.reader.content.flip.FlipPageContentUiState
+import indi.renakoni.nextvol.ui.book.reader.content.scroll.ScrollContentComponent
+import indi.renakoni.nextvol.ui.book.reader.content.scroll.ScrollContentUiState
+import io.mockk.coEvery
+import io.mockk.every
+import io.mockk.mockk
+import io.nightfish.lightnovelreader.api.book.UserReadingData
+import io.nightfish.lightnovelreader.api.content.component.SimpleTextComponentData
+import io.nightfish.lightnovelreader.api.error.WebRequestError
+import io.nightfish.lightnovelreader.api.ui.theme.AppTypography
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flowOf
+import org.junit.After
+import org.junit.Assert.*
+import org.junit.Before
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+
+/** Source offsets, not equal page numbers/progress, are the contract under test. */
+@RunWith(AndroidJUnit4::class)
+class ReaderPositionInstrumentedTest {
+    @get:Rule val compose = createAndroidComposeRule<ReaderLayoutTestActivity>()
+    private val context = InstrumentationRegistry.getInstrumentation().targetContext
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private lateinit var database: NextVolDatabase
+    private lateinit var settings: SettingState
+
+    @Before fun prepare() {
+        database = Room.inMemoryDatabaseBuilder(context, NextVolDatabase::class.java).build()
+        settings = SettingState(UserDataRepository(database.userDataDao()), scope)
+        runBlocking {
+            settings.isUsingFlipPageUserData.set(true)
+            settings.isUsingContinuousScrollingUserData.set(false)
+            settings.fontSizeUserData.set(20f)
+        }
+    }
+
+    @After fun close() {
+        ReaderLayoutTestActivity.installReader = null
+        compose.activityRule.scenario.onActivity { it.viewModelStore.clear() }
+        scope.cancel()
+        database.close()
+    }
+
+    @Test fun sourceCharacterSurvivesFlipChapterScrollAndContinuousScrollRoundTrip() {
+        val fixture = Fixture()
+        fixture.assertPosition()
+        fixture.setMode(flip = false, continuous = false)
+        fixture.assertPosition()
+        fixture.setMode(flip = false, continuous = true)
+        fixture.assertPosition()
+        fixture.setMode(flip = true, continuous = true)
+        fixture.assertPosition()
+    }
+
+    @Test fun repeatedFontSpacingPaddingAndWidthChangesDoNotRoundTheLogicalAnchor() {
+        val fixture = Fixture()
+        for (flip in listOf(true, false)) {
+            fixture.setMode(flip, continuous = !flip)
+            for ((width, font, spacing, padding) in listOf(
+                listOf(280, 26, 12, 9), listOf(450, 18, 6, 16), listOf(320, 20, 0, 0),
+            )) {
+                compose.runOnIdle { fixture.width = width.dp; fixture.padding = PaddingValues(padding.dp) }
+                runBlocking { settings.fontSizeUserData.set(font.toFloat()); settings.fontLineHeightUserData.set(spacing.toFloat()) }
+                compose.waitUntil(20_000) { textLayouts().any { it.layoutInput.style.fontSize.value == font.toFloat() } }
+                fixture.awaitReady()
+                fixture.assertPosition()
+            }
+        }
+    }
+
+    @Test fun activityRecreateRetainsRealViewModelButReinstallsEachRendererAtSourceOffset() {
+        val fixture = Fixture()
+        val original = fixture.reader
+        for (flip in listOf(true, false)) {
+            fixture.setMode(flip, continuous = !flip)
+            val oldActivity = compose.activity
+            compose.activityRule.scenario.recreate()
+            compose.waitForIdle()
+            fixture.awaitReady()
+            assertNotSame(oldActivity, compose.activity)
+            assertSame(original, fixture.reader)
+            assertEquals(1, fixture.createdViewModels)
+            fixture.assertPosition()
+        }
+    }
+
+    @Test fun speechTargetWinsOverPassiveCheckpointAcrossModes() {
+        val fixture = Fixture(speechTarget = true)
+        fixture.assertPosition(fixture.speechOffset)
+        fixture.setMode(flip = false, continuous = true)
+        fixture.assertPosition(fixture.speechOffset)
+    }
+
+    @Test fun invalidSavedFingerprintFallsBackAndFinishesInFlip() {
+        val fixture = Fixture(invalid = true)
+        assertNull(fixture.reader.positions.pending)
+        assertEquals(0, (fixture.reader.uiState.contentUiState as FlipPageContentUiState).pagerState.settledPage)
+    }
+
+    @Test fun invalidSavedFingerprintFallsBackAndFinishesInScroll() {
+        runBlocking { settings.isUsingFlipPageUserData.set(false) }
+        val fixture = Fixture(invalid = true)
+        assertNull(fixture.reader.positions.pending)
+        assertFalse((fixture.reader.uiState.contentUiState as ScrollContentUiState).isRestoringProgress)
+        assertTrue((fixture.reader.positions.checkpoint?.position?.offset ?: 0) < fixture.target)
+    }
+
+    @Test fun emptyChapterTerminatesRecoveryInBothModes() {
+        val fixture = Fixture(empty = true)
+        assertNull(fixture.reader.positions.pending)
+        fixture.setMode(flip = false, continuous = false)
+        assertFalse((fixture.reader.uiState.contentUiState as ScrollContentUiState).isRestoringProgress)
+    }
+
+    @Test fun failedChapterTerminatesRecoveryInBothModes() {
+        val fixture = Fixture(failed = true)
+        assertNull(fixture.reader.positions.pending)
+        fixture.setMode(flip = false, continuous = false)
+        assertFalse((fixture.reader.uiState.contentUiState as ScrollContentUiState).isRestoringProgress)
+    }
+
+    private inner class Fixture(
+        val empty: Boolean = false, val failed: Boolean = false, invalid: Boolean = false, speechTarget: Boolean = false,
+    ) {
+        val text = (1..90).joinToString(10.toChar().toString()) { index ->
+            "marker-${index.toString().padStart(3, '0')} 😀 " +
+                "This paragraph keeps a unique original UTF-16 reading position across every layout. ".repeat(4)
+        }
+        val target = text.indexOf("marker-053") + 4
+        val speechOffset = text.indexOf("marker-071") + 5
+        val repository = UserDataRepository(database.userDataDao())
+        val chapter = ChapterContentUiState("marked-chapter", "Source positions",
+            if (empty) emptyList() else listOf(SimpleTextComponent(SimpleTextComponentData(text), repository, context)), "before", "after")
+        var width by mutableStateOf(320.dp)
+        var padding by mutableStateOf(PaddingValues(0.dp))
+        lateinit var reader: ReaderViewModel
+        var createdViewModels = 0
+        private val handle = SavedStateHandle()
+        private val source = mockk<ChapterSource> { every { getBookVolumesFlow(any(), any()) } returns emptyFlow() }
+        private val loader = mockk<ReaderChapterLoader> {
+            every { load(any(), any(), any(), any()) } answers {
+                val id = firstArg<String>()
+                val content = if (id == chapter.id) chapter else ChapterContentUiState(id, id, chapter.content,
+                    if (id == "after") chapter.id else null, if (id == "before") chapter.id else null)
+                flowOf(if (failed) Err(WebRequestError("Fixture", "Expected load failure")) else Ok(content))
+            }
+            coEvery { preload(any(), any()) } returns Unit
+        }
+        private val records = object : BookReadingDataAccess {
+            private var data = UserReadingData("fixture-book")
+            override fun progressRevision() = 0L
+            override suspend fun getUserReadingData(bookId: String) = synchronized(this) { data }
+            override suspend fun updateUserReadingData(id: String, update: (UserReadingData) -> UserReadingData) {
+                synchronized(this) { data = update(data) }
+            }
+            override suspend fun updateChapterProgress(bookId: String, chapterId: String, revision: Long,
+                update: (UserReadingData) -> UserReadingData): Boolean {
+                updateUserReadingData(bookId, update)
+                return true
+            }
+        }
+        private val factory = object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                createdViewModels++
+                return ReaderViewModel(mockk(relaxed = true), source, records, repository,
+                    ReaderModeFactory(loader, records), mockk(relaxed = true), handle) as T
+            }
+        }
+
+        init {
+            ReaderPositionSession(handle).restore(ReaderCheckpoint("fixture-book", chapter.id,
+                ReaderPosition("fixture-book", chapter.id, 0, target, if (invalid) "changed-content" else chapter.bookmarkFingerprint)))
+            ReaderLayoutTestActivity.installReader = { activity ->
+                reader = ViewModelProvider(activity, factory)[ReaderViewModel::class.java]
+                reader.openBook("fixture-book", "stale-route")
+                activity.setContent {
+                    val colors = lightColorScheme()
+                    MaterialTheme(colorScheme = colors, typography = AppTypography) {
+                        CompositionLocalProvider(
+                            LocalAppTheme provides AppTheme(false, colors),
+                            LocalReaderTextLayout provides rememberReaderTextLayout(reader.readerSettings),
+                            LocalReaderPositionSession provides reader.positions,
+                            LocalReaderSpeechFollow provides if (speechTarget) ReaderSpeechFollow(
+                                SpeechPosition("fixture-book", chapter.id, chapter.speechTextIndex.fingerprint, speechOffset, speechOffset + 1),
+                                following = true) else ReaderSpeechFollow(),
+                        ) {
+                            Box(Modifier.width(width).height(420.dp)) {
+                                when (val state = reader.uiState.contentUiState) {
+                                    is FlipPageContentUiState -> FlipPageContentComponent(Modifier, state, reader.readerSettings, padding, {}, {}, {})
+                                    is ScrollContentUiState -> ScrollContentComponent(Modifier, state, reader.readerSettings, reader.fontFamilySettings, padding, {}, {}, {})
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            compose.activityRule.scenario.onActivity { ReaderLayoutTestActivity.installReader!!(it) }
+            awaitReady()
+        }
+
+        fun awaitReady() {
+            compose.waitForIdle()
+            compose.waitUntil(30_000) {
+                val state = reader.uiState.contentUiState
+                state?.readingChapterId == chapter.id && state.readingChapterContent != null && reader.positions.pending == null && when (state) {
+                    is FlipPageContentUiState -> empty || failed || state.pagerState.pageCount > 0
+                    is ScrollContentUiState -> !state.isRestoringProgress &&
+                        (failed || state.lazyListState.layoutInfo.visibleItemsInfo.any { it.key == chapter.id })
+                    else -> false
+                }
+            }
+            compose.waitForIdle()
+        }
+
+        fun setMode(flip: Boolean, continuous: Boolean) {
+            runBlocking {
+                settings.isUsingContinuousScrollingUserData.set(continuous)
+                settings.isUsingFlipPageUserData.set(flip)
+            }
+            compose.waitUntil(15_000) {
+                reader.readerSettings.isUsingContinuousScrolling == continuous &&
+                    (if (flip) reader.uiState.contentUiState is FlipPageContentUiState else reader.uiState.contentUiState is ScrollContentUiState)
+            }
+            awaitReady()
+        }
+
+        fun assertPosition(offset: Int = target) {
+            awaitReady()
+            val position = reader.positions.captureNow()!!.position!!
+            assertEquals(chapter.id, position.chapterId)
+            assertEquals(0, position.componentIndex)
+            assertEquals(offset, position.offset)
+            val nodes = compose.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsActions.GetTextLayoutResult), useUnmergedTree = true)
+                .fetchSemanticsNodes()
+            val visible = compose.runOnIdle {
+                nodes.any { node ->
+                    val layouts = mutableListOf<TextLayoutResult>()
+                    node.config[SemanticsActions.GetTextLayoutResult].action?.invoke(layouts)
+                    layouts.any { layout ->
+                        val start = text.indexOf(layout.layoutInput.text.text)
+                        start >= 0 && offset in start until start + layout.layoutInput.text.length &&
+                            node.boundsInRoot.overlaps(layout.getBoundingBox(offset - start).translate(node.positionInRoot))
+                    }
+                }
+            }
+            assertTrue("Original source offset $offset must be in the clipped visible viewport", visible)
+        }
+    }
+
+    private fun textLayouts(): List<TextLayoutResult> {
+        val layouts = mutableListOf<TextLayoutResult>()
+        val nodes = compose.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsActions.GetTextLayoutResult), useUnmergedTree = true)
+            .fetchSemanticsNodes()
+        compose.runOnIdle {
+            nodes.forEach { it.config[SemanticsActions.GetTextLayoutResult].action?.invoke(layouts) }
+        }
+        return layouts
+    }
+}
