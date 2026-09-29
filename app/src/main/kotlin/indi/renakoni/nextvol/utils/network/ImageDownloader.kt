@@ -4,7 +4,6 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
 import android.util.Log
-import androidx.work.ListenableWorker
 import com.github.michaelbull.result.Err
 import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.onErr
@@ -36,7 +35,7 @@ class ImageDownloader(
     data class Task(val file: File, val uri: Uri, val cover: Boolean = false,
         val defaultCover: DefaultBookCoverRenderer.Text? = null, val fresh: Boolean = false)
 
-    suspend fun run(): ListenableWorker.Result = withContext(Dispatchers.IO) {
+    suspend fun run(): Boolean = withContext(Dispatchers.IO) {
         Log.i("ImageDownloader", "total tasks: ${tasks.size}")
         tasks.forEach { task ->
             currentCoroutineContext().ensureActive()
@@ -59,7 +58,7 @@ class ImageDownloader(
                             "task $count: file write failed, file=${task.file}",
                             e
                         )
-                        return@withContext ListenableWorker.Result.failure()
+                        return@withContext false
                     }
                 }
                 .onErr { t ->
@@ -71,18 +70,18 @@ class ImageDownloader(
                         // Only a book/volume cover has a local substitute. Content image failures still fail export.
                         try {
                             DefaultBookCoverRenderer.writeTo(context, task.file, text.title, text.bookId, text.author)
-                        } catch (_: Exception) { return@withContext ListenableWorker.Result.failure() }
+                        } catch (_: Exception) { return@withContext false }
                         count++
                         onProgress(count, tasks.size)
                         return@forEach
                     }
-                    return@withContext ListenableWorker.Result.failure()
+                    return@withContext false
                 }
             count++
             onProgress(count, tasks.size)
             Log.i("ImageDownloader", "tasks: $count/${tasks.size}")
         }
-        return@withContext ListenableWorker.Result.success()
+        return@withContext true
     }
 
     private suspend fun downloadWithRetry(

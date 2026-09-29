@@ -222,9 +222,9 @@
     <string name="settings_theme_text_font_weight">字重</string>
     <string name="data_settings">数据</string>
     <string name="settings_snap_data">备份数据</string>
-    <string name="settings_snap_data_desc">将应用内的用户数据导出为 .lnr 文件</string>
+    <string name="settings_snap_data_desc">将用户数据导出为 NextVol 备份（.nvbackup）</string>
     <string name="settings_import_data">导入数据</string>
-    <string name="settings_import_data_desc">从选定的 .lnr 文件导入用户数据</string>
+    <string name="settings_import_data_desc">导入 NextVol 备份（.nvbackup）或受支持的旧版 .lnr 备份</string>
     <string name="settings_storage_manager">存储与清理</string>
     <string name="settings_storage_manager_desc">查看存储占用，清理阅读缓存或下载内容</string>
     <string name="settings_plugins">插件管理</string>
@@ -315,7 +315,6 @@
     <string name="detail_introduction">介绍</string>
     <string name="detail_contents">目录</string>
     <string name="detail_title">详情</string>
-    <string name="detail_info_word_count_content">%1$s 字</string>
     <string name="detail_info_stats_count_content">共计 %1$d 卷，%2$d 章</string>
     <string name="local_book_info_title">书籍缓存详情</string>
     <string name="local_book_info_book_information">书籍信息</string>
@@ -711,7 +710,7 @@
     <string name="local_book_preview_hint">点击章节即可检查正文和标题是否正确。</string>
     <string name="local_book_image_chapter">本章包含插图。</string>
     <string name="local_book_empty_chapter">本章只有标题。</string>
-    <string name="local_book_backup_note">本地文件保存在当前设备中，现有 .lnr 分享与备份不包含这些文件。换设备时请使用原始 EPUB 或 TXT 文件。</string>
+    <string name="local_book_backup_note">本地文件保存在当前设备中，NextVol 备份与书架分享不包含这些文件。换设备时请使用原始 EPUB 或 TXT 文件。</string>
     <string name="local_book_stored_files">导入原文件与解析内容</string>
     <string name="local_book_delete_title">删除本地书籍？</string>
     <string name="local_book_delete_originals">选中的导入书籍将从所有书架移除，并永久删除本应用内对应的原文件和解析内容。其他导入副本及应用外的原文件会保留。在线书籍仅清除选中的本地缓存。</string>

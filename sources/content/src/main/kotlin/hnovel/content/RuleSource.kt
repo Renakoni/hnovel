@@ -450,12 +450,13 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
                 if (book.title.isBlank()) throw SourceContentException(ContentError.EmptyContent, "ruleBookInfo.name")
                 val old = store.read(id)
                 if (old?.informationLoaded != true || old.revision != identity.revision) {
-                    val record = BookRecord(identity.revision, book)
+                    val record = BookRecord(identity.revision, book.preservingValidMetadata(old?.book))
                     if (record != old) store.write(record)
                 }
                 return listOf(book)
             }
-            val record = saveInformation(id, BookRecord(identity.revision, RuleBook(id, state = context.book)), document)
+            val seed = RuleBook(id, state = context.book).preservingValidMetadata(store.read(id)?.book)
+            val record = saveInformation(id, BookRecord(identity.revision, seed), document)
             return listOf(record.book)
         }
         val items = responseRule(document.httpErrorStatus) {
@@ -499,7 +500,8 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             store.write(ordered.mapNotNull { book ->
                 val old = store.read(book.id)
                 if (old?.informationLoaded != true || old.revision != identity.revision)
-                    BookRecord(identity.revision, book, preview = previews[book.id]).takeUnless { it == old } else null
+                    BookRecord(identity.revision, book.preservingValidMetadata(old?.book), preview = previews[book.id])
+                        .takeUnless { it == old } else null
             })
         }
         return ordered
@@ -507,6 +509,11 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
 
     suspend fun canonicalBookId(bookId: String): String = operation("bookAlias") {
         store.canonicalId(sourceLink(spec.baseUrl, bookId))
+    }
+
+    /** Read saved metadata without executing rules or requesting a document. */
+    suspend fun cachedInformation(bookId: String): RuleBook? = withContext(Dispatchers.IO) {
+        store.read(sourceLink(spec.baseUrl, bookId))?.book
     }
 
     suspend fun information(bookId: String): RuleBook = operation("ruleBookInfo", timeoutMillis = DIRECTORY_TIMEOUT_MILLIS) {
@@ -689,7 +696,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             } catch (failure: SourceContentException) {
                 // BookList/BookInfo tolerate optional metadata errors. Keep the trace, and
                 // still surface cancellation, limits, missing dependencies and login/permissions.
-                if (name !in setOf("kind", "wordCount", "lastChapter", "intro", "coverUrl") || failure.code != ContentError.InvalidRule) throw failure
+                if (name !in setOf("kind", "wordCount", "updateTime", "lastChapter", "intro", "coverUrl") || failure.code != ContentError.InvalidRule) throw failure
                 ""
             }
             val value = extracted.ifBlank {
@@ -720,7 +727,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val time = field("updateTime", seed.updateTime)
         return seed.copy(title = finalTitle, author = finalAuthor, description = intro, coverUrl = cover,
             tags = if (kind.isBlank()) seed.tags else kind.split('\n', ','), wordCount = wordCount,
-            latestChapter = latest, updateTime = time, state = context.book)
+            latestChapter = latest, updateTime = time, state = context.book).preservingValidMetadata(seed)
     }
 
     private suspend fun directory(initial: BookRecord): BookRecord {
