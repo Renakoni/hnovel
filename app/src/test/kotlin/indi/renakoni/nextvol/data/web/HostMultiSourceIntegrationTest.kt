@@ -124,8 +124,8 @@ class HostMultiSourceIntegrationTest {
     @After fun close() = runBlocking {
         manager.registry.sources.value.forEach { manager.unregisterWebDataSource(it.metadata.id) }
         workManager.cancelAllWork().await()
-        WorkManagerTestInitHelper.closeWorkDatabase()
         progress.close()
+        WorkManagerTestInitHelper.closeWorkDatabase()
         db.close()
     }
 
