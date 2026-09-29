@@ -9,7 +9,7 @@ import java.io.IOException
 
 enum class DownloadTaskStatus { None, Queued, Running, WaitingRetry, Interrupted, Failed, Cancelled, Complete }
 enum class DownloadStage { Unknown, Details, Directory, Body, Image, Cover, Storage }
-enum class DownloadFailure { Network, RateLimited, RetryExhausted, Authentication, Verification, SourceUnavailable, SourceRequest, Storage }
+enum class DownloadFailure { Network, RateLimited, RetryExhausted, Authentication, Verification, SourceUnavailable, SourceRequest, Storage, SystemRestricted, SystemInterrupted }
 
 data class DownloadTaskState(
     val status: DownloadTaskStatus = DownloadTaskStatus.None,
@@ -63,6 +63,7 @@ internal fun BookDownloadEntity.taskState(work: WorkInfo.State?): DownloadTaskSt
         work == WorkInfo.State.RUNNING -> DownloadTaskStatus.Running
         work == WorkInfo.State.ENQUEUED || work == WorkInfo.State.BLOCKED -> DownloadTaskStatus.Queued
         work == WorkInfo.State.CANCELLED -> DownloadTaskStatus.Cancelled
+        stored == DownloadTaskStatus.Interrupted -> stored
         work == WorkInfo.State.FAILED -> DownloadTaskStatus.Failed
         stored == DownloadTaskStatus.Running || stored == DownloadTaskStatus.Queued -> DownloadTaskStatus.Interrupted
         stored == DownloadTaskStatus.None && phase == "updating" -> DownloadTaskStatus.Interrupted

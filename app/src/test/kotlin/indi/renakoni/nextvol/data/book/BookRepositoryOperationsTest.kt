@@ -97,6 +97,17 @@ class BookRepositoryOperationsTest {
         coVerify(exactly = 1) { fixture.downloads.queueTask(book, 0L, submitted.captured.id.toString()) }
     }
 
+    @Test fun staleNotificationCannotCancelAReplacementTask() = runTest {
+        val book = BookIdentity.book("book")
+        val current = java.util.UUID.randomUUID().toString()
+        coEvery { fixture.downloads.entry(book) } returns indi.renakoni.nextvol.data.local.room.entity.BookDownloadEntity(
+            book.storageKey, taskWorkId = current, taskStatus = "Running")
+        fixture.scheduler.dismiss(book, java.util.UUID.randomUUID().toString())
+        coVerify(exactly = 0) { fixture.downloads.dismissTask(any(), any()) }
+        verify(exactly = 0) { fixture.workManager.cancelWorkById(any()) }
+        verify(exactly = 0) { fixture.workManager.cancelUniqueWork(any()) }
+    }
+
     @Test
     fun singleKeepWorkRetainsActiveIdentityAndReplacesTerminalRowsAcrossClockChanges() {
         val database = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), WorkDatabase::class.java)
@@ -161,6 +172,7 @@ class BookRepositoryOperationsTest {
             enqueued.await()
             val work = submitted.captured
             assertEquals(CacheBookWork::class.java.name, work.workSpec.workerClassName)
+            assertEquals(androidx.work.NetworkType.CONNECTED, work.workSpec.constraints.requiredNetworkType)
             assertEquals(mapOf("bookId" to book.storageKey, "downloadGeneration" to 0L, "persistedTask" to true), work.workSpec.input.keyValueMap)
             assertTrue(CacheBookWork.generationTag(0) in work.tags)
             coVerify(exactly = 1) { fixture.downloads.queueTask(book, 0L, work.id.toString()) }
@@ -211,6 +223,8 @@ class BookRepositoryOperationsTest {
             // Cache submission checks for an active executor, but must not emit the old terminal row.
             verify(exactly = if (export) 0 else 1) { env.workManager.getWorkInfosForUniqueWorkFlow(name) }
             verify(exactly = 0) { env.workManager.getWorkInfoByIdFlow(any()) }
+            assertEquals(if (export) androidx.work.NetworkType.NOT_REQUIRED else androidx.work.NetworkType.CONNECTED,
+                submitted.captured.workSpec.constraints.requiredNetworkType)
 
             infos.value = listOf(current)
             completion.set(Operation.SUCCESS)

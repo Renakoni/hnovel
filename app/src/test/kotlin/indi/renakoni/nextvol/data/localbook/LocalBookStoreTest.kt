@@ -68,11 +68,13 @@ class LocalBookStoreTest {
         store = LocalBookStore(context, database)
         local = LocalBookDataSource(database.bookInformationDao(), database.bookVolumesDao(), database.chapterContentDao(), database.userReadingDataDao(), indi.renakoni.nextvol.data.book.BookAliasStore(database))
         downloads = BookDownloadStore(context, database, ContentJsonDecoder(ContentComponentRegistry()))
-        val shelves = BookshelfRepository(database.bookshelfDao(), mockk(relaxed = true), registry, downloads, local.aliases)
+        val work = mockk<androidx.work.WorkManager>(relaxed = true)
+        val scheduler = indi.renakoni.nextvol.data.download.BookDownloadScheduler(downloads, work, local.aliases)
+        val shelves = BookshelfRepository(database.bookshelfDao(), scheduler, registry, local.aliases)
         val text = TextProcessingRepository(mockk { every { enabled } returns false },
             mockk { every { enabled } returns false }, ContentComponentRegistry())
-        books = BookRepository(local, shelves, text, mockk(), ChapterRepository(registry, local, text, store, downloads),
-            BookReadingDataRepository(local), registry, downloads, store)
+        books = BookRepository(local, shelves, text, work, ChapterRepository(registry, local, text, store, downloads),
+            BookReadingDataRepository(local), registry, downloads, store, scheduler)
     }
 
     @After fun close() { database.close() }

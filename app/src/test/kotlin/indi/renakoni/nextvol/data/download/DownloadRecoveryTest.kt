@@ -131,9 +131,11 @@ class DownloadRecoveryTest {
             downloads = BookDownloadStore(context, db, ContentJsonDecoder(ContentComponentRegistry()))
             val text = TextProcessingRepository(mockk { every { enabled } returns false },
                 mockk { every { enabled } returns false }, ContentComponentRegistry())
-            val shelves = BookshelfRepository(db.bookshelfDao(), mockk(relaxed = true), registry, downloads, aliases)
-            books = BookRepository(local, shelves, text, mockk(), ChapterRepository(registry, local, text, mockk(), downloads),
-                BookReadingDataRepository(local), registry, downloads, mockk())
+            val work = mockk<androidx.work.WorkManager>(relaxed = true)
+            val scheduler = BookDownloadScheduler(downloads, work, aliases)
+            val shelves = BookshelfRepository(db.bookshelfDao(), scheduler, registry, aliases)
+            books = BookRepository(local, shelves, text, work, ChapterRepository(registry, local, text, mockk(), downloads),
+                BookReadingDataRepository(local), registry, downloads, mockk(), scheduler)
             loader = ImageLoader.Builder(context).diskCache(cache).components {
                 add(SourceImageInterceptor(registry, context, downloads)); add(SourceImageFetcher.Factory())
             }.build()
@@ -150,6 +152,59 @@ class DownloadRecoveryTest {
         override fun close() {
             registry.unregister(id); loader.shutdown(); cache.shutdown(); SingletonImageLoader.reset(); db.close(); root.deleteRecursively()
         }
+    }
+
+    @Test fun abandonedExecutionsShareThreeRecoveriesAcrossHostReconstruction() = runBlocking {
+        RuleSourceFixture().use { fixture -> Library(fixture).use { library -> with(library) {
+            queue()
+            for (used in 0..3) {
+                downloads.startTask(book, 0, workId.toString(), used, nowMillis = now)
+                reopen(); register()
+                val result = run()
+                if (used < 3) {
+                    assertEquals(Result.retry(), result)
+                    assertEquals(used + 1, owner().taskRetryCount)
+                    assertEquals(DownloadFailure.SystemInterrupted.name, owner().taskError)
+                    now = owner().taskNextAttemptAt
+                } else {
+                    assertTrue(result is Result.Failure)
+                    assertEquals(DownloadFailure.RetryExhausted.name, owner().taskError)
+                    assertEquals(3, owner().taskRetryCount)
+                }
+                assertTrue(requests.isEmpty())
+            }
+        } } }
+    }
+
+    @Test fun unsafeInterruptedExecutionWaitsForAnExplicitContinue() = runBlocking {
+        RuleSourceFixture().use { fixture -> Library(fixture).use { library -> with(library) {
+            register(script = true); queue()
+            downloads.startTask(book, 0, workId.toString(), 0, nowMillis = now)
+            reopen(); register(script = true)
+            repeat(2) { assertTrue(run() is Result.Failure) }
+            assertEquals(DownloadTaskStatus.Interrupted.name, owner().taskStatus)
+            assertEquals(DownloadFailure.SystemInterrupted.name, owner().taskError)
+            assertEquals(0, owner().taskRetryCount)
+            assertTrue(requests.isEmpty())
+        } } }
+    }
+
+    @Test fun recordedTerminalResultsAreNotReplayedAfterHostReconstruction() = runBlocking {
+        for (complete in listOf(true, false)) RuleSourceFixture().use { fixture -> Library(fixture).use { library -> with(library) {
+            withImages = false
+            failedPath = if (complete) "" else "/c/2"
+            status = 404
+            queue()
+            val first = run()
+            assertEquals(complete, first is Result.Success)
+            val calls = requests.size
+            val recorded = owner()
+            reopen(); register()
+            assertEquals(complete, run() is Result.Success)
+            assertEquals(calls, requests.size)
+            assertEquals(recorded.taskStatus, owner().taskStatus)
+            assertEquals(recorded.taskRetryCount, owner().taskRetryCount)
+        } } }
     }
 
     @Test fun cooldownAndBudgetSurviveReconstructionAndCommittedChaptersAreNotFetchedAgain() = runBlocking {

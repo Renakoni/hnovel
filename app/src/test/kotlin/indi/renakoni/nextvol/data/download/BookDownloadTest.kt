@@ -91,6 +91,37 @@ class BookDownloadTest {
         Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888).compress(Bitmap.CompressFormat.PNG, 100, it)
     }.toByteArray() }
 
+    @Test @Config(sdk = [24, 35])
+    fun foregroundRestrictionIsDurableAndDoesNotSpendAnotherRetry() = kotlinx.coroutines.runBlocking {
+        val id = java.util.UUID.randomUUID()
+        downloads.queueTask(a, 0, id.toString())
+        val task = downloads.startTask(a, 0, id.toString(), 0)
+        downloads.deferTaskRetry(task, 0, 0, DownloadFailure.Network)
+        val repository = mockk<BookRepository>()
+        io.mockk.coEvery { repository.canonicalBook(a) } returns a
+        every { repository.downloadSource(a) } returns null
+        io.mockk.coEvery { repository.canReplayDownload(a) } returns false
+        val params = indi.renakoni.nextvol.data.work.workerParameters(
+            androidx.work.workDataOf("bookId" to a.storageKey, "persistedTask" to true), id)
+        every { params.foregroundUpdater.setForegroundAsync(any(), any(), any()) } returns
+            com.google.common.util.concurrent.Futures.immediateFailedFuture(IllegalStateException("Foreground start blocked"))
+        val worker = CacheBookWork(context, params, progress, repository, downloads)
+        val foreground = worker.getForegroundInfo()
+        assertEquals(if (android.os.Build.VERSION.SDK_INT >= 29) android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC else 0,
+            foreground.foregroundServiceType)
+        assertNotNull(foreground.notification.actions.single().actionIntent)
+        assertTrue(worker.doWork() is androidx.work.ListenableWorker.Result.Failure)
+        io.mockk.coVerify(exactly = 0) { repository.refreshBookInformation(a, fresh = true) }
+        db.close()
+        openLibrary()
+        val owner = downloads.entry(a)!!
+        assertEquals(DownloadTaskStatus.Interrupted.name, owner.taskStatus)
+        assertEquals(DownloadFailure.SystemRestricted.name, owner.taskError)
+        assertEquals(1, owner.taskRetryCount)
+        assertEquals(id.toString(), owner.taskWorkId)
+        assertTrue(owner.taskState(androidx.work.WorkInfo.State.FAILED).canResume)
+    }
+
     @Before fun setUp() {
         openLibrary()
         cache = DiskCache.Builder().directory(directory.root.resolve("coil").path.toPath()).maxSizeBytes(1024 * 1024).build()
@@ -103,15 +134,16 @@ class BookDownloadTest {
                 NextVolDatabase.MIGRATION_19_20, NextVolDatabase.MIGRATION_20_21, NextVolDatabase.MIGRATION_21_22, NextVolDatabase.MIGRATION_22_23, NextVolDatabase.MIGRATION_23_24, NextVolDatabase.MIGRATION_24_25, NextVolDatabase.MIGRATION_25_26).allowMainThreadQueries().build()
         local = LocalBookDataSource(db.bookInformationDao(), db.bookVolumesDao(), db.chapterContentDao(), db.userReadingDataDao(), indi.renakoni.nextvol.data.book.BookAliasStore(db))
         downloads = BookDownloadStore(context, db, decoder)
-        val shelves = BookshelfRepository(db.bookshelfDao(), mockk(relaxed = true), registry, downloads, local.aliases)
         val text = TextProcessingRepository(mockk { every { enabled } returns false },
             mockk { every { enabled } returns false }, ContentComponentRegistry())
         val workManager = mockk<androidx.work.WorkManager>(relaxed = true) {
             every { getWorkInfoByIdFlow(any()) } returns flowOf(null)
             every { getWorkInfosForUniqueWorkFlow(any()) } returns flowOf(emptyList())
         }
+        val scheduler = BookDownloadScheduler(downloads, workManager, local.aliases)
+        val shelves = BookshelfRepository(db.bookshelfDao(), scheduler, registry, local.aliases)
         books = BookRepository(local, shelves, text, workManager, ChapterRepository(registry, local, text, mockk(), downloads),
-            BookReadingDataRepository(local), registry, downloads, mockk())
+            BookReadingDataRepository(local), registry, downloads, mockk(), scheduler)
     }
 
     private fun openImages() {

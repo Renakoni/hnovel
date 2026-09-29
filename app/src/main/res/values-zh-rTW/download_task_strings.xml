@@ -8,7 +8,7 @@
     <string name="download_task_unknown">下載工作 %1$s</string>
     <string name="download_task_unfinished">未完成的下載</string>
     <string name="download_task_remove">取消並移除工作（保留已下載內容）</string>
-    <string name="download_task_queued">等待執行</string>
+    <string name="download_task_queued">等待網路或系統排程</string>
     <string name="download_task_interrupted">已中斷，可繼續</string>
     <string name="download_task_cancelled">已取消</string>
     <string name="download_task_content">離線章節：%1$d/%2$d</string>
@@ -25,4 +25,10 @@
     <string name="download_error_source">書源無法使用</string>
     <string name="download_error_request">書源請求失敗</string>
     <string name="download_error_storage">本機儲存失敗，請檢查儲存空間</string>
+    <string name="download_notification_channel">書籍下載</string>
+    <string name="download_notification_title">正在快取書籍</string>
+    <string name="download_notification_text">開啟應用程式查看下載進度</string>
+    <string name="download_notification_cancel">取消下載</string>
+    <string name="download_error_system_restricted">系統限制背景執行，請開啟應用程式後繼續</string>
+    <string name="download_error_system_interrupted">上次執行已中斷</string>
 </resources>
