@@ -216,7 +216,7 @@ class BookRepository @Inject constructor(
         val book = BookIdentity.book(bookId)
         if (LocalBookStore.isLocal(book) || sourceRegistry.sources.value.none {
                 it.metadata.id == book.sourceId && it.metadata.supportsReading &&
-                    it.status == indi.renakoni.nextvol.data.web.SourceStatus.Ready
+                    it.status != indi.renakoni.nextvol.data.web.SourceStatus.Failed
             }) return DownloadSubmission.Rejected(DownloadFailure.SourceUnavailable)
         return downloadScheduler.submit(book, refresh)
     }

@@ -289,6 +289,7 @@ class HostMultiSourceIntegrationTest {
 
     @Test fun manualSubmissionAcknowledgesTheQueueThenFetchesAndSavesRealChapters() = runBlocking {
         val source = register(a)
+        assertEquals(SourceStatus.Registered, manager.registry.sources.value.single().status)
         val first = books.submitDownload(a.storageKey) as DownloadSubmission.Accepted
         assertFalse(first.existing)
         assertEquals(DownloadTaskStatus.Queued, first.task.status)
