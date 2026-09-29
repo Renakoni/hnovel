@@ -153,10 +153,12 @@ class CacheBookWork @AssistedInject constructor(
                 val unchanged = downloads.target(active, volumes, revision, cover) && refreshId.isEmpty()
                 val fetchedImages = mutableSetOf<String>()
                 // The static-rule replay gate excludes scripts and shared book variables.
-                // Request bodies/method overrides may carry sequencing semantics even without JS.
-                val independent = bookRepository.canReplayDownload(book) && chapters.none {
-                    Regex("\"(?:method|body)\"\\s*:", RegexOption.IGNORE_CASE)
-                        .containsMatchIn(BookIdentity.chapter(it.id, book).remoteId)
+                // Use the transport's option parser, including single-quoted request options.
+                val independent = bookRepository.canReplayDownload(book) && chapters.all {
+                    val request = hnovel.network.RequestCompiler().compile("download",
+                        BookIdentity.chapter(it.id, book).remoteId, book.remoteId)
+                    request is hnovel.network.CompiledRequest.Ready && request.request.method in setOf("GET", "HEAD") &&
+                        request.request.body.isNullOrEmpty() && request.request.browser == null
                 }
                 var chapterFailure: Triple<WebRequestError, DownloadStage, String>? = null
                 chapters.forEachIndexed { index, chapter ->
@@ -194,7 +196,8 @@ class CacheBookWork @AssistedInject constructor(
                         val isolated = stage in setOf(DownloadStage.Body, DownloadStage.Image) &&
                             ((contentError?.httpStatus ?: imageError?.httpStatus) == 404 ||
                                 contentError?.code == hnovel.content.ContentError.EmptyContent)
-                        if (!independent || !isolated) chapterResult.bind()
+                        if (!independent || currentCoroutineContext()[RequestRetryContext]?.replaySafe != true || !isolated)
+                            chapterResult.bind()
                         if (chapterFailure == null) chapterFailure = Triple(error, stage, chapter.id)
                     }
                     item.progress = (index + 1f) / (chapters.size + 1)
