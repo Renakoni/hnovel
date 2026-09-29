@@ -305,7 +305,7 @@ class MixedSourceAcceptanceTest {
                 assertEquals(requests, fixture.documents.get()); assertEquals(nativeRequests, nativeReads.get())
             } finally {
                 fixture.afterRun = {}; sources.stop(); registry.unregister(native.id); native.close()
-                work.cancelAllWork().await(); WorkManagerTestInitHelper.closeWorkDatabase(); progress.close(); db.close()
+                work.cancelAllWork().await(); progress.close(); WorkManagerTestInitHelper.closeWorkDatabase(); db.close()
                 loader.shutdown(); cache.shutdown(); coil3.SingletonImageLoader.reset(); unmockkConstructor(Wenku8Api::class)
             }
         }
