@@ -45,7 +45,10 @@ class SourceLoginService @Inject constructor(private val sources: ImportedRuleSo
             // A source button can have remote side effects before a later request fails.
             // Consent/recovery must never replay the entire user action.
             return recover(attempt, retry = false) {
-                target(attempt).rules.login(values.toMap(), action, formId).also { target(attempt) }
+                target(attempt).rules.login(values.toMap(), action, formId).also { result ->
+                    target(attempt)
+                    if (result.refreshDiscovery) sources.refreshDiscovery(attempt.source)
+                }
             }
         } catch (cancelled: CancellationException) {
             withContext(NonCancellable) { cancel(attempt) }

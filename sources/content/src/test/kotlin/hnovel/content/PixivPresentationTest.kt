@@ -82,9 +82,10 @@ class PixivPresentationTest {
                     val names = form.fields.map { it.name.substringAfterLast(' ') }
                     assertEquals("updateSource()", form.fields.single { it.name.endsWith("更新书源") }.action)
                     assertTrue(names.containsAll(listOf("整合系列", "快速模式", "搜索作者", "繁简通搜", "显示描述", "显示插图",
-                        "成人排行榜单", "常规原创热门", "添加屏蔽", "喜欢标签", "他人收藏", "文本框")))
+                        "成人其他榜单", "常规原创热门", "添加屏蔽", "喜欢标签", "他人收藏", "文本框")))
                     assertTrue(names.none { it in listOf("章节名称", "收藏本章", "刷新本章", "发送评论",
-                        "删除评论", "显示评论", "调试模式", "备份恢复", "反馈问题", "显示投票", "兽人小说", "兽人作者") })
+                        "删除评论", "显示评论", "调试模式", "备份恢复", "反馈问题", "显示投票", "兽人小说", "兽人作者",
+                        "当前发现", "书源相关入口") })
                     assertEquals(0, fixture.server.requestCount)
                 }
             }
@@ -98,7 +99,12 @@ class PixivPresentationTest {
                     val form = panel.loginForm()
                     assertEquals(listOf("阅读与搜索", "发现页设置", "屏蔽与收藏"), form.fields.mapNotNull { it.section }.distinct())
                     assertEquals("阅读与搜索", form.fields.single { it.name.endsWith("显示描述") }.section)
-                    assertEquals("发现页设置", form.fields.single { it.name == "成人原创热门" }.section)
+                    assertEquals("发现页设置", form.fields.single { it.name == "成人原创分类" }.section)
+                    val discoverySettings = form.fields.filter { it.section == "发现页设置" }
+                    assertEquals("R18 推荐", discoverySettings.first().name)
+                    assertEquals(titles, discoverySettings.filter { it.checked == true }.map { it.name })
+                    assertTrue(discoverySettings.filter { it.action?.contains("SHOW_BOOKMARKS_") == true }
+                        .all { it.enabled && it.checked == false })
                     assertTrue(form.fields.single { it.action == "startPixivSettings()" }.enabled)
                     assertTrue(form.fields.none { it.action?.contains("SHOW_SETTINGS") == true || it.action?.contains("SHOW_DISCOVER") == true })
                     assertTrue(form.fields.none { it.name == "分类设置" })
@@ -124,6 +130,13 @@ class PixivPresentationTest {
                 assertFalse(account.enabled)
                 assertTrue(account.description.orEmpty().contains("登录后"))
                 assertTrue(runCatching { source.login(form.values, account.id, form.id) }.isFailure)
+                val bookmarks = form.fields.filter { it.action?.contains("SHOW_BOOKMARKS_") == true }
+                assertEquals(2, bookmarks.size)
+                bookmarks.forEach { bookmark ->
+                    assertFalse(bookmark.enabled)
+                    assertEquals("登录后可开启", bookmark.description)
+                    assertTrue(runCatching { source.login(form.values, bookmark.id, form.id) }.isFailure)
+                }
                 assertEquals(0, fixture.server.requestCount)
             }
         }
@@ -131,7 +144,12 @@ class PixivPresentationTest {
 
     @Test fun homepageIsEightUniqueListsWithoutFetchingCategoriesOrLegacyRecommendations() = runBlocking {
         RuleSourceFixture(browser).use { fixture ->
-            fixture.source(profile = EXTENSION_PROFILE) { definition(fixture, "settings.SHOW_FURRY=true;") }.use { source ->
+            fixture.source(profile = EXTENSION_PROFILE) { definition(fixture, """
+                settings.SHOW_FURRY=true;
+                delete settings.DISCOVERY_DEFAULTS_VERSION;
+                settings.SHOW_ADULT=true;settings.SHOW_GENERAL=true;
+                settings.SHOW_NEW_ADULT=true;settings.SHOW_RANK_ADULT=true;
+            """.trimIndent()) }.use { source ->
                 val catalog = source.openDiscovery("homepage").catalog(homepage = true)
                 val feed = RuleDiscoveryClassifier.feed(catalog)
                 assertEquals(titles, feed.map { it.title })
@@ -146,23 +164,37 @@ class PixivPresentationTest {
                     "ranking/novel?mode=daily&content=novel&p={{page}}",
                     "genre/novel/all?mode=safe&lang=zh"), feed.map { it.url.substringAfter("/ajax/") })
                 assertTrue(feed.none { it.url.contains("/bookmarks") || it.url.contains("/profile/all") })
-                assertEquals(2, catalog.rows.count { it.url.contains("/novels/bookmarks?") })
+                assertEquals(8, catalog.rows.count { it.type == "url" })
+                assertEquals(0, catalog.rows.count { it.url.contains("/novels/bookmarks?") })
                 assertEquals(0, fixture.server.requestCount)
             }
         }
     }
 
-    @Test fun categorySwitchesCannotRemoveFixedHomepageModules() = runBlocking {
+    @Test fun categorySwitchesControlHomepageWithoutReintroducingHiddenLists() = runBlocking {
         RuleSourceFixture(browser).use { fixture ->
             fixture.source(profile = EXTENSION_PROFILE) { definition(fixture, """
-                settings.SHOW_ADULT=false;settings.SHOW_GENERAL=false;
-                settings.SHOW_NEW_ADULT=false;settings.SHOW_NEW_GENERAL=false;
-                settings.SHOW_RANK_ADULT=false;settings.SHOW_RANK_GENERAL=false;
-                settings.SHOW_GENRE_ADULT=false;settings.SHOW_GENRE_GENERAL=false;settings.SHOW_ABOUT=false;
+                Object.keys(getDefaultDiscoverSettings()).forEach(key => settings[key]=false);
+                settings.SHOW_RANK_ADULT=true;
             """.trimIndent()) }.use { source ->
-                val catalog = source.openDiscovery("categories-disabled").catalog(homepage = true)
-                assertEquals(titles, RuleDiscoveryClassifier.feed(catalog).map { it.title })
-                assertEquals(8, catalog.rows.count { it.type == "url" })
+                val discovery = source.openDiscovery("categories-disabled")
+                val catalog = discovery.catalog(homepage = true)
+                assertTrue(RuleDiscoveryClassifier.feed(catalog).isEmpty())
+                assertEquals(3, catalog.rows.count { it.url.isNotBlank() })
+                assertTrue(catalog.rows.none { it.url.contains("mode=daily_r18") || it.url.contains("mode=weekly_r18") })
+                source.openLoginSession().use { panel ->
+                    val form = panel.loginForm()
+                    val ranks = form.fields.single { it.action == "editSettings('SHOW_RANK_ADULT')" }
+                    assertTrue(panel.login(form.values, ranks.id, form.id).refreshDiscovery)
+                    val empty = discovery.catalog(refresh = true, homepage = true)
+                    assertTrue(empty.rows.none { it.type == "url" })
+                    assertTrue(RuleDiscoveryClassifier.feed(empty).isEmpty())
+                    val updated = panel.loginForm()
+                    val weekly = updated.fields.single { it.action == "editSettings('SHOW_WEEKLY_ADULT')" }
+                    assertTrue(panel.login(updated.values, weekly.id, updated.id).refreshDiscovery)
+                    val selected = discovery.catalog(refresh = true, homepage = true)
+                    assertEquals(listOf("R18 周榜"), RuleDiscoveryClassifier.feed(selected).map { it.title })
+                }
                 assertEquals(0, fixture.server.requestCount)
             }
         }
@@ -189,11 +221,14 @@ class PixivPresentationTest {
                     .setBody("""{"error":false,"body":{"page":{"recommend":{"ids":[]}},
                         "thumbnails":{"novel":[],"novelSeries":[]},"display_a":{"rank_a":[]},"works":[]}}""")
             }
-            fixture.source(profile = EXTENSION_PROFILE) { definition(fixture) }.use { source ->
+            fixture.source(profile = EXTENSION_PROFILE) { definition(fixture,
+                "settings.SHOW_BOOKMARKS_PUBLIC=true;settings.SHOW_BOOKMARKS_PRIVATE=true;") }.use { source ->
                 val discovery = source.openDiscovery("requests")
                 val catalog = discovery.catalog(homepage = true)
                 assertEquals(0, fixture.server.requestCount)
-                for (row in RuleDiscoveryClassifier.feed(catalog)) {
+                val feed = RuleDiscoveryClassifier.feed(catalog)
+                assertEquals(titles + listOf("我的收藏", "私密收藏"), feed.map { it.title })
+                for (row in feed.take(titles.size)) {
                     assertTrue(discovery.preview(row.url, emptyMap()).books.isEmpty())
                     // The shipped loginCheckJs explicitly refetches the same request.
                     repeat(2) {
@@ -203,11 +238,15 @@ class PixivPresentationTest {
                     }
                 }
                 assertEquals(16, fixture.server.requestCount)
-                val bookmark = catalog.rows.first { it.url.contains("/novels/bookmarks?") }
-                assertTrue(discovery.preview(bookmark.url, emptyMap()).books.isEmpty())
-                assertEquals(18, fixture.server.requestCount)
-                assertEquals("/ajax/user/12345/novels/bookmarks",
-                    fixture.server.takeRequest(1, TimeUnit.SECONDS)!!.requestUrl!!.encodedPath)
+                for ((index, bookmark) in feed.takeLast(2).withIndex()) {
+                    assertTrue(discovery.preview(bookmark.url, emptyMap()).books.isEmpty())
+                    repeat(2) {
+                        val request = requireNotNull(fixture.server.takeRequest(1, TimeUnit.SECONDS))
+                        assertEquals("/ajax/user/12345/novels/bookmarks", request.requestUrl!!.encodedPath)
+                        assertEquals(if (index == 0) "show" else "hide", request.requestUrl!!.queryParameter("rest"))
+                    }
+                }
+                assertEquals(20, fixture.server.requestCount)
             }
         }
     }

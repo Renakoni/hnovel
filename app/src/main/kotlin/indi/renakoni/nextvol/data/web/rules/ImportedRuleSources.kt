@@ -385,6 +385,8 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext private val co
         Binding(installed, registration, broker, session, source)
     }
 
+    internal fun refreshDiscovery(id: Identifier) = registry.refreshDiscovery(id)
+
     internal suspend fun loginTarget(id: Identifier): RuleLoginTarget = withContext(Dispatchers.IO) {
         restore()
         lock.withLock {

@@ -408,9 +408,10 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val changed = state.getValue("values").jsonObject.mapValues { it.value.jsonPrimitive.content }
         form.validate(changed, allowAdditional = true)
         if (changed != submitted) saveLoginValues(changed.filter { (key, value) -> submitted[key] != value })
-        if (actions.any { it.jsonObject.string("kind") == "refresh" }) cachedLoginForm = null
+        val refreshDiscovery = actions.any { it.jsonObject.string("kind") == "refresh" }
+        if (refreshDiscovery) cachedLoginForm = null
         if (action == null) authority.authorized(identity) { check(session.write(StorageRequest(StorageArea.Account, "login/status", "authenticated")) is StorageResult.Value) }
-        LoginActionResult(refreshTargets.toSet(), messages.toList())
+        LoginActionResult(refreshTargets.toSet(), messages.toList(), refreshDiscovery)
     }
 
     /** Pages called with the same [query] share `cache.*Memory`; without one, memory lasts for this page only. */
