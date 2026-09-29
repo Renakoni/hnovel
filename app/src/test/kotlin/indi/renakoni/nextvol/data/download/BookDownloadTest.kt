@@ -1,5 +1,7 @@
 package indi.renakoni.nextvol.data.download
 
+import indi.renakoni.nextvol.data.export.ExportBookToEpubUseCase
+
 import android.app.Application
 import android.content.ContextWrapper
 import android.graphics.Bitmap
@@ -694,7 +696,8 @@ class BookDownloadTest {
             return indi.renakoni.nextvol.data.work.ExportBookToEPUBWork(context,
                 workerParameters(workDataOf("bookId" to a.storageKey, "exportType" to if (selected == null) "BOOK" else "VOLUMES",
                     "selectedVolume" to selected?.joinToString(",").orEmpty(), "includeImages" to images,
-                    "downloadGeneration" to downloads.generation())), books, progress, decoder, downloads).doWork()
+                    "downloadGeneration" to downloads.generation())),
+                ExportBookToEpubUseCase(context, books, progress, decoder, downloads)).doWork()
         } finally {
             io.mockk.unmockkObject(indi.renakoni.nextvol.data.work.EpubShareFiles)
         }

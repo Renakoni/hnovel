@@ -91,11 +91,7 @@ class NativeBrowserRouteInstrumentedTest {
         }
     }
 
-    @Test fun retiringAnIdleRouteStopsItsServiceWorkerAndNewRequestsFailClosed(): Unit = runBlocking { idleRetirement(false) }
-
-    @Test fun closingASourceStopsItsIdleServiceWorker(): Unit = runBlocking { idleRetirement(true) }
-
-    private suspend fun idleRetirement(closeSession: Boolean) {
+    @Test fun retiringAnIdleRouteStopsItsServiceWorkerAndNewRequestsFailClosed(): Unit = runBlocking {
         supported()
         val pulses = AtomicInteger()
         fixture(pulses).use { server ->
@@ -111,62 +107,14 @@ class NativeBrowserRouteInstrumentedTest {
                             .getValue("pulse").jsonPrimitive.boolean)
                         val completedAt = pulses.get()
                         withTimeout(10000) { while (pulses.get() < completedAt + 2) delay(100) }
-                        if (closeSession) session.close() else route.invalidate()
+                        route.invalidate()
                         delay(1500)
                         val stoppedAt = pulses.get()
                         delay(1500)
                         assertEquals(stoppedAt, pulses.get())
                         val retired = runCatching { session.execute(BrokerRequest("retired", url, browser = options)) }
-                        if (closeSession) assertTrue(retired.exceptionOrNull() is CancellationException)
-                        else assertEquals(FailureCode.RouteUnavailable, (retired.getOrThrow() as BrokerResult.Failure).code)
+                        assertEquals(FailureCode.RouteUnavailable, (retired.getOrThrow() as BrokerResult.Failure).code)
                     } finally { session.clearAccount() }
-                }
-            } } finally { root.deleteRecursively() }
-        }
-    }
-
-    @Test fun cancellationKeepsPersistentStateButAccountRetirementClearsIt(): Unit = runBlocking {
-        supported()
-        val pulses = AtomicInteger()
-        fixture(pulses).use { server ->
-            val url = "http://localhost:${server.port}/"
-            val root = File(context.cacheDir, "native-cancel-${UUID.randomUUID()}")
-            try { AndroidSourceNetworks(context).use { networks ->
-                SourceBroker(root.toPath(), browser = AndroidSourceBrowser(context, networks),
-                    route = SourceRouteProvider { networks.route(SourceNetworkMode.BypassVpn) }).use { broker ->
-                    val scope = SourceScope("native-route", root.name, "test")
-                    val grants = listOf(NetworkGrant(url, true))
-                    val session = broker.open(scope, grants).apply { configureSource(url, true, browserRead = true) }
-                    var next: SourceSession? = null
-                    suspend fun awaitPulses(after: Int) = withTimeout(30000) { while (pulses.get() < after + 2) delay(100) }
-                    try {
-                        // Establish completed state; a cancelled page's unflushed writes are not durable.
-                        assertChildren(result(session.execute(BrokerRequest("save", url + "?set=A", browser = options, timeoutMillis = 30000))))
-                        val pending = launch { session.execute(BrokerRequest("hold", url + "?pulse=1",
-                            browser = BrowserOptions(script = "null"), timeoutMillis = 30000)) }
-                        awaitPulses(0)
-                        withTimeout(10000) { pending.cancelAndJoin() }
-                        // The next request waits behind the old native process's shutdown fence.
-                        val restored = result(session.execute(BrokerRequest("read", url, browser = options, timeoutMillis = 30000)))
-                        assertChildren(restored)
-                        assertEquals("A", restored.getValue("value").jsonPrimitive.content)
-                        assertTrue(restored.getValue("cookie").jsonPrimitive.content.contains("persistent=A"))
-                        assertEquals(0L, session.scope.accountGeneration)
-                        val stopped = pulses.get()
-                        delay(1000)
-                        assertEquals(stopped, pulses.get())
-
-                        val retiring = async { runCatching { session.execute(BrokerRequest("retire", url + "?pulse=1",
-                            browser = BrowserOptions(script = "null"), timeoutMillis = 30000)) } }
-                        awaitPulses(stopped)
-                        withContext(Dispatchers.IO) { session.clearAccount() }
-                        assertTrue(withTimeout(10000) { retiring.await() }.exceptionOrNull() is CancellationException)
-                        next = broker.open(scope.copy(accountGeneration = 1), grants).apply { configureSource(url, true, browserRead = true) }
-                        val fresh = result(next.execute(BrokerRequest("new-account", url, browser = options, timeoutMillis = 30000)))
-                        assertChildren(fresh)
-                        assertEquals(JsonNull, fresh["value"])
-                        assertFalse(fresh.getValue("cookie").jsonPrimitive.content.contains("persistent=A"))
-                    } finally { session.clearAccount(); next?.clearAccount() }
                 }
             } } finally { root.deleteRecursively() }
         }

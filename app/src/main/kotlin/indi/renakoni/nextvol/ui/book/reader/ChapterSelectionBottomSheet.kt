@@ -79,7 +79,8 @@ fun ChapterSelectionBottomSheet(
     readingChapterId: String,
     onDismissRequest: () -> Unit,
     onClickChapter: (chapterId: String) -> Unit,
-    onChangeSelectedVolumeId: (volumeId: String) -> Unit
+    onChangeSelectedVolumeId: (volumeId: String) -> Unit,
+    directoryIncomplete: Boolean = false,
 ) {
     val lazyColumnState = rememberLazyListState()
     var autoScrolled by rememberSaveable(bookVolumes.bookId, readingChapterId) { mutableStateOf(false) }
@@ -136,6 +137,9 @@ fun ChapterSelectionBottomSheet(
                 Icon(painterResource(R.drawable.read_more_24px), contentDescription = null)
                 Text(stringResource(R.string.select_chapter), style = typography.displayMedium)
             }
+            if (directoryIncomplete) Text(stringResource(R.string.book_directory_incomplete),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 8.dp),
+                style = typography.bodyMedium, color = colorScheme.error)
             TextField(
                 value = query,
                 onValueChange = { query = it },

@@ -17,7 +17,7 @@ class FanqieSourceTest {
     private val original = checkNotNull(javaClass.getResourceAsStream("/known-sources/fanqie-taijiwang.json"))
         .bufferedReader(Charsets.UTF_8).use { it.readText() }
 
-    @Test fun urlAndBundledImportsShareOneStandardSourceWithoutAPlugin() = runBlocking {
+    @Test fun urlAndBundledImportsShareOneStandardSource() = runBlocking {
         RuleSourceFixture().use { fixture ->
             fixture.server.dispatcher = object : Dispatcher() {
                 override fun dispatch(request: RecordedRequest) = MockResponse()

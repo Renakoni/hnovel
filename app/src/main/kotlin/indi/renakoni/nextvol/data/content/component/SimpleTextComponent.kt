@@ -13,7 +13,7 @@ import io.nightfish.lightnovelreader.api.content.component.SimpleTextComponentDa
 import io.nightfish.lightnovelreader.api.userdata.UriUserData
 import io.nightfish.lightnovelreader.api.userdata.UserDataRepositoryApi
 
-// Retain the constructor used by plugin reflection; host rendering and measurement live in the UI layer.
+// Host rendering and measurement live in the UI layer.
 class SimpleTextComponent(
     data: SimpleTextComponentData,
     val userDataRepositoryApi: UserDataRepositoryApi,

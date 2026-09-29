@@ -114,10 +114,9 @@ no Lint report; the Actions step log remains the evidence in that case.
 | App Debug | Full Android Lint, including main/Debug resources and the configured test source analysis |
 | App translations | Default/en, Simplified Chinese, Traditional Chinese, generic Russian and existing ru-RU overrides; see [resource contracts](RESOURCE_CONTRACTS.md) |
 | `:api` | Dependency model/class information used by app analysis; no independent `:api:lintDebug` scan |
-| `:plugin:js` | Separate Android app; not included in this check |
 | `:benchmark` | Android test module, exercised by the existing minified device job; not independently linted |
 | App Release/snapshot/benchmark | No full variant Lint here; Release assembly/lintVital and minified runtime remain separate checks |
-| JVM source/EPUB/compiler modules | Existing JVM/build checks; not independent Android Lint targets |
+| JVM source/EPUB modules | Existing JVM/build checks; not independent Android Lint targets |
 
 The gate fails on Error/Fatal diagnostics outside the reviewed baseline. Warnings
 remain visible without requiring a mechanical cleanup of all existing warnings.

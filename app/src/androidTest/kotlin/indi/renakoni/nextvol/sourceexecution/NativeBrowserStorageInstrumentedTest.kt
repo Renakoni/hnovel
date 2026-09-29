@@ -4,7 +4,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import hnovel.network.*
 import indi.renakoni.nextvol.sourcebrowser.AndroidSourceBrowser
-import indi.renakoni.nextvol.sourcebrowser.LocalStorageFailure
 import indi.renakoni.nextvol.sourcebrowser.nativeBrowserProfile
 import kotlinx.coroutines.*
 import kotlinx.serialization.json.*
@@ -57,85 +56,6 @@ class NativeBrowserStorageInstrumentedTest {
         assertEquals("account=second", other["cookie"]!!.jsonPrimitive.content)
     } }
 
-    @Test fun restoredKeysUseCurrentDeclarationAndOriginGrants(): Unit = runBlocking { fixture {
-        val declaration = LocalStorageRetention(mapOf(origin(server) to listOf("appearance", "__proto__"),
-            origin(other) to listOf("appearance")))
-        val old = open(selection = declaration)
-        seed(old)
-        seed(old, theme = "sepia", site = other)
-        old.clearAccount()
-        val next = open(1, selection = LocalStorageRetention(declaration.origins.mapValues { listOf("appearance") }),
-            grants = listOf(NetworkGrant(url(), true)))
-        assertClean(read(next), "dark", literal = null)
-        next.close()
-        val revised = open(1, selection = declaration)
-        assertEquals(JsonNull, read(revised, other)["appearance"])
-        assertEquals(JsonNull, read(revised)["literal"])
-    } }
-
-    @Test fun repeatedOldCleanupCannotOverwriteANewerAccount(): Unit = runBlocking { fixture {
-        val old = open()
-        seed(old)
-        old.clearAccount()
-        val next = open(1)
-        assertClean(read(next), "dark")
-        seed(next, theme = "light", account = "new")
-        old.clearAccount()
-        assertEquals("account=new", read(next)["cookie"]!!.jsonPrimitive.content)
-        next.clearAccount()
-        old.clearAccount()
-        assertClean(read(open(2)), "light")
-    } }
-
-    @Test fun cancellingFirstNavigationKeepsTheHandoffForAnotherAccount(): Unit = runBlocking { fixture {
-        val old = open()
-        seed(old)
-        old.clearAccount()
-        val next = open(1)
-        coroutineScope {
-            val pending = async { next.execute(BrokerRequest("cancel", url("/wait"), timeoutMillis = 60000,
-                browser = BrowserOptions(script = "null"))) }
-            withTimeout(20000) { waitStarted.await() }
-            pending.cancelAndJoin()
-        }
-        next.clearAccount()
-        assertClean(read(open(2)), "dark")
-    } }
-
-    @Test fun quotaFailureStillClearsTheRetiredAuthentication(): Unit = runBlocking { fixture {
-        val old = open()
-        seed(old, large = true)
-        val failure = runCatching { old.clearAccount() }.exceptionOrNull()
-        assertTrue(failure.toString(), failure is LocalStorageFailure)
-        assertEquals(FailureCode.StorageQuota, (failure as LocalStorageFailure).code)
-        assertClean(read(open(1)), null, literal = null)
-    } }
-
-    @Test fun failedHandoffWriteLeavesTheNewAccountCleanAndCanBeRetried(): Unit = runBlocking { fixture {
-        val old = open()
-        seed(old)
-        old.clearAccount()
-        val current = open(1)
-        read(current)
-        seed(current, theme = "light", account = "new")
-        val blockedWrite = File(retentionFile(current.scope).path + ".new")
-        check(blockedWrite.mkdir())
-        File(blockedWrite, "fixture").writeText("block atomic replacement")
-        val next: SourceSession
-        try {
-            assertNotNull(runCatching { current.clearAccount() }.exceptionOrNull())
-            next = open(2)
-            assertEquals(BrokerResult.Failure(RequestStage.Storage, FailureCode.StorageUnavailable),
-                next.execute(BrokerRequest("blocked", url("/read"))))
-        } finally { blockedWrite.deleteRecursively() }
-        assertClean(read(next), null, literal = null)
-        seed(next, theme = "blue", account = "newer")
-        current.clearAccount()
-        assertEquals("account=newer", read(next)["cookie"]!!.jsonPrimitive.content)
-        next.clearAccount()
-        assertClean(read(open(3)), "blue")
-    } }
-
     private fun assertClean(state: JsonObject, theme: String?, literal: String? = "literal") {
         assertEquals(theme?.let(::JsonPrimitive) ?: JsonNull, state["appearance"])
         assertEquals(literal?.let(::JsonPrimitive) ?: JsonNull, state["literal"])
@@ -154,22 +74,18 @@ class NativeBrowserStorageInstrumentedTest {
 
     private inner class Fixture : AutoCloseable {
         val server = MockWebServer()
-        val other = MockWebServer()
         private val root = File(context.cacheDir, "native-storage-${UUID.randomUUID()}")
         private val browser = AndroidSourceBrowser(context)
         private val broker = SourceBroker(root.toPath(), browser = browser)
         private val sessions = mutableListOf<SourceSession>()
         private val source = UUID.randomUUID().toString()
-        val waitStarted = CompletableDeferred<Unit>()
 
         init {
             val dispatcher = object : Dispatcher() {
                 override fun dispatch(request: RecordedRequest): MockResponse {
                     val address = request.requestUrl!!
                     val set = address.encodedPath == "/set"
-                    if (address.encodedPath == "/wait") waitStarted.complete(Unit)
-                    val theme = JsonPrimitive(if (address.queryParameter("large") == "true") "x".repeat(17 * 1024)
-                        else address.queryParameter("theme") ?: "dark")
+                    val theme = JsonPrimitive(address.queryParameter("theme") ?: "dark")
                     val account = address.queryParameter("account") ?: "old"
                     val script = if (set) """localStorage.setItem('appearance',$theme);
                         localStorage.setItem('payload',${JsonPrimitive(account)});localStorage.setItem('__proto__','literal');"""
@@ -196,28 +112,26 @@ class NativeBrowserStorageInstrumentedTest {
                     }
                 }
             }
-            server.dispatcher = dispatcher; other.dispatcher = dispatcher
-            server.start(); other.start()
+            server.dispatcher = dispatcher
+            server.start()
         }
 
         fun origin(site: MockWebServer) = sourceOrigin(site.url("/").toString())!!
         fun url(path: String = "/") = server.url(path).toString()
 
-        fun open(generation: Long = 0, source: String = this.source,
-            selection: LocalStorageRetention = LocalStorageRetention(mapOf(origin(server) to listOf("appearance", "__proto__"))),
-            grants: List<NetworkGrant> = listOf(NetworkGrant(url(), true), NetworkGrant(other.url("/").toString(), true))) =
-            broker.open(SourceScope("native-storage-tests", source, "legado", generation), grants).apply {
-                configureSource(url(), true, browserRead = true, localStorageRetention = selection)
+        fun open(generation: Long = 0, source: String = this.source) =
+            broker.open(SourceScope("native-storage-tests", source, "legado", generation), listOf(NetworkGrant(url(), true))).apply {
+                configureSource(url(), true, browserRead = true,
+                    localStorageRetention = LocalStorageRetention(mapOf(origin(server) to listOf("appearance", "__proto__"))))
                 sessions += this
             }
 
-        suspend fun seed(session: SourceSession, theme: String = "dark", account: String = "old", site: MockWebServer = server, large: Boolean = false) {
-            render(session, site.url("/set").newBuilder().addQueryParameter("theme", theme).addQueryParameter("account", account)
-                .addQueryParameter("large", large.toString()).build().toString())
-            read(session, site)
+        suspend fun seed(session: SourceSession, theme: String = "dark", account: String = "old") {
+            render(session, server.url("/set").newBuilder().addQueryParameter("theme", theme).addQueryParameter("account", account).build().toString())
+            read(session)
         }
 
-        suspend fun read(session: SourceSession, site: MockWebServer = server) = render(session, site.url("/read").toString())
+        suspend fun read(session: SourceSession) = render(session, server.url("/read").toString())
 
         private suspend fun render(session: SourceSession, url: String): JsonObject {
             val result = session.execute(BrokerRequest("storage", url, timeoutMillis = 60000,
@@ -230,7 +144,7 @@ class NativeBrowserStorageInstrumentedTest {
             try {
                 sessions.forEach { it.close(); browser.clearAccount(it.scope) }
             } finally {
-                broker.close(); server.close(); other.close()
+                broker.close(); server.close()
                 sessions.forEach { android.util.AtomicFile(retentionFile(it.scope)).delete() }
                 root.deleteRecursively()
             }

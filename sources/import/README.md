@@ -25,9 +25,8 @@ and fractional numbers remain invalid for this field.
 The format adapter recognizes Legado JSON; profiles use the identifiers from the
 compatibility manifest. The extension profile is an explicit caller choice, not
 inferred from the display name or advertised as a fully supported execution dialect.
-Further formats supply another SourceFormatAdapter. APK/lnrp names and ZIP package
-signatures are rejected, including renamed packages; no installer or script engine
-is available to the importer.
+The importer parses JSON source definitions only; it does not install packages
+or execute scripts.
 
 Candidates show existing exact identities, possible name/key matches, duplicate
 indexes, retained enable flags and notices. External customOrder is preserved in

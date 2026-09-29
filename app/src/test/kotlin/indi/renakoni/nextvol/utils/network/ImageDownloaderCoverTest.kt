@@ -2,7 +2,6 @@ package indi.renakoni.nextvol.utils.network
 
 import android.app.Application
 import android.net.Uri
-import androidx.work.ListenableWorker
 import com.github.michaelbull.result.Err
 import indi.renakoni.nextvol.data.book.BookIdentity
 import indi.renakoni.nextvol.utils.DefaultBookCoverRenderer
@@ -36,10 +35,10 @@ class ImageDownloaderCoverTest {
         mockkObject(ImageUtils)
         coEvery { ImageUtils.uriToBitmap(any(), any(), any(), any(), any(), false) } returns Err(IOException("fixture"))
         val fallback = DefaultBookCoverRenderer.Text(book.storageKey, "A book", "An author")
-        assertEquals(ListenableWorker.Result.success(), ImageDownloader(context, book,
+        assertTrue(ImageDownloader(context, book,
             listOf(ImageDownloader.Task(cover, uri, true, fallback))) { _, _ -> }.run())
         assertTrue(cover.length() > 0)
-        assertEquals(ListenableWorker.Result.failure(), ImageDownloader(context, book,
+        assertFalse(ImageDownloader(context, book,
             listOf(ImageDownloader.Task(body, uri))) { _, _ -> }.run())
         assertFalse(body.exists())
         coEvery { ImageUtils.uriToBitmap(any(), any(), any(), any(), any(), false) } returns Err(CancellationException("cancelled result"))

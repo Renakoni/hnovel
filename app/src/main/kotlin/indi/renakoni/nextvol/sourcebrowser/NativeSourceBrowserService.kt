@@ -287,7 +287,7 @@ class NativeSourceBrowserService : Service() {
                 allowUniversalAccessFromFileURLs = false
                 mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
                 cacheMode = WebSettings.LOAD_DEFAULT
-                configureSourceUserAgent(job, host)
+                configureSourceUserAgent(job, host, view.context)
                 javaScriptCanOpenWindowsAutomatically = false
                 setSupportMultipleWindows(false)
                 mediaPlaybackRequiresUserGesture = true
@@ -469,9 +469,7 @@ class NativeSourceBrowserService : Service() {
             val parsed = checkNotNull(url.toHttpUrlOrNull())
             val completeMetadata = WebViewFeature.isFeatureSupported(WebViewFeature.GET_COOKIE_INFO)
             val values = if (completeMetadata) {
-                CookieManagerCompat.getCookieInfo(manager, url).filterNot { value ->
-                    value.split(';').any { it.trim().equals("Partitioned", true) }
-                }
+                CookieManagerCompat.getCookieInfo(manager, url)
             } else {
                 // Older WebViews expose only a request header. Keep this handoff in memory,
                 // host-only and no broader than the queried path; never invent an expiry.
@@ -484,8 +482,7 @@ class NativeSourceBrowserService : Service() {
                         .apply { if (parsed.isHttps) secure() }.build().toString()
                 }
             }
-            require(values.size <= 256 && values.sumOf(String::length) <= 65536)
-            return NativeCookieSnapshot(url, values, completeMetadata)
+            return nativeCookieSnapshot(url, values, completeMetadata, job.observeUserAgent)
         }
 
         fun finish(result: BrokerResult) {
@@ -497,7 +494,7 @@ class NativeSourceBrowserService : Service() {
                 val urls = listOf(job.request.url, result.response.finalUrl).mapNotNull { it.toHttpUrlOrNull() }
                     .flatMap { listOf(it.newBuilder().encodedPath("/").query(null).fragment(null).build().toString(),
                         it.newBuilder().query(null).fragment(null).build().toString()) }.distinct()
-                BrowserWire.read(host.call("cookies", Json.encodeToString(urls.map(::cookies))))
+                BrowserWire.read(host.call("cookies", nativeCookieSnapshotPayload(urls.map(::cookies))))
                 result
             } catch (_: Exception) { BrokerResult.Failure(RequestStage.Storage, FailureCode.StorageUnavailable) }
             else result

@@ -52,16 +52,18 @@ fun CheckBoxListItem(
         containerColor = Color.Transparent
     ),
     checked: Boolean,
+    enabled: Boolean = true,
     onCheckedChange: (Boolean) -> Unit,
 ) {
     ListItem(
-        modifier = modifier.clickable { onCheckedChange(!checked) },
+        modifier = modifier.clickable(enabled = enabled) { onCheckedChange(!checked) },
         title = title,
         colors = colors,
         supportingText = supportingText,
     ) {
         Checkbox(
             checked = checked,
+            enabled = enabled,
             onCheckedChange = onCheckedChange
         )
     }

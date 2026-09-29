@@ -7,7 +7,6 @@ import kotlinx.serialization.Serializable
     val totalBytes: Long = 0L,
     val appBytes: Long = 0L,
     val databaseDiskBytes: Long = 0L,
-    val pluginBytes: Long = 0L,
     val cacheBytes: Long = 0L,
     val otherFileBytes: Long = 0L,
     val allBookMetadataBytes: Long = 0L,

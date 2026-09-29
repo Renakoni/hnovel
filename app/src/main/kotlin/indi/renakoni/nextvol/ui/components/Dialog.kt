@@ -73,12 +73,13 @@ import kotlin.math.round
 fun BaseDialog(
     icon: Painter,
     title: String,
-    description: String,
+    description: String = "",
     onDismissRequest: () -> Unit,
     onConfirmation: () -> Unit,
     dismissText: String,
     confirmationText: String,
     confirmationEnabled: Boolean = true,
+    dismissEnabled: Boolean = true,
     content: @Composable ColumnScope.() -> Unit
 ) {
     BaseDialog(
@@ -95,7 +96,8 @@ fun BaseDialog(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             TextButton(
-                onClick = onDismissRequest
+                onClick = onDismissRequest,
+                enabled = dismissEnabled
             ) {
                 Text(
                     text = dismissText,
@@ -119,7 +121,7 @@ fun BaseDialog(
 fun BaseDialog(
     icon: Painter,
     title: String,
-    description: String,
+    description: String = "",
     onDismissRequest: () -> Unit,
     content: @Composable ColumnScope.() -> Unit
 ) {
@@ -147,16 +149,18 @@ fun BaseDialog(
                 fontWeight = FontWeight.W500,
             )
             Box(Modifier.height(16.dp))
-            Text(
-                modifier = Modifier
-                    .sizeIn(minWidth = 280.dp, maxWidth = 560.dp)
-                    .padding(horizontal = 24.dp),
-                textAlign = TextAlign.Start,
-                text = description,
-                style = typography.labelLarge,
-                color = colorScheme.onSurfaceVariant
-            )
-            Box(Modifier.height(16.dp))
+            if (description.isNotBlank()) {
+                Text(
+                    modifier = Modifier
+                        .sizeIn(minWidth = 280.dp, maxWidth = 560.dp)
+                        .padding(horizontal = 24.dp),
+                    textAlign = TextAlign.Start,
+                    text = description,
+                    style = typography.labelLarge,
+                    color = colorScheme.onSurfaceVariant
+                )
+                Box(Modifier.height(16.dp))
+            }
             content.invoke(this)
         }
     }

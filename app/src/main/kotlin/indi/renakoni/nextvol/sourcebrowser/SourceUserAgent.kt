@@ -1,14 +1,17 @@
 package indi.renakoni.nextvol.sourcebrowser
 
+import android.content.Context
 import android.webkit.WebSettings
 import androidx.webkit.UserAgentMetadata
 import androidx.webkit.WebSettingsCompat
+import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import hnovel.network.RequestEvidence
 import hnovel.network.RequestObservation
 import hnovel.network.UserAgentMetadataStatus
 import hnovel.network.UserAgentSummary
 import hnovel.network.WebViewUserAgentDiagnostic
+import hnovel.network.WebViewEnvironmentDiagnostic
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
@@ -50,16 +53,23 @@ internal fun sourceUserAgentMetadataStatus(value: String, supported: Boolean, up
 }
 
 /** Trusted service-only callback. PageBridge's public whitelist deliberately excludes it. */
-internal fun WebSettings.configureSourceUserAgent(job: BrowserJob, host: IBrowserHost) {
+internal fun WebSettings.configureSourceUserAgent(job: BrowserJob, host: IBrowserHost, context: Context) {
     val requested = job.request.headers.entries.firstOrNull { it.key.equals("User-Agent", true) }?.value
     val status = requested?.let { applySourceUserAgent(it) } ?: UserAgentMetadataStatus.ProviderDefault
-    if (job.observeUserAgent) reportSourceUserAgent(host, this, requested, status)
+    if (job.observeUserAgent) reportSourceUserAgent(host, this, requested, status) {
+        val provider = WebViewCompat.getCurrentWebViewPackage(context)
+        WebViewEnvironmentDiagnostic(provider?.packageName, provider?.versionName,
+            WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA),
+            WebViewFeature.isFeatureSupported(WebViewFeature.GET_COOKIE_INFO))
+    }
 }
 
-internal fun reportSourceUserAgent(host: IBrowserHost, settings: WebSettings, requested: String?, status: UserAgentMetadataStatus) {
+internal fun reportSourceUserAgent(host: IBrowserHost, settings: WebSettings, requested: String?, status: UserAgentMetadataStatus,
+    environment: () -> WebViewEnvironmentDiagnostic? = { null }) {
     runCatching {
         val effective = settings.userAgentString
-        val diagnostic = WebViewUserAgentDiagnostic(status, UserAgentSummary.from(effective), requested?.let { it == effective })
+        val diagnostic = WebViewUserAgentDiagnostic(status, UserAgentSummary.from(effective), requested?.let { it == effective },
+            runCatching(environment).getOrNull())
         BrowserWire.read(host.call("userAgentDiagnostic", Json.encodeToString(diagnostic)), 2048)
     }
 }

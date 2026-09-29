@@ -6,16 +6,20 @@ import android.util.Log
 import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import androidx.work.workDataOf
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import indi.renakoni.nextvol.data.backup.BackupArchive
+import indi.renakoni.nextvol.data.backup.BackupContent
+import indi.renakoni.nextvol.data.backup.BackupException
+import indi.renakoni.nextvol.data.backup.BackupFiles
+import indi.renakoni.nextvol.data.backup.BackupKind
 import indi.renakoni.nextvol.data.local.LocalDataManager
 import indi.renakoni.nextvol.data.local.cbor.AppLocalData
 import indi.renakoni.nextvol.data.local.cbor.LocalData
 import indi.renakoni.nextvol.data.local.room.dao.BookshelfDao
-import indi.renakoni.nextvol.utils.writeAppLocalData
-import kotlinx.serialization.ExperimentalSerializationApi
-import kotlinx.serialization.cbor.Cbor
-import kotlinx.serialization.encodeToByteArray
+import kotlinx.coroutines.CancellationException
+import java.io.IOException
 
 @HiltWorker
 class SaveBookshelfWork @AssistedInject constructor(
@@ -28,7 +32,6 @@ class SaveBookshelfWork @AssistedInject constructor(
         const val TAG = "ExportDataWork"
     }
 
-    @OptIn(ExperimentalSerializationApi::class)
     override suspend fun doWork(): Result {
         val id = inputData.getInt("bookshelfId", -1)
         val uri = inputData.getString("uri")?.let(Uri::parse) ?: return Result.failure()
@@ -63,15 +66,19 @@ class SaveBookshelfWork @AssistedInject constructor(
             globalLocalData = LocalData.empty()
         )
         try {
-            requireNotNull(applicationContext.contentResolver.openOutputStream(uri, "wt")) { "Cannot open backup destination" }
-                .use {
-                    it.writeAppLocalData(Cbor.encodeToByteArray(appLocalData))
-                }
+            localDataManager.validateBackup(appLocalData)
+            val manifest = BackupArchive.manifest(BackupKind.BOOKSHELF, setOf(BackupContent.BOOKSHELF))
+            BackupFiles.write(applicationContext.cacheDir, appLocalData, manifest) {
+                applicationContext.contentResolver.openOutputStream(uri, "wt")
+                    ?: throw IOException("Cannot open backup destination")
+            }
             return Result.success()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             Log.e(TAG, "Failed to save file")
             e.printStackTrace()
-            return Result.failure()
+            return Result.failure(workDataOf(BackupException.ERROR_KEY to (e as? BackupException)?.reason?.name))
         }
     }
 }

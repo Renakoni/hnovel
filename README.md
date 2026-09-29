@@ -29,14 +29,10 @@ NextVol <sup>*重构版*</sup> 是一款开源的轻小说阅读软件，使用 
 - 将书本导出为 EPUB 文件
 - 热情的开发者，还有更多…
 
-## 插件开发与自定义数据源
+## 自定义书源
 
-您可以为 NextVol 添加自定义的数据源与插件
-
-以下为相关资源链接
-- [示例插件](https://github.com/dmzz-yyhyy/LightNovelReaderPlguin-Template)
-- [开发指南](https://lnr.nariko.org/plugin-dev/)
-- [LNR Api KDoc](https://api-doc.lnr.nariko.org/)
+在设置的书源管理中，可通过链接、本地文件或粘贴文本导入 JSON 规则书源。
+支持范围见[书源导入说明](sources/import/README.md)。
 
 
 欢迎各位开发者进行开发!
@@ -125,6 +121,6 @@ Copyright (C) 2024 by yukonisen <yukonisen@curiousers.org>
 - `app/`：Android 应用。
 - `sources/`：书源解析、网络、执行、导入、正文与在线朗读模块。
 - `tests/`：书源兼容性及 Android UI/性能测试。
-- `api/`、`plugin/`、`epub/`、`compiler/`：公共 API、插件、导出与编译支持。
+- `api/`、`epub/`：内部共享接口与 EPUB 导出支持。
 
 本地调研、交接和截图放在被忽略的 `.local/`，不提交测试运行报告或个人配置。

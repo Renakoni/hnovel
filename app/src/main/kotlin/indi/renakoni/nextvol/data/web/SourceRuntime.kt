@@ -10,6 +10,7 @@ import indi.renakoni.nextvol.data.web.proxy.ProxyPriorityWebBookDataSource
 import indi.renakoni.nextvol.data.explore.PagedSearchProvider
 import indi.renakoni.nextvol.data.explore.SearchPage
 import io.nightfish.lightnovelreader.api.book.ChapterContent
+import io.nightfish.lightnovelreader.api.book.BookInformation
 import io.nightfish.lightnovelreader.api.book.Volume
 import io.nightfish.lightnovelreader.api.util.Cache
 import io.nightfish.lightnovelreader.api.web.WebBookDataSource
@@ -29,7 +30,7 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
-/** One registration generation. New callers never need a global provider or plugin manager. */
+/** One registration generation, resolved by source identity rather than a global provider. */
 class SourceRuntime internal constructor(
     val metadata: SourceMetadata,
     private val source: WebBookDataSource,
@@ -112,6 +113,11 @@ class SourceRuntime internal constructor(
 
     suspend fun getBookInformation(bookId: String, priority: WebDataSourcePriority = WebDataSourcePriority.Default, refresh: Boolean = false) =
         execute { cached.getBookInformation(bookId, priority, refresh) }
+
+    internal suspend fun bookInformationForDisplay(bookId: String, information: BookInformation) = execute {
+        (source as? indi.renakoni.nextvol.data.web.rules.RuleWebBookDataSource)
+            ?.informationForDisplay(bookId, information) ?: information
+    }
 
     /** Only the imported-rule adapter can propose a remote alias; source identity stays host-owned. */
     internal suspend fun canonicalBookId(bookId: String): String = execute {

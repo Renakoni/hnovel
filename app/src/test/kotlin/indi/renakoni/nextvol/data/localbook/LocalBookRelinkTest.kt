@@ -24,7 +24,7 @@ import indi.renakoni.nextvol.data.reading.RepositoryReaderRecordStore
 import indi.renakoni.nextvol.data.userdata.UserDataRepository
 import indi.renakoni.nextvol.data.work.SaveBookshelfWork
 import indi.renakoni.nextvol.data.work.workerParameters
-import indi.renakoni.nextvol.utils.readAppLocalData
+import indi.renakoni.nextvol.data.backup.BackupFiles
 import io.nightfish.lightnovelreader.api.userdata.UserDataPath
 import io.mockk.mockk
 import kotlinx.coroutines.CancellationException
@@ -171,7 +171,7 @@ class LocalBookRelinkTest {
             workerParameters(workDataOf("bookshelfId" to shelf.id, "uri" to uri.toString())),
             old.backup, old.db.bookshelfDao())
         assertEquals(ListenableWorker.Result.success(), worker.doWork())
-        val data = Cbor.decodeFromByteArray<AppLocalData>(output.toByteArray().inputStream().readAppLocalData())
+        val data = BackupFiles.read(RuntimeEnvironment.getApplication().cacheDir) { output.toByteArray().inputStream() }
         val target = Library("new")
         target.restore(data)
         val preview = target.preview(book, file)
