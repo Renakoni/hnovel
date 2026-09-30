@@ -14,6 +14,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
@@ -25,6 +26,7 @@ import androidx.compose.ui.text.font.createFontFamilyResolver
 import androidx.compose.ui.text.intl.LocaleList
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -259,12 +261,23 @@ class ReaderSpacingInstrumentedTest {
     }
 
     @Test fun realPagerUsesTheRoundedAsymmetricBodyWidthAtFractionalDensity() {
-        ReflowFixture(PaddingValues(start = 7.3.dp, end = 12.7.dp, top = 9.4.dp, bottom = 15.2.dp), Density(1.3f))
-        compose.waitForIdle()
-        val expectedWidth = with(Density(1.3f)) { 320.dp.roundToPx() - 7.3.dp.roundToPx() - 12.7.dp.roundToPx() }
-        val layouts = visibleTextLayouts()
-        assertTrue(layouts.isNotEmpty())
-        layouts.forEach { assertEquals(expectedWidth, it.layoutInput.constraints.maxWidth) }
+        val fixture = ReflowFixture(PaddingValues(start = 7.3.dp, end = 12.7.dp, top = 9.4.dp, bottom = 15.2.dp), Density(1.3f))
+        fun assertBodyWidth() {
+            compose.waitForIdle()
+            // The window can constrain the requested 320dp host at this test density.
+            assertTrue(fixture.measuredHostSize.width > 0)
+            val expectedWidth = with(Density(1.3f)) {
+                fixture.measuredHostSize.width - 7.3.dp.roundToPx() - 12.7.dp.roundToPx()
+            }
+            val layouts = visibleTextLayouts()
+            assertTrue(layouts.isNotEmpty())
+            layouts.forEach { assertEquals(expectedWidth, it.layoutInput.constraints.maxWidth) }
+        }
+        assertBodyWidth()
+        val previousPager = fixture.flip.pagerState
+        compose.runOnIdle { fixture.width = 240.dp }
+        compose.waitUntil(15_000) { fixture.flip.pagerState !== previousPager }
+        assertBodyWidth()
     }
 
     @Test fun zeroHeightWaitsWithoutPublishingAnEmptyPagerAndRestoresTheAnchor() {
@@ -297,6 +310,8 @@ class ReaderSpacingInstrumentedTest {
         }
         var width by mutableStateOf(320.dp)
         var height by mutableStateOf(420.dp)
+        var measuredHostSize = IntSize.Zero
+            private set
         var pagerUpdates = 0
 
         init {
@@ -308,7 +323,7 @@ class ReaderSpacingInstrumentedTest {
                         LocalAppTheme provides AppTheme(false, colors),
                         LocalReaderTextLayout provides rememberReaderTextLayout(settings),
                     ) {
-                        Box(Modifier.width(width).height(height)) {
+                        Box(Modifier.width(width).height(height).onSizeChanged { measuredHostSize = it }) {
                             FlipPageContentComponent(Modifier, flip, settings, padding, {}, {}, {})
                         }
                     }
