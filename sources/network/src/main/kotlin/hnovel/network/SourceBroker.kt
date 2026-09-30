@@ -765,6 +765,7 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
     @Synchronized override fun close() {
         lifetime.cancel()
         denied.clear()
+        valuesCache.release()
         certificates.close()
         if (client.isInitialized()) client.value.dispatcher.cancelAll()
         routeClients.forEach { (key, transport) -> key.first.detach(transport.connectionPool) }
@@ -780,10 +781,14 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
 internal class ValueCache(private val limits: BrokerLimits, private val storage: SourceStorage,
     private val nowMillis: () -> Long = System::currentTimeMillis) {
     @Serializable private data class Entry(val value: String, val deadline: Long)
+    private var snapshot: String? = null
+    private var decoded: MutableMap<String, Entry>? = null
 
     @Synchronized fun read(key: String): StorageResult = access { entries -> StorageResult.Value(entries[key]?.value) }
 
-    @Synchronized fun clear(): StorageResult = storage.clear()
+    @Synchronized fun release() { snapshot = null; decoded = null; storage.releaseReadSnapshot() }
+
+    @Synchronized fun clear(): StorageResult { release(); return storage.clear() }
 
     @Synchronized fun write(request: StorageRequest): StorageResult = access { entries ->
         if (request.value == null) entries.remove(request.key)
@@ -795,21 +800,28 @@ internal class ValueCache(private val limits: BrokerLimits, private val storage:
                 return@access StorageResult.Failure(FailureCode.StorageQuota)
             entries[request.key] = Entry(request.value, if (ttl == 0L) 0 else Math.addExact(nowMillis(), ttl))
         }
-        when (val saved = storage.write("entries", Json.encodeToString(entries))) {
-            is StorageResult.Failure -> saved
-            is StorageResult.Value -> StorageResult.Value(request.value)
+        val encoded = Json.encodeToString(entries)
+        when (val saved = storage.write("entries", encoded)) {
+            is StorageResult.Failure -> { release(); saved }
+            is StorageResult.Value -> { snapshot = encoded; StorageResult.Value(request.value) }
         }
     }
 
     private inline fun access(block: (MutableMap<String, Entry>) -> StorageResult): StorageResult {
-        val stored = storage.read("entries")
-        if (stored !is StorageResult.Value) return stored
+        val stored = storage.read("entries", reuse = true)
+        if (stored !is StorageResult.Value) { release(); return stored }
         return try {
-            val entries = stored.value?.let { Json.decodeFromString<Map<String, Entry>>(it).toMutableMap() } ?: linkedMapOf()
+            // Re-read storage so replacement, deletion and failures remain visible across sessions.
+            // Reuse only the decoded snapshot; a small key must not repeatedly parse the entire cache.
+            val entries = decoded?.takeIf { snapshot == stored.value } ?:
+                (stored.value?.let { Json.decodeFromString<Map<String, Entry>>(it).toMutableMap() } ?: linkedMapOf()).also {
+                    decoded = it
+                }
+            snapshot = stored.value
             val now = nowMillis()
             entries.entries.removeAll { it.value.deadline != 0L && it.value.deadline <= now }
             block(entries)
-        } catch (_: Exception) { StorageResult.Failure(FailureCode.StorageUnavailable) }
+        } catch (_: Exception) { release(); StorageResult.Failure(FailureCode.StorageUnavailable) }
     }
 }
 
