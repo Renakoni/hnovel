@@ -9,7 +9,6 @@
     <string name="discovery_error_type">Тип ошибки: %1$s</string>
     <string name="discovery_apply">Применить</string>
     <string name="discovery_rule_field">Правило источника: %1$s</string>
-    <string name="discovery_source_action">Действие источника</string>
     <string name="discovery_load_more">Загрузить ещё</string>
     <string name="discovery_no_books">Нет книг, соответствующих фильтрам.</string>
     <string name="discovery_preview_empty">В этом списке пока нет книг.</string>

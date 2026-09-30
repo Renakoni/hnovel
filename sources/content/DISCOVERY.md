@@ -44,6 +44,12 @@ An explicit `homepageModules` declaration instead selects up to 64 homepage modu
 each with a six-book preview. Direct module URLs do not require remote categories;
 legacy `kindTitle` references still resolve against the category catalogue. Homepage
 and category routes retain separate ownership and values.
+Modules with `optional: true` may omit a `kindTitle` category hidden by source settings.
+An empty selection remains an empty homepage, without automatic-feed fallback; duplicate
+matches and empty targets still fail validation. Static capability checks do not evaluate
+these settings-dependent categories or hide their homepage tab.
+Successful login-panel refresh actions invalidate only that source's discovery version
+and resolved feed capability. Account sessions and reading runtimes remain unchanged.
 
 Static capability checks share the catalogue parser and semantic classifier with the
 runtime. Direct homepage modules work without `exploreUrl`; empty static catalogues
@@ -198,10 +204,10 @@ colors, and reader font size/line height/weight. This is not the complete Androi
 reference configuration object or its local paths. Result actions cannot select another
 source or an arbitrary Android destination. Unknown actions/config keys are rejected.
 
-`customButton` and `eventListener` are booleans, not executable strings. Enabling the
-source button requires the event flag and `ruleContent.callBackJs`. Click and long-click
-run that callback with `event = clickCustomButton` / `longClickCustomButton`, `result`
-empty, and `book`/`chapter` null. The button is exposed in the source's catalogue controls.
+Legacy `customButton` and `eventListener` booleans remain accepted as import metadata.
+They do not create catalogue controls or grant discovery capability. The host no longer
+synthesizes a source-action button or dispatches its click/long-click lifecycle callbacks.
+Explicit catalogue controls keep their own declared actions.
 Reader, shelf, and detail lifecycle callback integration is not part of this
 discovery/settings adapter; no arbitrary event bus or custom page DSL is installed.
 

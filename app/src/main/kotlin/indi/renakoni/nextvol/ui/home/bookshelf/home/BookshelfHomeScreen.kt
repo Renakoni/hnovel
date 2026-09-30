@@ -1,6 +1,7 @@
 package indi.renakoni.nextvol.ui.home.bookshelf.home
 
 import android.widget.Toast
+import indi.renakoni.nextvol.utils.textToast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.layout.Column
@@ -99,7 +100,7 @@ fun BookshelfHomeScreen(
                                 .startChooser()
                         }
                         WorkInfo.State.FAILED -> {
-                            Toast.makeText(context, backupFailureMessage(it?.outputData, R.string.backup_export_failed), Toast.LENGTH_LONG).show()
+                            textToast(context, backupFailureMessage(it?.outputData, R.string.backup_export_failed), Toast.LENGTH_LONG).show()
                         }
 
                         else -> return@collect

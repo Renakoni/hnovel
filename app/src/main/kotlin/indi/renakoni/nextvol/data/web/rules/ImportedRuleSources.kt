@@ -43,6 +43,7 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext private val co
     private val directory = File(context.filesDir, "rule-sources")
     val definitions by lazy { SourceDefinitionStore(File(directory, "definitions").toPath()) }
     val importer by lazy { SourceDefinitionImporter(definitions) }
+    private val pixivBlocking by lazy { PixivUpdateAdapter(catalog) }
     private val committed = AtomicFile(File(directory, "active.json"))
     private val lock = Mutex()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -357,7 +358,9 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext private val co
         }
         val broker = SourceBroker(File(directory, "runtime").toPath(), cipher = storageCipher, browser = browser,
             route = networkSettings?.forSource(id))
-        val session = try { broker.open(SourceScope(id.namespace, id.id, definition.profile, generation), installed.origins) }
+        val session = try { broker.open(SourceScope(id.namespace, id.id, definition.profile, generation), installed.origins).also {
+            if (pixivBlocking.accepts(definition)) PixivPreferenceStore.read(it)
+        } }
             catch (failure: Exception) { broker.close(); throw failure }
         val ticket = authority.issue(id.id, definition.profile, definition.contentDigest, id.namespace, generation)
         val trace = if (!indi.renakoni.nextvol.BuildConfig.DEBUG) hnovel.content.ContentTrace.None else hnovel.content.ContentTrace { event ->
@@ -381,14 +384,17 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext private val co
         }
         val recovery = verification?.let { RuleRequestRecovery(it,
             VerificationOwner(id, definition.contentDigest, generation), definition.displayName) }
+        val pixivFilter = if (pixivBlocking.accepts(definition)) PixivBookFilter(session) else null
         val registration = try {
             val oldRegistration = previous?.registration
-            if (oldRegistration == null) { publish(); registry.register(RuleWebBookDataSource(id, source, recovery), metadata) }
-            else registry.replace(oldRegistration, RuleWebBookDataSource(id, source, recovery), metadata, ticket, publish)
+            if (oldRegistration == null) { publish(); registry.register(RuleWebBookDataSource(id, source, recovery, pixivFilter), metadata) }
+            else registry.replace(oldRegistration, RuleWebBookDataSource(id, source, recovery, pixivFilter), metadata, ticket, publish)
         }
             catch (failure: Exception) { source.close(); broker.close(); throw failure }
         Binding(installed, registration, broker, session, source)
     }
+
+    internal fun refreshDiscovery(id: Identifier) = registry.refreshDiscovery(id)
 
     internal suspend fun loginTarget(id: Identifier): RuleLoginTarget = withContext(Dispatchers.IO) {
         restore()
@@ -404,7 +410,9 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext private val co
         fun read(area: StorageArea, key: String) =
             (session.read(StorageRequest(area, key)) as? StorageResult.Value
                 ?: error("Stored source settings are unavailable")).value
-        val status = SourceLoginService.storedStatus(session)
+        val definition = active.getValue(id).installed.definition
+        val status = SourceLoginService.storedStatus(session,
+            pixiv = definition.profile == EXTENSION_PROFILE && definition.importKey == PixivUpdateAdapter.KEY)
         val name = if (accountNameField != null && status in setOf("authenticated", "session")) {
             val info = (session.read(StorageRequest(StorageArea.Account, hnovel.network.StorageRequestKey.LOGIN_INFO)) as? StorageResult.Value)?.value
             SourceLoginService.savedAccountName(accountNameField, info)
@@ -439,6 +447,16 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext private val co
         require(value.length <= 32768)
         check(session.write(StorageRequest(StorageArea.Config, "variable", value)) is StorageResult.Value)
     }
+
+    internal suspend fun supportsPixivBlocking(id: Identifier): Boolean = installedSources().any {
+        ImportedRuleSources.id(it.definition) == id && pixivBlocking.accepts(it.definition)
+    }
+
+    internal suspend fun <T> withPixivPreferences(id: Identifier, action: (hnovel.network.SourceSession) -> T): T =
+        withStoredSession(id) { session ->
+            check(active[id]?.installed?.definition?.let(pixivBlocking::accepts) == true)
+            action(session)
+        }
 
     private suspend fun <T> withStoredSession(id: Identifier, action: (hnovel.network.SourceSession) -> T): T = withContext(Dispatchers.IO) {
         restore()

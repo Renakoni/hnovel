@@ -74,7 +74,7 @@ class ChapterProgressReviewTest {
             }
         }
         compose.mainClock.advanceTimeBy(1000)
-        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Volume 1"))
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(activity.get().getString(R.string.detail_contents)))
     }
 
     @Test fun historyManualCompletionUnreadAndCurrentChapterUseTheExpectedMarkers() {
@@ -82,11 +82,16 @@ class ChapterProgressReviewTest {
         var clicked: String? = null
         show(state, onChapter = { clicked = it })
         compose.onNodeWithText("70%", useUnmergedTree = true).assertExists()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Chapter 1"))
         compose.onNodeWithText("10%", useUnmergedTree = true).assertExists()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Chapter 2"))
         compose.onNodeWithText("100%", useUnmergedTree = true).assertExists()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Chapter 3"))
         compose.onNodeWithText("0%", useUnmergedTree = true).assertDoesNotExist()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Chapter 5"))
         compose.onNodeWithText("90%", useUnmergedTree = true).assertDoesNotExist()
         compose.onNodeWithContentDescription(activity.get().getString(R.string.last_read), useUnmergedTree = true).assertExists()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Chapter 1"))
         compose.onNodeWithText("Chapter 1").performClick()
         assertEquals("chapter-1", clicked)
     }
@@ -100,22 +105,28 @@ class ChapterProgressReviewTest {
                 maxChapterReadingProgressMap = state.userReadingData!!.maxChapterReadingProgressMap + ("chapter-1" to .8f),
             )
         }
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Chapter 0"))
         compose.onNodeWithText("70%", useUnmergedTree = true).assertDoesNotExist()
+        compose.onNode(hasText("Chapter 0") and hasContentDescription(activity.get().getString(R.string.last_read))).assertExists()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Chapter 1"))
         compose.onNodeWithText("10%", useUnmergedTree = true).assertDoesNotExist()
         compose.onNodeWithText("80%", useUnmergedTree = true).assertExists()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Chapter 5"))
         compose.onNodeWithText("90%", useUnmergedTree = true).assertExists()
-        compose.onNode(hasText("Chapter 0") and hasContentDescription(activity.get().getString(R.string.last_read))).assertExists()
     }
 
     @Test fun completedProgressIsClampedAndTheExistingHideReadFilterStillWorks() {
         val state = state(mapOf("chapter-0" to .7f, "chapter-2" to 1.5f))
         show(state)
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Chapter 2"))
         compose.onNodeWithText("100%", useUnmergedTree = true).assertExists()
         compose.onNodeWithText("150%", useUnmergedTree = true).assertDoesNotExist()
         val hide = activity.get().getString(R.string.hide_read)
-        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(hide))
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(activity.get().getString(R.string.detail_contents)))
+        compose.onNodeWithContentDescription(activity.get().getString(R.string.detail_directory_options)).performClick()
         compose.onNodeWithText(hide).performClick()
         compose.onNodeWithText("Chapter 2").assertDoesNotExist()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Chapter 0"))
         compose.onNodeWithText("70%", useUnmergedTree = true).assertExists()
     }
 
@@ -150,6 +161,7 @@ class ChapterProgressReviewTest {
         state.bookVolumes = Ok(BookVolumes("review-book", listOf(Volume("v1", "Volume 1",
             listOf(chapters[0].copy(title = title)) + chapters.drop(1)))))
         show(state, fontScale = 2f)
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(title))
         val percentage = compose.onNodeWithText("100%", useUnmergedTree = true)
         percentage.performScrollTo().assertIsDisplayed()
         val layouts = mutableListOf<TextLayoutResult>()

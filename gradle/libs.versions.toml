@@ -23,6 +23,7 @@ vico = "3.2.3"
 hilt = "2.60.1"
 androidXHilt = "1.4.0"
 nav = "2.9.8"
+navigationEvent = "1.2.0-alpha04"
 coreKtx = "1.19.0"
 splashscreen = "1.2.0"
 lifecycle = "2.11.0"
@@ -95,6 +96,7 @@ lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-com
 lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }
 compose-bom = { module = "androidx.compose:compose-bom", version.ref = "composeBom" }
 compose-material3 = { module = "androidx.compose.material3:material3", version.ref = "composeMaterial3" }
+androidx-navigationevent-compose = { module = "androidx.navigationevent:navigationevent-compose", version.ref = "navigationEvent" }
 compose-ui = { module = "androidx.compose.ui:ui", version.ref = "composeUi" }
 compose-ui-graphics = { module = "androidx.compose.ui:ui-graphics", version.ref = "composeUi" }
 compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview", version.ref = "composeUi" }

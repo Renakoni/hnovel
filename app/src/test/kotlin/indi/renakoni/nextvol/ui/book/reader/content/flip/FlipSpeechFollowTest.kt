@@ -60,6 +60,7 @@ class FlipSpeechFollowTest {
     private var following by mutableStateOf(true)
     private var active by mutableStateOf(true)
     private var height by mutableStateOf(300.dp)
+    private var width by mutableStateOf(320.dp)
     private val state: MutableFlipPageContentUiState = MutableFlipPageContentUiState({}, {}, {},
         updatePageState = { state.pagerState = it })
     private val settings = mockk<ReaderSettings>(relaxed = true) {
@@ -200,6 +201,37 @@ class FlipSpeechFollowTest {
         assertEquals(indi.renakoni.nextvol.R.string.reader_bookmarks_changed, bookmarks.notice)
     }
 
+    @Test
+    @Config(qualifiers = "w1100dp-h800dp")
+    fun speechMovesWithinBothLeavesBeforeTurningToTheNextSpread() {
+        width = 1000.dp
+        height = 600.dp
+        text = (1..600).joinToString(" ") { "word%03d".format(it) }
+        speech = SpeechPosition("book", "chapter", SpeechChapter("book", "chapter", "", "", text).fingerprint, 0, text.length)
+        mount()
+        compose.waitUntil(10_000) { compose.waitForIdle(); state.visibleLeafRange.count() == 2 }
+        val pager = state.pagerState
+        fun leafText(leaf: Int) = compose.onAllNodes(
+            SemanticsMatcher.keyIsDefined(SemanticsProperties.Text) and hasAnyAncestor(hasTestTag("reader-leaf-$leaf")),
+            useUnmergedTree = true,
+        ).fetchSemanticsNodes().first().config[SemanticsProperties.Text].single().text
+        val left = leafText(0)
+        val right = leafText(1)
+        val rightStart = text.indexOf(right)
+        assertTrue(rightStart >= left.length)
+        compose.runOnIdle { speech = speech.copy(anchor = rightStart + 1) }
+        compose.waitForIdle()
+        assertEquals(0, pager.currentPage)
+        assertEquals(0..1, state.visibleLeafRange)
+        assertTrue(following)
+        compose.runOnIdle { speech = speech.copy(anchor = rightStart + right.length) }
+        compose.waitUntil(10_000) { compose.waitForIdle(); pager.settledPage == 1 }
+        assertEquals(2..3, state.visibleLeafRange)
+        assertSame(pager, state.pagerState)
+        assertTrue(following)
+        assertEquals(text.length, speech.end)
+    }
+
     private fun mount() {
         val content = SimpleTextComponent(SimpleTextComponentData(text), mockk(relaxed = true), activity.get())
         state.bookId = "book"
@@ -212,7 +244,7 @@ class FlipSpeechFollowTest {
                         LocalSnackbarHost provides remember { SnackbarHostState() },
                         LocalReaderTextLayout provides rememberReaderTextLayout(settings),
                         LocalReaderSpeechFollow provides ReaderSpeechFollow(speech, following, { following = false }, active)) {
-                        Box(Modifier.width(320.dp).height(height).testTag("viewport")) {
+                        Box(Modifier.width(width).height(height).testTag("viewport")) {
                             FlipPageContentComponent(Modifier, state, settings, PaddingValues(0.dp), {}, {}, {})
                         }
                     }

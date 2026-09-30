@@ -27,7 +27,7 @@ internal fun Modifier.readerBoundarySwipe(
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     val slop = LocalViewConfiguration.current.touchSlop
     val gesture = remember(pager, enabled, rtl, selection.hasSelection) { BoundaryGesture() }
-    if (!enabled || selection.hasSelection) return this
+    if (!enabled || !LocalReaderRendererActive.current || selection.hasSelection) return this
     return motionEventSpy { event ->
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {

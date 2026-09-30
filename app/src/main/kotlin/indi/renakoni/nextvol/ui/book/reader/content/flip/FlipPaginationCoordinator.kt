@@ -3,8 +3,8 @@ package indi.renakoni.nextvol.ui.book.reader.content.flip
 import android.net.Uri
 import androidx.compose.ui.text.intl.LocaleList
 import androidx.compose.ui.unit.Density
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
+import indi.renakoni.nextvol.ui.book.reader.ReaderBodyGeometry
 import indi.renakoni.nextvol.ui.book.reader.ReaderTextLayoutInput
 import io.nightfish.lightnovelreader.api.content.component.AbstractContentComponent
 import kotlinx.coroutines.CoroutineDispatcher
@@ -18,9 +18,7 @@ import kotlinx.coroutines.withContext
 internal data class FlipPaginationInput(
     val chapterId: String,
     val content: List<AbstractContentComponent<*>>,
-    val contentSize: IntSize,
-    val horizontalPadding: Int,
-    val verticalPadding: Int,
+    val geometry: ReaderBodyGeometry?,
     val density: Density,
     val layoutDirection: LayoutDirection,
     val fontSize: Float,

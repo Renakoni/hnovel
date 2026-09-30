@@ -14,6 +14,7 @@ class ForegroundSourceRequest(val allowsInteraction: Boolean = true) : AbstractC
     internal fun beginVerification() { verifications.incrementAndGet() }
     internal fun endVerification() { verifications.decrementAndGet() }
     private val active = MutableStateFlow(true)
+    internal val isActive get() = active.value
     private val waiting = mutableSetOf<Job>()
     fun setActive(value: Boolean, retainBrowser: Boolean = false) = synchronized(waiting) {
         active.value = value

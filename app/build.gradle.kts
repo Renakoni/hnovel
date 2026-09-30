@@ -88,6 +88,16 @@ android {
             buildConfigField("boolean", "BENCHMARK", "true")
         }
 
+        register("readerBenchmark") {
+            initWith(getByName("benchmark"))
+            applicationIdSuffix = ".readerbenchmark"
+            matchingFallbacks += listOf("release")
+            // Keep the ordinary directory/legacy-cache refresh decisions under measurement.
+            buildConfigField("boolean", "BENCHMARK", "false")
+            buildConfigField("String", "READER_BENCHMARK_SHA",
+                '"' + providers.gradleProperty("readerBenchmarkSha").getOrElse("UNSPECIFIED") + '"')
+        }
+
         base {
             archivesName = "NextVol-${defaultConfig.versionName}"
         }
@@ -188,6 +198,7 @@ dependencies {
     implementation(libs.lifecycle.runtime.ktx)
     implementation(libs.lifecycle.runtime.compose)
     implementation(libs.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.navigationevent.compose)
     // Compose
     implementation(libs.compose.animation.graphics)
     implementation(platform(libs.compose.bom))
@@ -206,6 +217,10 @@ dependencies {
     androidTestImplementation(libs.compose.ui.test.junit4)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.mockk)
+    androidTestImplementation("io.mockk:mockk-android:${libs.versions.mockk.get()}") {
+        exclude(group = "org.junit.jupiter")
+        exclude(group = "org.junit.platform")
+    }
     testImplementation(libs.work.testing)
     // Hilt
     ksp(libs.kotlin.metadata.jvm)

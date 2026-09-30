@@ -32,5 +32,24 @@ class SourceStoredLoginStatusTest {
             assertNull(SourceLoginService.storedStatus(broker.open(scope.copy(accountGeneration = 1), emptyList())))
             assertNull(SourceLoginService.storedStatus(broker.open(scope.copy(sourceId = "other"), emptyList())))
         }
+        val pixivUrl = "https://www.pixiv.net/"
+        val pixivScope = scope.copy(sourceId = "pixiv")
+        SourceBroker(directory.root.toPath()).use { broker ->
+            val session = broker.open(pixivScope, listOf(NetworkGrant(pixivUrl)))
+            session.write(StorageRequest(StorageArea.Account, "login/status", "session"))
+            session.updateNativeBrowserCookies(pixivUrl, listOf("visitor=saved; Path=/; Max-Age=3600"))
+            assertNull(SourceLoginService.storedStatus(session, pixiv = true))
+            for (value in listOf("0_guest", "12345_", "12345_valid")) {
+                session.updateNativeBrowserCookies(pixivUrl, listOf("PHPSESSID=$value; Path=/; Max-Age=3600; HttpOnly"))
+                assertEquals(if (value == "12345_valid") "session" else null,
+                    SourceLoginService.storedStatus(session, pixiv = true))
+            }
+        }
+        SourceBroker(directory.root.toPath()).use { broker ->
+            val restored = broker.open(pixivScope, emptyList())
+            assertEquals("session", SourceLoginService.storedStatus(restored, pixiv = true))
+            restored.write(StorageRequest(StorageArea.Account, "login/status", "required"))
+            assertEquals("required", SourceLoginService.storedStatus(restored, pixiv = true))
+        }
     }
 }

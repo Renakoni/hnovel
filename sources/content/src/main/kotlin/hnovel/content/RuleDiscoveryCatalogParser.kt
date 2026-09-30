@@ -17,7 +17,7 @@ internal object RuleDiscoveryCatalogParser {
     fun homepage(modules: JsonArray?, rows: List<RuleDiscoveryRow>): List<RuleDiscoveryRow>? {
         modules ?: return null
         val keys = mutableSetOf<String>()
-        return modules.mapIndexed { index, value ->
+        return modules.mapIndexedNotNull { index, value ->
             val field = "homepageModules[$index]"
             val module = value as? JsonObject ?: throw SourceContentException(ContentError.InvalidRule, field)
             val key = module.string("key")
@@ -30,7 +30,12 @@ internal object RuleDiscoveryCatalogParser {
             if (module.string("type") !in setOf("ranking", "card", "grid", "banner", "gridRanking", "infiniteGrid", "waterfall"))
                 throw SourceContentException(ContentError.MissingCapability, "$field.type")
             val url = module.string("url").ifBlank {
-                rows.singleOrNull { it.type == "url" && it.title == module.string("kindTitle") }?.url
+                val kindTitle = module.string("kindTitle")
+                if (kindTitle.isBlank()) throw SourceContentException(ContentError.InvalidRule, "$field.kindTitle")
+                val matches = rows.filter { it.type == "url" && it.title == kindTitle }
+                // Source settings may hide explicitly optional categories, including every module.
+                if (matches.isEmpty() && module["optional"] == JsonPrimitive(true)) return@mapIndexedNotNull null
+                matches.singleOrNull()?.url
                     ?: throw SourceContentException(ContentError.InvalidRule, "$field.kindTitle")
             }
             if (url.isBlank()) throw SourceContentException(ContentError.InvalidRule, "$field.url")

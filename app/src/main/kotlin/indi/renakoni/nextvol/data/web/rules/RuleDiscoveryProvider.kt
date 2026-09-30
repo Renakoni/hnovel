@@ -2,9 +2,11 @@ package indi.renakoni.nextvol.data.web.rules
 
 import com.github.michaelbull.result.*
 import hnovel.content.*
+import hnovel.execution.SourceWorkRequest
 import hnovel.network.BrokerLimits
 import indi.renakoni.nextvol.data.web.DISCOVERY_SEARCH_PREFIX
 import indi.renakoni.nextvol.data.web.ForegroundSourceRequest
+import io.nightfish.lightnovelreader.api.web.WebDataSourcePriority
 import io.nightfish.lightnovelreader.api.web.discovery.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.cancel
@@ -20,7 +22,8 @@ import kotlinx.serialization.json.jsonObject
 /** One adapter per page. The source runtime still owns revision/account/network authority. */
 internal class RuleDiscoveryProvider(private val source: RuleSource,
     private val session: RuleDiscoverySession = source.openDiscovery(java.util.UUID.randomUUID().toString()),
-    private val recovery: RuleRequestRecovery? = null) : DiscoveryPreviewProvider {
+    private val recovery: RuleRequestRecovery? = null,
+    private val pixivFilter: PixivBookFilter? = null) : DiscoveryPreviewProvider {
     companion object { internal const val PREVIEW_CONCURRENCY = BrokerLimits.DEFAULT_CONCURRENCY }
     override val hasFeed get() = source.canFeed && (current?.takeIf {
         // Empty/login/transient responses cannot prove that the source is category-only.
@@ -47,7 +50,7 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
     }
     override fun openSession(id: String, values: Map<String, String>, environment: DiscoveryEnvironment) =
         RuleDiscoveryProvider(source, source.openDiscovery(id, values, RuleDiscoveryEnvironment(environment.themeMode,
-            Json.parseToJsonElement(environment.themeJson).jsonObject, Json.parseToJsonElement(environment.readingJson).jsonObject)), recovery)
+            Json.parseToJsonElement(environment.themeJson).jsonObject, Json.parseToJsonElement(environment.readingJson).jsonObject)), recovery, pixivFilter)
 
     override suspend fun catalog(refresh: Boolean) = request {
         map(session.catalog(refresh).also { current = it })
@@ -136,14 +139,15 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
         previewDiagnostics.remove(section.id)
         previewHttpStatuses.remove(section.id)
         return try {
-            val page = when {
-                recovery == null -> load()
-                allowInteraction -> recovery.execute { load() }
-                // Automatic sections must release their slots instead of waiting for user input.
-                // Explicit preview retries keep foreground verification and its single retry.
-                else -> withContext(ForegroundSourceRequest(allowsInteraction = false)) { recovery.execute { load() } }
+            // Automatic previews must neither prompt nor inherit the page's foreground priority.
+            // Explicit retries retain their owner's interaction and scheduling context.
+            val page = if (allowInteraction) {
+                recovery?.execute { load() } ?: load()
+            } else withContext(ForegroundSourceRequest(allowsInteraction = false) +
+                SourceWorkRequest(WebDataSourcePriority.Low.priority)) {
+                recovery?.execute { load() } ?: load()
             }
-            section.copy(books = page.books.take(6).map(::book), previewLoading = false,
+            section.copy(books = (pixivFilter?.filter(page) ?: page.books).take(6).map(::book), previewLoading = false,
                 previewFailure = if (page.books.isEmpty() && page.nextCursor == null)
                     DiscoveryPreviewFailure(DiscoveryError.InvalidResponse, "ruleExplore.bookList") else null)
         } catch (cancelled: CancellationException) { throw cancelled }
@@ -169,7 +173,7 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
         }
         return request {
             val page = pager.page(request.cursor)
-            DiscoveryPage(page.books.map(::book), page.nextCursor)
+            DiscoveryPage((pixivFilter?.filter(page) ?: page.books).map(::book), page.nextCursor)
         }
     }
 
