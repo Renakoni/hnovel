@@ -247,10 +247,10 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         policy.check(parsed); return cookies.header(parsed, null) }
     @Synchronized fun setCookie(url: String, value: String, replace: Boolean = false) {
         checkOpen(); val parsed = url.toHttpUrlOrNull() ?: error("Invalid cookie URL"); policy.check(parsed)
-        cookies.setHeader(parsed, value, replace)
+        updateSessionCookies(parsed) { cookies.setHeader(parsed, value, replace) }
     }
     @Synchronized fun removeCookie(url: String) { checkOpen(); val parsed = url.toHttpUrlOrNull() ?: error("Invalid cookie URL")
-        policy.check(parsed); cookies.setHeader(parsed, "", true) }
+        policy.check(parsed); updateSessionCookies(parsed) { cookies.setHeader(parsed, "", true) } }
 
     /** Host-only cookie handoff; never exposed as a website JavascriptInterface. */
     @Synchronized fun nativeBrowserCookieSeed(url: String): NativeBrowserCookieSeed {
@@ -276,14 +276,55 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         expectedSeedVersion: Long? = null) {
         checkOpen(); val parsed = url.toHttpUrlOrNull() ?: error("Invalid cookie URL")
         policy.check(parsed)
-        cookies.replaceBrowserSnapshot(parsed, values, completeMetadata, expectedSeedVersion)
+        updateSessionCookies(parsed) { cookies.replaceBrowserSnapshot(parsed, values, completeMetadata, expectedSeedVersion) }
     }
 
     @Synchronized fun browserCookie(url: String, value: String? = null): String {
         checkOpen(); val parsed = url.toHttpUrlOrNull() ?: error("Invalid cookie URL"); policy.check(parsed)
         if (!enabledCookieJar) return ""
-        if (value != null) cookies.documentCookie(parsed, value)
+        if (value != null) updateSessionCookies(parsed) { cookies.documentCookie(parsed, value) }
         return cookies.documentHeader(parsed)
+    }
+
+    /** Login headers bootstrap cookies. A confirmed rotation/deletion retires only that old value;
+     * the jar owns the replacement's domain, path and expiry. Request headers remain explicit. */
+    @Synchronized private fun updateSessionCookies(url: HttpUrl, update: () -> Unit) {
+        val loginUrl = sourceUrl.toHttpUrlOrNull()?.takeIf { NetworkPolicy.origin(it) == NetworkPolicy.origin(url) }
+        fun values(header: String): Map<String, String> = linkedMapOf<String, String>().apply {
+            header.split(';').forEach { part ->
+                val pair = part.trim().split('=', limit = 2)
+                if (pair.size == 2) putIfAbsent(pair[0], pair[1])
+            }
+        }
+        val before = loginUrl?.let { values(cookies.header(it, null)) }.orEmpty()
+        update()
+        if (loginUrl == null || before.isEmpty()) return
+        val after = values(cookies.header(loginUrl, null))
+        val retired = before.filter { (name, value) -> after[name] != value }
+        if (retired.isEmpty()) return
+        val saved = when (val result = account.read(StorageRequestKey.LOGIN_HEADERS)) {
+            is StorageResult.Failure -> throw BrokerFailure(RequestStage.Storage, result.code)
+            is StorageResult.Value -> result.value ?: return
+        }
+        val headers = (Json.parseToJsonElement(saved) as kotlinx.serialization.json.JsonObject).toMutableMap()
+        var changed = false
+        headers.toMap().forEach { (key, value) ->
+            if (key.equals("Cookie", true)) {
+                val original = (value as kotlinx.serialization.json.JsonPrimitive).content
+                val kept = original.split(';').filter { part ->
+                    val pair = part.trim().split('=', limit = 2)
+                    pair.size != 2 || retired[pair[0]] != pair[1]
+                }.joinToString(";").trim()
+                if (kept != original.trim()) {
+                    changed = true
+                    if (kept.isEmpty()) headers.remove(key) else headers[key] = kotlinx.serialization.json.JsonPrimitive(kept)
+                }
+            }
+        }
+        if (changed) when (val result = account.write(StorageRequestKey.LOGIN_HEADERS, kotlinx.serialization.json.JsonObject(headers).toString())) {
+            is StorageResult.Failure -> throw BrokerFailure(RequestStage.Storage, result.code)
+            is StorageResult.Value -> Unit
+        }
     }
 
     /** Called by the host after revocation; deletes only the retired account's sensitive state. */
@@ -673,6 +714,9 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         val loginHeaders = if (sameOrigin) (account.read(StorageRequestKey.LOGIN_HEADERS) as? StorageResult.Value)?.value else null
         loginHeaders?.let { Json.parseToJsonElement(it).let { json ->
             (json as kotlinx.serialization.json.JsonObject).forEach { (key, value) ->
+                // The login API already seeded these cookies into the browser store.
+                // Reintroducing a raw Cookie header makes native browser navigation invalid.
+                if (!includeCookies && key.equals("Cookie", true)) return@forEach
                 headers.set(key, (value as kotlinx.serialization.json.JsonPrimitive).content)
                 supplied(key, UserAgentSource.AccountLogin)
             }
@@ -744,7 +788,7 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
                             synchronized(this@SourceSession) {
                                 checkOpen()
                                 if (continuation.isActive) {
-                                    if (enabledCookieJar) cookies.save(response.request.url, response.headers)
+                                    if (enabledCookieJar) updateSessionCookies(response.request.url) { cookies.save(response.request.url, response.headers) }
                                     continuation.resume(BrokerResponse(response.code, response.request.url.toString(),
                                         response.headers.toMultimap().mapValues { it.value.toList() }, responseBytes, charset, redirects,
                                         message = response.message, protocol = response.protocol.toString(),
