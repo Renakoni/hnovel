@@ -42,8 +42,6 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.atomic.AtomicBoolean
@@ -304,7 +302,7 @@ class AndroidIsolatedExecutor @Inject constructor(@ApplicationContext context: C
         }
         if (!independent) return pool.statefulWorkers[statefulWorkerIndex(identity, pool.statefulWorkers.size)]
             .let { slot -> slot.lock.withLock { block(slot) } }
-        return pool.permits.withPermit {
+        return pool.admission.withLock {
             // Prefer the last used process so sequential work does not cold-start the whole pool.
             val slot = synchronized(pool.idleWorkers) { pool.idleWorkers.removeLast() }
             try { slot.lock.withLock {
@@ -332,7 +330,7 @@ class AndroidIsolatedExecutor @Inject constructor(@ApplicationContext context: C
         private val independentWorkers = workers.drop(statefulWorkers.size)
         val parallelism = independentWorkers.size
         val idleWorkers = java.util.ArrayDeque(independentWorkers.reversed())
-        val permits = Semaphore(parallelism)
+        val admission = SourceWorkQueue(parallelism, maxPriorityBypasses = 8)
     }
 
     companion object {

@@ -11,21 +11,22 @@ class SourceWorkRequest(val priority: Int, val startedAtNanos: Long = System.nan
     companion object Key : CoroutineContext.Key<SourceWorkRequest>
 }
 
-/** Non-preemptive serial queue: higher priority first, FIFO within a priority. */
-class SourceWorkQueue {
-    private class Waiter(val priority: Int, val ready: CompletableDeferred<Unit> = CompletableDeferred())
+/** Non-preemptive admission: higher priority first, FIFO within a priority. */
+class SourceWorkQueue(private val permits: Int = 1, private val maxPriorityBypasses: Int = Int.MAX_VALUE) {
+    init { require(permits > 0); require(maxPriorityBypasses > 0) }
+    private class Waiter(val priority: Int, val ready: CompletableDeferred<Unit> = CompletableDeferred(), var bypasses: Int = 0)
     private val waiting = mutableListOf<Waiter>()
-    private var locked = false
+    private var active = 0
 
     fun tryLock(): Boolean = synchronized(waiting) {
-        if (locked) false else { locked = true; true }
+        if (active == permits) false else { active++; true }
     }
 
     private suspend fun lock() {
         if (tryLock()) return
         val waiter = Waiter(currentCoroutineContext()[SourceWorkRequest]?.priority ?: 0)
         val admitted = synchronized(waiting) {
-            if (!locked) { locked = true; true } else { waiting += waiter; false }
+            if (active < permits) { active++; true } else { waiting += waiter; false }
         }
         if (admitted) waiter.ready.complete(Unit)
         try { waiter.ready.await() }
@@ -38,9 +39,19 @@ class SourceWorkQueue {
 
     fun unlock() {
         val next = synchronized(waiting) {
-            check(locked)
-            waiting.maxByOrNull { it.priority }?.also { waiting.remove(it) }
-                .also { if (it == null) locked = false }
+            check(active > 0)
+            val admitted = waiting.firstOrNull { it.bypasses >= maxPriorityBypasses }
+                ?: waiting.maxByOrNull { it.priority }
+            if (admitted == null) active-- else {
+                // Bound starvation without preempting a running task. Only older
+                // waiters passed by this admission consume their bypass budget.
+                for (waiter in waiting) {
+                    if (waiter === admitted) break
+                    if (waiter.bypasses < maxPriorityBypasses) waiter.bypasses++
+                }
+                waiting.remove(admitted)
+            }
+            admitted
         }
         next?.ready?.complete(Unit)
     }
