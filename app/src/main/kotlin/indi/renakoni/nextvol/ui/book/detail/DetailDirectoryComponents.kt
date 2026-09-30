@@ -155,16 +155,15 @@ internal fun DirectoryToolbar(
 internal fun DirectoryPageNavigation(
     chapterCount: Int, page: Int, descending: Boolean, onPageChange: (Int) -> Unit,
 ) {
-    val direction = if (descending) -1 else 1
     val pageCount = directoryPageCount(chapterCount)
     Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp).testTag("directory-pagination"), verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = { onPageChange(page - direction) }, enabled = page - direction in 0 until pageCount) {
+        IconButton(onClick = { onPageChange(page - 1) }, enabled = page > 0) {
             Icon(painterResource(R.drawable.arrow_back_24px), stringResource(R.string.detail_directory_previous), Modifier.size(20.dp))
         }
         Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
             DirectoryRangeMenu(chapterCount, page, descending, onPageChange)
         }
-        IconButton(onClick = { onPageChange(page + direction) }, enabled = page + direction in 0 until pageCount) {
+        IconButton(onClick = { onPageChange(page + 1) }, enabled = page < pageCount - 1) {
             Icon(painterResource(R.drawable.arrow_forward_24px), stringResource(R.string.detail_directory_next), Modifier.size(20.dp))
         }
     }
@@ -173,13 +172,13 @@ internal fun DirectoryPageNavigation(
 @Composable
 private fun DirectoryRangeMenu(chapterCount: Int, page: Int, descending: Boolean, onPageChange: (Int) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
-    val range = directoryPageRange(chapterCount, page)
+    val range = directoryPageRange(chapterCount, page, descending)
     val pageCount = directoryPageCount(chapterCount)
     val scrollState = rememberScrollState()
     val rowHeight = with(LocalDensity.current) { 48.dp.roundToPx() }
     LaunchedEffect(expanded, page, descending, scrollState.maxValue) {
         if (expanded) {
-            scrollState.scrollTo((if (descending) pageCount - 1 - page else page) * rowHeight)
+            scrollState.scrollTo(page * rowHeight)
         }
     }
     Box {
@@ -199,9 +198,8 @@ private fun DirectoryRangeMenu(chapterCount: Int, page: Int, descending: Boolean
             expanded = expanded, onDismissRequest = { expanded = false },
             modifier = Modifier.heightIn(max = 320.dp), scrollState = scrollState,
         ) {
-            val pages = if (descending) (pageCount - 1 downTo 0) else (0 until pageCount)
-            for (index in pages) {
-                val entryRange = directoryPageRange(chapterCount, index)
+            for (index in 0 until pageCount) {
+                val entryRange = directoryPageRange(chapterCount, index, descending)
                 DropdownMenuItem(
                     text = { Text(stringResource(R.string.detail_directory_range, entryRange.first + 1, entryRange.last + 1),
                         color = if (index == page) colorScheme.primary else colorScheme.onSurface) },

@@ -348,19 +348,19 @@ class DetailDirectoryScreenTest {
         assertReadActionDoesNotCoverEnd("101–200")
     }
 
-    @Test fun descendingStartsAtTheLastGlobalPageWithoutChangingCanonicalOrder() {
+    @Test fun descendingStartsWithAFullPageFromTheEndWithoutChangingCanonicalOrder() {
         val volumes = listOf(volume("a", 18), volume("b", 205))
         state.bookVolumes = Ok(BookVolumes("book", volumes))
         show()
         toolbar()
         compose.onNodeWithContentDescription(text(R.string.detail_directory_ascending)).assertIsOff().performClick()
-        compose.onNodeWithText("201–223").assertIsDisplayed()
+        compose.onNodeWithText("223–124").assertIsDisplayed()
         list().performScrollToNode(hasText("Chapter b-205"))
         compose.onNodeWithText("Chapter b-205").performClick()
         assertEquals("b-205", opened)
         assertEquals("b-1", volumes.last().chapters.first().id)
-        chooseRange("1–100")
-        compose.onNodeWithText("Chapter b-82").assertIsDisplayed()
+        chooseRange("23–1")
+        compose.onNodeWithText("Chapter b-5").assertIsDisplayed()
         list().performScrollToNode(hasText("Chapter a-18"))
         compose.onNodeWithText("Chapter a-18").assertIsDisplayed()
     }

@@ -13,6 +13,7 @@ class DetailDirectoryPagingTest {
     @Test fun shortAndEmptyBooksKeepOnePage() {
         for (count in listOf(0, 1, 99, 100)) assertEquals(1, directoryPageCount(count))
         assertTrue(directoryPageChapters(directoryChapters(listOf(volume(0))), 0, false).isEmpty())
+        assertTrue(directoryPageChapters(directoryChapters(listOf(volume(0))), 0, true).isEmpty())
         assertEquals(12, directoryPageChapters(directoryChapters(listOf(volume(12))), 0, false).size)
     }
 
@@ -24,19 +25,50 @@ class DetailDirectoryPagingTest {
         assertEquals(1000..1000, directoryPageRange(1001, 10))
     }
 
-    @Test fun descendingChangesOnlyPresentationAndPreservesRangeIdentity() {
+    @Test fun descendingFillsPagesFromTheEndWithoutChangingCanonicalOrder() {
         val volume = volume(205)
         val original = volume.chapters.toList()
         val entries = directoryChapters(listOf(volume))
-        assertEquals(listOf("id-205", "id-204", "id-203", "id-202", "id-201"),
+        assertEquals((205 downTo 106).map { "id-$it" },
+            directoryPageChapters(entries, 0, true).map { it.chapter.id })
+        assertEquals((105 downTo 6).map { "id-$it" },
+            directoryPageChapters(entries, 1, true).map { it.chapter.id })
+        assertEquals((5 downTo 1).map { "id-$it" },
             directoryPageChapters(entries, 2, true).map { it.chapter.id })
         assertEquals(original, volume.chapters)
-        assertSame(volume.chapters[204], directoryPageChapters(entries, 2, true).first().chapter)
+        assertSame(volume.chapters[204], directoryPageChapters(entries, 0, true).first().chapter)
+    }
+
+    @Test fun descendingOneHundredAndOneChaptersLeavesOnlyChapterOneOnTheLastPage() {
+        val entries = directoryChapters(listOf(volume(101)))
+        assertEquals(100 downTo 1, directoryPageRange(101, 0, true))
+        assertEquals(0 downTo 0, directoryPageRange(101, 1, true))
+        assertEquals((101 downTo 2).map { "id-$it" },
+            directoryPageChapters(entries, 0, true).map { it.chapter.id })
+        assertEquals("id-1", directoryPageChapters(entries, 1, true).single().chapter.id)
+    }
+
+    @Test fun chapterLocationUsesTheCurrentOrderAndMatchesPageBoundaries() {
+        for (count in listOf(1, 13, 100, 101, 200, 207, 1001)) {
+            for (descending in listOf(false, true)) {
+                for (index in 0 until count) {
+                    val page = directoryPageForChapter(count, index, descending)
+                    assertTrue(index in directoryPageRange(count, page, descending))
+                }
+            }
+        }
+        assertEquals(0, directoryPageForChapter(101, 100, true))
+        assertEquals(0, directoryPageForChapter(101, 1, true))
+        assertEquals(1, directoryPageForChapter(101, 0, true))
+        assertEquals(0, directoryPageForChapter(0, -1, true))
+        assertEquals(0, directoryPageForChapter(101, -1, true))
     }
 
     @Test fun changedCatalogClampsAnOldPageWithoutLosingItsLastChapter() {
         assertEquals("id-101", directoryPageChapters(directoryChapters(listOf(volume(101))), 9, false).single().chapter.id)
         assertEquals(0..99, directoryPageRange(201, -1))
+        assertEquals("id-1", directoryPageChapters(directoryChapters(listOf(volume(101))), 9, true).single().chapter.id)
+        assertEquals(200 downTo 101, directoryPageRange(201, -1, true))
     }
 
     @Test fun ninetyEightChapterVolumeFlowsIntoTheSameHundredChapterPage() {
@@ -54,7 +86,13 @@ class DetailDirectoryPagingTest {
         assertEquals("second-103", directoryPageChapters(entries, 2, false).first().chapter.id)
         assertEquals("third-4", directoryPageChapters(entries, 2, false).last().chapter.id)
         assertEquals(entries, (0 until 3).flatMap { directoryPageChapters(entries, it, false) })
-        assertEquals(entries.asReversed(), (2 downTo 0).flatMap { directoryPageChapters(entries, it, true) })
+        val descendingPages = (0 until 3).map { directoryPageChapters(entries, it, true) }
+        assertEquals(listOf(100, 100, 7), descendingPages.map { it.size })
+        assertEquals("third-4", descendingPages[0].first().chapter.id)
+        assertEquals("second-10", descendingPages[0].last().chapter.id)
+        assertEquals("second-9", descendingPages[1].first().chapter.id)
+        assertEquals("id-8", descendingPages[1].last().chapter.id)
+        assertEquals(entries.asReversed(), descendingPages.flatten())
     }
 
     @Test fun lightNovelHeadingsDoNotCountAsChaptersOrRewriteSourceTitles() {

@@ -601,7 +601,7 @@ private fun DetailContent(
     var chapterToLocate by remember { mutableStateOf<String?>(null) }
     val focusManager = LocalFocusManager.current
     val pageCount = directoryPageCount(allChapters.size)
-    val page = (requestedPage ?: (readingIndex.coerceAtLeast(0) / DIRECTORY_PAGE_SIZE)).coerceIn(0, pageCount - 1)
+    val page = (requestedPage ?: directoryPageForChapter(allChapters.size, readingIndex, descending)).coerceIn(0, pageCount - 1)
     val hideRead = hideReadChapters && !selectingChapters
     val pageChapters = remember(allChapters, page, descending) { directoryPageChapters(allChapters, page, descending) }
     val pageVolumes = remember(pageChapters) { pageChapters.groupBy { it.volumeId } }
@@ -726,14 +726,14 @@ private fun DetailContent(
                 onToggleOrder = {
                     descending = !descending
                     if (!searching) {
-                        requestedPage = if (descending) pageCount - 1 else 0
+                        requestedPage = 0
                     }
                     scrollToDirectory = true
                 },
                 onToggleHideRead = { hideReadChapters = !hideReadChapters },
                 onLocate = {
                     closeSearch()
-                    requestedPage = readingIndex.coerceAtLeast(0) / DIRECTORY_PAGE_SIZE
+                    requestedPage = directoryPageForChapter(allChapters.size, readingIndex, descending)
                     hideReadChapters = false
                     allChapters.getOrNull(readingIndex)?.let { volumeExpansion = volumeExpansion + (it.volumeId to true) }
                     chapterToLocate = currentChapterId
