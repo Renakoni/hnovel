@@ -16,7 +16,7 @@ import javax.inject.Inject
 
 /** Safe to pass through UI/navigation. Credentials are resolved only during execution. */
 data class SourceImage(val book: SourceBookId, val uri: String, val cover: Boolean = false,
-    val preferDownloaded: Boolean = true)
+    val preferDownloaded: Boolean = true, val chapterId: String? = null)
 
 /** Runs before Coil's memory/disk lookup, so URL equality never implies source equality. */
 class SourceImageInterceptor @Inject constructor(
@@ -31,7 +31,7 @@ class SourceImageInterceptor @Inject constructor(
     override suspend fun intercept(chain: Interceptor.Chain): ImageResult {
         val image = chain.request.data as? SourceImage ?: return chain.proceed()
         if (image.preferDownloaded) downloads.image(image)?.let { file ->
-            val key = sourceImageCacheKey(image, "download:${file.lastModified()}:${file.length()}")
+            val key = sourceImageCacheKey(image, "download:${file.absolutePath}:${file.lastModified()}:${file.length()}")
             return chain.withRequest(chain.request.newBuilder().data(file)
                 .memoryCacheKey(key).diskCacheKey(key).build()).proceed()
         }

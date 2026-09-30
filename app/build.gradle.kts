@@ -88,6 +88,16 @@ android {
             buildConfigField("boolean", "BENCHMARK", "true")
         }
 
+        register("readerBenchmark") {
+            initWith(getByName("benchmark"))
+            applicationIdSuffix = ".readerbenchmark"
+            matchingFallbacks += listOf("release")
+            // Keep the ordinary directory/legacy-cache refresh decisions under measurement.
+            buildConfigField("boolean", "BENCHMARK", "false")
+            buildConfigField("String", "READER_BENCHMARK_SHA",
+                '"' + providers.gradleProperty("readerBenchmarkSha").getOrElse("UNSPECIFIED") + '"')
+        }
+
         base {
             archivesName = "NextVol-${defaultConfig.versionName}"
         }
@@ -109,6 +119,10 @@ android {
             // Multi-SDK Robolectric resource tests exceed Gradle's default 512 MiB heap.
             it.maxHeapSize = "2g"
             it.jvmArgs(
+                // JDK 22 C2 crashes in Node::uncast in test workers; leave app/runtime compilation unchanged.
+                "-XX:TieredStopAtLevel=1",
+                // Robolectric/Compose exhaust C1's code cache across the full test suite.
+                "-XX:ReservedCodeCacheSize=256m",
                 "--add-opens=java.base/java.lang=ALL-UNNAMED",
                 "--add-opens=java.base/java.util=ALL-UNNAMED",
                 "--add-opens=java.base/java.io=ALL-UNNAMED",

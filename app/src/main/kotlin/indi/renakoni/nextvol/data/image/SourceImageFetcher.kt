@@ -9,11 +9,21 @@ import coil3.fetch.SourceFetchResult
 import coil3.request.Options
 import com.github.michaelbull.result.getOrElse
 import indi.renakoni.nextvol.data.web.SourceRuntime
+import io.nightfish.lightnovelreader.api.error.WebRequestError
 import okio.Buffer
 import java.io.IOException
 
 /** A missing runtime is an explicit cache-only request, never an HTTP URL fallback. */
 internal data class BoundSourceImage(val image: SourceImage, val key: String, val runtime: SourceRuntime?)
+
+/** Preserve actionable categories through Coil without carrying private source error text. */
+internal class SourceImageRequestException(error: WebRequestError) : IOException("Source image request failed") {
+    val kind = error.kind
+    val networkFailure = error.throwable is IOException
+    val contentError = (error.throwable as? hnovel.content.SourceContentException)?.code
+    val retry = (error.throwable as? hnovel.content.SourceContentException)?.retry
+    val httpStatus = (error.throwable as? hnovel.content.SourceContentException)?.httpStatus
+}
 
 internal class SourceImageFetcher(private val request: BoundSourceImage, private val options: Options,
     private val cache: DiskCache?) : Fetcher {
@@ -23,7 +33,7 @@ internal class SourceImageFetcher(private val request: BoundSourceImage, private
         }
         val runtime = request.runtime ?: throw IOException("Source image is not cached")
         val result = runtime.imageBytes(request.image.book.remoteId, request.image.uri, request.image.cover)
-        val bytes = result.getOrElse { throw it.throwable ?: IOException(it.message) }
+        val bytes = result.getOrElse { throw SourceImageRequestException(it) }
         // Coil decodes after fetch(). Do not persist obvious HTML/error bodies, since a
         // successful HTTP status is common for block pages and would otherwise poison the
         // source image cache until its revision changes.

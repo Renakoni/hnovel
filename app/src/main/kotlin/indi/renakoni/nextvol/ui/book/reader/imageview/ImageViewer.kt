@@ -41,16 +41,17 @@ fun ImageViewerScreen(
     onClickSave: () -> Unit,
     onLongClickSave: () -> Unit,
     bookId: String,
-    cover: Boolean = false
+    cover: Boolean = false,
+    chapterId: String? = null
 ) {
     val context = LocalContext.current
     val imageTransPostProcessingViewModel = hiltViewModel<ImageTransPostProcessingViewModel>()
-    val request = remember(imageUri, bookId, cover) {
+    val request = remember(imageUri, bookId, cover, chapterId) {
         val transformations = imageTransPostProcessingViewModel
             .imageTransPostProcessingManager
             .getCoil3Transformations(ImagePostProcessingPipeline.imageComponent, imageUri)
         ImageRequest.Builder(context)
-            .data(SourceImage(BookIdentity.book(bookId), imageUri.toString(), cover))
+            .data(SourceImage(BookIdentity.book(bookId), imageUri.toString(), cover, chapterId = chapterId))
             .transformations(transformations)
             .crossfade(true)
             .interceptorCoroutineContext(Dispatchers.Default)

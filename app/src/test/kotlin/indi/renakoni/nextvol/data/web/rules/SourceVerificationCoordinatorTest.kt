@@ -193,6 +193,51 @@ class SourceVerificationCoordinatorTest {
         assertTrue(coordinator.prompts.value.isEmpty())
     }
 
+    @Test fun downloadVerificationRechecksTheRequestAndResumesOnlyOnce() = runTest {
+        var ready = false
+        var calls = 0
+        var resumed = 0
+        coEvery { verification.complete() } coAnswers { ready = true }
+        val download = BackgroundSourceRequest { { resumed++ } }
+        withContext(download) { runCatching { coordinator.execute(owner, "Download") {
+            calls++
+            if (!ready) throw failure
+        } } }
+        val id = coordinator.prompts.value.single().id
+        coordinator.expireBackgroundNotice(id)
+        assertEquals(id, coordinator.prompts.value.single().id)
+        assertEquals(1, calls)
+        assertEquals(0, resumed)
+        coordinator.verifyBackground(id)
+        coordinator.verifyBackground(id)
+        assertEquals(2, calls)
+        assertEquals(1, resumed)
+        coVerify(exactly = 1) { verification.complete() }
+    }
+
+    @Test fun closingTheDownloadBrowserWhileStillChallengedDoesNotResumeOrLoop() = runTest {
+        var calls = 0
+        var resumed = 0
+        withContext(BackgroundSourceRequest { { resumed++ } }) {
+            runCatching { coordinator.execute<Unit>(owner, "Download") { calls++; throw failure } }
+        }
+        val error = runCatching { coordinator.verifyBackground(coordinator.prompts.value.single().id) }.exceptionOrNull()
+        assertSame(failure, error)
+        assertEquals(2, calls)
+        assertEquals(0, resumed)
+        coVerify(exactly = 1) { verification.complete() }
+        assertTrue(coordinator.prompts.value.isEmpty())
+    }
+
+    @Test fun retiredDownloadNoticeDoesNotOpenTheBrowser() = runTest {
+        withContext(BackgroundSourceRequest { null }) {
+            runCatching { coordinator.execute<Unit>(owner, "Download") { throw failure } }
+        }
+        coordinator.verifyBackground(coordinator.prompts.value.single().id)
+        coVerify(exactly = 0) { verification.complete() }
+        assertTrue(coordinator.prompts.value.isEmpty())
+    }
+
     @Test fun expiryAtTheOpeningDeadlineDoesNotRemoveAnActiveVerification() = runTest {
         val completed = CompletableDeferred<Unit>()
         coEvery { verification.complete() } coAnswers { completed.await() }

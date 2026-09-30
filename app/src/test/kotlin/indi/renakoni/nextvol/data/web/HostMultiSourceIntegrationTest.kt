@@ -106,12 +106,13 @@ class HostMultiSourceIntegrationTest {
         manager = WebBookDataSourceManager(WebSourceRegistry())
         downloads = BookDownloadStore(context, db, decoder)
         local = LocalBookDataSource(db.bookInformationDao(), db.bookVolumesDao(), db.chapterContentDao(), db.userReadingDataDao(), indi.renakoni.nextvol.data.book.BookAliasStore(db))
-        shelves = BookshelfRepository(db.bookshelfDao(), workManager, manager.registry, downloads, local.aliases)
+        val scheduler = indi.renakoni.nextvol.data.download.BookDownloadScheduler(downloads, workManager, local.aliases)
+        shelves = BookshelfRepository(db.bookshelfDao(), scheduler, manager.registry, local.aliases)
         // Disable optional display transformations; storage and content decoding use production adapters.
         val text = TextProcessingRepository(mockk { every { enabled } returns false },
             mockk { every { enabled } returns false }, ContentComponentRegistry())
         books = BookRepository(local, shelves, text, workManager, ChapterRepository(manager.registry, local, text, mockk(), downloads),
-            BookReadingDataRepository(local), manager.registry, downloads, mockk())
+            BookReadingDataRepository(local), manager.registry, downloads, mockk(), scheduler)
         val coordinator = StatisticsWriteCoordinator()
         stats = StatsRepository(db.bookRecordDao(), db.dailyCountDao(), books, coordinator)
         backup = LocalDataManager(db, db.bookInformationDao(), db.bookRecordDao(), db.dailyCountDao(), db.bookshelfDao(),
@@ -123,8 +124,8 @@ class HostMultiSourceIntegrationTest {
     @After fun close() = runBlocking {
         manager.registry.sources.value.forEach { manager.unregisterWebDataSource(it.metadata.id) }
         workManager.cancelAllWork().await()
-        WorkManagerTestInitHelper.closeWorkDatabase()
         progress.close()
+        WorkManagerTestInitHelper.closeWorkDatabase()
         db.close()
     }
 
@@ -135,6 +136,16 @@ class HostMultiSourceIntegrationTest {
     private suspend fun awaitWork(request: OneTimeWorkRequest): WorkInfo {
         workManager.enqueue(request).await()
         return withTimeout(30_000) { workManager.getWorkInfoByIdFlow(request.id).filterNotNull().first { it.state.isFinished } }
+    }
+
+    private suspend fun allowNetwork(book: SourceBookId) {
+        val queued = withTimeout(30_000) {
+            workManager.getWorkInfosForUniqueWorkFlow(CacheBookWork.ofId(book.storageKey))
+                .first { work -> work.any { !it.state.isFinished } }.first { !it.state.isFinished }
+        }
+        assertEquals(WorkInfo.State.ENQUEUED, queued.state)
+        assertEquals(indi.renakoni.nextvol.data.download.DownloadTaskStatus.Queued.name, downloads.entry(book)!!.taskStatus)
+        WorkManagerTestInitHelper.getTestDriver(context)!!.setAllConstraintsMet(queued.id)
     }
 
     private suspend fun assertLocalLibrary() {
@@ -175,8 +186,16 @@ class HostMultiSourceIntegrationTest {
             stats.updateReadingStatistics(ReadingStatsUpdate(book.storageKey,
                 secondDelta = if (book == a) 60 else 120, readEventDelta = 1, localTime = LocalTime.NOON))
         }
-        val cacheA = async { withTimeout(30_000) { books.cacheBook(a.storageKey).filterNotNull().first { it.state.isFinished } } }
-        val cacheB = async { withTimeout(30_000) { books.cacheBook(b.storageKey).filterNotNull().first { it.state.isFinished } } }
+        val cacheA = async {
+            val work = books.cacheBook(a.storageKey)
+            allowNetwork(a)
+            withTimeout(30_000) { work.filterNotNull().first { it.state.isFinished } }
+        }
+        val cacheB = async {
+            val work = books.cacheBook(b.storageKey)
+            allowNetwork(b)
+            withTimeout(30_000) { work.filterNotNull().first { it.state.isFinished } }
+        }
         val completed = listOf(cacheA.await(), cacheB.await())
         assertTrue(completed.all { it.state == WorkInfo.State.SUCCEEDED })
         assertEquals(2, completed.map { it.id }.distinct().size)
@@ -262,6 +281,61 @@ class HostMultiSourceIntegrationTest {
         assertTrue(request.isCancelled)
         assertTrue(manager.registry.resolve(a.sourceId) is SourceResolution.Ready)
         assertTrue(isActive)
+    }
+
+    @Test fun eagerDuplicateSubmissionsKeepOnePersistentTaskAndOneExecutor() = runBlocking {
+        val source = register(a)
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        source.beforeInformation = { entered.complete(Unit); release.await() }
+        val first = books.cacheBook(a.storageKey) // Starts even before a collector attaches.
+        try {
+            allowNetwork(a)
+            withTimeout(30_000) { entered.await() }
+            val second = books.cacheBook(a.storageKey)
+            val one = withTimeout(30_000) { first.filterNotNull().first() }
+            val two = withTimeout(30_000) { second.filterNotNull().first() }
+            assertEquals(one.id, two.id)
+            assertEquals(one.id.toString(), downloads.entry(a)!!.taskWorkId)
+            assertEquals(1, downloads.entries().size)
+            assertEquals(1, source.information.get())
+            release.complete(Unit)
+            val finished = withTimeout(30_000) { first.filterNotNull().first { it.state.isFinished } }
+            assertEquals(WorkInfo.State.SUCCEEDED, finished.state)
+            assertEquals(indi.renakoni.nextvol.data.download.BookDownloadPhase.Complete,
+                books.downloadStatusFlow(a.storageKey).first().content.phase)
+        } finally { release.complete(Unit) }
+    }
+
+    @Test fun cancellingAPersistedTaskRevokesItAndExplicitRetryCreatesANewExecutor() = runBlocking {
+        val source = register(a)
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        source.beforeInformation = { entered.complete(Unit); release.await() }
+        val first = books.cacheBook(a.storageKey)
+        try {
+            allowNetwork(a)
+            withTimeout(30_000) { entered.await() }
+            val old = downloads.entry(a)!!
+            books.dismissDownload(a.storageKey)
+            assertEquals(WorkInfo.State.CANCELLED, withTimeout(30_000) { first.filterNotNull().first { it.state.isFinished } }.state)
+            assertTrue(downloads.entry(a)!!.taskHidden)
+            source.beforeInformation = null
+            val retry = books.cacheBook(a.storageKey)
+            val queued = withTimeout(30_000) { retry.filterNotNull().first() }
+            assertNotEquals(old.taskWorkId, queued.id.toString())
+            allowNetwork(a)
+            assertFalse(downloads.entry(a)!!.taskHidden)
+            assertTrue(runCatching { downloads.finishTask(BookDownloadStore.Task(a, downloads.generation(), old.taskWorkId)) }
+                .exceptionOrNull() is CancellationException)
+            // A coalesced source request can outlive one caller. Only the new task may commit it.
+            release.complete(Unit)
+            val retried = withTimeout(30_000) { retry.filterNotNull().first { it.state.isFinished } }
+            assertEquals(WorkInfo.State.SUCCEEDED, retried.state)
+            assertEquals(queued.id.toString(), downloads.entry(a)!!.taskWorkId)
+            assertEquals(indi.renakoni.nextvol.data.download.BookDownloadPhase.Complete,
+                books.downloadStatusFlow(a.storageKey).first().content.phase)
+        } finally { release.complete(Unit) }
     }
 
     private class FixtureSource(override val id: Identifier) : WebBookDataSource by EmptyWebDataSource {

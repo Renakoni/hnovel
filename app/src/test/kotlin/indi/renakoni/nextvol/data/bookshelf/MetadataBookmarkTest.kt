@@ -10,6 +10,7 @@ import indi.renakoni.nextvol.data.local.room.NextVolDatabase
 import indi.renakoni.nextvol.data.web.*
 import indi.renakoni.nextvol.data.web.zlibrary.ZLibrarySources
 import io.mockk.mockk
+import io.mockk.every
 import io.mockk.verify
 import io.nightfish.lightnovelreader.api.book.BookInformation
 import io.nightfish.lightnovelreader.api.book.WordCount
@@ -33,7 +34,18 @@ class MetadataBookmarkTest {
         val db = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), NextVolDatabase::class.java).allowMainThreadQueries().build()
         val registry = WebSourceRegistry()
         val work = mockk<WorkManager>(relaxed = true)
-        val shelves = BookshelfRepository(db.bookshelfDao(), work, registry, mockk(relaxed = true), indi.renakoni.nextvol.data.book.BookAliasStore(db))
+        val aliases = indi.renakoni.nextvol.data.book.BookAliasStore(db)
+        val downloads = indi.renakoni.nextvol.data.download.BookDownloadStore(RuntimeEnvironment.getApplication(), db,
+            indi.renakoni.nextvol.data.content.ContentJsonDecoder(indi.renakoni.nextvol.data.content.ContentComponentRegistry()))
+        val scheduler = indi.renakoni.nextvol.data.download.BookDownloadScheduler(downloads, work, aliases)
+        val shelves = BookshelfRepository(db.bookshelfDao(), scheduler, registry, aliases)
+        val enqueued = kotlinx.coroutines.CompletableDeferred<OneTimeWorkRequest>()
+        every { work.getWorkInfosForUniqueWorkFlow(any()) } returns kotlinx.coroutines.flow.flowOf(emptyList())
+        every { work.enqueueUniqueWork(any<String>(), any<ExistingWorkPolicy>(), any<OneTimeWorkRequest>()) } answers {
+            enqueued.complete(thirdArg())
+            mockk<androidx.work.Operation> { every { result } returns
+                com.google.common.util.concurrent.Futures.immediateFuture(androidx.work.Operation.SUCCESS) }
+        }
         val metadata = SourceBookId(ZLibrarySources.ID, "1/abcdef")
         val novel = SourceBookId(Identifier("fixture", "novel"), "book")
         fun provider(book: SourceBookId) = object : WebBookDataSource by EmptyWebDataSource { override val id = book.sourceId }
@@ -49,6 +61,11 @@ class MetadataBookmarkTest {
             assertTrue(shelves.getBookshelf(1)!!.allBookIds.contains(metadata.storageKey))
             verify(exactly = 0) { work.enqueueUniqueWork(any<String>(), any<ExistingWorkPolicy>(), any<OneTimeWorkRequest>()) }
             shelves.addBookIntoBookShelf(1, info.copy(id = novel.storageKey))
+            val submitted = kotlinx.coroutines.withTimeout(5000) { enqueued.await() }
+            assertEquals(submitted.id.toString(), downloads.entry(novel)!!.taskWorkId)
+            assertEquals("Queued", downloads.entry(novel)!!.taskStatus)
+            assertTrue(submitted.workSpec.input.getBoolean("persistedTask", false))
+            assertEquals(androidx.work.NetworkType.CONNECTED, submitted.workSpec.constraints.requiredNetworkType)
             verify(exactly = 1) { work.enqueueUniqueWork(any<String>(), any<ExistingWorkPolicy>(), any<OneTimeWorkRequest>()) }
             val newBook = novel.copy(remoteId = "new-book")
             shelves.addBookIntoBookShelf(1, info.copy(id = newBook.storageKey))

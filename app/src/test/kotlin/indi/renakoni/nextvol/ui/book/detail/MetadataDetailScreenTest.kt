@@ -19,6 +19,7 @@ import indi.renakoni.nextvol.data.book.SourceBookId
 import indi.renakoni.nextvol.data.book.PartialBookVolumesException
 import indi.renakoni.nextvol.data.book.UNKNOWN_BOOK_UPDATE_TIME
 import indi.renakoni.nextvol.data.download.BookDownloadState
+import indi.renakoni.nextvol.data.download.BookDownloadStatus
 import indi.renakoni.nextvol.data.download.BookDownloadPhase
 import indi.renakoni.nextvol.data.download.MutableDownloadItem
 import indi.renakoni.nextvol.data.download.DownloadType
@@ -72,7 +73,7 @@ class MetadataDetailScreenTest {
         activity.get().setContent {
             CompositionLocalProvider(LocalNavController provides NavHostController(activity.get()),
                 LocalSnackbarHost provides SnackbarHostState(), LocalClaimSnackbarHost provides {}) {
-                MaterialTheme { DetailScreen(state, {}, {}, chapter, {}, cache, bookmark, {}, {}, {}, retry) }
+                MaterialTheme { DetailScreen(state, {}, {}, chapter, {}, { id, _ -> cache(id) }, bookmark, {}, {}, {}, retry) }
             }
         }
     }
@@ -208,7 +209,7 @@ class MetadataDetailScreenTest {
             bookInformation = Ok(BookInformation(key, "Book", author = "Author", description = "",
                 publishingHouse = "", wordCount = WordCount(1), lastUpdated = LocalDateTime.of(2026, 9, 15, 0, 0), isComplete = false))
             canCache = true
-            downloadState = BookDownloadState(BookDownloadPhase.Complete, 3, 3)
+            downloadState = BookDownloadStatus(BookDownloadState(BookDownloadPhase.Complete, 3, 3))
         }
         var requests = 0
         show(state, cache = { assertEquals(key, it); requests++ })
@@ -217,20 +218,20 @@ class MetadataDetailScreenTest {
         compose.onNodeWithText(update).assertIsEnabled().performClick()
         assertEquals(1, requests)
         compose.runOnIdle {
-            state.downloadState = BookDownloadState(BookDownloadPhase.Updating, 1, 3)
+            state.downloadState = BookDownloadStatus(BookDownloadState(BookDownloadPhase.Updating, 1, 3))
             state.downloadItem = MutableDownloadItem(DownloadType.CACHE, key, kotlinx.coroutines.flow.emptyFlow()).apply { progress = 0.5f }
         }
         compose.onNodeWithText(activity.get().getString(R.string.book_download_updating)).assertIsNotEnabled()
         compose.onNodeWithText("50%").assertExists()
         compose.runOnIdle {
-            state.downloadState = BookDownloadState(BookDownloadPhase.Failed, 1, 3)
+            state.downloadState = BookDownloadStatus(BookDownloadState(BookDownloadPhase.Failed, 1, 3))
             (state.downloadItem as MutableDownloadItem).progress = -1f
         }
         compose.onNodeWithText(activity.get().getString(R.string.book_download_retry)).assertIsEnabled().performClick()
         compose.onNodeWithText("-100%").assertDoesNotExist()
         assertEquals(2, requests)
         compose.runOnIdle {
-            state.downloadState = BookDownloadState(BookDownloadPhase.Complete, 3, 3)
+            state.downloadState = BookDownloadStatus(BookDownloadState(BookDownloadPhase.Complete, 3, 3))
             state.canCache = false
         }
         compose.onNodeWithText(activity.get().getString(R.string.cached)).assertIsNotEnabled()

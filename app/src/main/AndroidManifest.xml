@@ -83,6 +83,9 @@
         android:name="androidx.work.impl.foreground.SystemForegroundService"
         android:foregroundServiceType="dataSync"
         tools:node="merge" />
+    <receiver
+        android:name=".data.download.DownloadCancelReceiver"
+        android:exported="false" />
     <service
         android:name=".tts.ReadAloudService"
         android:exported="false"
