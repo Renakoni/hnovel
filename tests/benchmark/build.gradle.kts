@@ -24,6 +24,10 @@ android {
             signingConfig = signingConfigs.getByName("debug")
             matchingFallbacks += listOf("release")
         }
+        create("readerBenchmark") {
+            initWith(getByName("benchmark"))
+            matchingFallbacks += listOf("release")
+        }
     }
 
     targetProjectPath = ":app"
@@ -37,13 +41,13 @@ android {
 
 androidComponents {
     beforeVariants(selector().all()) {
-        it.enable = it.buildType == "benchmark"
+        it.enable = it.buildType in setOf("benchmark", "readerBenchmark")
     }
 }
 
 // This configuration supplies the target APK. Its libraries are already packaged
 // in that APK; traversing them here selects unrelated Desktop/JVM variants.
-configurations.matching { it.name == "benchmarkTestedApks" }.configureEach {
+configurations.matching { it.name in setOf("benchmarkTestedApks", "readerBenchmarkTestedApks") }.configureEach {
     isTransitive = false
 }
 
@@ -53,4 +57,5 @@ dependencies {
     implementation(libs.androidx.test.runner)
     implementation(libs.androidx.test.uiautomator)
     implementation(libs.androidx.benchmark.macro.junit4)
+    implementation("com.squareup.okhttp3:mockwebserver:5.4.0")
 }
