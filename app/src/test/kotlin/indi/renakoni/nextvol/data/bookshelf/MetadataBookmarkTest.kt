@@ -5,7 +5,14 @@ import androidx.room.Room
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequest
 import androidx.work.WorkManager
+import indi.renakoni.nextvol.data.book.BookAliasStore
 import indi.renakoni.nextvol.data.book.SourceBookId
+import indi.renakoni.nextvol.data.content.ContentComponentRegistry
+import indi.renakoni.nextvol.data.content.ContentJsonDecoder
+import indi.renakoni.nextvol.data.download.BookDownloadScheduler
+import indi.renakoni.nextvol.data.download.BookDownloadStore
+import indi.renakoni.nextvol.data.download.DownloadFailure
+import indi.renakoni.nextvol.data.download.selectedChapterIds
 import indi.renakoni.nextvol.data.local.room.NextVolDatabase
 import indi.renakoni.nextvol.data.web.*
 import indi.renakoni.nextvol.data.web.zlibrary.ZLibrarySources
@@ -19,6 +26,12 @@ import io.nightfish.lightnovelreader.api.identifier.Identifier
 import io.nightfish.lightnovelreader.api.web.WebBookDataSource
 import io.nightfish.lightnovelreader.api.web.WebDataSourceItem
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
+import org.junit.After
+import org.junit.Before
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -30,47 +43,91 @@ import java.time.LocalDateTime
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [27], application = Application::class)
 class MetadataBookmarkTest {
-    @Test fun autoCacheShelvesKeepMetadataBookmarksWithoutSchedulingImpossibleChapterDownloads() = runBlocking {
-        val db = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), NextVolDatabase::class.java).allowMainThreadQueries().build()
-        val registry = WebSourceRegistry()
-        val work = mockk<WorkManager>(relaxed = true)
-        val aliases = indi.renakoni.nextvol.data.book.BookAliasStore(db)
-        val downloads = indi.renakoni.nextvol.data.download.BookDownloadStore(RuntimeEnvironment.getApplication(), db,
-            indi.renakoni.nextvol.data.content.ContentJsonDecoder(indi.renakoni.nextvol.data.content.ContentComponentRegistry()))
-        val scheduler = indi.renakoni.nextvol.data.download.BookDownloadScheduler(downloads, work, aliases)
-        val shelves = BookshelfRepository(db.bookshelfDao(), scheduler, registry, aliases)
-        val enqueued = kotlinx.coroutines.CompletableDeferred<OneTimeWorkRequest>()
-        every { work.getWorkInfosForUniqueWorkFlow(any()) } returns kotlinx.coroutines.flow.flowOf(emptyList())
+    private lateinit var db: NextVolDatabase
+    private lateinit var downloads: BookDownloadStore
+    private lateinit var shelves: BookshelfRepository
+    private val registry = WebSourceRegistry()
+    private val work = mockk<WorkManager>(relaxed = true)
+    private val metadata = SourceBookId(ZLibrarySources.ID, "1/abcdef")
+    private val novel = SourceBookId(Identifier("fixture", "novel"), "book")
+    private val submitted = mutableListOf<OneTimeWorkRequest>()
+    private val info = BookInformation(metadata.storageKey, "Saved metadata", author = "Author", description = "",
+        publishingHouse = "", wordCount = WordCount(0), lastUpdated = LocalDateTime.of(1970, 1, 1, 0, 0), isComplete = false)
+
+    @Before fun setUp() = runBlocking {
+        db = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), NextVolDatabase::class.java).allowMainThreadQueries().build()
+        val aliases = BookAliasStore(db)
+        downloads = BookDownloadStore(RuntimeEnvironment.getApplication(), db, ContentJsonDecoder(ContentComponentRegistry()))
+        shelves = BookshelfRepository(db.bookshelfDao(), BookDownloadScheduler(downloads, work, aliases), registry, aliases)
+        every { work.getWorkInfosForUniqueWorkFlow(any()) } returns flowOf(emptyList())
+        every { work.getWorkInfoByIdFlow(any()) } returns flowOf(null)
         every { work.enqueueUniqueWork(any<String>(), any<ExistingWorkPolicy>(), any<OneTimeWorkRequest>()) } answers {
-            enqueued.complete(thirdArg())
+            val request = thirdArg<OneTimeWorkRequest>()
+            assertFalse("Download submission must run after the bookshelf transaction", db.inTransaction())
+            runBlocking {
+                val bookId = request.workSpec.input.getString("bookId")!!
+                assertTrue(shelves.getBookshelf(1)!!.allBookIds.contains(bookId))
+                assertTrue(db.bookshelfDao().getBookshelfBookMetadata(bookId)!!.bookShelfIds.contains(1))
+            }
+            submitted += request
             mockk<androidx.work.Operation> { every { result } returns
                 com.google.common.util.concurrent.Futures.immediateFuture(androidx.work.Operation.SUCCESS) }
         }
-        val metadata = SourceBookId(ZLibrarySources.ID, "1/abcdef")
-        val novel = SourceBookId(Identifier("fixture", "novel"), "book")
         fun provider(book: SourceBookId) = object : WebBookDataSource by EmptyWebDataSource { override val id = book.sourceId }
         registry.register(provider(metadata), ZLibrarySources.METADATA)
         registry.register(provider(novel), SourceMetadata(WebDataSourceItem(novel.sourceId, "Novel", "fixture"),
             setOf(SourceCapability.Directory, SourceCapability.ChapterContent)))
-        val info = BookInformation(metadata.storageKey, "Saved metadata", author = "Author", description = "",
-            publishingHouse = "", wordCount = WordCount(0), lastUpdated = LocalDateTime.of(1970, 1, 1, 0, 0), isComplete = false)
-        try {
-            shelves.addBookshelf(Bookshelf(id = 1, name = "Automatic cache", autoCache = true,
-                allBookIds = listOf(metadata.storageKey, novel.storageKey)))
-            shelves.addBookIntoBookShelf(1, info)
-            assertTrue(shelves.getBookshelf(1)!!.allBookIds.contains(metadata.storageKey))
-            verify(exactly = 0) { work.enqueueUniqueWork(any<String>(), any<ExistingWorkPolicy>(), any<OneTimeWorkRequest>()) }
-            shelves.addBookIntoBookShelf(1, info.copy(id = novel.storageKey))
-            val submitted = kotlinx.coroutines.withTimeout(5000) { enqueued.await() }
-            assertEquals(submitted.id.toString(), downloads.entry(novel)!!.taskWorkId)
-            assertEquals("Queued", downloads.entry(novel)!!.taskStatus)
-            assertTrue(submitted.workSpec.input.getBoolean("persistedTask", false))
-            assertEquals(androidx.work.NetworkType.CONNECTED, submitted.workSpec.constraints.requiredNetworkType)
-            verify(exactly = 1) { work.enqueueUniqueWork(any<String>(), any<ExistingWorkPolicy>(), any<OneTimeWorkRequest>()) }
-            val newBook = novel.copy(remoteId = "new-book")
-            shelves.addBookIntoBookShelf(1, info.copy(id = newBook.storageKey))
-            assertTrue(shelves.getBookshelf(1)!!.allBookIds.contains(newBook.storageKey))
-            verify(exactly = 2) { work.enqueueUniqueWork(any<String>(), any<ExistingWorkPolicy>(), any<OneTimeWorkRequest>()) }
-        } finally { registry.unregister(metadata.sourceId); registry.unregister(novel.sourceId); db.close() }
+        shelves.addBookshelf(Bookshelf(id = 1, name = "Automatic cache", autoCache = true))
+    }
+
+    @After fun tearDown() {
+        registry.unregister(metadata.sourceId)
+        registry.unregister(novel.sourceId)
+        db.close()
+    }
+
+    @Test fun metadataSourcesAndDisabledAutoCacheOnlySaveBookmarks() = runBlocking {
+        shelves.addBookIntoBookShelf(1, info)
+        shelves.addBookshelf(Bookshelf(id = 2, name = "No automatic cache", autoCache = false))
+        shelves.addBookIntoBookShelf(2, info.copy(id = novel.storageKey))
+        assertTrue(shelves.getBookshelf(1)!!.allBookIds.contains(metadata.storageKey))
+        assertTrue(shelves.getBookshelf(2)!!.allBookIds.contains(novel.storageKey))
+        verify(exactly = 0) { work.enqueueUniqueWork(any<String>(), any<ExistingWorkPolicy>(), any<OneTimeWorkRequest>()) }
+    }
+
+    @Test fun newMembershipIsSavedBeforeSubmissionAndConcurrentDuplicatesStayIdle() = runBlocking {
+        coroutineScope {
+            repeat(4) { launch(Dispatchers.Default) { shelves.addBookIntoBookShelf(1, info.copy(id = novel.storageKey)) } }
+        }
+        val request = submitted.single()
+        assertEquals(request.id.toString(), downloads.entry(novel)!!.taskWorkId)
+        assertEquals("Queued", downloads.entry(novel)!!.taskStatus)
+        assertTrue(request.workSpec.input.getBoolean("persistedTask", false))
+        assertEquals(androidx.work.NetworkType.CONNECTED, request.workSpec.constraints.requiredNetworkType)
+        downloads.finishTask(BookDownloadStore.Task(novel, downloads.generation(), request.id.toString()))
+        shelves.addBookIntoBookShelf(1, info.copy(id = novel.storageKey))
+        verify(exactly = 1) { work.enqueueUniqueWork(any<String>(), any<ExistingWorkPolicy>(), any<OneTimeWorkRequest>()) }
+        val newBook = novel.copy(remoteId = "new-book")
+        shelves.addBookIntoBookShelf(1, info.copy(id = newBook.storageKey))
+        assertEquals(listOf(novel.storageKey, newBook.storageKey), shelves.getBookshelf(1)!!.allBookIds)
+        verify(exactly = 2) { work.enqueueUniqueWork(any<String>(), any<ExistingWorkPolicy>(), any<OneTimeWorkRequest>()) }
+    }
+
+    @Test fun automaticDownloadDropsOldSelectionAndSubmissionFailureKeepsBookmark() = runBlocking {
+        val oldWorkId = java.util.UUID.randomUUID().toString()
+        downloads.queueTask(novel, downloads.generation(), oldWorkId, refresh = true, chapterIds = listOf("selected"))
+        downloads.finishTask(BookDownloadStore.Task(novel, downloads.generation(), oldWorkId), DownloadFailure.Scheduling)
+        every { work.enqueueUniqueWork(any<String>(), any<ExistingWorkPolicy>(), any<OneTimeWorkRequest>()) } returns
+            mockk<androidx.work.Operation> { every { result } returns
+                com.google.common.util.concurrent.Futures.immediateFailedFuture(IllegalStateException("Cannot schedule")) }
+        shelves.addBookIntoBookShelf(1, info.copy(id = novel.storageKey))
+        assertEquals(listOf(novel.storageKey), shelves.getBookshelf(1)!!.allBookIds)
+        val owner = downloads.entry(novel)!!
+        assertEquals("Failed", owner.taskStatus)
+        assertEquals(DownloadFailure.Scheduling.name, owner.taskError)
+        assertNull(owner.selectedChapterIds())
+        assertEquals("", owner.taskRefreshId)
+        shelves.addBookIntoBookShelf(1, info.copy(id = novel.storageKey))
+        verify(exactly = 1) { work.enqueueUniqueWork(any<String>(), any<ExistingWorkPolicy>(), any<OneTimeWorkRequest>()) }
     }
 }
