@@ -35,6 +35,15 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
     }
     val canSearch get() = spec.searchUrl.isNotBlank()
     val canLogin get() = spec.loginUrl.isNotBlank() || spec.loginUi.isNotBlank()
+    /** Whole-operation replay requires declarative reads with no user hooks or shared script state.
+     * Actual extracted URLs and HTTP methods are checked again before each request. */
+    val canReplayDownloads get() = spec.library == null && !spec.browserRead &&
+        listOf(spec.loginCheck, spec.coverDecode, spec.information.string("init"),
+            spec.toc.string("preUpdateJs"), spec.toc.string("formatJs"), spec.content.string("webJs"),
+            spec.content.string("sourceRegex"), spec.content.string("imageDecode")).all { it.isBlank() } &&
+        (listOf(spec.header) + listOf(spec.information, spec.toc, spec.content).flatMap { fields ->
+            fields.keys.map(fields::string)
+        }).all(ExecutionTask.BookOverviews::supports)
     private val discoveryCapabilities by lazy { RuleDiscoveryClassifier.capabilities(spec) }
     val canFeed get() = discoveryEnabled && discoveryCapabilities.hasFeed
     val canCategorize get() = discoveryEnabled && discoveryCapabilities.hasCategories
@@ -901,6 +910,11 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
 
     private suspend fun prepareRequest(context: RuleEvaluation, url: String, field: String, kind: ResourceKind,
         browser: BrowserOptions? = null): BrokerRequest {
+        currentCoroutineContext()[RequestRetryContext]?.let { retry ->
+            val static = RequestCompiler().compile("replay", url, context.baseUrl)
+            if (!ExecutionTask.BookOverviews.supports(url) || static !is CompiledRequest.Ready ||
+                static.request.method !in setOf("GET", "HEAD") || static.request.browser != null) retry.disallowReplay()
+        }
         val prepared = context.script("host.call('request.prepare',result)[0]", RuleValue.Text(url), field).text()
         val compiled = RequestCompiler().compile("content", prepared, context.baseUrl, context.keyword, context.page, context.headers(), kind)
         val request = when (compiled) {
@@ -929,10 +943,11 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val response = when (result) {
             is BrokerResult.Success -> result.response
             is BrokerResult.Failure -> throw SourceContentException(result.code.contentError(), field, result.denial,
-                verification = verification(result))
+                verification = verification(result), retry = if (result.retryable) RequestRetryHint() else null)
         }
         if (request.kind == ResourceKind.Image && response.status !in 200..299)
-            throw SourceContentException(ContentError.Network, field)
+            throw SourceContentException(ContentError.Network, field, httpStatus = httpErrorStatus(response.status),
+                retry = retryHint(request, response))
         return response
     }
     private suspend fun fetch(context: RuleEvaluation, url: String, field: String, browser: BrowserOptions? = null,
@@ -947,7 +962,8 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val inline = response.protocol == "data"
         context.baseUrl = if (inline) url else response.finalUrl
         if (spec.loginCheck.isBlank()) {
-            if (!acceptErrorResponse) checkStatus(response.status, field, response.kind == ResponseKind.BrowserDocument)
+            if (!acceptErrorResponse) checkStatus(response.status, field, response.kind == ResponseKind.BrowserDocument,
+                retryHint(request, response))
             return PageDocument(response.text(), response.finalUrl, inline, context.baseUrl,
                 response.status in 200..299 || response.status == 0 && response.kind == ResponseKind.BrowserDocument,
                 httpErrorStatus(response.status))
@@ -1014,7 +1030,11 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         }
     }
 
-    private fun checkStatus(status: Int, field: String, browserDocument: Boolean = false) {
+    private fun retryHint(request: BrokerRequest, response: BrokerResponse): RequestRetryHint? =
+        if (request.method in setOf("GET", "HEAD") && request.browser == null && response.kind == ResponseKind.Http &&
+            response.status in setOf(429, 502, 503, 504)) RequestRetryHint(retryAfterMillis(response)) else null
+
+    private fun checkStatus(status: Int, field: String, browserDocument: Boolean = false, retry: RequestRetryHint? = null) {
         if (browserDocument && status == 0) return
         // A public page can return 401/403 for a WAF or other access policy. Only an
         // explicit login request establishes an authentication failure for this account.
@@ -1022,7 +1042,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             authority.authorized(identity) { session.write(StorageRequest(StorageArea.Account, "login/status", "required")) }
             throw SourceContentException(ContentError.LoginRequired, field, httpStatus = httpErrorStatus(status))
         }
-        if (status !in 200..299) throw SourceContentException(ContentError.Network, field, httpStatus = httpErrorStatus(status))
+        if (status !in 200..299) throw SourceContentException(ContentError.Network, field, httpStatus = httpErrorStatus(status), retry = retry)
     }
 
     private fun httpErrorStatus(status: Int) = status.takeIf { it in 100..599 && it !in 200..299 }

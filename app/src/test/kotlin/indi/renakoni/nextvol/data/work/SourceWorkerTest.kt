@@ -81,6 +81,7 @@ class SourceWorkerTest {
         val progress = mockk<DownloadProgressRepository> { every { addExportItem(capture(items)) } just Runs }
         for (book in listOf(a, b)) {
             val runtime = mockk<SourceRuntime> {
+                every { canReplayDownloads } returns false
                 coEvery { execute<Any?>(any()) } coAnswers { firstArg<suspend () -> Any?>().invoke() }
                 coEvery { canonicalBookId(any()) } coAnswers { firstArg() }
                 coEvery { getBookInformation("same", any(), any()) } returns Ok(info("same"))
@@ -100,9 +101,11 @@ class SourceWorkerTest {
         assertTrue(items.all { it.progress == 1f })
     }
 
-    @Test fun missingSourceLoginAndVerificationAreDistinctTerminalFailures() = runTest {
+    @Test fun missingSourceLoginAndVerificationAreDistinctFailures() = runTest {
         val context = RuntimeEnvironment.getApplication()
         val repository = mockk<BookRepository>()
+        coEvery { repository.canReplayDownload(any()) } returns false
+        every { repository.downloadSource(any()) } returns null
         coEvery { repository.canonicalBook(any()) } coAnswers { firstArg() }
         coEvery { repository.refreshBookInformation(a, any(), any()) } returns Ok(info(a.storageKey))
         every { repository.getBookInformationFlow(any<String>(), any()) } returns kotlinx.coroutines.flow.emptyFlow()
@@ -114,7 +117,11 @@ class SourceWorkerTest {
             WebRequestErrorKind.VerificationRequired to "verification_required")) {
             coEvery { repository.downloadDirectory(a) } returns
                 Err(WebRequestError("Sign in", "Do not persist this private detail", kind = kind))
-            val worker = CacheBookWork(context, workerParameters(workDataOf("bookId" to a.storageKey)), progress, repository, downloads)
+            val workId = UUID.randomUUID()
+            val generation = downloads.generation()
+            downloads.queueTask(a, generation, workId.toString())
+            val worker = CacheBookWork(context, workerParameters(workDataOf("bookId" to a.storageKey,
+                "downloadGeneration" to generation, "persistedTask" to true), workId), progress, repository, downloads)
             val result = worker.doWork() as ListenableWorker.Result.Failure
             assertEquals(reason, result.outputData.getString("reason"))
             assertEquals(a.storageKey, result.outputData.getString("bookId"))

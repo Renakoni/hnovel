@@ -106,7 +106,8 @@ class ScrollChapterWindowTest {
         mode.changeBookId("other-book")
         env.emit("3", Ok(env.chapter("3", "2", "4", "OLD_BOOK")))
         assertFalse(env.events.contains("write/start/other-book"))
-        assertEquals("book", env.chapters.preloads.last().bookId)
+        assertEquals("book", env.chapters.requests.last().bookId)
+        assertTrue(env.chapters.active.isEmpty())
         assertEquals(listOf(null, null, null), mode.uiState.contentList.toList())
         assertNull(mode.requestedChapterId)
     }

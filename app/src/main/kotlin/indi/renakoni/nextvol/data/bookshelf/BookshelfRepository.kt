@@ -2,15 +2,10 @@ package indi.renakoni.nextvol.data.bookshelf
 
 import indi.renakoni.nextvol.data.book.BookIdentity
 import indi.renakoni.nextvol.data.book.BookAliasStore
-import indi.renakoni.nextvol.data.download.BookDownloadStore
-import androidx.work.ExistingWorkPolicy
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.WorkManager
-import androidx.work.workDataOf
+import indi.renakoni.nextvol.data.download.BookDownloadScheduler
 import indi.renakoni.nextvol.data.local.room.converter.ListConverter
 import indi.renakoni.nextvol.data.local.room.dao.BookshelfDao
 import indi.renakoni.nextvol.data.local.room.entity.BookshelfEntity
-import indi.renakoni.nextvol.data.work.CacheBookWork
 import io.nightfish.lightnovelreader.api.book.BookInformation
 import io.nightfish.lightnovelreader.api.bookshelf.Bookshelf
 import io.nightfish.lightnovelreader.api.bookshelf.BookshelfBookMetadata
@@ -25,9 +20,8 @@ import javax.inject.Singleton
 
 @Singleton
 class BookshelfRepository @Inject constructor(
-    private val bookshelfDao: BookshelfDao, private val workManager: WorkManager,
+    private val bookshelfDao: BookshelfDao, private val downloadScheduler: BookDownloadScheduler,
     private val sourceRegistry: indi.renakoni.nextvol.data.web.WebSourceRegistry,
-    private val downloads: BookDownloadStore,
     private val aliases: BookAliasStore,
 ) : BookshelfRepositoryApi {
     override suspend fun getAllBookshelfIds(): List<Int> = bookshelfDao.getAllBookshelfIds()
@@ -135,17 +129,7 @@ class BookshelfRepository @Inject constructor(
         val sourceId = BookIdentity.book(bookId).sourceId
         val canCache = sourceRegistry.sources.value.any { it.metadata.id == sourceId && it.metadata.supportsReading }
         if (canCache && bookshelf.autoCache) {
-            val generation = downloads.generation()
-            val workRequest = OneTimeWorkRequestBuilder<CacheBookWork>()
-                .addTag(CacheBookWork.generationTag(generation)).setInputData(
-                    workDataOf(
-                        "bookId" to bookId,
-                        "downloadGeneration" to generation,
-                    )
-                ).build()
-            workManager.enqueueUniqueWork(
-                CacheBookWork.ofId(bookId), ExistingWorkPolicy.KEEP, workRequest
-            )
+            downloadScheduler.enqueue(BookIdentity.book(bookId))
         }
         (bookshelf.allBookIds + listOf(bookId)).let {
             bookshelfDao.insertBookshelf(

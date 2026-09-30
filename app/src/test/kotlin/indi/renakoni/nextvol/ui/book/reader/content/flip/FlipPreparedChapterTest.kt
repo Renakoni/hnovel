@@ -123,8 +123,8 @@ class FlipPreparedChapterTest {
         await { mode.uiState.readingChapterId == "2" }
         compose.onNodeWithText("CACHED_2_3").assertIsDisplayed()
         val originalPager = mode.uiState.pagerState
-        content["2"] = List(3) { Page("FRESH_2_${it + 1}") }
-        env.emit("2", Ok(env.chapter("2", "1", "3")))
+        content["2_fresh"] = List(3) { Page("FRESH_2_${it + 1}") }
+        env.emit("2", Ok(env.chapter("2", "1", "3").copy(content = env.chapter("2_fresh").content)))
         await { mode.uiState.pagerState !== originalPager && mode.uiState.pagerState.pageCount == 3 }
         compose.onNodeWithText("FRESH_2_3").assertIsDisplayed()
         compose.onRoot().performTouchInput { swipeRight() }
