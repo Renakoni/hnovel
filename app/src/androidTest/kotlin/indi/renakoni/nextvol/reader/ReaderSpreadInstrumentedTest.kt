@@ -2,6 +2,7 @@ package indi.renakoni.nextvol.reader
 
 import android.graphics.Bitmap
 import android.net.Uri
+import android.view.KeyEvent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.height
@@ -22,6 +23,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.unit.Density
@@ -43,6 +45,10 @@ import indi.renakoni.nextvol.ui.LocalAppTheme
 import indi.renakoni.nextvol.ui.LocalReaderBookId
 import indi.renakoni.nextvol.ui.book.reader.*
 import indi.renakoni.nextvol.ui.book.reader.content.ChapterContentUiState
+import indi.renakoni.nextvol.ui.book.reader.content.LocalReaderRendererActive
+import indi.renakoni.nextvol.ui.book.reader.content.LocalReaderVolumeKeysEnabled
+import indi.renakoni.nextvol.ui.book.reader.bookmark.LocalReaderBookmarks
+import indi.renakoni.nextvol.ui.book.reader.bookmark.ReaderBookmarkSession
 import indi.renakoni.nextvol.ui.book.reader.content.flip.*
 import io.nightfish.lightnovelreader.api.content.component.AbstractContentComponent
 import io.nightfish.lightnovelreader.api.content.component.ImageComponentData
@@ -191,16 +197,102 @@ class ReaderSpreadInstrumentedTest {
         assertEquals(1..1, fixture.flip.visibleLeafRange)
     }
 
+    @Test fun swipeWithoutAnimationTurnsExactlyOneSpread() = assertSwipe(false)
+    @Test fun animatedSwipeTurnsExactlyOneSpread() = assertSwipe(true)
+
+    private fun assertSwipe(animated: Boolean) {
+        val fixture = Fixture(animated = animated)
+        compose.onNodeWithTag("spread-host").performTouchInput { swipeLeft() }
+        compose.waitForIdle()
+        assertEquals(2..3, fixture.flip.visibleLeafRange)
+        compose.onNodeWithTag("spread-host").performTouchInput { swipeRight() }
+        compose.waitForIdle()
+        assertEquals(0..1, fixture.flip.visibleLeafRange)
+    }
+
+    @Test fun accessiblePageActionsUseTheSameSpreadStep() = assertAccessible(LayoutDirection.Ltr)
+    @Test fun accessibleRtlPageActionsReversePhysicalDirectionOnly() = assertAccessible(LayoutDirection.Rtl)
+
+    private fun assertAccessible(direction: LayoutDirection) {
+        val fixture = Fixture(direction)
+        val action = if (direction == LayoutDirection.Ltr) SemanticsActions.PageRight else SemanticsActions.PageLeft
+        compose.onNode(SemanticsMatcher.keyIsDefined(action)).performSemanticsAction(action) { assertTrue(it()) }
+        compose.waitForIdle()
+        assertEquals(2..3, fixture.flip.visibleLeafRange)
+        compose.onNode(SemanticsMatcher.keyIsDefined(SemanticsActions.ScrollBy)).performSemanticsAction(SemanticsActions.ScrollBy) {
+            assertTrue(it(if (direction == LayoutDirection.Ltr) 1000f else -1000f, 0f))
+        }
+        compose.waitForIdle()
+        assertEquals(4..4, fixture.flip.visibleLeafRange)
+    }
+
+    @Test fun ordinaryBookmarkUsesFirstRealLeafAndNeverTheEmptySlot() {
+        val fixture = Fixture()
+        assertEquals(0, compose.runOnIdle { fixture.bookmarks.capture!!()!!.anchor.componentIndex })
+        fixture.turn(true)
+        assertEquals(2, compose.runOnIdle { fixture.bookmarks.capture!!()!!.anchor.componentIndex })
+        fixture.turn(true)
+        assertEquals(4, compose.runOnIdle { fixture.bookmarks.capture!!()!!.anchor.componentIndex })
+    }
+
+    @Test fun outgoingRendererReleasesCaptureAndIgnoresTapSwipeAndReflow() {
+        val fixture = Fixture(animated = true)
+        val oldCapture = compose.runOnIdle { fixture.bookmarks.capture!! }
+        val pager = fixture.flip.pagerState
+        compose.runOnIdle { fixture.active = false }
+        compose.waitForIdle()
+        assertNull(fixture.bookmarks.capture)
+        assertNull(compose.runOnIdle { oldCapture() })
+        fixture.turn(true)
+        compose.onNodeWithTag("spread-host").performTouchInput { swipeLeft() }
+        compose.runOnIdle { fixture.width = 600.dp }
+        compose.waitForIdle()
+        assertSame(pager, fixture.flip.pagerState)
+        assertEquals(0, pager.currentPage)
+        compose.onNodeWithTag("reader-leaf-0").assertDoesNotExist()
+    }
+
+    @Test fun volumeTapAdvancesOneSpreadInRtlAndGoesBack() {
+        val fixture = Fixture(direction = LayoutDirection.Rtl, volume = true)
+        fun tap(code: Int) {
+            assertTrue(compose.runOnIdle { compose.activity.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, code)) })
+            assertTrue(compose.runOnIdle { compose.activity.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, code)) })
+            compose.waitForIdle()
+        }
+        tap(KeyEvent.KEYCODE_VOLUME_DOWN)
+        assertEquals(2..3, fixture.flip.visibleLeafRange)
+        tap(KeyEvent.KEYCODE_VOLUME_UP)
+        assertEquals(0..1, fixture.flip.visibleLeafRange)
+    }
+
+    @Test fun heldVolumeKeyRepeatsSpreadsAndStopsWhenRendererExits() {
+        val fixture = Fixture(volume = true)
+        compose.mainClock.autoAdvance = false
+        assertTrue(compose.runOnIdle { compose.activity.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_VOLUME_DOWN)) })
+        compose.mainClock.advanceTimeBy(64)
+        assertEquals(2..3, fixture.flip.visibleLeafRange)
+        compose.mainClock.advanceTimeBy(240)
+        assertEquals(4..4, fixture.flip.visibleLeafRange)
+        compose.runOnIdle { fixture.active = false }
+        compose.mainClock.advanceTimeBy(800)
+        assertEquals(4..4, fixture.flip.visibleLeafRange)
+        assertEquals(0, fixture.commits)
+        compose.mainClock.autoAdvance = true
+    }
+
     private inner class Fixture(
         val direction: LayoutDirection = LayoutDirection.Ltr,
         animated: Boolean = false,
         reduced: Boolean = false,
         private val unsupported: Boolean = false,
+        volume: Boolean = false,
     ) {
         val settings = object : ReaderSettings by baseSettings {
             override val isUsingFlipPage = true
             override val isUsingClickFlipPage = true
             override val fastChapterChange = true
+            override val isUsingVolumeKeyFlip = volume
+            override val volumeKeyContinuousFlipInterval = .2f
             override val flipAnime = if (animated) "scroll" else "none"
             override val reduceMotion = reduced
         }
@@ -217,6 +309,8 @@ class ReaderSpreadInstrumentedTest {
         private val one = chapter("one", null, "two")
         private val two = chapter("two", "one", null)
         var width by mutableStateOf(1000.dp)
+        var active by mutableStateOf(true)
+        val bookmarks = ReaderBookmarkSession()
         var commits = 0
         val flip = MutableFlipPageContentUiState(
             loadNextChapter = { stage(two, ChapterEntry.Start) },
@@ -232,6 +326,8 @@ class ReaderSpreadInstrumentedTest {
                 val colors = lightColorScheme()
                 val navController = rememberNavController()
                 CompositionLocalProvider(
+                    LocalReaderRendererActive provides active, LocalReaderBookmarks provides bookmarks,
+                    LocalReaderVolumeKeysEnabled provides volume,
                     LocalDensity provides Density(1f), LocalLayoutDirection provides direction,
                     LocalReaderBookId provides "spread-book", LocalNavController provides navController,
                 ) {
