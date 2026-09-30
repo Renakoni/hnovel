@@ -60,7 +60,10 @@ class SourceRuntime internal constructor(
         val interaction = currentCoroutineContext()[ForegroundSourceRequest] ?: kotlin.coroutines.EmptyCoroutineContext
         val retry = currentCoroutineContext()[hnovel.network.RequestRetryContext] ?: kotlin.coroutines.EmptyCoroutineContext
         val background = currentCoroutineContext()[BackgroundSourceRequest] ?: kotlin.coroutines.EmptyCoroutineContext
-        val request = lifetime.async(interaction + retry + background + (version ?: kotlin.coroutines.EmptyCoroutineContext) + SourceRequestOwner(id)) { block() }
+        val scheduling = currentCoroutineContext()[hnovel.execution.SourceWorkRequest] ?:
+            if (interaction is ForegroundSourceRequest && interaction.allowsInteraction && interaction.isActive)
+                hnovel.execution.SourceWorkRequest(WebDataSourcePriority.High.priority) else kotlin.coroutines.EmptyCoroutineContext
+        val request = lifetime.async(interaction + retry + background + scheduling + (version ?: kotlin.coroutines.EmptyCoroutineContext) + SourceRequestOwner(id)) { block() }
         return try {
             request.await().also { checkAvailable() }
         } finally {
