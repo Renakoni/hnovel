@@ -328,6 +328,28 @@ class HostMultiSourceIntegrationTest {
         assertFalse(books.getIsBookCached(a.storageKey))
     }
 
+    @Test fun automaticBookshelfDownloadAfterCancelledSelectionUsesTheWholeBook() = runBlocking {
+        val source = register(a)
+        val selected = books.submitDownload(a.storageKey, refresh = true, chapterIds = listOf("2")) as DownloadSubmission.Accepted
+        assertTrue(downloads.entry(a)!!.taskRefreshId.isNotEmpty())
+        books.dismissDownload(a.storageKey)
+        shelves.addBookshelf(Bookshelf(id = 1, name = "Automatic", autoCache = true))
+        shelves.addBookIntoBookShelf(1, books.getBookInformationFlow(a).last().get()!!)
+        allowNetwork(a)
+        val owner = downloads.entry(a)!!
+        assertNotEquals(selected.workId.toString(), owner.taskWorkId)
+        assertEquals("", owner.taskChapterIds)
+        assertEquals("", owner.taskRefreshId)
+        val finished = withTimeout(30_000) {
+            workManager.getWorkInfoByIdFlow(java.util.UUID.fromString(owner.taskWorkId))
+                .filterNotNull().first { it.state.isFinished }
+        }
+        assertEquals(WorkInfo.State.SUCCEEDED, finished.state)
+        assertEquals(2, source.chapters.get())
+        assertNotNull(local.getChapterContent(BookIdentity.chapter("1", a).storageKey))
+        assertNotNull(local.getChapterContent(BookIdentity.chapter("2", a).storageKey))
+    }
+
     @Test fun differentSelectionCannotReplaceAnActiveTaskAndResumeKeepsItsScope() = runBlocking {
         register(a)
         val first = books.submitDownload(a.storageKey, chapterIds = listOf("2")) as DownloadSubmission.Accepted

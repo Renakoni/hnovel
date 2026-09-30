@@ -125,7 +125,6 @@ class BookDownloadViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val result = books.submitDownload(state.bookId, if (resume) false else state.refresh, selected)
-                if (result is DownloadSubmission.Accepted) state = state.copy(status = state.status.copy(task = result.task))
                 messages.send(result)
             } finally { state = state.copy(submitting = false) }
         }

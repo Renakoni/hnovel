@@ -71,21 +71,20 @@ class BookDownloadStore @Inject constructor(@ApplicationContext private val cont
     suspend fun entry(book: SourceBookId) = withContext(Dispatchers.IO) { dao.get(book.storageKey) }
 
     suspend fun queueTask(book: SourceBookId, generation: Long, workId: String, refresh: Boolean = false,
-        chapterIds: List<String>? = null) = withContext(Dispatchers.IO) { lock.withLock {
+        chapterIds: List<String>? = null, resumePrevious: Boolean = true) = withContext(Dispatchers.IO) { lock.withLock {
         migrateLegacy()
         if (generation != this@BookDownloadStore.generation()) throw CancellationException("Download was cleared")
         val owner = dao.get(book.storageKey) ?: BookDownloadEntity(book.storageKey, generation = generation)
+        val resumeScope = resumePrevious && chapterIds == null && owner.taskStatus in setOf(
+            DownloadTaskStatus.Failed.name, DownloadTaskStatus.Interrupted.name, DownloadTaskStatus.Cancelled.name,
+            DownloadTaskStatus.WaitingRetry.name, DownloadTaskStatus.WaitingVerification.name)
         dao.put(owner.copy(taskWorkId = workId, taskStatus = DownloadTaskStatus.Queued.name,
             taskStage = DownloadStage.Details.name, taskChapter = "", taskError = "", taskRunAttempt = 0, taskHidden = false,
             taskRetryCount = 0, taskNextAttemptAt = 0, taskSourceRevision = "", taskAccountGeneration = -1,
-            taskChapterIds = chapterIds?.let { Json.encodeToString(it) } ?: owner.taskChapterIds.takeIf {
-                owner.taskStatus in setOf(DownloadTaskStatus.Failed.name, DownloadTaskStatus.Interrupted.name,
-                    DownloadTaskStatus.Cancelled.name, DownloadTaskStatus.WaitingRetry.name, DownloadTaskStatus.WaitingVerification.name)
-            }.orEmpty(), taskChapterFailures = "{}",
-            taskRefreshId = if (refresh) java.util.UUID.randomUUID().toString() else owner.taskRefreshId.takeIf {
-                chapterIds == null && owner.taskStatus in setOf(DownloadTaskStatus.Failed.name, DownloadTaskStatus.Interrupted.name,
-                    DownloadTaskStatus.Cancelled.name, DownloadTaskStatus.WaitingRetry.name, DownloadTaskStatus.WaitingVerification.name)
-            }.orEmpty()))
+            taskChapterIds = chapterIds?.let { Json.encodeToString(it) } ?: owner.taskChapterIds.takeIf { resumeScope }.orEmpty(),
+            taskChapterFailures = "{}",
+            taskRefreshId = if (refresh) java.util.UUID.randomUUID().toString()
+                else owner.taskRefreshId.takeIf { resumeScope }.orEmpty()))
     } }
 
     suspend fun startTask(book: SourceBookId, generation: Long, workId: String, runAttempt: Int,

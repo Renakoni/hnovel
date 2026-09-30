@@ -678,7 +678,8 @@ class BookDownloadTest {
         downloads.clearReadingCache()
         assertNotNull(chapter(a, "1"))
         assertArrayEquals(png, downloads.image(image)!!.readBytes())
-        assertEquals(BookDownloadState(BookDownloadPhase.Partial, 1, 3), state())
+        // Migrated bytes remain readable, but lack a trusted signature for current task progress.
+        assertEquals(BookDownloadState(BookDownloadPhase.Partial, 1, 3, taskSavedChapters = 0), state())
     }
 
     @Test fun firstRequestFailuresStayVisibleAfterDatabaseReopenAndSourceRemoval() = runBlocking {
