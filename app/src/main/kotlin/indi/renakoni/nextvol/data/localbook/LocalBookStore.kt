@@ -231,9 +231,12 @@ class LocalBookStore @Inject constructor(
                         chapters.isEmpty() -> LocalBookRelinkMatch.MissingMapping
                         chapters.size != parsed.chapters.size || chapters.indices.any { number ->
                             val (volume, chapter) = chapters[number]
+                            val parsedChapter = parsed.chapters[number]
+                            // Older catalogs used the book title for chapters without an explicit volume.
+                            val sameVolume = volume == parsedChapter.volume ||
+                                (parsedChapter.volume.isBlank() && volume == (info?.title ?: parsed.title))
                             chapter.id != SourceChapterId(book, number.toString()).storageKey ||
-                                chapter.title != parsed.chapters[number].title ||
-                                volume != parsed.chapters[number].volume.ifBlank { info?.title ?: parsed.title }
+                                chapter.title != parsedChapter.title || !sameVolume
                         } -> LocalBookRelinkMatch.DifferentMapping
                         else -> LocalBookRelinkMatch.Legacy
                     }
@@ -427,7 +430,7 @@ class LocalBookStore @Inject constructor(
     private fun volumes(book: SourceBookId, index: LocalBookIndex): BookVolumes {
         val volumes = mutableListOf<Volume>()
         index.chapters.forEachIndexed { number, chapter ->
-            val volumeTitle = chapter.volume.ifBlank { index.title }
+            val volumeTitle = chapter.volume
             val info = ChapterInformation(SourceChapterId(book, number.toString()).storageKey, chapter.title)
             if (volumes.lastOrNull()?.volumeTitle == volumeTitle) {
                 volumes[volumes.lastIndex] = volumes.last().copy(chapters = volumes.last().chapters + info)

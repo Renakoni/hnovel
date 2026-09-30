@@ -13,9 +13,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -28,7 +26,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -74,6 +71,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.movableContentOf
+import androidx.compose.runtime.key
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -84,7 +83,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
@@ -93,6 +91,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -117,7 +116,8 @@ import indi.renakoni.nextvol.ui.components.downloadStatusText
 import indi.renakoni.nextvol.ui.components.Cover
 import indi.renakoni.nextvol.ui.components.LnrSnackbar
 import indi.renakoni.nextvol.ui.components.Loading
-import indi.renakoni.nextvol.ui.components.SwitchChip
+import indi.renakoni.nextvol.ui.book.reader.DirectorySearchMatch
+import indi.renakoni.nextvol.ui.book.reader.searchDirectory
 import indi.renakoni.nextvol.ui.components.rememberSkeletonShimmer
 import indi.renakoni.nextvol.ui.home.bookshelf.home.BookStatusIcon
 import indi.renakoni.nextvol.ui.home.settings.textformatting.rules.navigateToSettingsTextFormattingRulesDestination
@@ -130,7 +130,6 @@ import indi.renakoni.nextvol.utils.fadingEdge
 import indi.renakoni.nextvol.utils.isScrollingUp
 import io.nightfish.lightnovelreader.api.book.BookInformation
 import io.nightfish.lightnovelreader.api.book.ChapterInformation
-import io.nightfish.lightnovelreader.api.book.Volume
 import io.nightfish.lightnovelreader.api.ui.LocalNavController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
@@ -173,6 +172,7 @@ fun DetailScreen(
     var exportSettings by remember { mutableStateOf(ExportSettings()) }
 
     val lazyListState = rememberLazyListState()
+    var activeDirectoryListState by remember { mutableStateOf(lazyListState) }
     val selectionListState = rememberLazyListState()
     var selectingChapters by rememberSaveable { mutableStateOf(false) }
     var selectedChapterIds by rememberSaveable { mutableStateOf(emptyList<String>()) }
@@ -205,17 +205,16 @@ fun DetailScreen(
         onDispose { claim(false) }
     }
 
-    val scrollingUp by lazyListState.isScrollingUp()
-    val fabVisible by remember(uiState.bookVolumes, lazyListState) {
+    val scrollingUp by activeDirectoryListState.isScrollingUp()
+    val fabVisible by remember(uiState.bookVolumes, activeDirectoryListState) {
         derivedStateOf {
             val hasVolumes = uiState.bookVolumes?.availableVolumes()?.volumes?.any { it.chapters.isNotEmpty() } == true
-            val allowByDirection = !lazyListState.isScrollInProgress || scrollingUp
-            val canGoForward = lazyListState.canScrollForward
+            val allowByDirection = !activeDirectoryListState.isScrollInProgress || scrollingUp
+            val canGoForward = activeDirectoryListState.canScrollForward
 
             uiState.readingAvailable && hasVolumes && uiState.userReadingData != null && canGoForward && allowByDirection
         }
     }
-
 
     val isStartReading = uiState.userReadingData?.lastReadChapterId == null
     val fabTextRes = if (isStartReading) R.string.start_reading else R.string.continue_reading
@@ -309,7 +308,6 @@ fun DetailScreen(
                 },
             ) else TopBar(
                 title = uiState.bookInformation?.map { it.title }?.getOrElse { "" } ?: "",
-                readingProgress = uiState.userReadingData?.readingProgress ?: 0f,
                 volumesEmpty = volumesEmpty,
                 readingAvailable = uiState.readingAvailable,
                 onClickBackButton = onClickBackButton,
@@ -354,6 +352,7 @@ fun DetailScreen(
                             } else onClickChapter(id)
                         },
                         lazyListState = if (selectingChapters) selectionListState else lazyListState,
+                        onActiveListStateChange = { activeDirectoryListState = it },
                         selectingChapters = selectingChapters,
                         selectedChapterIds = selectedIds,
                         selectionEnabled = !savingUnread,
@@ -561,6 +560,7 @@ private fun DetailContent(
     uiState: DetailUiState,
     bookInformation: BookInformation,
     lazyListState: LazyListState,
+    onActiveListStateChange: (LazyListState) -> Unit,
     onClickChapter: (String) -> Unit,
     cacheBook: (String, Boolean) -> Unit,
     requestAddBookToBookshelf: (String) -> Unit,
@@ -574,7 +574,69 @@ private fun DetailContent(
     localFileMissing: Boolean,
     onRelink: () -> Unit,
 ) {
-    var hideReadChapters by remember { mutableStateOf(false) }
+    val bookVolumes = uiState.bookVolumes?.availableVolumes()
+    val volumes = bookVolumes?.volumes.orEmpty()
+    val progress = uiState.userReadingData?.maxChapterReadingProgressMap.orEmpty()
+    val readIds = remember(progress) { progress.filterValues { it >= 1f }.keys }
+    val currentChapterId = uiState.userReadingData?.lastReadChapterId
+    val allChapters = remember(volumes) { directoryChapters(volumes) }
+    val readingIndex = remember(allChapters, currentChapterId) { allChapters.indexOfFirst { it.chapter.id == currentChapterId } }
+    val volumesById = remember(volumes) { volumes.associateBy { it.volumeId } }
+    val chapterOrdinals = remember(allChapters) { allChapters.mapIndexed { index, entry -> entry.key to index + 1 }.toMap() }
+    val readCounts = remember(volumes, readIds) { volumes.associate { volume ->
+        volume.volumeId to volume.chapters.count { it.id in readIds }
+    } }
+    var volumeExpansion by rememberSaveable(bookInformation.id) { mutableStateOf<Map<String, Boolean>>(emptyMap()) }
+    fun isVolumeExpanded(volumeId: String): Boolean {
+        val volume = volumesById.getValue(volumeId)
+        return volume.volumeTitle.isBlank() || (volumeExpansion[volumeId]
+            ?: (readCounts.getValue(volumeId) < volume.chapters.size || volumes.size > 8))
+    }
+    var requestedPage by rememberSaveable(bookInformation.id) { mutableStateOf<Int?>(null) }
+    var descending by rememberSaveable(bookInformation.id) { mutableStateOf(false) }
+    var hideReadChapters by rememberSaveable(bookInformation.id) { mutableStateOf(false) }
+    var searchExpanded by rememberSaveable(bookInformation.id) { mutableStateOf(false) }
+    var query by rememberSaveable(bookInformation.id) { mutableStateOf("") }
+    var scrollToDirectory by remember { mutableStateOf(false) }
+    var chapterToLocate by remember { mutableStateOf<String?>(null) }
+    val focusManager = LocalFocusManager.current
+    val pageCount = directoryPageCount(allChapters.size)
+    val page = (requestedPage ?: directoryPageForChapter(allChapters.size, readingIndex, descending)).coerceIn(0, pageCount - 1)
+    val hideRead = hideReadChapters && !selectingChapters
+    val pageChapters = remember(allChapters, page, descending) { directoryPageChapters(allChapters, page, descending) }
+    val pageVolumes = remember(pageChapters) { pageChapters.groupBy { it.volumeId } }
+    val chapters = remember(pageChapters, hideRead, readIds) {
+        pageChapters.filterNot { hideRead && it.chapter.id in readIds }
+    }
+    val visibleChapterKeys = chapters.filter { isVolumeExpanded(it.volumeId) }.mapTo(mutableSetOf()) { it.key }
+    val directoryItemKeys = buildList {
+        pageVolumes.forEach { (volumeId, entries) ->
+            if (volumesById.getValue(volumeId).volumeTitle.isNotBlank()) add("volume:$volumeId")
+            entries.forEach { if (it.key in visibleChapterKeys) add(it.key) }
+        }
+    }
+    val searching = query.isNotBlank()
+    val matches by key(bookVolumes, query) {
+        produceState<List<DirectorySearchMatch>?>(null) {
+            if (searching && bookVolumes != null) value = withContext(Dispatchers.Default) { searchDirectory(bookVolumes, query) }
+        }
+    }
+    val results = remember(matches, hideRead, readIds, descending) {
+        matches?.filterNot { hideRead && it.chapter.id in readIds }?.let { if (descending) it.asReversed() else it }
+    }
+    val searchListState = rememberLazyListState()
+    val activeListState = if (searching) searchListState else lazyListState
+    LaunchedEffect(activeListState) { onActiveListStateChange(activeListState) }
+    val changePage: (Int) -> Unit = {
+        requestedPage = it
+        scrollToDirectory = true
+    }
+    val closeSearch = {
+        query = ""
+        searchExpanded = false
+        focusManager.clearFocus()
+    }
+    BackHandler(searchExpanded, onBack = closeSearch)
     val deferred = 6
     val framesPerStep = 2
     var visible by rememberSaveable { mutableIntStateOf(0) }
@@ -586,11 +648,22 @@ private fun DetailContent(
         }
     }
 
+    LaunchedEffect(scrollToDirectory, chapterToLocate, page, directoryItemKeys, searching, matches, visible) {
+        if (!scrollToDirectory || visible < deferred || (searching && matches == null)) return@LaunchedEffect
+        val headerIndex = if (selectingChapters || searching) 0 else 4
+        val chapterKey = chapters.firstOrNull { it.chapter.id == chapterToLocate }?.key
+        val chapterIndex = chapterKey?.let(directoryItemKeys::indexOf) ?: -1
+        val errorItemCount = if (uiState.bookVolumes?.isErr == true) 1 else 0
+        activeListState.scrollToItem(if (chapterIndex >= 0 && !searching) headerIndex + 1 + errorItemCount + chapterIndex else headerIndex)
+        scrollToDirectory = false
+        chapterToLocate = null
+    }
+
     LazyColumn(
-        state = lazyListState,
+        state = activeListState,
         modifier = modifier
     ) {
-        if (visible >= 1 && !selectingChapters) item {
+        if (visible >= 1 && !selectingChapters && !searching) item {
             BookCardBlock(
                 bookInformation = bookInformation,
                 showReadingMetadata = uiState.readingAvailable,
@@ -604,7 +677,7 @@ private fun DetailContent(
             )
         }
 
-        if (visible >= 2 && !selectingChapters) item {
+        if (visible >= 2 && !selectingChapters && !searching) item {
             TagsBlock(
                 modifier = Modifier.fadeInOnce("tags"),
                 bookInformation = bookInformation,
@@ -612,7 +685,7 @@ private fun DetailContent(
             )
         }
 
-        if (visible >= 3 && !selectingChapters) item {
+        if (visible >= 3 && !selectingChapters && !searching) item {
             QuickOperationsBlock(
                 modifier = Modifier.fadeInOnce("op"),
                 isInBookshelf = uiState.isInBookshelf,
@@ -630,7 +703,7 @@ private fun DetailContent(
             }
         }
 
-        if (visible >= 4 && !selectingChapters) item {
+        if (visible >= 4 && !selectingChapters && !searching) item {
             IntroBlock(
                 modifier = Modifier.fadeInOnce("intro"),
                 description = bookInformation.description
@@ -644,25 +717,31 @@ private fun DetailContent(
                 Modifier.padding(horizontal = itemHorizontalPadding, vertical = itemVerticalPadding),
                 style = typography.bodyMedium, color = colorScheme.onSurfaceVariant)
         }
-        if (visible >= 5 && uiState.readingAvailable && !selectingChapters) item {
-            Row(
-                modifier = Modifier
-                    .fadeInOnce("contents")
-                    .padding(horizontal = 18.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = stringResource(R.string.detail_contents),
-                    style = typography.displayMedium,
-                    fontWeight = FontWeight.W600
-                )
-                Spacer(Modifier.width(12.dp))
-                SwitchChip(
-                    label = stringResource(R.string.hide_read),
-                    selected = hideReadChapters,
-                    onClick = { hideReadChapters = !hideReadChapters }
-                )
-            }
+        if (visible >= 5 && uiState.readingAvailable) item(key = "directory-toolbar") {
+            DirectoryToolbar(
+                chapterCount = allChapters.size, page = page, onPageChange = changePage,
+                descending = descending, hideRead = hideReadChapters, selecting = selectingChapters,
+                canLocate = readingIndex >= 0, searchExpanded = searchExpanded, query = query,
+                matchCount = if (searching) results?.size else null,
+                onToggleOrder = {
+                    descending = !descending
+                    if (!searching) {
+                        requestedPage = 0
+                    }
+                    scrollToDirectory = true
+                },
+                onToggleHideRead = { hideReadChapters = !hideReadChapters },
+                onLocate = {
+                    closeSearch()
+                    requestedPage = directoryPageForChapter(allChapters.size, readingIndex, descending)
+                    hideReadChapters = false
+                    allChapters.getOrNull(readingIndex)?.let { volumeExpansion = volumeExpansion + (it.volumeId to true) }
+                    chapterToLocate = currentChapterId
+                    scrollToDirectory = true
+                },
+                onToggleSearch = { if (searchExpanded) closeSearch() else searchExpanded = true },
+                onQueryChange = { query = it; if (it.isNotBlank()) scrollToDirectory = true },
+            )
         }
 
         if (visible >= 6 && uiState.readingAvailable) {
@@ -676,22 +755,68 @@ private fun DetailContent(
                     }
                 }
             }
-            uiState.bookVolumes?.availableVolumes()?.let { bookVolumes ->
-                items(
-                    items = bookVolumes.volumes,
-                    key = { it.volumeId }
-                ) { volume ->
-                    VolumeItem(
-                        modifier = Modifier.fadeInOnce(volume.volumeId),
-                        volume = volume,
-                        hideReadChapters = hideReadChapters && !selectingChapters,
-                        selectingChapters = selectingChapters,
-                        selectedChapterIds = selectedChapterIds,
-                        selectionEnabled = selectionEnabled,
-                        chapterReadingProgress = uiState.userReadingData?.maxChapterReadingProgressMap ?: emptyMap(),
-                        onClickChapter = onClickChapter,
-                        volumesSize = bookVolumes.volumes.size,
-                        lastReadingChapterId = uiState.userReadingData?.lastReadChapterId
+            bookVolumes?.let {
+                if (searching) {
+                    when {
+                        results == null -> item { Box(Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) { Loading() } }
+                        results.isEmpty() -> item {
+                            Column(Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(stringResource(R.string.reader_directory_no_results), style = typography.titleMedium)
+                                Text(stringResource(R.string.reader_directory_no_results_hint), style = typography.bodyMedium, color = colorScheme.onSurfaceVariant)
+                            }
+                        }
+                        else -> items(results, key = { it.key }, contentType = { "chapter" }) { result ->
+                            ChapterItem(
+                                chapter = result.chapter, isRead = result.chapter.id in readIds,
+                                isLastRead = result.chapter.id == currentChapterId, readingProgress = progress[result.chapter.id] ?: 0f,
+                                onClick = { focusManager.clearFocus(); onClickChapter(result.chapter.id) },
+                                selecting = selectingChapters, selected = result.chapter.id in selectedChapterIds,
+                                selectionEnabled = selectionEnabled, volumeTitle = result.volumeTitle,
+                            )
+                        }
+                    }
+                } else if (allChapters.isNotEmpty()) {
+                    pageVolumes.forEach { (volumeId, entries) ->
+                        val volume = volumesById.getValue(volumeId)
+                        if (volume.volumeTitle.isNotBlank()) item(key = "volume:$volumeId", contentType = "volume") {
+                            val first = chapterOrdinals.getValue(entries.first().key)
+                            val last = chapterOrdinals.getValue(entries.last().key)
+                            DirectoryVolumeHeader(
+                                volumeId = volumeId, title = volume.volumeTitle,
+                                readCount = readCounts.getValue(volumeId), chapterCount = volume.chapters.size,
+                                pageRange = if (entries.size < volume.chapters.size)
+                                    stringResource(R.string.detail_directory_volume_page_range, minOf(first, last), maxOf(first, last)) else null,
+                                expanded = isVolumeExpanded(volumeId),
+                                onToggle = { volumeExpansion = volumeExpansion + (volumeId to !isVolumeExpanded(volumeId)) },
+                            )
+                        }
+                        entries.forEach { entry ->
+                            if (entry.key in visibleChapterKeys) item(key = entry.key, contentType = "chapter") {
+                                val chapter = entry.chapter
+                                ChapterItem(
+                                    chapter = chapter, isRead = chapter.id in readIds, isLastRead = chapter.id == currentChapterId,
+                                    readingProgress = progress[chapter.id] ?: 0f, onClick = { onClickChapter(chapter.id) },
+                                    selecting = selectingChapters, selected = chapter.id in selectedChapterIds, selectionEnabled = selectionEnabled,
+                                )
+                            }
+                        }
+                    }
+                    if (chapters.isEmpty() && hideRead) item {
+                        Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(stringResource(R.string.detail_directory_filtered_empty), style = typography.bodyMedium, color = colorScheme.onSurfaceVariant)
+                            TextButton(onClick = { hideReadChapters = false }) { Text(stringResource(R.string.detail_directory_show_all)) }
+                        }
+                    }
+                    if (pageCount > 1) item(key = "directory-pagination") {
+                        Box(Modifier.padding(horizontal = 18.dp, vertical = 8.dp)) {
+                            DirectoryPageNavigation(allChapters.size, page, descending, changePage)
+                        }
+                    }
+                } else item {
+                    Text(
+                        stringResource(R.string.info_volume_chapters_count, 0),
+                        Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
+                        style = typography.bodyMedium, color = colorScheme.onSurfaceVariant,
                     )
                 }
             }
@@ -708,7 +833,7 @@ private fun DetailContent(
         }
 
         item {
-            Spacer(Modifier.height(48.dp))
+            Spacer(Modifier.height(24.dp))
         }
     }
 }
@@ -717,7 +842,6 @@ private fun DetailContent(
 @Composable
 private fun TopBar(
     title: String,
-    readingProgress: Float,
     volumesEmpty: Boolean,
     readingAvailable: Boolean,
     onClickBackButton: () -> Unit,
@@ -733,18 +857,6 @@ private fun TopBar(
         targetValue = if (isCollapsed) 1f else 0f,
         animationSpec = tween(300, easing = FastOutSlowInEasing),
         label = "titleProgress"
-    )
-
-    val barAlpha by animateFloatAsState(
-        targetValue = if (isCollapsed) 1f else 0f,
-        animationSpec = tween(180, easing = FastOutSlowInEasing),
-        label = "barAlpha"
-    )
-
-    val barProgress by animateFloatAsState(
-        targetValue = readingProgress.coerceIn(0f, 1f),
-        animationSpec = tween(300, easing = FastOutSlowInEasing),
-        label = "barProgress"
     )
 
     Box {
@@ -803,27 +915,6 @@ private fun TopBar(
             },
             scrollBehavior = scrollBehavior
         )
-
-        Box(
-            Modifier
-                .matchParentSize()
-        ) {
-            Box(
-                Modifier
-                    .align(Alignment.BottomStart)
-                    .alpha(barAlpha)
-                    .fillMaxWidth()
-                    .height(4.dp)
-                    .background(colorScheme.surfaceVariant)
-            ) {
-                Box(
-                    Modifier
-                        .fillMaxHeight()
-                        .fillMaxWidth(barProgress)
-                        .background(colorScheme.primary)
-                )
-            }
-        }
     }
 }
 
@@ -1230,105 +1321,6 @@ private fun IntroBlock(
 }
 
 @Composable
-private fun VolumeItem(
-    modifier: Modifier,
-    volume: Volume,
-    hideReadChapters: Boolean = false,
-    chapterReadingProgress: Map<String, Float>,
-    onClickChapter: (String) -> Unit,
-    volumesSize: Int,
-    lastReadingChapterId: String?,
-    selectingChapters: Boolean,
-    selectedChapterIds: Set<String>,
-    selectionEnabled: Boolean,
-) {
-    val readIds = remember(chapterReadingProgress) {
-        chapterReadingProgress.filterValues { it >= 1f }.keys
-    }
-    val (readCount, totalCount) = remember(volume.volumeId, readIds) {
-        val count = volume.chapters.count { it.id in readIds }
-        count to volume.chapters.size
-    }
-    val isFullyRead = readCount >= totalCount
-    var expanded by rememberSaveable {
-        mutableStateOf(readCount < totalCount || volumesSize > 8)
-    }
-    val rotation by animateFloatAsState(targetValue = if (expanded) 90f else 0f, animationSpec = tween(200))
-
-    Column(
-        modifier = modifier.fillMaxWidth()
-    ) {
-        Row(
-            modifier = Modifier
-                .clickable { expanded = !expanded }
-                .padding(horizontal = 20.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier
-                .weight(5f)
-                .padding(vertical = 12.dp)
-            ) {
-                Text(
-                    text = volume.volumeTitle,
-                    style = typography.titleMedium,
-                    color = if (isFullyRead) colorScheme.secondary
-                    else colorScheme.onSurface
-                )
-                Text(
-                    text = if (isFullyRead) stringResource(R.string.info_reading_finished)
-                    else stringResource(R.string.info_reading_progress, readCount, totalCount),
-                    style = typography.titleSmall,
-                    fontWeight = FontWeight.Normal,
-                    color = colorScheme.secondary
-                )
-            }
-            Spacer(Modifier.weight(1f))
-            AnimatedVisibility(
-                visible = !hideReadChapters || !isFullyRead,
-                enter = fadeIn(animationSpec = tween(180)) +
-                        slideInHorizontally(
-                            animationSpec = tween(180),
-                            initialOffsetX = { it / 4 }
-                        ),
-                exit = fadeOut(animationSpec = tween(140)) +
-                        slideOutHorizontally(
-                            animationSpec = tween(140),
-                            targetOffsetX = { it / 4 }
-                        )
-            ) {
-                Icon(
-                    modifier = Modifier
-                        .size(16.dp)
-                        .rotate(rotation),
-                    painter = painterResource(id = R.drawable.arrow_forward_ios_24px),
-                    contentDescription = null
-                )
-            }
-            Spacer(Modifier.width(12.dp))
-        }
-        Column(modifier = Modifier.animateContentSize(animationSpec = tween(250))) {
-            if (expanded) {
-                volume.chapters.forEach { chapter ->
-                    val visible = !(hideReadChapters && chapter.id in readIds)
-                    if (visible) {
-                        ChapterItem(
-                            chapter = chapter,
-                            isRead = chapter.id in readIds,
-                            isLastRead = chapter.id == lastReadingChapterId,
-                            readingProgress = chapterReadingProgress[chapter.id] ?: 0f,
-                            onClick = { onClickChapter(chapter.id) },
-                            selecting = selectingChapters,
-                            selected = chapter.id in selectedChapterIds,
-                            selectionEnabled = selectionEnabled,
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
 private fun ChapterItem(
     chapter: ChapterInformation,
     isRead: Boolean,
@@ -1338,17 +1330,23 @@ private fun ChapterItem(
     selecting: Boolean,
     selected: Boolean,
     selectionEnabled: Boolean,
+    volumeTitle: String? = null,
 ) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .background(if (selected) colorScheme.secondaryContainer.copy(alpha = 0.5f) else Color.Transparent)
+            .padding(horizontal = 18.dp, vertical = 2.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(when {
+                selected -> colorScheme.secondaryContainer
+                isLastRead -> colorScheme.primaryContainer.copy(alpha = .35f)
+                else -> Color.Transparent
+            })
             .then(if (selecting) Modifier.toggleable(
                 value = selected, enabled = selectionEnabled, role = Role.Checkbox,
                 onValueChange = { onClick() },
             ) else Modifier.clickable(onClick = onClick))
-            .padding(vertical = 12.dp)
-            .padding(start = 32.dp, end = 27.dp)
+            .padding(horizontal = 14.dp, vertical = 14.dp)
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically
@@ -1369,6 +1367,8 @@ private fun ChapterItem(
                     color = if (isRead) colorScheme.secondary
                     else colorScheme.onSurface
                 )
+                if (volumeTitle != null) Text(volumeTitle, style = typography.labelSmall,
+                    color = colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (isLastRead) {
                     Text(
                         text = stringResource(R.string.last_read),
