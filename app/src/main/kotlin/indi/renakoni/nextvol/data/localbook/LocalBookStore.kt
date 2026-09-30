@@ -427,7 +427,7 @@ class LocalBookStore @Inject constructor(
     private fun volumes(book: SourceBookId, index: LocalBookIndex): BookVolumes {
         val volumes = mutableListOf<Volume>()
         index.chapters.forEachIndexed { number, chapter ->
-            val volumeTitle = chapter.volume.ifBlank { index.title }
+            val volumeTitle = chapter.volume
             val info = ChapterInformation(SourceChapterId(book, number.toString()).storageKey, chapter.title)
             if (volumes.lastOrNull()?.volumeTitle == volumeTitle) {
                 volumes[volumes.lastIndex] = volumes.last().copy(chapters = volumes.last().chapters + info)
