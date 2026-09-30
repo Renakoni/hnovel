@@ -64,7 +64,7 @@ class PixivPresentationTest {
                 val before = fixture.server.requestCount
                 source.openLoginSession(LoginReadingContext(book.id, chapter.id)).use { panel ->
                     val form = panel.loginForm()
-                    assertEquals(listOf("收藏本章", "追更系列", "收藏系列", "取消收藏", "关注作者", "屏蔽作者", "刷新本章"),
+                    assertEquals(listOf("收藏本章", "追更系列", "收藏系列", "取消收藏", "关注作者", "刷新本章"),
                         form.fields.map { it.name.substringAfterLast(' ') })
                     assertTrue(form.fields.all { it.type == "button" || it.type == "toggle" })
                     assertEquals(before, fixture.server.requestCount)
@@ -82,7 +82,7 @@ class PixivPresentationTest {
                     val names = form.fields.map { it.name.substringAfterLast(' ') }
                     assertEquals("updateSource()", form.fields.single { it.name.endsWith("更新书源") }.action)
                     assertTrue(names.containsAll(listOf("整合系列", "快速模式", "搜索作者", "繁简通搜", "显示描述", "显示插图",
-                        "成人其他榜单", "常规原创热门", "添加屏蔽", "喜欢标签", "他人收藏", "文本框")))
+                        "成人其他榜单", "常规原创热门", "屏蔽管理")))
                     assertTrue(names.none { it in listOf("章节名称", "收藏本章", "刷新本章", "发送评论",
                         "删除评论", "显示评论", "调试模式", "备份恢复", "反馈问题", "显示投票", "兽人小说", "兽人作者",
                         "当前发现", "书源相关入口") })
@@ -97,7 +97,7 @@ class PixivPresentationTest {
             fixture.source(profile = EXTENSION_PROFILE) { definition(fixture) }.use { source ->
                 source.openLoginSession().use { panel ->
                     val form = panel.loginForm()
-                    assertEquals(listOf("阅读与搜索", "发现页设置", "屏蔽与收藏"), form.fields.mapNotNull { it.section }.distinct())
+                    assertEquals(listOf("阅读与搜索", "发现页设置"), form.fields.mapNotNull { it.section }.distinct())
                     assertEquals("阅读与搜索", form.fields.single { it.name.endsWith("显示描述") }.section)
                     assertEquals("发现页设置", form.fields.single { it.name == "成人原创分类" }.section)
                     val discoverySettings = form.fields.filter { it.section == "发现页设置" }

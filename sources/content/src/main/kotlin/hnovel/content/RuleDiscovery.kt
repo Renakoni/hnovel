@@ -36,25 +36,19 @@ class RuleDiscoverySession internal constructor(private val source: RuleSource, 
         val needsCategories = !homepage || modules == null || modules.any { it.jsonObject.string("url").isBlank() }
         val rows = (if (needsCategories) rows(context, source.spec.exploreUrl, "exploreUrl") else emptyList()) +
             source.spec.exploreScreen.takeIf(String::isNotBlank)?.let { rows(context, it, "exploreScreen") }.orEmpty()
-        if (source.spec.customButton) {
-            if (!source.spec.eventListener || source.spec.content.string("callBackJs").isBlank())
-                throw SourceContentException(ContentError.InvalidRule, "ruleContent.callBackJs")
-        }
-        val all = rows + if (source.spec.customButton) listOf(RuleDiscoveryRow("custom-button", "Source action", "button",
-            action = source.spec.content.string("callBackJs"), field = "ruleContent.callBackJs")) else emptyList()
-        if (all.size > MAX_CATALOG_ROWS) throw SourceContentException(ContentError.Limit, "exploreUrl")
-        if (all.map { it.id }.distinct().size != all.size)
+        if (rows.size > MAX_CATALOG_ROWS) throw SourceContentException(ContentError.Limit, "exploreUrl")
+        if (rows.map { it.id }.distinct().size != rows.size)
             throw SourceContentException(ContentError.InvalidRule, "exploreUrl.id")
         val draft = readValues(context).toMutableMap()
-        all.filter { it.type in inputTypes }.forEach { row ->
+        rows.filter { it.type in inputTypes }.forEach { row ->
             val value = draft[row.id] ?: row.default
             draft[row.id] = if (row.choices.isNotEmpty() && value !in row.choices) row.default else value
         }
         // A new definition may remove controls. Their old drafts cannot become URL/filter inputs.
-        val inputs = all.filter { it.type in inputTypes }.map { it.id }.toSet()
+        val inputs = rows.filter { it.type in inputTypes }.map { it.id }.toSet()
         val filtered = draft.filterKeys { it in inputs || it !in initialInputKeys }
         context.discovery = JsonObject(context.discovery!! + ("values" to jsonValues(filtered)))
-        val rendered = all.map { row ->
+        val rendered = rows.map { row ->
             if (row.viewName.isBlank()) row else {
                 val title = script(context, row.viewName, "${row.field}.viewName").jsonPrimitive.content
                 if (title.length > 256) throw SourceContentException(ContentError.Limit, "${row.field}.viewName")
@@ -79,8 +73,7 @@ class RuleDiscoverySession internal constructor(private val source: RuleSource, 
                     throw SourceContentException(ContentError.InvalidRule, "${row.field}.value")
                 next[row.id] = value
             } else if (row.type != "button") throw SourceContentException(ContentError.InvalidRule, "${row.field}.value")
-            val context = context(interactive = true, draft = next, event = if (rowId == "custom-button")
-                if (longClick) "longClickCustomButton" else "clickCustomButton" else null, longClick = longClick)
+            val context = context(interactive = true, draft = next, longClick = longClick)
             if (row.action.isNotBlank()) {
                 if (row.action.startsWith("https://", true) || row.action.startsWith("http://", true)) {
                     context.discovery = JsonObject(context.discovery!! + ("actions" to buildJsonArray {
@@ -133,7 +126,7 @@ class RuleDiscoverySession internal constructor(private val source: RuleSource, 
     }
 
     private fun context(page: Int = 1, interactive: Boolean = false, draft: Map<String, String> = values,
-        event: String? = null, longClick: Boolean = false, noBook: Boolean = true,
+        longClick: Boolean = false, noBook: Boolean = true,
         memory: hnovel.execution.ScriptMemory = hnovel.execution.ScriptMemory()): RuleEvaluation {
         if (!initialized) {
             source.discoveryState("info")?.let { saved ->
@@ -146,7 +139,7 @@ class RuleDiscoverySession internal constructor(private val source: RuleSource, 
         return source.evaluation(page = page, interactive = interactive, memory = memory).also { context ->
             context.discovery = buildJsonObject {
                 put("sessionId", id); put("values", jsonValues(values + draft)); put("interactive", interactive)
-                put("event", event?.let(::JsonPrimitive) ?: JsonNull); put("longClick", longClick); put("noBook", noBook)
+                put("event", JsonNull); put("longClick", longClick); put("noBook", noBook)
                 // Source callbacks omit rule input; login uses this envelope with an explicit result.
                 put("noResult", noBook)
                 put("saveSeconds", saveSeconds?.let(::JsonPrimitive) ?: JsonNull)

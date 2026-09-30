@@ -48,7 +48,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
     val canFeed get() = discoveryEnabled && discoveryCapabilities.hasFeed
     val canCategorize get() = discoveryEnabled && discoveryCapabilities.hasCategories
     val canDiscover get() = discoveryEnabled && (spec.exploreUrl.isNotBlank() ||
-        spec.homepageModules.isNotBlank() || spec.exploreScreen.isNotBlank() || spec.customButton)
+        spec.homepageModules.isNotBlank() || spec.exploreScreen.isNotBlank())
 
     fun openDiscovery(sessionId: String, values: Map<String, String> = emptyMap(),
         environment: RuleDiscoveryEnvironment = RuleDiscoveryEnvironment()) = RuleDiscoverySession(this, sessionId, values, environment)

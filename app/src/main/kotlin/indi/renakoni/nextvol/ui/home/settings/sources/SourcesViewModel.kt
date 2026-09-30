@@ -372,6 +372,17 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
             withContext(NonCancellable) { refreshStoredSettings(id, form) }
         }
     }
+    suspend fun configurationBlockManager(action: String?, formId: String): Identifier? {
+        val current = state.value
+        val active = attempt ?: return null
+        val form = current.loginForm ?: return null
+        if (current.busy || !current.configurationPanel || form.id != formId) return null
+        val field = form.fields.singleOrNull { it.id == action && it.enabled && it.type == "button" } ?: return null
+        if (field.action?.trim()?.removeSuffix(";")?.trim() != "pixivBlockManager()") return null
+        val supported = withContext(Dispatchers.IO) { sources.supportsPixivBlocking(active.source) }
+        return active.source.takeIf { supported && attempt === active && state.value.loginForm?.id == formId && !state.value.busy }
+    }
+
     fun configurationLink(action: String?, formId: String): String? {
         val current = state.value
         val active = attempt ?: return null

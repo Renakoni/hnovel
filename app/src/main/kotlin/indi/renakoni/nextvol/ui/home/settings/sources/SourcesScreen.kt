@@ -1,5 +1,8 @@
 package indi.renakoni.nextvol.ui.home.settings.sources
 
+import indi.renakoni.nextvol.ui.book.detail.PixivBlockManager
+import indi.renakoni.nextvol.ui.book.detail.PixivBlockingViewModel
+
 import android.widget.Toast
 import indi.renakoni.nextvol.utils.textToast
 import androidx.activity.compose.BackHandler
@@ -60,6 +63,8 @@ import io.nightfish.lightnovelreader.api.Route
 import io.nightfish.lightnovelreader.api.identifier.Identifier
 import io.nightfish.lightnovelreader.api.ui.LocalNavController
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 
 fun NavGraphBuilder.settingsSourcesDestination() {
     composable<Route.Main.Settings.SourceImport> { entry ->
@@ -532,11 +537,43 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
         SourceGroupDeleteDialog(group, state.busy, state.message, onDismiss = { deletingGroup = null },
             onDelete = { model.deleteGroup(group.id) })
     }
+    var blockingSource by remember { mutableStateOf<io.nightfish.lightnovelreader.api.identifier.Identifier?>(null) }
+    var configurationActionPending by remember { mutableStateOf(false) }
+    var blockingReady by remember(blockingSource) { mutableStateOf(false) }
+    val blockingModel = blockingSource?.let { id ->
+        val manager = hiltViewModel<PixivBlockingViewModel>()
+        LaunchedEffect(id) {
+            manager.loadManager(id)
+            blockingReady = true
+        }
+        manager
+    }
+    val configurationScope = rememberCoroutineScope()
+    LaunchedEffect(state.configurationPanel, state.loginForm?.id) { blockingSource = null }
     if (state.configurationPanel) SourceConfigurationSheet(state.loginForm, state.busy, { values, action, formId ->
-            val link = model.configurationLink(action, formId)
-            if (link == null) model.submitLogin(values, action, formId) else try { uriHandler.openUri(link) }
-            catch (_: IllegalArgumentException) { textToast(context, R.string.sources_action_failed, Toast.LENGTH_SHORT).show() }
-        }, model::cancelLogin)
+        configurationScope.launch {
+            if (configurationActionPending) return@launch
+            configurationActionPending = true
+            try {
+                val manager = model.configurationBlockManager(action, formId)
+                val link = model.configurationLink(action, formId)
+                if (manager != null) {
+                    val current = model.state.value
+                    if (current.configurationPanel && current.loginForm?.id == formId) blockingSource = manager
+                }
+                else if (link == null) model.submitLogin(values, action, formId) else uriHandler.openUri(link)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                textToast(context, R.string.sources_action_failed, Toast.LENGTH_SHORT).show()
+            } finally {
+                configurationActionPending = false
+            }
+        }
+        }, model::cancelLogin,
+        pageTitle = blockingSource?.takeIf { blockingReady }?.let { stringResource(R.string.pixiv_block_manager) },
+        onPageBack = { blockingSource = null },
+        pageContent = blockingSource?.takeIf { blockingReady }?.let { id -> { PixivBlockManager(id, requireNotNull(blockingModel)) } })
     else state.loginForm?.let { form ->
         SourceLoginDialog(form, state.busy, model::submitLogin, model::cancelLogin,
             message = inlineMessage?.let { stringResource(it) })

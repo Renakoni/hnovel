@@ -29,7 +29,7 @@ object RuleDiscoveryClassifier {
     internal fun capabilities(spec: RuleSourceDefinition): RuleDiscoveryCapabilities {
         val rows = staticRows(spec.exploreUrl, "exploreUrl")
         val controls = staticRows(spec.exploreScreen, "exploreScreen")
-        val categories = rows == null || controls == null || spec.customButton ||
+        val categories = rows == null || controls == null ||
             (rows + controls).any { if (it.type == "url") it.url.isNotBlank() else it.targetPrefixes.isEmpty() }
         val feed = if (spec.homepageModules.isNotBlank()) {
             // Invalid or unresolved declarations retain a tab so the runtime can report their field.

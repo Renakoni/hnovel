@@ -1,5 +1,16 @@
 package indi.renakoni.nextvol.ui.home.settings.sources
 
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
+import androidx.activity.findViewTreeOnBackPressedDispatcherOwner
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -12,6 +23,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -21,10 +33,19 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.navigationevent.NavigationEventDispatcherOwner
+import androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner
 import hnovel.content.LoginField
 import hnovel.content.LoginForm
 import indi.renakoni.nextvol.R
 import kotlinx.coroutines.launch
+
+private data class ConfigurationPage(
+    val section: String?, val title: String?, val content: (@Composable () -> Unit)?,
+) {
+    val isRoot: Boolean get() = section == null && title == null
+}
 
 /** Navigation is local; actions keep the original validated form and field IDs. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -32,59 +53,94 @@ import kotlinx.coroutines.launch
 internal fun SourceConfigurationSheet(
     form: LoginForm?, busy: Boolean,
     onSubmit: (Map<String, String>, String?, String) -> Unit, onCancel: () -> Unit,
+    pageTitle: String? = null, onPageBack: () -> Unit = {}, pageContent: (@Composable () -> Unit)? = null,
 ) {
     val values = remember(form) { mutableStateMapOf<String, String>().apply { putAll(form?.values.orEmpty()) } }
     val fields = form?.fields.orEmpty().filterNot { it.type == "button" &&
         it.action?.trim()?.removeSuffix(";")?.trim() in setOf("login()", "logout()") }
     val sections = fields.mapNotNull { it.section }.distinct()
+    val managerFields = fields.filter { it.section == null && it.type == "button" &&
+        it.action?.trim()?.removeSuffix(";")?.trim() == "pixivBlockManager()" }
     var selectedSection by remember { mutableStateOf<String?>(null) }
     val section = selectedSection?.takeIf { it in sections }
     val scrollState = rememberLazyListState()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
-    LaunchedEffect(section) { scrollState.scrollToItem(0) }
-    fun back() {
-        if (section == null) onCancel() else {
-            selectedSection = null
-            scope.launch { sheetState.show() }
-        }
+    val hasPage = pageTitle != null || section != null
+    fun parent() {
+        if (pageTitle != null) onPageBack() else selectedSection = null
     }
-    ModalBottomSheet(onDismissRequest = ::back, sheetState = sheetState,
+    ModalBottomSheet(onDismissRequest = onCancel, sheetState = sheetState,
+        properties = ModalBottomSheetProperties(shouldDismissOnBackPress = false),
         containerColor = MaterialTheme.colorScheme.surface) {
-        Column(Modifier.fillMaxWidth().fillMaxHeight(0.88f)) {
-            Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
-                verticalAlignment = Alignment.CenterVertically) {
-                if (section != null) IconButton(onClick = { selectedSection = null }) {
-                    Icon(painterResource(R.drawable.arrow_back_24px), stringResource(R.string.import_back))
-                }
-                Text(section ?: stringResource(R.string.sources_configuration),
-                    Modifier.weight(1f).padding(start = if (section == null) 12.dp else 4.dp).semantics { heading() },
-                    style = MaterialTheme.typography.titleLarge)
-                IconButton(onClick = onCancel) {
-                    Icon(painterResource(R.drawable.close_24px), stringResource(R.string.close))
+        // The sheet owns a separate window, not the parent screen's navigation dispatcher.
+        val view = LocalView.current
+        val backView = (view.parent as? DialogWindowProvider)?.window?.decorView ?: view
+        val backOwner = requireNotNull(backView.findViewTreeOnBackPressedDispatcherOwner())
+        CompositionLocalProvider(*listOfNotNull(
+            LocalOnBackPressedDispatcherOwner provides backOwner,
+            (backOwner as? NavigationEventDispatcherOwner)?.let { LocalNavigationEventDispatcherOwner provides it },
+        ).toTypedArray()) {
+            BackHandler {
+                if (hasPage) parent() else scope.launch {
+                    sheetState.hide()
+                    if (!sheetState.isVisible) onCancel()
                 }
             }
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = scrollState,
-                contentPadding = PaddingValues(vertical = 8.dp)) {
-                if (form == null) item {
-                    Box(Modifier.fillParentMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator()
+        }
+        AnimatedContent(
+            targetState = ConfigurationPage(section, pageTitle, pageContent),
+            modifier = Modifier.fillMaxWidth().fillMaxHeight(0.88f),
+            contentKey = { it.section to it.title },
+            transitionSpec = {
+                val direction = if (targetState.isRoot) -1 else 1
+                ((fadeIn(tween(180)) + slideInHorizontally(tween(180, easing = FastOutSlowInEasing)) { it / 16 * direction })
+                    togetherWith (fadeOut(tween(120)) +
+                        slideOutHorizontally(tween(180, easing = FastOutSlowInEasing)) { -it / 16 * direction })).using(null)
+            }, label = "SourceConfigurationPage",
+        ) { page ->
+            val pageScrollState = if (page.isRoot) scrollState else rememberLazyListState()
+            Column(Modifier.fillMaxSize()) {
+                Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    if (!page.isRoot) IconButton(onClick = ::parent) {
+                        Icon(painterResource(R.drawable.arrow_back_24px), stringResource(R.string.import_back))
+                    }
+                    Text(page.title ?: page.section ?: stringResource(R.string.sources_configuration),
+                        Modifier.weight(1f).padding(start = if (page.isRoot) 12.dp else 4.dp).semantics { heading() },
+                        style = MaterialTheme.typography.titleLarge)
+                    IconButton(onClick = onCancel) {
+                        Icon(painterResource(R.drawable.close_24px), stringResource(R.string.close))
                     }
                 }
-                items(fields.filter { it.section == section }, key = { it.id }) { field ->
-                    SourceConfigurationField(field, values[field.name].orEmpty(), !busy && field.enabled,
-                        onChange = { values[field.name] = it },
-                        onAction = { form?.let { onSubmit(values.toMap(), field.id, it.id) } })
-                }
-                if (section == null && sections.isNotEmpty()) {
-                    item { HorizontalDivider(Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant) }
-                    items(sections) { name ->
-                        ListItem(headlineContent = { Text(name) },
-                            trailingContent = { Icon(painterResource(R.drawable.arrow_forward_ios_24px), null, Modifier.size(16.dp)) },
-                            colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
-                            modifier = Modifier.clickable { selectedSection = name }.padding(horizontal = 8.dp))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                if (page.content != null) Box(Modifier.weight(1f).fillMaxWidth()) { page.content() }
+                else LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = pageScrollState,
+                    contentPadding = PaddingValues(vertical = 8.dp)) {
+                    if (form == null) item {
+                        Box(Modifier.fillParentMaxSize(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator()
+                        }
+                    }
+                    items(fields.filter { it.section == page.section && it !in managerFields }, key = { it.id }) { field ->
+                        SourceConfigurationField(field, values[field.name].orEmpty(), !busy && field.enabled,
+                            onChange = { values[field.name] = it },
+                            onAction = { form?.let { onSubmit(values.toMap(), field.id, it.id) } })
+                    }
+                    if (page.section == null && sections.isNotEmpty()) {
+                        item { HorizontalDivider(Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant) }
+                        items(sections) { name ->
+                            ListItem(headlineContent = { Text(name) },
+                                trailingContent = { Icon(painterResource(R.drawable.arrow_forward_ios_24px), null, Modifier.size(16.dp)) },
+                                colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
+                                modifier = Modifier.clickable { selectedSection = name }.padding(horizontal = 8.dp))
+                        }
+                    }
+                    if (page.section == null) items(managerFields, key = { it.id }) { field ->
+                        SourceConfigurationField(field, values[field.name].orEmpty(), !busy && field.enabled,
+                            onChange = { values[field.name] = it },
+                            onAction = { form?.let { onSubmit(values.toMap(), field.id, it.id) } }, navigates = true)
                     }
                 }
             }
@@ -94,7 +150,7 @@ internal fun SourceConfigurationSheet(
 
 @Composable
 private fun SourceConfigurationField(field: LoginField, value: String, enabled: Boolean,
-    onChange: (String) -> Unit, onAction: () -> Unit) {
+    onChange: (String) -> Unit, onAction: () -> Unit, navigates: Boolean = false) {
     // Decorative emoji are removed from display only, never from input bindings.
     val label = field.label.dropWhile { !it.isLetterOrDigit() }.ifBlank { field.label }
     val supporting: (@Composable () -> Unit)? = field.description?.let { { Text(it) } }
@@ -108,7 +164,10 @@ private fun SourceConfigurationField(field: LoginField, value: String, enabled: 
                 colors = colors, modifier = row.toggleable(checked, enabled = enabled, role = Role.Switch,
                     onValueChange = { onAction() }).padding(horizontal = 8.dp))
         } else {
-            ListItem(headlineContent = { Text(label) }, supportingContent = supporting, colors = colors,
+            ListItem(headlineContent = { Text(label) }, supportingContent = if (navigates) null else supporting, colors = colors,
+                trailingContent = if (navigates) { {
+                    Icon(painterResource(R.drawable.arrow_forward_ios_24px), null, Modifier.size(16.dp))
+                } } else null,
                 modifier = row.clickable(enabled = enabled, role = Role.Button, onClick = onAction).padding(horizontal = 8.dp))
         }
         "toggle", "select" -> {

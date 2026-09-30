@@ -38,7 +38,7 @@ class PixivUpdateAdapterTest {
         listOf("调试模式", "备份恢复", "发送评论", "反馈问题", "updateSourceHtml", "updateSourceLink").forEach {
             assertFalse(it, result.contains(it))
         }
-        listOf("阅读与搜索", "发现页设置", "屏蔽与收藏").forEach { assertTrue(it, result.contains(it)) }
+        listOf("阅读与搜索", "发现页设置", "屏蔽管理").forEach { assertTrue(it, result.contains(it)) }
         assertEquals(adapted(), Json.parseToJsonElement(result).jsonArray.single())
     }
 
