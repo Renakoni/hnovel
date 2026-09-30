@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="detail_directory_search">Search contents</string>
+    <string name="detail_directory_options">Contents options</string>
+    <string name="detail_directory_ascending">Ascending</string>
+    <string name="detail_directory_descending">Descending</string>
+    <string name="detail_directory_locate">Locate current</string>
+    <string name="detail_directory_volumes">Choose volume</string>
+    <string name="detail_directory_ranges">Choose chapter range</string>
+    <string name="detail_directory_range">%1$d–%2$d</string>
+    <string name="detail_directory_range_summary">Entries %1$d–%2$d of %3$d</string>
+    <string name="detail_directory_previous">Previous range</string>
+    <string name="detail_directory_next">Next range</string>
+    <string name="detail_directory_filtered_empty">No unread chapters in this range</string>
+    <string name="detail_directory_show_all">Show all chapters</string>
+    <string name="detail_directory_reading_here">Reading here</string>
+    <string name="detail_directory_volume_page_range">This page: %1$d–%2$d</string>
+    <string name="detail_directory_volume_count">%1$d chapters · %2$d volumes</string>
+</resources>

@@ -91,10 +91,21 @@ class LocalBookStoreTest {
         return store.publish(draft, store.preview(draft), "Imported novel", shelf).first
     }
 
+    @Test fun anUnsectionedImportDoesNotInventAVolumeNamedAfterTheBook() = runBlocking {
+        val file = temporary.newFile("unsectioned.txt").apply {
+            writeText("第一章 开端\n完整正文甲\n第二章 旅途\n完整正文乙")
+        }
+        val book = importBook(file)
+        val volume = books.getBookVolumesFlow(book.storageKey).last().get()!!.volumes.single()
+        assertEquals("", volume.volumeTitle)
+        assertEquals(2, volume.chapters.size)
+    }
+
     @Test fun originalAndParsedContentSurviveCacheClearingAndDatabaseReopening() = runBlocking {
         val original = source()
         val book = importBook(original)
         val volumes = books.getBookVolumesFlow(book.storageKey).last().get()!!
+        assertEquals("第一卷 起点", volumes.volumes.single().volumeTitle)
         val first = volumes.volumes.single().chapters.first().id
         assertTrue(original.delete())
         local.updateUserReadingData(book.storageKey) { it.copy(totalReadTime = 42, lastReadChapterId = first, readingProgress = 0.5f) }
