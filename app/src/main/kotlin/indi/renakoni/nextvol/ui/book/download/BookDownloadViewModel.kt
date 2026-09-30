@@ -46,11 +46,6 @@ data class BookDownloadUiState(
     val ready get() = !loading && directoryFailure == null && allChapters.isNotEmpty()
 }
 
-/** Positions are a UI convenience only; persisted selections always contain chapter identities. */
-internal fun downloadRange(ids: List<String>, first: Int?, last: Int?): Set<String>? =
-    if (first != null && last != null && first in 1..ids.size && last in first..ids.size)
-        ids.subList(first - 1, last).toSet() else null
-
 @HiltViewModel
 class BookDownloadViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle, private val books: BookRepository,
@@ -115,8 +110,6 @@ class BookDownloadViewModel @Inject constructor(
     fun select(ids: Set<String>) {
         if (!state.locked && state.ready) state = state.copy(selected = ids.intersect(state.allChapters.map { it.id }.toSet()))
     }
-
-    fun setRefresh(refresh: Boolean) { if (!state.locked) state = state.copy(refresh = refresh) }
 
     fun submit(resume: Boolean = false) {
         if (state.submitting || !resume && (!state.ready || state.locked || state.selected.isEmpty())) return

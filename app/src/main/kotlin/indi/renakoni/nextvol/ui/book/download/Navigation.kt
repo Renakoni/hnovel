@@ -27,7 +27,7 @@ fun NavGraphBuilder.bookDownload() {
             snackbar.showSnackbar(context.downloadSubmissionText(it), withDismissAction = true)
         } }
         BookDownloadScreen(viewModel.state, navController::popBackStackIfResumed, viewModel::loadDirectory,
-            viewModel::select, viewModel::setRefresh, { viewModel.submit() }, { viewModel.submit(resume = true) }, viewModel::cancel)
+            viewModel::select, { viewModel.submit() }, { viewModel.submit(resume = true) }, viewModel::cancel)
     }
 }
 

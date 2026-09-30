@@ -2,7 +2,7 @@
     <string name="download_page_title">Download chapters</string>
     <string name="download_back">Back</string>
     <string name="download_book_coverage">Offline: %1$d of %2$d chapters</string>
-    <string name="download_selection_count">%1$d chapters selected · existing downloads are kept</string>
+    <string name="download_choose_chapters">Select chapters</string>
     <string name="download_start_selected">Download %1$d chapters</string>
     <string name="download_update_selected">Update %1$d chapters</string>
     <string name="download_selection_complete">Selected chapters downloaded</string>
@@ -14,20 +14,12 @@
     <string name="download_directory_loading">Preparing the full directory… Selection is available only after it finishes.</string>
     <string name="download_directory_failed">Could not prepare the full directory. New selections are disabled; existing downloads are safe.</string>
     <string name="download_directory_retry">Reload directory</string>
-    <string name="download_directory_ready">Full directory · %1$d chapters</string>
-    <string name="download_select_all">All</string>
-    <string name="download_select_missing">Missing / outdated</string>
-    <string name="download_select_range">Chapter range</string>
-    <string name="download_select_none">Clear selection</string>
-    <string name="download_refresh_selected_hint">Fetch selected chapters again. Keep old content until replacement succeeds.</string>
+    <string name="download_directory_ready">Directory · %1$d chapters</string>
+    <string name="download_select_all">Select all</string>
+    <string name="download_select_none">Deselect all</string>
     <string name="download_volume_number">Volume %1$d</string>
-    <string name="download_volume_selection">%1$d of %2$d selected</string>
     <string name="download_chapter_downloading">Downloading</string>
-    <string name="download_chapter_saved">Downloaded · available offline</string>
-    <string name="download_chapter_outdated">Offline copy available · update needed</string>
-    <string name="download_chapter_missing">Not downloaded</string>
-    <string name="download_range_hint">Choose an inclusive range from 1 to %1$d, in directory order.</string>
-    <string name="download_range_first">First chapter</string>
-    <string name="download_range_last">Last chapter</string>
+    <string name="download_chapter_saved">Downloaded</string>
+    <string name="download_chapter_outdated">Downloaded · needs update</string>
     <string name="download_manage_selection">Chapters and downloads</string>
 </resources>

@@ -1,20 +1,20 @@
 package indi.renakoni.nextvol.ui.book.download
 
 import android.net.Uri
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.toggleable
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -24,10 +24,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -40,12 +38,15 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.state.ToggleableState
-import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import indi.renakoni.nextvol.R
@@ -59,17 +60,14 @@ import indi.renakoni.nextvol.ui.components.downloadStatusText
 @Composable
 fun BookDownloadScreen(
     state: BookDownloadUiState, onBack: () -> Unit, onReload: () -> Unit,
-    onSelect: (Set<String>) -> Unit, onRefresh: (Boolean) -> Unit,
+    onSelect: (Set<String>) -> Unit,
     onSubmit: () -> Unit, onResume: () -> Unit, onCancel: () -> Unit,
 ) {
     val chapters = remember(state.volumes) { state.allChapters }
-    val indices = remember(chapters) { chapters.mapIndexed { index, chapter -> chapter.id to index + 1 }.toMap() }
-    var rangeVisible by rememberSaveable { mutableStateOf(false) }
+    val chapterIds = remember(chapters) { chapters.map { it.id }.toSet() }
+    val allSelected = chapterIds.isNotEmpty() && state.selected.containsAll(chapterIds)
+    var expandedVolume by rememberSaveable(state.bookId) { mutableStateOf<Int?>(null) }
     val editable = state.ready && !state.locked
-    if (rangeVisible) RangeDialog(chapters.map { it.id }, { rangeVisible = false }) {
-        onSelect(it)
-        rangeVisible = false
-    }
     Scaffold(
         topBar = { TopAppBar(
             title = { Text(stringResource(R.string.download_page_title)) },
@@ -77,21 +75,17 @@ fun BookDownloadScreen(
                 Icon(painterResource(R.drawable.arrow_back_24px), stringResource(R.string.download_back))
             } },
         ) },
-        bottomBar = { Surface(tonalElevation = 3.dp) {
-            Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(stringResource(if (state.locked) R.string.download_selection_active else R.string.download_selection_count, state.selected.size),
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Button(onSubmit, Modifier.fillMaxWidth(), enabled = editable && state.selected.isNotEmpty(),
+        bottomBar = { Surface(tonalElevation = 1.dp) {
+            Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp, vertical = 12.dp)) {
+                Button(onSubmit, Modifier.fillMaxWidth().heightIn(min = 52.dp), enabled = editable && state.selected.isNotEmpty(),
                     contentPadding = PaddingValues(16.dp)) {
-                    Icon(painterResource(R.drawable.download_24px), null, Modifier.padding(end = 8.dp))
-                    Text(stringResource(if (state.refresh) R.string.download_update_selected else R.string.download_start_selected, state.selected.size))
+                    Text(if (state.selected.isEmpty()) stringResource(R.string.download_choose_chapters) else
+                        stringResource(if (state.refresh) R.string.download_update_selected else R.string.download_start_selected, state.selected.size))
                 }
             }
         } },
     ) { padding ->
-        LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(20.dp)) {
             item(key = "summary") {
                 Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerLow) {
                     Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -112,7 +106,7 @@ fun BookDownloadScreen(
                 }
             }
             if (state.status.task.status != DownloadTaskStatus.None) item(key = "task") {
-                Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.secondaryContainer) {
+                Surface(modifier = Modifier.padding(top = 16.dp), shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.secondaryContainer) {
                     Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text(downloadStatusText(state.status), style = MaterialTheme.typography.bodyMedium)
                         if (state.status.task.active) {
@@ -140,13 +134,13 @@ fun BookDownloadScreen(
             }
             when {
                 state.loading -> item(key = "directory-loading") {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Column(Modifier.padding(top = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         LinearProgressIndicator(Modifier.fillMaxWidth())
                         Text(stringResource(R.string.download_directory_loading), style = MaterialTheme.typography.bodyMedium)
                     }
                 }
                 state.directoryFailure != null -> item(key = "directory-error") {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(Modifier.padding(top = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(stringResource(R.string.download_directory_failed), style = MaterialTheme.typography.titleMedium)
                         Text(stringResource(downloadFailureResource(state.directoryFailure)), style = MaterialTheme.typography.bodyMedium)
                         FilledTonalButton(onReload) { Text(stringResource(R.string.download_directory_retry)) }
@@ -154,61 +148,63 @@ fun BookDownloadScreen(
                 }
                 else -> {
                     item(key = "selection-tools") {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text(stringResource(R.string.download_directory_ready, chapters.size), style = MaterialTheme.typography.titleMedium)
-                            FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                TextButton({ onSelect(chapters.map { it.id }.toSet()) }, enabled = editable) { Text(stringResource(R.string.download_select_all)) }
-                                TextButton({ onSelect(chapters.filter { state.chapters.chapters[it.id]?.current != true }.map { it.id }.toSet()) }, enabled = editable) {
-                                    Text(stringResource(R.string.download_select_missing))
-                                }
-                                TextButton({ rangeVisible = true }, enabled = editable) { Text(stringResource(R.string.download_select_range)) }
-                                TextButton({ onSelect(emptySet()) }, enabled = editable) { Text(stringResource(R.string.download_select_none)) }
-                            }
-                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                Text(stringResource(R.string.download_refresh_selected_hint), Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-                                Switch(state.refresh, onRefresh, enabled = editable)
+                        Row(Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(stringResource(R.string.download_directory_ready, chapters.size), Modifier.weight(1f),
+                                style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            TextButton({ onSelect(if (allSelected) emptySet() else chapterIds) }, enabled = editable) {
+                                Text(stringResource(if (allSelected) R.string.download_select_none else R.string.download_select_all))
                             }
                         }
                     }
                     state.volumes?.volumes?.forEachIndexed { volumeIndex, volume ->
+                        val expanded = expandedVolume == volumeIndex
                         item(key = "volume:$volumeIndex") {
                             val ids = volume.chapters.map { it.id }.toSet()
                             val selected = ids.count { it in state.selected }
+                            val title = volume.volumeTitle.ifBlank { stringResource(R.string.download_volume_number, volumeIndex + 1) }
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Row(Modifier.weight(1f).testTag("download-volume-toggle-$volumeIndex").clickable(
+                                    role = Role.Button,
+                                    onClickLabel = stringResource(if (expanded) R.string.collapse else R.string.expand),
+                                    onClick = { expandedVolume = if (expanded) null else volumeIndex },
+                                ).heightIn(min = 64.dp).padding(vertical = 12.dp, horizontal = 4.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(painterResource(R.drawable.arrow_forward_ios_24px), null,
+                                        Modifier.size(14.dp).rotate(if (expanded) -90f else 90f), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                                        Text(stringResource(R.string.info_volume_chapters_count, ids.size), style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
                                 TriStateCheckbox(when (selected) { 0 -> ToggleableState.Off; ids.size -> ToggleableState.On; else -> ToggleableState.Indeterminate },
                                     onClick = { onSelect(if (selected == ids.size) state.selected - ids else state.selected + ids) }, enabled = editable,
-                                    modifier = Modifier.testTag("download-volume-$volumeIndex"))
-                                Column(Modifier.weight(1f)) {
-                                    Text(volume.volumeTitle.ifBlank { stringResource(R.string.download_volume_number, volumeIndex + 1) }, style = MaterialTheme.typography.titleSmall)
-                                    Text(stringResource(R.string.download_volume_selection, selected, ids.size), style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
+                                    modifier = Modifier.testTag("download-volume-$volumeIndex").semantics { contentDescription = title })
                             }
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         }
-                        items(volume.chapters, key = { "chapter:${it.id}" }) { chapter ->
+                        if (expanded) items(volume.chapters, key = { "chapter:${it.id}" }) { chapter ->
                             val saved = state.chapters.chapters[chapter.id]
                             val active = state.status.task.active && state.status.task.chapterId == chapter.id
                             Row(Modifier.fillMaxWidth().toggleable(chapter.id in state.selected, enabled = editable, role = Role.Checkbox) {
                                 onSelect(if (it) state.selected + chapter.id else state.selected - chapter.id)
-                            }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Checkbox(chapter.id in state.selected, onCheckedChange = null, enabled = editable, modifier = Modifier.padding(12.dp))
+                            }.heightIn(min = 56.dp).padding(start = 28.dp, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Text("${indices[chapter.id]}. ${chapter.title}", style = MaterialTheme.typography.bodyMedium)
+                                    Text(chapter.title, style = MaterialTheme.typography.bodyMedium)
                                     val label = when {
                                         active -> R.string.download_chapter_downloading
                                         saved?.failure != null -> downloadFailureResource(saved.failure)
                                         saved?.current == true -> R.string.download_chapter_saved
                                         saved?.downloaded == true -> R.string.download_chapter_outdated
-                                        else -> R.string.download_chapter_missing
+                                        else -> null
                                     }
-                                    Text(stringResource(label), style = MaterialTheme.typography.labelSmall, color = when {
+                                    if (label != null) Text(stringResource(label), style = MaterialTheme.typography.labelSmall, color = when {
                                         saved?.failure != null -> MaterialTheme.colorScheme.error
                                         active || saved?.current == true -> MaterialTheme.colorScheme.primary
                                         else -> MaterialTheme.colorScheme.onSurfaceVariant
                                     })
                                 }
-                                if (saved?.current == true) Icon(painterResource(R.drawable.check_24px), null, tint = MaterialTheme.colorScheme.primary)
+                                Checkbox(chapter.id in state.selected, onCheckedChange = null, enabled = editable, modifier = Modifier.padding(start = 8.dp))
                             }
                         }
                     }
@@ -216,22 +212,4 @@ fun BookDownloadScreen(
             }
         }
     }
-}
-
-@Composable
-private fun RangeDialog(ids: List<String>, onDismiss: () -> Unit, onSelect: (Set<String>) -> Unit) {
-    var first by rememberSaveable { mutableStateOf("1") }
-    var last by rememberSaveable { mutableStateOf(ids.size.toString()) }
-    val selected = downloadRange(ids, first.toIntOrNull(), last.toIntOrNull())
-    AlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.download_select_range)) },
-        text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(stringResource(R.string.download_range_hint, ids.size))
-            OutlinedTextField(first, { first = it }, label = { Text(stringResource(R.string.download_range_first)) },
-                singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), isError = selected == null)
-            OutlinedTextField(last, { last = it }, label = { Text(stringResource(R.string.download_range_last)) },
-                singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), isError = selected == null)
-        } },
-        confirmButton = { TextButton({ selected?.let(onSelect) }, enabled = selected != null) { Text(stringResource(R.string.confirm)) } },
-        dismissButton = { TextButton(onDismiss) { Text(stringResource(R.string.cancel)) } },
-    )
 }

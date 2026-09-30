@@ -2,7 +2,7 @@
     <string name="download_page_title">下载章节</string>
     <string name="download_back">返回</string>
     <string name="download_book_coverage">已离线保存 %1$d / %2$d 章</string>
-    <string name="download_selection_count">已选 %1$d 章 · 不会清除已有下载</string>
+    <string name="download_choose_chapters">请选择章节</string>
     <string name="download_start_selected">下载所选 %1$d 章</string>
     <string name="download_update_selected">更新所选 %1$d 章</string>
     <string name="download_selection_complete">所选章节已下载</string>
@@ -14,20 +14,12 @@
     <string name="download_directory_loading">正在准备完整目录… 加载完成后才能选择并确认下载。</string>
     <string name="download_directory_failed">完整目录加载失败，暂不能重新选章，已有下载仍然保留。</string>
     <string name="download_directory_retry">重新加载目录</string>
-    <string name="download_directory_ready">完整目录 · 共 %1$d 章</string>
+    <string name="download_directory_ready">目录 · %1$d 章</string>
     <string name="download_select_all">全选</string>
-    <string name="download_select_missing">未下载或待更新</string>
-    <string name="download_select_range">起止范围</string>
-    <string name="download_select_none">清空选择</string>
-    <string name="download_refresh_selected_hint">重新获取所选章节，更新成功前保留旧内容。</string>
+    <string name="download_select_none">取消全选</string>
     <string name="download_volume_number">第 %1$d 卷</string>
-    <string name="download_volume_selection">已选 %1$d / %2$d 章</string>
     <string name="download_chapter_downloading">正在下载</string>
-    <string name="download_chapter_saved">已下载 · 可离线阅读</string>
-    <string name="download_chapter_outdated">已有离线内容 · 待更新</string>
-    <string name="download_chapter_missing">未下载</string>
-    <string name="download_range_hint">按目录顺序选择第 1 至 %1$d 章之间的范围，包含起止章节。</string>
-    <string name="download_range_first">起始章节序号</string>
-    <string name="download_range_last">结束章节序号</string>
+    <string name="download_chapter_saved">已下载</string>
+    <string name="download_chapter_outdated">已下载 · 待更新</string>
     <string name="download_manage_selection">章节与下载</string>
 </resources>

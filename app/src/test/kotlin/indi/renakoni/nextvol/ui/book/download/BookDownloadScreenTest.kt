@@ -15,7 +15,6 @@ import io.nightfish.lightnovelreader.api.book.ChapterInformation
 import io.nightfish.lightnovelreader.api.book.Volume
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -42,43 +41,54 @@ class BookDownloadScreenTest {
         activity.setup()
         activity.get().setContent { MaterialTheme {
             BookDownloadScreen(state, {}, { reloads++ }, { state = state.copy(selected = it) },
-                { state = state.copy(refresh = it) }, { submitted++ }, {}, {})
+                { submitted++ }, {}, {})
         } }
     }
     @After fun destroy() { activity.pause().stop().destroy() }
 
     @Test fun directoryLoadingAndFailureCannotSubmitAndFailureOffersReload() {
-        compose.onNodeWithText("Download 0 chapters").assertIsNotEnabled()
+        compose.onNodeWithText("Select chapters").assertIsNotEnabled()
         compose.runOnIdle { state = state.copy(loading = false, directoryFailure = DownloadFailure.Network) }
-        compose.onNodeWithText("Download 0 chapters").assertIsNotEnabled()
+        compose.onNodeWithText("Select chapters").assertIsNotEnabled()
         compose.onNodeWithText("Reload directory").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(1, reloads); assertEquals(0, submitted) }
     }
 
-    @Test fun selectionRequiresConfirmationAndSupportsWholeVolumeAndChapterRange() {
+    @Test fun selectionRequiresConfirmationAndUsesOneSelectAllAction() {
         val chapters = (1..3).map { ChapterInformation("chapter-$it", "Chapter $it") }
         compose.runOnIdle { state = state.copy(loading = false, volumes = BookVolumes("test-book", listOf(Volume("v1", "Volume One", chapters)))) }
-        compose.onNodeWithText("All", substring = false).performScrollTo().performClick()
+        compose.onNodeWithText("Select all").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(3, state.selected.size); assertEquals(0, submitted) }
-        compose.onNodeWithTag("download-volume-0").performScrollTo().performClick()
+        compose.onNodeWithText("Select all").assertDoesNotExist()
+        compose.onNodeWithText("Deselect all").performClick()
         compose.runOnIdle { assertEquals(0, state.selected.size) }
-        compose.onNodeWithTag("download-volume-0").performClick()
+        compose.onNodeWithTag("download-volume-0").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(3, state.selected.size); assertEquals(0, submitted) }
-        compose.onNodeWithText("Chapter range").performScrollTo().performClick()
-        compose.onNodeWithText("First chapter").performTextReplacement("2")
-        compose.onNodeWithText("Last chapter").performTextReplacement("2")
-        compose.onNodeWithText(activity.get().getString(indi.renakoni.nextvol.R.string.confirm)).performClick()
+        compose.onNodeWithText("Chapter 1").assertDoesNotExist()
+        compose.onNodeWithTag("download-volume-0").performClick()
+        compose.onNodeWithTag("download-volume-toggle-0").performClick()
+        compose.onNodeWithText("Chapter 2").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(setOf("chapter-2"), state.selected); assertEquals(0, submitted) }
         compose.onNodeWithText("Download 1 chapters").performClick()
         compose.runOnIdle { assertEquals(1, submitted) }
     }
 
-    @Test fun rangeIsInclusiveAndRejectsInvalidInput() {
-        val ids = listOf("a", "b", "c", "d")
-        assertEquals(setOf("b", "c"), downloadRange(ids, 2, 3))
-        assertNull(downloadRange(ids, 0, 3))
-        assertNull(downloadRange(ids, 3, 2))
-        assertNull(downloadRange(ids, 1, 5))
-        assertNull(downloadRange(ids, null, 2))
+    @Test fun foldingVolumesKeepsSelectionsAndOriginalChapterTitles() {
+        val first = ChapterInformation("one", "Chapter.0 Original prologue")
+        val second = ChapterInformation("two", "Chapter.1 A different title")
+        compose.runOnIdle { state = state.copy(loading = false, selected = setOf(first.id),
+            volumes = BookVolumes("test-book", listOf(Volume("v1", "Volume One", listOf(first)),
+                Volume("v2", "Volume Two", listOf(second))))) }
+        compose.onNodeWithText(first.title).assertDoesNotExist()
+        compose.onNodeWithTag("download-volume-toggle-0").performScrollTo().performClick()
+        compose.onNodeWithText(first.title).assertIsDisplayed().assertIsOn()
+        compose.onNodeWithTag("download-volume-toggle-1").performScrollTo().performClick()
+        compose.onNodeWithText(first.title).assertDoesNotExist()
+        compose.onNodeWithText(second.title).performScrollTo().performClick()
+        compose.onNodeWithTag("download-volume-toggle-1").performScrollTo().performClick()
+        compose.onNodeWithText(second.title).assertDoesNotExist()
+        compose.onNodeWithTag("download-volume-toggle-0").performScrollTo().performClick()
+        compose.onNodeWithText(first.title).assertIsDisplayed().assertIsOn()
+        compose.runOnIdle { assertEquals(setOf(first.id, second.id), state.selected); assertEquals(0, submitted) }
     }
 }
