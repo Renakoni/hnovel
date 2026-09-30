@@ -6,8 +6,11 @@ import com.github.michaelbull.result.Ok
 import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.get
 import indi.renakoni.nextvol.ui.book.reader.content.ChapterContentUiState
+import indi.renakoni.nextvol.data.content.component.SimpleTextComponent
+import indi.renakoni.nextvol.ui.book.reader.content.ReaderSpeechFollow
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import io.nightfish.lightnovelreader.api.content.ContentData
 import io.nightfish.lightnovelreader.api.content.component.AbstractContentComponent
 import io.nightfish.lightnovelreader.api.error.WebRequestError
@@ -17,6 +20,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertNull
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -27,6 +31,21 @@ import org.robolectric.annotation.Config
 class ReaderChapterLoaderTest {
     private val env = ModeTestEnvironment()
     @After fun tearDown() = env.close()
+
+    @Test
+    fun visualLoadingAndSynchronousFollowReadsNeverBuildTheSpeechIndex() {
+        val component = mockk<SimpleTextComponent>()
+        every { env.renderer.getContentDataFromJson(any()) } returns ContentData(listOf(component))
+        val results = mutableListOf<Result<ChapterContentUiState, WebRequestError>>()
+        env.scope.launch { env.loader.load("request", "book").collect(results::add) }
+        env.runCurrent()
+        env.emit("request", Ok(env.chapter("request")))
+        val chapter = results.single().get()!!
+        assertNull(chapter.speechTextIndex)
+        assertTrue(ReaderSpeechFollow().ranges(chapter).isEmpty())
+        assertNull(ReaderSpeechFollow().anchor(chapter))
+        verify(exactly = 0) { component.data }
+    }
 
     @Test
     fun eachCollectorMapsIndependentlyAndPreservesComponentsAndOrderedErrors() {
