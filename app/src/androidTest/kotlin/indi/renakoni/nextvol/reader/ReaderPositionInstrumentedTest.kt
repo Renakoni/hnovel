@@ -33,6 +33,8 @@ import indi.renakoni.nextvol.data.content.ContentComponentRegistry
 import indi.renakoni.nextvol.data.content.ContentJsonDecoder
 import indi.renakoni.nextvol.data.content.component.SimpleTextComponent
 import indi.renakoni.nextvol.data.local.room.NextVolDatabase
+import indi.renakoni.nextvol.data.statistics.StatisticsWriteCoordinator
+import indi.renakoni.nextvol.data.statistics.StatsRepository
 import indi.renakoni.nextvol.data.userdata.UserDataRepository
 import indi.renakoni.nextvol.theme.AppTheme
 import indi.renakoni.nextvol.tts.SpeechPosition
@@ -150,7 +152,7 @@ class ReaderPositionInstrumentedTest {
                 runBlocking { settings.fontSizeUserData.set(font.toFloat()); settings.fontLineHeightUserData.set(spacing.toFloat()) }
                 compose.waitUntil(20_000) { textLayouts().any { it.layoutInput.style.fontSize.value == font.toFloat() } }
                 fixture.awaitReady()
-                fixture.assertPosition()
+                fixture.assertPosition(description = "flip=$flip width=$width font=$font spacing=$spacing padding=$padding")
             }
         }
     }
@@ -322,6 +324,8 @@ class ReaderPositionInstrumentedTest {
             ContentJsonDecoder(ContentComponentRegistry()), ContentComponentFactory(context, repository),
         ))
         val progressWrites = java.util.Collections.synchronizedList(mutableListOf<Float>())
+        private val statistics = StatsRepository(database.bookRecordDao(), database.dailyCountDao(),
+            mockk(relaxed = true), StatisticsWriteCoordinator())
         private val records = object : BookReadingDataAccess {
             private var data = UserReadingData("fixture-book",
                 currentChapterReadingProgressMap = mapOf(chapter.id to initialProgress),
@@ -358,7 +362,7 @@ class ReaderPositionInstrumentedTest {
                         }
                     }
                 }
-                return ReaderViewModel(mockk(relaxed = true), source, records, repository,
+                return ReaderViewModel(statistics, source, records, repository,
                     factory, mockk(relaxed = true), handle) as T
             }
         }
@@ -421,12 +425,12 @@ class ReaderPositionInstrumentedTest {
             awaitReady()
         }
 
-        fun assertPosition(offset: Int = target) {
+        fun assertPosition(offset: Int = target, description: String = "") {
             awaitReady()
             val position = reader.positions.captureNow()!!.position!!
             assertEquals(chapter.id, position.chapterId)
             assertEquals(0, position.componentIndex)
-            assertEquals(offset, position.offset)
+            assertEquals(description, offset, position.offset)
             val nodes = compose.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsActions.GetTextLayoutResult), useUnmergedTree = true)
                 .fetchSemanticsNodes()
             val visible = compose.runOnIdle {
@@ -440,7 +444,18 @@ class ReaderPositionInstrumentedTest {
                     }
                 }
             }
-            assertTrue("Original source offset $offset must be in the clipped visible viewport", visible)
+            val diagnostics = if (visible) "" else compose.runOnIdle {
+                nodes.mapNotNull { node ->
+                    val layouts = mutableListOf<TextLayoutResult>()
+                    node.config[SemanticsActions.GetTextLayoutResult].action?.invoke(layouts)
+                    layouts.firstOrNull()?.let { layout ->
+                        val start = text.indexOf(layout.layoutInput.text.text)
+                        if (start < 0) null else "source=$start bounds=${node.boundsInRoot} origin=${node.positionInRoot} size=${layout.size}"
+                    }
+                }.joinToString("; ")
+            }
+            val scroll = (reader.uiState.contentUiState as? ScrollContentUiState)?.lazyListState
+            assertTrue("$description Original source offset $offset must be in the clipped visible viewport; list=${scroll?.firstVisibleItemIndex}/${scroll?.firstVisibleItemScrollOffset}: $diagnostics", visible)
         }
     }
 
