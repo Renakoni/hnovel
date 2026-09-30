@@ -1071,18 +1071,56 @@ class BookDownloadTest {
         assertEquals(BookDownloadPhase.Complete, state().phase)
     }
 
-    @Test fun failedRevisionImageRefreshIsRetriedEvenAfterTargetVersionWasWritten() = runBlocking {
-        val source = register(a).apply { withImages = true }
-        assertTrue(export() is ListenableWorker.Result.Success)
-        registry.unregister(a.sourceId)
-        register(a, revision = "2", source = source)
-        source.imageFailed = true
-        assertTrue(export() is ListenableWorker.Result.Failure)
+    @Test fun exportReusesCandidateImagesAfterAnIncompleteManualRefresh() = runBlocking {
+        val source = register(a).apply {
+            chapters = chapters.take(1)
+            withImages = true
+            extraImage = true
+        }
+        assertEquals(ListenableWorker.Result.success(), submittedDownload(a, refresh = false))
+        source.chapters = source.chapters.map { it.copy(title = "Updated") }
+        source.imageBytes = ByteArrayOutputStream().also {
+            Bitmap.createBitmap(3, 3, Bitmap.Config.ARGB_8888).compress(Bitmap.CompressFormat.PNG, 100, it)
+        }.toByteArray()
+        source.failedImage = "$IMAGE?extra"
+        assertTrue(submittedDownload(a, refresh = true) is ListenableWorker.Result.Failure)
+        val candidate = db.bookDownloadDao().candidates(a.storageKey).single()
         assertArrayEquals(png, downloads.image(SourceImage(a, IMAGE))!!.readBytes())
         val callsAfterFailure = source.imageCalls
-        source.imageFailed = false
+        downloads.clearReadingCache()
+        cache.clear()
+        source.failedImage = null
         assertTrue(export() is ListenableWorker.Result.Success)
         assertEquals(callsAfterFailure + 1, source.imageCalls)
+        assertEquals(mapOf("1" to 2), source.chapterCalls)
+        assertEquals("Updated", chapter(a, "1")!!.title)
+        assertEquals(candidate.resourceVersion, db.bookDownloadDao().chapters(a.storageKey).single().resourceVersion)
+        assertArrayEquals(source.imageBytes, downloads.image(SourceImage(a, IMAGE))!!.readBytes())
+        assertArrayEquals(source.imageBytes, downloads.image(SourceImage(a, "$IMAGE?extra"))!!.readBytes())
+        assertTrue(db.bookDownloadDao().candidates(a.storageKey).isEmpty())
+        assertEquals(BookDownloadPhase.Complete, state().phase)
+    }
+
+    @Test fun failedRevisionImageRefreshIsRetriedEvenAfterTargetVersionWasWritten() = runBlocking {
+        val source = register(a).apply { withImages = true; extraImage = true }
+        assertTrue(export() is ListenableWorker.Result.Success)
+        val before = chapter(a, "1")
+        registry.unregister(a.sourceId)
+        register(a, revision = "2", source = source)
+        source.imageBytes = ByteArrayOutputStream().also {
+            Bitmap.createBitmap(3, 3, Bitmap.Config.ARGB_8888).compress(Bitmap.CompressFormat.PNG, 100, it)
+        }.toByteArray()
+        source.failedImage = "$IMAGE?extra"
+        assertTrue(export() is ListenableWorker.Result.Failure)
+        assertEquals(before, chapter(a, "1"))
+        assertArrayEquals(png, downloads.image(SourceImage(a, IMAGE))!!.readBytes())
+        val callsAfterFailure = source.imageCalls
+        downloads.clearReadingCache()
+        cache.clear()
+        source.failedImage = null
+        assertTrue(export() is ListenableWorker.Result.Success)
+        assertEquals(callsAfterFailure + 1, source.imageCalls)
+        assertArrayEquals(source.imageBytes, downloads.image(SourceImage(a, IMAGE))!!.readBytes())
         assertEquals(BookDownloadPhase.Complete, state().phase)
     }
 

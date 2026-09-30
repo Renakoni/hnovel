@@ -225,6 +225,9 @@ class ExportBookToEpubUseCase @Inject constructor(
                 val rendered = linkedMapOf<String, File>()
                 val chapterImages = mutableMapOf<String, List<String>>()
                 val images = linkedMapOf<String, File>()
+                val missingImageVersions = mutableMapOf<String, MutableSet<String>>()
+                val checkpointImages = mutableMapOf<String, File>()
+                val freshImages = mutableSetOf<String>()
                 val tasks = linkedMapOf<Pair<String, Boolean>, ImageDownloader.Task>()
                 val locations = mutableMapOf<File, Pair<String, String>>()
                 fun imageTask(uri: Uri, cover: Boolean = false, optional: Boolean = false): File {
@@ -247,7 +250,7 @@ class ExportBookToEpubUseCase @Inject constructor(
                         currentCoroutineContext().ensureActive()
                         currentChapterTitle = chapter.title
                         val signature = downloadChapterSignature(allChapters, positions.getValue(chapter.id), revision)
-                        val checkpoint = attempt?.let { downloads.checkpoint(it, chapter.id, signature) }
+                        var checkpoint = attempt?.let { downloads.checkpoint(it, chapter.id, signature) }
                         val content = checkpoint?.content
                             ?: if (attempt != null && downloads.hasVersionedChapter(attempt, chapter.id))
                                 bookRepository.downloadChapter(book, chapter.id).value()
@@ -261,7 +264,19 @@ class ExportBookToEpubUseCase @Inject constructor(
                         chapterImages[chapter.id] = references.toList()
                         // Keep validated source content even if a later chapter or conversion fails.
                         failureReason = "cache_failed"
-                        if (checkpoint == null) attempt?.let { downloads.saveCandidate(it, content, signature) }
+                        if (checkpoint == null) checkpoint = attempt?.let { downloads.saveCandidate(it, content, signature) }
+                        if (includeImages && attempt != null) checkpoint?.let { saved ->
+                            val missing = references.filter { uri ->
+                                val versions = missingImageVersions.getOrPut(uri) { linkedSetOf() }
+                                val file = downloads.checkpointImage(attempt, saved, uri)
+                                if (file != null) checkpointImages.putIfAbsent(uri, file)
+                                else versions += saved.resourceVersion
+                                file == null
+                            }
+                            // A newer body must not borrow the old published chapter's images.
+                            if (missing.isNotEmpty() && downloads.hasVersionedChapter(attempt, chapter.id))
+                                freshImages += missing
+                        }
                         failureReason = "invalid_content"
                         val processed = bookRepository.exportContent(book, content)
                         // Validate the processed snapshot too; conversion must not silently omit components.
@@ -291,8 +306,12 @@ class ExportBookToEpubUseCase @Inject constructor(
                 suspend fun acquire(pending: List<ImageDownloader.Task>) {
                     stage = "images"
                     failureReason = "image_failed"
-                    val tasks = pending.map { task -> task.copy(fresh = task.fresh ||
-                        (attempt?.let { downloads.isImageStale(it, task.uri.toString(), task.cover) } == true)) }
+                    val tasks = pending.map { task ->
+                        val uri = task.uri.toString()
+                        task.copy(sourceFile = if (task.cover || uri in freshImages) null else checkpointImages[uri],
+                            fresh = task.fresh || (!task.cover && uri in freshImages) ||
+                                (attempt?.let { downloads.isImageStale(it, uri, task.cover) } == true))
+                    }
                     val result = ImageDownloader(appContext, book, tasks,
                         onTask = { task ->
                             val location = locations[task.file]
@@ -301,8 +320,16 @@ class ExportBookToEpubUseCase @Inject constructor(
                         },
                         onDownloaded = { task ->
                             attempt?.let {
-                                if (task.fresh || !downloads.hasImage(it, task.uri.toString(), task.cover))
-                                    downloads.retainImage(it, SourceImage(book, task.uri.toString(), task.cover), null)
+                                val uri = task.uri.toString()
+                                val versions = if (task.cover) null else missingImageVersions[uri]
+                                if (versions != null) {
+                                    val bytes = task.sourceFile?.takeIf { versions.isNotEmpty() }?.readBytes()
+                                    for (version in versions) {
+                                        if (bytes != null) downloads.saveImage(it, uri, false, bytes, version)
+                                        else downloads.retainImage(it, SourceImage(book, uri), null, version)
+                                    }
+                                } else if (task.fresh || !downloads.hasImage(it, uri, task.cover))
+                                    downloads.retainImage(it, SourceImage(book, uri, task.cover), null)
                             }
                         },
                         onProgress = { count, total ->
@@ -341,9 +368,10 @@ class ExportBookToEpubUseCase @Inject constructor(
                     for (chapterId in rendered.keys) {
                         currentCoroutineContext().ensureActive()
                         val signature = downloadChapterSignature(allChapters, positions.getValue(chapterId), revision)
-                        val content = checkNotNull(downloads.checkpoint(active, chapterId, signature)).content
-                        downloads.saveChapter(active, content, signature,
-                            chapterImages.getValue(chapterId), requireImages = includeImages)
+                        val checkpoint = checkNotNull(downloads.checkpoint(active, chapterId, signature))
+                        downloads.saveChapter(active, checkpoint.content, signature,
+                            chapterImages.getValue(chapterId), requireImages = includeImages,
+                            resourceVersion = checkpoint.resourceVersion)
                     }
                     check(bookRepository.sourceRevision(book).let { it.isEmpty() || it == revision }) { "Source changed during preparation" }
                     downloads.finish(active, success = true)

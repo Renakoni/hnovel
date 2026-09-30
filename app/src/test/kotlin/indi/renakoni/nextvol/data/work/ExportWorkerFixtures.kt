@@ -20,6 +20,7 @@ internal fun exportDownloads(): BookDownloadStore = mockk<BookDownloadStore>(rel
         }
     }
     coEvery { store.hasVersionedChapter(any(), any()) } returns false
+    coEvery { store.checkpointImage(any(), any(), any()) } returns null
     coEvery { store.revision(any()) } returns null
 }
 

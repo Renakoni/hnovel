@@ -33,7 +33,8 @@ class ImageDownloader(
         private set
 
     data class Task(val file: File, val uri: Uri, val cover: Boolean = false,
-        val defaultCover: DefaultBookCoverRenderer.Text? = null, val fresh: Boolean = false)
+        val defaultCover: DefaultBookCoverRenderer.Text? = null, val fresh: Boolean = false,
+        val sourceFile: File? = null)
 
     suspend fun run(): Boolean = withContext(Dispatchers.IO) {
         Log.i("ImageDownloader", "total tasks: ${tasks.size}")
@@ -93,7 +94,8 @@ class ImageDownloader(
 
         repeat(maxRetry) { attempt ->
             // Retaining offline bytes needs a disk/source read even if a decoded bitmap is still in memory.
-            val result = ImageUtils.uriToBitmap(task.uri, context, book.storageKey, task.cover, task.fresh, allowMemoryCache = false)
+            val result = ImageUtils.uriToBitmap(task.uri, context, book.storageKey, task.cover,
+                task.sourceFile == null && task.fresh, allowMemoryCache = false, sourceFile = task.sourceFile)
             var shouldRetry = false
 
             result

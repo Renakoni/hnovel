@@ -16,6 +16,7 @@ import coil3.request.SuccessResult
 import com.github.michaelbull.result.Err
 import com.github.michaelbull.result.Ok
 import com.github.michaelbull.result.Result
+import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -28,11 +29,12 @@ object ImageUtils {
         fresh: Boolean = false,
         allowMemoryCache: Boolean = true,
         chapterId: String? = null,
+        sourceFile: File? = null,
     ):  Result<Bitmap, Throwable> = withContext(Dispatchers.IO) {
         try {
             val loader = SingletonImageLoader.get(context)
             val request = ImageRequest.Builder(context)
-                .data(SourceImage(BookIdentity.book(bookId), imageUri.toString(), cover, preferDownloaded = !fresh, chapterId = chapterId))
+                .data(sourceFile ?: SourceImage(BookIdentity.book(bookId), imageUri.toString(), cover, preferDownloaded = !fresh, chapterId = chapterId))
                 .apply {
                     if (fresh || !allowMemoryCache) memoryCachePolicy(coil3.request.CachePolicy.DISABLED)
                     if (fresh) diskCachePolicy(coil3.request.CachePolicy.WRITE_ONLY)
