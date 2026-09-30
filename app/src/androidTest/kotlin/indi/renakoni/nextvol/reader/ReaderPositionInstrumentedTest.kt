@@ -32,6 +32,9 @@ import com.github.michaelbull.result.Err
 import com.github.michaelbull.result.Ok
 import indi.renakoni.nextvol.data.book.BookReadingDataAccess
 import indi.renakoni.nextvol.data.book.ChapterSource
+import indi.renakoni.nextvol.data.content.ContentComponentFactory
+import indi.renakoni.nextvol.data.content.ContentComponentRegistry
+import indi.renakoni.nextvol.data.content.ContentJsonDecoder
 import indi.renakoni.nextvol.data.content.component.SimpleTextComponent
 import indi.renakoni.nextvol.data.local.room.NextVolDatabase
 import indi.renakoni.nextvol.data.userdata.UserDataRepository
@@ -51,6 +54,7 @@ import indi.renakoni.nextvol.ui.book.reader.content.scroll.ScrollContentUiState
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
+import io.nightfish.lightnovelreader.api.book.ChapterContent
 import io.nightfish.lightnovelreader.api.book.UserReadingData
 import io.nightfish.lightnovelreader.api.content.component.SimpleTextComponentData
 import io.nightfish.lightnovelreader.api.error.WebRequestError
@@ -58,6 +62,9 @@ import io.nightfish.lightnovelreader.api.ui.theme.AppTypography
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -325,6 +332,8 @@ class ReaderPositionInstrumentedTest {
     @Test fun flipReflowAndBackgroundKeepTheSavedProgress() = reflowAndBackground(true, false)
     @Test fun chapterScrollReflowAndBackgroundKeepTheSavedProgress() = reflowAndBackground(false, false)
     @Test fun continuousScrollReflowAndBackgroundKeepTheSavedProgress() = reflowAndBackground(false, true)
+    @Test fun chapterScrollAccessibilityAfterReflowResumesProgressWrites() = reflowAndBackground(false, false, accessibility = true)
+    @Test fun continuousScrollAccessibilityAfterReflowResumesProgressWrites() = reflowAndBackground(false, true, accessibility = true)
 
     @Test fun cancelledBookmarkRestorationDoesNotLeaveScrollWritesBlocked() {
         runBlocking { settings.isUsingFlipPageUserData.set(false) }
@@ -348,7 +357,7 @@ class ReaderPositionInstrumentedTest {
         assertTrue(fixture.progressWrites.last().isFinite())
     }
 
-    private fun reflowAndBackground(flip: Boolean, continuous: Boolean) {
+    private fun reflowAndBackground(flip: Boolean, continuous: Boolean, accessibility: Boolean = false) {
         runBlocking {
             settings.isUsingContinuousScrollingUserData.set(continuous)
             settings.isUsingFlipPageUserData.set(flip)
@@ -375,6 +384,13 @@ class ReaderPositionInstrumentedTest {
         fixture.awaitReady()
         assertTrue(fixture.progressWrites.isEmpty())
         if (flip) compose.onRoot().performTouchInput { swipeLeft() }
+        else if (accessibility) {
+            val state = fixture.reader.uiState.contentUiState as ScrollContentUiState
+            val distance = state.lazyListState.layoutInfo.viewportSize.height * 0.8f
+            compose.onNode(hasScrollAction()).performSemanticsAction(SemanticsActions.ScrollBy) { scroll ->
+                assertTrue(scroll(0f, distance))
+            }
+        }
         else compose.onNode(hasScrollAction()).performTouchInput { swipeUp() }
         compose.waitForIdle()
         compose.waitUntil(15_000) { fixture.progressWrites.isNotEmpty() }
@@ -407,16 +423,30 @@ class ReaderPositionInstrumentedTest {
         lateinit var reader: ReaderViewModel
         var createdViewModels = 0
         private val handle = SavedStateHandle()
-        private val source = mockk<ChapterSource> { every { getBookVolumesFlow(any(), any()) } returns emptyFlow() }
-        private val loader = mockk<ReaderChapterLoader> {
-            every { load(any(), any(), any(), any()) } answers {
+        private val source = mockk<ChapterSource> {
+            every { getBookVolumesFlow(any(), any()) } returns emptyFlow()
+            every { getChapterContentFlow(any(), any(), any()) } answers {
                 val id = firstArg<String>()
-                val content = if (id == chapter.id) chapter else ChapterContentUiState(id, id, chapter.content,
-                    if (id == "after") chapter.id else null, if (id == "before") chapter.id else null)
+                val content = ChapterContent(
+                    id, if (id == chapter.id) chapter.title else id,
+                    buildJsonObject {
+                        put("components", buildJsonArray {
+                            if (!empty) add(buildJsonObject {
+                                put("id", SimpleTextComponentData.id.toString())
+                                put("data", SimpleTextComponentData(text).toJsonElement())
+                            })
+                        })
+                    },
+                    if (id == chapter.id) chapter.prevChapter else if (id == "after") chapter.id else null,
+                    if (id == chapter.id) chapter.nextChapter else if (id == "before") chapter.id else null,
+                )
                 flowOf(if (failed) Err(WebRequestError("Fixture", "Expected load failure")) else Ok(content))
             }
-            coEvery { preload(any(), any()) } returns Unit
+            coEvery { preloadChapterContent(any(), any(), any()) } returns Unit
         }
+        private val loader = ReaderChapterLoader(source, ContentRenderer(
+            ContentJsonDecoder(ContentComponentRegistry()), ContentComponentFactory(context, repository),
+        ))
         val progressWrites = java.util.Collections.synchronizedList(mutableListOf<Float>())
         private val records = object : BookReadingDataAccess {
             private var data = UserReadingData("fixture-book",
