@@ -24,6 +24,7 @@ import hnovel.execution.BridgeWire
 import hnovel.execution.SourceLibraryDefinition
 import hnovel.execution.LibraryTooLarge
 import hnovel.execution.libraryCode
+import hnovel.execution.SourceWorkQueue
 import kotlinx.coroutines.async
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -41,9 +42,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
-import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -55,7 +54,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import indi.renakoni.nextvol.BuildConfig
 
-/** Stateful rules keep one worker; independent work uses a bounded pool of separately killable processes. */
+/** Stateful rules keep source-affine lanes; independent work uses separate, safely retireable processes. */
 class AndroidIsolatedExecutor @Inject constructor(@ApplicationContext context: Context, private val authority: ExecutionAuthority) {
     private val context = context.applicationContext
     private val pool = synchronized(poolLock) {
@@ -99,7 +98,7 @@ class AndroidIsolatedExecutor @Inject constructor(@ApplicationContext context: C
         val queuedAt = SystemClock.elapsedRealtime()
         val call = nextCall.incrementAndGet()
         try {
-            withWorker(task) { slot ->
+            withWorker(identity, task) { slot ->
                 val admittedAt = SystemClock.elapsedRealtime()
                 if (!authority.accepts(identity)) return@withWorker failure(FailureCode.Revoked)
                 // Each component has its own process. Never rebind it before its previous worker dies.
@@ -139,7 +138,7 @@ class AndroidIsolatedExecutor @Inject constructor(@ApplicationContext context: C
         try { worker.close() } finally { if (slot.worker === worker) slot.worker = null }
     }
 
-    /** Only independent slots may decay: the shared worker can own mutable library state. */
+    /** Only independent slots may decay: source-affine workers can own mutable library state. */
     private fun scheduleRetirement(slot: WorkerSlot) {
         slot.idleRetirement?.cancel()
         slot.idleRetirement = null
@@ -291,19 +290,20 @@ class AndroidIsolatedExecutor @Inject constructor(@ApplicationContext context: C
     private fun failure(code: FailureCode) = ExecutionResult.Failure(code)
 
     private class WorkerSlot(val id: Int, val service: Class<out IsolatedExecutionService>) {
-        val lock = Mutex()
+        val lock = SourceWorkQueue()
         var retiringBinder: IBinder? = null
         var worker: IsolatedWorkerConnection? = null
         var idleRetirement: Job? = null
     }
 
-    private suspend fun <T> withWorker(task: ExecutionTask, block: suspend (WorkerSlot) -> T): T {
+    private suspend fun <T> withWorker(identity: ExecutionIdentity, task: ExecutionTask, block: suspend (WorkerSlot) -> T): T {
         val independent = when (task) {
             is ExecutionTask.ContentMarkup, is ExecutionTask.BookOverviews, is ExecutionTask.DiscoveryReadPlan -> true
             is ExecutionTask.Rule -> task.readOnly
             else -> false
         }
-        if (!independent) return pool.workers.first().let { slot -> slot.lock.withLock { block(slot) } }
+        if (!independent) return pool.statefulWorkers[statefulWorkerIndex(identity, pool.statefulWorkers.size)]
+            .let { slot -> slot.lock.withLock { block(slot) } }
         return pool.permits.withPermit {
             // Prefer the last used process so sequential work does not cold-start the whole pool.
             val slot = synchronized(pool.idleWorkers) { pool.idleWorkers.removeLast() }
@@ -321,13 +321,17 @@ class AndroidIsolatedExecutor @Inject constructor(@ApplicationContext context: C
             "call=$call slot=${slot.id} task=${task.javaClass.simpleName} phase=$phase $detail thread=${Thread.currentThread().name}")
     }
 
-    private class WorkerPool(val parallelism: Int) {
+    private class WorkerPool(independentBudget: Int) {
         val maintenance = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         val workers = listOf(IsolatedExecutionService::class.java,
             IndependentExecutionService1::class.java, IndependentExecutionService2::class.java,
             IndependentExecutionService3::class.java, IndependentExecutionService4::class.java)
-            .take(parallelism + 1).mapIndexed { index, service -> WorkerSlot(index, service) }
-        val idleWorkers = java.util.ArrayDeque(workers.drop(1).reversed())
+            .take(independentBudget + 1).mapIndexed { index, service -> WorkerSlot(index, service) }
+        // Repartition the existing budget, never add processes. Small/low-RAM pools stay unchanged.
+        val statefulWorkers = workers.take(if (independentBudget >= 3) 2 else 1)
+        private val independentWorkers = workers.drop(statefulWorkers.size)
+        val parallelism = independentWorkers.size
+        val idleWorkers = java.util.ArrayDeque(independentWorkers.reversed())
         val permits = Semaphore(parallelism)
     }
 
@@ -342,6 +346,9 @@ class AndroidIsolatedExecutor @Inject constructor(@ApplicationContext context: C
 
 internal fun independentWorkerParallelism(processors: Int, lowRamDevice: Boolean): Int =
     if (lowRamDevice) 1 else processors.coerceIn(1, 4)
+
+internal fun statefulWorkerIndex(identity: ExecutionIdentity, count: Int): Int =
+    Math.floorMod(listOf(identity.namespace, identity.sourceId, identity.profile).hashCode(), count)
 
 /** Polling keeps a stalled pipe cancellable without blocking a Binder thread. */
 internal suspend fun readExecutionResultPacket(pipe: ParcelFileDescriptor): ByteArray =

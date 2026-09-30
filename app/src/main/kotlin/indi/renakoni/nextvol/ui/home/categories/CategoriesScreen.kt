@@ -73,7 +73,7 @@ fun CategoriesScreen(
                                     modifier = Modifier.heightIn(min = 48.dp).clip(MaterialTheme.shapes.medium).combinedClickable(
                                         enabled = !content.acting && !content.loading, role = Role.Button,
                                         onClick = { onAction(button.id, false) }, onLongClick = { onAction(button.id, true) })) {
-                                    Text(if (button.id == "custom-button") stringResource(R.string.discovery_source_action) else button.title,
+                                    Text(button.title,
                                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 14.dp), style = MaterialTheme.typography.labelLarge)
                                 }
                             }

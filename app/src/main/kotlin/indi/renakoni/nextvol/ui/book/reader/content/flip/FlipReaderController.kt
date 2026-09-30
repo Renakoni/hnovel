@@ -31,14 +31,17 @@ class FlipReaderController(
 ) : ReaderModeController {
     private var latestRequestedChapterId: String? = null
     override val requestedChapterId: String? get() = latestRequestedChapterId
+    private var positionNavigation: (String, String, Boolean) -> Unit = { _, _, _ -> }
+    override fun observeNavigation(listener: (String, String, Boolean) -> Unit) { positionNavigation = listener }
 
     override val uiState: MutableFlipPageContentUiState = MutableFlipPageContentUiState(
         loadPrevChapter = { loadAdjacent(previous = true, entry = ChapterEntry.End) },
         loadNextChapter = ::loadNextChapter,
         changeChapter = ::changeChapter,
         updatePageState = ::updatePagerState,
-        updateAnchoredPageState = { progress.updatePagerState(it, anchored = true) },
+        updateAnchoredPageState = { progress.updateAnchoredPageState(it) },
         updateSpeechPageState = { progress.updateSpeechPageState(it) },
+        onProgressRestoring = { progress.restoring(it) },
         commitPendingChapter = ::commitPendingChapter,
         failPendingChapter = ::failPendingChapter,
         retryPendingChapter = {
@@ -57,6 +60,7 @@ class FlipReaderController(
     private fun isCurrent(expected: Request) = request === expected && coroutineScope.isActive
 
     fun updatePagerState(pagerState: PagerState) = progress.updatePagerState(pagerState)
+    override fun flushProgress() = progress.writeProgressRightNow()
 
     override fun changeBookId(id: String) {
         if (uiState.bookId == id) return
@@ -80,11 +84,14 @@ class FlipReaderController(
         if (id == uiState.readingChapterId) return
         val pending = uiState.pendingChapter
         if (pending?.chapterId == id && pending.entry == entry && pending.result?.isErr != true) return
+        // A staged boundary remains in the readable chapter until real pages commit.
+        uiState.readingChapterId?.let { positionNavigation(uiState.bookId, it, true) }
         loadChapter(id, entry)
     }
 
     override fun changeChapter(id: String) {
         if (id.isBlank()) return
+        positionNavigation(uiState.bookId, id, false)
         latestRequestedChapterId = id
         progress.resetForChapter()
         uiState.pendingChapter = null
@@ -119,12 +126,13 @@ class FlipReaderController(
         val content = pending.result?.get() ?: return false
         if (!isCurrent(expected) || uiState.pendingChapter !== pending || pager.pageCount == 0) return false
         expected.committed = true
+        positionNavigation(expected.bookId, expected.chapterId, false)
         progress.resetForChapter()
         latestRequestedChapterId = expected.chapterId
         uiState.readingChapterId = expected.chapterId
         uiState.readingChapterContent = pending.result
         uiState.pendingChapter = null
-        progress.updatePagerState(pager, anchored = true)
+        progress.updatePagerState(pager, anchored = true, publishInitial = true)
         coroutineScope.launch { persistAndPreload(expected, content) }
         return true
     }
@@ -140,6 +148,7 @@ class FlipReaderController(
         request = null
         chapterLoadJob?.cancel()
         uiState.pendingChapter = null
+        uiState.readingChapterId?.let { positionNavigation(uiState.bookId, it, true) }
     }
 
     private suspend fun persistAndPreload(expected: Request, content: ChapterContentUiState) {

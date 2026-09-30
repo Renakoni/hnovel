@@ -38,10 +38,12 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext private val co
     private val browser: hnovel.network.BrowserExecutor? = null,
     private val verification: SourceVerificationCoordinator? = null,
     private val networkSettings: SourceNetworkSettings? = null,
-    private val catalog: SourceCatalog = SourceCatalog(context)) {
+    private val catalog: SourceCatalog = SourceCatalog(context),
+    private val downloads: indi.renakoni.nextvol.data.download.BookDownloadStore? = null) {
     private val directory = File(context.filesDir, "rule-sources")
     val definitions by lazy { SourceDefinitionStore(File(directory, "definitions").toPath()) }
     val importer by lazy { SourceDefinitionImporter(definitions) }
+    private val pixivBlocking by lazy { PixivUpdateAdapter(catalog) }
     private val committed = AtomicFile(File(directory, "active.json"))
     private val lock = Mutex()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -57,6 +59,7 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext private val co
                 for ((id, generation) in generations) {
                     val current = active[id] ?: continue
                     if (current.session != null && current.session.scope.accountGeneration != generation) {
+                        downloads?.revokeSourceTasks(id)
                         runCatching { current.session.clearAccount() }.onFailure {
                             android.util.Log.w("ImportedRuleSources", "Retired account cleanup failed")
                         }
@@ -206,6 +209,7 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext private val co
         restore()
         lock.withLock {
         val old = active[source] ?: return@withLock
+        downloads?.revokeSourceTasks(source)
         val previousMode = networkSettings?.mode(source)
         networkSettings?.setBypassVpn(source, false)
         try { save(active.filterKeys { it != source }.values.map { it.installed }) }
@@ -295,6 +299,7 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext private val co
         val old = checkNotNull(active[id]) { "Source is not installed" }
         check(old.installed.definition == expected) { "Installed revision changed" }
         require(next.sourceId == expected.sourceId && next.profile == expected.profile && origins.size <= 32)
+        if (next != expected || origins != old.installed.origins) downloads?.revokeSourceTasks(id)
         val installed = InstalledSource(next, origins.map { it.copy(headers = it.headers.toMap()) },
             if (next == expected) old.installed.previous else SavedRevision(expected, old.installed.origins), old.installed.preferences(),
             old.installed.bundledRepairs)
@@ -315,6 +320,7 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext private val co
                 discoveryVisible = discoveryVisible ?: current.discoveryVisible,
                 enabledSetByUser = enabled != null || current.enabledSetByUser)
             if (next == current) return@withLock
+            if (!next.enabled) downloads?.revokeSourceTasks(source)
             replace(old, old.installed.copy(preferences = next))
         }
     }
@@ -352,13 +358,16 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext private val co
         }
         val broker = SourceBroker(File(directory, "runtime").toPath(), cipher = storageCipher, browser = browser,
             route = networkSettings?.forSource(id))
-        val session = try { broker.open(SourceScope(id.namespace, id.id, definition.profile, generation), installed.origins) }
+        val session = try { broker.open(SourceScope(id.namespace, id.id, definition.profile, generation), installed.origins).also {
+            if (pixivBlocking.accepts(definition)) PixivPreferenceStore.read(it)
+        } }
             catch (failure: Exception) { broker.close(); throw failure }
         val ticket = authority.issue(id.id, definition.profile, definition.contentDigest, id.namespace, generation)
-        val trace = hnovel.content.ContentTrace { event ->
+        val trace = if (!indi.renakoni.nextvol.BuildConfig.DEBUG) hnovel.content.ContentTrace.None else hnovel.content.ContentTrace { event ->
             if (indi.renakoni.nextvol.BuildConfig.DEBUG && event.result != "Success")
                 android.util.Log.d("RuleSourceTrace", "source=${id.id} field=${event.field} result=${event.result}" +
-                    " ruleCode=${event.ruleCode} input=${event.inputSize} output=${event.outputSize} elapsedMs=${event.elapsedMillis}")
+                    " ruleCode=${event.ruleCode} input=${event.inputSize} output=${event.outputSize} elapsedMs=${event.elapsedMillis}" +
+                    (event.requestDiagnostic?.let { " requestDiagnostic=$it" } ?: ""))
         }
         val source = try { RuleSource(definition, ticket, authority, session, runner, trace, discoveryEnabled = preferences.discoveryVisible) }
             catch (failure: Exception) { authority.revoke(ticket); broker.close(); throw failure }
@@ -375,14 +384,17 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext private val co
         }
         val recovery = verification?.let { RuleRequestRecovery(it,
             VerificationOwner(id, definition.contentDigest, generation), definition.displayName) }
+        val pixivFilter = if (pixivBlocking.accepts(definition)) PixivBookFilter(session) else null
         val registration = try {
             val oldRegistration = previous?.registration
-            if (oldRegistration == null) { publish(); registry.register(RuleWebBookDataSource(id, source, recovery), metadata) }
-            else registry.replace(oldRegistration, RuleWebBookDataSource(id, source, recovery), metadata, ticket, publish)
+            if (oldRegistration == null) { publish(); registry.register(RuleWebBookDataSource(id, source, recovery, pixivFilter), metadata) }
+            else registry.replace(oldRegistration, RuleWebBookDataSource(id, source, recovery, pixivFilter), metadata, ticket, publish)
         }
             catch (failure: Exception) { source.close(); broker.close(); throw failure }
         Binding(installed, registration, broker, session, source)
     }
+
+    internal fun refreshDiscovery(id: Identifier) = registry.refreshDiscovery(id)
 
     internal suspend fun loginTarget(id: Identifier): RuleLoginTarget = withContext(Dispatchers.IO) {
         restore()
@@ -398,7 +410,9 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext private val co
         fun read(area: StorageArea, key: String) =
             (session.read(StorageRequest(area, key)) as? StorageResult.Value
                 ?: error("Stored source settings are unavailable")).value
-        val status = SourceLoginService.storedStatus(session)
+        val definition = active.getValue(id).installed.definition
+        val status = SourceLoginService.storedStatus(session,
+            pixiv = definition.profile == EXTENSION_PROFILE && definition.importKey == PixivUpdateAdapter.KEY)
         val name = if (accountNameField != null && status in setOf("authenticated", "session")) {
             val info = (session.read(StorageRequest(StorageArea.Account, hnovel.network.StorageRequestKey.LOGIN_INFO)) as? StorageResult.Value)?.value
             SourceLoginService.savedAccountName(accountNameField, info)
@@ -434,6 +448,16 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext private val co
         check(session.write(StorageRequest(StorageArea.Config, "variable", value)) is StorageResult.Value)
     }
 
+    internal suspend fun supportsPixivBlocking(id: Identifier): Boolean = installedSources().any {
+        ImportedRuleSources.id(it.definition) == id && pixivBlocking.accepts(it.definition)
+    }
+
+    internal suspend fun <T> withPixivPreferences(id: Identifier, action: (hnovel.network.SourceSession) -> T): T =
+        withStoredSession(id) { session ->
+            check(active[id]?.installed?.definition?.let(pixivBlocking::accepts) == true)
+            action(session)
+        }
+
     private suspend fun <T> withStoredSession(id: Identifier, action: (hnovel.network.SourceSession) -> T): T = withContext(Dispatchers.IO) {
         restore()
         lock.withLock {
@@ -456,6 +480,7 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext private val co
             val current = checkNotNull(active[id]) { "Source is not installed" }
             check(current.rule != null) { "Source is disabled or unavailable" }
             if (expectedGeneration != null) check(accounts.current(id).generation == expectedGeneration) { "Login attempt is stale" }
+            downloads?.revokeSourceTasks(id)
             accounts.begin(id)
             try { current.session?.clearAccount() } finally {
                 current.broker?.close()

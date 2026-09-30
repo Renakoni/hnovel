@@ -9,7 +9,6 @@
     <string name="discovery_error_type">錯誤類型：%1$s</string>
     <string name="discovery_apply">套用</string>
     <string name="discovery_rule_field">書源規則：%1$s</string>
-    <string name="discovery_source_action">書源操作</string>
     <string name="discovery_load_more">載入更多</string>
     <string name="discovery_no_books">沒有符合篩選條件的書籍。</string>
     <string name="discovery_preview_empty">此書單暫無書籍。</string>

@@ -10,10 +10,6 @@
     <string name="action_clear_text">清除文本</string>
     <string name="action_retry">重试</string>
     <string name="image_load_failed">图片加载失败</string>
-    <string name="plugin_signature_invalid">签名无效</string>
-    <string name="plugin_runtime_error">运行错误</string>
-    <string name="plugin_incompatible">不兼容</string>
-    <string name="plugin_app_badge">应用</string>
     <string name="dialog_value">数值</string>
     <string name="paper_background_downloading">正在下载纸张背景…</string>
     <string name="data_export_failed">导出失败</string>
@@ -39,8 +35,6 @@
     <plurals name="formatting_rules_count">
         <item quantity="other">%1$d 个规则</item>
     </plurals>
-    <string name="plugin_delete_action">删除插件</string>
-    <string name="plugin_uninstall_action">卸载并删除</string>
     <string name="stats_total">总计</string>
     <string name="reader_chapter">章节</string>
     <string name="reader_empty_chapter">本章没有可阅读的内容。</string>

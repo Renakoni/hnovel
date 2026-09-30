@@ -8,8 +8,6 @@
     <string name="sources_account_required">Sign-in required</string>
     <string name="sources_account_loading">Reading account status…</string>
     <string name="sources_account_unknown">Account status unavailable</string>
-    <string name="sources_plugins_group">Plugin sources</string>
-    <string name="sources_network_plugin">This plugin manages its own connections and does not yet support this bypass switch.</string>
     <string name="sources_login_definition_error">The source login declaration is invalid at %1$s. Review the source definition.</string>
     <string name="sources_account_unavailable">Account actions unavailable</string>
     <string name="sources_session_saved">Session saved</string>
@@ -41,7 +39,7 @@
     <string name="sources_title">Book sources</string>
     <string name="sources_manage_help">Add, configure, sign in and update book sources</string>
     <string name="sources_add">Add book source</string>
-    <string name="sources_add_help">Add a JSON source by URL, local file or pasted text. Supported versions of local .lnrp / APK source packages can also be imported.</string>
+    <string name="sources_add_help">Add a JSON source by URL, local file or pasted text.</string>
     <string name="sources_url">Source file URL</string>
     <string name="sources_preview_url">Download and preview</string>
     <string name="sources_file">Choose local file</string>
@@ -92,8 +90,10 @@
     <string name="sources_network_help">VPN/TUN connections are supported, including Fake-IP DNS. Local network addresses remain restricted.</string>
     <string name="sources_revision_failed">The revision was not activated. The installed source remains available; review and retry the update.</string>
     <string name="sources_no_update_url">This source has no update URL. Import a newer file or paste its updated definition.</string>
-    <string name="sources_up_to_date">No changes found.</string>
+    <string name="sources_up_to_date">Up to date</string>
     <string name="sources_saved">Source changes saved.</string>
     <string name="sources_removed">Source removed. Saved books and reading records remain.</string>
     <string name="sources_invalid_permission_lines">Invalid site address on line(s): %1$s</string>
+    <string name="sources_pixiv_update_unsupported">Adaptation failed. Not updated</string>
+    <string name="sources_pixiv_update_failed">Network error. Please retry</string>
 </resources>

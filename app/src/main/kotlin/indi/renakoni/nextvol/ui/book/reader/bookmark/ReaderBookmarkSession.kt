@@ -71,10 +71,11 @@ internal val LocalReaderBookmarks = compositionLocalOf<ReaderBookmarkSession?> {
 @Composable
 internal fun RegisterBookmarkCapture(capture: () -> ReaderBookmarkPosition?) {
     val session = LocalReaderBookmarks.current
+    val active by rememberUpdatedState(indi.renakoni.nextvol.ui.book.reader.content.LocalReaderRendererActive.current)
     val current by rememberUpdatedState(capture)
-    DisposableEffect(session) {
-        val callback = { current() }
-        session?.capture = callback
+    DisposableEffect(session, active) {
+        val callback = { if (active) current() else null }
+        if (active) session?.capture = callback
         onDispose { if (session?.capture === callback) session.capture = null }
     }
 }

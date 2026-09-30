@@ -23,8 +23,6 @@ rootProject.name = "NextVol"
 include(":app")
 include(":epub")
 include(":api")
-include(":plugin:js")
-include(":compiler")
 include(":benchmark")
 include(":source-compatibility")
 include(":source-rules")

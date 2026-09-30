@@ -25,13 +25,14 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
     var missingCacheRead = false
         private set
     var readOnly = false
+    var onMessage: ((String) -> Unit)? = null
     // Human login/verification shares the enclosing login operation's five-minute budget.
     private val limits = ExecutionLimits(timeoutMillis = if (interactive) 300000 else 30000, maxOutputBytes = 196608,
         maxRequests = 64, maxDataBytes = 16 * 1024 * 1024)
 
     fun fork(bookId: String? = this.bookId, chapterId: String? = this.chapterId) =
         RuleEvaluation(identity, authority, session, runner, library, bookId, chapterId, book.copy(), chapter.copy(), baseUrl, keyword, page, calls, headerRule, interactive, trace, sourceLoginUrl, sourceComment, verification, maxRuleCalls, sourceName, sourceLastUpdateTime, memory)
-            .also { it.discovery = discovery; it.nextChapterUrl = nextChapterUrl; it.requestUserAgent = requestUserAgent; it.readOnly = readOnly }
+            .also { it.discovery = discovery; it.nextChapterUrl = nextChapterUrl; it.requestUserAgent = requestUserAgent; it.readOnly = readOnly; it.onMessage = onMessage }
 
     suspend fun headers(): Map<String, String> {
         if (headerRule.isBlank()) return emptyMap()
@@ -114,7 +115,8 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
         var responseLimitExceeded = false
         val result = SourceExecutionBroker(identity, authority, session, limits, baseUrl, keyword, page,
             allowInteraction = interactive, sourceName = sourceName, sourceLastUpdateTime = sourceLastUpdateTime,
-            requestUserAgent = requestUserAgent.takeUnless { field == "header" }, currentRequest = currentRequest, memory = memory).use {
+            requestUserAgent = requestUserAgent.takeUnless { field == "header" }, currentRequest = currentRequest, memory = memory,
+            onMessage = onMessage, retryContext = currentCoroutineContext()[hnovel.network.RequestRetryContext]).use {
             val executed = try { runner.execute(identity, task, limits, it) }
             catch (cancelled: java.util.concurrent.CancellationException) { throw cancelled }
             catch (failure: Exception) {

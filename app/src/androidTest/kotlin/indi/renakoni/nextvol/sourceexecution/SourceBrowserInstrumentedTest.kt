@@ -98,6 +98,8 @@ class SourceBrowserInstrumentedTest {
             try {
                 SourceBroker(root.toPath(), browser = AndroidSourceBrowser(context)).use { broker ->
                     val session = broker.open(SourceScope("agent", "A", "legado"), listOf(NetworkGrant(server.url("/").toString(), true)))
+                    val events = ConcurrentLinkedQueue<RequestDiagnostic>()
+                    session.traceRequests { events += it }
                     val result = session.execute(BrokerRequest("render", server.url("/").toString(),
                         headers = mapOf("user-agent" to "NovelFixture/1.0"), timeoutMillis = 60000,
                         browser = BrowserOptions(script = "window.finished ? navigator.userAgent : null")))
@@ -105,6 +107,24 @@ class SourceBrowserInstrumentedTest {
                     assertEquals("NovelFixture/1.0", (result as BrokerResult.Success).response.text())
                     assertTrue(agents.size >= 3)
                     assertTrue(agents.toString(), agents.all { it == "NovelFixture/1.0" })
+                    val rootId = events.first().requestId
+                    assertTrue(events.any { it.path == RequestPath.MediatedWebView && it.reason == RequestReason.BrowserRendering })
+                    val settings = events.single { it.evidence == RequestEvidence.WebViewSettings }
+                    assertEquals(rootId, settings.requestId)
+                    assertEquals(true, settings.webView?.matchesRequested)
+                    assertEquals(UserAgentFamily.Other, settings.webView?.userAgent?.family)
+                    val environment = checkNotNull(settings.webView?.environment)
+                    assertNotNull(environment.packageName)
+                    assertNotNull(environment.versionName)
+                    assertEquals(androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.GET_COOKIE_INFO), environment.cookieInfo)
+                    val metadata = if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.USER_AGENT_METADATA))
+                        UserAgentMetadataStatus.UnhandledUserAgent else UserAgentMetadataStatus.Unsupported
+                    assertEquals(metadata, settings.webView?.metadata)
+                    val sent = events.filter { it.evidence == RequestEvidence.TransportHeaders }
+                    assertTrue(sent.size >= 3)
+                    assertTrue(sent.all { it.requestId != rootId && it.parentRequestId == rootId })
+                    assertTrue(events.any { it.parentRequestId == rootId && it.cookies?.store == CookieStore.HttpJar })
+                    assertFalse(events.toString().contains("NovelFixture/1.0"))
                 }
             } finally { root.deleteRecursively() }
         }
@@ -368,8 +388,16 @@ class SourceBrowserInstrumentedTest {
 
     @Test fun inlineBrowserPostCrossesWorkerAndAllowsExplicitConfirmation(): Unit = runBlocking {
         ActivityScenario.launch(BrowserTestHostActivity::class.java).use { MockWebServer().use { server ->
-            server.enqueue(MockResponse().setHeader("Content-Type", "text/html")
-                .setBody("<html><head><link rel='icon' href='data:,'></head><body>Signed in</body></html>"))
+            val pageLoaded = CompletableDeferred<Unit>()
+            server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse = when (request.path) {
+                    "/" -> MockResponse().setHeader("Content-Type", "text/html").setBody(
+                        "<html><head><link rel='icon' href='data:,'></head><body>Signed in" +
+                            "<script>window.addEventListener('load',function(){fetch('/loaded')});</script></body></html>")
+                    "/loaded" -> MockResponse().setResponseCode(204).also { pageLoaded.complete(Unit) }
+                    else -> MockResponse().setResponseCode(404)
+                }
+            }
             server.start()
             val root = File(context.cacheDir, "browser-confirm-${System.nanoTime()}")
             val authority = ExecutionAuthority()
@@ -394,11 +422,9 @@ class SourceBrowserInstrumentedTest {
                     for (index in 0 until node.childCount) find(node.getChild(index), text)?.let { return it }
                     return null
                 }
-                withTimeout(20000) {
-                    while (automation.windows.none { window ->
-                        find(window.root?.takeIf { it.packageName == context.packageName }, "Signed in") != null
-                    }) delay(100)
-                }
+                // Page readiness must not depend on Chromium publishing its accessibility text.
+                // Keep accessibility for the native confirmation button and verify the returned HTML below.
+                withTimeout(20000) { pageLoaded.await() }
                 assertFalse(pending.isCompleted)
                 withTimeout(10000) {
                     while (automation.windows.none { window ->
@@ -410,11 +436,15 @@ class SourceBrowserInstrumentedTest {
                 assertTrue(result.toString(), result is ExecutionResult.Success)
                 assertTrue((result as ExecutionResult.Success).output.contains("Signed in"))
                 val request = server.takeRequest(1, java.util.concurrent.TimeUnit.SECONDS)!!
+                assertEquals("/", request.path)
                 assertEquals("POST", request.method)
                 assertEquals("user=fixture", request.body.readUtf8())
                 assertEquals("inline-agent", request.getHeader("User-Agent"))
                 assertEquals("kept", request.getHeader("X-Inline"))
-                assertEquals(1, server.requestCount)
+                val loaded = server.takeRequest(1, java.util.concurrent.TimeUnit.SECONDS)!!
+                assertEquals("/loaded", loaded.path)
+                assertEquals("GET", loaded.method)
+                assertEquals(2, server.requestCount)
             } } finally { executor.close(); root.deleteRecursively() }
         } }
     }

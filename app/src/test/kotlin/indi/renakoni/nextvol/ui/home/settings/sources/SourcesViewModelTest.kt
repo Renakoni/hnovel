@@ -34,6 +34,91 @@ import java.nio.file.Files
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [27], application = Application::class)
 class SourcesViewModelTest {
+    @Test fun bundledPixivKeepsAccountAndUpdateActionsWithSectionedSettingsAndFeedback(): Unit = runBlocking {
+        val original = RuntimeEnvironment.getApplication().assets.open("source-catalog/Adult.json").bufferedReader().use {
+            Json.parseToJsonElement(it.readText()).jsonArray.map { entry -> entry.jsonObject }
+                .single { entry -> entry["bookSourceUrl"]?.jsonPrimitive?.content == "https://www.pixiv.net/novel" }
+        }
+        RuleSourceFixture().use { fixture ->
+            fixture.source(profile = EXTENSION_PROFILE) {
+                Json.parseToJsonElement(original.toString().replace("https://www.pixiv.net", fixture.server.url("/").toString().removeSuffix("/"))).jsonObject
+            }.use { source ->
+                val collapsed = source.loginForm()
+                val login = SourceLoginService.directLoginAction(collapsed)
+                assertNotNull(login)
+                assertTrue(collapsed.fields.none { it.action == "startGithubIssue()" })
+                assertTrue(collapsed.fields.any { it.action == "updateSource()" })
+                assertEquals(listOf("阅读与搜索", "发现页设置"), collapsed.fields.mapNotNull { it.section }.distinct())
+                assertNull(collapsed.fields.single { it.action == "pixivBlockManager()" }.section)
+                assertFalse(collapsed.fields.single { it.action == "startPixivSettings()" }.enabled)
+                val expanded = collapsed
+                val fast = expanded.fields.single { it.action == "editSettings('FAST')" }
+                val feedback = source.login(expanded.values, fast.id, expanded.id).messages
+                assertEquals(1, feedback.size)
+                assertTrue(feedback.single().contains("快速模式"))
+                assertTrue(feedback.single().startsWith("✅ 已开启"))
+                assertEquals(login, SourceLoginService.directLoginAction(source.loginForm()))
+                assertEquals(0, fixture.server.requestCount)
+            }
+        }
+    }
+
+    @Test fun configurationDoesNotAuthenticateAndLoginRunsOnlyTheConventionalAction(): Unit = runBlocking {
+        Dispatchers.setMain(Dispatchers.Unconfined)
+        val root = Files.createTempDirectory("source-configuration").toFile()
+        val context = object : ContextWrapper(RuntimeEnvironment.getApplication()) {
+            override fun getFilesDir() = File(root, "files")
+            override fun getCacheDir() = File(root, "cache")
+        }
+        RuleSourceFixture().use { fixture ->
+            val registry = WebSourceRegistry(fixture.authority)
+            val accounts = SourceSessionManager(fixture.authority)
+            val sources = ImportedRuleSources(context, registry, fixture.authority, accounts, fixture.runner)
+            val model = SourcesViewModel(context, sources, SourceRevisionUpdates(context, sources, accounts, fixture.runner, fixture.authority),
+                SourceLoginService(sources, accounts), registry, ZLibrarySources(context, registry, hnovel.network.StorageCipher.Plain))
+            suspend fun idle() = withTimeout(10000) { model.state.first { !it.busy } }
+            try {
+                idle()
+                val raw = JsonObject(fixture.raw() + mapOf(
+                    "loginUrl" to JsonPrimitive("function login(){cache.put('authenticated','yes');java.toast('Signed in');}"),
+                    "loginUi" to JsonPrimitive("""@js:JSON.stringify([
+                        {name:'Account',type:'button',action:'login()'},
+                        {name:'Debug',type:'button',action:"cache.put('configured','yes');java.longToast('  Debug enabled  ');"}
+                    ])""")))
+                model.previewText(raw.toString(), EXTENSION_PROFILE)
+                val committed = sources.importer.commit(idle().preview!!, listOf(ImportSelection(0, ImportDecision.Add)))
+                val id = sources.activate(committed.items.single().reference!!, listOf(NetworkGrant(fixture.server.url("/").toString(), true)))
+                model.select(id); idle()
+                val generation = accounts.current(id).generation
+                model.beginConfiguration(id)
+                val opened = idle()
+                assertTrue(opened.configurationPanel)
+                val form = opened.loginForm!!
+                val session = sources.loginTarget(id).session
+                fun stored(key: String) = (session.read(StorageRequest(StorageArea.Cache, "value:$key")) as hnovel.network.StorageResult.Value).value
+                assertNull(stored("authenticated"))
+                model.submitLogin(form.values, form.fields.last().id, form.id)
+                idle()
+                assertEquals("yes", stored("configured"))
+                assertNull(stored("authenticated"))
+                model.cancelLogin(); idle()
+                model.beginLogin(id)
+                val authenticated = idle()
+                assertNull(authenticated.loginForm)
+                assertFalse(authenticated.configurationPanel)
+                assertEquals("yes", stored("authenticated"))
+                assertEquals(generation, accounts.current(id).generation)
+                model.select(null); idle()
+                model.select(id); idle()
+                model.logout(id); idle()
+                assertTrue(accounts.current(id).generation > generation)
+                model.beginConfiguration(id)
+                assertNotNull(idle().loginForm)
+                model.cancelLogin(); idle()
+            } finally { model.cancel(); sources.stop(); Dispatchers.resetMain(); root.deleteRecursively() }
+        }
+    }
+
     @Test fun catalogConfirmationAssignsEachSelectedSourceToItsOwnCategory(): Unit = runBlocking {
         Dispatchers.setMain(Dispatchers.Unconfined)
         val root = Files.createTempDirectory("catalog-groups").toFile()
@@ -536,18 +621,16 @@ class SourcesViewModelTest {
         }
     }
 
-    @Test fun builtinAndPluginSettingsDoNotConstructLazyProviders(): Unit = runBlocking {
+    @Test fun builtinSettingsDoNotConstructLazyProviders(): Unit = runBlocking {
         Dispatchers.setMain(Dispatchers.Unconfined)
         val root = Files.createTempDirectory("registered-settings").toFile()
         val context = object : ContextWrapper(RuntimeEnvironment.getApplication()) { override fun getFilesDir() = root }
         val registry = WebSourceRegistry()
-        val ids = listOf(io.nightfish.lightnovelreader.api.identifier.Identifier("lightnovelreader", "Wenku8"),
-            io.nightfish.lightnovelreader.api.identifier.Identifier("plugin", "fixture"))
+        val id = io.nightfish.lightnovelreader.api.identifier.Identifier("lightnovelreader", "Wenku8")
         var constructions = 0
-        val registrations = ids.mapIndexed { index, id -> registry.register(SourceMetadata(
-            io.nightfish.lightnovelreader.api.web.WebDataSourceItem(id, id.id, "Fixture"), setOf(SourceCapability.Search), builtIn = index == 0)) {
-                constructions++; error("Opening basic settings must not create a provider")
-            }
+        val registration = registry.register(SourceMetadata(
+            io.nightfish.lightnovelreader.api.web.WebDataSourceItem(id, id.id, "Fixture"), setOf(SourceCapability.Search), builtIn = true)) {
+            constructions++; error("Opening basic settings must not create a provider")
         }
         val sources = mockk<ImportedRuleSources>()
         coEvery { sources.sourceGroups() } returns emptyList()
@@ -558,23 +641,19 @@ class SourcesViewModelTest {
         suspend fun idle() = withTimeout(10000) { model.state.first { !it.busy } }
         try {
             idle()
-            for (id in ids) {
-                model.select(id)
-                val state = idle()
-                assertEquals(id, state.selected)
-                if (id == ids.first()) {
-                    assertNull(state.network?.limitation)
-                    model.setBypassVpn(true)
-                    assertTrue(idle().network!!.bypassVpn)
-                    assertEquals(SourceNetworkMode.BypassVpn, SourceNetworkSettings(context, mockk()).mode(id))
-                } else assertNotNull(state.network?.limitation)
-                assertNull(state.loginForm)
-            }
+            model.select(id)
+            val state = idle()
+            assertEquals(id, state.selected)
+            assertNull(state.network?.limitation)
+            model.setBypassVpn(true)
+            assertTrue(idle().network!!.bypassVpn)
+            assertEquals(SourceNetworkMode.BypassVpn, SourceNetworkSettings(context, mockk()).mode(id))
+            assertNull(state.loginForm)
             assertEquals(0, constructions)
             assertTrue(registry.sources.value.all { it.status == SourceStatus.Registered })
             coVerify(exactly = 0) { sources.loginTarget(any()) }
             coVerify(exactly = 0) { sources.storedSettings(any(), any()) }
-        } finally { model.cancel(); registrations.forEach { it.unregister() }; Dispatchers.resetMain(); root.deleteRecursively() }
+        } finally { model.cancel(); registration.unregister(); Dispatchers.resetMain(); root.deleteRecursively() }
     }
 
     @Test fun absentOrInvalidLoginCannotOpenAnEmptyDialogOrRotateAccounts(): Unit = runBlocking {

@@ -31,6 +31,7 @@ data class SourceManagementState(val installed: List<InstalledRuleSource> = empt
     val preview: ImportPreview? = null, val updateTarget: Identifier? = null,
     val previewOrigins: Map<Int, String> = emptyMap(),
     val busy: Boolean = false, val showProgress: Boolean = true, val message: Int? = null, val loginForm: LoginForm? = null,
+    val configurationPanel: Boolean = false,
     val loginStatus: LoginStatus = LoginStatus.LoggedOut, val variable: String = "",
     val zLibrary: ZLibraryState = ZLibraryState(), val checks: Map<String, SourceCheckSummary> = emptyMap(),
     val network: SourceNetworkState? = null, val storedSettingsAvailable: Boolean = false,
@@ -68,8 +69,9 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
     private val foreground = ForegroundSourceRequest()
     fun setActive(value: Boolean, retainBrowser: Boolean = false) = foreground.setActive(value, retainBrowser)
 
-    fun consumeSavedMessage() {
-        mutable.update { if (it.message == R.string.sources_saved) it.copy(message = null) else it }
+    fun consumeSavedMessage() = consumeMessage(R.string.sources_saved)
+    fun consumeMessage(message: Int) {
+        mutable.update { if (it.message == message) it.copy(message = null) else it }
     }
 
     init {
@@ -101,6 +103,8 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
                 is RevisionException -> when (failure.code) {
                     RevisionError.NoUpdateAddress -> R.string.sources_no_update_url
                     RevisionError.PermissionRequired -> R.string.sources_permission_denied
+                    RevisionError.UpstreamNotAdapted -> R.string.sources_pixiv_update_unsupported
+                    RevisionError.UpdateDownloadFailed -> R.string.sources_pixiv_update_failed
                     else -> R.string.sources_revision_failed
                 }
                 is SourceContentException -> sourceFailureMessage(failure)
@@ -259,7 +263,9 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
         mutable.update { it.copy(message = if (failed) R.string.sources_import_partial else R.string.sources_saved) }
     }
     fun checkUpdate(id: Identifier) = launch {
-        val checked = updates.check(id)
+        showUpdate(updates.check(id), id)
+    }
+    private fun showUpdate(checked: RevisionCheck, id: Identifier) {
         if (checked.unchanged) mutable.update { it.copy(message = R.string.sources_up_to_date) }
         else showPreview(checked.preview, id)
     }
@@ -288,7 +294,6 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
                 !AndroidSourceBrowser.supportsVpnBypass(context)) R.string.sources_network_native else null
             id == ZLibrarySources.ID -> null
             id == "Wenku8".ofId() && listing?.metadata?.builtIn == true -> null
-            listing?.metadata?.builtIn == false -> R.string.sources_network_plugin
             else -> R.string.sources_network_unsupported
         }
         return SourceNetworkState(networkSettings.mode(id) == SourceNetworkMode.BypassVpn, limitation,
@@ -329,8 +334,13 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
         mutable.update { it.copy(selected = null, message = R.string.sources_removed) }
     }
     fun beginLogin(id: Identifier) = launch { openLogin(id) }
+    fun beginConfiguration(id: Identifier) = launch {
+        mutable.update { it.copy(configurationPanel = true, loginForm = null) }
+        try { openLogin(id, configuration = true) }
+        finally { if (state.value.loginForm == null) mutable.update { it.copy(configurationPanel = false) } }
+    }
     fun relogin(id: Identifier) = launch { openLogin(id, LoginIntent.Relogin) }
-    private suspend fun openLogin(id: Identifier, intent: LoginIntent = LoginIntent.Panel) {
+    private suspend fun openLogin(id: Identifier, intent: LoginIntent = LoginIntent.Panel, configuration: Boolean = false) {
         val definition = sources.installedSources().single { ImportedRuleSources.id(it.definition) == id }.definition
         val declaration = RuleSettingsPresentation.read(definition)
         if (!declaration.loginDeclared || declaration.loginErrorField != null)
@@ -343,10 +353,13 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
         }
         var form: LoginForm? = null
         try {
+            currentCoroutineContext().ensureActive()
+            mutable.update { it.copy(loginForm = null, configurationPanel = configuration) }
             val loaded = login.form(active).also { form = it }
             currentCoroutineContext().ensureActive()
-            if (loaded.browserUrl != null && loaded.fields.isEmpty()) {
-                login.submit(active, emptyMap())
+            val action = SourceLoginService.directLoginAction(loaded).takeUnless { configuration }
+            if (!configuration && (loaded.browserUrl != null && loaded.fields.isEmpty() || action != null)) {
+                login.submit(active, loaded.values, action, loaded.id)
                 login.cancel(active)
                 attempt = null
                 mutable.update { it.copy(loginForm = null) }
@@ -359,19 +372,62 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
             withContext(NonCancellable) { refreshStoredSettings(id, form) }
         }
     }
+    suspend fun configurationBlockManager(action: String?, formId: String): Identifier? {
+        val current = state.value
+        val active = attempt ?: return null
+        val form = current.loginForm ?: return null
+        if (current.busy || !current.configurationPanel || form.id != formId) return null
+        val field = form.fields.singleOrNull { it.id == action && it.enabled && it.type == "button" } ?: return null
+        if (field.action?.trim()?.removeSuffix(";")?.trim() != "pixivBlockManager()") return null
+        val supported = withContext(Dispatchers.IO) { sources.supportsPixivBlocking(active.source) }
+        return active.source.takeIf { supported && attempt === active && state.value.loginForm?.id == formId && !state.value.busy }
+    }
+
+    fun configurationLink(action: String?, formId: String): String? {
+        val current = state.value
+        val active = attempt ?: return null
+        val form = current.loginForm ?: return null
+        if (current.busy || !current.configurationPanel || form.id != formId) return null
+        val field = form.fields.singleOrNull { it.id == action && it.enabled && it.type == "button" } ?: return null
+        if (field.action?.trim()?.removeSuffix(";")?.trim() != "startGithubReadme()") return null
+        val definition = current.installed.singleOrNull { ImportedRuleSources.id(it.definition) == active.source }?.definition
+            ?: return null
+        return "https://pixivsource.pages.dev/Pixiv".takeIf { updates.manages(definition) }
+    }
+
     fun submitLogin(values: Map<String, String>, action: String? = null, formId: String? = null) = launch {
         val active = checkNotNull(attempt)
         val submittedForm = state.value.loginForm
         try {
+            val update = submittedForm?.takeIf { it.id == formId }?.fields?.singleOrNull {
+                it.id == action && it.enabled && it.type == "button" &&
+                    it.action?.trim()?.removeSuffix(";")?.trim() == "updateSource()"
+            }
+            val definition = state.value.installed.singleOrNull { ImportedRuleSources.id(it.definition) == active.source }?.definition
+            if (state.value.configurationPanel && update != null && definition != null && updates.manages(definition)) {
+                val checked = login.withAttempt(active) { updates.check(active.source, expected = definition.reference()) }
+                if (checked.unchanged) {
+                    mutable.update { it.copy(message = R.string.sources_up_to_date) }
+                    return@launch
+                }
+                withContext(NonCancellable) { login.cancel(active) }
+                attempt = null
+                mutable.update { it.copy(loginForm = null, configurationPanel = false) }
+                showUpdate(checked, active.source)
+                return@launch
+            }
             login.submit(active, values, action, formId)
             val form = if (action == null) null else login.form(active)
             if (action == null) { login.cancel(active); attempt = null }
-            mutable.update { it.copy(loginForm = form) }
+            mutable.update { it.copy(loginForm = form, configurationPanel = it.configurationPanel && form != null) }
         } finally {
             withContext(NonCancellable) { refreshStoredSettings(active.source, submittedForm) }
         }
     }
-    fun logout(id: Identifier) = launch { login.logout(id); refreshStoredSettings(id) }
+    fun logout(id: Identifier) = launch {
+        login.logout(id)
+        refreshStoredSettings(id)
+    }
     fun verifyPending() = launch {
         val prompt = state.value.verification ?: return@launch
         // The coordinator owns the original request and account. Opening verification is not a new login attempt.
@@ -379,18 +435,22 @@ class SourcesViewModel @Inject constructor(@ApplicationContext private val conte
         finally { withContext(NonCancellable) { refreshStoredSettings(prompt.owner.source) } }
     }
     fun cancelLogin() {
-        operation?.cancel()
+        val pending = operation
+        pending?.cancel()
         val generation = ++operationGeneration
-        mutable.update { it.copy(busy = true, showProgress = true) }
+        mutable.update { it.copy(loginForm = null, configurationPanel = false,
+            busy = true, showProgress = true) }
         val active = attempt; attempt = null
         viewModelScope.launch {
             withContext(NonCancellable) {
+                pending?.join()
                 if (active != null) {
                     login.cancel(active)
                     if (generation == operationGeneration) refreshStoredSettings(active.source)
                 }
             }
-            if (generation == operationGeneration) mutable.update { it.copy(loginForm = null, busy = false) }
+            if (generation == operationGeneration) mutable.update { it.copy(loginForm = null, configurationPanel = false,
+                busy = false) }
         }
     }
     fun cancel() { operation?.cancel() }

@@ -10,6 +10,7 @@ import indi.renakoni.nextvol.data.web.proxy.ProxyPriorityWebBookDataSource
 import indi.renakoni.nextvol.data.explore.PagedSearchProvider
 import indi.renakoni.nextvol.data.explore.SearchPage
 import io.nightfish.lightnovelreader.api.book.ChapterContent
+import io.nightfish.lightnovelreader.api.book.BookInformation
 import io.nightfish.lightnovelreader.api.book.Volume
 import io.nightfish.lightnovelreader.api.util.Cache
 import io.nightfish.lightnovelreader.api.web.WebBookDataSource
@@ -22,13 +23,14 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
-/** One registration generation. New callers never need a global provider or plugin manager. */
+/** One registration generation, resolved by source identity rather than a global provider. */
 class SourceRuntime internal constructor(
     val metadata: SourceMetadata,
     private val source: WebBookDataSource,
@@ -38,6 +40,7 @@ class SourceRuntime internal constructor(
 ) {
     val id get() = metadata.id
     val isAvailable get() = lifetime.isActive
+    internal val canReplayDownloads get() = (source as? indi.renakoni.nextvol.data.web.rules.RuleWebBookDataSource)?.canReplayDownloads == true
     private val responseCache = source.cache?.let { Cache(it.maxCountEachType, it.timeout) }
     private val priority = ProxyPriorityWebBookDataSource(source)
     private val coalescing = ProxyCoalescingWebBookDataSource(priority)
@@ -50,9 +53,17 @@ class SourceRuntime internal constructor(
     }
 
     internal suspend fun <T> execute(block: suspend () -> T): T {
+        currentCoroutineContext().ensureActive()
         checkAvailable()
+        val version = currentCoroutineContext()[SourceRequestVersion]
+        version?.check(metadata)
         val interaction = currentCoroutineContext()[ForegroundSourceRequest] ?: kotlin.coroutines.EmptyCoroutineContext
-        val request = lifetime.async(interaction + SourceRequestOwner(id)) { block() }
+        val retry = currentCoroutineContext()[hnovel.network.RequestRetryContext] ?: kotlin.coroutines.EmptyCoroutineContext
+        val background = currentCoroutineContext()[BackgroundSourceRequest] ?: kotlin.coroutines.EmptyCoroutineContext
+        val scheduling = currentCoroutineContext()[hnovel.execution.SourceWorkRequest] ?:
+            if (interaction is ForegroundSourceRequest && interaction.allowsInteraction && interaction.isActive)
+                hnovel.execution.SourceWorkRequest(WebDataSourcePriority.High.priority) else kotlin.coroutines.EmptyCoroutineContext
+        val request = lifetime.async(interaction + retry + background + scheduling + (version ?: kotlin.coroutines.EmptyCoroutineContext) + SourceRequestOwner(id)) { block() }
         return try {
             request.await().also { checkAvailable() }
         } finally {
@@ -105,6 +116,11 @@ class SourceRuntime internal constructor(
 
     suspend fun getBookInformation(bookId: String, priority: WebDataSourcePriority = WebDataSourcePriority.Default, refresh: Boolean = false) =
         execute { cached.getBookInformation(bookId, priority, refresh) }
+
+    internal suspend fun bookInformationForDisplay(bookId: String, information: BookInformation) = execute {
+        (source as? indi.renakoni.nextvol.data.web.rules.RuleWebBookDataSource)
+            ?.informationForDisplay(bookId, information) ?: information
+    }
 
     /** Only the imported-rule adapter can propose a remote alias; source identity stays host-owned. */
     internal suspend fun canonicalBookId(bookId: String): String = execute {

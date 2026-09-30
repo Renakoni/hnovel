@@ -23,7 +23,10 @@ interface FlipPageContentUiState: ContentUiState {
     val updatePageState: (PagerState) -> Unit
     val updateAnchoredPageState: (PagerState) -> Unit get() = updatePageState
     val updateSpeechPageState: (PagerState) -> Unit get() = updateAnchoredPageState
+    val onProgressRestoring: (PagerState) -> Unit get() = {}
     val pagerState: PagerState
+    val realLeafCount: Int get() = pagerState.readerLeaves.leafCount
+    val visibleLeafRange: IntRange get() = pagerState.readerLeaves.leavesOnScreen(pagerState.settledPage)
     val pendingChapter: FlipChapterTransition? get() = null
     val commitPendingChapter: (FlipChapterTransition, PagerState) -> Boolean get() = { _, _ -> false }
     val failPendingChapter: (FlipChapterTransition, WebRequestError) -> Unit get() = { _, _ -> }
@@ -42,6 +45,7 @@ class MutableFlipPageContentUiState(
     override val failPendingChapter: (FlipChapterTransition, WebRequestError) -> Unit = { _, _ -> },
     override val retryPendingChapter: () -> Unit = {},
     override val cancelPendingChapter: () -> Unit = {},
+    override val onProgressRestoring: (PagerState) -> Unit = {},
 ): FlipPageContentUiState {
     override var pendingChapter by mutableStateOf<FlipChapterTransition?>(null)
     override var pagerState by mutableStateOf(PagerState { 0 })

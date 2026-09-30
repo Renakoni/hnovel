@@ -24,7 +24,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -36,7 +35,6 @@ import indi.renakoni.nextvol.ui.components.LnrNavigationBar
 import indi.renakoni.nextvol.ui.components.LnrSnackbar
 import indi.renakoni.nextvol.ui.dialog.addBookToBookshelfDialog
 import indi.renakoni.nextvol.ui.dialog.markAllChaptersAsReadDialog
-import indi.renakoni.nextvol.ui.dialog.pluginInstallerDialog
 import indi.renakoni.nextvol.ui.dialog.updatesAvailableDialog
 import indi.renakoni.nextvol.ui.home.homeNavigation
 import indi.renakoni.nextvol.ui.storagemanager.storageManager
@@ -57,7 +55,6 @@ import io.nightfish.lightnovelreader.api.ui.ReaderStyle
 @Composable
 fun NextVolNavHost(
     navController: NavHostController,
-    onBuildNavHost: NavGraphBuilder.() -> Unit,
     onReaderActiveChanged: (Boolean) -> Unit,
     readerStyle: ReaderStyle,
 ) {
@@ -115,9 +112,7 @@ fun NextVolNavHost(
                         addBookToBookshelfDialog()
                         bookManager()
                         storageManager()
-                        pluginInstallerDialog()
                         markAllChaptersAsReadDialog()
-                        onBuildNavHost.invoke(this)
                     }
                 }
 

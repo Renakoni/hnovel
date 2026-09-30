@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
     <application>
         <activity
             android:name=".work.BookshelfShareTargetActivity"
@@ -11,14 +12,5 @@
                 <data android:mimeType="application/zip" />
             </intent-filter>
         </activity>
-        <provider
-            android:name="androidx.core.content.FileProvider"
-            android:authorities="indi.renakoni.nextvol.benchmark.files"
-            android:exported="false"
-            android:grantUriPermissions="true">
-            <meta-data
-                android:name="android.support.FILE_PROVIDER_PATHS"
-                android:resource="@xml/benchmark_file_paths" />
-        </provider>
     </application>
 </manifest>

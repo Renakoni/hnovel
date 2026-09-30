@@ -16,7 +16,7 @@
       "author": "id.info@tag.p.0@a@text",
       "coverUrl": "id.fmimg@img@src",
       "intro": "id.intro@text",
-      "kind": "id.info@tag.p.2@text##最后更新：",
+      "updateTime": "id.info@tag.p.2@text##最后更新：",
       "lastChapter": "id.info@tag.p.3@a@text##免费章节 |正文卷 |正文 |VIP章节 ",
       "name": "id.bookdetail@id.info@h1@text##\\（.*|\\(.*|免费阅读|全文.*阅读|最新章节"
     },
@@ -690,7 +690,8 @@
       "author": "class.author@tag.a@text",
       "coverUrl": "img@src",
       "init": "class.detail",
-      "kind": "tag.p.2@tag.a@text&&\ntag.p.2@tag.span.0@text&&\ntag.p.4@text##最后更新：",
+      "kind": "tag.p.2@tag.a@text&&\ntag.p.2@tag.span.0@text",
+      "updateTime": "tag.p.4@text##最后更新：",
       "lastChapter": "class.new@tag.a@text##免费章节 |正文卷 |正文 |VIP章节 ",
       "name": "class.name@text##\\（.*|\\(.*|免费阅读|全文.*阅读|最新章节",
       "wordCount": "tag.p.2@tag.span.1@text"

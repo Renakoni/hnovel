@@ -24,21 +24,6 @@ class SourceDefinitionImporter(private val store: SourceDefinitionStore,
     fun previewStream(input: InputStream, displayName: String, profile: String = LEGADO_PROFILE): ImportPreview {
         return try {
             val stream = input.buffered()
-            stream.mark(4)
-            val magic = ByteArray(4)
-            var read = 0
-            while (read < magic.size) {
-                val count = stream.read(magic, read, magic.size - read)
-                if (count < 0) break
-                read += count
-            }
-            stream.reset()
-            if (isPlugin(displayName) || magic.contentEquals(byteArrayOf(80, 75, 3, 4))) {
-                val json = KnownPluginPackages.read(stream) ?: return failure(ImportCode.PluginPackage)
-                // Package mappings own their profile; toggling the JSON profile must not duplicate source identities.
-                return parse(json, ImportOrigin(ImportOrigin.Kind.File, displayName), LEGADO_PROFILE,
-                    listOf(ImportNotice("KnownPackageAdaptation")))
-            }
             val bytes = java.io.ByteArrayOutputStream()
             val buffer = ByteArray(8192)
             while (true) {
@@ -55,13 +40,11 @@ class SourceDefinitionImporter(private val store: SourceDefinitionStore,
     /** The host supplies a dedicated, authorized import session, never a source's login session. */
     suspend fun previewUrl(url: String, session: SourceSession, profile: String = LEGADO_PROFILE): ImportPreview {
         val address = sourceImportUrl(url) ?: return failure(ImportCode.DownloadFailed)
-        if (isPlugin(address.substringBefore('?').substringBefore('#'))) return failure(ImportCode.PluginPackage)
         return when (val result = session.execute(BrokerRequest("source-import", address, kind = ResourceKind.Import, maxResponseBytes = limits.maxBytes))) {
             is BrokerResult.Failure -> ImportPreview(emptyList(), listOf(ImportIssue(null, ImportCode.DownloadFailed, result.code.name)))
             is BrokerResult.Success -> {
                 val response = result.response
                 if (response.status !in 200..299) failure(ImportCode.DownloadFailed)
-                else if (isPlugin(response.finalUrl.substringBefore('?').substringBefore('#'))) failure(ImportCode.PluginPackage)
                 else parseBytes(response.body, ImportOrigin(ImportOrigin.Kind.Url, address, response.finalUrl), profile)
             }
         }
@@ -69,8 +52,6 @@ class SourceDefinitionImporter(private val store: SourceDefinitionStore,
 
     private fun parseBytes(bytes: ByteArray, origin: ImportOrigin, profile: String): ImportPreview {
         if (bytes.size > limits.maxBytes) return failure(ImportCode.TooLarge)
-        if (bytes.size >= 4 && bytes[0] == 0x50.toByte() && bytes[1] == 0x4b.toByte() &&
-            bytes[2] == 3.toByte() && bytes[3] == 4.toByte()) return failure(ImportCode.PluginPackage)
         val text = try {
             Charsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
                 .onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(bytes)).toString()
@@ -78,7 +59,7 @@ class SourceDefinitionImporter(private val store: SourceDefinitionStore,
         return parse(text, origin, profile)
     }
 
-    private fun parse(text: String, origin: ImportOrigin, profile: String, notices: List<ImportNotice> = emptyList()): ImportPreview {
+    private fun parse(text: String, origin: ImportOrigin, profile: String): ImportPreview {
         if (text.length > limits.maxBytes || text.toByteArray(Charsets.UTF_8).size > limits.maxBytes) return failure(ImportCode.TooLarge)
         if (profile != AUTO_PROFILE && adapters.none { profile in it.profiles }) return failure(ImportCode.UnsupportedProfile)
         val root = try { parseDefinitionJson(text, limits.maxDepth) }
@@ -110,7 +91,7 @@ class SourceDefinitionImporter(private val store: SourceDefinitionStore,
                 val value = adapter.validate(row)
                 val existing = savedByKey[value.key]?.firstOrNull { it.profile == detected }
                 valid.add(SourceCandidate(index, adapter.format, detected, value.key, value.name, value.enabled, value.enabledExplore,
-                    canonical(row).toString(), origin, notices + value.notices, existing?.reference(),
+                    canonical(row).toString(), origin, value.notices, existing?.reference(),
                     (savedByKey[value.key].orEmpty() + savedByName[value.name].orEmpty()).distinctBy { it.sourceId }
                         .filter { it != existing }.map { it.reference() }, emptyList()))
             } catch (failure: ImportFailure) { issues.add(ImportIssue(index, failure.code, failure.field)) }
@@ -184,6 +165,5 @@ class SourceDefinitionImporter(private val store: SourceDefinitionStore,
         return ImportItemResult(source.index, if (old == null) ImportOutcome.Added else ImportOutcome.Replaced, definition.reference())
     }
 
-    private fun isPlugin(name: String) = name.endsWith(".apk", true) || name.endsWith(".lnrp", true)
     private fun failure(code: ImportCode) = ImportPreview(emptyList(), listOf(ImportIssue(null, code)))
 }

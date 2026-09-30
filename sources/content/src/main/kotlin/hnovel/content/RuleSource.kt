@@ -6,8 +6,6 @@ import hnovel.imports.EXTENSION_PROFILE
 import hnovel.network.*
 import hnovel.rules.*
 import kotlinx.coroutines.*
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.*
 
 private const val DIRECTORY_MAX_CHAPTERS = 50_000
@@ -25,21 +23,32 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
     private val store = RuleBookStore(session, authority, identity)
     private val previewDocuments = DiscoveryPreviewDocuments()
     internal fun clearDiscoveryPreviews() = previewDocuments.clear()
-    private val serial = Mutex()
+    private val serial = SourceWorkQueue()
     private var previewPlan: Pair<List<String>, Boolean>? = null
     private var parallelPreviewParsing: Boolean? = null
     private var prefetchedDirectoryId: String? = null
+    private var completedInformation: Pair<String, Long>? = null
+    private var completedDirectory: Pair<String, Long>? = null
     // Search memory belongs to a caller's query. This instance is replaced for another account or revision.
     private val searchMemory = object : LinkedHashMap<String, ScriptMemory>(8, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ScriptMemory>) = size > MAX_SEARCH_MEMORIES
     }
     val canSearch get() = spec.searchUrl.isNotBlank()
     val canLogin get() = spec.loginUrl.isNotBlank() || spec.loginUi.isNotBlank()
+    /** Whole-operation replay requires declarative reads with no user hooks or shared script state.
+     * Actual extracted URLs and HTTP methods are checked again before each request. */
+    val canReplayDownloads get() = spec.library == null && !spec.browserRead &&
+        listOf(spec.loginCheck, spec.coverDecode, spec.information.string("init"),
+            spec.toc.string("preUpdateJs"), spec.toc.string("formatJs"), spec.content.string("webJs"),
+            spec.content.string("sourceRegex"), spec.content.string("imageDecode")).all { it.isBlank() } &&
+        (listOf(spec.header) + listOf(spec.information, spec.toc, spec.content).flatMap { fields ->
+            fields.keys.map(fields::string)
+        }).all(ExecutionTask.BookOverviews::supports)
     private val discoveryCapabilities by lazy { RuleDiscoveryClassifier.capabilities(spec) }
     val canFeed get() = discoveryEnabled && discoveryCapabilities.hasFeed
     val canCategorize get() = discoveryEnabled && discoveryCapabilities.hasCategories
     val canDiscover get() = discoveryEnabled && (spec.exploreUrl.isNotBlank() ||
-        spec.homepageModules.isNotBlank() || spec.exploreScreen.isNotBlank() || spec.customButton)
+        spec.homepageModules.isNotBlank() || spec.exploreScreen.isNotBlank())
 
     fun openDiscovery(sessionId: String, values: Map<String, String> = emptyMap(),
         environment: RuleDiscoveryEnvironment = RuleDiscoveryEnvironment()) = RuleDiscoverySession(this, sessionId, values, environment)
@@ -181,18 +190,23 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             plans.mapIndexed { index, prepared ->
                 var first = true
                 val load: suspend () -> RuleListResult = {
-                    withContext(Dispatchers.IO) { checkedOperation("ruleExplore", 60000) {
+                    withContext(Dispatchers.IO) {
                         if (!first) operation("ruleExplore") { listPage(context(), urls[index], "exploreUrl", spec.explore, "ruleExplore", true, 6) }
                         else {
                             first = false
                             val plan = prepared.getOrThrow()
-                            val finish = plan.read()
-                            if (parallelParsing) {
+                            val started = System.nanoTime()
+                            val finish = checkedOperation("ruleExplore", 60000) { plan.read() }
+                            // Transport and parsing share one execution budget; waiting for another
+                            // stateful parsing turn must not spend it before this turn begins.
+                            val remaining = 60000 - (System.nanoTime() - started) / 1_000_000
+                            if (remaining <= 0) throw SourceContentException(ContentError.Limit, "ruleExplore")
+                            if (parallelParsing) checkedOperation("ruleExplore", remaining) {
                                 plan.context.readOnly = true
                                 finish()
-                            } else operation("ruleExplore") { finish() }
+                            } else operation("ruleExplore", remaining) { finish() }
                         }
-                    } }
+                    }
                 }
                 load
             }
@@ -230,6 +244,9 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             session.scope.profile == identity.profile && session.scope.accountGeneration == identity.accountGeneration)
         session.configureSource(spec.baseUrl, spec.cookiesEnabled, spec.browserRead, spec.concurrentRate,
             spec.localStorageRetention, defaultUserAgent = DESKTOP_USER_AGENT)
+        session.traceRequests(if (trace === ContentTrace.None) hnovel.network.RequestTrace.None else hnovel.network.RequestTrace { event ->
+            trace.record(ContentTraceEvent("requestDiagnostic", "request", 0, result = event.evidence.name, requestDiagnostic = event))
+        })
     }
 
     private var cachedLoginForm: LoginForm? = null
@@ -328,14 +345,25 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val form = (cachedLoginForm ?: loadLoginForm()).withValues(loginValues())
         // Trusted callers without a UI snapshot retain the unique-name API. UI submissions
         // always carry a form ID and can only address an opaque control ID from that form.
-        val fieldAction = action?.let { id -> form.fields.singleOrNull { if (formId == null) it.name == id else it.id == id }?.action
-            ?: throw SourceContentException(ContentError.InvalidRule, "loginUi.action") }
+        val fieldAction = action?.let { id ->
+            val field = form.fields.singleOrNull { if (formId == null) it.name == id else it.id == id }
+                ?: throw SourceContentException(ContentError.InvalidRule, "loginUi.action")
+            if (!field.enabled) throw SourceContentException(ContentError.Unavailable, "loginUi.action")
+            field.action ?: throw SourceContentException(ContentError.InvalidRule, "loginUi.action")
+        }
         form.validate(values)
         val submitted = form.values + values
         form.validate(submitted, allowAdditional = true)
         val info = JsonObject(submitted.mapValues { JsonPrimitive(it.value) }).toString()
         saveLoginValues(submitted)
         val context = loginContext(submitted, interactive = true)
+        val messages = ArrayDeque<String>()
+        context.onMessage = { message ->
+            message.trim().take(4096).takeIf { it.isNotEmpty() }?.let {
+                if (messages.size == 16) messages.removeFirst()
+                messages.addLast(it)
+            }
+        }
         if (form.browserUrl != null && action == null) {
             val pending = if (spec.browserRead) (session.read(StorageRequest(StorageArea.Account,
                 StorageRequestKey.BROWSER_PENDING_URL)) as? StorageResult.Value)?.value else null
@@ -394,9 +422,10 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val changed = state.getValue("values").jsonObject.mapValues { it.value.jsonPrimitive.content }
         form.validate(changed, allowAdditional = true)
         if (changed != submitted) saveLoginValues(changed.filter { (key, value) -> submitted[key] != value })
-        if (actions.any { it.jsonObject.string("kind") == "refresh" }) cachedLoginForm = null
+        val refreshDiscovery = actions.any { it.jsonObject.string("kind") == "refresh" }
+        if (refreshDiscovery) cachedLoginForm = null
         if (action == null) authority.authorized(identity) { check(session.write(StorageRequest(StorageArea.Account, "login/status", "authenticated")) is StorageResult.Value) }
-        LoginActionResult(refreshTargets.toSet())
+        LoginActionResult(refreshTargets.toSet(), messages.toList(), refreshDiscovery)
     }
 
     /** Pages called with the same [query] share `cache.*Memory`; without one, memory lasts for this page only. */
@@ -447,12 +476,13 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
                 if (book.title.isBlank()) throw SourceContentException(ContentError.EmptyContent, "ruleBookInfo.name")
                 val old = store.read(id)
                 if (old?.informationLoaded != true || old.revision != identity.revision) {
-                    val record = BookRecord(identity.revision, book)
+                    val record = BookRecord(identity.revision, book.preservingValidMetadata(old?.book))
                     if (record != old) store.write(record)
                 }
                 return listOf(book)
             }
-            val record = saveInformation(id, BookRecord(identity.revision, RuleBook(id, state = context.book)), document)
+            val seed = RuleBook(id, state = context.book).preservingValidMetadata(store.read(id)?.book)
+            val record = saveInformation(id, BookRecord(identity.revision, seed), document)
             return listOf(record.book)
         }
         val items = responseRule(document.httpErrorStatus) {
@@ -496,7 +526,8 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             store.write(ordered.mapNotNull { book ->
                 val old = store.read(book.id)
                 if (old?.informationLoaded != true || old.revision != identity.revision)
-                    BookRecord(identity.revision, book, preview = previews[book.id]).takeUnless { it == old } else null
+                    BookRecord(identity.revision, book.preservingValidMetadata(old?.book), preview = previews[book.id])
+                        .takeUnless { it == old } else null
             })
         }
         return ordered
@@ -506,42 +537,102 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         store.canonicalId(sourceLink(spec.baseUrl, bookId))
     }
 
-    suspend fun information(bookId: String): RuleBook = operation("ruleBookInfo", timeoutMillis = DIRECTORY_TIMEOUT_MILLIS) {
-        prefetchedDirectoryId = null
-        val id = store.canonicalId(sourceLink(spec.baseUrl, bookId))
-        val old = store.read(id)
-        val refreshed = saveInformation(id, old, inferUpdate = true)
-        refreshed.book
+    /** Read saved metadata without executing rules or requesting a document. */
+    suspend fun cachedInformation(bookId: String): RuleBook? = withContext(Dispatchers.IO) {
+        store.read(sourceLink(spec.baseUrl, bookId))?.book
+    }
+
+    suspend fun information(bookId: String): RuleBook {
+        val requestedAt = currentCoroutineContext()[SourceWorkRequest]?.startedAtNanos ?: System.nanoTime()
+        return operation("ruleBookInfo", timeoutMillis = DIRECTORY_TIMEOUT_MILLIS) {
+            val id = store.canonicalId(sourceLink(spec.baseUrl, bookId))
+            val old = store.read(id)
+            // Reuse only a successful refresh completed while this call was queued.
+            // No detached task, cross-account sharing, or persistent freshness window.
+            val completed = completedInformation
+            if (old?.informationLoaded == true && old.revision == identity.revision &&
+                completed?.first == id && completed.second - requestedAt >= 0) {
+                trace.record(ContentTraceEvent("cache", "ruleBookInfo", 0, result = "QueuedRefreshReuse"))
+                old.book
+            } else {
+                prefetchedDirectoryId = null
+                saveInformation(id, old, inferUpdate = true).book
+            }
+        }
     }
 
     private suspend fun saveInformation(id: String, old: BookRecord?, supplied: PageDocument? = null,
-        inferUpdate: Boolean = false): BookRecord {
+        inferUpdate: Boolean = false, reuseInformation: Boolean = inferUpdate): BookRecord {
         var refreshed = information(id, old, supplied)
         // Sources without an update marker still participate in host background update checks.
         // A script-provided bookUrl is an alias proposal, not permission to move unreadable content.
         val loadDirectory = refreshed.book.id != id ||
             (inferUpdate && refreshed.book.latestChapter.isBlank() && refreshed.book.updateTime.isBlank())
-        if (loadDirectory) {
+        var directoryLoaded = false
+        if (loadDirectory) try {
             refreshed = directory(refreshed)
+            directoryLoaded = true
             if (old?.chapters?.map { it.id } != refreshed.chapters.map { it.id })
                 refreshed = refreshed.copy(book = refreshed.book.copy(observedUpdate = System.currentTimeMillis()))
+        } catch (failure: PartialDirectoryException) {
+            // Alias migration still requires a fully validated destination catalogue.
+            if (refreshed.book.id != id) throw failure.failure
+            refreshed = refreshed.copy(partialDirectory = retainLongerPartialDirectory(refreshed.partialDirectory, failure).snapshot)
         }
         store.write(refreshed, id)
-        prefetchedDirectoryId = if (loadDirectory) refreshed.book.id else null
+        prefetchedDirectoryId = if (directoryLoaded) refreshed.book.id else null
+        val completedAt = System.nanoTime()
+        // A proposed alias still needs its own detail parse; it can propose another identity.
+        completedInformation = if (reuseInformation && refreshed.book.id == id) id to completedAt else null
+        completedDirectory = if (directoryLoaded) refreshed.book.id to completedAt else null
         return refreshed
     }
 
-    suspend fun directory(bookId: String): List<RuleChapter> = operation("ruleToc", timeoutMillis = DIRECTORY_TIMEOUT_MILLIS) {
-        val id = store.canonicalId(sourceLink(spec.baseUrl, bookId))
-        val book = record(id)
-        val prefetched = prefetchedDirectoryId == book.book.id
-        prefetchedDirectoryId = null
-        if (prefetched) book.chapters else directory(book).also(store::write).chapters
+    suspend fun directory(bookId: String): List<RuleChapter> {
+        val requestedAt = currentCoroutineContext()[SourceWorkRequest]?.startedAtNanos ?: System.nanoTime()
+        return operation("ruleToc", timeoutMillis = DIRECTORY_TIMEOUT_MILLIS) {
+            val id = store.canonicalId(sourceLink(spec.baseUrl, bookId))
+            val book = record(id, reuseInformation = true)
+            val prefetched = prefetchedDirectoryId == book.book.id
+            val completed = completedDirectory
+            val reused = completed?.first == book.book.id && completed.second - requestedAt >= 0
+            prefetchedDirectoryId = null
+            try {
+                if (prefetched || reused) {
+                    if (reused) trace.record(ContentTraceEvent("cache", "ruleToc", 0, result = "QueuedRefreshReuse"))
+                    book.chapters
+                } else directory(book).also {
+                    store.write(it)
+                    completedDirectory = it.book.id to System.nanoTime()
+                }.chapters
+            } catch (failure: PartialDirectoryException) {
+                val retained = retainLongerPartialDirectory(book.partialDirectory, failure)
+                store.write(book.copy(partialDirectory = retained.snapshot))
+                throw retained
+            }
+        }
+    }
+
+    private fun retainLongerPartialDirectory(previous: DirectorySnapshot?, failure: PartialDirectoryException): PartialDirectoryException {
+        if (previous == null || previous.chapters.size <= failure.chapters.size) return failure
+        val cached = previous.chapters.map { it.id to it.isVolume }
+        val incoming = failure.chapters.map { it.id to it.isVolume }
+        // Reverse catalogues retain a suffix. Keep the matching snapshot and its script state together.
+        return if (cached.take(incoming.size) == incoming || cached.takeLast(incoming.size) == incoming)
+            PartialDirectoryException(previous, failure.failure) else failure
     }
 
     suspend fun content(bookId: String, chapterId: String): RuleContent = operation("ruleContent", timeoutMillis = DIRECTORY_TIMEOUT_MILLIS) {
         val id = sourceLink(spec.baseUrl, bookId)
-        var record = record(id)
+        val saved = record(id)
+        var record = saved
+        var usingPartialDirectory = false
+        if (record.chapters.none { it.id == chapterId && !it.isVolume }) {
+            record.partialDirectory?.takeIf { snapshot -> snapshot.chapters.any { it.id == chapterId && !it.isVolume } }?.let {
+                record = record.copy(book = record.book.copy(state = it.state), chapters = it.chapters)
+                usingPartialDirectory = true
+            }
+        }
         if (record.chapters.isEmpty()) record = directory(record)
         val index = record.chapters.indexOfFirst { it.id == chapterId && !it.isVolume }
         if (index < 0) throw SourceContentException(ContentError.Unavailable, "chapter")
@@ -584,6 +675,9 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             if (pages.sumOf { it.length.toLong() } > 512000) throw SourceContentException(ContentError.Limit, "ruleContent.content")
             if (!completePageList) {
                 val following = links(context, spec.content.string("nextContentUrl"), document, "ruleContent.nextContentUrl")
+                // Without the next catalogue row, an unknown link might be the next chapter, not another page.
+                if (usingPartialDirectory && next == null && following.any { it != document.url && it !in visited })
+                    throw SourceContentException(ContentError.Unavailable, "ruleToc.nextTocUrl")
                 completePageList = context.page == 1 && following.size > 1
                 (if (completePageList) following else following.take(1)).forEach(queue::addLast)
             }
@@ -611,8 +705,9 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         if (parts.isEmpty()) throw SourceContentException(ContentError.EmptyContent, "ruleContent.content")
         title = context.chapter.metadata["title"]?.jsonPrimitive?.content ?: title
         val updated = chapter.copy(title = title, state = context.chapter)
-        store.write(record.copy(book = record.book.copy(state = context.book),
-            chapters = record.chapters.toMutableList().apply { set(index, updated) }))
+        val updatedChapters = record.chapters.toMutableList().apply { set(index, updated) }
+        if (usingPartialDirectory) store.write(saved.copy(partialDirectory = DirectorySnapshot(updatedChapters, context.book)))
+        else store.write(record.copy(book = record.book.copy(state = context.book), chapters = updatedChapters))
         RuleContent(chapter.id, title, parts, previous, next)
     }
 
@@ -668,7 +763,8 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val changed = old?.informationLoaded != true || initial.latestChapter != book.latestChapter || initial.updateTime != book.updateTime
         book = book.copy(id = canonicalId, tocUrl = tocUrl, state = context.book,
             observedUpdate = if (changed) System.currentTimeMillis() else initial.observedUpdate)
-        return BookRecord(identity.revision, book, true, document, old?.takeIf { it.revision == identity.revision }?.chapters.orEmpty())
+        return BookRecord(identity.revision, book, true, document, old?.takeIf { it.revision == identity.revision }?.chapters.orEmpty(),
+            partialDirectory = old?.takeIf { it.revision == identity.revision && it.book.id == canonicalId && it.book.tocUrl == tocUrl }?.partialDirectory)
     }
 
     private suspend fun bookFields(context: RuleEvaluation, input: RuleValue, rules: JsonObject, prefix: String, seed: RuleBook,
@@ -686,7 +782,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             } catch (failure: SourceContentException) {
                 // BookList/BookInfo tolerate optional metadata errors. Keep the trace, and
                 // still surface cancellation, limits, missing dependencies and login/permissions.
-                if (name !in setOf("kind", "wordCount", "lastChapter", "intro", "coverUrl") || failure.code != ContentError.InvalidRule) throw failure
+                if (name !in setOf("kind", "wordCount", "updateTime", "lastChapter", "intro", "coverUrl") || failure.code != ContentError.InvalidRule) throw failure
                 ""
             }
             val value = extracted.ifBlank {
@@ -717,7 +813,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val time = field("updateTime", seed.updateTime)
         return seed.copy(title = finalTitle, author = finalAuthor, description = intro, coverUrl = cover,
             tags = if (kind.isBlank()) seed.tags else kind.split('\n', ','), wordCount = wordCount,
-            latestChapter = latest, updateTime = time, state = context.book)
+            latestChapter = latest, updateTime = time, state = context.book).preservingValidMetadata(seed)
     }
 
     private suspend fun directory(initial: BookRecord): BookRecord {
@@ -732,12 +828,19 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val visited = linkedSetOf<String>()
         val chapters = mutableListOf<RuleChapter>()
         var completePageList = false
+        var interrupted: SourceContentException? = null
         while (queue.isNotEmpty()) {
             val url = queue.removeFirst()
             if (url in visited) continue
             visit(visited, url, "ruleToc.nextTocUrl", DIRECTORY_MAX_PAGES)
-            val document = initial.document?.takeIf { visited.size == 1 && it.url == url }
-                ?: fetch(context, url, "ruleToc.chapterList")
+            val document = try {
+                initial.document?.takeIf { visited.size == 1 && it.url == url }
+                    ?: fetch(context, url, "ruleToc.chapterList")
+            } catch (failure: SourceContentException) {
+                if (failure.code != ContentError.Network || chapters.none { !it.isVolume }) throw failure
+                interrupted = failure
+                break
+            }
             context.baseUrl = document.ruleUrl
             if (!document.inline && document.url != url && !visited.add(document.url)) continue
             val items = context.value(rule.removePrefix("-").removePrefix("+"), document.input(), "ruleToc.chapterList", OutputKind.Elements).items()
@@ -811,13 +914,14 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             formatted += chapter.copy(title = title, state = row.chapter)
             context.book = row.book
         }
-        return initial.copy(book = initial.book.copy(state = context.book), chapters = formatted, document = null)
+        interrupted?.let { throw PartialDirectoryException(DirectorySnapshot(formatted, context.book), it) }
+        return initial.copy(book = initial.book.copy(state = context.book), chapters = formatted, document = null, partialDirectory = null)
     }
 
-    private suspend fun record(id: String): BookRecord {
+    private suspend fun record(id: String, reuseInformation: Boolean = false): BookRecord {
         val old = store.read(id)
         return if (old?.informationLoaded == true && old.revision == identity.revision) old
-            else saveInformation(store.canonicalId(id), old)
+            else saveInformation(store.canonicalId(id), old, reuseInformation = reuseInformation)
     }
     internal fun evaluation(book: RuleBook? = null, chapter: RuleChapter? = null, keyword: String = "", page: Int = 1,
         interactive: Boolean = false, maxRuleCalls: Int = 65536, memory: ScriptMemory = ScriptMemory()): RuleEvaluation {
@@ -849,6 +953,11 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
 
     private suspend fun prepareRequest(context: RuleEvaluation, url: String, field: String, kind: ResourceKind,
         browser: BrowserOptions? = null): BrokerRequest {
+        currentCoroutineContext()[RequestRetryContext]?.let { retry ->
+            val static = RequestCompiler().compile("replay", url, context.baseUrl)
+            if (!ExecutionTask.BookOverviews.supports(url) || static !is CompiledRequest.Ready ||
+                static.request.method !in setOf("GET", "HEAD") || static.request.browser != null) retry.disallowReplay()
+        }
         val prepared = context.script("host.call('request.prepare',result)[0]", RuleValue.Text(url), field).text()
         val compiled = RequestCompiler().compile("content", prepared, context.baseUrl, context.keyword, context.page, context.headers(), kind)
         val request = when (compiled) {
@@ -877,10 +986,11 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val response = when (result) {
             is BrokerResult.Success -> result.response
             is BrokerResult.Failure -> throw SourceContentException(result.code.contentError(), field, result.denial,
-                verification = verification(result))
+                verification = verification(result), retry = if (result.retryable) RequestRetryHint() else null)
         }
         if (request.kind == ResourceKind.Image && response.status !in 200..299)
-            throw SourceContentException(ContentError.Network, field)
+            throw SourceContentException(ContentError.Network, field, httpStatus = httpErrorStatus(response.status),
+                retry = retryHint(request, response))
         return response
     }
     private suspend fun fetch(context: RuleEvaluation, url: String, field: String, browser: BrowserOptions? = null,
@@ -895,7 +1005,8 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val inline = response.protocol == "data"
         context.baseUrl = if (inline) url else response.finalUrl
         if (spec.loginCheck.isBlank()) {
-            if (!acceptErrorResponse) checkStatus(response.status, field, response.kind == ResponseKind.BrowserDocument)
+            if (!acceptErrorResponse) checkStatus(response.status, field, response.kind == ResponseKind.BrowserDocument,
+                retryHint(request, response))
             return PageDocument(response.text(), response.finalUrl, inline, context.baseUrl,
                 response.status in 200..299 || response.status == 0 && response.kind == ResponseKind.BrowserDocument,
                 httpErrorStatus(response.status))
@@ -962,7 +1073,11 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         }
     }
 
-    private fun checkStatus(status: Int, field: String, browserDocument: Boolean = false) {
+    private fun retryHint(request: BrokerRequest, response: BrokerResponse): RequestRetryHint? =
+        if (request.method in setOf("GET", "HEAD") && request.browser == null && response.kind == ResponseKind.Http &&
+            response.status in setOf(429, 502, 503, 504)) RequestRetryHint(retryAfterMillis(response)) else null
+
+    private fun checkStatus(status: Int, field: String, browserDocument: Boolean = false, retry: RequestRetryHint? = null) {
         if (browserDocument && status == 0) return
         // A public page can return 401/403 for a WAF or other access policy. Only an
         // explicit login request establishes an authentication failure for this account.
@@ -970,7 +1085,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             authority.authorized(identity) { session.write(StorageRequest(StorageArea.Account, "login/status", "required")) }
             throw SourceContentException(ContentError.LoginRequired, field, httpStatus = httpErrorStatus(status))
         }
-        if (status !in 200..299) throw SourceContentException(ContentError.Network, field, httpStatus = httpErrorStatus(status))
+        if (status !in 200..299) throw SourceContentException(ContentError.Network, field, httpStatus = httpErrorStatus(status), retry = retry)
     }
 
     private fun httpErrorStatus(status: Int) = status.takeIf { it in 100..599 && it !in 200..299 }
@@ -997,7 +1112,15 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
     // Host storage and orchestration use IO. The caller's priority dispatcher owns the outer
     // request only; nested timeout jobs must not compete with their parent for its last permit.
     internal suspend fun <T : Any> operation(field: String, timeoutMillis: Long = 60000, block: suspend () -> T): T = withContext(Dispatchers.IO) {
-        serial.withLock { checkedOperation(field, timeoutMillis, block) }
+        val queuedAt = System.nanoTime()
+        serial.withLock {
+            trace.record(ContentTraceEvent("queue", field, (System.nanoTime() - queuedAt) / 1_000_000, result = "Serial"))
+            if (field != "ruleBookInfo" && field != "ruleToc" && field != "bookAlias") {
+                completedInformation = null; completedDirectory = null
+            }
+            try { checkedOperation(field, timeoutMillis, block) }
+            catch (failure: Throwable) { completedInformation = null; completedDirectory = null; throw failure }
+        }
     }
     private suspend fun <T : Any> checkedOperation(field: String, timeoutMillis: Long, block: suspend () -> T): T {
         if (!authority.accepts(identity)) throw SourceContentException(ContentError.Unavailable, field)

@@ -64,6 +64,97 @@ class SourcesScreenTest {
     }
     @After fun destroy() { activity.pause().stop().destroy() }
 
+    @Test @Config(qualifiers = "en-rUS-w320dp-h640dp")
+    fun configurationControlsScrollAndClosingDoesNotAuthenticate() {
+        val form = LoginForm((1..40).map { LoginField("Control $it", "button", action = "configure()") }, null)
+        var submitted = false
+        var closed = false
+        activity.get().setContent { MaterialTheme {
+            SourceConfigurationSheet(form, false, { _, _, _ -> submitted = true }, { closed = true })
+        } }
+        compose.onNodeWithText("Source configuration").assertIsDisplayed()
+        compose.onNodeWithText("Sign in").assertDoesNotExist()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Control 40"))
+        compose.onNodeWithText("Control 40").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Close").performClick()
+        org.junit.Assert.assertTrue(closed)
+        org.junit.Assert.assertFalse(submitted)
+    }
+
+    @Test @Config(qualifiers = "en-rUS-w360dp-h800dp")
+    fun configurationHidesAccountActionsAndSubmitsOriginalFieldAndFormIds() {
+        val update = LoginField("Update source", "button", action = "updateSource()")
+        val form = LoginForm(listOf(
+            LoginField("Source sign in", "button", action = " login(); "),
+            LoginField("Source sign out", "button", action = "logout()"),
+            LoginField("Preference", "toggle", choices = listOf("saved", "changed")),
+            LoginField("Login settings", "button", action = "configureAccount()"),
+            update), null, mapOf("Preference" to "saved"))
+        activity.get().setContent { MaterialTheme {
+            SourceConfigurationSheet(form, false, model::submitLogin, model::cancelLogin)
+        } }
+        compose.onNodeWithText("Source sign in").assertDoesNotExist()
+        compose.onNodeWithText("Source sign out").assertDoesNotExist()
+        compose.onNodeWithText("Login settings").assertIsDisplayed()
+        compose.onNodeWithText("saved").assertIsDisplayed()
+        compose.onNodeWithText("Update source").performClick()
+        verify(exactly = 1) { model.submitLogin(form.values, update.id, form.id) }
+    }
+
+    @Test @Config(qualifiers = "en-rUS-w360dp-h800dp")
+    fun configurationDisablesAccountAndNavigatesWithoutSubmitting() {
+        val account = LoginField("Account settings", "button", action = "account()", enabled = false)
+        val setting = LoginField("General novels", "button", action = "configure()", section = "Discovery", checked = true)
+        val form = LoginForm(listOf(account, setting), null)
+        activity.get().setContent { MaterialTheme {
+            SourceConfigurationSheet(form, false, model::submitLogin, model::cancelLogin)
+        } }
+        compose.onNodeWithText("Account settings").assertIsNotEnabled().performClick()
+        compose.onNodeWithText("General novels").assertDoesNotExist()
+        compose.onNodeWithText("Discovery").performClick()
+        compose.onNodeWithText("General novels").assertIsOn()
+        verify(exactly = 0) { model.submitLogin(any(), any(), any()) }
+        compose.onNodeWithText("General novels").performClick()
+        verify(exactly = 1) { model.submitLogin(form.values, setting.id, form.id) }
+        compose.onNodeWithContentDescription("Back").performClick()
+        compose.onNodeWithText("Account settings").assertIsDisplayed()
+        compose.onNodeWithText("General novels").assertDoesNotExist()
+        verify(exactly = 0) { model.cancelLogin() }
+    }
+
+    @Test @Config(qualifiers = "en-rUS-w360dp-h800dp")
+    fun configurationRefreshKeepsSectionAndShowsUpdatedState() {
+        val field = LoginField("General novels", "button", action = "configure()", section = "Discovery", checked = true)
+        val original = LoginForm(listOf(field), null, id = "original")
+        var form by mutableStateOf(original)
+        var submitted: Pair<String?, String>? = null
+        activity.get().setContent { MaterialTheme {
+            SourceConfigurationSheet(form, false, { _, action, formId ->
+                submitted = action to formId
+                form = form.copy(fields = listOf(field.copy(checked = false)), id = form.id + "-refreshed")
+            }, {})
+        } }
+        compose.onNodeWithText("Discovery").performClick()
+        compose.onNodeWithText("General novels").assertIsOn().performClick()
+        compose.onNodeWithText("General novels").assertIsOff()
+        org.junit.Assert.assertEquals(field.id to original.id, submitted)
+        compose.onNodeWithText("General novels").performClick()
+        org.junit.Assert.assertEquals(field.id to "original-refreshed", submitted)
+    }
+
+    @Test @Config(qualifiers = "en-rUS-w360dp-h800dp")
+    fun loginDialogKeepsDeclaredAccountActions() {
+        val login = LoginField("Source sign in", "button", action = "login()")
+        val form = LoginForm(listOf(login, LoginField("Source sign out", "button", action = "logout()")), null)
+        var submitted: Pair<String?, String>? = null
+        activity.get().setContent { MaterialTheme {
+            SourceLoginDialog(form, false, { _, action, formId -> submitted = action to formId }, {})
+        } }
+        compose.onNodeWithText("Source sign in").assertIsDisplayed().performClick()
+        compose.onNodeWithText("Source sign out").assertIsDisplayed()
+        org.junit.Assert.assertEquals(login.id to form.id, submitted)
+    }
+
     @Test @Config(qualifiers = "en-rUS-w360dp-h800dp")
     fun savedChangesCloseAddingAndShowOneShortToastWithoutReplayingOnReentry() {
         ShadowToast.reset()
@@ -90,6 +181,37 @@ class SourcesScreenTest {
         compose.runOnIdle { state = state.copy(message = indi.renakoni.nextvol.R.string.sources_saved) }
         compose.runOnIdle { org.junit.Assert.assertEquals(2, ShadowToast.shownToastCount()) }
         verify(exactly = 2) { model.consumeSavedMessage() }
+    }
+
+    @Suppress("DEPRECATION")
+    @Test @Config(qualifiers = "en-rUS-w360dp-h800dp")
+    fun updateResultsUseShortToastsWithoutClosingConfigurationOrLeavingInlineText() {
+        ShadowToast.reset()
+        val form = LoginForm(listOf(LoginField("Update source", "button", action = "updateSource()")), null)
+        var state by mutableStateOf(SourceManagementState(loginForm = form, configurationPanel = true))
+        every { model.consumeMessage(any()) } answers {
+            if (state.message == firstArg<Int>()) state = state.copy(message = null)
+        }
+        activity.get().setContent { MaterialTheme { SourcesScreen(state, model, onDiagnostics = {}) {} } }
+        val messages = listOf(indi.renakoni.nextvol.R.string.sources_up_to_date,
+            indi.renakoni.nextvol.R.string.sources_up_to_date,
+            indi.renakoni.nextvol.R.string.sources_pixiv_update_unsupported,
+            indi.renakoni.nextvol.R.string.sources_pixiv_update_failed)
+        messages.forEachIndexed { index, message ->
+            compose.runOnIdle { state = state.copy(message = message) }
+            compose.onNodeWithText("Source configuration").assertIsDisplayed()
+            compose.onNodeWithText(activity.get().getString(message)).assertDoesNotExist()
+            compose.runOnIdle {
+                org.junit.Assert.assertNull(state.message)
+                org.junit.Assert.assertEquals(index + 1, ShadowToast.shownToastCount())
+                org.junit.Assert.assertEquals(activity.get().getString(message), ShadowToast.getTextOfLatestToast())
+                org.junit.Assert.assertEquals(android.widget.Toast.LENGTH_SHORT, ShadowToast.getLatestToast().duration)
+                val content = ShadowToast.getLatestToast().view
+                org.junit.Assert.assertTrue(content is android.widget.TextView)
+                org.junit.Assert.assertEquals(activity.get().getString(message), (content as android.widget.TextView).text.toString())
+            }
+        }
+        verify(exactly = 4) { model.consumeMessage(any()) }
     }
 
     @Test fun failedAndPartialImportsStayVisibleWithoutBeingConsumedAsSuccess() {
@@ -522,27 +644,14 @@ class SourcesScreenTest {
         org.junit.Assert.assertEquals(form.fields.takeLast(2).map { it.id }, actions)
     }
 
-    @Test fun builtinAndPluginRowsOpenTheirOwnBasicSettings() {
+    @Test fun builtinRowOpensItsBasicSettings() {
         val builtinId = Identifier("lightnovelreader", "Wenku8")
-        val pluginId = Identifier("fixture.plugin", "source")
         val builtin = SourceListing(SourceMetadata(WebDataSourceItem(builtinId, "Wenku8", "Built-in provider"),
             setOf(SourceCapability.Search), builtIn = true), SourceStatus.Registered)
-        val plugin = SourceListing(SourceMetadata(WebDataSourceItem(pluginId, "Plugin fixture", "Plugin provider"),
-            setOf(SourceCapability.Search)), SourceStatus.Failed)
-        var state by mutableStateOf(SourceManagementState(registry = listOf(builtin, plugin)))
+        var state by mutableStateOf(SourceManagementState(registry = listOf(builtin)))
         activity.get().setContent { MaterialTheme { SourcesScreen(state, model, onDiagnostics = {}) {} } }
         compose.onNodeWithText("Wenku8").performClick()
         verify(exactly = 1) { model.select(builtinId) }
-        compose.onAllNodes(hasScrollToIndexAction()).onFirst().performScrollToNode(hasText("Plugin fixture"))
-        compose.onNodeWithText("Plugin fixture").performClick()
-        verify(exactly = 1) { model.select(pluginId) }
-        compose.runOnIdle { state = state.copy(selected = pluginId, network = SourceNetworkState(limitation =
-            indi.renakoni.nextvol.R.string.sources_network_plugin)) }
-        compose.onNodeWithText("Basic settings").assertExists()
-        compose.onNodeWithText("Plugin provider").assertExists()
-        compose.onNodeWithContentDescription("Bypass VPN").assertIsOff().assertIsNotEnabled()
-        compose.onNodeWithContentDescription("Enable source").assertDoesNotExist()
-        compose.onNodeWithText("Sign in").assertDoesNotExist()
         compose.runOnIdle { state = state.copy(selected = builtinId, network = SourceNetworkState()) }
         compose.onNodeWithText("Search this source").assertExists()
         compose.onNodeWithContentDescription("Bypass VPN").assertIsOff().assertIsEnabled().performClick()
@@ -669,7 +778,7 @@ class SourcesScreenTest {
     @Test @Config(qualifiers = "en-rUS-w320dp-h640dp")
     fun accountCardDistinguishesSavedSessionsAndOffersExplicitAccountActions() {
         val definition = SourceDefinition("account", "legado", "fixture", "https://fixture.invalid/", "Account source", true,
-            false, ImportOrigin(ImportOrigin.Kind.Paste), "digest", 1, """{"loginUi":[{"name":"user"}]}""")
+            false, ImportOrigin(ImportOrigin.Kind.Paste), "digest", 1, """{"loginUi":[{"name":"user"},{"name":"Settings","type":"button","action":"configure()"}]}""")
         val id = ImportedRuleSources.id(definition)
         var state by mutableStateOf(SourceManagementState(installed = listOf(InstalledRuleSource(definition,
             listOf(hnovel.network.NetworkGrant("https://fixture.invalid/")), null)), selected = id,
@@ -685,7 +794,8 @@ class SourcesScreenTest {
         compose.onNodeWithText("Sign in again").performScrollTo().performClick()
         verify(exactly = 1) { model.relogin(id) }
         compose.onNodeWithText("Open source panel").performScrollTo().performClick()
-        verify(exactly = 1) { model.beginLogin(id) }
+        verify(exactly = 1) { model.beginConfiguration(id) }
+        verify(exactly = 0) { model.beginLogin(id) }
         compose.runOnIdle { state = state.copy(busy = true) }
         compose.onNodeWithText("Sign out").assertIsNotEnabled()
         compose.onNodeWithText("Sign in again").assertIsNotEnabled()
@@ -702,6 +812,7 @@ class SourcesScreenTest {
         compose.onNodeWithText("Signed out").assertExists()
         compose.onNodeWithText("Sign in").performScrollTo().assertIsEnabled()
         compose.onNodeWithText("Sign in again").assertDoesNotExist()
+        compose.onNodeWithText("Open source panel").performScrollTo().assertIsEnabled()
         compose.runOnIdle { state = state.copy(storedSettingsAvailable = false) }
         compose.onNodeWithText("Account status unavailable").assertExists()
         compose.onNodeWithText("Signed out").assertDoesNotExist()

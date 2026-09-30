@@ -8,10 +8,12 @@ import indi.renakoni.nextvol.data.local.room.dao.UserDataDao
 import io.nightfish.lightnovelreader.api.userdata.UserData
 import io.nightfish.lightnovelreader.api.userdata.UserDataPath
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.job
 import javax.inject.Inject
@@ -44,8 +46,7 @@ class DownloadProgressRepository @Inject constructor(
                         bookRepository.getBookInformationFlow(values[1])
                     ).apply { progress = 1f }
                 } catch (e: Exception) {
-                    e.printStackTrace()
-                    Log.e("CompletedDownloadItemList", "wrong data: $it")
+                    Log.e("CompletedDownloadItemList", "Invalid completed download record")
                 }
                 return@mapNotNull null
             }
@@ -69,16 +70,35 @@ class DownloadProgressRepository @Inject constructor(
     private val completedBookListUserData = DownItemListUserData(UserDataPath.CompletedDownloadBookList.path, userDataDao, bookRepository)
     private val _downloadItemList = mutableStateListOf<DownloadItem>()
     val downloadItemIdList: List<DownloadItem> get() = _downloadItemList.toList()
+    private val cacheObservers = mutableMapOf<String, Job>()
 
     init {
         coroutineScope.launch {
             val completedBookList = completedBookListUserData.getOrDefault(emptyList())
-            val owners = downloads.entries().map { it.bookId }.toSet()
-            val saved = completedBookList.filter { it.type != DownloadType.CACHE || it.bookId in owners }.onEach { item ->
-                if (item is MutableDownloadItem && item.type == DownloadType.CACHE)
-                    item.progress = if (bookRepository.downloadState(item.bookId).phase == BookDownloadPhase.Complete) 1f else -1f
-            }
+            val saved = completedBookList.filter { it.type != DownloadType.CACHE }
             _downloadItemList.addAll(saved.filterNot { it in _downloadItemList })
+            downloads.prepare()
+            downloads.observeEntries().map { owners -> owners.filter { !it.taskHidden && it.taskStatus != DownloadTaskStatus.None.name }
+                .map { it.bookId }.toSet() }
+                .distinctUntilChanged().collect { ids ->
+                    _downloadItemList.removeIf { it.type == DownloadType.CACHE && it.bookId !in ids }
+                    cacheObservers.keys.filterNot { it in ids }.forEach { cacheObservers.remove(it)?.cancel() }
+                    for (id in ids.filterNot { it in cacheObservers }) {
+                        val item = MutableDownloadItem(DownloadType.CACHE, id, bookRepository.downloadInformationFlow(id))
+                        _downloadItemList.add(item)
+                        cacheObservers[id] = coroutineScope.launch {
+                            bookRepository.downloadStatusFlow(id).distinctUntilChanged().collect { status ->
+                                item.progress = when {
+                                    status.task.active -> (status.content.savedChapters.toFloat() /
+                                        status.content.totalChapters.coerceAtLeast(1)).coerceIn(0f, 0.99f)
+                                    status.displayPhase == BookDownloadPhase.Complete && !status.task.canResume -> 1f
+                                    else -> -1f
+                                }
+                                item.status = status
+                            }
+                        }
+                    }
+                }
         }
     }
 
@@ -88,14 +108,14 @@ class DownloadProgressRepository @Inject constructor(
     }
 
     fun addExportItem(downloadItem: DownloadItem) {
+        // Cache items are rebuilt from persistent task facts, not a worker-owned object.
+        if (downloadItem.type == DownloadType.CACHE) return
         if (_downloadItemList.contains(downloadItem))
             _downloadItemList.removeIf { it == downloadItem }
         _downloadItemList.add(downloadItem)
         coroutineScope.launch {
             snapshotFlow{ downloadItem.progress }.collect { progress ->
                 if (progress >= 1f) {
-                    if (downloadItem.type == DownloadType.CACHE &&
-                        bookRepository.downloadState(downloadItem.bookId).phase != BookDownloadPhase.Complete) return@collect
                     completedBookListUserData.update(
                         updater = { downloadItems ->
                             val list = downloadItems.toMutableList()
@@ -120,8 +140,11 @@ class DownloadProgressRepository @Inject constructor(
     }
 
     fun clearCompleted() {
-        _downloadItemList.removeIf { it.progress >= 1 }
+        val cached = _downloadItemList.filter { it.type == DownloadType.CACHE && it.progress >= 1f }.map { it.bookId }
+        // Persistent state decides whether a cache task can be hidden; the UI may lag a new retry.
+        _downloadItemList.removeIf { it.type != DownloadType.CACHE && it.progress >= 1f }
         coroutineScope.launch {
+            cached.forEach { downloads.dismissTask(indi.renakoni.nextvol.data.book.BookIdentity.book(it), cancel = false) }
             completedBookListUserData.set(emptyList())
         }
     }

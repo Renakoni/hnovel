@@ -20,7 +20,7 @@ import indi.renakoni.nextvol.data.statistics.StatisticsWriteCoordinator
 import indi.renakoni.nextvol.data.statistics.StatsRepository
 import indi.renakoni.nextvol.data.work.ExportDataWork
 import indi.renakoni.nextvol.data.work.workerParameters
-import indi.renakoni.nextvol.utils.readAppLocalData
+import indi.renakoni.nextvol.data.backup.BackupFiles
 import io.mockk.mockk
 import io.nightfish.lightnovelreader.api.identifier.Identifier
 import kotlinx.coroutines.flow.first
@@ -54,7 +54,7 @@ class ReadingBookmarkTest {
         chapterTitle = "Chapter", componentIndex = 0, offset = offset,
         fingerprint = "a".repeat(64), preview = "Recognizable text", progress = .4f)
     private fun open() = Room.databaseBuilder(context, NextVolDatabase::class.java, name)
-        .allowMainThreadQueries().addMigrations(NextVolDatabase.MIGRATION_21_22, NextVolDatabase.MIGRATION_22_23, NextVolDatabase.MIGRATION_23_24).build()
+        .allowMainThreadQueries().addMigrations(NextVolDatabase.MIGRATION_21_22, NextVolDatabase.MIGRATION_22_23, NextVolDatabase.MIGRATION_23_24, NextVolDatabase.MIGRATION_24_25, NextVolDatabase.MIGRATION_25_26, NextVolDatabase.MIGRATION_26_27, NextVolDatabase.MIGRATION_27_28).build()
     private fun backup(): LocalDataManager {
         val coordinator = StatisticsWriteCoordinator()
         val stats = StatsRepository(db.bookRecordDao(), db.dailyCountDao(), mockk(), coordinator)
@@ -94,6 +94,7 @@ class ReadingBookmarkTest {
             it.execSQL("CREATE TABLE imported_book (bookId TEXT NOT NULL PRIMARY KEY)")
             it.execSQL("INSERT INTO imported_book SELECT bookId FROM imported_book_new")
             it.execSQL("DROP TABLE imported_book_new")
+            indi.renakoni.nextvol.data.download.restorePre25DownloadSchema(it::execSQL)
             it.version = 21
         }
         db = open()
@@ -113,7 +114,7 @@ class ReadingBookmarkTest {
                 "exportBookmark" to include, "exportLocalBookCache" to false, "exportBookshelf" to false,
                 "exportReadingData" to false, "exportSetting" to false)), manager)
             assertEquals(ListenableWorker.Result.success(), worker.doWork())
-            val decoded = Cbor.decodeFromByteArray<AppLocalData>(bytes.toByteArray().inputStream().readAppLocalData())
+            val decoded = BackupFiles.read(context.cacheDir) { bytes.toByteArray().inputStream() }
             assertEquals(if (include) listOf(saved) else emptyList(), decoded.localDataList.flatMap { it.readingBookmarks })
         }
         val newBackup = Cbor.decodeFromByteArray<AppLocalData>(Cbor.encodeToByteArray(manager.exportAppLocalData().get()!!))

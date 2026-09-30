@@ -1,9 +1,8 @@
 package indi.renakoni.nextvol.ui.home.settings.data
 
 import indi.renakoni.nextvol.R
-import indi.renakoni.nextvol.data.update.APIParser
-import indi.renakoni.nextvol.data.update.GithubParser
-import indi.renakoni.nextvol.data.update.UpdateParser
+import indi.renakoni.nextvol.data.update.UpdateChannel
+import indi.renakoni.nextvol.data.update.UpdatePlatform
 import io.nightfish.lightnovelreader.api.bookshelf.BookshelfSortType
 import indi.renakoni.nextvol.ui.bookmanager.LocalBookSort
 
@@ -39,25 +38,12 @@ sealed class MenuOptions {
             optionWithValueList = options.toMutableList()
         }
 
-        constructor(options: List<OptionWithValue<T>>) : super(options) {
-            optionWithValueList = options.toMutableList()
-        }
-
-        fun option(key: String, nameId: Int, value: T): String {
-            _optionList.add(Option(key, nameId))
-            optionWithValueList.add(OptionWithValue(key, nameId, value))
-            return key
-        }
-
         fun getOptionWithValue(key: String): OptionWithValue<T> =
             getOptionWithValueOrNull(key)
                 ?: throw NoSuchElementException("OptionWithValue '$key' not found")
 
         fun getOptionWithValueOrNull(key: String): OptionWithValue<T>? =
             optionWithValueList.firstOrNull { it.equals(key) }
-
-        fun getOptionWithValueOrDefault(key: String?): OptionWithValue<T> =
-            getOptionWithValueOrNull(key ?: "") ?: optionWithValueList.first()
     }
 
 
@@ -75,29 +61,24 @@ sealed class MenuOptions {
         val value: T
     ): Option(key, nameId)
 
-    open class UpdateChannelOptions(vararg options: OptionWithValue<UpdateParser>): MenuOptionsWithValues<UpdateParser>(options.toList()) {
-        companion object {
-            const val RELEASE = "Release"
-            const val DEVELOPMENT = "Development"
+    data object UpdateChannelOptions: MenuOptions(
+        UpdateChannel.entries.map { channel ->
+            Option(channel.key, when (channel) {
+                UpdateChannel.RELEASE -> R.string.key_update_channel_release
+                UpdateChannel.DEVELOPMENT -> R.string.key_update_channel_development
+                UpdateChannel.CI -> R.string.key_update_channel_ci
+            })
         }
-    }
-
-    data object GitHubUpdateChannelOptions: UpdateChannelOptions(
-        OptionWithValue(RELEASE, R.string.key_update_channel_release, GithubParser.ReleaseParser),
-        OptionWithValue(DEVELOPMENT, R.string.key_update_channel_development, GithubParser.DevelopmentParser),
-        OptionWithValue("CI", R.string.key_update_channel_ci, GithubParser.CIParser)
     )
 
-    data object LnrAPIUpdateChannelOptions: UpdateChannelOptions(
-        OptionWithValue(RELEASE, R.string.key_update_channel_release, APIParser.StableParser),
-        OptionWithValue(DEVELOPMENT, R.string.key_update_channel_development, APIParser.BetaParser),
-        OptionWithValue("CI", R.string.key_update_channel_ci, APIParser.UnstableParser)
+    data object UpdatePlatformOptions: MenuOptions(
+        UpdatePlatform.entries.map { platform ->
+            Option(platform.key, when (platform) {
+                UpdatePlatform.GITHUB -> R.string.key_platform_github
+                UpdatePlatform.LNR_API -> R.string.key_platform_lnr_api
+            })
+        }
     )
-
-    data object UpdatePlatformOptions: MenuOptionsWithValues<UpdateChannelOptions>() {
-        val GitHub = option("GitHub", R.string.key_platform_github, GitHubUpdateChannelOptions)
-        val LnrAPI = option("LnrAPI", R.string.key_platform_lnr_api, LnrAPIUpdateChannelOptions)
-    }
 
     data object DarkModeOptions: MenuOptions(
         Option("FollowSystem", R.string.key_dark_mode_follow_system),
@@ -143,6 +124,12 @@ sealed class MenuOptions {
     data object FlipAnimationOptions: MenuOptions() {
         val None = option("none", R.string.key_flip_animation_none)
         val ScrollWithoutShadow = option("scroll", R.string.key_flip_animation_scroll)
+    }
+
+    data object ReaderPageLayoutOptions: MenuOptions() {
+        val Auto = option("auto", R.string.reader_page_layout_auto)
+        val Single = option("single", R.string.reader_page_layout_single)
+        val Double = option("double", R.string.reader_page_layout_double)
     }
 
     data object SelectImage: MenuOptions() {

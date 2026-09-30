@@ -26,7 +26,6 @@ import androidx.work.WorkManager
 import dagger.hilt.android.AndroidEntryPoint
 import indi.renakoni.nextvol.data.bookshelf.BookshelfRepository
 import indi.renakoni.nextvol.data.logging.LoggerRepository
-import indi.renakoni.nextvol.data.plugin.PluginManager
 import indi.renakoni.nextvol.data.update.UpdateCheckRepository
 import indi.renakoni.nextvol.data.userdata.UserDataRepository
 import indi.renakoni.nextvol.data.work.CheckUpdateWork
@@ -60,7 +59,6 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var userDataRepository: UserDataRepository
     @Inject lateinit var updateCheckRepository: UpdateCheckRepository
     @Inject lateinit var workManager: WorkManager
-    @Inject lateinit var pluginManager: PluginManager
     @Inject lateinit var sourceVerification: indi.renakoni.nextvol.data.web.rules.SourceVerificationCoordinator
     private val coroutineScope: CoroutineScope = CoroutineScope(Dispatchers.IO)
 
@@ -136,11 +134,6 @@ class MainActivity : ComponentActivity() {
                 NextVolApp(
                     readerStyle = readerStyle,
                     intentFlow = intentFlow,
-                    onBuildNavHost = {
-                        with(pluginManager) {
-                            onBuildNavHost()
-                        }
-                    },
                     onReaderActiveChanged = ::setReaderActive
                 )
                 indi.renakoni.nextvol.ui.SourceVerificationHost(sourceVerification)

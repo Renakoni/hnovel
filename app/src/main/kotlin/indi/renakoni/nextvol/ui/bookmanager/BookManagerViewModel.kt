@@ -61,6 +61,10 @@ class BookManagerViewModel @Inject constructor(
     }
 
     fun onClickCancel(item: DownloadItem) {
+        if (item.type == DownloadType.CACHE) {
+            viewModelScope.launch(Dispatchers.IO) { bookRepository.dismissDownload(item.bookId) }
+            return
+        }
         workManager.cancelUniqueWork(
             when (item.type) {
                 DownloadType.EPUB_EXPORT -> ExportBookToEPUBWork.ofId(item.bookId)
@@ -71,6 +75,10 @@ class BookManagerViewModel @Inject constructor(
     }
 
     fun onClickClearCompleted() = downloadProgressRepository.clearCompleted()
+
+    fun onClickRetry(item: DownloadItem) {
+        if (item.type == DownloadType.CACHE) bookRepository.cacheBook(item.bookId, refresh = item.progress >= 1f)
+    }
 
     fun loadLocalBooks() {
         viewModelScope.launch(Dispatchers.IO) {

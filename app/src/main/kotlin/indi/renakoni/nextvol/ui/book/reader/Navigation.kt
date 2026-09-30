@@ -5,6 +5,7 @@ import android.content.Context
 import android.net.Uri
 import android.util.Log
 import android.widget.Toast
+import indi.renakoni.nextvol.utils.textToast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.getValue
@@ -12,6 +13,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.CompositionLocalProvider
+import indi.renakoni.nextvol.ui.book.reader.content.LocalReaderPositionSession
 import indi.renakoni.nextvol.ui.LocalReaderBookId
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.graphics.Color
@@ -41,6 +43,7 @@ import indi.renakoni.nextvol.utils.isResumed
 import indi.renakoni.nextvol.utils.popBackStackIfResumed
 import io.nightfish.lightnovelreader.api.Route
 import io.nightfish.lightnovelreader.api.ui.LocalNavController
+import io.nightfish.lightnovelreader.api.userdata.UserDataPath
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -81,9 +84,9 @@ fun NavGraphBuilder.bookReaderDestination(onReaderActiveChanged: (Boolean) -> Un
         val currentChapter = viewModel.uiState.contentUiState?.readingChapterId
         LaunchedEffect(route.bookId, currentChapter) { panelModel.bind(route.bookId, currentChapter) }
         val notice = panelModel.notice?.let { stringResource(it) }
-        LaunchedEffect(notice, panelModel.visible) {
-            if (notice != null && !panelModel.visible) {
-                Toast.makeText(navController.context, notice, Toast.LENGTH_LONG).show()
+        LaunchedEffect(notice) {
+            if (notice != null) {
+                textToast(navController.context, notice, Toast.LENGTH_LONG).show()
                 panelModel.clearNotice()
             }
         }
@@ -93,7 +96,8 @@ fun NavGraphBuilder.bookReaderDestination(onReaderActiveChanged: (Boolean) -> Un
                 form, panelModel.busy,
                 onSubmit = { values, action, formId -> panelModel.submit(values, action, formId, viewModel::applySourcePanelRefresh) },
                 onCancel = { panelModel.dismiss() }, title = stringResource(R.string.reader_source_panel),
-                message = notice ?: stringResource(R.string.reader_source_panel_boundary),
+                message = stringResource(R.string.reader_source_panel_boundary),
+                showLoginAction = false,
             ) else androidx.compose.material3.AlertDialog(
                 onDismissRequest = { panelModel.dismiss() },
                 title = { androidx.compose.material3.Text(stringResource(R.string.reader_source_panel)) },
@@ -108,7 +112,8 @@ fun NavGraphBuilder.bookReaderDestination(onReaderActiveChanged: (Boolean) -> Un
             viewModel.openBook(route.bookId, route.chapterId)
         }
         if (viewModel.uiState.bookId == route.bookId) {
-            CompositionLocalProvider(LocalReaderBookId provides route.bookId) {
+            CompositionLocalProvider(LocalReaderBookId provides route.bookId,
+                LocalReaderPositionSession provides viewModel.positions) {
                 ReaderScreen(
                     readingScreenUiState = viewModel.uiState,
                     onSourcePanel = if (panelModel.available) ({
@@ -172,14 +177,20 @@ private fun NavGraphBuilder.colorPickerDialog() {
             },
             selectedColor = selectedColor ?: Color.Unspecified,
             colors = route.colors.map { Color(if (it < 0) return@map Color.Unspecified else it) },
-            description = stringResource(route.target.toAppTarget().descriptionResId)
+            description = stringResource(
+                when (route.colorUserDataPath) {
+                    UserDataPath.Reader.TextColor.path,
+                    UserDataPath.Reader.TextDarkColor.path -> R.string.dialog_color_picker_text_desc
+                    else -> R.string.dialog_color_picker_background_desc
+                }
+            )
         )
     }
 }
 
-fun NavController.navigateToColorPickerDialog(colorUserDataPath: String, colors: List<Long>, target: Route.Book.ColorPickerTargetType = Route.Book.ColorPickerTargetType.BACKGROUND) {
+fun NavController.navigateToColorPickerDialog(colorUserDataPath: String, colors: List<Long>) {
     if (!this.isResumed()) return
-    navigate(Route.Book.ColorPickerDialog(colorUserDataPath, colors.toLongArray(), target))
+    navigate(Route.Book.ColorPickerDialog(colorUserDataPath, colors.toLongArray()))
 }
 @SuppressLint("LocalContextGetResourceValueCall")
 private fun NavGraphBuilder.imageViewerDialog() {
@@ -209,7 +220,8 @@ private fun NavGraphBuilder.imageViewerDialog() {
                         imageUri = route.imageUri.toUri(),
                         context = context,
                         bookId = route.bookId,
-                        cover = route.cover
+                        cover = route.cover,
+                        chapterId = route.chapterId
                     ).onOk { bitmap ->
                         val result = runCatching {
                             context.contentResolver.openOutputStream(targetUri)?.use { out ->
@@ -218,7 +230,7 @@ private fun NavGraphBuilder.imageViewerDialog() {
                         }
                         result.onSuccess {
                             withContext(Dispatchers.Main) {
-                                Toast.makeText(
+                                textToast(
                                     context,
                                     savedToPicturesDir,
                                     Toast.LENGTH_LONG
@@ -226,7 +238,7 @@ private fun NavGraphBuilder.imageViewerDialog() {
                             }
                         }.onFailure {
                             withContext(Dispatchers.Main) {
-                                Toast.makeText(
+                                textToast(
                                     context,
                                     saveFailed,
                                     Toast.LENGTH_SHORT
@@ -235,7 +247,7 @@ private fun NavGraphBuilder.imageViewerDialog() {
                         }
                     }.onErr {
                         withContext(Dispatchers.Main) {
-                            Toast.makeText(
+                            textToast(
                                 context,
                                 saveFailed,
                                 Toast.LENGTH_SHORT
@@ -254,19 +266,20 @@ private fun NavGraphBuilder.imageViewerDialog() {
                         imageUri = route.imageUri.toUri(),
                         context = context,
                         bookId = route.bookId,
-                        cover = route.cover
+                        cover = route.cover,
+                        chapterId = route.chapterId
                     ).onOk {
                         coroutineScope.launch {
                             saveBitmapAsPng(context, it)
                                 .onOk { path ->
-                                    Toast.makeText(
+                                    textToast(
                                         context,
                                         context.getString(R.string.saved_to_pictures_dir, path),
                                         Toast.LENGTH_LONG
                                     ).show()
                                 }
                                 .onErr {
-                                    Toast.makeText(
+                                    textToast(
                                         context,
                                         saveFailed,
                                         Toast.LENGTH_SHORT
@@ -275,7 +288,7 @@ private fun NavGraphBuilder.imageViewerDialog() {
                         }
                     }.onErr {
                         Log.d("ImageViewer", "Failed to save image: ${it.message}")
-                        Toast.makeText(
+                        textToast(
                             context,
                             context.getString(R.string.save_failed),
                             Toast.LENGTH_SHORT
@@ -288,7 +301,8 @@ private fun NavGraphBuilder.imageViewerDialog() {
                 createDocumentLauncher.launch(defaultName)
             },
             bookId = route.bookId,
-            cover = route.cover
+            cover = route.cover,
+            chapterId = route.chapterId
         )
     }
 }
@@ -296,13 +310,15 @@ private fun NavGraphBuilder.imageViewerDialog() {
 fun NavController.navigateToImageViewerDialog(
     imageUri: Uri,
     bookId: String,
-    cover: Boolean = false
+    cover: Boolean = false,
+    chapterId: String? = null
 ) {
     navigate(
         Route.Book.ImageViewerDialog(
             imageUri = imageUri.toString(),
             bookId = BookIdentity.bookKey(bookId),
-            cover = cover
+            cover = cover,
+            chapterId = chapterId
         )
     )
 }

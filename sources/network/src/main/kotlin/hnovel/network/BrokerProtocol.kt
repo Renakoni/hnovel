@@ -66,7 +66,8 @@ data class NativeBrowserCookieSeed(val version: Long, val cookies: List<String>)
     @Serializable data class Success(val response: BrokerResponse) : BrokerResult
     @Serializable data class Failure(val stage: RequestStage, val code: FailureCode, val attempt: Int = 0,
         val denial: OriginDenial? = null, val challenge: BrowserChallengeKind? = null,
-        val verificationRequest: BrokerRequest? = null, val certificate: CertificateProblem? = null) : BrokerResult
+        val verificationRequest: BrokerRequest? = null, val certificate: CertificateProblem? = null,
+        val retryable: Boolean = false) : BrokerResult
 }
 
 @Serializable sealed interface CompiledRequest {

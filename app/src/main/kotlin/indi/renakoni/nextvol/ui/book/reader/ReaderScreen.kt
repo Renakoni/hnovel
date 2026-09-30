@@ -1,5 +1,6 @@
 package indi.renakoni.nextvol.ui.book.reader
 
+import indi.renakoni.nextvol.data.book.availableVolumes
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context.BATTERY_SERVICE
@@ -81,8 +82,6 @@ import androidx.lifecycle.Lifecycle
 import coil3.compose.AsyncImagePainter
 import com.github.michaelbull.result.get
 import com.github.michaelbull.result.map
-import com.github.michaelbull.result.onErr
-import com.github.michaelbull.result.onOk
 import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.tts.ReadAloudState
 import indi.renakoni.nextvol.tts.SpeechAction
@@ -105,6 +104,7 @@ import indi.renakoni.nextvol.utils.showSnackbar
 import kotlinx.coroutines.launch
 import indi.renakoni.nextvol.data.bookmark.ReadingBookmark
 import indi.renakoni.nextvol.ui.book.reader.bookmark.LocalReaderBookmarks
+import indi.renakoni.nextvol.ui.book.reader.content.LocalReaderPositionSession
 import indi.renakoni.nextvol.ui.book.reader.bookmark.ReaderBookmarkSession
 import indi.renakoni.nextvol.ui.book.reader.bookmark.ReaderBookmarkPosition
 import indi.renakoni.nextvol.ui.book.reader.bookmark.ReaderBookmarksSheet
@@ -150,8 +150,13 @@ fun ReaderScreen(
     val backBlockMode = settingState.backBlockMode
     var lastBackPressTime: Long by remember { mutableLongStateOf(0) }
     var showSettingsBottomSheet by remember { mutableStateOf(false) }
+    val layoutResult = remember(readingScreenUiState.contentUiState,
+        readingScreenUiState.contentUiState?.readingChapterContent?.get()) {
+        mutableStateOf<ReaderLayoutResult?>(null)
+    }
     var showChapterSelectionBottomSheet by remember { mutableStateOf(false) }
     val bookmarkSession = remember(readingScreenUiState.bookId) { ReaderBookmarkSession() }
+    val positionSession = LocalReaderPositionSession.current
     var showBookmarks by remember(readingScreenUiState.bookId) { mutableStateOf(false) }
     var bookmarkPosition by remember(readingScreenUiState.bookId) { mutableStateOf<ReaderBookmarkPosition?>(null) }
     var creatingBookmark by remember { mutableStateOf(false) }
@@ -278,7 +283,8 @@ fun ReaderScreen(
             accumulateReadTime = accumulateReadTime,
         )
 
-        CompositionLocalProvider(LocalReaderSpeechFollow provides speechFollow, LocalReaderBookmarks provides bookmarkSession) {
+        CompositionLocalProvider(LocalReaderSpeechFollow provides speechFollow, LocalReaderBookmarks provides bookmarkSession,
+            LocalReaderLayoutResult provides layoutResult) {
             Content(
                 isImmersive = isImmersive,
                 volumeKeysEnabled = !sourcePanelVisible && !showSettingsBottomSheet && !showChapterSelectionBottomSheet && !showReadAloud && !showBookmarks,
@@ -359,6 +365,7 @@ fun ReaderScreen(
                         bookmarkSession.pending = bookmark
                         showBookmarks = false
                         val content = readingScreenUiState.contentUiState
+                        if (content != null) positionSession?.navigate(content, bookmark.bookId, bookmark.chapterId, false)
                         if (content?.readingChapterId != bookmark.chapterId || content.readingChapterContent?.isOk != true)
                             onChangeChapter(bookmark.chapterId)
                     }
@@ -378,6 +385,7 @@ fun ReaderScreen(
         enter = if (settingState.reduceMotion) EnterTransition.None else fadeIn() + expandIn(),
         exit = if (settingState.reduceMotion) ExitTransition.None else shrinkOut() + fadeOut(),
     ) {
+        CompositionLocalProvider(LocalReaderLayoutResult provides layoutResult) {
         SettingsBottomSheet(
             sheetState = settingsBottomSheetState,
             onDismissRequest = {
@@ -391,6 +399,7 @@ fun ReaderScreen(
             settingState = settingState,
             onClickThemeSettings = onClickThemeSettings
         )
+        }
     }
 
     AnimatedVisibility(visible = showChapterSelectionBottomSheet,
@@ -398,12 +407,13 @@ fun ReaderScreen(
         exit = if (settingState.reduceMotion) ExitTransition.None else shrinkOut() + fadeOut(),
     ) {
         readingScreenUiState.contentUiState?.let { contentUiState ->
-            readingScreenUiState.bookVolumes?.onOk { bookVolumes ->
+            readingScreenUiState.bookVolumes?.availableVolumes()?.let { bookVolumes ->
                 contentUiState.readingChapterId?.let { readingChapterId ->
                     ChapterSelectionBottomSheet(
                         sheetState = chaptersBottomSheetState,
                         selectedVolumeId = selectedVolumeId,
                         bookVolumes = bookVolumes,
+                        directoryIncomplete = readingScreenUiState.bookVolumes?.isErr == true,
                         readingChapterId = readingChapterId,
                         onDismissRequest = {
                             coroutineScope.launch { chaptersBottomSheetState.hide() }
@@ -426,10 +436,6 @@ fun ReaderScreen(
                         }
                     )
                 }
-            }?.onErr {
-                //TODO 错误显示
-            } ?: {
-                //TODO 加载显示
             }
         }
     }
@@ -451,6 +457,7 @@ fun Content(
     val textLayout = rememberReaderTextLayout(settingState)
     val speechFollow = LocalReaderSpeechFollow.current
     val bookmarks = LocalReaderBookmarks.current
+    val positions = LocalReaderPositionSession.current
     Box(modifier = Modifier.fillMaxSize().readerProbeLayout("content-root")) {
         val isEnableIndicator =
             settingState.enableTimeIndicator ||
@@ -464,7 +471,11 @@ fun Content(
                 label = "ContentAnimate"
             ) { contentUiState ->
                 // Controls cover the reading viewport; outgoing animated modes must release input.
-                CompositionLocalProvider(LocalReaderTextLayout provides textLayout,
+                CompositionLocalProvider(indi.renakoni.nextvol.ui.book.reader.content.LocalReaderRendererActive provides
+                    (contentUiState === readingScreenUiState.contentUiState),
+                    LocalReaderTextLayout provides textLayout,
+                    LocalReaderPositionSession provides if (contentUiState === readingScreenUiState.contentUiState)
+                        positions else null,
                     LocalReaderBookmarks provides if (contentUiState === readingScreenUiState.contentUiState)
                         bookmarks else null,
                     LocalReaderSpeechFollow provides if (contentUiState === readingScreenUiState.contentUiState)

@@ -3,16 +3,15 @@ package indi.renakoni.nextvol.data.book
 import android.content.Context
 import android.net.Uri
 import android.util.Log
-import androidx.work.ExistingWorkPolicy
-import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.Operation
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.await
-import androidx.work.workDataOf
 import com.github.michaelbull.result.Ok
+import com.github.michaelbull.result.Err
 import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.andThen
+import com.github.michaelbull.result.getOrElse
 import com.github.michaelbull.result.map
 import com.github.michaelbull.result.onErr
 import com.github.michaelbull.result.onOk
@@ -22,8 +21,12 @@ import indi.renakoni.nextvol.data.local.LocalBookDataSource
 import indi.renakoni.nextvol.data.localbook.LocalBookStore
 import indi.renakoni.nextvol.data.text.TextProcessingRepository
 import indi.renakoni.nextvol.data.web.SourceDiscoveryTarget
-import indi.renakoni.nextvol.data.work.CacheBookWork
 import indi.renakoni.nextvol.data.download.BookDownloadStore
+import indi.renakoni.nextvol.data.download.BookDownloadScheduler
+import indi.renakoni.nextvol.data.download.BookDownloadStatus
+import indi.renakoni.nextvol.data.download.DownloadTaskState
+import indi.renakoni.nextvol.data.download.DownloadTaskStatus
+import indi.renakoni.nextvol.data.download.taskState
 import io.nightfish.lightnovelreader.api.book.BookInformation
 import io.nightfish.lightnovelreader.api.book.BookRepositoryApi
 import io.nightfish.lightnovelreader.api.book.BookVolumes
@@ -39,6 +42,10 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.combine
+import java.util.UUID
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -66,6 +73,7 @@ class BookRepository @Inject constructor(
     private val sourceRegistry: indi.renakoni.nextvol.data.web.WebSourceRegistry,
     private val downloads: BookDownloadStore,
     private val localBooks: LocalBookStore,
+    private val downloadScheduler: BookDownloadScheduler,
 ): BookRepositoryApi {
     companion object {
         private const val TAG = "BookRepository"
@@ -92,6 +100,25 @@ class BookRepository @Inject constructor(
 
     fun getBookInformationFlow(book: SourceBookId, priority: WebDataSourcePriority = WebDataSourcePriority.Default) =
         getBookInformationFlow(book.storageKey, priority)
+
+    /** Keep observation timestamps in storage/update checks, not in the detail UI. */
+    internal suspend fun bookInformationForDisplay(information: BookInformation): BookInformation {
+        val book = BookIdentity.book(information.id)
+        if (book.sourceId.namespace != "rules") return information
+        val fallback = information.copy(lastUpdated = UNKNOWN_BOOK_UPDATE_TIME)
+        return try {
+            val canonical = canonicalBook(book)
+            sourceRegistry.request(canonical) { runtime ->
+                Ok(runtime.bookInformationForDisplay(canonical.remoteId, information))
+            }.getOrElse { fallback }
+        } catch (failure: Exception) {
+            currentCoroutineContext().ensureActive()
+            if (failure !is java.io.IOException && failure !is kotlinx.serialization.SerializationException &&
+                failure !is hnovel.content.SourceContentException) throw failure
+            Log.w(TAG, "Could not read optional book metadata", failure)
+            fallback
+        }
+    }
 
     override fun getBookInformationFlow(
         id: String,
@@ -180,26 +207,47 @@ class BookRepository @Inject constructor(
     override suspend fun updateUserReadingData(id: String, update: (UserReadingData) -> UserReadingData) =
         readingDataRepository.updateUserReadingData(id, update)
 
-    fun cacheBook(bookId: String): Flow<WorkInfo?> {
-        if (LocalBookStore.isLocal(BookIdentity.book(bookId))) return flowOf(null)
-        val key = BookIdentity.bookKey(bookId)
-        val generation = downloads.generation()
-        val workRequest = OneTimeWorkRequestBuilder<CacheBookWork>()
-            .addTag(CacheBookWork.generationTag(generation))
-            .setInputData(
-                workDataOf(
-                    "bookId" to key,
-                    "downloadGeneration" to generation,
-                )
-            )
-            .build()
-        val operation = workManager.enqueueUniqueWork(
-            CacheBookWork.ofId(key),
-            ExistingWorkPolicy.KEEP,
-            workRequest
-        )
-        return workManager.observeSubmittedUniqueWork(CacheBookWork.ofId(key), operation)
+    fun cacheBook(bookId: String, refresh: Boolean = false): Flow<WorkInfo?> =
+        downloadScheduler.enqueue(BookIdentity.book(bookId), refresh)
+
+    suspend fun dismissDownload(bookId: String): Unit = downloadScheduler.dismiss(BookIdentity.book(bookId))
+
+    internal suspend fun prepareDownloadVerification(book: SourceBookId, workId: String, revision: String,
+        accountGeneration: Long): (suspend () -> Unit)? {
+        fun currentSource() = sourceRegistry.sources.value.any { it.metadata.id == book.sourceId &&
+            it.status == indi.renakoni.nextvol.data.web.SourceStatus.Ready &&
+            it.metadata.revision == revision && it.metadata.accountGeneration == accountGeneration }
+        if (!currentSource()) return null
+        val waiting = downloads.entries().filter { !it.taskHidden && BookIdentity.book(it.bookId).sourceId == book.sourceId &&
+            it.taskSourceRevision == revision && it.taskAccountGeneration == accountGeneration &&
+            (it.taskStatus == DownloadTaskStatus.WaitingVerification.name ||
+                it.taskWorkId == workId && it.taskStatus == DownloadTaskStatus.Running.name) }
+        if (waiting.none { it.taskWorkId == workId }) return null
+        return { downloadScheduler.resumeVerified(waiting, ::currentSource) }
     }
+
+    /** Download cards must remain renderable without making a successful source request. */
+    fun downloadInformationFlow(bookId: String): Flow<Result<BookInformation, WebRequestError>> = downloadChanges(bookId).map {
+        val book = canonicalBook(BookIdentity.book(bookId))
+        localBookDataSource.getBookInformation(book.storageKey)?.let(::Ok) ?: Err(WebRequestError("", ""))
+    }.distinctUntilChanged()
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    fun downloadStatusFlow(bookId: String): Flow<BookDownloadStatus> =
+        localBookDataSource.aliases.observe(BookIdentity.book(bookId)).flatMapLatest { book ->
+            combine(downloads.observe(book), sourceRegistry.sources) { _, _ -> downloads.entry(book) }
+                .flatMapLatest { owner ->
+                    val work = owner?.taskWorkId?.takeIf { it.isNotEmpty() }
+                        ?.let { workManager.getWorkInfoByIdFlow(UUID.fromString(it)) } ?: flowOf(null)
+                    work.map { info ->
+                        val volumes = localBookDataSource.getBookVolumes(book.storageKey)
+                        val chapterIndex = volumes?.volumes?.flatMap { it.chapters }?.distinctBy { it.id }
+                            ?.indexOfFirst { it.id == owner?.taskChapter }?.takeIf { it >= 0 }?.plus(1)
+                        BookDownloadStatus(downloads.state(book, volumes, sourceRevision(book), active = false, contentOnly = true),
+                            (owner?.taskState(info?.state) ?: DownloadTaskState()).copy(chapterIndex = chapterIndex))
+                    }
+                }
+        }
 
     override suspend fun getIsBookCached(bookId: String): Boolean {
         val book = BookIdentity.book(bookId)
@@ -219,6 +267,12 @@ class BookRepository @Inject constructor(
 
     internal fun sourceRevision(book: SourceBookId): String = sourceRegistry.sources.value
         .firstOrNull { it.metadata.id == book.sourceId }?.metadata?.revision.orEmpty()
+
+    internal fun downloadSource(book: SourceBookId) = sourceRegistry.sources.value
+        .firstOrNull { it.metadata.id == book.sourceId }?.metadata
+
+    internal suspend fun canReplayDownload(book: SourceBookId): Boolean =
+        (sourceRegistry.resolve(book.sourceId) as? indi.renakoni.nextvol.data.web.SourceResolution.Ready)?.runtime?.canReplayDownloads == true
 
     fun downloadGeneration(): Long = downloads.generation()
 

@@ -29,6 +29,15 @@ compiler and 22.0.2+9 for Gradle/tests, plus the repository's Gradle wrapper.
 that job. Actions are pinned to commits and runners use `ubuntu-24.04`; GitHub
 still updates the hosted OS, so this is not an immutable machine image.
 
+App JVM unit tests use `-XX:TieredStopAtLevel=1` to avoid a JDK 22 C2
+`Node::uncast` crash while inlining Robolectric-instrumented SQLite methods.
+They retain Java 22 for PotatoEPUB bytecode compatibility and run all assertions
+with C1 compilation. This test-only setting does not change the Gradle daemon,
+other modules' JVM tests, Android compilation, or device/runtime behavior.
+`-XX:ReservedCodeCacheSize=240m` retains the normal tiered JVM's code cache
+budget: C1 otherwise reduces it to 48 MiB, which the full Robolectric suite
+exhausts with `Out of space in CodeCache for adapters`. The Java heap is unchanged.
+
 `prepare-android-sdk.sh` names exact upstream ZIP revisions: SDK platform 37.0 r2,
 Build Tools 36.0.0, Platform Tools 37.0.1, Emulator 37.1.11 (build 15917651), and
 Google APIs x86_64 images API 24 r27 / API 35 r9. A cache miss downloads only the
@@ -114,10 +123,9 @@ no Lint report; the Actions step log remains the evidence in that case.
 | App Debug | Full Android Lint, including main/Debug resources and the configured test source analysis |
 | App translations | Default/en, Simplified Chinese, Traditional Chinese, generic Russian and existing ru-RU overrides; see [resource contracts](RESOURCE_CONTRACTS.md) |
 | `:api` | Dependency model/class information used by app analysis; no independent `:api:lintDebug` scan |
-| `:plugin:js` | Separate Android app; not included in this check |
 | `:benchmark` | Android test module, exercised by the existing minified device job; not independently linted |
 | App Release/snapshot/benchmark | No full variant Lint here; Release assembly/lintVital and minified runtime remain separate checks |
-| JVM source/EPUB/compiler modules | Existing JVM/build checks; not independent Android Lint targets |
+| JVM source/EPUB modules | Existing JVM/build checks; not independent Android Lint targets |
 
 The gate fails on Error/Fatal diagnostics outside the reviewed baseline. Warnings
 remain visible without requiring a mechanical cleanup of all existing warnings.

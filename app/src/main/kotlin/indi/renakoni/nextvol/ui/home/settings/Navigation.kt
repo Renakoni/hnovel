@@ -4,6 +4,7 @@ import android.content.Intent
 import android.os.Build
 import android.provider.DocumentsContract
 import android.widget.Toast
+import indi.renakoni.nextvol.utils.textToast
 import androidx.activity.compose.ManagedActivityResultLauncher
 import androidx.activity.result.ActivityResult
 import androidx.compose.animation.ExperimentalSharedTransitionApi
@@ -23,6 +24,8 @@ import androidx.navigation.toRoute
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import indi.renakoni.nextvol.R
+import indi.renakoni.nextvol.data.backup.BackupArchive
+import indi.renakoni.nextvol.ui.components.backupFailureMessage
 import indi.renakoni.nextvol.ui.components.ExportContext
 import indi.renakoni.nextvol.ui.components.ExportUserDataDialog
 import indi.renakoni.nextvol.ui.components.MutableExportContext
@@ -34,8 +37,6 @@ import indi.renakoni.nextvol.ui.home.settings.formats.settingsFormatsDestination
 import indi.renakoni.nextvol.ui.home.settings.licenses.settingsLicensesDestination
 import indi.renakoni.nextvol.ui.home.settings.logcat.navigateToSettingsLogcatDestination
 import indi.renakoni.nextvol.ui.home.settings.logcat.settingsLogcatDestination
-import indi.renakoni.nextvol.ui.home.settings.pluginmanager.navigateToSettingsPluginManagerHomeDestination
-import indi.renakoni.nextvol.ui.home.settings.pluginmanager.settingsPluginManagerNavigation
 import indi.renakoni.nextvol.ui.home.settings.sources.settingsSourcesDestination
 import indi.renakoni.nextvol.ui.home.settings.sources.sourceDiagnosticDestination
 import indi.renakoni.nextvol.ui.home.settings.textformatting.editTextFormattingRuleDialog
@@ -73,7 +74,6 @@ fun NavGraphBuilder.settingsDestination() {
             onClickLogcat = navController::navigateToSettingsLogcatDestination,
             onClickTextFormatting = navController::navigateToSettingsTextFormattingManagerDestination,
             onClickReadAloud = navController::navigateToSpeechSettings,
-            onClickPluginManager = navController::navigateToSettingsPluginManagerHomeDestination,
             onClickBangumi = { navController.navigate(indi.renakoni.nextvol.ui.bangumi.BangumiRoute()) { launchSingleTop = true } },
             onClickThemeSettings = navController::navigateToSettingsThemeDestination,
             onClickStorageManager = navController::navigateToStorageManager,
@@ -99,7 +99,6 @@ fun NavGraphBuilder.settingsNavigation() {
         settingsAboutDestination()
         settingsThemeDestination()
         settingsTextFormattingNavigation()
-        settingsPluginManagerNavigation()
         settingsLicensesDestination()
         settingsFormatsDestination()
         speechSettingsDestination()
@@ -148,10 +147,10 @@ private fun NavGraphBuilder.exportUserDataDialog() {
                 workManager.getWorkInfoByIdFlow(viewModel.exportToFile(uri, exportContext).id).collect {
                     when (it?.state) {
                         WorkInfo.State.FAILED -> {
-                            Toast.makeText(context.applicationContext, R.string.data_export_failed, Toast.LENGTH_SHORT).show()
+                            textToast(context.applicationContext, backupFailureMessage(it?.outputData, R.string.backup_export_failed), Toast.LENGTH_LONG).show()
                         }
                         WorkInfo.State.SUCCEEDED -> {
-                            Toast.makeText(context.applicationContext, R.string.data_export_success, Toast.LENGTH_SHORT).show()
+                            textToast(context.applicationContext, R.string.data_export_success, Toast.LENGTH_SHORT).show()
                         }
                         else -> {}
                     }
@@ -169,7 +168,7 @@ private fun NavGraphBuilder.exportUserDataDialog() {
             },
             onClickSaveToFile = {
                 exportContext = it
-                createDataFile("NextVolData", selectLocationTitle, saveDataToFileLauncher)
+                createDataFile(BackupArchive.USER_DATA_FILE_NAME, selectLocationTitle, saveDataToFileLauncher)
             }
         )
     }
@@ -187,7 +186,7 @@ private fun createDataFile(fileName: String, chooserTitle: String, launcher: Man
         type = "*/*"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
             putExtra(DocumentsContract.EXTRA_INITIAL_URI, initUri)
-        putExtra(Intent.EXTRA_TITLE, "$fileName.lnr")
+        putExtra(Intent.EXTRA_TITLE, fileName)
     }
     launcher.launch(Intent.createChooser(intent, chooserTitle))
 }

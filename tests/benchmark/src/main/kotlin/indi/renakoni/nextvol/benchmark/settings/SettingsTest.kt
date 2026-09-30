@@ -1,8 +1,10 @@
 package indi.renakoni.nextvol.benchmark.settings
 
+import android.os.Build
 import android.os.SystemClock
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
+import androidx.test.uiautomator.Direction
 import indi.renakoni.nextvol.benchmark.ui.UiAutomatorTest
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -16,18 +18,13 @@ class SettingsTest : UiAutomatorTest() {
     }
 
     @Test
-    fun extensionSourceAndPluginManagerOpen() {
+    fun bookSourcesOpen() {
         openSettings()
         clickText("Book sources")
         assertText("Book sources")
         assertForegroundPackage(TARGET_PACKAGE)
         pressBack()
 
-        clickText("Plugins")
-        assertText("Plugins")
-        assertDescription("Install plugin")
-        assertDescription("Plugin apps")
-        pressBack()
         assertText("Settings")
     }
 
@@ -59,13 +56,19 @@ class SettingsTest : UiAutomatorTest() {
     @Test
     fun languageAndFormatsOpenAndReturn() {
         openSettings()
-        clickText("Language")
+        clickScrolledText("Language")
         device.waitForIdle()
-        assertForegroundPackage("com.android.settings")
-        pressBack()
-        assertForegroundPackage(TARGET_PACKAGE)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            assertForegroundPackage("com.android.settings")
+            pressBack()
+            assertForegroundPackage(TARGET_PACKAGE)
+            openAppSettings()
+        } else {
+            assertForegroundPackage(TARGET_PACKAGE)
+            scrollToText("Set the app language (Android 13+ required)")
+            scrollToText("Follow System")
+        }
 
-        openAppSettings()
         clickScrolledText("Formats")
         assertText("Formats")
         assertText("Date Format")
@@ -185,10 +188,12 @@ class SettingsTest : UiAutomatorTest() {
         scrollToText("Paper")
         scrollToText("Background Image")
         scrollToText("Text Color")
-        scrollToText("Text Font")
-        scrollToText("Font Weight")
+        scrollToText("System")
+        scrollToText("Import font")
         scrollToText("Font Size")
+        scrollToText("Font Weight")
         scrollToText("Line Spacing")
+        scrollToText("Background Image", direction = Direction.UP)
     }
 
     @Test

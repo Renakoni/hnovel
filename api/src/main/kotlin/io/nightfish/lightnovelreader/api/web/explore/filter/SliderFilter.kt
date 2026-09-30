@@ -27,7 +27,7 @@ abstract class SliderFilter(
     abstract var enabled: Boolean
     abstract val displayValue: String
     open val displayTitle = title
-    /** Localized presentation hooks preserve existing plugin constructors and String getters. */
+    /** Localized presentation for filter descriptions and values. */
     open fun getDescriptionText(): LocalString = description.local()
     open fun getValueText(): LocalString = displayValue.local()
     /**

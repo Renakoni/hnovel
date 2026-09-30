@@ -8,8 +8,6 @@
     <string name="sources_account_required">需要重新登入</string>
     <string name="sources_account_loading">正在讀取帳號狀態…</string>
     <string name="sources_account_unknown">無法讀取帳號狀態</string>
-    <string name="sources_plugins_group">外掛書源</string>
-    <string name="sources_network_plugin">此外掛自行管理網路，暫不支援此略過開關。</string>
     <string name="sources_login_definition_error">書源登入宣告的 %1$s 欄位無效，請檢查書源定義。</string>
     <string name="sources_account_unavailable">帳號操作暫不可用</string>
     <string name="sources_session_saved">工作階段已儲存</string>
@@ -41,7 +39,7 @@
     <string name="sources_title">書源</string>
     <string name="sources_manage_help">新增、設定、登入與更新書源</string>
     <string name="sources_add">新增書源</string>
-    <string name="sources_add_help">透過 URL、本機檔案或貼上文字新增 JSON 書源，也可從本機匯入已適配版本的 .lnrp / APK 書源套件。</string>
+    <string name="sources_add_help">透過連結、本機檔案或貼上文字匯入 JSON 書源。</string>
     <string name="sources_url">書源檔案 URL</string>
     <string name="sources_preview_url">下載並預覽</string>
     <string name="sources_file">選擇本機檔案</string>
@@ -92,8 +90,10 @@
     <string name="sources_network_help">支援 VPN/TUN，包括 Fake-IP DNS。區域網路位址仍受限制。</string>
     <string name="sources_revision_failed">修訂未啟用，原書源仍保留。請檢查後重試更新。</string>
     <string name="sources_no_update_url">此書源沒有更新位址，請匯入新版檔案或貼上更新後的定義。</string>
-    <string name="sources_up_to_date">未發現更新。</string>
+    <string name="sources_up_to_date">已是最新</string>
     <string name="sources_saved">書源變更已儲存。</string>
     <string name="sources_removed">書源已刪除，已儲存的書籍與閱讀記錄仍保留。</string>
     <string name="sources_invalid_permission_lines">站點位址無效，所在行：%1$s</string>
+    <string name="sources_pixiv_update_unsupported">適配失敗，未更新</string>
+    <string name="sources_pixiv_update_failed">網路錯誤，請重試</string>
 </resources>

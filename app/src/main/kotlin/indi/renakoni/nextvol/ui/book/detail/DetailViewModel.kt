@@ -1,5 +1,6 @@
 package indi.renakoni.nextvol.ui.book.detail
 
+import indi.renakoni.nextvol.data.book.availableVolumes
 import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -13,6 +14,7 @@ import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.workDataOf
 import com.github.michaelbull.result.onOk
+import com.github.michaelbull.result.map
 import com.github.michaelbull.result.get
 import dagger.hilt.android.lifecycle.HiltViewModel
 import indi.renakoni.nextvol.data.book.BookRepository
@@ -21,7 +23,6 @@ import indi.renakoni.nextvol.data.bookshelf.BookshelfRepository
 import indi.renakoni.nextvol.data.download.DownloadProgressRepository
 import indi.renakoni.nextvol.data.download.DownloadType
 import indi.renakoni.nextvol.data.work.ExportBookToEPUBWork
-import indi.renakoni.nextvol.data.work.CacheBookWork
 import indi.renakoni.nextvol.data.book.observeSubmittedUniqueWork
 import io.nightfish.lightnovelreader.api.web.WebDataSourcePriority
 import kotlinx.coroutines.Dispatchers
@@ -79,10 +80,7 @@ class DetailViewModel @Inject constructor(
             }
         }
         viewModelScope.launch(Dispatchers.IO) {
-            combine(bookRepository.downloadChanges(bookId), snapshotFlow { _uiState.bookVolumes },
-                workManager.getWorkInfosForUniqueWorkFlow(CacheBookWork.ofId(bookId))) { _, _, work ->
-                bookRepository.downloadState(bookId, active = work.any { !it.state.isFinished })
-            }.collect { _uiState.downloadState = it }
+            bookRepository.downloadStatusFlow(bookId).collect { _uiState.downloadState = it }
         }
         viewModelScope.launch(Dispatchers.IO) {
             bookshelfRepository.getBookshelfBookMetadataFlow(bookId).collect {
@@ -102,7 +100,7 @@ class DetailViewModel @Inject constructor(
 
     suspend fun markChaptersUnread(chapterIds: Set<String>) {
         val bookId = checkNotNull(book).storageKey
-        val volumes = checkNotNull(_uiState.bookVolumes?.get())
+        val volumes = checkNotNull(_uiState.bookVolumes?.availableVolumes())
         val catalogIds = volumes.volumes.flatMap { it.chapters }.mapTo(mutableSetOf()) { it.id }
         withContext(Dispatchers.IO) {
             readingDataRepository.markChaptersUnread(bookId, chapterIds, catalogIds)
@@ -118,16 +116,17 @@ class DetailViewModel @Inject constructor(
                 result.onOk {
                     val metadata = bookshelfRepository.getBookshelfBookMetadata(bookId) ?: return@onOk
                     metadata.bookShelfIds.forEach { shelf -> bookshelfRepository.deleteBookFromBookshelfUpdatedBookIds(shelf, bookId) }
-                    bookshelfRepository.updateBookshelfBookMetadataLastUpdateTime(bookId, it.lastUpdated)
+                    if (it.lastUpdated.year > 1970)
+                        bookshelfRepository.updateBookshelfBookMetadataLastUpdateTime(bookId, it.lastUpdated)
                 }
-                _uiState.bookInformation = result
+                _uiState.bookInformation = result.map { bookRepository.bookInformationForDisplay(it) }
             }
         }
     }
 
-    fun cacheBook(bookId: String): Flow<WorkInfo?> {
+    fun cacheBook(bookId: String, refresh: Boolean = false): Flow<WorkInfo?> {
         if (!_uiState.canCache) return flowOf(null)
-        return bookRepository.cacheBook(bookId)
+        return bookRepository.cacheBook(bookId, refresh)
     }
 
     suspend fun tagPage(tag: String) = book?.let { bookRepository.bookTagPage(it, tag) }

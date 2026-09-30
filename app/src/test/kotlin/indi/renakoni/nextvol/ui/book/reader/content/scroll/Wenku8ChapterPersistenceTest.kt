@@ -6,6 +6,7 @@ import com.github.michaelbull.result.Err
 import com.github.michaelbull.result.Ok
 import com.github.michaelbull.result.get
 import indi.renakoni.nextvol.data.book.*
+import indi.renakoni.nextvol.data.download.BookDownloadStore
 import indi.renakoni.nextvol.data.local.LocalBookDataSource
 import indi.renakoni.nextvol.data.local.room.NextVolDatabase
 import indi.renakoni.nextvol.data.text.TextProcessingRepository
@@ -21,6 +22,7 @@ import io.nightfish.lightnovelreader.api.book.BookVolumes
 import io.nightfish.lightnovelreader.api.book.ChapterContent
 import io.nightfish.lightnovelreader.api.util.Cache
 import kotlinx.coroutines.flow.last
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import org.jsoup.Jsoup
 import org.junit.Assert.*
@@ -55,6 +57,7 @@ class Wenku8ChapterPersistenceTest {
         }
         val parser = Wenku8WebsiteDataSource("https://fixture.invalid", api)
         val runtime = mockk<SourceRuntime> {
+            every { metadata } returns mockk { every { revision } returns "1" }
             coEvery { execute<Any?>(any()) } coAnswers { firstArg<suspend () -> Any?>().invoke() }
             coEvery { canonicalBookId(any()) } coAnswers { firstArg() }
             coEvery { getChapterContent(any(), any(), any(), any()) } coAnswers {
@@ -62,7 +65,11 @@ class Wenku8ChapterPersistenceTest {
             }
         }
         val registry = mockk<WebSourceRegistry> {
+            every { sources } returns MutableStateFlow(emptyList())
             coEvery { resolve(any()) } returns SourceResolution.Ready(runtime)
+        }
+        val downloads = mockk<BookDownloadStore> {
+            every { isReusableReadingContent(any()) } returns true
         }
         val text = mockk<TextProcessingRepository> {
             every { processChapterContent(any(), any()) } answers { secondArg<() -> ChapterContent>()() }
@@ -76,7 +83,7 @@ class Wenku8ChapterPersistenceTest {
         var db = database()
         try {
             var storage = local(db)
-            var repository = ChapterRepository(registry, storage, text, mockk(), mockk())
+            var repository = ChapterRepository(registry, storage, text, mockk(), downloads)
             val third = repository.getChapterContentFlow("3", "1234").last().get()!!
             assertTrue(third.content.toString().contains("BODY_3"))
             offline = true
@@ -85,7 +92,7 @@ class Wenku8ChapterPersistenceTest {
             db.close()
             db = database()
             storage = local(db)
-            repository = ChapterRepository(registry, storage, text, mockk(), mockk())
+            repository = ChapterRepository(registry, storage, text, mockk(), downloads)
             offline = false
             for (id in listOf("4", "5")) {
                 val chapter = repository.getChapterContentFlow(id, "1234").last().get()!!
