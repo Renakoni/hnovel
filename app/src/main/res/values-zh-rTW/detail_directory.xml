@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="detail_directory_search">搜尋目錄</string>
+    <string name="detail_directory_options">目錄選項</string>
+    <string name="detail_directory_ascending">正序</string>
+    <string name="detail_directory_descending">倒序</string>
+    <string name="detail_directory_locate">定位目前</string>
+    <string name="detail_directory_volumes">選擇分卷</string>
+    <string name="detail_directory_ranges">選擇章節區間</string>
+    <string name="detail_directory_range">%1$d–%2$d</string>
+    <string name="detail_directory_range_summary">目錄序號 %1$d–%2$d，共 %3$d 章</string>
+    <string name="detail_directory_previous">上一段</string>
+    <string name="detail_directory_next">下一段</string>
+    <string name="detail_directory_filtered_empty">此區間沒有未讀章節</string>
+    <string name="detail_directory_show_all">顯示全部章節</string>
+    <string name="detail_directory_reading_here">正在閱讀</string>
+    <string name="detail_directory_volume_page_range">本頁 %1$d–%2$d</string>
+    <string name="detail_directory_volume_count">%1$d 章 · %2$d 卷</string>
+</resources>
