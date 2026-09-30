@@ -9,11 +9,12 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class DiscoveryPreviewReuseTest {
-    private val html = (1..30).joinToString("") { "<li><a href='/book/$it'><h2>Book $it</h2></a></li>" }
+    private val html = (1..30).joinToString("") { "<li><a href='/book/$it'><h2>Book $it</h2></a><img src='/covers/$it.jpg'></li>" }
     private fun definition(raw: JsonObject, extra: Map<String, JsonElement> = emptyMap()) = JsonObject(raw + mapOf(
         "exploreUrl" to JsonPrimitive("Books::/search"),
         "ruleExplore" to buildJsonObject {
             put("bookList", "@js:java.getElements('li')"); put("name", "h2@text"); put("bookUrl", "a@href")
+            put("coverUrl", "img@src")
         }
     ) + extra)
     private fun pages(fixture: RuleSourceFixture, body: String = html, status: Int = 200) {
@@ -31,15 +32,41 @@ class DiscoveryPreviewReuseTest {
         }).use { fixture ->
             pages(fixture)
             var lists = 0
-            fixture.beforeRun = { task, _ -> if (task is ExecutionTask.Rule && task.location.field == "ruleExplore.bookList") lists++ }
+            var batches = 0
+            fixture.beforeRun = { task, _ ->
+                if (task is ExecutionTask.Rule && task.location.field == "ruleExplore.bookList") lists++
+                if (task is ExecutionTask.BookOverviews) batches++
+            }
             fixture.source { definition(it, mapOf("browserRead" to JsonPrimitive(native))) }.use { source ->
-                assertEquals(6, source.openDiscovery("home").preview("/search", emptyMap()).books.size)
+                val preview = source.openDiscovery("home").preview("/search", emptyMap()).books
+                assertEquals(6, preview.size)
+                assertEquals((1..6).map { fixture.server.url("/covers/$it.jpg").toString() }, preview.map { it.coverUrl })
                 assertEquals(6, source.openDiscovery("resume").preview("/search", emptyMap()).books.size)
                 val books = source.openDiscovery("more").openPages("/search", emptyMap()).page(1).books
                 assertEquals((1..30).map { "Book $it" }, books.map { it.title })
                 assertEquals((1..30).map { fixture.server.url("/book/$it").toString() }, books.map { it.id })
+                assertEquals((1..30).map { fixture.server.url("/covers/$it.jpg").toString() }, books.map { it.coverUrl })
                 assertEquals("All callers re-evaluate their own rule state", 3, lists)
+                assertEquals("Covers share the existing batches of eight rows", 6, batches)
                 assertEquals("A complete document, not six parsed books, is reused", 1, fixture.server.requestCount)
+            }
+        }
+    }
+
+    @Test fun jsonCoverOptionsSurviveWhileMissingCoversRemainOptional() = runBlocking {
+        RuleSourceFixture().use { fixture ->
+            val options = ", {\"headers\":{\"Referer\":\"https://www.pixiv.net/\"}}"
+            pages(fixture, buildJsonArray {
+                add(buildJsonObject { put("name", "With cover"); put("id", "/one"); put("cover", "/cover.jpg$options") })
+                add(buildJsonObject { put("name", "Without cover"); put("id", "/two"); put("cover", "") })
+                add(buildJsonObject { put("name", "Invalid cover"); put("id", "/three"); put("cover", "javascript:void(0)") })
+            }.toString())
+            fixture.source { definition(it, mapOf("ruleExplore" to buildJsonObject {
+                put("bookList", "$.*"); put("name", "name"); put("bookUrl", "id"); put("coverUrl", "cover")
+            })) }.use { source ->
+                val books = source.openDiscovery("covers").openPages("/search", emptyMap()).page(1).books
+                assertEquals(listOf(fixture.server.url("/cover.jpg").toString() + options, "", ""), books.map { it.coverUrl })
+                assertEquals("Listing covers must not load book details", 1, fixture.server.requestCount)
             }
         }
     }

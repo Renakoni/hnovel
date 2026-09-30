@@ -493,19 +493,27 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val previews = mutableMapOf<String, BookPreview>()
         val candidates = if (lightweight && rule.startsWith('-')) items.asReversed() else items
         var batchStart = 0
-        var batch = emptyList<Pair<String, String>>()
+        var batch = emptyList<Triple<String, String, String>>()
         for ((index, item) in candidates.withIndex()) {
             val row = context.fork()
             if (lightweight && index >= batchStart + batch.size) {
                 batchStart = index
                 val count = minOf(ExecutionTask.BookOverviews.MAX_ROWS, previewLimit?.minus(books.size) ?: Int.MAX_VALUE,
                     candidates.size - index)
-                batch = context.overviews(candidates.subList(index, index + count), fields.string("name"), fields.string("bookUrl"), field)
+                batch = context.overviews(candidates.subList(index, index + count), fields.string("name"),
+                    fields.string("bookUrl"), fields.string("coverUrl"), field)
             }
             val parsed = if (lightweight) {
                 val title = batch[index - batchStart].first
                 row.bookField("name", title)
-                RuleBook("", title = title, state = row.book)
+                val cover = try {
+                    batch[index - batchStart].third.let { if (it.isBlank()) "" else sourceLink(context.baseUrl, it) }
+                } catch (failure: SourceContentException) {
+                    if (failure.code != ContentError.InvalidRule) throw failure
+                    ""
+                }
+                row.bookField("coverUrl", cover)
+                RuleBook("", title = title, coverUrl = cover, state = row.book)
             } else bookFields(row, item, fields, field, RuleBook(""))
             if (parsed.title.isBlank()) continue
             val rawUrl = if (lightweight) batch[index - batchStart].second else row.url(fields.string("bookUrl"), item, "$field.bookUrl")
@@ -791,8 +799,20 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             context.bookField(metadata, value)
             return value
         }
+        suspend fun coverUrl(): String = try {
+            field("coverUrl", seed.coverUrl).let { if (it.isBlank()) "" else sourceLink(context.baseUrl, it) }
+        } catch (failure: SourceContentException) {
+            // Legado treats cover extraction as optional; a bad cover must not discard a novel.
+            if (failure.code != ContentError.InvalidRule) throw failure
+            ""
+        }
         val title = field("name", seed.title)
-        if (overview || prefix != "ruleBookInfo" && title.isBlank()) return seed.copy(title = title, state = context.book)
+        if (prefix != "ruleBookInfo" && title.isBlank()) return seed.copy(title = title, state = context.book)
+        if (overview) {
+            val cover = coverUrl()
+            context.bookField("coverUrl", cover)
+            return seed.copy(title = title, coverUrl = cover, state = context.book)
+        }
         val author = field("author", seed.author)
         val preserveNames = prefix == "ruleBookInfo" && rules.string("canReName").isBlank()
         val finalTitle = if (preserveNames && priorTitle.isNotBlank()) priorTitle else title
@@ -802,13 +822,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val wordCount = field("wordCount", seed.wordCount)
         val latest = field("lastChapter", seed.latestChapter, "latestChapterTitle")
         val intro = field("intro", seed.description)
-        val cover = try {
-            field("coverUrl", seed.coverUrl).let { if (it.isBlank()) "" else sourceLink(context.baseUrl, it) }
-        } catch (failure: SourceContentException) {
-            // Legado treats cover extraction as optional; a bad cover must not discard a novel.
-            if (failure.code != ContentError.InvalidRule) throw failure
-            ""
-        }
+        val cover = coverUrl()
         context.bookField("coverUrl", cover)
         val time = field("updateTime", seed.updateTime)
         return seed.copy(title = finalTitle, author = finalAuthor, description = intro, coverUrl = cover,

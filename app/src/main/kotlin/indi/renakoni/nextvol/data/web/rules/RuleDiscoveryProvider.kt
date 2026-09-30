@@ -207,7 +207,7 @@ internal class RuleDiscoveryProvider(private val source: RuleSource,
             else -> null
         }
 
-    private fun book(book: RuleBook) = DiscoveryBook(book.id, book.title)
+    private fun book(book: RuleBook) = DiscoveryBook(book.id, book.title, book.author, book.coverUrl)
     private suspend fun <T> request(retry: Boolean = true, block: suspend () -> T): Result<T, DiscoveryError> = try {
         failureField = null; permissionFailure = null; diagnosticFailure = null; httpStatus = null
         Ok(if (recovery == null || !retry) block() else recovery.execute(block))

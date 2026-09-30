@@ -21,8 +21,8 @@ class WorkerBookOverviewsTest {
         val task = ExecutionTask.BookOverviews(listOf(
             html("<li><a href='../one?q=1&amp;x=2'>A &amp; B</a></li>"),
             html("<li><a href='/two'>Second</a></li>")), ".missing@text||a@text", "a@href", "https://example.test/list/page")
-        assertEquals(listOf(listOf("A & B", "https://example.test/one?q=1&x=2"),
-            listOf("Second", "https://example.test/two")), values(run(task)))
+        assertEquals(listOf(listOf("A & B", "https://example.test/one?q=1&x=2", ""),
+            listOf("Second", "https://example.test/two", "")), values(run(task)))
     }
 
     @Test fun jsonRowsAndListMetadataFallbackRemainIndependent() {
@@ -30,13 +30,13 @@ class WorkerBookOverviewsTest {
             RuleValue.Node("""{"name":"First","url":"/one"}""", InputKind.Json),
             RuleValue.Node("""{"name":"","url":"/two"}""", InputKind.Json)),
             "name", "url", "https://example.test/list", fallbackTitle = "Fallback")
-        assertEquals(listOf(listOf("First", "https://example.test/one"),
-            listOf("Fallback", "https://example.test/two")), values(run(task)))
+        assertEquals(listOf(listOf("First", "https://example.test/one", ""),
+            listOf("Fallback", "https://example.test/two", "")), values(run(task)))
     }
 
     @Test fun emptyTitlesSkipInvalidUrlRulesAndErrorsRetainTheirField() {
         val task = ExecutionTask.BookOverviews(listOf(html("<li><a></a></li>")), "a@text", "[", "https://example.test/")
-        assertEquals(listOf(listOf("", "")), values(run(task)))
+        assertEquals(listOf(listOf("", "", "")), values(run(task)))
         val failed = run(task.copy(inputs = listOf(html("<li><a>Book</a></li>")))) as ExecutionResult.Failure
         assertEquals("ruleExplore.bookUrl", failed.ruleError?.location?.field)
     }
@@ -46,6 +46,7 @@ class WorkerBookOverviewsTest {
         for (rule in listOf("@js:java.put('key','value')", "<js>result</js>", "{{book.name}}", "@put:{x:'text'}text", "@get:{x}")) {
             assertEquals(rule, ExecutionResult.Failure(FailureCode.InvalidTask), run(task.copy(nameRule = rule)))
             assertEquals(rule, ExecutionResult.Failure(FailureCode.InvalidTask), run(task.copy(urlRule = rule)))
+            assertEquals(rule, ExecutionResult.Failure(FailureCode.InvalidTask), run(task.copy(coverRule = rule)))
         }
         assertEquals(ExecutionResult.Failure(FailureCode.InvalidTask), run(task.copy(inputs = emptyList())))
         assertEquals(ExecutionResult.Failure(FailureCode.InvalidTask), run(task.copy(inputs = List(9) { task.inputs[0] })))
@@ -54,8 +55,19 @@ class WorkerBookOverviewsTest {
     @Test fun aBatchCanExceedOneFieldsSizeWhileKeepingIndividualFieldsBounded() {
         val title = "正文".repeat(10000)
         val task = ExecutionTask.BookOverviews(List(8) { html("<li>$title</li>") }, "text", "", "https://example.test/")
-        assertEquals(List(8) { listOf(title, "") }, values(run(task)))
+        assertEquals(List(8) { listOf(title, "", "") }, values(run(task)))
         assertTrue(run(task.copy(inputs = listOf(html("<li>${"A".repeat(200000)}</li>")))) is ExecutionResult.Failure)
         assertTrue(run(task, bytes = 64) is ExecutionResult.Failure)
+    }
+
+    @Test fun coversKeepRequestOptionsAndInvalidOptionalRulesDoNotDiscardRows() {
+        val cover = "/cover.jpg, {\"headers\":{\"Referer\":\"https://www.pixiv.net/\"}}"
+        val task = ExecutionTask.BookOverviews(listOf(html("<li><a href='/one'>Book</a><img src='$cover'></li>")),
+            "a@text", "a@href", "https://example.test/list", coverRule = "img@src")
+        assertEquals(listOf(listOf("Book", "https://example.test/one", cover)), values(run(task)))
+        assertEquals(listOf(listOf("Book", "https://example.test/one", "")), values(run(task.copy(coverRule = "["))))
+        assertEquals(listOf(listOf("", "", "")), values(run(task.copy(nameRule = ".missing@text", coverRule = "["))))
+        assertTrue(run(task.copy(inputs = listOf(html("<li><a>Book</a><img src='${"A".repeat(200000)}'></li>"))))
+            is ExecutionResult.Failure)
     }
 }

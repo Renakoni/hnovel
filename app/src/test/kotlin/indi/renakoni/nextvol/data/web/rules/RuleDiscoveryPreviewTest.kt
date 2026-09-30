@@ -50,7 +50,7 @@ class RuleDiscoveryPreviewTest {
         }
     }
 
-    @Test fun previewOnlyRunsSixTitlesAndLinksAndDefersMetadataAcrossSourceReopen(): Unit = runBlocking {
+    @Test fun previewOnlyRunsSixTitlesLinksAndCoversAndDefersMetadataAcrossSourceReopen(): Unit = runBlocking {
         RuleSourceFixture().use { fixture ->
             pages(fixture)
             val fields = mutableListOf<String>()
@@ -66,9 +66,10 @@ class RuleDiscoveryPreviewTest {
                 assertEquals((1..6).map { fixture.server.url("/book/$it").toString() }, section.books.map { it.remoteId })
                 assertEquals(1, fixture.server.requestCount)
                 assertEquals(6, batches.single().inputs.size)
-                assertFalse(fields.any { it == "ruleExplore.name" || it == "ruleExplore.bookUrl" })
-                assertTrue(section.books.all { it.author.isEmpty() && it.coverUrl.isEmpty() })
-                assertFalse(fields.any { it in listOf("ruleExplore.author", "ruleExplore.kind", "ruleExplore.intro", "ruleExplore.coverUrl") })
+                assertFalse(fields.any { it in listOf("ruleExplore.name", "ruleExplore.bookUrl", "ruleExplore.coverUrl") })
+                assertTrue(section.books.all { it.author.isEmpty() })
+                assertEquals((1..6).map { fixture.server.url("/cover/$it.png").toString() }, section.books.map { it.coverUrl })
+                assertFalse(fields.any { it in listOf("ruleExplore.author", "ruleExplore.kind", "ruleExplore.intro") })
                 firstId = section.books.first().remoteId
             }
             fields.clear()
@@ -99,7 +100,9 @@ class RuleDiscoveryPreviewTest {
                 assertEquals(full.take(6).map { it.id }, preview.map { it.remoteId })
                 assertEquals(full.take(6).map { it.title }, preview.map { it.title })
                 assertEquals(8, full.size)
-                assertTrue(full.all { it.author.isEmpty() && it.coverUrl.isEmpty() })
+                assertTrue(full.all { it.author.isEmpty() })
+                assertEquals((8 downTo 1).map { fixture.server.url("/cover/$it.png").toString() }, full.map { it.coverUrl })
+                assertEquals(full.take(6).map { it.coverUrl }, preview.map { it.coverUrl })
                 assertTrue(source.search("fixture").all { it.author.isNotEmpty() })
             }
         }
@@ -131,11 +134,13 @@ class RuleDiscoveryPreviewTest {
                 assertEquals("2", first.nextCursor)
                 val second = provider.page(request.copy(cursor = first.nextCursor)).get()!!
                 assertEquals((31..60).map { "Book $it" }, second.books.map { it.title })
-                assertTrue((first.books + second.books).all { it.author.isEmpty() && it.coverUrl.isEmpty() })
+                assertTrue((first.books + second.books).all { it.author.isEmpty() })
+                assertEquals((1..60).map { fixture.server.url("/cover/$it.png").toString() },
+                    (first.books + second.books).map { it.coverUrl })
                 assertEquals(60, batches.sumOf { it.inputs.size })
                 assertEquals(8, batches.size)
-                assertFalse(fields.any { it == "ruleExplore.name" || it == "ruleExplore.bookUrl" })
-                assertFalse(fields.any { it in listOf("ruleExplore.author", "ruleExplore.kind", "ruleExplore.intro", "ruleExplore.coverUrl") })
+                assertFalse(fields.any { it in listOf("ruleExplore.name", "ruleExplore.bookUrl", "ruleExplore.coverUrl") })
+                assertFalse(fields.any { it in listOf("ruleExplore.author", "ruleExplore.kind", "ruleExplore.intro") })
                 val end = provider.page(request.copy(cursor = second.nextCursor)).get()!!
                 assertTrue(end.books.isEmpty())
                 assertNull(end.nextCursor)
@@ -192,7 +197,8 @@ class RuleDiscoveryPreviewTest {
             fixture.source { definition(it, rules) }.use { source ->
                 val preview = RuleDiscoveryProvider(source).feed().get()!!.single().books
                 assertEquals((1..6).map { fixture.server.url("/book/$it?hint=saved").toString() }, preview.map { it.remoteId })
-                assertTrue(preview.all { it.author.isEmpty() && it.coverUrl.isEmpty() })
+                assertEquals((1..6).map { "Author $it" }, preview.map { it.author })
+                assertEquals((1..6).map { fixture.server.url("/cover/$it.png").toString() }, preview.map { it.coverUrl })
                 assertEquals(30, authors)
                 assertEquals("saved", source.information(preview.first().remoteId).state.variables["linkHint"])
             }
