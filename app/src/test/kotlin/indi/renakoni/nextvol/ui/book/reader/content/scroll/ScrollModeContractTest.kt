@@ -126,17 +126,18 @@ class ScrollModeContractTest {
     }
 
     @Test
-    fun continuousModeWaitsForPreloadBeforeSubscribingToPreviousThenNext() {
+    fun continuousModeSubscribesToAdjacentWithoutSeparatePreload() {
         open(continuousScrolling = true)
         val gate = CompletableDeferred<Unit>()
         env.chapters.preloadGate = gate
         env.events.clear()
         env.emit("requested", Ok(env.chapter("requested", "prev", "next")))
-        assertEquals(listOf("requested"), env.chapters.requests.map { it.chapterId })
+        assertEquals(listOf("requested", "prev", "next"), env.chapters.requests.map { it.chapterId })
+        assertTrue(env.chapters.preloads.isEmpty())
         gate.complete(Unit)
         env.runCurrent()
         assertEquals(listOf("requested", "prev", "next"), env.chapters.requests.map { it.chapterId })
-        assertEquals(listOf("render/requested", "write/start/book", "write/end/requested", "preload/start/next", "preload/end/next", "subscribe/prev", "subscribe/next"), env.events)
+        assertEquals(listOf("render/requested", "write/start/book", "write/end/requested", "subscribe/prev", "subscribe/next"), env.events)
         env.emit("prev", Ok(env.chapter("prev")))
         val nextError = Err(WebRequestError("offline", "next failed"))
         env.emit("next", nextError)
@@ -153,8 +154,7 @@ class ScrollModeContractTest {
         assertEquals(1, env.chapters.requests.size)
         assertNull(mode.uiState.contentList[0])
         assertNull(mode.uiState.contentList[2])
-        // Preloading is intentionally not subject to the adjacency guard.
-        assertEquals(listOf("requested", "duplicate"), env.chapters.preloads.map { it.chapterId })
+        assertTrue(env.chapters.preloads.isEmpty())
     }
 
     @Test
@@ -166,7 +166,7 @@ class ScrollModeContractTest {
         assertEquals(listOf("requested", "prev2", "next2"), env.chapters.active.map { it.chapterId })
         assertTrue("cancel/prev" in env.events)
         assertTrue("cancel/next" in env.events)
-        assertTrue(env.events.indexOf("preload/end/next2") < env.events.indexOf("subscribe/prev2"))
+        assertTrue(env.chapters.preloads.isEmpty())
         assertTrue(env.events.indexOf("subscribe/prev2") < env.events.indexOf("subscribe/next2"))
     }
 
@@ -191,7 +191,7 @@ class ScrollModeContractTest {
         assertEquals("next", env.records.writes.last().lastReadChapterId)
         env.emit("next", Ok(env.chapter("next", "current", "later")))
         assertEquals(listOf("current", "later", "next"), env.chapters.active.map { it.chapterId }.sorted())
-        assertEquals(listOf("next"), env.chapters.preloads.map { it.chapterId })
+        assertTrue(env.chapters.preloads.isEmpty())
     }
 
     @Test
@@ -287,15 +287,15 @@ class ScrollModeContractTest {
     @Test
     fun stoppingWhileCurrentChapterIsWaitingDoesNotRecreateAdjacentSubscriptions() {
         open(continuousScrolling = true)
-        val preloadGate = CompletableDeferred<Unit>()
-        env.chapters.preloadGate = preloadGate
+        val metadataGate = CompletableDeferred<Unit>()
+        env.records.writeGate = metadataGate
 
         env.emit("requested", Ok(env.chapter("requested", "prev", "next")))
         continuous.value = false
         env.runCurrent()
         assertEquals(listOf("requested"), env.chapters.active.map { it.chapterId })
 
-        preloadGate.complete(Unit)
+        metadataGate.complete(Unit)
         env.runCurrent()
 
         assertEquals(listOf("requested"), env.chapters.active.map { it.chapterId })

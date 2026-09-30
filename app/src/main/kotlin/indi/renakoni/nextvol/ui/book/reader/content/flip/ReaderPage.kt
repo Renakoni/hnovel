@@ -2,6 +2,7 @@ package indi.renakoni.nextvol.ui.book.reader.content.flip
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.Constraints
 import indi.renakoni.nextvol.data.content.component.SimpleTextComponent
 import indi.renakoni.nextvol.ui.book.reader.ReaderTextLayoutInput
 import indi.renakoni.nextvol.ui.book.reader.content.componet.ReaderTextFragments
@@ -46,7 +47,11 @@ internal suspend fun paginateReaderComponents(
                 sources += ReaderTextSource(index, (components[index] as SimpleTextComponent).data.text)
                 index++
             }
-            val textPages = layoutReaderText(sources, width, height, layout.paragraphSpacingPx, layout.style, layout.measurer)
+            val cancellation = currentCoroutineContext()
+            val textPages = layoutReaderText(sources, width, height, layout.paragraphSpacingPx) { text, maxWidth ->
+                cancellation.ensureActive()
+                layout.measurer.measure(text, layout.style, constraints = Constraints(maxWidth = maxWidth))
+            }
             for (fragments in textPages) {
                 currentCoroutineContext().ensureActive()
                 pages += ReaderPage(component, fragments.map { ReaderContentRange(it.componentIndex, it.start, it.end) }) { modifier ->

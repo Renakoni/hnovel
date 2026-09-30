@@ -169,11 +169,12 @@ internal class ScrollChapterWindow(
             updateLastReadChapter(expected, content.title, restore)
             restore = false
         }) { content ->
-            if (preload) content.nextChapter?.let {
-                withContext(ioDispatcher) { chapters.preload(it, expected.bookId) }
-            }
             if (isCurrent(expected) && continuous && observeAdjacent && observation == observationGeneration) {
+                // Adjacent collectors already preload without interaction and can publish fallback
+                // content before revalidation. A separate preload would block that local read.
                 replaceAdjacent(expected, content)
+            } else if (preload) content.nextChapter?.let {
+                withContext(ioDispatcher) { chapters.preload(it, expected.bookId) }
             }
         }
     }

@@ -61,12 +61,13 @@ import io.nightfish.lightnovelreader.api.content.builder.simpleText
         FormattingRuleEntity::class,
         BookDownloadEntity::class,
         DownloadedChapterEntity::class,
+        indi.renakoni.nextvol.data.local.room.entity.DownloadChapterCandidateEntity::class,
         ImportedBookEntity::class,
         indi.renakoni.nextvol.data.localbook.LocalBookFileManifest::class,
         indi.renakoni.nextvol.data.bangumi.BangumiBindingEntity::class,
         indi.renakoni.nextvol.data.bangumi.BangumiSyncRecord::class
     ],
-    version = 24,
+    version = 28,
     exportSchema = false
 )
 abstract class NextVolDatabase : RoomDatabase() {
@@ -120,7 +121,11 @@ abstract class NextVolDatabase : RoomDatabase() {
                             MIGRATION_20_21,
                             MIGRATION_21_22,
                             MIGRATION_22_23,
-                            MIGRATION_23_24
+                            MIGRATION_23_24,
+                            MIGRATION_24_25,
+                            MIGRATION_25_26,
+                            MIGRATION_26_27,
+                            MIGRATION_27_28
                         )
                         .allowMainThreadQueries()
                         .build()
@@ -923,6 +928,45 @@ abstract class NextVolDatabase : RoomDatabase() {
                 db.execSQL("CREATE TABLE IF NOT EXISTS downloaded_chapter (id TEXT NOT NULL PRIMARY KEY, " +
                     "bookId TEXT NOT NULL, signature TEXT NOT NULL, images TEXT NOT NULL)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_downloaded_chapter_bookId ON downloaded_chapter (bookId)")
+            }
+        }
+
+        internal val MIGRATION_27_28 = object : Migration(27, 28) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE chapter_content ADD COLUMN sourceRevision TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE book_download ADD COLUMN taskRefreshId TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
+        internal val MIGRATION_26_27 = object : Migration(26, 27) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE downloaded_chapter ADD COLUMN resourceVersion TEXT NOT NULL DEFAULT ''")
+                db.execSQL("CREATE TABLE IF NOT EXISTS download_chapter_candidate (id TEXT NOT NULL PRIMARY KEY, " +
+                    "bookId TEXT NOT NULL, signature TEXT NOT NULL, body TEXT NOT NULL, images TEXT NOT NULL, resourceVersion TEXT NOT NULL)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_download_chapter_candidate_bookId ON download_chapter_candidate (bookId)")
+            }
+        }
+
+        internal val MIGRATION_25_26 = object : Migration(25, 26) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE book_download ADD COLUMN taskRetryCount INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE book_download ADD COLUMN taskNextAttemptAt INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE book_download ADD COLUMN taskSourceRevision TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE book_download ADD COLUMN taskAccountGeneration INTEGER NOT NULL DEFAULT -1")
+            }
+        }
+
+        internal val MIGRATION_24_25 = object : Migration(24, 25) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE book_download ADD COLUMN taskWorkId TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE book_download ADD COLUMN taskStatus TEXT NOT NULL DEFAULT 'None'")
+                db.execSQL("ALTER TABLE book_download ADD COLUMN taskStage TEXT NOT NULL DEFAULT 'Unknown'")
+                db.execSQL("ALTER TABLE book_download ADD COLUMN taskChapter TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE book_download ADD COLUMN taskError TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE book_download ADD COLUMN taskRunAttempt INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE book_download ADD COLUMN taskHidden INTEGER NOT NULL DEFAULT 0")
+                // Legacy ownership is retained, but never converted into a live executor.
+                db.execSQL("UPDATE book_download SET taskStatus = CASE phase WHEN 'complete' THEN 'Complete' WHEN 'failed' THEN 'Failed' ELSE 'Interrupted' END")
             }
         }
 

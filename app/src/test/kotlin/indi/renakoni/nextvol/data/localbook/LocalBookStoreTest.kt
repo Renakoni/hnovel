@@ -64,15 +64,17 @@ class LocalBookStoreTest {
 
     private fun openDatabase() {
         database = Room.databaseBuilder(context, NextVolDatabase::class.java, File(temporary.root, "library.db").path)
-            .addMigrations(NextVolDatabase.MIGRATION_18_19, NextVolDatabase.MIGRATION_19_20, NextVolDatabase.MIGRATION_20_21, NextVolDatabase.MIGRATION_21_22, NextVolDatabase.MIGRATION_22_23, NextVolDatabase.MIGRATION_23_24).allowMainThreadQueries().build()
+            .addMigrations(NextVolDatabase.MIGRATION_18_19, NextVolDatabase.MIGRATION_19_20, NextVolDatabase.MIGRATION_20_21, NextVolDatabase.MIGRATION_21_22, NextVolDatabase.MIGRATION_22_23, NextVolDatabase.MIGRATION_23_24, NextVolDatabase.MIGRATION_24_25, NextVolDatabase.MIGRATION_25_26, NextVolDatabase.MIGRATION_26_27, NextVolDatabase.MIGRATION_27_28).allowMainThreadQueries().build()
         store = LocalBookStore(context, database)
         local = LocalBookDataSource(database.bookInformationDao(), database.bookVolumesDao(), database.chapterContentDao(), database.userReadingDataDao(), indi.renakoni.nextvol.data.book.BookAliasStore(database))
         downloads = BookDownloadStore(context, database, ContentJsonDecoder(ContentComponentRegistry()))
-        val shelves = BookshelfRepository(database.bookshelfDao(), mockk(relaxed = true), registry, downloads, local.aliases)
+        val work = mockk<androidx.work.WorkManager>(relaxed = true)
+        val scheduler = indi.renakoni.nextvol.data.download.BookDownloadScheduler(downloads, work, local.aliases)
+        val shelves = BookshelfRepository(database.bookshelfDao(), scheduler, registry, local.aliases)
         val text = TextProcessingRepository(mockk { every { enabled } returns false },
             mockk { every { enabled } returns false }, ContentComponentRegistry())
-        books = BookRepository(local, shelves, text, mockk(), ChapterRepository(registry, local, text, store, downloads),
-            BookReadingDataRepository(local), registry, downloads, store)
+        books = BookRepository(local, shelves, text, work, ChapterRepository(registry, local, text, store, downloads),
+            BookReadingDataRepository(local), registry, downloads, store, scheduler)
     }
 
     @After fun close() { database.close() }
@@ -89,10 +91,21 @@ class LocalBookStoreTest {
         return store.publish(draft, store.preview(draft), "Imported novel", shelf).first
     }
 
+    @Test fun anUnsectionedImportDoesNotInventAVolumeNamedAfterTheBook() = runBlocking {
+        val file = temporary.newFile("unsectioned.txt").apply {
+            writeText("第一章 开端\n完整正文甲\n第二章 旅途\n完整正文乙")
+        }
+        val book = importBook(file)
+        val volume = books.getBookVolumesFlow(book.storageKey).last().get()!!.volumes.single()
+        assertEquals("", volume.volumeTitle)
+        assertEquals(2, volume.chapters.size)
+    }
+
     @Test fun originalAndParsedContentSurviveCacheClearingAndDatabaseReopening() = runBlocking {
         val original = source()
         val book = importBook(original)
         val volumes = books.getBookVolumesFlow(book.storageKey).last().get()!!
+        assertEquals("第一卷 起点", volumes.volumes.single().volumeTitle)
         val first = volumes.volumes.single().chapters.first().id
         assertTrue(original.delete())
         local.updateUserReadingData(book.storageKey) { it.copy(totalReadTime = 42, lastReadChapterId = first, readingProgress = 0.5f) }
@@ -241,11 +254,12 @@ class LocalBookStoreTest {
         database.bookInformationDao().insert(database.bookInformationDao().get(imported.storageKey)!!.copy(id = oldBook.storageKey))
         local.updateUserReadingData(oldBook.storageKey) { it.copy(totalReadTime = 91) }
         database.openHelper.writableDatabase.apply {
+            indi.renakoni.nextvol.data.download.restorePre25DownloadSchema(this::execSQL)
             execSQL("DROP TABLE local_book_file_manifest"); execSQL("DROP TABLE imported_book"); execSQL("DROP TABLE bangumi_binding"); execSQL("DROP TABLE bangumi_sync_record"); execSQL("DROP TABLE book_alias"); version = 18
         }
         database.close()
         openDatabase()
-        assertEquals(24, database.openHelper.writableDatabase.version)
+        assertEquals(28, database.openHelper.writableDatabase.version)
         assertEquals("Imported novel", database.bookInformationDao().get(oldBook.storageKey)!!.title)
         assertEquals(91, books.getUserReadingData(oldBook.storageKey).totalReadTime)
         assertNotNull(database.bookshelfDao().getBookshelf(7))
