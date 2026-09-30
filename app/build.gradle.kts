@@ -217,6 +217,10 @@ dependencies {
     androidTestImplementation(libs.compose.ui.test.junit4)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.mockk)
+    androidTestImplementation("io.mockk:mockk-android:${libs.versions.mockk.get()}") {
+        exclude(group = "org.junit.jupiter")
+        exclude(group = "org.junit.platform")
+    }
     testImplementation(libs.work.testing)
     // Hilt
     ksp(libs.kotlin.metadata.jvm)

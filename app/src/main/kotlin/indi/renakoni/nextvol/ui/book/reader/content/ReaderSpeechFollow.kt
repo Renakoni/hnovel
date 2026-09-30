@@ -46,12 +46,19 @@ internal fun PrepareReaderSpeechIndex(chapter: ChapterContentUiState?) {
 
 /** User input detaches before the scroll is dispatched; programmatic following never detaches. */
 @Composable
-internal fun Modifier.readerSpeechManualScroll(): Modifier {
+internal fun Modifier.readerSpeechManualScroll(onScrolled: () -> Unit = {}): Modifier {
+    val active by rememberUpdatedState(LocalReaderRendererActive.current)
     val speech by rememberUpdatedState(LocalReaderSpeechFollow.current)
+    val onUserScrolled by rememberUpdatedState(onScrolled)
     return nestedScroll(remember {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if (source == NestedScrollSource.UserInput && available != Offset.Zero) speech.onManualNavigation()
+                if (active && source == NestedScrollSource.UserInput && available != Offset.Zero) speech.onManualNavigation()
+                return Offset.Zero
+            }
+
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                if (active && source == NestedScrollSource.UserInput && consumed != Offset.Zero) onUserScrolled()
                 return Offset.Zero
             }
         }

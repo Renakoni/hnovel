@@ -126,6 +126,12 @@ sealed class MenuOptions {
         val ScrollWithoutShadow = option("scroll", R.string.key_flip_animation_scroll)
     }
 
+    data object ReaderPageLayoutOptions: MenuOptions() {
+        val Auto = option("auto", R.string.reader_page_layout_auto)
+        val Single = option("single", R.string.reader_page_layout_single)
+        val Double = option("double", R.string.reader_page_layout_double)
+    }
+
     data object SelectImage: MenuOptions() {
         val Default = option("default", R.string.key_default_image)
         val Customize = option("customize", R.string.key_customize_image)

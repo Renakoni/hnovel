@@ -8,6 +8,11 @@ import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.key
+import indi.renakoni.nextvol.ui.book.reader.content.LocalReaderRendererActive
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
@@ -50,6 +55,31 @@ class ReaderBookmarksUiTest {
     private fun bookmark(number: Int) = ReadingBookmark(bookId = book.storageKey,
         chapterId = SourceChapterId(book, number.toString()).storageKey, chapterTitle = "Chapter $number",
         componentIndex = 0, offset = 0, fingerprint = "a".repeat(64), preview = "Recognizable passage $number", progress = .42f)
+
+    @Test fun outgoingCaptureReleasesWithoutClearingTheIncomingRegistration() {
+        val session = ReaderBookmarkSession()
+        val old = ReaderBookmarkPosition("old", mockk(), ReaderContentAnchor(0, 1), .1f)
+        val fresh = ReaderBookmarkPosition("new", mockk(), ReaderContentAnchor(0, 2), .2f)
+        var switched by mutableStateOf(false)
+        var keepOld by mutableStateOf(true)
+        activity.get().setContent {
+            CompositionLocalProvider(LocalReaderBookmarks provides session) {
+                if (keepOld) key("old") {
+                    CompositionLocalProvider(LocalReaderRendererActive provides !switched) { RegisterBookmarkCapture { old } }
+                }
+                if (switched) key("new") { RegisterBookmarkCapture { fresh } }
+            }
+        }
+        val oldCallback = compose.runOnIdle { session.capture!! }
+        assertSame(old, compose.runOnIdle { oldCallback() })
+        compose.runOnIdle { switched = true }
+        compose.waitForIdle()
+        assertNull(compose.runOnIdle { oldCallback() })
+        assertSame(fresh, compose.runOnIdle { session.capture!!() })
+        compose.runOnIdle { keepOld = false }
+        compose.waitForIdle()
+        assertSame(fresh, compose.runOnIdle { session.capture!!() })
+    }
 
     @Test fun entryIsEnabledAndInvokesTheBookmarkAction() {
         var clicks = 0

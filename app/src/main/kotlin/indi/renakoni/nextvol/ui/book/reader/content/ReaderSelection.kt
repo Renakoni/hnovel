@@ -41,6 +41,7 @@ internal val LocalReaderSelectionState = staticCompositionLocalOf { ReaderSelect
 internal fun Modifier.readerTapGestures(onTap: (Offset) -> Unit): Modifier {
     val selectionState = LocalReaderSelectionState.current
     val currentOnTap by rememberUpdatedState(onTap)
+    if (!LocalReaderRendererActive.current) return this
     return pointerInput(selectionState) {
         awaitEachGesture {
             // Read selection at DOWN, before child text can change it for this gesture.

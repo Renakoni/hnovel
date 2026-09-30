@@ -622,4 +622,17 @@
     <string name="pixiv_block_legacy_captions">簡介關鍵字 · 舊規則</string>
     <string name="pixiv_block_scope">僅在 Pixiv 搜尋與探索中隱藏，不影響書架、歷史、下載或帳號收藏。</string>
     <string name="pixiv_block_tag_hint">符合任一所選標籤的作品，會在 Pixiv 搜尋與探索中隱藏。</string>
+    <string name="reader_visible_page_range">第 %1$d–%2$d 頁，共 %3$d 頁</string>
+    <string name="reader_page_layout_title">頁面版面</string>
+    <string name="reader_page_layout_auto">自動</string>
+    <string name="reader_page_layout_single">單頁</string>
+    <string name="reader_page_layout_double">雙頁</string>
+    <string name="reader_page_layout_waiting">正在確定目前版面…</string>
+    <string name="reader_page_layout_current_single">目前為單頁。</string>
+    <string name="reader_page_layout_current_double">目前為雙頁。</string>
+    <string name="reader_page_layout_scroll">僅分頁閱讀生效；目前捲動正文為單欄。</string>
+    <string name="reader_page_layout_narrow">目前單頁：視窗過窄。</string>
+    <string name="reader_page_layout_short">目前單頁：視窗高度不足。</string>
+    <string name="reader_page_layout_large_text">目前單頁：字級過大，雙頁正文空間不足。</string>
+    <string name="reader_page_layout_unsupported">目前單頁：本章包含暫不支援雙頁的內容。</string>
 </resources>

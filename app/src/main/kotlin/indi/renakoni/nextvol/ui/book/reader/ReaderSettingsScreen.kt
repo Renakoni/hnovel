@@ -311,6 +311,10 @@ fun LazyListScope.ActionPage(settingState: ReaderSettingsEditor) {
         )
     }
     item {
+        ReaderPageLayoutEntry(settingState,
+            Modifier.background(colorScheme.surfaceContainerHigh).then(readerSettingsItemMotion(settingState.reduceMotion)))
+    }
+    item {
         SettingsMenuEntry(
             modifier = Modifier.background(colorScheme.surfaceContainerHigh).then(readerSettingsItemMotion(settingState.reduceMotion)),
             painter = painterResource(R.drawable.block_24px),

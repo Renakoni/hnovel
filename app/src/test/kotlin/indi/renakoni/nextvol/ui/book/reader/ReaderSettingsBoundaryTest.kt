@@ -92,6 +92,51 @@ class ReaderSettingsBoundaryTest {
     }
 
     @Test
+    fun pageLayoutMissingAndUnknownValuesReadAsAutoWithoutRewritingStorage() = runBlocking {
+        val dao = InMemoryUserDataDao()
+        val state = SettingState(UserDataRepository(dao), scope)
+        assertEquals("reader.pageLayout", state.pageLayoutUserData.path)
+        assertEquals("auto", state.pageLayout)
+        assertNull(dao.get(UserDataPath.Reader.PageLayout.path))
+        for (unknown in listOf("", "future-layout", "DOUBLE")) {
+            state.pageLayoutUserData.set("single")
+            withTimeout(5_000) { while (state.pageLayout != "single") delay(1) }
+            state.pageLayoutUserData.set(unknown)
+            withTimeout(5_000) { while (state.pageLayout != "auto") delay(1) }
+            val restored = SettingState(UserDataRepository(dao), scope)
+            assertEquals("auto", restored.pageLayout)
+            assertEquals(unknown, dao.get(UserDataPath.Reader.PageLayout.path))
+        }
+    }
+
+    @Test
+    fun pageLayoutSynchronizesAndRestoresWithoutChangingOtherReaderSettings() = runBlocking {
+        val dao = InMemoryUserDataDao()
+        val first = SettingState(UserDataRepository(dao), scope)
+        val second = SettingState(UserDataRepository(dao), scope)
+        first.isUsingFlipPageUserData.set(false)
+        first.isUsingContinuousScrollingUserData.set(true)
+        first.flipAnimeUserData.set("none")
+        first.autoPaddingUserData.set(false)
+        first.leftPaddingUserData.set(27f)
+        first.paperIdUserData.set("sage")
+        val otherSettings = dao.getAllEntities().associate { it.path to it.value }
+        for (value in listOf("auto", "single", "double")) {
+            first.pageLayoutUserData.set(value)
+            val restored = SettingState(UserDataRepository(dao), scope)
+            withTimeout(5_000) {
+                while (first.pageLayout != value || second.pageLayout != value || restored.pageLayout != value) delay(1)
+            }
+            assertEquals(value, dao.get(UserDataPath.Reader.PageLayout.path))
+            assertEquals(otherSettings, dao.getAllEntities().filter { it.path != UserDataPath.Reader.PageLayout.path }
+                .associate { it.path to it.value })
+        }
+        second.pageLayoutUserData.set("single")
+        withTimeout(5_000) { while (first.pageLayout != "single") delay(1) }
+        assertEquals("single", dao.get(UserDataPath.Reader.PageLayout.path))
+    }
+
+    @Test
     fun paperChoicePersistsWithoutReplacingCustomAppearanceOrLayout() = runBlocking {
         val dao = InMemoryUserDataDao()
         val first = SettingState(UserDataRepository(dao), scope)

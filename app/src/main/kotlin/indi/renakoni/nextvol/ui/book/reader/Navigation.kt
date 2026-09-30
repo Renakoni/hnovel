@@ -13,6 +13,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.CompositionLocalProvider
+import indi.renakoni.nextvol.ui.book.reader.content.LocalReaderPositionSession
 import indi.renakoni.nextvol.ui.LocalReaderBookId
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.graphics.Color
@@ -111,7 +112,8 @@ fun NavGraphBuilder.bookReaderDestination(onReaderActiveChanged: (Boolean) -> Un
             viewModel.openBook(route.bookId, route.chapterId)
         }
         if (viewModel.uiState.bookId == route.bookId) {
-            CompositionLocalProvider(LocalReaderBookId provides route.bookId) {
+            CompositionLocalProvider(LocalReaderBookId provides route.bookId,
+                LocalReaderPositionSession provides viewModel.positions) {
                 ReaderScreen(
                     readingScreenUiState = viewModel.uiState,
                     onSourcePanel = if (panelModel.available) ({

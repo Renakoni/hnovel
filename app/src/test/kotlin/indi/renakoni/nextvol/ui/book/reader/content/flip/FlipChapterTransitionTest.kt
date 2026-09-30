@@ -5,6 +5,9 @@ import androidx.compose.foundation.pager.PagerState
 import com.github.michaelbull.result.Err
 import com.github.michaelbull.result.Ok
 import indi.renakoni.nextvol.ui.book.reader.mode.ModeTestEnvironment
+import indi.renakoni.nextvol.ui.book.reader.content.ReaderCheckpoint
+import indi.renakoni.nextvol.ui.book.reader.content.ReaderPosition
+import indi.renakoni.nextvol.ui.book.reader.content.ReaderPositionSession
 import io.nightfish.lightnovelreader.api.error.WebRequestError
 import org.junit.After
 import org.junit.Assert.*
@@ -71,6 +74,26 @@ class FlipChapterTransitionTest {
         assertEquals(9, mode.uiState.pagerState.currentPage)
         assertEquals(1f, mode.uiState.readingProgress)
         assertEquals("2", env.records.data.lastReadChapterId)
+    }
+
+    @Test fun stagedBoundaryKeepsSourceCheckpointUntilCommitAndRejectsItsOldRestore() {
+        openThird()
+        val positions = ReaderPositionSession()
+        val source = ReaderPosition("book", "3", 0, 127, "source")
+        positions.activate(mode.uiState, "book", "3", ReaderCheckpoint("book", "3", source))
+        positions.register(mode.uiState, Any()) { source }
+        positions.finish(mode.uiState, positions.pending!!, source)
+        mode.observeNavigation { book, chapter, preserve -> positions.navigate(mode.uiState, book, chapter, preserve) }
+        mode.loadNextChapter()
+        env.runCurrent()
+        assertEquals("3", mode.requestedChapterId)
+        assertEquals(source, positions.checkpoint!!.position)
+        val old = positions.pending!!
+        env.emit("4", Ok(env.chapter("4", "3", "5")))
+        assertTrue(mode.uiState.commitPendingChapter(mode.uiState.pendingChapter!!, PagerState { 10 }))
+        positions.finish(mode.uiState, old, source)
+        assertEquals(ReaderCheckpoint("book", "4"), positions.checkpoint)
+        assertNull(positions.pending)
     }
 
     @Test fun manualPreviousUsesFirstPageDespiteOldProgress() {
