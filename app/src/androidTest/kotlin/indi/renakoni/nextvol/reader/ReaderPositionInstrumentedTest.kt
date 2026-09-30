@@ -360,6 +360,7 @@ class ReaderPositionInstrumentedTest {
         val repository = UserDataRepository(database.userDataDao())
         val bookmarks = ReaderBookmarkSession()
         var interceptRestoration: (() -> Unit)? = null
+        private var interceptedScroll by mutableStateOf<ScrollContentUiState?>(null)
         val chapter = ChapterContentUiState("marked-chapter", "Source positions",
             if (empty) emptyList() else listOf(SimpleTextComponent(SimpleTextComponentData(text), repository, context)), "before", "after")
         var width by mutableStateOf(320.dp)
@@ -417,23 +418,8 @@ class ReaderPositionInstrumentedTest {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
                 createdViewModels++
-                val modes = ReaderModeFactory(loader, records)
-                val factory = if (!interceptRestore) modes else mockk<ReaderModeFactory> {
-                    every { create(any(), any(), any(), any()) } answers {
-                        val mode = modes.create(firstArg(), secondArg(), thirdArg(), arg(3))
-                        val state = mode.uiState
-                        if (state !is ScrollContentUiState) mode else object : ReaderModeController by mode {
-                            override val uiState = object : ScrollContentUiState by state {
-                                override val onProgressRestoring: (androidx.compose.foundation.lazy.LazyListState) -> Unit = { list ->
-                                    state.onProgressRestoring(list)
-                                    interceptRestoration?.invoke()
-                                }
-                            }
-                        }
-                    }
-                }
                 return ReaderViewModel(statistics, source, records, repository,
-                    factory, mockk(relaxed = true), handle) as T
+                    ReaderModeFactory(loader, records), mockk(relaxed = true), handle) as T
             }
         }
 
@@ -457,7 +443,7 @@ class ReaderPositionInstrumentedTest {
                                 following = true) else ReaderSpeechFollow(),
                         ) {
                             Box(Modifier.width(width).height(height).testTag("position-host")) {
-                                when (val state = reader.uiState.contentUiState) {
+                                when (val state = interceptedScroll ?: reader.uiState.contentUiState) {
                                     is FlipPageContentUiState -> FlipPageContentComponent(Modifier, state, reader.readerSettings, padding, {}, {}, {})
                                     is ScrollContentUiState -> ScrollContentComponent(Modifier, state, reader.readerSettings, reader.fontFamilySettings, padding, { immersiveClicks++ }, {}, {})
                                 }
@@ -469,6 +455,22 @@ class ReaderPositionInstrumentedTest {
             }
             compose.activityRule.scenario.onActivity { ReaderLayoutTestActivity.installReader!!(it) }
             awaitReady()
+            if (interceptRestore) {
+                // Wrap the renderer interface, not the final factory (which API 24 cannot mock).
+                compose.runOnIdle {
+                    val state = reader.uiState.contentUiState as ScrollContentUiState
+                    val intercepted = object : ScrollContentUiState by state {
+                        override val onProgressRestoring: (androidx.compose.foundation.lazy.LazyListState) -> Unit = { list ->
+                            state.onProgressRestoring(list)
+                            interceptRestoration?.invoke()
+                        }
+                    }
+                    val checkpoint = reader.positions.captureNow()
+                    reader.positions.activate(intercepted, state.bookId, chapter.id, checkpoint)
+                    interceptedScroll = intercepted
+                }
+                awaitReady()
+            }
         }
 
         fun awaitReady() {
