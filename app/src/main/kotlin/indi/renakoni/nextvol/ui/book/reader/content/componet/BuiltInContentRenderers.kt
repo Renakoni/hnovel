@@ -77,15 +77,17 @@ internal val LocalReaderImageScale = staticCompositionLocalOf { ContentScale.Fil
 @Composable
 internal fun ReaderImageContent(uri: Uri, modifier: Modifier) {
     val bookId = requireNotNull(LocalReaderBookId.current) { "Reader image has no book identity" }
+    val chapterId = indi.renakoni.nextvol.ui.LocalReaderChapterId.current
     val navController = LocalNavController.current
     ZoomableImage(
         imageUri = uri,
         modifier = modifier.fillMaxSize(),
         onViewImage = {
-            navController.navigateToImageViewerDialog(uri, bookId)
+            navController.navigateToImageViewerDialog(uri, bookId, chapterId = chapterId)
         },
         bookId = bookId,
         contentScale = LocalReaderImageScale.current,
+        chapterId = chapterId
     )
 }
 

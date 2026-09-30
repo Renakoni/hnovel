@@ -18,6 +18,7 @@ interface DownloadItem {
     val startTime: LocalDateTime
     val progress: Float
     val sourceError: WebRequestErrorKind? get() = null
+    val status: BookDownloadStatus? get() = null
     val bookInformationFlow: Flow<Result<BookInformation, WebRequestError>>
 }
 
@@ -30,6 +31,7 @@ class MutableDownloadItem(
 ): DownloadItem {
     override var progress by mutableFloatStateOf(0f)
     override var sourceError by mutableStateOf<WebRequestErrorKind?>(null)
+    override var status by mutableStateOf<BookDownloadStatus?>(null)
 
     override fun equals(other: Any?): Boolean {
         return if (other is DownloadItem) other.type == this.type && other.bookId == this.bookId else super.equals(other)

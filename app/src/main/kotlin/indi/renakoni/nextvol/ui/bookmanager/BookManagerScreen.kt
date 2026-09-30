@@ -56,10 +56,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.github.michaelbull.result.onErr
-import com.github.michaelbull.result.onOk
+import com.github.michaelbull.result.get
 import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.data.download.DownloadItem
+import indi.renakoni.nextvol.data.download.DownloadType
+import indi.renakoni.nextvol.data.book.BookIdentity
+import indi.renakoni.nextvol.ui.components.downloadStatusText
 import indi.renakoni.nextvol.ui.components.Cover
 import indi.renakoni.nextvol.ui.components.EmptyPage
 import indi.renakoni.nextvol.ui.home.settings.data.MenuOptions
@@ -73,6 +75,7 @@ fun BookManagerScreen(
     downloadItemIdList: List<DownloadItem>,
     uiState: LocalBookManagerUiState,
     onClickCancel: (DownloadItem) -> Unit,
+    onClickRetry: (DownloadItem) -> Unit,
     onClickClearCompleted: () -> Unit
 ) {
     var tabIndex by rememberSaveable { mutableIntStateOf(0) }
@@ -168,6 +171,7 @@ fun BookManagerScreen(
                     DownloadManagerContent(
                         downloadItemIdList = downloadItemIdList,
                         onClickCancel = onClickCancel,
+                        onClickRetry = onClickRetry,
                         onClickClearCompleted = onClickClearCompleted
                     )
                 } else {
@@ -338,6 +342,7 @@ private fun SelectingAppBar(
 private fun DownloadManagerContent(
     downloadItemIdList: List<DownloadItem>,
     onClickCancel: (DownloadItem) -> Unit,
+    onClickRetry: (DownloadItem) -> Unit,
     onClickClearCompleted: () -> Unit
 ) {
     val itemList = downloadItemIdList.distinctBy { it.type to it.bookId }
@@ -358,7 +363,7 @@ private fun DownloadManagerContent(
             item {
                 Text(
                     modifier = Modifier.height(34.dp).animateItem(),
-                    text = stringResource(R.string.download_in_progress),
+                    text = stringResource(R.string.download_task_unfinished),
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.W600
                 )
@@ -370,7 +375,8 @@ private fun DownloadManagerContent(
             Card(
                 modifier = Modifier.animateItem(),
                 downloadItem = downloadItem,
-                onClickCancel = { onClickCancel(downloadItem) }
+                onClickCancel = { onClickCancel(downloadItem) },
+                onClickRetry = { onClickRetry(downloadItem) }
             )
         }
         if (itemList.any { it.progress >= 1f })
@@ -402,7 +408,8 @@ private fun DownloadManagerContent(
             Card(
                 modifier = Modifier.animateItem(),
                 downloadItem = downloadItem,
-                onClickCancel = { onClickCancel(downloadItem) }
+                onClickCancel = { onClickCancel(downloadItem) },
+                onClickRetry = { onClickRetry(downloadItem) }
             )
         }
         navigationBarSpacer()
@@ -413,7 +420,8 @@ private fun DownloadManagerContent(
 private fun Card(
     modifier: Modifier = Modifier,
     downloadItem: DownloadItem,
-    onClickCancel: () -> Unit
+    onClickCancel: () -> Unit,
+    onClickRetry: () -> Unit
 ) {
     val progressAnim by animateFloatAsState(
         targetValue = downloadItem.progress,
@@ -421,12 +429,14 @@ private fun Card(
         label = "",
     )
     val result by downloadItem.bookInformationFlow.collectAsStateWithLifecycle(null)
-    result?.onOk { bookInformation ->
+    val bookInformation = result?.get()
+    val title = bookInformation?.title ?: stringResource(R.string.download_task_unknown, BookIdentity.book(downloadItem.bookId).fileKey.take(8))
+    run {
         Row(
             modifier = modifier,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Cover(
+            if (bookInformation != null) Cover(
                 bookId = bookInformation.id,
                 width = 64.dp,
                 height = 93.dp,
@@ -440,14 +450,14 @@ private fun Card(
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Text(
-                    text = bookInformation.title,
+                    text = title,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.W600
                 )
                 Text(
-                    text = bookInformation.author,
+                    text = bookInformation?.author.orEmpty(),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.bodyMedium,
@@ -468,7 +478,8 @@ private fun Card(
                     Box(Modifier.width(10.dp))
                     Text(
                         text =
-                            if (downloadItem.sourceError == io.nightfish.lightnovelreader.api.error.WebRequestErrorKind.AuthenticationRequired)
+                            if (downloadItem.status != null) downloadStatusText(downloadItem.status!!)
+                            else if (downloadItem.sourceError == io.nightfish.lightnovelreader.api.error.WebRequestErrorKind.AuthenticationRequired)
                                 stringResource(R.string.source_login_download_paused)
                             else if (downloadItem.sourceError == io.nightfish.lightnovelreader.api.error.WebRequestErrorKind.VerificationRequired)
                                 stringResource(R.string.source_verification_download_paused)
@@ -480,7 +491,7 @@ private fun Card(
                             else if (downloadItem.progress > 0)
                                 stringResource(R.string.download_item_finished, stringResource(downloadItem.type.typeNameRes))
                             else stringResource(R.string.download_item_failed, stringResource(downloadItem.type.typeNameRes)),
-                        maxLines = 1,
+                        maxLines = 3,
                         overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.W500,
@@ -494,18 +505,21 @@ private fun Card(
                         progress = { progressAnim },
                     )
             }
-            if (downloadItem.progress < 1)
+            if (downloadItem.type == DownloadType.CACHE && downloadItem.status?.task?.active == false)
+                TextButton(onClickRetry) {
+                    Text(stringResource(if (downloadItem.status?.task?.status == indi.renakoni.nextvol.data.download.DownloadTaskStatus.WaitingVerification) R.string.download_task_verify
+                        else if (downloadItem.progress >= 1f) R.string.book_download_check_updates
+                        else R.string.book_download_continue))
+                }
+            if (downloadItem.progress < 1 || downloadItem.type == DownloadType.CACHE)
                 IconButton(onClickCancel) {
                     Icon(
                         painter = painterResource(R.drawable.cancel_24px),
-                        contentDescription = stringResource(R.string.cancel)
+                        contentDescription = stringResource(if (downloadItem.type == DownloadType.CACHE)
+                            R.string.download_task_remove else R.string.cancel)
                     )
                 }
             Box(Modifier.width(7.dp))
         }
-    }?.onErr {
-        //TODO 错误显示
-    } ?: {
-        //TODO 加载显示
     }
 }

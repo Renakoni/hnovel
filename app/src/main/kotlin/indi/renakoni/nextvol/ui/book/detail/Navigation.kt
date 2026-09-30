@@ -131,9 +131,9 @@ fun NavGraphBuilder.bookDetailDestination() {
                     navController.navigateToBookReaderDestination(bookId, viewModel.uiState.userReadingData!!.lastReadChapterId!!, context)
                 }
             },
-            cacheBook = { bookId ->
+            cacheBook = { bookId, refresh ->
                 coroutineScope.launch {
-                    viewModel.cacheBook(bookId).collect { workInfo ->
+                    viewModel.cacheBook(bookId, refresh).collect { workInfo ->
                         if (workInfo == null) {
                             viewModel.uiState.bookInformation
                                 ?.map { it.title }

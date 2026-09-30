@@ -13,23 +13,23 @@ import kotlinx.serialization.json.JsonObject
 @Dao
 interface ChapterContentDao {
     @TypeConverters(JsonObjectConverter::class)
-    @Query("replace into chapter_content (id, title, content, lastChapter, nextChapter) " +
-            "values (:id, :title, :content, :prevChapter, :nextChapter)"
+    @Query("replace into chapter_content (id, title, content, lastChapter, nextChapter, sourceRevision) " +
+            "values (:id, :title, :content, :prevChapter, :nextChapter, :sourceRevision)"
     )
-    suspend fun update(id: String, title: String, content: JsonObject, prevChapter: String, nextChapter: String)
+    suspend fun update(id: String, title: String, content: JsonObject, prevChapter: String, nextChapter: String, sourceRevision: String = "")
 
     /** Reading refreshes cannot replace a download before its new images have been saved. */
     @TypeConverters(JsonObjectConverter::class)
-    @Query("replace into chapter_content (id, title, content, lastChapter, nextChapter) " +
-            "select :id, :title, :content, :prevChapter, :nextChapter " +
+    @Query("replace into chapter_content (id, title, content, lastChapter, nextChapter, sourceRevision) " +
+            "select :id, :title, :content, :prevChapter, :nextChapter, :sourceRevision " +
             "where not exists (select 1 from downloaded_chapter where id = :id)")
-    suspend fun cache(id: String, title: String, content: JsonObject, prevChapter: String, nextChapter: String)
+    suspend fun cache(id: String, title: String, content: JsonObject, prevChapter: String, nextChapter: String, sourceRevision: String = "")
 
-    suspend fun cache(chapter: ChapterContent) = cache(chapter.id, chapter.title, chapter.content,
-        chapter.prevChapter.orEmpty(), chapter.nextChapter.orEmpty())
+    suspend fun cache(chapter: ChapterContent, sourceRevision: String = "") = cache(chapter.id, chapter.title, chapter.content,
+        chapter.prevChapter.orEmpty(), chapter.nextChapter.orEmpty(), sourceRevision)
 
     suspend fun cache(chapter: ChapterContentEntity) = cache(chapter.id, chapter.title, chapter.content,
-        chapter.prevChapter, chapter.nextChapter)
+        chapter.prevChapter, chapter.nextChapter, chapter.sourceRevision)
 
     @Transaction
     suspend fun update(chapterContent: ChapterContent) {
@@ -49,12 +49,18 @@ interface ChapterContentDao {
             chapterContent.title,
             chapterContent.content,
             chapterContent.prevChapter,
-            chapterContent.nextChapter
+            chapterContent.nextChapter,
+            chapterContent.sourceRevision
         )
     }
 
     @Query("select * from chapter_content where id = :id")
     suspend fun get(id: String): ChapterContentEntity?
+
+    /** Downloads are offline snapshots; reading cache is reusable only after rule-version validation. */
+    @Query("select * from chapter_content where id = :id and (exists " +
+        "(select 1 from downloaded_chapter where id = :id) or (:revision != '' and sourceRevision = :revision))")
+    suspend fun reusable(id: String, revision: String): ChapterContentEntity?
 
     @Query("select id from chapter_content where id = :id")
     suspend fun getId(id: String): String?

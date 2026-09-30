@@ -18,6 +18,7 @@ import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
+import java.net.InetAddress
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 
@@ -33,7 +34,7 @@ class NativeBrowserInstrumentedTest {
                     .addHeader("Set-Cookie", "auth=completion-fixture; Path=/; Max-Age=600; HttpOnly")
                     .setBody("<html><head><link rel='icon' href='data:,'></head><body>Native login ready</body></html>")
             }
-            server.start()
+            server.start(InetAddress.getByAddress("127.0.0.1", byteArrayOf(127, 0, 0, 1)), 0)
             val root = File(context.cacheDir, "login-completion-${System.nanoTime()}")
             val authority = ExecutionAuthority()
             val executor = AndroidIsolatedExecutor(context, authority)
@@ -85,7 +86,7 @@ class NativeBrowserInstrumentedTest {
     private suspend fun fixture(block: suspend (SourceBroker, MockWebServer) -> Unit) {
         val root = File(context.cacheDir, "native-test-${UUID.randomUUID()}")
         MockWebServer().use { server ->
-            server.start()
+            server.start(InetAddress.getByAddress("127.0.0.1", byteArrayOf(127, 0, 0, 1)), 0)
             SourceBroker(root.toPath(), browser = AndroidSourceBrowser(context)).use { broker ->
                 try { block(broker, server) }
                 finally { scopes.forEach { it.clearAccount() }; scopes.clear() }

@@ -44,7 +44,7 @@ class ReadingPanelRefreshTest {
         coEvery { fixture.bookshelves.getBookshelfBookMetadata(any()) } returns null
         val chapters = ChapterRepository(registry, fixture.local, fixture.text, fixture.localBooks, fixture.downloads)
         val books = BookRepository(fixture.local, fixture.bookshelves, fixture.text, fixture.workManager, chapters,
-            BookReadingDataRepository(fixture.local), registry, fixture.downloads, fixture.localBooks)
+            BookReadingDataRepository(fixture.local), registry, fixture.downloads, fixture.localBooks, fixture.scheduler)
         every { fixture.text.processBookVolumes(any()) } answers { firstArg<() -> BookVolumes>().invoke() }
         val refresh = ReadingPanelRefresh(books, chapters, fixture.text)
         try {

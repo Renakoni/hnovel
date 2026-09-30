@@ -60,11 +60,13 @@ class CanonicalRuleHostTest {
         val aliases = BookAliasStore(db)
         val local = LocalBookDataSource(db.bookInformationDao(), db.bookVolumesDao(), db.chapterContentDao(), db.userReadingDataDao(), aliases)
         val downloads = BookDownloadStore(context, db, ContentJsonDecoder(ContentComponentRegistry()))
-        val shelves = BookshelfRepository(db.bookshelfDao(), mockk(), registry, downloads, aliases)
+        val work = mockk<androidx.work.WorkManager>()
+        val scheduler = indi.renakoni.nextvol.data.download.BookDownloadScheduler(downloads, work, aliases)
+        val shelves = BookshelfRepository(db.bookshelfDao(), scheduler, registry, aliases)
         val reading = BookReadingDataRepository(local)
         private val text = TextProcessingRepository(mockk(relaxed = true), mockk(relaxed = true), ContentComponentRegistry())
-        val books = BookRepository(local, shelves, text, mockk(), ChapterRepository(registry, local, text, mockk(), downloads),
-            reading, registry, downloads, mockk())
+        val books = BookRepository(local, shelves, text, work, ChapterRepository(registry, local, text, mockk(), downloads),
+            reading, registry, downloads, mockk(), scheduler)
 
         init {
             fixture.server.dispatcher = object : Dispatcher() {
