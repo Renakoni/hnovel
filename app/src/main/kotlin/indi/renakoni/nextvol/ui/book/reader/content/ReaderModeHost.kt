@@ -55,4 +55,5 @@ internal class ReaderModeHost(
         get() = transitionRequestedChapterId ?: controller?.requestedChapterId
     fun loadNextChapter() = controller?.loadNextChapter()
     fun loadPrevChapter() = controller?.loadPrevChapter()
+    fun flushProgress() = controller?.flushProgress()
 }

@@ -155,6 +155,7 @@ fun ScrollContentTextComponent(
     var restoredGeometry by remember(listState) { mutableStateOf(textLayout to IntSize.Zero) }
     var restorationOwner by remember(listState) { mutableStateOf<Any?>(null) }
     val speech by rememberUpdatedState(LocalReaderSpeechFollow.current)
+    var followedSpeechPosition by remember(uiState) { mutableStateOf(speech.position) }
     val latestPrepared by rememberUpdatedState(preparedChapters)
     val reduceMotion by rememberUpdatedState(settingState.reduceMotion)
     fun viewport() = listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
@@ -213,17 +214,28 @@ fun ScrollContentTextComponent(
         if (anchor == null) { bookmarks.finish(bookmark, false); return@LaunchedEffect }
         val index = latestPrepared.indexOf(prepared)
         if (index < 0 || bookmarks.pending !== bookmark) return@LaunchedEffect
-        listState.scrollToItem(index)
-        val offset = snapshotFlow { prepared.offsetFor(anchor) }.filterNotNull().first()
-        if (bookmarks.pending !== bookmark || uiState.lazyListState !== listState ||
-            positions != null && !positions.ownsRenderer(uiState, renderer)) return@LaunchedEffect
-        listState.scrollToItem(index, offset)
-        if (bookmarks.pending !== bookmark || positions != null && !positions.ownsRenderer(uiState, renderer))
-            return@LaunchedEffect
-        readingPosition = ReaderPosition.capture(uiState.bookId, prepared.content, anchor)
-        anchoredViewport = viewport()
-        positions?.positioned(uiState, readingPosition)
-        bookmarks.finish(bookmark, true)
+        val attempt = Any().also { restorationOwner = it }
+        var positioned = false
+        uiState.onProgressRestoring(listState)
+        try {
+            listState.scrollToItem(index)
+            val offset = snapshotFlow { prepared.offsetFor(anchor) }.filterNotNull().first()
+            if (bookmarks.pending !== bookmark || uiState.lazyListState !== listState ||
+                positions != null && !positions.ownsRenderer(uiState, renderer)) return@LaunchedEffect
+            listState.scrollToItem(index, offset)
+            if (bookmarks.pending !== bookmark || positions != null && !positions.ownsRenderer(uiState, renderer))
+                return@LaunchedEffect
+            readingPosition = ReaderPosition.capture(uiState.bookId, prepared.content, anchor)
+            anchoredViewport = viewport()
+            positions?.positioned(uiState, readingPosition)
+            bookmarks.finish(bookmark, true)
+            positioned = true
+        } finally {
+            if (restorationOwner === attempt && (positions == null || positions.ownsRenderer(uiState, renderer))) {
+                uiState.onProgressRestored(listState)
+                if (positioned) uiState.onReadingPositioned(listState)
+            }
+        }
     }
 
     val reachedTopMsg = stringResource(R.string.reader_reached_top)
@@ -240,6 +252,8 @@ fun ScrollContentTextComponent(
         if (bookmarkReady && restoredGeometry == (textLayout to lazyColumnSize) && positions?.pending == null)
             return@LaunchedEffect
         if (positions != null && !positions.ownsRenderer(uiState, renderer)) return@LaunchedEffect
+        val reflow = bookmarkReady || positionRequest != null || readingPosition != null
+        var publishInitial = false
         val attempt = Any().also { restorationOwner = it }
         bookmarkReady = false
         positions?.reflow(uiState)
@@ -294,13 +308,16 @@ fun ScrollContentTextComponent(
             else if (speechAnchor != null) positions?.positioned(uiState, readingPosition)
             restoredGeometry = textLayout to lazyColumnSize
             bookmarkReady = true
+            publishInitial = !reflow && restoredProgress <= 0f && anchor == null && bookmarks?.pending == null
         } finally {
-            if (restorationOwner === attempt && (positions == null || positions.ownsRenderer(uiState, renderer)))
+            if (restorationOwner === attempt && (positions == null || positions.ownsRenderer(uiState, renderer))) {
                 uiState.onProgressRestored(listState)
+                if (publishInitial) uiState.onReadingPositioned(listState)
+            }
         }
     }
     LaunchedEffect(listState) {
-        snapshotFlow { speechTarget() }.collectLatest { target ->
+        snapshotFlow { if (bookmarkReady && !uiState.isRestoringProgress) speechTarget() else null }.collectLatest { target ->
             if (target == null || positions != null && !positions.ownsRenderer(uiState, renderer)) return@collectLatest
             val viewport = listState.layoutInfo.viewportSize.height
             val visible = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == target.first }
@@ -316,6 +333,8 @@ fun ScrollContentTextComponent(
             readingPosition = speech.anchor(chapter)?.let { ReaderPosition.capture(uiState.bookId, chapter, it) }
             anchoredViewport = viewport()
             positions?.positioned(uiState, readingPosition)
+            if (followedSpeechPosition != speech.position) uiState.onReadingPositioned(listState)
+            followedSpeechPosition = speech.position
         }
     }
     LaunchedEffect(listState) {
@@ -443,7 +462,10 @@ fun ScrollContentTextComponent(
             modifier = modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .readerSpeechManualScroll()
+                .readerSpeechManualScroll {
+                    if (positions == null || positions.ownsRenderer(uiState, renderer))
+                        uiState.onReadingPositioned(listState)
+                }
                 .readerVolumeKeys(
                     enabled = settingState.isUsingVolumeKeyFlip && !settingState.isUsingFlipPage &&
                         !uiState.isRestoringProgress &&
@@ -451,11 +473,13 @@ fun ScrollContentTextComponent(
                     intervalSeconds = settingState.volumeKeyContinuousFlipInterval,
                 ) { direction ->
                     speech.onManualNavigation()
-                    listState.scrollBy(volumeKeyScrollDistance(
+                    val consumed = listState.scrollBy(volumeKeyScrollDistance(
                         listState.layoutInfo.viewportSize.height,
                         settingState.volumeKeyScrollFraction,
                         direction,
                     ))
+                    if (consumed != 0f && (positions == null || positions.ownsRenderer(uiState, renderer)))
+                        uiState.onReadingPositioned(listState)
                 }
                 .readerTapGestures { changeIsImmersive() }
                 .onGloballyPositioned {

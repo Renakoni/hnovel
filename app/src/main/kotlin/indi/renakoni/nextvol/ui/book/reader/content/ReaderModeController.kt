@@ -15,6 +15,9 @@ interface ReaderModeController {
     fun loadPrevChapter()
     fun changeChapter(id: String)
 
+    /** Flush only a position authorized by this mode, never its display-only progress. */
+    fun flushProgress() = Unit
+
     /** The host owns source-position recovery; mode reloads may preserve the current anchor. */
     fun observeNavigation(listener: (bookId: String, chapterId: String, preservePosition: Boolean) -> Unit) = Unit
 

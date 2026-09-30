@@ -18,6 +18,7 @@ import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.room.Room
@@ -39,9 +40,13 @@ import indi.renakoni.nextvol.theme.AppTheme
 import indi.renakoni.nextvol.tts.SpeechPosition
 import indi.renakoni.nextvol.ui.LocalAppTheme
 import indi.renakoni.nextvol.ui.book.reader.*
+import indi.renakoni.nextvol.ui.book.reader.bookmark.LocalReaderBookmarks
+import indi.renakoni.nextvol.ui.book.reader.bookmark.ReaderBookmarkPosition
+import indi.renakoni.nextvol.ui.book.reader.bookmark.ReaderBookmarkSession
 import indi.renakoni.nextvol.ui.book.reader.content.*
 import indi.renakoni.nextvol.ui.book.reader.content.flip.FlipPageContentComponent
 import indi.renakoni.nextvol.ui.book.reader.content.flip.FlipPageContentUiState
+import indi.renakoni.nextvol.ui.book.reader.content.flip.ReaderContentAnchor
 import indi.renakoni.nextvol.ui.book.reader.content.scroll.ScrollContentComponent
 import indi.renakoni.nextvol.ui.book.reader.content.scroll.ScrollContentUiState
 import io.mockk.coEvery
@@ -169,8 +174,70 @@ class ReaderPositionInstrumentedTest {
         assertFalse((fixture.reader.uiState.contentUiState as ScrollContentUiState).isRestoringProgress)
     }
 
+    @Test fun flipReflowAndBackgroundKeepTheSavedProgress() = reflowAndBackground(true, false)
+    @Test fun chapterScrollReflowAndBackgroundKeepTheSavedProgress() = reflowAndBackground(false, false)
+    @Test fun continuousScrollReflowAndBackgroundKeepTheSavedProgress() = reflowAndBackground(false, true)
+
+    @Test fun cancelledBookmarkRestorationDoesNotLeaveScrollWritesBlocked() {
+        runBlocking { settings.isUsingFlipPageUserData.set(false) }
+        val fixture = Fixture(initialProgress = 0.6f, interceptRestore = true)
+        val state = fixture.reader.uiState.contentUiState as ScrollContentUiState
+        val bookmark = ReaderBookmarkPosition("fixture-book", fixture.chapter,
+            ReaderContentAnchor(0, fixture.speechOffset), 0.8f).bookmark()
+        compose.runOnIdle {
+            fixture.interceptRestoration = {
+                fixture.interceptRestoration = null
+                fixture.bookmarks.pending = bookmark.copy(fingerprint = "changed-content")
+            }
+            fixture.bookmarks.pending = bookmark
+        }
+        compose.waitUntil(15_000) { fixture.bookmarks.notice != null &&
+            fixture.bookmarks.pending == null && !state.isRestoringProgress }
+        assertTrue("Cancelled placement is not new reading", fixture.progressWrites.isEmpty())
+        compose.onNode(hasScrollAction()).performTouchInput { swipeUp() }
+        compose.waitForIdle()
+        compose.waitUntil(15_000) { fixture.progressWrites.isNotEmpty() }
+        assertTrue(fixture.progressWrites.last().isFinite())
+    }
+
+    private fun reflowAndBackground(flip: Boolean, continuous: Boolean) {
+        runBlocking {
+            settings.isUsingContinuousScrollingUserData.set(continuous)
+            settings.isUsingFlipPageUserData.set(flip)
+        }
+        val fixture = Fixture(initialProgress = 0.6f)
+        fixture.assertPosition()
+        val before = fixture.reader.uiState.contentUiState!!.readingProgress
+        compose.runOnIdle { fixture.width = 900.dp; fixture.height = 560.dp }
+        fixture.awaitReady()
+        fixture.assertPosition()
+        val after = fixture.reader.uiState.contentUiState!!.readingProgress
+        assertNotEquals("Reflow must actually change the displayed extent", before, after)
+        repeat(4) { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle() }
+        compose.activityRule.scenario.moveToState(Lifecycle.State.CREATED)
+        try {
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+            val saved = fixture.savedProgress()
+            assertTrue("Reflow/ON_STOP must not publish new reading: ${fixture.progressWrites}", fixture.progressWrites.isEmpty())
+            assertEquals(0.6f, saved.currentChapterReadingProgressMap.getValue(fixture.chapter.id))
+            assertEquals(0.6f, saved.maxChapterReadingProgressMap.getValue(fixture.chapter.id))
+        } finally {
+            compose.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+        }
+        fixture.awaitReady()
+        assertTrue(fixture.progressWrites.isEmpty())
+        if (flip) compose.onRoot().performTouchInput { swipeLeft() }
+        else compose.onNode(hasScrollAction()).performTouchInput { swipeUp() }
+        compose.waitForIdle()
+        compose.waitUntil(15_000) { fixture.progressWrites.isNotEmpty() }
+        assertTrue("Real reading must resume persistence", fixture.savedProgress()
+            .maxChapterReadingProgressMap.getValue(fixture.chapter.id) > 0.6f)
+    }
+
     private inner class Fixture(
         val empty: Boolean = false, val failed: Boolean = false, invalid: Boolean = false, speechTarget: Boolean = false,
+        initialProgress: Float = 0f,
+        interceptRestore: Boolean = false,
     ) {
         val text = (1..90).joinToString(10.toChar().toString()) { index ->
             "marker-${index.toString().padStart(3, '0')} 😀 " +
@@ -179,9 +246,13 @@ class ReaderPositionInstrumentedTest {
         val target = text.indexOf("marker-053") + 4
         val speechOffset = text.indexOf("marker-071") + 5
         val repository = UserDataRepository(database.userDataDao())
+        val bookmarks = ReaderBookmarkSession()
+        var interceptRestoration: (() -> Unit)? = null
+        private var interceptedScroll by mutableStateOf<ScrollContentUiState?>(null)
         val chapter = ChapterContentUiState("marked-chapter", "Source positions",
             if (empty) emptyList() else listOf(SimpleTextComponent(SimpleTextComponentData(text), repository, context)), "before", "after")
         var width by mutableStateOf(320.dp)
+        var height by mutableStateOf(420.dp)
         var padding by mutableStateOf(PaddingValues(0.dp))
         lateinit var reader: ReaderViewModel
         var createdViewModels = 0
@@ -210,10 +281,13 @@ class ReaderPositionInstrumentedTest {
         private val loader = ReaderChapterLoader(source, ContentRenderer(
             ContentJsonDecoder(ContentComponentRegistry()), ContentComponentFactory(context, repository),
         ))
+        val progressWrites = java.util.Collections.synchronizedList(mutableListOf<Float>())
         private val statistics = StatsRepository(database.bookRecordDao(), database.dailyCountDao(),
             mockk(relaxed = true), StatisticsWriteCoordinator())
         private val records = object : BookReadingDataAccess {
-            private var data = UserReadingData("fixture-book")
+            private var data = UserReadingData("fixture-book",
+                currentChapterReadingProgressMap = mapOf(chapter.id to initialProgress),
+                maxChapterReadingProgressMap = mapOf(chapter.id to initialProgress))
             override fun progressRevision() = 0L
             override suspend fun getUserReadingData(bookId: String) = synchronized(this) { data }
             override suspend fun updateUserReadingData(id: String, update: (UserReadingData) -> UserReadingData) {
@@ -222,9 +296,11 @@ class ReaderPositionInstrumentedTest {
             override suspend fun updateChapterProgress(bookId: String, chapterId: String, revision: Long,
                 update: (UserReadingData) -> UserReadingData): Boolean {
                 updateUserReadingData(bookId, update)
+                synchronized(this) { progressWrites += data.currentChapterReadingProgressMap.getValue(chapterId) }
                 return true
             }
         }
+        fun savedProgress() = runBlocking { records.getUserReadingData("fixture-book") }
         private val factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -253,12 +329,13 @@ class ReaderPositionInstrumentedTest {
                             LocalAppTheme provides AppTheme(false, colors),
                             LocalReaderTextLayout provides rememberReaderTextLayout(reader.readerSettings),
                             LocalReaderPositionSession provides reader.positions,
+                            LocalReaderBookmarks provides bookmarks,
                             LocalReaderSpeechFollow provides if (speechPosition != null) ReaderSpeechFollow(
                                 speechPosition,
                                 following = true) else ReaderSpeechFollow(),
                         ) {
-                            Box(Modifier.width(width).height(420.dp)) {
-                                when (val state = reader.uiState.contentUiState) {
+                            Box(Modifier.width(width).height(height)) {
+                                when (val state = interceptedScroll ?: reader.uiState.contentUiState) {
                                     is FlipPageContentUiState -> FlipPageContentComponent(Modifier, state, reader.readerSettings, padding, {}, {}, {})
                                     is ScrollContentUiState -> ScrollContentComponent(Modifier, state, reader.readerSettings, reader.fontFamilySettings, padding, {}, {}, {})
                                 }
@@ -269,6 +346,22 @@ class ReaderPositionInstrumentedTest {
             }
             compose.activityRule.scenario.onActivity { ReaderLayoutTestActivity.installReader!!(it) }
             awaitReady()
+            if (interceptRestore) {
+                // Wrap the renderer interface, not the final factory (which API 24 cannot mock).
+                compose.runOnIdle {
+                    val state = reader.uiState.contentUiState as ScrollContentUiState
+                    val intercepted = object : ScrollContentUiState by state {
+                        override val onProgressRestoring: (androidx.compose.foundation.lazy.LazyListState) -> Unit = { list ->
+                            state.onProgressRestoring(list)
+                            interceptRestoration?.invoke()
+                        }
+                    }
+                    val checkpoint = reader.positions.captureNow()
+                    reader.positions.activate(intercepted, state.bookId, chapter.id, checkpoint)
+                    interceptedScroll = intercepted
+                }
+                awaitReady()
+            }
         }
 
         fun awaitReady() {

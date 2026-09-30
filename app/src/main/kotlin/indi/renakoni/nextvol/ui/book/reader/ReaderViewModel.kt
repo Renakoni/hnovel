@@ -122,7 +122,7 @@ class ReaderViewModel @Inject constructor(
         if (indi.renakoni.nextvol.data.book.BookIdentity.bookKey(bookId) != book ||
             chapter != uiState.contentUiState?.readingChapterId) return
         if (update.contentChanged && chapter != null) {
-            saveReadingProgress(chapter, uiState.contentUiState?.readingProgress ?: 0f)
+            modeHost.flushProgress()
             readingRecords.awaitProgress()
             if (indi.renakoni.nextvol.data.book.BookIdentity.bookKey(bookId) != book ||
                 chapter != uiState.contentUiState?.readingChapterId) return

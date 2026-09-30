@@ -289,8 +289,10 @@ class FlipModeContractTest {
         env.runCurrent()
         assertEquals(listOf(11), targets)
         assertEquals(0.6f, mode.uiState.readingProgress)
-        assertTrue(progress.isNotEmpty())
-        assertTrue(progress.all { it == "requested" to 0.6f })
+        assertTrue(progress.isEmpty())
+        page.intValue = 12
+        env.runCurrent()
+        assertEquals(listOf("requested" to 0.65f), progress)
     }
 
     @Test
@@ -336,6 +338,40 @@ class FlipModeContractTest {
         page.intValue = 2
         env.runCurrent()
         assertEquals(listOf("requested" to 1f), progress)
+    }
+
+    @Test fun programmaticPositioningCannotPublishAnIntermediateOrRestoredScreen() {
+        open()
+        env.emit("requested", Ok(env.chapter("requested")))
+        val screen = mutableIntStateOf(0)
+        val spread = spreadPager(ReaderLeafMapping(5, 2), screen)
+        mode.updatePagerState(spread)
+        env.runCurrent()
+        progress.clear()
+        mode.uiState.onProgressRestoring(spread)
+        screen.intValue = 1
+        env.runCurrent()
+        assertTrue(progress.isEmpty())
+        mode.uiState.updateAnchoredPageState(spread)
+        repeat(5) { env.runCurrent() }
+        assertEquals(0.8f, mode.uiState.readingProgress)
+        assertTrue(progress.isEmpty())
+        screen.intValue = 2
+        env.runCurrent()
+        assertEquals(listOf("requested" to 1f), progress)
+    }
+
+    @Test fun anExplicitPositionCanPublishAfterAReflowWithoutWaitingForAnotherTurn() {
+        open()
+        env.emit("requested", Ok(env.chapter("requested")))
+        val spread = spreadPager(ReaderLeafMapping(5, 2), mutableIntStateOf(1))
+        mode.uiState.updateAnchoredPageState(spread)
+        env.runCurrent()
+        progress.clear()
+        mode.uiState.onProgressRestoring(spread)
+        mode.uiState.updateSpeechPageState(spread)
+        env.runCurrent()
+        assertEquals(listOf("requested" to 0.8f), progress)
     }
 
     @Test fun oldPercentageUsesRealLeafCountEvenWhenPagerHasFewerScreens() {

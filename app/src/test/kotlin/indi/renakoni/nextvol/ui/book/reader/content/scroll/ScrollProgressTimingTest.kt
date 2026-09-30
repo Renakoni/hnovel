@@ -52,6 +52,74 @@ class ScrollProgressTimingTest {
 
     @After fun tearDown() = env.close()
 
+    @Test fun restorationCompletionAndRepeatedStopNeverReauthorizeTheNewGeometry() {
+        scrolling.value = false
+        offset.intValue = 500
+        progress.start()
+        env.runCurrent()
+        val list = uiState.lazyListState
+        progress.restoring(list)
+        offset.intValue = 700
+        progress.restored(list)
+        repeat(5) { env.runCurrent(); progress.writeProgressRightNow() }
+        assertEquals(0.8f, uiState.readingProgress)
+        assertEquals(listOf("chapter" to 0.6f), writes)
+        progress.readingPositioned(list)
+        env.runCurrent()
+        assertEquals(listOf("chapter" to 0.6f, "chapter" to 0.8f), writes)
+    }
+
+    @Test fun oldListCallbacksCannotUnlockANewerRestoration() {
+        scrolling.value = false
+        progress.start()
+        env.runCurrent()
+        writes.clear()
+        val old = uiState.lazyListState
+        val replacement = mockk<LazyListState> {
+            every { layoutInfo } returns layout
+            every { isScrollInProgress } returns false
+        }
+        uiState.lazyListState = replacement
+        progress.restoring(replacement)
+        progress.restored(old)
+        progress.readingPositioned(old)
+        progress.writeProgressRightNow()
+        env.runCurrent()
+        assertEquals(emptyList<Pair<String, Float>>(), writes)
+        progress.restored(replacement)
+        env.runCurrent()
+        assertEquals(emptyList<Pair<String, Float>>(), writes)
+        progress.readingPositioned(replacement)
+        env.runCurrent()
+        assertEquals(listOf("chapter" to 0.1f), writes)
+    }
+
+    @Test fun zeroHeightContentIsNotACompletedChapter() {
+        every { item.size } returns 0
+        progress.start()
+        env.runCurrent()
+        progress.writeProgressRightNow()
+        assertEquals(emptyList<Pair<String, Float>>(), writes)
+    }
+
+    @Test fun reflowFlushesTheLastAuthorizedThrottledSampleNotTheNewGeometry() {
+        offset.intValue = 500
+        progress.start()
+        env.runCurrent()
+        move(10_050, 550)
+        assertEquals(0.6f, uiState.readingProgress)
+        assertEquals(listOf("chapter" to 0.6f), writes)
+        val list = uiState.lazyListState
+        progress.restoring(list)
+        offset.intValue = 700
+        progress.restored(list)
+        scrolling.value = false
+        env.runCurrent()
+        progress.writeProgressRightNow()
+        assertEquals(0.8f, uiState.readingProgress)
+        assertEquals(listOf("chapter" to 0.6f, "chapter" to 0.65f), writes)
+    }
+
     @Test
     fun observationAndPersistenceKeepTheirSeparate120And2500MillisecondWindows() {
         progress.start()
