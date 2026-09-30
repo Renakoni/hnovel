@@ -12,6 +12,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
@@ -139,6 +143,70 @@ class ReaderPositionInstrumentedTest {
         fixture.setMode(flip = true, continuous = true)
         compose.runOnIdle { fixture.width = 1000.dp }
         fixture.assertPosition(offset)
+    }
+
+    @Test fun chapterScrollBodyIsCenteredAndSharesItsRealViewportAtEveryWidth() = assertScrollBody(false)
+    @Test fun continuousScrollBodyIsCenteredAndSharesItsRealViewportAtEveryWidth() = assertScrollBody(true)
+
+    private fun assertScrollBody(continuous: Boolean) {
+        val fixture = Fixture(unitDensity = true)
+        fixture.setMode(flip = false, continuous = continuous)
+        compose.runOnIdle {
+            fixture.height = 600.dp
+            fixture.padding = PaddingValues(start = 12.dp, top = 16.dp, end = 20.dp, bottom = 24.dp)
+        }
+        for (width in listOf(450, 752, 1280, 650, 450)) {
+            compose.runOnIdle { fixture.width = width.dp }
+            fixture.assertPosition()
+            val state = fixture.reader.uiState.contentUiState as ScrollContentUiState
+            val bodyWidth = minOf(width - 32, 720)
+            assertEquals(bodyWidth, state.lazyListState.layoutInfo.viewportSize.width)
+            assertEquals(560, state.lazyListState.layoutInfo.viewportSize.height)
+            val host = compose.onNodeWithTag("position-host").fetchSemanticsNode().boundsInRoot
+            val body = compose.onNode(hasScrollAction()).fetchSemanticsNode().boundsInRoot
+            assertEquals(bodyWidth.toFloat(), body.width, 1f)
+            assertEquals(host.left + 12 + (width - 32 - bodyWidth) / 2, body.left, 1f)
+            assertEquals(host.top + 16, body.top, 1f)
+        }
+        compose.runOnIdle { fixture.width = 1280.dp }
+        fixture.assertPosition()
+        val before = fixture.immersiveClicks
+        compose.onNodeWithTag("position-host").performTouchInput { click(Offset(4f, height / 2f)) }
+        compose.runOnIdle { assertEquals(before + 1, fixture.immersiveClicks) }
+    }
+
+    @Test fun resizingAfterContinuousChapterPromotionKeepsThePromotedSourcePosition() {
+        val fixture = Fixture(unitDensity = true)
+        fixture.setMode(flip = false, continuous = true)
+        compose.runOnIdle { fixture.width = 450.dp }
+        fixture.awaitReady()
+        compose.runOnIdle {
+            fixture.bookmarks.pending = fixture.bookmarks.capture!!()!!.bookmark().copy(offset = fixture.text.length - 15)
+        }
+        compose.waitUntil(15_000) { fixture.bookmarks.pending == null }
+        fixture.assertPosition(fixture.text.length - 15)
+        repeat(3) {
+            if (fixture.reader.uiState.contentUiState?.readingChapterId != "after") {
+                compose.onNodeWithTag("position-host").performTouchInput { swipeUp() }
+                compose.waitForIdle()
+            }
+        }
+        compose.waitUntil(15_000) { fixture.reader.uiState.contentUiState?.readingChapterId == "after" }
+        // Promotion precedes asynchronous preparation of the recentered chapter window.
+        compose.waitUntil(15_000) {
+            compose.runOnIdle { fixture.reader.positions.captureNow()?.position?.chapterId == "after" }
+        }
+        val before = compose.runOnIdle { fixture.reader.positions.captureNow()!!.position!! }
+        assertEquals("after", before.chapterId)
+        for (width in listOf(1280, 650, 450)) {
+            compose.runOnIdle { fixture.width = width.dp }
+            compose.waitForIdle()
+            compose.waitUntil(15_000) {
+                fixture.reader.positions.pending == null && !(fixture.reader.uiState.contentUiState as ScrollContentUiState).isRestoringProgress
+            }
+            assertEquals(before, compose.runOnIdle { fixture.reader.positions.captureNow()!!.position })
+            assertEquals("after", fixture.reader.uiState.contentUiState?.readingChapterId)
+        }
     }
 
     @Test fun repeatedFontSpacingPaddingAndWidthChangesDoNotRoundTheLogicalAnchor() {
@@ -281,6 +349,7 @@ class ReaderPositionInstrumentedTest {
         val empty: Boolean = false, val failed: Boolean = false, invalid: Boolean = false, speechTarget: Boolean = false,
         initialProgress: Float = 0f,
         interceptRestore: Boolean = false,
+        unitDensity: Boolean = false,
     ) {
         val text = (1..90).joinToString(10.toChar().toString()) { index ->
             "marker-${index.toString().padStart(3, '0')} 😀 " +
@@ -296,6 +365,7 @@ class ReaderPositionInstrumentedTest {
             if (empty) emptyList() else listOf(SimpleTextComponent(SimpleTextComponentData(text), repository, context)), "before", "after")
         var width by mutableStateOf(320.dp)
         var height by mutableStateOf(420.dp)
+        var immersiveClicks = 0
         var padding by mutableStateOf(PaddingValues(0.dp))
         lateinit var reader: ReaderViewModel
         var createdViewModels = 0
@@ -366,6 +436,7 @@ class ReaderPositionInstrumentedTest {
                 reader = ViewModelProvider(activity, factory)[ReaderViewModel::class.java]
                 reader.openBook("fixture-book", "stale-route")
                 activity.setContent {
+                    CompositionLocalProvider(LocalDensity provides if (unitDensity) Density(1f) else LocalDensity.current) {
                     val colors = lightColorScheme()
                     MaterialTheme(colorScheme = colors, typography = AppTypography) {
                         CompositionLocalProvider(
@@ -377,13 +448,14 @@ class ReaderPositionInstrumentedTest {
                                 speechPosition,
                                 following = true) else ReaderSpeechFollow(),
                         ) {
-                            Box(Modifier.width(width).height(height)) {
+                            Box(Modifier.width(width).height(height).testTag("position-host")) {
                                 when (val state = interceptedScroll ?: reader.uiState.contentUiState) {
                                     is FlipPageContentUiState -> FlipPageContentComponent(Modifier, state, reader.readerSettings, padding, {}, {}, {})
-                                    is ScrollContentUiState -> ScrollContentComponent(Modifier, state, reader.readerSettings, reader.fontFamilySettings, padding, {}, {}, {})
+                                    is ScrollContentUiState -> ScrollContentComponent(Modifier, state, reader.readerSettings, reader.fontFamilySettings, padding, { immersiveClicks++ }, {}, {})
                                 }
                             }
                         }
+                    }
                     }
                 }
             }

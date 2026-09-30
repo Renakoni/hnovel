@@ -43,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalResources
@@ -62,6 +63,9 @@ import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.ui.book.reader.LocalReaderTextLayout
 import indi.renakoni.nextvol.data.content.component.SimpleTextComponent
 import indi.renakoni.nextvol.ui.book.reader.ReaderSettings
+import indi.renakoni.nextvol.ui.book.reader.resolveReaderBodyLayout
+import indi.renakoni.nextvol.ui.book.reader.readerBodyGeometry
+import indi.renakoni.nextvol.ui.book.reader.content.ReaderMode
 import indi.renakoni.nextvol.ui.book.reader.ReaderFontFamilySettings
 import indi.renakoni.nextvol.ui.book.reader.content.ChapterContentError
 import indi.renakoni.nextvol.ui.book.reader.content.ChapterContentLoading
@@ -141,7 +145,11 @@ fun ScrollContentTextComponent(
     val screenHeight = LocalResources.current.displayMetrics.heightPixels
     val listState = uiState.lazyListState
     val scope = rememberCoroutineScope()
-    var lazyColumnSize by remember { mutableStateOf(IntSize(0, 0)) }
+    var hostSize by remember { mutableStateOf(IntSize.Zero) }
+    val geometry = resolveReaderBodyLayout(hostSize, paddingValues, ReaderMode.Scroll).geometry
+    val lazyColumnSize = geometry?.leafSize ?: IntSize.Zero
+    // The controller's viewport and text preparation use exactly the pixels measured by the body.
+    SideEffect { if (active) uiState.setLazyColumnSize(lazyColumnSize) }
     val textLayout = LocalReaderTextLayout.current
     val preparedChapters = uiState.contentList.mapIndexed { index, entry ->
         key(listState, entry?.first ?: "placeholder-$index") {
@@ -177,7 +185,8 @@ fun ScrollContentTextComponent(
             ReaderPosition.capture(uiState.bookId, prepared.content, it)
         }
     }
-    val renderer = RegisterReaderPositionCapture(uiState, ::capturePosition)
+    // Local function references compare equal even when their captured list/geometry changes.
+    val renderer = RegisterReaderPositionCapture(uiState) { capturePosition() }
     fun ownsRenderer() = active && (positions == null || positions.ownsRenderer(uiState, renderer))
     SideEffect {
         capturePosition()?.let { readingPosition = it; anchoredViewport = viewport() }
@@ -462,12 +471,10 @@ fun ScrollContentTextComponent(
     AnimatedVisibility(
         uiState.contentList.getOrNull(1) != null,
         enter = if (settingState.reduceMotion) EnterTransition.None else fadeIn(),
-        exit = if (settingState.reduceMotion) ExitTransition.None else fadeOut()
-    ) {
-        LazyColumn(
-            modifier = modifier
+        exit = if (settingState.reduceMotion) ExitTransition.None else fadeOut(),
+        modifier = modifier
                 .fillMaxSize()
-                .padding(paddingValues)
+                .onSizeChanged { hostSize = it }
                 .then(if (active) Modifier else Modifier.clearAndSetSemantics { })
                 .readerSpeechManualScroll {
                     if (ownsRenderer())
@@ -488,15 +495,10 @@ fun ScrollContentTextComponent(
                     if (consumed != 0f && ownsRenderer())
                         uiState.onReadingPositioned(listState)
                 }
-                .readerTapGestures { changeIsImmersive() }
-                .onGloballyPositioned {
-                    scope.launch {
-                        withFrameNanos { }
-                        if (!ownsRenderer()) return@launch
-                        uiState.setLazyColumnSize(it.size)
-                        lazyColumnSize = it.size
-                    }
-                },
+                .readerTapGestures { changeIsImmersive() },
+    ) {
+        if (geometry != null) LazyColumn(
+            modifier = Modifier.fillMaxSize().readerBodyGeometry(geometry),
             state = listState,
             userScrollEnabled = active && (!uiState.isRestoringProgress || uiState.readingChapterContent?.isErr == true),
         ) {
