@@ -265,12 +265,14 @@ class DetailDirectoryScreenTest {
         compose.onNodeWithText("$progress · $range").assertIsDisplayed()
         toolbar()
         compose.onNodeWithContentDescription(text(R.string.detail_directory_ascending)).performClick()
-        compose.onAllNodesWithText("201–207")[0].assertIsDisplayed()
+        compose.onAllNodesWithText("207–108")[0].assertIsDisplayed()
         val last = compose.onNodeWithText("Chapter c-4").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
         val previous = compose.onNodeWithText("Chapter c-3").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
         assertTrue(last.top < previous.top)
         compose.onNodeWithText("Chapter b-105").assertDoesNotExist()
         list().performScrollToNode(hasTestTag("directory-volume:b"))
+        val descendingRange = activity.get().getString(R.string.detail_directory_volume_page_range, 108, 203)
+        compose.onNodeWithText("$progress · $descendingRange").assertIsDisplayed()
         compose.onNodeWithTag("directory-volume:b").performClick()
         compose.onNodeWithText("Chapter b-105").assertIsDisplayed().performClick()
         assertEquals("b-105", opened)

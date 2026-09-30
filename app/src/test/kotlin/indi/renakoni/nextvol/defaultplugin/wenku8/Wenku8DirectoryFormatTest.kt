@@ -66,15 +66,21 @@ class Wenku8DirectoryFormatTest {
         assertEquals(entries.map { it.chapter.id }.reversed(), descending.map { it.chapter.id })
     }
 
-    @Test fun reversingAcrossTheNinetyEightChapterBoundaryPreservesGlobalRangesAndVolumeIdentity() {
+    @Test fun reversingBeforePagingAcrossTheNinetyEightChapterBoundaryPreservesVolumeIdentity() {
         val book = catalog(listOf(98, 105, 4))
         val entries = directoryChapters(book.volumes)
         val firstPage = directoryPageChapters(entries, 0, false)
         assertEquals(100, firstPage.size)
         assertEquals(listOf("v2", "v2"), firstPage.takeLast(2).map { it.volumeId })
-        val lastPage = directoryPageChapters(entries, 2, true)
-        assertEquals(listOf("v3", "v3", "v3", "v3", "v2", "v2", "v2"), lastPage.map { it.volumeId })
-        assertEquals(listOf("后记", "特典", "插图", "序章", "后记", "特典", "插图"), lastPage.map { it.chapter.title })
-        assertEquals(entries.takeLast(7).map { it.key }.reversed(), lastPage.map { it.key })
+        val descendingPages = (0 until directoryPageCount(entries.size)).map { directoryPageChapters(entries, it, true) }
+        assertEquals(listOf(100, 100, 7), descendingPages.map { it.size })
+        val firstDescendingPage = descendingPages.first()
+        assertEquals(listOf("v3", "v3", "v3", "v3", "v2", "v2", "v2"), firstDescendingPage.take(7).map { it.volumeId })
+        assertEquals(listOf("后记", "特典", "插图", "序章", "后记", "特典", "插图"), firstDescendingPage.take(7).map { it.chapter.title })
+        assertEquals(entries.takeLast(100).map { it.key }.reversed(), firstDescendingPage.map { it.key })
+        assertSame(book.volumes.last().chapters.last(), firstDescendingPage.first().chapter)
+        assertEquals(List(7) { "v1" }, descendingPages.last().map { it.volumeId })
+        assertEquals(entries.take(7).map { it.key }.reversed(), descendingPages.last().map { it.key })
+        assertEquals(entries.map { it.key }.reversed(), descendingPages.flatten().map { it.key })
     }
 }
