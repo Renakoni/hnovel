@@ -88,6 +88,16 @@ android {
             buildConfigField("boolean", "BENCHMARK", "true")
         }
 
+        register("readerBenchmark") {
+            initWith(getByName("benchmark"))
+            applicationIdSuffix = ".readerbenchmark"
+            matchingFallbacks += listOf("release")
+            // Keep the ordinary directory/legacy-cache refresh decisions under measurement.
+            buildConfigField("boolean", "BENCHMARK", "false")
+            buildConfigField("String", "READER_BENCHMARK_SHA",
+                '"' + providers.gradleProperty("readerBenchmarkSha").getOrElse("UNSPECIFIED") + '"')
+        }
+
         base {
             archivesName = "NextVol-${defaultConfig.versionName}"
         }
