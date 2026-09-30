@@ -253,11 +253,23 @@ class Wenku8NetworkTest {
         assertEightConcurrentRequests { it % 2 == 0 }
     }
 
-    private suspend fun assertEightConcurrentRequests(imageRequest: (Int) -> Boolean) = coroutineScope {
+    @Test(timeout = 30000) fun documentBodiesKeepImagesQueuedUntilCancellationReleasesASlot() = runBlocking {
+        assertEightConcurrentRequests(streamBodies = true) { it >= 8 }
+    }
+
+    @Test(timeout = 30000) fun documentsAndImagesShareEightSlotsWhileReadingBodies() = runBlocking {
+        assertEightConcurrentRequests(streamBodies = true) { it % 2 == 0 }
+    }
+
+    private suspend fun assertEightConcurrentRequests(streamBodies: Boolean = false,
+        imageRequest: (Int) -> Boolean) = coroutineScope {
         Fixture().use { fixture ->
             val runtime = fixture.runtime(a)
             fixture.first.dispatcher = object : Dispatcher() {
-                override fun dispatch(request: RecordedRequest) = MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE)
+                override fun dispatch(request: RecordedRequest) = if (streamBodies) {
+                    // Deliver headers immediately, but keep bodies in flight until cancellation.
+                    document("A").throttleBody(1, 1, TimeUnit.SECONDS)
+                } else MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE)
             }
             // Foreground calls own their cancellation; background coalesced work may outlive a waiter.
             fun request(index: Int) = async(ForegroundSourceRequest()) {
@@ -273,6 +285,7 @@ class Wenku8NetworkTest {
                             fixture.first.takeRequest(3, TimeUnit.SECONDS))
                     }
                 }
+                assertTrue("All eight requests must still be in flight", requests.none { it.isCompleted })
                 requests += request(8)
                 withContext(Dispatchers.IO) {
                     assertNull("The ninth request must wait", fixture.first.takeRequest(300, TimeUnit.MILLISECONDS))

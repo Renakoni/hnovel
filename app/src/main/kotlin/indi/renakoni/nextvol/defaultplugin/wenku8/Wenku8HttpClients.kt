@@ -9,6 +9,8 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.OkHttpClient
@@ -26,6 +28,8 @@ internal class Wenku8HttpClients(private val routes: (Identifier) -> SourceNetwo
     private val contentClient: (OkHttpClient) -> HttpClient) : AutoCloseable {
     private data class Key(val source: Identifier, val route: SourceNetworkRoute)
     private class Client(val http: HttpClient, val transport: OkHttpClient) : AutoCloseable {
+        // Ktor can release its OkHttp dispatcher slot before the response body is consumed.
+        val requestLimiter = Semaphore(BrokerLimits.DEFAULT_CONCURRENCY)
         var invalidation: AutoCloseable? = null
         override fun close() {
             invalidation?.close()
@@ -78,8 +82,10 @@ internal class Wenku8HttpClients(private val routes: (Identifier) -> SourceNetwo
             }
         }
         return try {
-            available(route)
-            block(client).also { currentCoroutineContext().ensureActive(); available(route) }
+            client.requestLimiter.withPermit {
+                available(route)
+                block(client).also { currentCoroutineContext().ensureActive(); available(route) }
+            }
         } catch (failure: Exception) {
             currentCoroutineContext().ensureActive()
             available(route)
