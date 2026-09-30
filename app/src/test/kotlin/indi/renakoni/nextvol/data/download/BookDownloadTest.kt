@@ -977,6 +977,20 @@ class BookDownloadTest {
         assertEquals(1, source.imageCalls)
     }
 
+    @Test fun exportRetriesReusePreparedChaptersAfterReopening() = runBlocking {
+        val source = register(a).apply { withImages = true; failedChapter = "3" }
+        assertTrue(export() is ListenableWorker.Result.Failure)
+        assertEquals(mapOf("1" to 1, "2" to 1, "3" to 1), source.chapterCalls)
+        downloads.clearReadingCache()
+        registry.unregister(a.sourceId)
+        loader.shutdown(); db.close(); openLibrary(); openImages()
+        val retrySource = register(a).apply { withImages = true }
+        assertTrue(export() is ListenableWorker.Result.Success)
+        assertEquals(mapOf("3" to 1), retrySource.chapterCalls)
+        assertEquals(BookDownloadPhase.Complete, state().phase)
+        assertArrayEquals(png, downloads.image(SourceImage(a, IMAGE))!!.readBytes())
+    }
+
     @Test fun unversionedLegacyDownloadStillExportsOffline() = runBlocking {
         val source = register(a)
         local.updateBookInformation(a.bind(source.information()))

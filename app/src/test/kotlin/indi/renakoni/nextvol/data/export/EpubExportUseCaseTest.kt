@@ -135,6 +135,49 @@ class EpubExportUseCaseTest {
         }
     }
 
+    @Test fun laterChapterFailureKeepsPreparedSourceContentForRetry() = runTest {
+        val first = catalog.volumes.first().chapters.single().id
+        val second = catalog.volumes.last().chapters.single().id
+        coEvery { repository.exportChapter(book, second) } throws IOException("Chapter unavailable")
+        val failed = request()
+        assertTrue(useCase.execute(failed) is EpubExportResult.Failure)
+        coVerify(exactly = 1) { downloads.saveCandidate(any(), match { it.id == first }, any()) }
+        coVerify(exactly = 0) { downloads.saveChapter(any(), any(), any(), any(), any()) }
+        assertNoOutput(failed)
+
+        coEvery { repository.exportChapter(book, second) } returns Ok(ChapterContent(second, "Chapter 2", text("Recovered")))
+        val retry = request()
+        assertTrue(useCase.execute(retry) is EpubExportResult.Success)
+        coVerify(exactly = 1) { repository.exportChapter(book, first) }
+        coVerify(exactly = 2) { repository.exportChapter(book, second) }
+        assertTrue(archiveText(EpubShareFiles.files(context, retry.id).first()).contains(first))
+        assertTrue(archiveText(EpubShareFiles.files(context, retry.id).last()).contains("Recovered"))
+    }
+
+    @Test fun stagedConversionFeedsArchiveAndVolumeCoverUsesOnlyItsOwnSourceChapters() = runTest {
+        coEvery { repository.exportContent(book, any()) } answers {
+            secondArg<ChapterContent>().let { it.copy(content = text("Rendered ${it.id}")) }
+        }
+        val volume = catalog.volumes.last()
+        coEvery { repository.volumeCover(book, volume, any(), any()) } answers {
+            val raw = thirdArg<Map<String, ChapterContent>>()
+            assertEquals(volume.chapters.map { it.id }.toSet(), raw.keys)
+            assertTrue(raw.values.single().content.toString().contains("Text"))
+            assertFalse(raw.values.single().content.toString().contains("Rendered"))
+            Ok(null)
+        }
+        val request = request()
+        assertTrue(useCase.execute(request) { update ->
+            if (update.phase == EpubExportProgress.Phase.CHAPTERS) {
+                val files = staging(request).listFiles()!!.filter { it.extension == "json" }
+                assertEquals(update.completed, files.size)
+                assertTrue(files.all { it.readText().contains("Rendered") })
+            }
+        } is EpubExportResult.Success)
+        EpubShareFiles.files(context, request.id).forEach { assertTrue(archiveText(it).contains("Rendered")) }
+        assertFalse(staging(request).exists())
+    }
+
     @Test fun foreignVolumeIsRejectedBeforeAnyRepositoryOrDownloadAccess() {
         val other = SourceBookId(Identifier("fixture", "other"), book.remoteId)
         assertThrows(IllegalArgumentException::class.java) {
