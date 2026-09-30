@@ -311,6 +311,12 @@ class ReaderPositionInstrumentedTest {
         }
 
         init {
+            val speechPosition = if (speechTarget) runBlocking {
+                SpeechPosition(
+                    "fixture-book", chapter.id, chapter.prepareSpeechTextIndex().fingerprint,
+                    speechOffset, speechOffset + 1,
+                )
+            } else null
             ReaderPositionSession(handle).restore(ReaderCheckpoint("fixture-book", chapter.id,
                 ReaderPosition("fixture-book", chapter.id, 0, target, if (invalid) "changed-content" else chapter.bookmarkFingerprint)))
             ReaderLayoutTestActivity.installReader = { activity ->
@@ -324,8 +330,8 @@ class ReaderPositionInstrumentedTest {
                             LocalReaderTextLayout provides rememberReaderTextLayout(reader.readerSettings),
                             LocalReaderPositionSession provides reader.positions,
                             LocalReaderBookmarks provides bookmarks,
-                            LocalReaderSpeechFollow provides if (speechTarget) ReaderSpeechFollow(
-                                SpeechPosition("fixture-book", chapter.id, chapter.speechTextIndex.fingerprint, speechOffset, speechOffset + 1),
+                            LocalReaderSpeechFollow provides if (speechPosition != null) ReaderSpeechFollow(
+                                speechPosition,
                                 following = true) else ReaderSpeechFollow(),
                         ) {
                             Box(Modifier.width(width).height(height)) {
