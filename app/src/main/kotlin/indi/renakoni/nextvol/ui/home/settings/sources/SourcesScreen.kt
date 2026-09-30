@@ -539,7 +539,15 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
     }
     var blockingSource by remember { mutableStateOf<io.nightfish.lightnovelreader.api.identifier.Identifier?>(null) }
     var configurationActionPending by remember { mutableStateOf(false) }
-    val blockingModel = hiltViewModel<PixivBlockingViewModel>()
+    var blockingReady by remember(blockingSource) { mutableStateOf(false) }
+    val blockingModel = blockingSource?.let { id ->
+        val manager = hiltViewModel<PixivBlockingViewModel>()
+        LaunchedEffect(id) {
+            manager.loadManager(id)
+            blockingReady = true
+        }
+        manager
+    }
     val configurationScope = rememberCoroutineScope()
     LaunchedEffect(state.configurationPanel, state.loginForm?.id) { blockingSource = null }
     if (state.configurationPanel) SourceConfigurationSheet(state.loginForm, state.busy, { values, action, formId ->
@@ -550,7 +558,6 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
                 val manager = model.configurationBlockManager(action, formId)
                 val link = model.configurationLink(action, formId)
                 if (manager != null) {
-                    blockingModel.loadManager(manager)
                     val current = model.state.value
                     if (current.configurationPanel && current.loginForm?.id == formId) blockingSource = manager
                 }
@@ -564,9 +571,9 @@ fun SourcesScreen(state: SourceManagementState, model: SourcesViewModel,
             }
         }
         }, model::cancelLogin,
-        pageTitle = blockingSource?.let { stringResource(R.string.pixiv_block_manager) },
+        pageTitle = blockingSource?.takeIf { blockingReady }?.let { stringResource(R.string.pixiv_block_manager) },
         onPageBack = { blockingSource = null },
-        pageContent = blockingSource?.let { id -> { PixivBlockManager(id, blockingModel) } })
+        pageContent = blockingSource?.takeIf { blockingReady }?.let { id -> { PixivBlockManager(id, requireNotNull(blockingModel)) } })
     else state.loginForm?.let { form ->
         SourceLoginDialog(form, state.busy, model::submitLogin, model::cancelLogin,
             message = inlineMessage?.let { stringResource(it) })
