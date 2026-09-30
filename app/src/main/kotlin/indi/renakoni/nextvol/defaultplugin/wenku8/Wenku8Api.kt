@@ -10,6 +10,7 @@ import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.get
 import com.github.michaelbull.result.getOrElse
 import com.github.michaelbull.result.runCatching
+import hnovel.network.BrokerLimits
 import hnovel.network.SourceNetworkRoute
 import indi.renakoni.nextvol.data.web.SourceRequestOwner
 import indi.renakoni.nextvol.defaultplugin.wenku8.book.BookRequestDispatcher
@@ -131,7 +132,7 @@ class Wenku8Api(routes: (Identifier) -> SourceNetworkRoute) : WebBookDataSource,
             retryOnServerErrors(maxRetries = 3)
             exponentialDelay()
             retryIf { _, response ->
-                !response.status.isSuccess()
+                !response.status.isSuccess() && response.status.value !in 300..399
             }
             retryOnExceptionIf { _, cause ->
                 cause is EOFException || cause is ConnectException
@@ -145,13 +146,13 @@ class Wenku8Api(routes: (Identifier) -> SourceNetworkRoute) : WebBookDataSource,
     private val bookRequestDispatcher = BookRequestDispatcher(host, this)
     private val isOffLineStateFlow = MutableStateFlow(false)
     private val dateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
-    private val requestLimiter = Semaphore(3)
+    private val requestLimiter = Semaphore(BrokerLimits.DEFAULT_CONCURRENCY)
     private var coroutineScope: CoroutineScope = CoroutineScope(Dispatchers.IO)
     private val titleRegex = Regex("(.*) ?[(（](.*)[)）] ?$")
     override val cache = Cache(
         timeout = 2 * 60 * 60 * 1000
     )
-    override val permits = 5
+    override val permits = BrokerLimits.DEFAULT_CONCURRENCY
 
     override fun onLoad() {
         coroutineScope.launch {

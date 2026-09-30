@@ -6,6 +6,9 @@ import com.github.michaelbull.result.Result
 import indi.renakoni.nextvol.defaultplugin.wenku8.Wenku8RouteUnavailableException
 import io.nightfish.lightnovelreader.api.web.discovery.*
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import java.net.URI
@@ -22,9 +25,14 @@ class Wenku8Discovery(private val host: String, private val fetch: suspend (Stri
             section.copy(more = lists.entries.firstOrNull { it.value == section.title }?.key)
         }
         // Keep homepage order; a matching list gets a more target, not a second section.
-        Ok(home + lists.filterKeys { id -> home.none { it.more == id } }.map { (id, title) ->
-            DiscoverySection(id, title, Wenku8DiscoveryParser.cards(fetch(url(id, 1, emptyMap())), host)
-                .take(6).map { it.book }, id)
+        // The API limits concurrent fetches; awaitAll preserves the configured list order.
+        Ok(home + coroutineScope {
+            lists.filterKeys { id -> home.none { it.more == id } }.map { (id, title) ->
+                async {
+                    DiscoverySection(id, title, Wenku8DiscoveryParser.cards(fetch(url(id, 1, emptyMap())), host)
+                        .take(6).map { it.book }, id)
+                }
+            }.awaitAll()
         })
     }
 
