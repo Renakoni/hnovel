@@ -16,7 +16,6 @@ import indi.renakoni.nextvol.defaultplugin.wenku8.book.BookRequestDispatcher
 import indi.renakoni.nextvol.defaultplugin.wenku8.explore.Wenku8ExplorePageProvider
 import io.nightfish.lightnovelreader.api.Route
 import indi.renakoni.nextvol.utils.ImageUtils
-import indi.renakoni.nextvol.utils.network.UserAgentGenerator
 import indi.renakoni.nextvol.utils.ofId
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
@@ -32,7 +31,6 @@ import io.ktor.client.statement.bodyAsBytes
 import io.ktor.http.Cookie
 import io.ktor.http.HttpHeaders
 import io.ktor.http.isSuccess
-import io.ktor.http.userAgent
 import io.nightfish.lightnovelreader.api.book.BookInformation
 import io.nightfish.lightnovelreader.api.book.ChapterContent
 import io.nightfish.lightnovelreader.api.book.Volume
@@ -227,7 +225,6 @@ class Wenku8Api(routes: (Identifier) -> SourceNetworkRoute) : WebBookDataSource,
     override suspend fun isOffLine(): Boolean = withContext(Dispatchers.IO) {
         suspend fun webSite(index: Int): Boolean = runCatching {
             clients.request(requestSourceId()) { ktorClient -> ktorClient.get(hosts[index]) {
-                userAgent(UserAgentGenerator.generate())
                 wenku8Cookies().forEach { (name, value) ->
                     cookie(name, value)
                 }
