@@ -29,7 +29,7 @@ import indi.renakoni.nextvol.data.book.BookIdentity
 import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.ui.book.reader.navigateToBookReaderDestination
 import indi.renakoni.nextvol.ui.book.reader.navigateToImageViewerDialog
-import indi.renakoni.nextvol.ui.components.downloadSubmissionText
+import indi.renakoni.nextvol.ui.book.download.navigateToBookDownload
 import indi.renakoni.nextvol.ui.dialog.navigateToAddBookToBookshelfDialog
 import indi.renakoni.nextvol.ui.dialog.navigateToMarkAllChaptersAsReadDialog
 import indi.renakoni.nextvol.utils.LocalSnackbarHost
@@ -142,10 +142,7 @@ fun NavGraphBuilder.bookDetailDestination() {
                 }
             },
             cacheBook = { bookId, refresh ->
-                coroutineScope.launch {
-                    val result = viewModel.submitDownload(bookId, refresh)
-                    snackbarHostState.showSnackbar(context.downloadSubmissionText(result), withDismissAction = true)
-                }
+                navController.navigateToBookDownload(bookId, refresh)
             },
             requestAddBookToBookshelf = navController::navigateToAddBookToBookshelfDialog,
             onClickTag = { tag ->

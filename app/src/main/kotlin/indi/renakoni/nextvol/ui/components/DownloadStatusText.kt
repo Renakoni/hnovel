@@ -24,6 +24,8 @@ fun downloadStatusLabel(status: BookDownloadStatus): String = stringResource(whe
     DownloadTaskStatus.Interrupted -> R.string.download_task_interrupted
     DownloadTaskStatus.Cancelled -> R.string.download_task_cancelled
     DownloadTaskStatus.Failed -> R.string.book_download_failed
+    DownloadTaskStatus.Complete -> if (status.content.selectedChapters != null) R.string.download_selection_complete
+        else if (status.content.phase == BookDownloadPhase.Complete) R.string.cached else R.string.book_download_partial
     else -> when (status.content.phase) {
         BookDownloadPhase.None -> R.string.cached_false
         BookDownloadPhase.Partial -> R.string.book_download_partial
@@ -37,6 +39,9 @@ fun downloadStatusLabel(status: BookDownloadStatus): String = stringResource(whe
 @Composable
 fun downloadStatusText(status: BookDownloadStatus): String {
     val parts = mutableListOf(downloadStatusLabel(status))
+    if (status.content.selectedChapters != null) {
+        parts += stringResource(R.string.download_selection_progress, status.content.taskSavedChapters, status.content.taskTotalChapters)
+    }
     if (status.content.totalChapters > 0) {
         parts += stringResource(R.string.download_task_content, status.content.savedChapters, status.content.totalChapters)
         parts += stringResource(R.string.download_body_coverage, status.content.bodyChapters, status.content.totalChapters)
@@ -64,7 +69,7 @@ fun downloadStatusText(status: BookDownloadStatus): String {
     return parts.joinToString(" · ")
 }
 
-private fun downloadFailureResource(failure: DownloadFailure) = when (failure) {
+internal fun downloadFailureResource(failure: DownloadFailure) = when (failure) {
     DownloadFailure.Network -> R.string.download_error_network
     DownloadFailure.RateLimited -> R.string.download_error_rate_limited
     DownloadFailure.RetryExhausted -> R.string.download_error_retry_exhausted
@@ -76,6 +81,7 @@ private fun downloadFailureResource(failure: DownloadFailure) = when (failure) {
     DownloadFailure.SystemRestricted -> R.string.download_error_system_restricted
     DownloadFailure.SystemInterrupted -> R.string.download_error_system_interrupted
     DownloadFailure.Scheduling -> R.string.download_error_scheduling
+    DownloadFailure.SelectionUnavailable -> R.string.download_selection_unavailable
 }
 
 private fun Context.hasDownloadNetwork(): Boolean {
@@ -95,6 +101,7 @@ fun Context.downloadSubmissionText(result: DownloadSubmission): String = when (r
             DownloadTaskStatus.Running -> getString(R.string.cache_book_running)
             else -> getString(if (hasDownloadNetwork()) R.string.download_task_waiting_scheduler else R.string.download_task_waiting_network)
         }
-        if (result.existing) state else getString(R.string.download_submission_accepted, state)
+        if (!result.selectionMatches) getString(R.string.download_selection_active)
+        else if (result.existing) state else getString(R.string.download_submission_accepted, state)
     }
 }

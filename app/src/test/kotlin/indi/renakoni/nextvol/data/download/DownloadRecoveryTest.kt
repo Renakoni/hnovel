@@ -131,7 +131,7 @@ class DownloadRecoveryTest {
 
         private fun open() {
             db = Room.databaseBuilder(context, NextVolDatabase::class.java, root.resolve("library.db").path)
-                .addMigrations(NextVolDatabase.MIGRATION_25_26, NextVolDatabase.MIGRATION_26_27, NextVolDatabase.MIGRATION_27_28).allowMainThreadQueries().build()
+                .addMigrations(NextVolDatabase.MIGRATION_25_26, NextVolDatabase.MIGRATION_26_27, NextVolDatabase.MIGRATION_27_28, NextVolDatabase.MIGRATION_28_29).allowMainThreadQueries().build()
             val aliases = BookAliasStore(db)
             local = LocalBookDataSource(db.bookInformationDao(), db.bookVolumesDao(), db.chapterContentDao(), db.userReadingDataDao(), aliases)
             downloads = BookDownloadStore(context, db, ContentJsonDecoder(ContentComponentRegistry()))

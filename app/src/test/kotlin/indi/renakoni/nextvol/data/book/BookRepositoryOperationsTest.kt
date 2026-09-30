@@ -69,7 +69,7 @@ class BookRepositoryOperationsTest {
         val first = async { repository.cacheBook(book.storageKey).first() }
         val second = async { repository.cacheBook(book.storageKey).first() }
         assertSame(waiting, first.await()); assertSame(waiting, second.await())
-        coVerify(exactly = 0) { fixture.downloads.queueTask(any(), any(), any()) }
+        coVerify(exactly = 0) { fixture.downloads.queueTask(any(), any(), any(), any(), any(), any()) }
         verify(exactly = 0) { fixture.workManager.enqueueUniqueWork(any<String>(), any(), any<OneTimeWorkRequest>()) }
     }
 
@@ -94,7 +94,7 @@ class BookRepositoryOperationsTest {
 
         verify(exactly = 1) { fixture.workManager.enqueueUniqueWork(name, ExistingWorkPolicy.REPLACE, any<OneTimeWorkRequest>()) }
         assertTrue(submitted.captured.id != oldId)
-        coVerify(exactly = 1) { fixture.downloads.queueTask(book, 0L, submitted.captured.id.toString()) }
+        coVerify(exactly = 1) { fixture.downloads.queueTask(book, 0L, submitted.captured.id.toString(), resumePrevious = false) }
     }
 
     @Test fun staleNotificationCannotCancelAReplacementTask() = runTest {
@@ -155,7 +155,7 @@ class BookRepositoryOperationsTest {
         val completion = ResolvableFuture.create<Operation.State.SUCCESS>()
         val operation = mockk<Operation> { every { result } returns completion }
         coEvery { fixture.downloads.entry(book) } returns null
-        coEvery { fixture.downloads.queueTask(book, 0L, any()) } coAnswers {
+        coEvery { fixture.downloads.queueTask(book, 0L, any(), resumePrevious = false) } coAnswers {
             persisted.complete(Unit)
             persistCompletion.await()
         }
@@ -175,7 +175,7 @@ class BookRepositoryOperationsTest {
             assertEquals(androidx.work.NetworkType.CONNECTED, work.workSpec.constraints.requiredNetworkType)
             assertEquals(mapOf("bookId" to book.storageKey, "downloadGeneration" to 0L, "persistedTask" to true), work.workSpec.input.keyValueMap)
             assertTrue(CacheBookWork.generationTag(0) in work.tags)
-            coVerify(exactly = 1) { fixture.downloads.queueTask(book, 0L, work.id.toString()) }
+            coVerify(exactly = 1) { fixture.downloads.queueTask(book, 0L, work.id.toString(), resumePrevious = false) }
 
             val current = mockk<WorkInfo> { every { state } returns WorkInfo.State.RUNNING }
             every { fixture.workManager.getWorkInfoByIdFlow(work.id) } returns flowOf(current)

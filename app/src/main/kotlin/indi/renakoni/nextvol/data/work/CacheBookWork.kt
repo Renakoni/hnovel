@@ -32,6 +32,8 @@ import indi.renakoni.nextvol.data.download.DownloadStage
 import indi.renakoni.nextvol.data.download.DownloadFailure
 import indi.renakoni.nextvol.data.download.DownloadRetryPolicy
 import indi.renakoni.nextvol.data.download.DownloadTaskStatus
+import indi.renakoni.nextvol.data.download.selectedChapterIds
+import indi.renakoni.nextvol.data.download.selectedDownloadChapters
 import hnovel.network.RequestRetryContext
 import indi.renakoni.nextvol.data.download.downloadFailure
 import io.nightfish.lightnovelreader.api.error.WebRequestError
@@ -210,12 +212,14 @@ class CacheBookWork @AssistedInject constructor(
             val active = downloads.begin(book, inputData.getLong("downloadGeneration", 0), id.toString(), requireTask = true)
             attempt = active
             val revision = bookRepository.sourceRevision(book)
-            val refreshId = checkNotNull(downloads.entry(book)).taskRefreshId
+            val owner = checkNotNull(downloads.entry(book))
+            val refreshId = owner.taskRefreshId
             val result = coroutineBinding<Unit, WebRequestError> {
                 mark(DownloadStage.Directory)
                 val volumes = bookRepository.downloadDirectory(book).bind()
                 val chapters = volumes.volumes.flatMap { it.chapters }.distinctBy { it.id }
                 check(chapters.isNotEmpty()) { "Source returned an empty directory" }
+                val selected = selectedDownloadChapters(book, chapters, owner.selectedChapterIds())
                 val cover = information.coverUri.toString()
                 mark(DownloadStage.Storage)
                 val unchanged = downloads.target(active, volumes, revision, cover) && refreshId.isEmpty()
@@ -229,7 +233,7 @@ class CacheBookWork @AssistedInject constructor(
                         request.request.body.isNullOrEmpty() && request.request.browser == null
                 }
                 var chapterFailure: Triple<WebRequestError, DownloadStage, String>? = null
-                chapters.forEachIndexed { index, chapter ->
+                selected.forEach { (index, chapter) ->
                     currentCoroutineContext().ensureActive()
                     val signature = downloadChapterSignature(chapters, index, revision)
                     val chapterResult = try {
@@ -259,6 +263,7 @@ class CacheBookWork @AssistedInject constructor(
                     catch (failure: Exception) { Err(WebRequestError("", "", failure)) }
                     if (chapterResult.isErr) {
                         val error = checkNotNull(chapterResult.component2())
+                        downloads.chapterFailure(task, chapter.id, downloadFailure(error, stage))
                         val contentError = error.throwable as? hnovel.content.SourceContentException
                         val imageError = error.throwable as? indi.renakoni.nextvol.data.image.SourceImageRequestException
                         val isolated = stage in setOf(DownloadStage.Body, DownloadStage.Image) &&
@@ -278,6 +283,7 @@ class CacheBookWork @AssistedInject constructor(
                 }
                 chapterFailure?.let { (error, failedStage, chapterId) ->
                     mark(failedStage, chapterId)
+                    downloads.chapterFailure(task, chapterId, downloadFailure(error, failedStage))
                     Err(error).bind()
                 }
                 Unit

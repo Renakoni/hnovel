@@ -212,16 +212,24 @@ class BookRepository @Inject constructor(
     fun cacheBook(bookId: String, refresh: Boolean = false): Flow<WorkInfo?> =
         downloadScheduler.enqueue(BookIdentity.book(bookId), refresh)
 
-    suspend fun submitDownload(bookId: String, refresh: Boolean = false): DownloadSubmission {
+    suspend fun submitDownload(bookId: String, refresh: Boolean = false, chapterIds: List<String>? = null): DownloadSubmission {
         val book = BookIdentity.book(bookId)
         if (LocalBookStore.isLocal(book) || sourceRegistry.sources.value.none {
                 it.metadata.id == book.sourceId && it.metadata.supportsReading &&
                     it.status != indi.renakoni.nextvol.data.web.SourceStatus.Failed
             }) return DownloadSubmission.Rejected(DownloadFailure.SourceUnavailable)
-        return downloadScheduler.submit(book, refresh)
+        return downloadScheduler.submit(book, refresh, chapterIds?.map { BookIdentity.chapter(it, book).remoteId }?.distinct())
     }
 
     suspend fun dismissDownload(bookId: String): Unit = downloadScheduler.dismiss(BookIdentity.book(bookId))
+
+    suspend fun downloadSelection(bookId: String, volumes: BookVolumes) = canonicalBook(BookIdentity.book(bookId)).let { book ->
+        val requested = BookIdentity.book(bookId)
+        val state = downloads.selectionState(book, if (book == requested) volumes else volumes.rebind(requested, book), sourceRevision(book))
+        if (book == requested) state else state.copy(chapters = state.chapters.mapKeys { (id, _) ->
+            SourceChapterId(requested, BookIdentity.chapter(id, book).remoteId).storageKey
+        })
+    }
 
     internal suspend fun prepareDownloadVerification(book: SourceBookId, workId: String, revision: String,
         accountGeneration: Long): (suspend () -> Unit)? {
@@ -254,8 +262,12 @@ class BookRepository @Inject constructor(
                         val volumes = localBookDataSource.getBookVolumes(book.storageKey)
                         val chapterIndex = volumes?.volumes?.flatMap { it.chapters }?.distinctBy { it.id }
                             ?.indexOfFirst { it.id == owner?.taskChapter }?.takeIf { it >= 0 }?.plus(1)
+                        val task = owner?.taskState(info?.state) ?: DownloadTaskState()
+                        val chapterId = task.chapterId.takeIf { it.isNotEmpty() }?.let {
+                            SourceChapterId(BookIdentity.book(bookId), BookIdentity.chapter(it, book).remoteId).storageKey
+                        }.orEmpty()
                         BookDownloadStatus(downloads.state(book, volumes, sourceRevision(book), active = false, contentOnly = true),
-                            (owner?.taskState(info?.state) ?: DownloadTaskState()).copy(chapterIndex = chapterIndex))
+                            task.copy(chapterId = chapterId, chapterIndex = chapterIndex))
                     }
                 }
         }

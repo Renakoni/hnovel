@@ -134,7 +134,7 @@ class BookDownloadTest {
     private fun openLibrary() {
         db = Room.databaseBuilder(context, NextVolDatabase::class.java, directory.root.resolve("library.db").path)
             .addMigrations(NextVolDatabase.MIGRATION_17_18, NextVolDatabase.MIGRATION_18_19,
-                NextVolDatabase.MIGRATION_19_20, NextVolDatabase.MIGRATION_20_21, NextVolDatabase.MIGRATION_21_22, NextVolDatabase.MIGRATION_22_23, NextVolDatabase.MIGRATION_23_24, NextVolDatabase.MIGRATION_24_25, NextVolDatabase.MIGRATION_25_26, NextVolDatabase.MIGRATION_26_27, NextVolDatabase.MIGRATION_27_28).allowMainThreadQueries().build()
+                NextVolDatabase.MIGRATION_19_20, NextVolDatabase.MIGRATION_20_21, NextVolDatabase.MIGRATION_21_22, NextVolDatabase.MIGRATION_22_23, NextVolDatabase.MIGRATION_23_24, NextVolDatabase.MIGRATION_24_25, NextVolDatabase.MIGRATION_25_26, NextVolDatabase.MIGRATION_26_27, NextVolDatabase.MIGRATION_27_28, NextVolDatabase.MIGRATION_28_29).allowMainThreadQueries().build()
         local = LocalBookDataSource(db.bookInformationDao(), db.bookVolumesDao(), db.chapterContentDao(), db.userReadingDataDao(), indi.renakoni.nextvol.data.book.BookAliasStore(db))
         downloads = BookDownloadStore(context, db, decoder)
         val text = TextProcessingRepository(mockk { every { enabled } returns false },
@@ -299,6 +299,8 @@ class BookDownloadTest {
         assertNotNull(local.getChapterContent(cached))
         assertNull(local.getReusableChapterContent(cached, "1"))
         assertEquals("", downloads.entry(a)!!.taskRefreshId)
+        assertEquals("", downloads.entry(a)!!.taskChapterIds)
+        assertEquals("{}", downloads.entry(a)!!.taskChapterFailures)
         books.getChapterContentFlow(SourceChapterId(a, "1").storageKey, a.storageKey).toList()
         assertEquals(mapOf("1" to 1, "2" to 1, "3" to 1), source.chapterCalls)
     }
@@ -666,7 +668,7 @@ class BookDownloadTest {
             execSQL("DROP TABLE bangumi_binding"); execSQL("DROP TABLE bangumi_sync_record"); execSQL("DROP TABLE book_alias"); version = 17
         }
         db.close(); openLibrary()
-        assertEquals(28, db.openHelper.writableDatabase.version)
+        assertEquals(29, db.openHelper.writableDatabase.version)
         val blocked = File(context.filesDir, "book-downloads").apply { writeText("not a directory") }
         try { downloads.prepare(); fail("Image copy must fail before ownership is committed") }
         catch (_: java.io.IOException) { }
@@ -676,7 +678,8 @@ class BookDownloadTest {
         downloads.clearReadingCache()
         assertNotNull(chapter(a, "1"))
         assertArrayEquals(png, downloads.image(image)!!.readBytes())
-        assertEquals(BookDownloadState(BookDownloadPhase.Partial, 1, 3), state())
+        // Migrated bytes remain readable, but lack a trusted signature for current task progress.
+        assertEquals(BookDownloadState(BookDownloadPhase.Partial, 1, 3, taskSavedChapters = 0), state())
     }
 
     @Test fun firstRequestFailuresStayVisibleAfterDatabaseReopenAndSourceRemoval() = runBlocking {
@@ -787,7 +790,7 @@ class BookDownloadTest {
         val source = register(a)
         val canonical = SourceBookId(a.sourceId, "series")
         val id = java.util.UUID.randomUUID().toString()
-        downloads.queueTask(a, downloads.generation(), id, refresh = true)
+        downloads.queueTask(a, downloads.generation(), id, refresh = true, chapterIds = listOf("2"))
         val refreshId = downloads.entry(a)!!.taskRefreshId
         assertTrue(refreshId.isNotEmpty())
         val task = downloads.startTask(a, downloads.generation(), id, 0)
@@ -796,6 +799,7 @@ class BookDownloadTest {
         assertNull(downloads.entry(a))
         assertEquals(id, downloads.entry(canonical)!!.taskWorkId)
         assertEquals(refreshId, downloads.entry(canonical)!!.taskRefreshId)
+        assertEquals(setOf("2"), downloads.entry(canonical)!!.selectedChapterIds())
         assertEquals("", downloads.entry(canonical)!!.attempt)
         assertTrue(runCatching { downloads.taskStage(task, DownloadStage.Body) }.exceptionOrNull() is CancellationException)
         downloads.taskStage(task.copy(book = canonical), DownloadStage.Directory)
@@ -814,6 +818,10 @@ class BookDownloadTest {
         val migrated = downloads.image(image)!!
         assertNotEquals(previous.path, migrated.path)
         assertArrayEquals(png, migrated.readBytes())
+        val selection = books.downloadSelection(a.storageKey, a.bind(source.directory()))
+        assertEquals(3, selection.chapters.size)
+        assertTrue(selection.chapters.values.all { it.downloaded })
+        assertTrue(selection.chapters.values.none { it.current })
     }
 
     @Test fun imageVerificationKeepsItsCategoryInsteadOfBecomingANetworkError() = runBlocking {
@@ -916,7 +924,7 @@ class BookDownloadTest {
         }
         db.close(); openLibrary()
         val owner = downloads.entry(a)!!
-        assertEquals(28, db.openHelper.writableDatabase.version)
+        assertEquals(29, db.openHelper.writableDatabase.version)
         assertEquals("", owner.taskWorkId)
         assertEquals(DownloadTaskStatus.Interrupted, owner.taskState(null).status)
         assertEquals(DownloadStage.Unknown, owner.taskState(null).stage)

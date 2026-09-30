@@ -89,8 +89,9 @@ class DownloadProgressRepository @Inject constructor(
                         cacheObservers[id] = coroutineScope.launch {
                             bookRepository.downloadStatusFlow(id).distinctUntilChanged().collect { status ->
                                 item.progress = when {
-                                    status.task.active -> (status.content.savedChapters.toFloat() /
-                                        status.content.totalChapters.coerceAtLeast(1)).coerceIn(0f, 0.99f)
+                                    status.task.active -> (status.content.taskSavedChapters.toFloat() /
+                                        status.content.taskTotalChapters.coerceAtLeast(1)).coerceIn(0f, 0.99f)
+                                    status.task.status == DownloadTaskStatus.Complete && status.content.selectedChapters != null -> 1f
                                     status.displayPhase == BookDownloadPhase.Complete && !status.task.canResume -> 1f
                                     else -> -1f
                                 }

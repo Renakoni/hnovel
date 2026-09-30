@@ -31,6 +31,7 @@ import indi.renakoni.nextvol.ui.LocalBottomBarController
 import indi.renakoni.nextvol.ui.book.bookNavigation
 import indi.renakoni.nextvol.ui.bangumi.bangumiDestination
 import indi.renakoni.nextvol.ui.bookmanager.bookManager
+import indi.renakoni.nextvol.ui.book.download.bookDownload
 import indi.renakoni.nextvol.ui.components.LnrNavigationBar
 import indi.renakoni.nextvol.ui.components.LnrSnackbar
 import indi.renakoni.nextvol.ui.dialog.addBookToBookshelfDialog
@@ -111,6 +112,7 @@ fun NextVolNavHost(
                         updatesAvailableDialog()
                         addBookToBookshelfDialog()
                         bookManager()
+                        bookDownload()
                         storageManager()
                         markAllChaptersAsReadDialog()
                     }
