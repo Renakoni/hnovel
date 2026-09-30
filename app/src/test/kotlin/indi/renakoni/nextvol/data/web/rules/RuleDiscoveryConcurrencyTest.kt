@@ -84,8 +84,12 @@ class RuleDiscoveryConcurrencyTest {
             val pending = async { RuleDiscoveryProvider(source, session).feed() }
             try {
                 withTimeout(3000) { repeat(8) { entered.receive() } }
-                fun descendants(job: Job): Int = job.children.sumOf { 1 + descendants(it) }
-                assertTrue("Waiting jobs must stay bounded", descendants(pending) <= 10)
+                // Nested withContext scopes belong to their worker, not additional queued work.
+                fun waitingBranches(job: Job): Int {
+                    val children = job.children.toList()
+                    return if (children.isEmpty()) 1 else children.sumOf { waitingBranches(it) }
+                }
+                assertEquals("Only eight worker branches may wait", 8, waitingBranches(pending))
                 assertEquals(8, starts.get())
             } finally { pending.cancelAndJoin() }
             assertEquals(8, starts.get())
