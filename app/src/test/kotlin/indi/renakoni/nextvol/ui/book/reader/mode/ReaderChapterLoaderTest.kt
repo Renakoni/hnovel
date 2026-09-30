@@ -30,6 +30,52 @@ class ReaderChapterLoaderTest {
     @After fun tearDown() = env.close()
 
     @Test
+    fun eachCollectorMapsIndependentlyAndPreservesComponentsAndOrderedErrors() {
+        val component = mockk<AbstractContentComponent<*>>()
+        every { env.renderer.getContentDataFromJson(any()) } returns ContentData(listOf(component))
+        val first = mutableListOf<Result<ChapterContentUiState, WebRequestError>>()
+        val second = mutableListOf<Result<ChapterContentUiState, WebRequestError>>()
+        val flow = env.loader.load("request", "book")
+        assertTrue(env.chapters.active.isEmpty())
+        val firstJob = env.scope.launch { flow.collect(first::add) }
+        env.scope.launch { flow.collect(second::add) }
+        env.runCurrent()
+        assertEquals(2, env.chapters.active.size)
+        env.emit("request", Ok(env.chapter("payload", "prev", "next", "Title")))
+        val error = Err(WebRequestError("offline", "remote failed"))
+        env.emit("request", error)
+        assertEquals(2, first.size)
+        assertEquals(2, second.size)
+        assertSame(component, first.first().get()!!.content.single())
+        assertEquals(error, first.last())
+        assertEquals(error, second.last())
+        firstJob.cancel()
+        env.runCurrent()
+        assertEquals(1, env.chapters.active.size)
+        env.emit("request", Ok(env.chapter("later")))
+        assertEquals(2, first.size)
+        assertEquals(3, second.size)
+        assertTrue(env.records.writes.isEmpty())
+        assertTrue(env.chapters.preloads.isEmpty())
+    }
+
+    @Test
+    fun rendererFailuresTerminateTheSubscriptionWithoutInventingAFallback() {
+        val failure = IllegalArgumentException("invalid component JSON")
+        every { env.renderer.getContentDataFromJson(any()) } throws failure
+        var caught: Throwable? = null
+        val results = mutableListOf<Result<ChapterContentUiState, WebRequestError>>()
+        env.scope.launch {
+            env.loader.load("request", "book").catch { caught = it }.collect(results::add)
+        }
+        env.runCurrent()
+        env.emit("request", Ok(env.chapter("request")))
+        assertSame(failure, caught)
+        assertTrue(results.isEmpty())
+        assertTrue(env.chapters.active.isEmpty())
+    }
+
+    @Test
     fun equalProcessedResultsDecodeAndPublishOnlyOncePerSubscription() {
         val results = mutableListOf<Result<ChapterContentUiState, WebRequestError>>()
         val flow = env.loader.load("request", "book")
@@ -78,51 +124,5 @@ class ReaderChapterLoaderTest {
         assertEquals(error, results[1])
         assertEquals(error, results[2])
         assertEquals(2, env.events.count { it.startsWith("render/") })
-    }
-
-    @Test
-    fun eachCollectorMapsIndependentlyAndPreservesComponentsAndOrderedErrors() {
-        val component = mockk<AbstractContentComponent<*>>()
-        every { env.renderer.getContentDataFromJson(any()) } returns ContentData(listOf(component))
-        val first = mutableListOf<Result<ChapterContentUiState, WebRequestError>>()
-        val second = mutableListOf<Result<ChapterContentUiState, WebRequestError>>()
-        val flow = env.loader.load("request", "book")
-        assertTrue(env.chapters.active.isEmpty())
-        val firstJob = env.scope.launch { flow.collect(first::add) }
-        env.scope.launch { flow.collect(second::add) }
-        env.runCurrent()
-        assertEquals(2, env.chapters.active.size)
-        env.emit("request", Ok(env.chapter("payload", "prev", "next", "Title")))
-        val error = Err(WebRequestError("offline", "remote failed"))
-        env.emit("request", error)
-        assertEquals(2, first.size)
-        assertEquals(2, second.size)
-        assertSame(component, first.first().get()!!.content.single())
-        assertEquals(error, first.last())
-        assertEquals(error, second.last())
-        firstJob.cancel()
-        env.runCurrent()
-        assertEquals(1, env.chapters.active.size)
-        env.emit("request", Ok(env.chapter("later")))
-        assertEquals(2, first.size)
-        assertEquals(3, second.size)
-        assertTrue(env.records.writes.isEmpty())
-        assertTrue(env.chapters.preloads.isEmpty())
-    }
-
-    @Test
-    fun rendererFailuresTerminateTheSubscriptionWithoutInventingAFallback() {
-        val failure = IllegalArgumentException("invalid component JSON")
-        every { env.renderer.getContentDataFromJson(any()) } throws failure
-        var caught: Throwable? = null
-        val results = mutableListOf<Result<ChapterContentUiState, WebRequestError>>()
-        env.scope.launch {
-            env.loader.load("request", "book").catch { caught = it }.collect(results::add)
-        }
-        env.runCurrent()
-        env.emit("request", Ok(env.chapter("request")))
-        assertSame(failure, caught)
-        assertTrue(results.isEmpty())
-        assertTrue(env.chapters.active.isEmpty())
     }
 }

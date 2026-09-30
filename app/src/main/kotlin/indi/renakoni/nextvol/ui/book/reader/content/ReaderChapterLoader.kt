@@ -25,23 +25,22 @@ class ReaderChapterLoader @Inject constructor(
         priority: WebDataSourcePriority = WebDataSourcePriority.Default,
         interactive: Boolean = true,
     ): Flow<Result<ChapterContentUiState, WebRequestError>> =
-        chapterSource.getChapterContentFlow(chapterId, bookId, priority)
+        chapterSource.getChapterContentFlow(chapterId, bookId, priority).distinctUntilChanged { previous, next ->
             // Compare complete, already-processed values within this subscription only.
             // Errors must still publish and allow an unchanged body to recover the UI.
-            .distinctUntilChanged { previous, next ->
-                previous.isOk && next.isOk && previous.get() == next.get()
-            }.map { result ->
-                result.map {
-                    ChapterContentUiState(
-                        id = it.id,
-                        title = it.title,
-                        content = contentRenderer.getContentDataFromJson(it.content).components,
-                        prevChapter = it.prevChapter,
-                        nextChapter = it.nextChapter,
-                    ).also { chapter -> chapter.speechTextIndex }
-                }
-            }.flowOn(if (interactive) kotlin.coroutines.EmptyCoroutineContext
-                else indi.renakoni.nextvol.data.web.ForegroundSourceRequest(allowsInteraction = false))
+            previous.isOk && next.isOk && previous.get() == next.get()
+        }.map { result ->
+            result.map {
+                ChapterContentUiState(
+                    id = it.id,
+                    title = it.title,
+                    content = contentRenderer.getContentDataFromJson(it.content).components,
+                    prevChapter = it.prevChapter,
+                    nextChapter = it.nextChapter,
+                ).also { chapter -> chapter.speechTextIndex }
+            }
+        }.flowOn(if (interactive) kotlin.coroutines.EmptyCoroutineContext
+            else indi.renakoni.nextvol.data.web.ForegroundSourceRequest(allowsInteraction = false))
 
     suspend fun preload(chapterId: String, bookId: String) =
         kotlinx.coroutines.withContext(indi.renakoni.nextvol.data.web.ForegroundSourceRequest(allowsInteraction = false)) {
