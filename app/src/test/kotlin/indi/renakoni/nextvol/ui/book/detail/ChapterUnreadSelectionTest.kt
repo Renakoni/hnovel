@@ -101,7 +101,8 @@ class ChapterUnreadSelectionTest {
 
     @Test fun rowsSelectArbitraryChaptersWithoutNavigationAndRestoreTheHideReadPreference() {
         show()
-        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(text(R.string.hide_read)))
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(text(R.string.detail_contents)))
+        compose.onNodeWithContentDescription(text(R.string.detail_directory_options)).performClick()
         compose.onNodeWithText(text(R.string.hide_read)).performClick()
         compose.onNodeWithText("Chapter 0").assertDoesNotExist()
         enterSelection()
@@ -111,8 +112,9 @@ class ChapterUnreadSelectionTest {
         assertNull(openedChapter)
         confirm()
         assertEquals(listOf(setOf("chapter-0", "chapter-2")), writes)
-        compose.onNodeWithText(text(R.string.hide_read)).assertExists()
         compose.onNodeWithText("Chapter 0").assertDoesNotExist()
+        compose.onNodeWithContentDescription(text(R.string.detail_directory_options)).performClick()
+        compose.onNodeWithText(text(R.string.hide_read)).assertIsSelected()
         assertNull(openedChapter)
     }
 
