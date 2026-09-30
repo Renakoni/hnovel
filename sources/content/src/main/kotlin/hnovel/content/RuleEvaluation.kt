@@ -73,16 +73,17 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
     suspend fun markup(html: String): RuleValue =
         execute(ExecutionTask.ContentMarkup(html, formatted = true), "ruleContent.parts", html.length).value
 
-    suspend fun overviews(inputs: List<RuleValue>, nameRule: String, urlRule: String, field: String): List<Pair<String, String>> {
+    suspend fun overviews(inputs: List<RuleValue>, nameRule: String, urlRule: String, coverRule: String,
+        field: String): List<Triple<String, String, String>> {
         // Charge the possible field evaluations, not just their shared IPC envelope.
-        val count = inputs.size * listOf(nameRule, urlRule).count { it.isNotBlank() }
+        val count = inputs.size * listOf(nameRule, urlRule, coverRule).count { it.isNotBlank() }
         if (count > 1 && calls.addAndGet(count - 1) >= maxRuleCalls)
             throw SourceContentException(ContentError.Limit, "$field.overviews")
         val task = ExecutionTask.BookOverviews(inputs, nameRule, urlRule, baseUrl,
-            book.metadata["name"]?.jsonPrimitive?.content.orEmpty(), field)
+            book.metadata["name"]?.jsonPrimitive?.content.orEmpty(), field, coverRule)
         return execute(task, "$field.overviews", inputs.sumOf { it.toString().length }).value.items().map {
             val fields = it.items()
-            fields[0].text() to fields[1].text()
+            Triple(fields[0].text(), fields[1].text(), fields[2].text())
         }
     }
 

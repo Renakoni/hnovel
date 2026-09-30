@@ -8,7 +8,8 @@ import kotlinx.serialization.json.Json
 internal object WorkerBookOverviews {
     fun evaluate(task: ExecutionTask.BookOverviews, identity: ExecutionIdentity, limits: ExecutionLimits): ExecutionResult {
         if (task.inputs.size !in 1..ExecutionTask.BookOverviews.MAX_ROWS ||
-            !ExecutionTask.BookOverviews.supports(task.nameRule) || !ExecutionTask.BookOverviews.supports(task.urlRule))
+            !ExecutionTask.BookOverviews.supports(task.nameRule) || !ExecutionTask.BookOverviews.supports(task.urlRule) ||
+            !ExecutionTask.BookOverviews.supports(task.coverRule))
             return ExecutionResult.Failure(FailureCode.InvalidTask)
         val started = System.nanoTime()
         val values = mutableListOf<RuleValue>()
@@ -34,7 +35,15 @@ internal object WorkerBookOverviews {
                 if (result is ExecutionResult.Failure) return result
                 url = text(result as ExecutionResult.Success)
             }
-            values += RuleValue.Items(listOf(RuleValue.Text(title), RuleValue.Text(url)))
+            var cover = ""
+            if (title.isNotBlank() && task.coverRule.isNotBlank()) {
+                // Keep request options intact; the host resolves the image URL like ordinary book fields.
+                when (val result = field(task.coverRule, "coverUrl", OutputKind.Text)) {
+                    is ExecutionResult.Success -> cover = text(result)
+                    is ExecutionResult.Failure -> if (result.code != FailureCode.RuleRuntime) return result
+                }
+            }
+            values += RuleValue.Items(listOf(RuleValue.Text(title), RuleValue.Text(url), RuleValue.Text(cover)))
         }
         val encoded = Json.encodeToString(ExecutedRule.serializer(), ExecutedRule(RuleValue.Items(values), emptyMap()))
         return if (encoded.toByteArray(Charsets.UTF_8).size > limits.maxOutputBytes) ExecutionResult.Failure(FailureCode.OutputLimit)

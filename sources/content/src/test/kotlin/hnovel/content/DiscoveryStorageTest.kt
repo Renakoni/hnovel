@@ -49,7 +49,9 @@ class DiscoveryStorageTest {
             val second = source.openDiscovery("two").openPages("/book/one", emptyMap()).page(1)
             assertEquals(first.books, second.books)
             assertEquals("Same title", first.books.single().title)
+            assertEquals(fixture.server.url("/cover.png").toString(), first.books.single().coverUrl)
             assertEquals(1, writes.records.size)
+            assertEquals(first.books.single().coverUrl, writes.records.single().book.coverUrl)
             assertFalse(writes.records.single().informationLoaded)
         } }
     }

@@ -37,6 +37,38 @@ import org.robolectric.annotation.Config
 class RuleDiscoveryProviderTest {
     @get:Rule val directory = TemporaryFolder()
 
+    @Test fun feedAndResultPagesRetainCoversForBothBatchedAndDynamicRules() = runBlocking {
+        for (dynamic in listOf(false, true)) RuleSourceFixture().use { fixture ->
+            fixture.server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
+                override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest) = okhttp3.mockwebserver.MockResponse()
+                    .setBody("<li><a href='/book/one'><h2>Book</h2></a><b>Author</b><img src='/cover.png'></li>")
+            }
+            fixture.source { raw -> JsonObject(raw + mapOf(
+                "exploreUrl" to JsonPrimitive("Books::/search"),
+                "homepageModules" to JsonPrimitive("""[{"key":"books","type":"card","title":"Books","url":"/search"}]"""),
+                "ruleExplore" to buildJsonObject {
+                    put("bookList", "li"); put("name", "h2@text"); put("bookUrl", "a@href")
+                    put("author", if (dynamic) "@js:java.getString('b@text')" else "b@text")
+                    put("coverUrl", "img@src")
+                }
+            )) }.use { source ->
+                val provider = RuleDiscoveryProvider(source)
+                val preview = provider.feed().get()!!.single().books.single()
+                val result = provider.page(DiscoveryRequest("/search")).get()!!.books.single()
+                for (book in listOf(preview, result)) {
+                    assertEquals(fixture.server.url("/cover.png").toString(), book.coverUrl)
+                    assertEquals(fixture.server.url("/book/one").toString(), book.remoteId)
+                    if (dynamic) assertEquals("Author", book.author)
+                }
+                assertTrue("At most one list request per entry point", fixture.server.requestCount in 1..2)
+                repeat(fixture.server.requestCount) {
+                    val request = requireNotNull(fixture.server.takeRequest(1, java.util.concurrent.TimeUnit.SECONDS))
+                    assertEquals("Covers must not trigger book information requests", "/search", request.requestUrl!!.encodedPath)
+                }
+            }
+        }
+    }
+
     @Test fun httpFailuresStayWithTheirSectionsAndClearAfterPreviewAndPageRecovery() = runBlocking {
         for (hook in listOf("", "result")) RuleSourceFixture().use { fixture ->
             val recovered = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()

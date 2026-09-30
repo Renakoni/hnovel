@@ -40,7 +40,8 @@ internal val ExecutionLimits.scriptDataLimit: Int get() = maxDataBytes ?: maxOut
   val location: RuleLocation = RuleLocation("ruleContent.parts"), val formatted: Boolean = false) : ExecutionTask
  @Serializable data class DiscoveryReadPlan(val urls: List<String>, val header: String, val rules: List<String>) : ExecutionTask
  @Serializable data class BookOverviews(val inputs: List<RuleValue>, val nameRule: String, val urlRule: String,
-  val baseUrl: String, val fallbackTitle: String = "", val field: String = "ruleExplore") : ExecutionTask {
+  val baseUrl: String, val fallbackTitle: String = "", val field: String = "ruleExplore",
+  val coverRule: String = "") : ExecutionTask {
   companion object {
    const val MAX_ROWS = 8
    fun supports(rule: String) = listOf("@js:", "<js>", "{{", "@put:", "@get:").none { rule.contains(it, ignoreCase = true) }
