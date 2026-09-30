@@ -1,6 +1,7 @@
 package hnovel.content
 
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
 import java.text.Normalizer
 import java.util.Locale
 
@@ -33,8 +34,10 @@ object RuleDiscoveryClassifier {
         val feed = if (spec.homepageModules.isNotBlank()) {
             // Invalid or unresolved declarations retain a tab so the runtime can report their field.
             try {
-                RuleDiscoveryCatalogParser.homepage(RuleDiscoveryCatalogParser.homepageModules(spec.homepageModules),
-                    rows.orEmpty()).orEmpty().isNotEmpty()
+                val modules = RuleDiscoveryCatalogParser.homepageModules(spec.homepageModules)
+                // Optional categories are unknown until their settings-dependent script runs.
+                if (rows == null && modules?.any { it.jsonObject.string("url").isBlank() } == true) true
+                else RuleDiscoveryCatalogParser.homepage(modules, rows.orEmpty()).orEmpty().isNotEmpty()
             } catch (_: SourceContentException) { true }
             catch (_: IllegalArgumentException) { true }
         } else rows == null || (rows.any { it.type == "url" && it.viewName.isNotBlank() } &&

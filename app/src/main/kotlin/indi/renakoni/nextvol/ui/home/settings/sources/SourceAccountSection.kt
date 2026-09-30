@@ -83,16 +83,12 @@ internal fun SourceAccountSection(status: LoginStatus?, accountName: String?, av
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(onClick = onLogout, enabled = !busy) { Text(stringResource(R.string.sources_logout)) }
                         if (loginAvailable) {
-                            OutlinedButton(onClick = onLogin, enabled = !busy) { Text(stringResource(R.string.sources_open_panel)) }
                             TextButton(onClick = onRelogin, enabled = !busy) { Text(stringResource(R.string.sources_login_again)) }
                         }
                     }
                 } else if (loginAvailable) {
                     Button(onClick = if (status == LoginStatus.Required) onRelogin else onLogin, enabled = !busy) {
                         Text(stringResource(if (status == LoginStatus.Required) R.string.sources_login_again else R.string.sources_login))
-                    }
-                    if (status == LoginStatus.Required) TextButton(onClick = onLogin, enabled = !busy) {
-                        Text(stringResource(R.string.sources_open_panel))
                     }
                 }
             } else Text(stringResource(R.string.sources_account_unavailable), style = MaterialTheme.typography.bodyMedium)

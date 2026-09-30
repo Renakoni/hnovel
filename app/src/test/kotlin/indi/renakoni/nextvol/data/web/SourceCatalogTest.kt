@@ -21,6 +21,22 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [27], application = Application::class)
 class SourceCatalogTest {
+    @Test fun pixivConfigurationHelpMatchesNativeSections() {
+        val pixiv = RuntimeEnvironment.getApplication().assets.open("source-catalog/Adult.json").bufferedReader().use {
+            Json.parseToJsonElement(it.readText()).jsonArray.map { row -> row.jsonObject }
+                .single { row -> row["bookSourceUrl"]?.jsonPrimitive?.content == "https://www.pixiv.net/novel" }
+        }
+        val help = pixiv.getValue("variableComment").jsonPrimitive.content
+        assertTrue(help.contains("书源配置"))
+        assertTrue(help.contains("上方账户区"))
+        assertTrue(help.contains("扩展分类"))
+        listOf("variableComment", "bookSourceComment").forEach { key ->
+            val text = pixiv.getValue(key).jsonPrimitive.content
+            assertFalse(text.contains("点击【👀 书源设置】"))
+            assertFalse(text.contains("点击【👀 发现设置】"))
+        }
+    }
+
     @get:Rule val folder = TemporaryFolder()
     private val catalog = SourceCatalog(RuntimeEnvironment.getApplication())
 

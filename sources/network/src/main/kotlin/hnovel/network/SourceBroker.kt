@@ -233,6 +233,16 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         return cookies.snapshot().any { it.second.persistent && it.second.expiresAt > System.currentTimeMillis() }
     }
 
+    /** Host-only local credential check; no network access or server-side authentication claim. */
+    @Synchronized fun hasMatchingCookie(url: String, name: String, valuePattern: Regex): Boolean {
+        checkOpen()
+        val parsed = url.toHttpUrlOrNull() ?: error("Invalid cookie URL")
+        return cookies.snapshot().any { (_, cookie) ->
+            cookie.expiresAt > System.currentTimeMillis() && cookie.matches(parsed) &&
+                cookie.name == name && valuePattern.matches(cookie.value)
+        }
+    }
+
     @Synchronized fun cookie(url: String): String { checkOpen(); val parsed = url.toHttpUrlOrNull() ?: error("Invalid cookie URL")
         policy.check(parsed); return cookies.header(parsed, null) }
     @Synchronized fun setCookie(url: String, value: String, replace: Boolean = false) {

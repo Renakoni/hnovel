@@ -44,6 +44,12 @@ An explicit `homepageModules` declaration instead selects up to 64 homepage modu
 each with a six-book preview. Direct module URLs do not require remote categories;
 legacy `kindTitle` references still resolve against the category catalogue. Homepage
 and category routes retain separate ownership and values.
+Modules with `optional: true` may omit a `kindTitle` category hidden by source settings.
+An empty selection remains an empty homepage, without automatic-feed fallback; duplicate
+matches and empty targets still fail validation. Static capability checks do not evaluate
+these settings-dependent categories or hide their homepage tab.
+Successful login-panel refresh actions invalidate only that source's discovery version
+and resolved feed capability. Account sessions and reading runtimes remain unchanged.
 
 Static capability checks share the catalogue parser and semantic classifier with the
 runtime. Direct homepage modules work without `exploreUrl`; empty static catalogues

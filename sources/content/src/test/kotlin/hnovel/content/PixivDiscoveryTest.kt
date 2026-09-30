@@ -31,6 +31,7 @@ class PixivDiscoveryTest {
             cache.put('pixivCsrfToken','test-token');
             cache.put('checkTimes','1');
             var testSettings=setDefaultSettings();
+            testSettings.SHOW_BOOKMARKS_PUBLIC=true;testSettings.SHOW_BOOKMARKS_PRIVATE=true;
             testSettings.IPDirect=false;testSettings.FAST=true;testSettings.DEBUG=false;
             putInCacheObject('pixivSettings',testSettings);
         """.trimIndent()
@@ -51,8 +52,10 @@ class PixivDiscoveryTest {
             }
             fixture.source { definition(fixture) }.use { source ->
                 val discovery = source.openDiscovery("bookmarks")
-                val bookmarks = discovery.catalog().rows.filter { it.url.contains("/novels/bookmarks?") }
+                val catalog = discovery.catalog(homepage = true)
+                val bookmarks = RuleDiscoveryClassifier.feed(catalog).filter { it.url.contains("/novels/bookmarks?") }
                 assertEquals(2, bookmarks.size)
+                assertEquals(listOf("我的收藏", "私密收藏"), bookmarks.map { it.title })
                 for ((index, row) in bookmarks.withIndex()) {
                     val page = try { discovery.preview(row.url, emptyMap()) }
                     catch (failure: SourceContentException) {
@@ -66,6 +69,14 @@ class PixivDiscoveryTest {
                         assertEquals("/ajax/user/12345/novels/bookmarks", request.requestUrl!!.encodedPath)
                         assertEquals(if (index == 0) "show" else "hide", request.requestUrl!!.queryParameter("rest"))
                         assertEquals("0", request.requestUrl!!.queryParameter("offset"))
+                    }
+                    val pages = discovery.openPages(row.url, emptyMap())
+                    assertEquals(1, pages.page(2).books.size)
+                    repeat(2) {
+                        val request = requireNotNull(fixture.server.takeRequest(1, TimeUnit.SECONDS))
+                        assertEquals("/ajax/user/12345/novels/bookmarks", request.requestUrl!!.encodedPath)
+                        assertEquals(if (index == 0) "show" else "hide", request.requestUrl!!.queryParameter("rest"))
+                        assertEquals("24", request.requestUrl!!.queryParameter("offset"))
                     }
                 }
             }

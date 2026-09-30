@@ -340,14 +340,25 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val form = (cachedLoginForm ?: loadLoginForm()).withValues(loginValues())
         // Trusted callers without a UI snapshot retain the unique-name API. UI submissions
         // always carry a form ID and can only address an opaque control ID from that form.
-        val fieldAction = action?.let { id -> form.fields.singleOrNull { if (formId == null) it.name == id else it.id == id }?.action
-            ?: throw SourceContentException(ContentError.InvalidRule, "loginUi.action") }
+        val fieldAction = action?.let { id ->
+            val field = form.fields.singleOrNull { if (formId == null) it.name == id else it.id == id }
+                ?: throw SourceContentException(ContentError.InvalidRule, "loginUi.action")
+            if (!field.enabled) throw SourceContentException(ContentError.Unavailable, "loginUi.action")
+            field.action ?: throw SourceContentException(ContentError.InvalidRule, "loginUi.action")
+        }
         form.validate(values)
         val submitted = form.values + values
         form.validate(submitted, allowAdditional = true)
         val info = JsonObject(submitted.mapValues { JsonPrimitive(it.value) }).toString()
         saveLoginValues(submitted)
         val context = loginContext(submitted, interactive = true)
+        val messages = ArrayDeque<String>()
+        context.onMessage = { message ->
+            message.trim().take(4096).takeIf { it.isNotEmpty() }?.let {
+                if (messages.size == 16) messages.removeFirst()
+                messages.addLast(it)
+            }
+        }
         if (form.browserUrl != null && action == null) {
             val pending = if (spec.browserRead) (session.read(StorageRequest(StorageArea.Account,
                 StorageRequestKey.BROWSER_PENDING_URL)) as? StorageResult.Value)?.value else null
@@ -406,9 +417,10 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val changed = state.getValue("values").jsonObject.mapValues { it.value.jsonPrimitive.content }
         form.validate(changed, allowAdditional = true)
         if (changed != submitted) saveLoginValues(changed.filter { (key, value) -> submitted[key] != value })
-        if (actions.any { it.jsonObject.string("kind") == "refresh" }) cachedLoginForm = null
+        val refreshDiscovery = actions.any { it.jsonObject.string("kind") == "refresh" }
+        if (refreshDiscovery) cachedLoginForm = null
         if (action == null) authority.authorized(identity) { check(session.write(StorageRequest(StorageArea.Account, "login/status", "authenticated")) is StorageResult.Value) }
-        LoginActionResult(refreshTargets.toSet())
+        LoginActionResult(refreshTargets.toSet(), messages.toList(), refreshDiscovery)
     }
 
     /** Pages called with the same [query] share `cache.*Memory`; without one, memory lasts for this page only. */

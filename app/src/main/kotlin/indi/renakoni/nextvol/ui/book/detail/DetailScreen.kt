@@ -3,6 +3,7 @@ package indi.renakoni.nextvol.ui.book.detail
 import indi.renakoni.nextvol.data.book.availableVolumes
 import android.net.Uri
 import android.widget.Toast
+import indi.renakoni.nextvol.utils.textToast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
@@ -318,7 +319,7 @@ fun DetailScreen(
                             it.id
                         )
                     }?.onErr {
-                        Toast.makeText(context, it.message, Toast.LENGTH_SHORT).show()
+                        textToast(context, it.message, Toast.LENGTH_SHORT).show()
                     }
                 },
                 onClickMarkAsRead = onClickMarkAsRead,

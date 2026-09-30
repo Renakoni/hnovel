@@ -390,6 +390,8 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext private val co
         Binding(installed, registration, broker, session, source)
     }
 
+    internal fun refreshDiscovery(id: Identifier) = registry.refreshDiscovery(id)
+
     internal suspend fun loginTarget(id: Identifier): RuleLoginTarget = withContext(Dispatchers.IO) {
         restore()
         lock.withLock {
@@ -404,7 +406,9 @@ class ImportedRuleSources @Inject constructor(@ApplicationContext private val co
         fun read(area: StorageArea, key: String) =
             (session.read(StorageRequest(area, key)) as? StorageResult.Value
                 ?: error("Stored source settings are unavailable")).value
-        val status = SourceLoginService.storedStatus(session)
+        val definition = active.getValue(id).installed.definition
+        val status = SourceLoginService.storedStatus(session,
+            pixiv = definition.profile == EXTENSION_PROFILE && definition.importKey == PixivUpdateAdapter.KEY)
         val name = if (accountNameField != null && status in setOf("authenticated", "session")) {
             val info = (session.read(StorageRequest(StorageArea.Account, hnovel.network.StorageRequestKey.LOGIN_INFO)) as? StorageResult.Value)?.value
             SourceLoginService.savedAccountName(accountNameField, info)

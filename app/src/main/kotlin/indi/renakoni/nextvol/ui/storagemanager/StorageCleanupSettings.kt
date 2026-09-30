@@ -1,6 +1,7 @@
 package indi.renakoni.nextvol.ui.storagemanager
 
 import android.widget.Toast
+import indi.renakoni.nextvol.utils.textToast
 import androidx.compose.foundation.background
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme.colorScheme
@@ -42,9 +43,9 @@ internal fun StorageCleanupSettings(
                 try {
                     if (clearDownloadsSelected == true) clearDownloads() else clearReadingCache()
                     clearDownloadsSelected = null
-                    Toast.makeText(context, R.string.settings_cache_cleared, Toast.LENGTH_SHORT).show()
+                    textToast(context, R.string.settings_cache_cleared, Toast.LENGTH_SHORT).show()
                 } catch (cancelled: CancellationException) { throw cancelled }
-                catch (_: Exception) { Toast.makeText(context, R.string.settings_cache_clear_failed, Toast.LENGTH_SHORT).show() }
+                catch (_: Exception) { textToast(context, R.string.settings_cache_clear_failed, Toast.LENGTH_SHORT).show() }
                 finally { clearingCache = false }
             }
         }) { Text(stringResource(android.R.string.ok)) } },

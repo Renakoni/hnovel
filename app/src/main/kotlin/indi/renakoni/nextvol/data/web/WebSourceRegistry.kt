@@ -120,9 +120,16 @@ class WebSourceRegistry internal constructor(private val dispatcher: CoroutineDi
         }
     }
 
+    internal fun refreshDiscovery(id: Identifier) = synchronized(lock) {
+        val entry = entries[id] ?: return@synchronized
+        entry.discoveryGeneration++
+        entry.resolvedFeed = null
+        publish()
+    }
+
     private fun publish() {
         mutableSources.value = Collections.unmodifiableList(entries.values
-            .map { SourceListing(it.metadata, it.status, it.generation, it.resolvedFeed) }
+            .map { SourceListing(it.metadata, it.status, it.generation, it.resolvedFeed, it.discoveryGeneration) }
             .sortedWith(compareBy({ !it.metadata.builtIn }, { it.metadata.id.namespace }, { it.metadata.id.id })))
     }
 
@@ -143,6 +150,7 @@ class WebSourceRegistry internal constructor(private val dispatcher: CoroutineDi
         private var runtime: SourceRuntime? = null
         var status = SourceStatus.Registered
         var resolvedFeed: Boolean? = null
+        var discoveryGeneration: Long = 0
 
         val initialization = lifetime.async(start = CoroutineStart.LAZY) {
             update(this@Entry, SourceStatus.Initializing)

@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import indi.renakoni.nextvol.utils.textToast
 import androidx.core.app.ShareCompat
 import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModel
@@ -83,7 +84,7 @@ class ExportUserDataDialogViewModel @Inject constructor(
                     Intent.createChooser(intent, context.getString(R.string.export_and_share))
                 )
             } else if (workInfo?.state == WorkInfo.State.FAILED) {
-                Toast.makeText(context, backupFailureMessage(workInfo.outputData, R.string.backup_export_failed), Toast.LENGTH_LONG).show()
+                textToast(context, backupFailureMessage(workInfo.outputData, R.string.backup_export_failed), Toast.LENGTH_LONG).show()
             }
             onFinish()
         }
