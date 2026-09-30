@@ -86,16 +86,16 @@ class RequestTraceTest {
         }
     }
 
-    @Test fun transportDefaultIsObservedWithoutInjectingAReplacementHeader() = runBlocking {
+    @Test fun transportFallbackIsObservedWithTheActualBrowserUserAgent() = runBlocking {
         MockWebServer().use { server ->
             server.start(); server.enqueue(MockResponse().setBody("ok"))
             SourceBroker(directory.root.toPath()).use { broker ->
                 val session = broker.open(scope, listOf(NetworkGrant(server.url("/").toString(), true)))
                 val events = events(); session.observe(events)
                 success(session.execute(BrokerRequest("r", server.url("/").toString())))
-                assertEquals("okhttp/${okhttp3.OkHttp.VERSION}", server.takeRequest().getHeader("User-Agent"))
+                assertEquals(DESKTOP_USER_AGENT, server.takeRequest().getHeader("User-Agent"))
                 assertEquals(listOf(UserAgentSource.TransportDefault), events.first { it.evidence == RequestEvidence.HeadersResolved }.userAgentSources)
-                assertEquals(UserAgentFamily.OkHttp, events.single { it.evidence == RequestEvidence.TransportHeaders }.userAgent?.family)
+                assertEquals(UserAgentSummary.from(DESKTOP_USER_AGENT), events.single { it.evidence == RequestEvidence.TransportHeaders }.userAgent)
             }
         }
     }
