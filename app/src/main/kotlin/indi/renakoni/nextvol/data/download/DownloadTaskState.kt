@@ -9,7 +9,7 @@ import java.io.IOException
 
 enum class DownloadTaskStatus { None, Queued, Running, WaitingRetry, WaitingVerification, Interrupted, Failed, Cancelled, Complete }
 enum class DownloadStage { Unknown, Details, Directory, Body, Image, Cover, Storage }
-enum class DownloadFailure { Network, RateLimited, RetryExhausted, Authentication, Verification, SourceUnavailable, SourceRequest, Storage, SystemRestricted, SystemInterrupted }
+enum class DownloadFailure { Network, RateLimited, RetryExhausted, Authentication, Verification, SourceUnavailable, SourceRequest, Storage, SystemRestricted, SystemInterrupted, Scheduling }
 
 data class DownloadTaskState(
     val status: DownloadTaskStatus = DownloadTaskStatus.None,

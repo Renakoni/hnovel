@@ -18,6 +18,8 @@ import indi.renakoni.nextvol.data.download.DownloadProgressRepository
 import indi.renakoni.nextvol.data.download.BookDownloadStatus
 import indi.renakoni.nextvol.data.download.DownloadTaskState
 import indi.renakoni.nextvol.data.download.DownloadTaskStatus
+import indi.renakoni.nextvol.data.download.DownloadSubmission
+import indi.renakoni.nextvol.data.download.DownloadFailure
 import indi.renakoni.nextvol.data.web.zlibrary.ZLibrarySources
 import io.mockk.*
 import io.nightfish.lightnovelreader.api.book.*
@@ -108,10 +110,11 @@ class DetailCapabilitiesTest {
             until { model.uiState.bookInformation != null && model.uiState.metadataOnly && model.uiState.downloadState == downloadStatus }
             assertFalse(model.uiState.readingAvailable)
             assertNull(model.uiState.bookVolumes)
-            assertNull(model.cacheBook(key).first())
+            assertEquals(DownloadSubmission.Rejected(DownloadFailure.SourceUnavailable), model.submitDownload(key))
             assertNull(model.exportToEpub(key, "Metadata book").first())
             verify(exactly = 0) { repository.getBookVolumesFlow(any<String>(), any()) }
             verify(exactly = 0) { repository.cacheBook(any()) }
+            coVerify(exactly = 0) { repository.submitDownload(any(), any()) }
             verify(exactly = 0) { work.enqueueUniqueWork(any<String>(), any<ExistingWorkPolicy>(), any<OneTimeWorkRequest>()) }
             model.retryInformation()
             until { model.uiState.bookInformation != null }

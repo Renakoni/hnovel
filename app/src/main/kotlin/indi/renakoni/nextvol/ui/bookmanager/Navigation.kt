@@ -2,11 +2,13 @@ package indi.renakoni.nextvol.ui.bookmanager
 
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
 import indi.renakoni.nextvol.R
+import indi.renakoni.nextvol.ui.components.downloadSubmissionText
 import indi.renakoni.nextvol.utils.LocalSnackbarHost
 import indi.renakoni.nextvol.utils.isResumed
 import indi.renakoni.nextvol.utils.popBackStackIfResumed
@@ -17,6 +19,7 @@ fun NavGraphBuilder.bookManager() {
     composable<Route.BookManager> {
         val navController = LocalNavController.current
         val snackbarHostState = LocalSnackbarHost.current
+        val context = LocalContext.current
         val viewModel = hiltViewModel<BookManagerViewModel>()
         val uiState = viewModel.localBookManagerUiState
         val clearedItemsText = stringResource(R.string.book_manager_cleared_items)
@@ -26,6 +29,11 @@ fun NavGraphBuilder.bookManager() {
                     clearedItemsText.format(count),
                     withDismissAction = true
                 )
+            }
+        }
+        LaunchedEffect(viewModel.downloadSubmissions) {
+            viewModel.downloadSubmissions.collect { result ->
+                snackbarHostState.showSnackbar(context.downloadSubmissionText(result), withDismissAction = true)
             }
         }
         uiState.openStorageOverview = {

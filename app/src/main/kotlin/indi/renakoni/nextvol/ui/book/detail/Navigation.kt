@@ -29,12 +29,12 @@ import indi.renakoni.nextvol.data.book.BookIdentity
 import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.ui.book.reader.navigateToBookReaderDestination
 import indi.renakoni.nextvol.ui.book.reader.navigateToImageViewerDialog
+import indi.renakoni.nextvol.ui.components.downloadSubmissionText
 import indi.renakoni.nextvol.ui.dialog.navigateToAddBookToBookshelfDialog
 import indi.renakoni.nextvol.ui.dialog.navigateToMarkAllChaptersAsReadDialog
 import indi.renakoni.nextvol.utils.LocalSnackbarHost
 import indi.renakoni.nextvol.utils.isResumed
 import indi.renakoni.nextvol.utils.popBackStackIfResumed
-import indi.renakoni.nextvol.utils.showSnackbar
 import io.nightfish.lightnovelreader.api.Route
 import io.nightfish.lightnovelreader.api.error.WebRequestErrorKind
 import io.nightfish.lightnovelreader.api.ui.LocalNavController
@@ -143,53 +143,8 @@ fun NavGraphBuilder.bookDetailDestination() {
             },
             cacheBook = { bookId, refresh ->
                 coroutineScope.launch {
-                    viewModel.cacheBook(bookId, refresh).collect { workInfo ->
-                        if (workInfo == null) {
-                            viewModel.uiState.bookInformation
-                                ?.map { it.title }
-                                ?.onOk { title ->
-                                    showSnackbar(
-                                        coroutineScope = coroutineScope,
-                                        hostState = snackbarHostState,
-                                        message = context.getString(
-                                            R.string.cache_book_started,
-                                            title
-                                        )
-                                    ) { }
-                                }?.onErr {
-                                    showSnackbar(
-                                        coroutineScope = coroutineScope,
-                                        hostState = snackbarHostState,
-                                        message = it.message
-                                    ) { }
-                                }
-                            return@collect
-                        }
-                        when (workInfo.state) {
-                            WorkInfo.State.SUCCEEDED -> {
-                                showSnackbar(
-                                    coroutineScope = coroutineScope,
-                                    hostState = snackbarHostState,
-                                    message = context.getString(R.string.cache_book_finished)
-                                ) { }
-                            }
-                            WorkInfo.State.FAILED -> {
-                                showSnackbar(
-                                    coroutineScope = coroutineScope,
-                                    hostState = snackbarHostState,
-                                    message = context.getString(R.string.cache_book_error)
-                                ) { }
-                            }
-                            WorkInfo.State.RUNNING -> {
-                                showSnackbar(
-                                    coroutineScope = coroutineScope,
-                                    hostState = snackbarHostState,
-                                    message = context.getString(R.string.cache_book_running)
-                                ) { }
-                            }
-                            else -> {}
-                        }
-                    }
+                    val result = viewModel.submitDownload(bookId, refresh)
+                    snackbarHostState.showSnackbar(context.downloadSubmissionText(result), withDismissAction = true)
                 }
             },
             requestAddBookToBookshelf = navController::navigateToAddBookToBookshelfDialog,

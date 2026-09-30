@@ -19,9 +19,8 @@ import indi.renakoni.nextvol.data.storage.StorageUsageRepository
 import indi.renakoni.nextvol.utils.LocalClaimSnackbarHost
 import indi.renakoni.nextvol.utils.LocalSnackbarHost
 import io.mockk.coEvery
-import io.mockk.every
 import io.mockk.mockk
-import io.mockk.verify
+import io.mockk.coVerify
 import io.nightfish.lightnovelreader.api.error.WebRequestError
 import io.nightfish.lightnovelreader.api.identifier.Identifier
 import io.nightfish.lightnovelreader.api.ui.LocalNavController
@@ -104,7 +103,8 @@ class DownloadManagerScreenTest {
 
     @Test fun completedTaskRefreshesButIncompleteTaskResumesFromTheManager() {
         val repository = mockk<BookRepository>()
-        every { repository.cacheBook(any(), any()) } returns flowOf(null)
+        coEvery { repository.submitDownload(any(), any()) } returns
+            indi.renakoni.nextvol.data.download.DownloadSubmission.Rejected(indi.renakoni.nextvol.data.download.DownloadFailure.Scheduling)
         val usage = mockk<StorageUsageRepository>()
         coEvery { usage.getCachedSnapshot() } coAnswers { awaitCancellation() }
         val model = BookManagerViewModel(repository, mockk(), mockk(), usage, mockk(), mockk(), mockk())
@@ -114,13 +114,15 @@ class DownloadManagerScreenTest {
             val item = item(status).apply { progress = 1f }
             show(item, retry = model::onClickRetry)
             compose.onNodeWithText(activity.get().getString(R.string.book_download_check_updates)).performClick()
-            verify(exactly = 1) { repository.cacheBook(book.storageKey, true) }
+            compose.waitForIdle()
+            coVerify(exactly = 1) { repository.submitDownload(book.storageKey, true) }
             compose.runOnIdle {
                 item.status = status.copy(task = status.task.copy(status = DownloadTaskStatus.Failed))
                 item.progress = -1f
             }
             compose.onNodeWithText(activity.get().getString(R.string.book_download_continue)).performClick()
-            verify(exactly = 1) { repository.cacheBook(book.storageKey, false) }
+            compose.waitForIdle()
+            coVerify(exactly = 1) { repository.submitDownload(book.storageKey, false) }
         } finally {
             model.viewModelScope.cancel()
         }

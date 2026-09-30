@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="download_submission_accepted">已加入下载队列 · %1$s</string>
+    <string name="download_task_waiting_network">等待网络连接</string>
+    <string name="download_task_waiting_scheduler">已排队，等待系统开始执行</string>
+    <string name="download_error_scheduling">下载提交失败，请重试</string>
+</resources>
