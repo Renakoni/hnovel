@@ -188,6 +188,7 @@ dependencies {
     implementation(libs.lifecycle.runtime.ktx)
     implementation(libs.lifecycle.runtime.compose)
     implementation(libs.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.navigationevent.compose)
     // Compose
     implementation(libs.compose.animation.graphics)
     implementation(platform(libs.compose.bom))

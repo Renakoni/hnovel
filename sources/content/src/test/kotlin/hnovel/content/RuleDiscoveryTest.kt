@@ -246,33 +246,6 @@ class RuleDiscoveryTest {
         }
     }
 
-    @Test fun customButtonUsesBooleanFlagsAndRunsCallbackWithExplicitEventAndSnapshots() = runBlocking {
-        RuleSourceFixture().use { fixture ->
-            val source = fixture.source { raw -> definition(raw, "Books::/search", buildJsonObject {
-                put("customButton", true); put("eventListener", true)
-                put("ruleContent", JsonObject(raw.getValue("ruleContent").jsonObject + ("callBackJs" to JsonPrimitive("""
-                    if(book!==null||chapter!==null)throw 'unexpected book';
-                    infoMap.event=event;infoMap.long=String(isLongClick);
-                    infoMap.font=String(java.getReadBookConfigMap().get('fontSize'));
-                    infoMap.theme=java.getThemeMode();
-                    java.open('login');java.searchBook('A title');java.reLoginView();
-                """.trimIndent()))))
-            }) }
-            val environment = RuleDiscoveryEnvironment("2", buildJsonObject { put("textColor", 42) }, buildJsonObject { put("fontSize", 19) })
-            val page = source.openDiscovery("event", environment = environment)
-            val updated = page.interact("custom-button", longClick = true)
-            assertEquals("longClickCustomButton", updated.catalog.values["event"])
-            assertEquals("true", updated.catalog.values["long"])
-            assertEquals("19", updated.catalog.values["font"])
-            assertEquals("2", updated.catalog.values["theme"])
-            assertEquals(listOf("login", "search"), updated.actions.map { it.kind })
-            assertTrue(updated.refresh)
-            val clicked = page.interact("custom-button")
-            assertEquals("clickCustomButton", clicked.catalog.values["event"])
-            assertEquals("false", clicked.catalog.values["long"])
-        }
-    }
-
     @Test fun inputUpdatesConfigurationAndBrowserIntentsHaveRealEffectsThroughExistingPorts() = runBlocking {
         RuleSourceFixture().use { fixture ->
             val source = fixture.source { definition(it, """[

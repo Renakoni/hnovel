@@ -94,7 +94,6 @@ internal fun PixivBlockConfirmation(model: PixivBlockingViewModel) {
 internal fun PixivBlockManager(id: Identifier, model: PixivBlockingViewModel) {
     val state = model.state
     val scope = rememberCoroutineScope()
-    LaunchedEffect(id) { model.loadManager(id) }
     PixivBlockingFeedback(model)
     val kinds = listOf(PixivBlockKind.Author, PixivBlockKind.Tag, PixivBlockKind.Book) +
         listOfNotNull(PixivBlockKind.Caption.takeIf { state.rules.any { it.kind == PixivBlockKind.Caption } })

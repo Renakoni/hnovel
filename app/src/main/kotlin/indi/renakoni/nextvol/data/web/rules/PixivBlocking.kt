@@ -28,6 +28,9 @@ data class PixivBlockRule(val kind: PixivBlockKind, val value: String, val label
 data class PixivBlockBook(val key: String, val title: String, val authorId: String = "",
     val author: String = "", val tags: List<String> = emptyList())
 
+private fun RuleBook.blockingTags(data: PixivBlockBook?): List<String> =
+    (tags.map { it.removePrefix("#") } + data?.tags.orEmpty()).filter(String::isNotBlank).distinct()
+
 @Serializable
 internal data class PixivLocalPreferences(val blocks: List<PixivBlockRule> = emptyList(),
     val likedTags: List<String> = emptyList(), val bookmarkUsers: Map<String, String> = emptyMap())
@@ -82,7 +85,7 @@ internal class PixivBookFilter(private val session: SourceSession) {
             val data = book.state.variables["nextvolPixivBook"]?.let { Json.decodeFromString<PixivBlockBook>(it) }
             data?.key !in values[PixivBlockKind.Book].orEmpty() &&
                 data?.authorId !in values[PixivBlockKind.Author].orEmpty() &&
-                (data?.tags ?: book.tags.map { it.removePrefix("#") }).none { it in values[PixivBlockKind.Tag].orEmpty() } &&
+                book.blockingTags(data).none { it in values[PixivBlockKind.Tag].orEmpty() } &&
                 values[PixivBlockKind.Caption].orEmpty().none { book.description.contains(it) }
         }
     } catch (cancelled: CancellationException) {
@@ -100,7 +103,10 @@ class PixivBlocking @Inject constructor(private val sources: ImportedRuleSources
         val target = sources.loginTarget(book.sourceId)
         val canonical = target.rules.canonicalBookId(book.remoteId)
         val saved = target.rules.cachedInformation(canonical) ?: return null
-        return saved.state.variables["nextvolPixivBook"]?.let { Json.decodeFromString<PixivBlockBook>(it) }
+        return saved.state.variables["nextvolPixivBook"]?.let {
+            val data = Json.decodeFromString<PixivBlockBook>(it)
+            data.copy(tags = saved.blockingTags(data))
+        }
     }
 
     suspend fun rules(id: Identifier): List<PixivBlockRule> = sources.withPixivPreferences(id) {

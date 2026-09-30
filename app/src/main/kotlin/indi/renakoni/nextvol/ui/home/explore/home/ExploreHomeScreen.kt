@@ -107,8 +107,7 @@ fun ExploreHomeScreen(
                                 }
                             }
                             items(content.buttons, key = { "action:" + it.id }) { button ->
-                                ListItem(headlineContent = { Text(if (button.id == "custom-button")
-                                    stringResource(R.string.discovery_source_action) else button.title) },
+                                ListItem(headlineContent = { Text(button.title) },
                                     modifier = Modifier.combinedClickable(enabled = !content.acting && !content.loading,
                                         onClick = { onAction(button.id, false) }, onLongClick = { onAction(button.id, true) }))
                             }

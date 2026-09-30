@@ -1,7 +1,14 @@
 package indi.renakoni.nextvol.ui.home.settings.sources
 
-import androidx.activity.OnBackPressedCallback
-import androidx.activity.findViewTreeOnBackPressedDispatcherOwner
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -24,10 +31,18 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner
+import androidx.navigationevent.findViewTreeNavigationEventDispatcherOwner
 import hnovel.content.LoginField
 import hnovel.content.LoginForm
 import indi.renakoni.nextvol.R
 import kotlinx.coroutines.launch
+
+private data class ConfigurationPage(
+    val section: String?, val title: String?, val content: (@Composable () -> Unit)?,
+) {
+    val isRoot: Boolean get() = section == null && title == null
+}
 
 /** Navigation is local; actions keep the original validated form and field IDs. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -49,72 +64,76 @@ internal fun SourceConfigurationSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
     val hasPage = pageTitle != null || section != null
-    LaunchedEffect(section, pageTitle) { scrollState.scrollToItem(0) }
     fun parent() {
         if (pageTitle != null) onPageBack() else selectedSection = null
     }
-    fun back() {
-        if (!hasPage) onCancel() else {
-            parent()
-            scope.launch { sheetState.show() }
-        }
-    }
-    ModalBottomSheet(onDismissRequest = ::back, sheetState = sheetState,
-        properties = ModalBottomSheetProperties(shouldDismissOnBackPress = !hasPage),
+    ModalBottomSheet(onDismissRequest = onCancel, sheetState = sheetState,
+        properties = ModalBottomSheetProperties(shouldDismissOnBackPress = false),
         containerColor = MaterialTheme.colorScheme.surface) {
         // The sheet owns a separate window, not the parent screen's navigation dispatcher.
-        val backOwner = requireNotNull(LocalView.current.findViewTreeOnBackPressedDispatcherOwner())
-        val onParent by rememberUpdatedState(::parent)
-        val backCallback = remember(backOwner) {
-            object : OnBackPressedCallback(false) {
-                override fun handleOnBackPressed() = onParent()
-            }
-        }
-        SideEffect { backCallback.isEnabled = hasPage }
-        DisposableEffect(backOwner, backCallback) {
-            backOwner.onBackPressedDispatcher.addCallback(backCallback)
-            onDispose { backCallback.remove() }
-        }
-        Column(Modifier.fillMaxWidth().fillMaxHeight(0.88f)) {
-            Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
-                verticalAlignment = Alignment.CenterVertically) {
-                if (hasPage) IconButton(onClick = ::parent) {
-                    Icon(painterResource(R.drawable.arrow_back_24px), stringResource(R.string.import_back))
-                }
-                Text(pageTitle ?: section ?: stringResource(R.string.sources_configuration),
-                    Modifier.weight(1f).padding(start = if (hasPage) 4.dp else 12.dp).semantics { heading() },
-                    style = MaterialTheme.typography.titleLarge)
-                IconButton(onClick = onCancel) {
-                    Icon(painterResource(R.drawable.close_24px), stringResource(R.string.close))
+        val backOwner = requireNotNull(LocalView.current.findViewTreeNavigationEventDispatcherOwner())
+        CompositionLocalProvider(LocalNavigationEventDispatcherOwner provides backOwner) {
+            BackHandler {
+                if (hasPage) parent() else scope.launch {
+                    sheetState.hide()
+                    if (!sheetState.isVisible) onCancel()
                 }
             }
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            if (pageContent != null) pageContent() else LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = scrollState,
-                contentPadding = PaddingValues(vertical = 8.dp)) {
-                if (form == null) item {
-                    Box(Modifier.fillParentMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator()
+        }
+        AnimatedContent(
+            targetState = ConfigurationPage(section, pageTitle, pageContent),
+            modifier = Modifier.fillMaxWidth().fillMaxHeight(0.88f),
+            contentKey = { it.section to it.title },
+            transitionSpec = {
+                val direction = if (targetState.isRoot) -1 else 1
+                ((fadeIn(tween(180)) + slideInHorizontally(tween(180, easing = FastOutSlowInEasing)) { it / 16 * direction })
+                    togetherWith (fadeOut(tween(120)) +
+                        slideOutHorizontally(tween(180, easing = FastOutSlowInEasing)) { -it / 16 * direction })).using(null)
+            }, label = "SourceConfigurationPage",
+        ) { page ->
+            val pageScrollState = if (page.isRoot) scrollState else rememberLazyListState()
+            Column(Modifier.fillMaxSize()) {
+                Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    if (!page.isRoot) IconButton(onClick = ::parent) {
+                        Icon(painterResource(R.drawable.arrow_back_24px), stringResource(R.string.import_back))
+                    }
+                    Text(page.title ?: page.section ?: stringResource(R.string.sources_configuration),
+                        Modifier.weight(1f).padding(start = if (page.isRoot) 12.dp else 4.dp).semantics { heading() },
+                        style = MaterialTheme.typography.titleLarge)
+                    IconButton(onClick = onCancel) {
+                        Icon(painterResource(R.drawable.close_24px), stringResource(R.string.close))
                     }
                 }
-                items(fields.filter { it.section == section && it !in managerFields }, key = { it.id }) { field ->
-                    SourceConfigurationField(field, values[field.name].orEmpty(), !busy && field.enabled,
-                        onChange = { values[field.name] = it },
-                        onAction = { form?.let { onSubmit(values.toMap(), field.id, it.id) } })
-                }
-                if (section == null && sections.isNotEmpty()) {
-                    item { HorizontalDivider(Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant) }
-                    items(sections) { name ->
-                        ListItem(headlineContent = { Text(name) },
-                            trailingContent = { Icon(painterResource(R.drawable.arrow_forward_ios_24px), null, Modifier.size(16.dp)) },
-                            colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
-                            modifier = Modifier.clickable { selectedSection = name }.padding(horizontal = 8.dp))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                if (page.content != null) Box(Modifier.weight(1f).fillMaxWidth()) { page.content() }
+                else LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = pageScrollState,
+                    contentPadding = PaddingValues(vertical = 8.dp)) {
+                    if (form == null) item {
+                        Box(Modifier.fillParentMaxSize(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator()
+                        }
                     }
-                }
-                if (section == null) items(managerFields, key = { it.id }) { field ->
-                    SourceConfigurationField(field, values[field.name].orEmpty(), !busy && field.enabled,
-                        onChange = { values[field.name] = it },
-                        onAction = { form?.let { onSubmit(values.toMap(), field.id, it.id) } }, navigates = true)
+                    items(fields.filter { it.section == page.section && it !in managerFields }, key = { it.id }) { field ->
+                        SourceConfigurationField(field, values[field.name].orEmpty(), !busy && field.enabled,
+                            onChange = { values[field.name] = it },
+                            onAction = { form?.let { onSubmit(values.toMap(), field.id, it.id) } })
+                    }
+                    if (page.section == null && sections.isNotEmpty()) {
+                        item { HorizontalDivider(Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant) }
+                        items(sections) { name ->
+                            ListItem(headlineContent = { Text(name) },
+                                trailingContent = { Icon(painterResource(R.drawable.arrow_forward_ios_24px), null, Modifier.size(16.dp)) },
+                                colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
+                                modifier = Modifier.clickable { selectedSection = name }.padding(horizontal = 8.dp))
+                        }
+                    }
+                    if (page.section == null) items(managerFields, key = { it.id }) { field ->
+                        SourceConfigurationField(field, values[field.name].orEmpty(), !busy && field.enabled,
+                            onChange = { values[field.name] = it },
+                            onAction = { form?.let { onSubmit(values.toMap(), field.id, it.id) } }, navigates = true)
+                    }
                 }
             }
         }
