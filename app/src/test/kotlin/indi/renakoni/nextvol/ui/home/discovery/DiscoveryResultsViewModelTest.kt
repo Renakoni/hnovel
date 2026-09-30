@@ -213,6 +213,34 @@ class DiscoveryResultsViewModelTest {
         assertEquals(listOf(null, null), provider.requests.map { it.cursor })
     }
 
+    @Test fun refreshKeepsVisibleCardsUntilTheReplacementPageArrives() = runTest(dispatcher) {
+        val release = CompletableDeferred<Unit>()
+        var refreshing = false
+        val provider = object : Pages() {
+            override suspend fun page(request: DiscoveryRequest): Result<DiscoveryPage, DiscoveryError> {
+                if (refreshing) release.await()
+                return super.page(request)
+            }
+        }
+        add(provider)
+        val model = model()
+        advanceUntilIdle()
+        model.loadMore()
+        advanceUntilIdle()
+        val previous = model.state.value.books
+        assertEquals(2, previous.size)
+        refreshing = true
+        model.refresh()
+        runCurrent()
+        assertEquals(previous, model.state.value.books)
+        assertTrue(model.state.value.loading)
+        release.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(1, model.state.value.books.size)
+        assertFalse(model.state.value.loading)
+        assertEquals(listOf(null, "2", null), provider.requests.map { it.cursor })
+    }
+
     @Test fun feedOnlyMoreInitializesItsScopedFiltersAndPaginatesWithoutCategories() = runTest(dispatcher) {
         var catalogs = 0
         val provider = object : Pages() {

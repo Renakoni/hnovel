@@ -19,10 +19,12 @@ internal data class BoundSourceImage(val image: SourceImage, val key: String, va
 /** Preserve actionable categories through Coil without carrying private source error text. */
 internal class SourceImageRequestException(error: WebRequestError) : IOException("Source image request failed") {
     val kind = error.kind
-    val networkFailure = error.throwable is IOException
+    val networkFailure = error.throwable is IOException && error.throwable !is SourceImageHttpException
     val contentError = (error.throwable as? hnovel.content.SourceContentException)?.code
     val retry = (error.throwable as? hnovel.content.SourceContentException)?.retry
+        ?: (error.throwable as? SourceImageHttpException)?.retry
     val httpStatus = (error.throwable as? hnovel.content.SourceContentException)?.httpStatus
+        ?: (error.throwable as? SourceImageHttpException)?.httpStatus
 }
 
 internal class SourceImageFetcher(private val request: BoundSourceImage, private val options: Options,

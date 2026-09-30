@@ -34,6 +34,7 @@ class SourceNetworkSettings @Inject constructor(@ApplicationContext context: Con
             snapshot.finishWrite(output)
         } catch (failure: Exception) { snapshot.failWrite(output); throw failure }
         modes = next
+        indi.renakoni.nextvol.data.image.SourceImageRetryEvents.request(source)
     }
 
     fun forSource(source: Identifier) = SourceRouteProvider { networks.route(mode(source)) }

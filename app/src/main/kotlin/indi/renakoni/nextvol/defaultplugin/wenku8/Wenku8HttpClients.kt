@@ -58,7 +58,7 @@ internal class Wenku8HttpClients(private val routes: (Identifier) -> SourceNetwo
                 override fun onResponse(call: Call, response: Response) {
                     try {
                         val bytes = response.use {
-                            if (!it.isSuccessful) throw IOException("Image request failed (${it.code})")
+                            if (!it.isSuccessful) throw indi.renakoni.nextvol.data.image.SourceImageHttpException(it.code, it.headers.values("Retry-After"))
                             it.body?.bytes() ?: throw IOException("Image response is empty")
                         }
                         continuation.resume(bytes)

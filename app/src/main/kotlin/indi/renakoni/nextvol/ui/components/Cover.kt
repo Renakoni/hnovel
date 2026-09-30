@@ -7,6 +7,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
@@ -25,6 +29,7 @@ import coil3.request.transformations
 import indi.renakoni.nextvol.data.image.ImageTransPostProcessingViewModel
 import indi.renakoni.nextvol.data.book.BookIdentity
 import indi.renakoni.nextvol.data.image.SourceImage
+import indi.renakoni.nextvol.data.image.SourceImageRetryEvents
 import io.nightfish.lightnovelreader.api.image.ImagePostProcessingPipeline
 import kotlinx.coroutines.Dispatchers
 import indi.renakoni.nextvol.R
@@ -76,20 +81,33 @@ private fun RemoteBookCover(bookId: String, width: Dp, height: Dp, uri: Uri, tit
 internal fun BookCoverImage(request: ImageRequest, bookId: String, width: Dp, height: Dp, title: String,
     author: String = "", onFallbackChanged: (Boolean) -> Unit = {},
     imageLoader: ImageLoader = SingletonImageLoader.get(LocalContext.current)) {
-    SubcomposeAsyncImage(
-        model = request,
-        imageLoader = imageLoader,
-        contentDescription = stringResource(R.string.cover_description, title.ifBlank { stringResource(R.string.cover_untitled) }),
-        onError = { onFallbackChanged(true) },
-        onSuccess = { onFallbackChanged(false) },
-        contentScale = ContentScale.Crop,
-        modifier = Modifier.size(width, height),
-        loading = {
-            DefaultBookCover(title, width, height, bookId, author)
-        },
-        error = {
-            // Keep the original request/error and cache key. A retry can still recover its real image.
-            DefaultBookCover(title, width, height, bookId, author)
-        },
-    )
+    var retry by remember(request) { mutableIntStateOf(0) }
+    val current = remember(request, retry) {
+        if (retry == 0) request else request.newBuilder()
+            .diskCachePolicy(CachePolicy.WRITE_ONLY).networkCachePolicy(CachePolicy.WRITE_ONLY).build()
+    }
+    key(retry) {
+        SubcomposeAsyncImage(
+            model = current,
+            imageLoader = imageLoader,
+            contentDescription = stringResource(R.string.cover_description, title.ifBlank { stringResource(R.string.cover_untitled) }),
+            onError = { onFallbackChanged(true) },
+            onSuccess = { onFallbackChanged(false) },
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.size(width, height),
+            loading = {
+                DefaultBookCover(title, width, height, bookId, author)
+            },
+            error = {
+                val source = (request.data as? SourceImage)?.book?.sourceId
+                LaunchedEffect(source) {
+                    if (source != null) SourceImageRetryEvents.requests.collect { changed ->
+                        if (changed == source) retry++
+                    }
+                }
+                // A retry keeps the source/cache identity but bypasses a possibly corrupt disk entry.
+                DefaultBookCover(title, width, height, bookId, author)
+            },
+        )
+    }
 }

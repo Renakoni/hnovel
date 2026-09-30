@@ -74,7 +74,10 @@ class WebSourceRegistry internal constructor(private val dispatcher: CoroutineDi
             previous.retire()
             publish()
         }
-        return SourceRegistration(snapshot) { remove(next) }.also { it.owner = next }
+        return SourceRegistration(snapshot) { remove(next) }.also {
+            it.owner = next
+            indi.renakoni.nextvol.data.image.SourceImageRetryEvents.request(snapshot.id)
+        }
     }
 
     fun register(source: WebBookDataSource, metadata: SourceMetadata): SourceRegistration {

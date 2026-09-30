@@ -178,6 +178,7 @@ abstract class DiscoveryPageViewModel(
 
     fun refresh() {
         val id = state.value.selected ?: return
+        indi.renakoni.nextvol.data.image.SourceImageRetryEvents.request(id)
         cancelLoad()
         refreshCatalog += id
         // A completed page remains useful while its replacement is loading.

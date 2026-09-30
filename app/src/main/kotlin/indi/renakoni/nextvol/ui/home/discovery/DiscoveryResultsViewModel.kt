@@ -94,10 +94,12 @@ class DiscoveryResultsViewModel internal constructor(
     }
 
     fun refresh() {
+        indi.renakoni.nextvol.data.image.SourceImageRetryEvents.request(sourceId)
         cancelLoad()
         session = null
         refreshCatalog = true
-        mutableState.value = state.value.copy(books = emptyList(), loaded = false, hasMore = false,
+        // Keep visible cards alive so failed covers can consume the explicit recovery action.
+        mutableState.value = state.value.copy(loaded = false, hasMore = false,
             error = null, scroll = DiscoveryScroll(), resetId = state.value.resetId + 1)
         if (active) loadMore()
     }
