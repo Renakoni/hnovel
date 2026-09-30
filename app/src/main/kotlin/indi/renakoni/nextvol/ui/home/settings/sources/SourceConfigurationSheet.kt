@@ -1,6 +1,8 @@
 package indi.renakoni.nextvol.ui.home.settings.sources
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
+import androidx.activity.findViewTreeOnBackPressedDispatcherOwner
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -31,8 +33,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.navigationevent.NavigationEventDispatcherOwner
 import androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner
-import androidx.navigationevent.findViewTreeNavigationEventDispatcherOwner
 import hnovel.content.LoginField
 import hnovel.content.LoginForm
 import indi.renakoni.nextvol.R
@@ -71,8 +74,13 @@ internal fun SourceConfigurationSheet(
         properties = ModalBottomSheetProperties(shouldDismissOnBackPress = false),
         containerColor = MaterialTheme.colorScheme.surface) {
         // The sheet owns a separate window, not the parent screen's navigation dispatcher.
-        val backOwner = requireNotNull(LocalView.current.findViewTreeNavigationEventDispatcherOwner())
-        CompositionLocalProvider(LocalNavigationEventDispatcherOwner provides backOwner) {
+        val view = LocalView.current
+        val backView = (view.parent as? DialogWindowProvider)?.window?.decorView ?: view
+        val backOwner = requireNotNull(backView.findViewTreeOnBackPressedDispatcherOwner())
+        CompositionLocalProvider(*listOfNotNull(
+            LocalOnBackPressedDispatcherOwner provides backOwner,
+            (backOwner as? NavigationEventDispatcherOwner)?.let { LocalNavigationEventDispatcherOwner provides it },
+        ).toTypedArray()) {
             BackHandler {
                 if (hasPage) parent() else scope.launch {
                     sheetState.hide()

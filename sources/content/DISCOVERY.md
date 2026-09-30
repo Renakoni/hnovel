@@ -204,10 +204,10 @@ colors, and reader font size/line height/weight. This is not the complete Androi
 reference configuration object or its local paths. Result actions cannot select another
 source or an arbitrary Android destination. Unknown actions/config keys are rejected.
 
-`customButton` and `eventListener` are booleans, not executable strings. Enabling the
-source button requires the event flag and `ruleContent.callBackJs`. Click and long-click
-run that callback with `event = clickCustomButton` / `longClickCustomButton`, `result`
-empty, and `book`/`chapter` null. The button is exposed in the source's catalogue controls.
+Legacy `customButton` and `eventListener` booleans remain accepted as import metadata.
+They do not create catalogue controls or grant discovery capability. The host no longer
+synthesizes a source-action button or dispatches its click/long-click lifecycle callbacks.
+Explicit catalogue controls keep their own declared actions.
 Reader, shelf, and detail lifecycle callback integration is not part of this
 discovery/settings adapter; no arbitrary event bus or custom page DSL is installed.
 
