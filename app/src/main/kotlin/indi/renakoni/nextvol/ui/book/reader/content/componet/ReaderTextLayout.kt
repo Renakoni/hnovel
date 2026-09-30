@@ -14,7 +14,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
@@ -26,9 +30,15 @@ import indi.renakoni.nextvol.ui.book.reader.content.LocalReaderSelectionState
 import indi.renakoni.nextvol.ui.book.reader.content.LocalReaderSpeechRanges
 import indi.renakoni.nextvol.ui.book.reader.LocalReaderSpeechHighlight
 import androidx.compose.ui.graphics.isSpecified
+import indi.renakoni.nextvol.ui.book.reader.content.readerTrace
 import kotlin.math.ceil
 
 internal data class ReaderTextSource(val componentIndex: Int, val text: String)
+
+/** The benchmark host observes actual draws; normal readers have no observer or extra modifiers. */
+internal val LocalReaderTextDrawObserver = staticCompositionLocalOf<
+    ((ReaderTextFragment, TextLayoutResult, LayoutCoordinates) -> Unit)?
+> { null }
 
 internal data class ReaderTextFragment(
     val componentIndex: Int,
@@ -51,7 +61,7 @@ internal fun layoutReaderText(
     paragraphSpacing: Int,
     keepParagraphSpacingAtPageBreaks: Boolean = false,
     measure: (String, Int) -> TextLayoutResult,
-): List<List<ReaderTextFragment>> {
+): List<List<ReaderTextFragment>> = readerTrace("reader.layout") {
     val pages = mutableListOf<List<ReaderTextFragment>>()
     var page = mutableListOf<ReaderTextFragment>()
     var usedHeight = 0
@@ -108,7 +118,7 @@ internal fun layoutReaderText(
         }
     }
     nextPage()
-    return pages
+    pages
 }
 
 internal fun layoutReaderText(
@@ -123,6 +133,7 @@ internal fun ReaderTextFragments(
     fragments: List<ReaderTextFragment>, style: TextStyle, color: Color, modifier: Modifier,
 ) {
     val readerSelection = LocalReaderSelectionState.current
+    val drawObserver = LocalReaderTextDrawObserver.current
     val selectionState = rememberSelectionState()
     val density = LocalDensity.current
     val speechRanges = LocalReaderSpeechRanges.current
@@ -137,13 +148,25 @@ internal fun ReaderTextFragments(
             fragments.forEach { fragment ->
                 key(fragment.componentIndex, fragment.start) {
                     var measured by remember { mutableStateOf<TextLayoutResult?>(null) }
+                    val observation = if (drawObserver == null) Modifier else {
+                        var coordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
+                        Modifier.onGloballyPositioned { coordinates = it }
+                            .drawWithContent {
+                                drawContent()
+                                val positioned = coordinates
+                                val textLayout = measured
+                                if (positioned?.isAttached == true && textLayout != null) {
+                                    drawObserver(fragment, textLayout, positioned)
+                                }
+                            }
+                    }
                     val range = speechRanges.firstOrNull { it.componentIndex == fragment.componentIndex }
                     val start = ((range?.start ?: fragment.end) - fragment.start).coerceIn(0, fragment.text.length)
                     val end = ((range?.end ?: fragment.start) - fragment.start).coerceIn(0, fragment.text.length)
                     if (fragment.spacingBefore > 0) Spacer(Modifier.height(with(density) { fragment.spacingBefore.toDp() }))
                     Text(
                         text = fragment.text, style = style, color = color,
-                        modifier = Modifier.fillMaxWidth().drawBehind {
+                        modifier = Modifier.fillMaxWidth().then(observation).drawBehind {
                             if (start < end && !readerSelection.hasSelection) measured?.let {
                                 drawPath(it.getPathForRange(start, end), highlight)
                             }

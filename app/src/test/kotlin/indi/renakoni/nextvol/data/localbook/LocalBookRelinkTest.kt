@@ -65,7 +65,7 @@ class LocalBookRelinkTest {
             override fun getFilesDir() = File(temporary.root, name).apply { mkdirs() }
         }
         val db = Room.databaseBuilder(context, NextVolDatabase::class.java, File(temporary.root, "$name.db").path)
-            .allowMainThreadQueries().addMigrations(NextVolDatabase.MIGRATION_22_23, NextVolDatabase.MIGRATION_23_24).build().also(databases::add)
+            .allowMainThreadQueries().addMigrations(NextVolDatabase.MIGRATION_22_23, NextVolDatabase.MIGRATION_23_24, NextVolDatabase.MIGRATION_24_25, NextVolDatabase.MIGRATION_25_26, NextVolDatabase.MIGRATION_26_27, NextVolDatabase.MIGRATION_27_28).build().also(databases::add)
         val store = LocalBookStore(context, db)
         val coordinator = StatisticsWriteCoordinator()
         val backup = LocalDataManager(db, db.bookInformationDao(), db.bookRecordDao(), db.dailyCountDao(),
@@ -259,6 +259,44 @@ class LocalBookRelinkTest {
         assertTrue(target.store.contains(book))
         assertEquals(1, target.db.readingBookmarkDao().all().size)
     }
+    @Test fun legacyBookTitlePlaceholderRelinksWithoutRestoringASyntheticVolume() = runBlocking {
+        val file = txt()
+        val old = Library("old")
+        val book = old.import(file)
+        old.seedPosition(book)
+        val data = old.export()
+        val target = Library("new")
+        target.restore(data.copy(localDataList = data.localDataList.map { it.copy(localBookFiles = emptyList()) }))
+        val catalog = target.db.bookVolumesDao().getBookVolumes(book.storageKey)!!
+        assertEquals("", catalog.volumes.single().volumeTitle)
+        target.db.bookVolumesDao().insertVolume(book.storageKey, catalog.copy(
+            volumes = catalog.volumes.map { it.copy(volumeTitle = "My saved title") }))
+        val progress = target.db.userReadingDataDao().getEntity(book.storageKey)
+        val bookmarks = target.db.readingBookmarkDao().all()
+        val preview = target.preview(book, file)
+        assertEquals(LocalBookRelinkMatch.Legacy, preview.match)
+        assertTrue(runCatching { target.store.relink(preview) }.isFailure)
+        target.store.relink(preview, confirmLegacy = true)
+        assertEquals(catalog, target.store.readVolumes(book).get())
+        assertEquals(progress, target.db.userReadingDataDao().getEntity(book.storageKey))
+        assertEquals(bookmarks, target.db.readingBookmarkDao().all())
+    }
+    @Test fun legacyRelinkStillRequiresMatchingExplicitVolumeNames() = runBlocking {
+        val text = "第一卷 起点\n第一章 开端\n正文甲\n第二章 旅途\n正文乙"
+        val file = txt(text = text)
+        val old = Library("old")
+        val book = old.import(file)
+        val data = old.export()
+        val target = Library("new")
+        target.restore(data.copy(localDataList = data.localDataList.map { it.copy(localBookFiles = emptyList()) }))
+        assertEquals(LocalBookRelinkMatch.Legacy, target.preview(book, file).match)
+        file.writeText(text.replace("第一卷 起点", "第二卷 归途"))
+        val changed = target.preview(book, file)
+        assertEquals(LocalBookRelinkMatch.DifferentMapping, changed.match)
+        assertTrue(runCatching { target.store.relink(changed, confirmLegacy = true) }.isFailure)
+        file.writeText(text.substringAfter('\n'))
+        assertEquals(LocalBookRelinkMatch.DifferentMapping, target.preview(book, file).match)
+    }
     @Test fun legacyBackupWithoutDirectoryOrWithChangedTitlesIsRejected() = runBlocking {
         val file = txt()
         val old = Library("old")
@@ -345,11 +383,12 @@ class LocalBookRelinkTest {
             execSQL("INSERT INTO imported_book SELECT bookId FROM imported_book_new")
             execSQL("DROP TABLE imported_book_new")
             execSQL("DROP TABLE book_alias")
+            indi.renakoni.nextvol.data.download.restorePre25DownloadSchema(this::execSQL)
             version = 22
         }
         library.db.close()
         val reopened = Library("library")
-        assertEquals(24, reopened.db.openHelper.writableDatabase.version)
+        assertEquals(28, reopened.db.openHelper.writableDatabase.version)
         assertTrue(reopened.store.contains(book))
         assertTrue(reopened.db.localBookFileManifestDao().all().isEmpty())
         assertEquals(81, reopened.db.userReadingDataDao().getEntity(book.storageKey)!!.totalReadTime)

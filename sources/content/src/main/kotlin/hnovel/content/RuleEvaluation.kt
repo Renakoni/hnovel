@@ -114,7 +114,8 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
         var responseLimitExceeded = false
         val result = SourceExecutionBroker(identity, authority, session, limits, baseUrl, keyword, page,
             allowInteraction = interactive, sourceName = sourceName, sourceLastUpdateTime = sourceLastUpdateTime,
-            requestUserAgent = requestUserAgent.takeUnless { field == "header" }, currentRequest = currentRequest, memory = memory).use {
+            requestUserAgent = requestUserAgent.takeUnless { field == "header" }, currentRequest = currentRequest, memory = memory,
+            retryContext = currentCoroutineContext()[hnovel.network.RequestRetryContext]).use {
             val executed = try { runner.execute(identity, task, limits, it) }
             catch (cancelled: java.util.concurrent.CancellationException) { throw cancelled }
             catch (failure: Exception) {

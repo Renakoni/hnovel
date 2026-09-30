@@ -79,6 +79,7 @@ import indi.renakoni.nextvol.ui.book.reader.content.readerTapGestures
 import indi.renakoni.nextvol.ui.book.reader.content.readerVolumeKeys
 import indi.renakoni.nextvol.ui.book.reader.content.volumeKeyScrollDistance
 import indi.renakoni.nextvol.ui.book.reader.content.LocalReaderSpeechFollow
+import indi.renakoni.nextvol.ui.book.reader.content.PrepareReaderSpeechIndex
 import indi.renakoni.nextvol.ui.book.reader.content.LocalReaderSpeechRanges
 import indi.renakoni.nextvol.ui.book.reader.content.readerSpeechManualScroll
 import indi.renakoni.nextvol.ui.components.Loading
@@ -152,6 +153,7 @@ fun ScrollContentTextComponent(
     val textLayout = LocalReaderTextLayout.current
     val preparedChapters = uiState.contentList.mapIndexed { index, entry ->
         key(listState, entry?.first ?: "placeholder-$index") {
+            PrepareReaderSpeechIndex(entry?.second?.get())
             rememberPreparedScrollChapter(entry?.second?.get(), textLayout,
                 lazyColumnSize.width, lazyColumnSize.height)
         }
@@ -285,6 +287,7 @@ fun ScrollContentTextComponent(
             val index = latestPrepared.indexOf(prepared)
             val request = positions?.pending
             val restoredProgress = uiState.readingProgress
+            snapshotFlow { !speech.awaitingIndex(prepared.content) }.first { it }
             val speechAnchor = speech.anchor(prepared.content)
             val source = if (bookmarks?.pending == null) request?.position ?: readingPosition else null
             val anchor = speechAnchor ?: source?.resolve(uiState.bookId, prepared.content)?.anchor
@@ -619,7 +622,8 @@ private fun TextContent(
             Box(Modifier.onGloballyPositioned {
                 prepared.componentOffsets[componentIndex] = it.positionInParent().y.toInt()
             }) {
-                CompositionLocalProvider(LocalReaderSpeechRanges provides speechRanges) {
+                CompositionLocalProvider(LocalReaderSpeechRanges provides speechRanges,
+                    indi.renakoni.nextvol.ui.LocalReaderChapterId provides content.id) {
                     if (text != null) ScrollTextContent(text, readerContentTextColor(colors.textColor, colors.textDarkColor), modifier)
                     else component.Content(modifier)
                 }

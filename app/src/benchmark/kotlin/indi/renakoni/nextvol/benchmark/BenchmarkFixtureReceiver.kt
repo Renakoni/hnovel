@@ -7,6 +7,7 @@ import android.content.Intent
 import android.net.Uri
 import dagger.hilt.android.AndroidEntryPoint
 import indi.renakoni.nextvol.data.book.BookIdentity
+import indi.renakoni.nextvol.data.book.SourceBookId
 import indi.renakoni.nextvol.data.book.SourceChapterId
 import indi.renakoni.nextvol.data.local.room.NextVolDatabase
 import indi.renakoni.nextvol.data.local.room.entity.BookInformationEntity
@@ -45,12 +46,65 @@ import kotlinx.serialization.json.put
 class BenchmarkFixtureReceiver : BroadcastReceiver() {
     @Inject lateinit var sources: ImportedRuleSources
     @Inject lateinit var speechSources: indi.renakoni.nextvol.tts.HttpSpeechRepository
+    @Inject lateinit var localBooks: indi.renakoni.nextvol.data.localbook.LocalBookStore
+    @Inject lateinit var registry: indi.renakoni.nextvol.data.web.WebSourceRegistry
 
     override fun onReceive(context: Context, intent: Intent) {
         val pending = goAsync()
         Thread {
             try {
                 val result = when (intent.action) {
+                    ACTION_STARTUP_NETWORK -> {
+                        val port = intent.getIntExtra("port", 0)
+                        val cached = intent.getBooleanExtra("cached", false)
+                        require(port in 1024..65535)
+                        runBlocking {
+                            val source = seedStartupNetworkSource(sources, port)
+                            val identity = SourceBookId(source, "http://127.0.0.1:$port/book")
+                            val database = NextVolDatabase.getInstance(context)
+                            val chapterBaseUrl = "http://127.0.0.1:$port/"
+                            seed(database, identity, chapterBaseUrl)
+                            val ids = listOf("benchmark-chapter-1", "benchmark-chapter-2")
+                                .map { SourceChapterId(identity, chapterBaseUrl + it).storageKey }
+                            val dao = database.chapterContentDao()
+                            if (cached) {
+                                val revision = registry.sources.value.single { it.metadata.id == source }.metadata.revision
+                                for (id in ids) {
+                                    dao.update(requireNotNull(dao.get(id)).copy(sourceRevision = revision))
+                                    check(dao.reusable(id, revision) != null)
+                                }
+                            } else {
+                                dao.deleteByIds(ids)
+                                check(ids.all { dao.get(it) == null })
+                            }
+                        }
+                        "startup-network=SUCCEEDED cached=$cached"
+                    }
+                    ACTION_STARTUP_PROCESS -> if (intent.getBooleanExtra("isolated", false))
+                        probeStartupIsolatedProcess(context.applicationContext)
+                    else startupProcessProbe(context.applicationContext as indi.renakoni.nextvol.NextVolApplication)
+                    ACTION_STARTUP -> {
+                        val fixture = intent.getStringExtra("fixture")
+                        require(fixture in listOf("empty", "cached", "daily", "txt", "epub"))
+                        runBlocking {
+                            if (fixture != "empty") {
+                                val database = NextVolDatabase.getInstance(context)
+                                seed(database)
+                                val revision = registry.sources.value.single {
+                                    it.metadata.id == BookIdentity.book(BOOK_ID).sourceId
+                                }.metadata.revision
+                                for (id in listOf(CHAPTER_ONE_ID, CHAPTER_TWO_ID)) {
+                                    val chapter = requireNotNull(database.chapterContentDao().get(id))
+                                    database.chapterContentDao().update(chapter.copy(sourceRevision = revision))
+                                    check(database.chapterContentDao().reusable(id, revision) != null)
+                                }
+                                if (fixture != "cached") seedStartupSources(sources)
+                                if (fixture == "txt" || fixture == "epub")
+                                    seedStartupLocalBook(context, database, localBooks, fixture, BOOKSHELF_ID)
+                            }
+                        }
+                        "startup=SUCCEEDED fixture=$fixture"
+                    }
                     ACTION_SEED -> {
                         runBlocking {
                             seed(NextVolDatabase.getInstance(context))
@@ -133,7 +187,13 @@ class BenchmarkFixtureReceiver : BroadcastReceiver() {
         sources.activate(definition.reference(), listOf(NetworkGrant("https://runtime.invalid/")))
     }
 
-    private suspend fun seed(database: NextVolDatabase) {
+    private suspend fun seed(database: NextVolDatabase, identity: SourceBookId = BookIdentity.book(BOOK_ID),
+        chapterBaseUrl: String = "") {
+        val BOOK_ID = identity.storageKey
+        val VOLUME_ID = BookIdentity.volumeKey(identity, "benchmark-volume")
+        val SECOND_VOLUME_ID = BookIdentity.volumeKey(identity, "benchmark-volume-2")
+        val CHAPTER_ONE_ID = SourceChapterId(identity, chapterBaseUrl + "benchmark-chapter-1").storageKey
+        val CHAPTER_TWO_ID = SourceChapterId(identity, chapterBaseUrl + "benchmark-chapter-2").storageKey
         val now = LocalDateTime.now()
         val book = BookInformationEntity(
             id = BOOK_ID,
@@ -268,6 +328,9 @@ class BenchmarkFixtureReceiver : BroadcastReceiver() {
 
     companion object {
         const val ACTION_SEED = "indi.renakoni.nextvol.benchmark.SEED"
+        const val ACTION_STARTUP = "indi.renakoni.nextvol.benchmark.STARTUP_FIXTURE"
+        const val ACTION_STARTUP_PROCESS = "indi.renakoni.nextvol.benchmark.STARTUP_PROCESS"
+        const val ACTION_STARTUP_NETWORK = "indi.renakoni.nextvol.benchmark.STARTUP_NETWORK"
         const val ACTION_SEED_SOURCE = "indi.renakoni.nextvol.benchmark.SEED_SOURCE"
         const val ACTION_SPEECH_ENGINE = "indi.renakoni.nextvol.benchmark.SPEECH_ENGINE"
         const val ACTION_SPEECH_SOURCE = "indi.renakoni.nextvol.benchmark.SPEECH_SOURCE"
