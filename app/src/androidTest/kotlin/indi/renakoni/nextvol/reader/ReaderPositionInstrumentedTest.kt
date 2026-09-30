@@ -202,6 +202,8 @@ class ReaderPositionInstrumentedTest {
     @Test fun flipReflowAndBackgroundKeepTheSavedProgress() = reflowAndBackground(true, false)
     @Test fun chapterScrollReflowAndBackgroundKeepTheSavedProgress() = reflowAndBackground(false, false)
     @Test fun continuousScrollReflowAndBackgroundKeepTheSavedProgress() = reflowAndBackground(false, true)
+    @Test fun chapterScrollAccessibilityAfterReflowResumesProgressWrites() = reflowAndBackground(false, false, accessibility = true)
+    @Test fun continuousScrollAccessibilityAfterReflowResumesProgressWrites() = reflowAndBackground(false, true, accessibility = true)
 
     @Test fun cancelledBookmarkRestorationDoesNotLeaveScrollWritesBlocked() {
         runBlocking { settings.isUsingFlipPageUserData.set(false) }
@@ -225,7 +227,7 @@ class ReaderPositionInstrumentedTest {
         assertTrue(fixture.progressWrites.last().isFinite())
     }
 
-    private fun reflowAndBackground(flip: Boolean, continuous: Boolean) {
+    private fun reflowAndBackground(flip: Boolean, continuous: Boolean, accessibility: Boolean = false) {
         runBlocking {
             settings.isUsingContinuousScrollingUserData.set(continuous)
             settings.isUsingFlipPageUserData.set(flip)
@@ -252,6 +254,13 @@ class ReaderPositionInstrumentedTest {
         fixture.awaitReady()
         assertTrue(fixture.progressWrites.isEmpty())
         if (flip) compose.onRoot().performTouchInput { swipeLeft() }
+        else if (accessibility) {
+            val state = fixture.reader.uiState.contentUiState as ScrollContentUiState
+            val distance = state.lazyListState.layoutInfo.viewportSize.height * 0.8f
+            compose.onNode(hasScrollAction()).performSemanticsAction(SemanticsActions.ScrollBy) { scroll ->
+                assertTrue(scroll(0f, distance))
+            }
+        }
         else compose.onNode(hasScrollAction()).performTouchInput { swipeUp() }
         compose.waitForIdle()
         compose.waitUntil(15_000) { fixture.progressWrites.isNotEmpty() }
