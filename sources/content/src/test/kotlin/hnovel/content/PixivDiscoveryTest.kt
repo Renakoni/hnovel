@@ -63,6 +63,8 @@ class PixivDiscoveryTest {
                     }
                     assertEquals(1, page.books.size)
                     assertTrue(page.books.single().title.contains("Test bookmark"))
+                    assertTrue(page.books.single().coverUrl.contains("/cover.jpg"))
+                    assertTrue(page.books.single().coverUrl.contains("Referer"))
                     // The original loginCheckJs explicitly refetches through java.getStrResponse.
                     repeat(2) {
                         val request = requireNotNull(fixture.server.takeRequest(1, TimeUnit.SECONDS))
