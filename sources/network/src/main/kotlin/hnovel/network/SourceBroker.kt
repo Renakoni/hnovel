@@ -88,18 +88,24 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
     var localStorageRetention = LocalStorageRetention()
         private set
     private var defaultUserAgent: String? = null
+    @Volatile private var preferBrowserUserAgent = false
+    @Volatile private var providerUserAgent: String? = null
+    private val browserIdentity = lifetime.async(start = CoroutineStart.LAZY) {
+        browser?.defaultUserAgent()?.takeIf { it.isNotBlank() }.also { providerUserAgent = it }
+    }
     @Volatile private var requestTrace: RequestTrace = RequestTrace.None
     /** Host-only observer; source scripts cannot install diagnostic callbacks. */
     fun traceRequests(trace: RequestTrace) { requestTrace = trace }
     @Synchronized fun configureSource(url: String, cookiesEnabled: Boolean, browserRead: Boolean = false,
         concurrentRate: String? = null, localStorageRetention: LocalStorageRetention = LocalStorageRetention(),
-        defaultUserAgent: String? = null) {
+        defaultUserAgent: String? = null, preferBrowserUserAgent: Boolean = false) {
         require(sourceUrl.isEmpty() || sourceUrl == url)
         sourceUrl = url
         enabledCookieJar = cookiesEnabled
         this.browserRead = browserRead
         this.localStorageRetention = localStorageRetention.approved(grants)
         this.defaultUserAgent = defaultUserAgent
+        this.preferBrowserUserAgent = preferBrowserUserAgent
         val parsedRate = SourceRequestRate.parse(concurrentRate)
         if (sourcePacing.rate != parsedRate) sourcePacing = SourceRequestPacer(parsedRate)
     }
@@ -193,18 +199,28 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
     }
 
     /** Resolve the same header precedence as an HTTP request without sending one. */
-    @Synchronized fun requestUserAgent(url: String, explicit: Map<String, String> = emptyMap()): String {
+    suspend fun requestUserAgent(url: String, explicit: Map<String, String> = emptyMap()): String {
         checkOpen()
-        val address = requireNotNull(url.toHttpUrlOrNull())
-        return headers(address, explicit, policy, includeCookies = false)["User-Agent"] ?: "okhttp/${OkHttp.VERSION}"
+        prepareUserAgent(explicit)
+        return synchronized(this) {
+            checkOpen()
+            val address = requireNotNull(url.toHttpUrlOrNull())
+            headers(address, explicit, policy, includeCookies = false)["User-Agent"] ?: "okhttp/${OkHttp.VERSION}"
+        }
     }
 
     suspend fun webViewUserAgent(): String {
         checkOpen()
-        val value = browser?.defaultUserAgent()
+        val value = browserIdentity.await()
         checkOpen()
         check(!value.isNullOrBlank()) { "WebView user agent unavailable" }
         return value
+    }
+
+    private suspend fun prepareUserAgent(explicit: Map<String, String>) {
+        // A source-selected request identity must not depend on initializing the default provider.
+        if (preferBrowserUserAgent && explicit.none { (key, value) -> key.equals("User-Agent", true) && value.isNotBlank() })
+            browserIdentity.await()
     }
 
     suspend fun showMessage(message: String, long: Boolean, guard: RequestCommitGuard) {
@@ -422,6 +438,9 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
                 val transport = selectedRoute.getOrThrow()
                 validate(snapshot)
                 withTimeout(if (snapshot.browser?.interactive == true) 300000 else snapshot.timeoutMillis) {
+                    // Resolve once before either HTTP or browser dispatch. Header rules can still
+                    // override this default, but verification must not switch an automatic identity.
+                    if (!snapshot.url.startsWith("data:")) prepareUserAgent(snapshot.headers)
                     if (snapshot.url.startsWith("data:")) {
                         val encoded = Regex("^data:.*?;base64,([A-Za-z0-9+/=\\s]*)$").matchEntire(snapshot.url)
                             ?.groupValues?.get(1) ?: throw BrokerFailure(RequestStage.Parse, FailureCode.InvalidRequest)
@@ -665,9 +684,10 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         fun supplied(key: String, source: UserAgentSource) {
             if (key.equals("User-Agent", true) && sources?.contains(source) == false) sources.add(source)
         }
-        // Legado supplies a desktop UA even when the source has no header rule. Some sites
-        // return HTTP 200 with null book/chapter data to OkHttp's default client identity.
-        defaultUserAgent?.let { headers.set("User-Agent", it); supplied("User-Agent", UserAgentSource.SessionDefault) }
+        // Automatic browser sources share the provider's identity across HTTP and verification.
+        // Headless hosts keep their configured compatibility default. Explicit headers win.
+        (if (preferBrowserUserAgent) providerUserAgent ?: defaultUserAgent else defaultUserAgent)
+            ?.let { headers.set("User-Agent", it); supplied("User-Agent", UserAgentSource.SessionDefault) }
         policy.check(url).headers.forEach { (key, value) -> headers.set(key, value); supplied(key, UserAgentSource.OriginGrant) }
         val sameOrigin = sourceUrl.toHttpUrlOrNull()?.let { NetworkPolicy.origin(it) == NetworkPolicy.origin(url) } == true
         val loginHeaders = if (sameOrigin) (account.read(StorageRequestKey.LOGIN_HEADERS) as? StorageResult.Value)?.value else null
