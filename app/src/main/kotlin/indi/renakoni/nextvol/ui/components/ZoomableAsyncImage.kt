@@ -56,6 +56,7 @@ fun ZoomableImage(
     onViewImage: () -> Unit,
     placeholderHeight: Dp = 200.dp,
     bookId: String,
+    contentScale: ContentScale = ContentScale.FillWidth,
     chapterId: String? = null
 ) {
     val context = LocalContext.current
@@ -84,7 +85,7 @@ fun ZoomableImage(
             SubcomposeAsyncImage(
                 model = request,
                 contentDescription = "",
-                contentScale = ContentScale.FillWidth,
+                contentScale = contentScale,
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(min = placeholderHeight)

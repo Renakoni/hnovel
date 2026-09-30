@@ -9,6 +9,7 @@ import indi.renakoni.nextvol.ui.localbook.LocalBookImportState
 import indi.renakoni.nextvol.ui.localbook.LocalBookRelinkViewModel
 import android.annotation.SuppressLint
 import android.widget.Toast
+import indi.renakoni.nextvol.utils.textToast
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
@@ -45,6 +46,9 @@ fun NavGraphBuilder.bookDetailDestination() {
         val navController = LocalNavController.current
         val bookId = BookIdentity.bookKey(entry.toRoute<Route.Book.Detail>().bookId)
         val viewModel = hiltViewModel<DetailViewModel>(entry)
+        val blocking = hiltViewModel<PixivBlockingViewModel>(entry)
+        PixivBlockingFeedback(blocking)
+        PixivBlockConfirmation(blocking)
         androidx.lifecycle.compose.LifecycleStartEffect(viewModel) {
             viewModel.setActive(true)
             onStopOrDispose { viewModel.setActive(false, navController.currentBackStackEntry?.id == entry.id) }
@@ -55,6 +59,11 @@ fun NavGraphBuilder.bookDetailDestination() {
         val context = LocalContext.current
         val coroutineScope = rememberCoroutineScope()
         val lifecycleOwner = LocalLifecycleOwner.current
+        LaunchedEffect(bookId, viewModel.uiState.bookInformation, lifecycleOwner) {
+            lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                viewModel.uiState.bookInformation?.onOk { blocking.loadBook(BookIdentity.book(it.id)) }
+            }
+        }
         val exportResult = viewModel.exportResult
         val submissionFailed = viewModel.exportSubmissionFailed
         LaunchedEffect(exportResult, submissionFailed, lifecycleOwner) {
@@ -64,7 +73,7 @@ fun NavGraphBuilder.bookDetailDestination() {
                 if (exportResult?.state == WorkInfo.State.SUCCEEDED) {
                     context.startActivity(EpubShareActivity.intent(context, exportResult.id, automatic = true))
                 } else {
-                    Toast.makeText(context, exportResult?.outputData?.getString("message")
+                    textToast(context, exportResult?.outputData?.getString("message")
                         ?: context.getString(R.string.epub_export_notification_failed), Toast.LENGTH_LONG).show()
                 }
             }
@@ -97,6 +106,7 @@ fun NavGraphBuilder.bookDetailDestination() {
             onConfirmLegacy = relinkViewModel::confirmLegacy,
         )
         DetailScreen(
+            blockingMenu = if (blocking.state.book == null) null else { dismiss -> PixivBlockMenu(blocking, dismiss) },
             localFileMissing = LocalBookStore.isLocal(BookIdentity.book(bookId)) && !viewModel.uiState.readingAvailable,
             onRelink = { relinkPicker.launch(arrayOf("text/plain", "application/epub+zip")) },
             uiState = viewModel.uiState,
@@ -110,9 +120,9 @@ fun NavGraphBuilder.bookDetailDestination() {
                     ?.map { it.title }
                     ?.onOk { title ->
                         viewModel.startEpubExport(bookId, title)
-                        Toast.makeText(context, context.getString(R.string.export_book_started, title), Toast.LENGTH_SHORT).show()
+                        textToast(context, context.getString(R.string.export_book_started, title), Toast.LENGTH_SHORT).show()
                     }?.onErr {
-                        Toast.makeText(context, it.message, Toast.LENGTH_SHORT).show()
+                        textToast(context, it.message, Toast.LENGTH_SHORT).show()
                     }
             },
             onClickBackButton = navController::popBackStackIfResumed,
@@ -125,7 +135,7 @@ fun NavGraphBuilder.bookDetailDestination() {
                     val firstChapter = result?.availableVolumes()?.volumes
                         ?.firstNotNullOfOrNull { volume -> volume.chapters.firstOrNull()?.id }
                     if (firstChapter != null) navController.navigateToBookReaderDestination(bookId, firstChapter, context)
-                    else result?.onErr { Toast.makeText(context, it.message, Toast.LENGTH_SHORT).show() }
+                    else result?.onErr { textToast(context, it.message, Toast.LENGTH_SHORT).show() }
                 }
                 else {
                     navController.navigateToBookReaderDestination(bookId, viewModel.uiState.userReadingData!!.lastReadChapterId!!, context)

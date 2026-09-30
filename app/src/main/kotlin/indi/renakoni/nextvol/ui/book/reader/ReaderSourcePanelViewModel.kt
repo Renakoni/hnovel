@@ -109,7 +109,7 @@ class ReaderSourcePanelViewModel @Inject internal constructor(
                         if (epoch == version) notice = R.string.reader_source_panel_refresh_failed
                     } else if (epoch == version) {
                         apply(capturedBook.storageKey, capturedChapter?.storageKey, update.get()!!)
-                        notice = R.string.reader_source_panel_completed
+                        if (result.messages.isEmpty()) notice = R.string.reader_source_panel_completed
                     }
                 }
                 val updated = login.form(panel)

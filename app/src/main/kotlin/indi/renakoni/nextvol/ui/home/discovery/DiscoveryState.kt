@@ -21,9 +21,10 @@ internal fun discoverySources(sources: List<SourceListing>, capability: SourceCa
 internal fun selectedSource(sources: List<SourceListing>, requested: Identifier?): Identifier? =
     sources.firstOrNull { it.metadata.id == requested }?.metadata?.id ?: sources.firstOrNull()?.metadata?.id
 
-internal data class DiscoveryVersion(val metadata: SourceMetadata, val registration: Long, val account: Long)
+internal data class DiscoveryVersion(val metadata: SourceMetadata, val registration: Long, val account: Long,
+    val settings: Long = 0)
 internal fun SourceListing.version(accounts: Map<Identifier, Long>) =
-    DiscoveryVersion(metadata, generation, accounts[metadata.id] ?: metadata.accountGeneration)
+    DiscoveryVersion(metadata, generation, accounts[metadata.id] ?: metadata.accountGeneration, discoveryGeneration)
 
 data class DiscoveryScroll(val index: Int = 0, val offset: Int = 0)
 

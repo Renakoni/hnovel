@@ -6,7 +6,8 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-data class RuleListPage(val books: List<RuleBook>, val nextCursor: String?, val nextPage: Int?)
+data class RuleListPage(val books: List<RuleBook>, val nextCursor: String?, val nextPage: Int?,
+    val freshBooks: List<RuleBook> = books)
 internal data class RuleListResult(val books: List<RuleBook>, val url: String, val nextUrl: String?, val httpErrorStatus: Int? = null)
 
 /** One query/filter snapshot. Remote URLs stay opaque to callers and never become source settings. */
@@ -66,13 +67,15 @@ class RuleListSession internal constructor(private val field: String, private va
         }
         trace.record(ContentTraceEvent("pagination", field, 0, outputSize = result.books.size, result = reason))
         memory = draft
+        // Host-side filtering must not turn new hidden rows into an apparent repeated page.
+        val freshBooks = result.books.filterNot { it.id in books }
         books += result.books.map { it.id }
         urls += result.url
         nextPage = (number + 1).takeIf { more && !repeatedBooks && !repeatedCursor }
         nextUrl = result.nextUrl.takeIf { nextPage != null }
         previousPage = number
         previousCursor = cursor
-        return RuleListPage(result.books, if (explicit) nextUrl else nextPage?.toString(), nextPage)
+        return RuleListPage(result.books, if (explicit) nextUrl else nextPage?.toString(), nextPage, freshBooks)
             .also { previousResult = it }
     }
 }

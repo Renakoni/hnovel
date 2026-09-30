@@ -16,7 +16,7 @@ internal fun Modifier.readerPageSwipe(enabled: Boolean, gestureKey: Any? = null,
     val selection = LocalReaderSelectionState.current
     val onTurnNow by rememberUpdatedState(onTurn)
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
-    if (!enabled || selection.hasSelection) return this
+    if (!enabled || !LocalReaderRendererActive.current || selection.hasSelection) return this
     return pointerInput(rtl, gestureKey) {
         var distance = 0f
         detectHorizontalDragGestures(

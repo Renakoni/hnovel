@@ -49,7 +49,7 @@ internal fun Modifier.readerVolumeKeys(
     val windowInfo = LocalWindowInfo.current
     val view = LocalView.current
     val selection = LocalReaderSelectionState.current
-    val available = enabled && LocalReaderVolumeKeysEnabled.current &&
+    val available = enabled && LocalReaderRendererActive.current && LocalReaderVolumeKeysEnabled.current &&
         lifecycleState == Lifecycle.State.RESUMED && windowInfo.isWindowFocused && !selection.hasSelection
 
     SideEffect { input.setEnabled(available && focused) }

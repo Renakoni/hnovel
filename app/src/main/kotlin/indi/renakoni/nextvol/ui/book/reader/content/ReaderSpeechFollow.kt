@@ -2,6 +2,7 @@ package indi.renakoni.nextvol.ui.book.reader.content
 
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.getValue
@@ -21,25 +22,43 @@ internal data class ReaderSpeechFollow(
     val active: Boolean = true,
 ) {
     fun ranges(chapter: ChapterContentUiState): List<SpeechTextIndex.Range> =
-        position?.takeIf { it.chapterId == chapter.id }?.let(chapter.speechTextIndex::ranges).orEmpty()
+        position?.takeIf { it.chapterId == chapter.id }?.let { chapter.speechTextIndex?.ranges(it) }.orEmpty()
 
     fun anchor(chapter: ChapterContentUiState): ReaderContentAnchor? =
-        if (!following || position?.chapterId != chapter.id) null else chapter.speechTextIndex.ranges(
+        if (!following || position?.chapterId != chapter.id) null else chapter.speechTextIndex?.ranges(
             position.copy(start = position.anchor, end = position.anchor + 1)
-        ).firstOrNull()?.let { ReaderContentAnchor(it.componentIndex, it.start) }
+        )?.firstOrNull()?.let { ReaderContentAnchor(it.componentIndex, it.start) }
+
+    fun awaitingIndex(chapter: ChapterContentUiState): Boolean =
+        following && position?.chapterId == chapter.id && chapter.speechTextIndex == null
 }
 
 internal val LocalReaderSpeechFollow = compositionLocalOf { ReaderSpeechFollow() }
 internal val LocalReaderSpeechRanges = compositionLocalOf { emptyList<SpeechTextIndex.Range>() }
 
+/** The mounted chapter owns preparation; changing chapter, stopping speech or leaving cancels it. */
+@Composable
+internal fun PrepareReaderSpeechIndex(chapter: ChapterContentUiState?) {
+    val position = LocalReaderSpeechFollow.current.position
+    val target = chapter?.takeIf { it.id == position?.chapterId }
+    LaunchedEffect(target) { target?.prepareSpeechTextIndex() }
+}
+
 /** User input detaches before the scroll is dispatched; programmatic following never detaches. */
 @Composable
-internal fun Modifier.readerSpeechManualScroll(): Modifier {
+internal fun Modifier.readerSpeechManualScroll(onScrolled: () -> Unit = {}): Modifier {
+    val active by rememberUpdatedState(LocalReaderRendererActive.current)
     val speech by rememberUpdatedState(LocalReaderSpeechFollow.current)
+    val onUserScrolled by rememberUpdatedState(onScrolled)
     return nestedScroll(remember {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if (source == NestedScrollSource.UserInput && available != Offset.Zero) speech.onManualNavigation()
+                if (active && source == NestedScrollSource.UserInput && available != Offset.Zero) speech.onManualNavigation()
+                return Offset.Zero
+            }
+
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                if (active && source == NestedScrollSource.UserInput && consumed != Offset.Zero) onUserScrolled()
                 return Offset.Zero
             }
         }

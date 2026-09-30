@@ -25,6 +25,7 @@ class PixivAuthenticationTest {
         return JsonObject(local + ("exploreUrl" to JsonPrimitive("""@js:
             var testSettings=setDefaultSettings();
             testSettings.IPDirect=false;testSettings.FAST=true;testSettings.DEBUG=false;
+            testSettings.SHOW_BOOKMARKS_PUBLIC=true;testSettings.SHOW_BOOKMARKS_PRIVATE=true;
             putInCacheObject('pixivSettings',testSettings);
         """.trimIndent() + "\n" + local.getValue("exploreUrl").jsonPrimitive.content.removePrefix("@js:"))))
     }

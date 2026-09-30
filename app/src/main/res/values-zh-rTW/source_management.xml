@@ -90,8 +90,10 @@
     <string name="sources_network_help">支援 VPN/TUN，包括 Fake-IP DNS。區域網路位址仍受限制。</string>
     <string name="sources_revision_failed">修訂未啟用，原書源仍保留。請檢查後重試更新。</string>
     <string name="sources_no_update_url">此書源沒有更新位址，請匯入新版檔案或貼上更新後的定義。</string>
-    <string name="sources_up_to_date">未發現更新。</string>
+    <string name="sources_up_to_date">已是最新</string>
     <string name="sources_saved">書源變更已儲存。</string>
     <string name="sources_removed">書源已刪除，已儲存的書籍與閱讀記錄仍保留。</string>
     <string name="sources_invalid_permission_lines">站點位址無效，所在行：%1$s</string>
+    <string name="sources_pixiv_update_unsupported">適配失敗，未更新</string>
+    <string name="sources_pixiv_update_failed">網路錯誤，請重試</string>
 </resources>

@@ -6,8 +6,6 @@ import hnovel.imports.EXTENSION_PROFILE
 import hnovel.network.*
 import hnovel.rules.*
 import kotlinx.coroutines.*
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.*
 
 private const val DIRECTORY_MAX_CHAPTERS = 50_000
@@ -25,10 +23,12 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
     private val store = RuleBookStore(session, authority, identity)
     private val previewDocuments = DiscoveryPreviewDocuments()
     internal fun clearDiscoveryPreviews() = previewDocuments.clear()
-    private val serial = Mutex()
+    private val serial = SourceWorkQueue()
     private var previewPlan: Pair<List<String>, Boolean>? = null
     private var parallelPreviewParsing: Boolean? = null
     private var prefetchedDirectoryId: String? = null
+    private var completedInformation: Pair<String, Long>? = null
+    private var completedDirectory: Pair<String, Long>? = null
     // Search memory belongs to a caller's query. This instance is replaced for another account or revision.
     private val searchMemory = object : LinkedHashMap<String, ScriptMemory>(8, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ScriptMemory>) = size > MAX_SEARCH_MEMORIES
@@ -48,7 +48,7 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
     val canFeed get() = discoveryEnabled && discoveryCapabilities.hasFeed
     val canCategorize get() = discoveryEnabled && discoveryCapabilities.hasCategories
     val canDiscover get() = discoveryEnabled && (spec.exploreUrl.isNotBlank() ||
-        spec.homepageModules.isNotBlank() || spec.exploreScreen.isNotBlank() || spec.customButton)
+        spec.homepageModules.isNotBlank() || spec.exploreScreen.isNotBlank())
 
     fun openDiscovery(sessionId: String, values: Map<String, String> = emptyMap(),
         environment: RuleDiscoveryEnvironment = RuleDiscoveryEnvironment()) = RuleDiscoverySession(this, sessionId, values, environment)
@@ -190,18 +190,23 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             plans.mapIndexed { index, prepared ->
                 var first = true
                 val load: suspend () -> RuleListResult = {
-                    withContext(Dispatchers.IO) { checkedOperation("ruleExplore", 60000) {
+                    withContext(Dispatchers.IO) {
                         if (!first) operation("ruleExplore") { listPage(context(), urls[index], "exploreUrl", spec.explore, "ruleExplore", true, 6) }
                         else {
                             first = false
                             val plan = prepared.getOrThrow()
-                            val finish = plan.read()
-                            if (parallelParsing) {
+                            val started = System.nanoTime()
+                            val finish = checkedOperation("ruleExplore", 60000) { plan.read() }
+                            // Transport and parsing share one execution budget; waiting for another
+                            // stateful parsing turn must not spend it before this turn begins.
+                            val remaining = 60000 - (System.nanoTime() - started) / 1_000_000
+                            if (remaining <= 0) throw SourceContentException(ContentError.Limit, "ruleExplore")
+                            if (parallelParsing) checkedOperation("ruleExplore", remaining) {
                                 plan.context.readOnly = true
                                 finish()
-                            } else operation("ruleExplore") { finish() }
+                            } else operation("ruleExplore", remaining) { finish() }
                         }
-                    } }
+                    }
                 }
                 load
             }
@@ -340,14 +345,25 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val form = (cachedLoginForm ?: loadLoginForm()).withValues(loginValues())
         // Trusted callers without a UI snapshot retain the unique-name API. UI submissions
         // always carry a form ID and can only address an opaque control ID from that form.
-        val fieldAction = action?.let { id -> form.fields.singleOrNull { if (formId == null) it.name == id else it.id == id }?.action
-            ?: throw SourceContentException(ContentError.InvalidRule, "loginUi.action") }
+        val fieldAction = action?.let { id ->
+            val field = form.fields.singleOrNull { if (formId == null) it.name == id else it.id == id }
+                ?: throw SourceContentException(ContentError.InvalidRule, "loginUi.action")
+            if (!field.enabled) throw SourceContentException(ContentError.Unavailable, "loginUi.action")
+            field.action ?: throw SourceContentException(ContentError.InvalidRule, "loginUi.action")
+        }
         form.validate(values)
         val submitted = form.values + values
         form.validate(submitted, allowAdditional = true)
         val info = JsonObject(submitted.mapValues { JsonPrimitive(it.value) }).toString()
         saveLoginValues(submitted)
         val context = loginContext(submitted, interactive = true)
+        val messages = ArrayDeque<String>()
+        context.onMessage = { message ->
+            message.trim().take(4096).takeIf { it.isNotEmpty() }?.let {
+                if (messages.size == 16) messages.removeFirst()
+                messages.addLast(it)
+            }
+        }
         if (form.browserUrl != null && action == null) {
             val pending = if (spec.browserRead) (session.read(StorageRequest(StorageArea.Account,
                 StorageRequestKey.BROWSER_PENDING_URL)) as? StorageResult.Value)?.value else null
@@ -406,9 +422,10 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val changed = state.getValue("values").jsonObject.mapValues { it.value.jsonPrimitive.content }
         form.validate(changed, allowAdditional = true)
         if (changed != submitted) saveLoginValues(changed.filter { (key, value) -> submitted[key] != value })
-        if (actions.any { it.jsonObject.string("kind") == "refresh" }) cachedLoginForm = null
+        val refreshDiscovery = actions.any { it.jsonObject.string("kind") == "refresh" }
+        if (refreshDiscovery) cachedLoginForm = null
         if (action == null) authority.authorized(identity) { check(session.write(StorageRequest(StorageArea.Account, "login/status", "authenticated")) is StorageResult.Value) }
-        LoginActionResult(refreshTargets.toSet())
+        LoginActionResult(refreshTargets.toSet(), messages.toList(), refreshDiscovery)
     }
 
     /** Pages called with the same [query] share `cache.*Memory`; without one, memory lasts for this page only. */
@@ -525,16 +542,27 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         store.read(sourceLink(spec.baseUrl, bookId))?.book
     }
 
-    suspend fun information(bookId: String): RuleBook = operation("ruleBookInfo", timeoutMillis = DIRECTORY_TIMEOUT_MILLIS) {
-        prefetchedDirectoryId = null
-        val id = store.canonicalId(sourceLink(spec.baseUrl, bookId))
-        val old = store.read(id)
-        val refreshed = saveInformation(id, old, inferUpdate = true)
-        refreshed.book
+    suspend fun information(bookId: String): RuleBook {
+        val requestedAt = currentCoroutineContext()[SourceWorkRequest]?.startedAtNanos ?: System.nanoTime()
+        return operation("ruleBookInfo", timeoutMillis = DIRECTORY_TIMEOUT_MILLIS) {
+            val id = store.canonicalId(sourceLink(spec.baseUrl, bookId))
+            val old = store.read(id)
+            // Reuse only a successful refresh completed while this call was queued.
+            // No detached task, cross-account sharing, or persistent freshness window.
+            val completed = completedInformation
+            if (old?.informationLoaded == true && old.revision == identity.revision &&
+                completed?.first == id && completed.second - requestedAt >= 0) {
+                trace.record(ContentTraceEvent("cache", "ruleBookInfo", 0, result = "QueuedRefreshReuse"))
+                old.book
+            } else {
+                prefetchedDirectoryId = null
+                saveInformation(id, old, inferUpdate = true).book
+            }
+        }
     }
 
     private suspend fun saveInformation(id: String, old: BookRecord?, supplied: PageDocument? = null,
-        inferUpdate: Boolean = false): BookRecord {
+        inferUpdate: Boolean = false, reuseInformation: Boolean = inferUpdate): BookRecord {
         var refreshed = information(id, old, supplied)
         // Sources without an update marker still participate in host background update checks.
         // A script-provided bookUrl is an alias proposal, not permission to move unreadable content.
@@ -553,20 +581,35 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         }
         store.write(refreshed, id)
         prefetchedDirectoryId = if (directoryLoaded) refreshed.book.id else null
+        val completedAt = System.nanoTime()
+        // A proposed alias still needs its own detail parse; it can propose another identity.
+        completedInformation = if (reuseInformation && refreshed.book.id == id) id to completedAt else null
+        completedDirectory = if (directoryLoaded) refreshed.book.id to completedAt else null
         return refreshed
     }
 
-    suspend fun directory(bookId: String): List<RuleChapter> = operation("ruleToc", timeoutMillis = DIRECTORY_TIMEOUT_MILLIS) {
-        val id = store.canonicalId(sourceLink(spec.baseUrl, bookId))
-        val book = record(id)
-        val prefetched = prefetchedDirectoryId == book.book.id
-        prefetchedDirectoryId = null
-        try {
-            if (prefetched) book.chapters else directory(book).also(store::write).chapters
-        } catch (failure: PartialDirectoryException) {
-            val retained = retainLongerPartialDirectory(book.partialDirectory, failure)
-            store.write(book.copy(partialDirectory = retained.snapshot))
-            throw retained
+    suspend fun directory(bookId: String): List<RuleChapter> {
+        val requestedAt = currentCoroutineContext()[SourceWorkRequest]?.startedAtNanos ?: System.nanoTime()
+        return operation("ruleToc", timeoutMillis = DIRECTORY_TIMEOUT_MILLIS) {
+            val id = store.canonicalId(sourceLink(spec.baseUrl, bookId))
+            val book = record(id, reuseInformation = true)
+            val prefetched = prefetchedDirectoryId == book.book.id
+            val completed = completedDirectory
+            val reused = completed?.first == book.book.id && completed.second - requestedAt >= 0
+            prefetchedDirectoryId = null
+            try {
+                if (prefetched || reused) {
+                    if (reused) trace.record(ContentTraceEvent("cache", "ruleToc", 0, result = "QueuedRefreshReuse"))
+                    book.chapters
+                } else directory(book).also {
+                    store.write(it)
+                    completedDirectory = it.book.id to System.nanoTime()
+                }.chapters
+            } catch (failure: PartialDirectoryException) {
+                val retained = retainLongerPartialDirectory(book.partialDirectory, failure)
+                store.write(book.copy(partialDirectory = retained.snapshot))
+                throw retained
+            }
         }
     }
 
@@ -875,10 +918,10 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         return initial.copy(book = initial.book.copy(state = context.book), chapters = formatted, document = null, partialDirectory = null)
     }
 
-    private suspend fun record(id: String): BookRecord {
+    private suspend fun record(id: String, reuseInformation: Boolean = false): BookRecord {
         val old = store.read(id)
         return if (old?.informationLoaded == true && old.revision == identity.revision) old
-            else saveInformation(store.canonicalId(id), old)
+            else saveInformation(store.canonicalId(id), old, reuseInformation = reuseInformation)
     }
     internal fun evaluation(book: RuleBook? = null, chapter: RuleChapter? = null, keyword: String = "", page: Int = 1,
         interactive: Boolean = false, maxRuleCalls: Int = 65536, memory: ScriptMemory = ScriptMemory()): RuleEvaluation {
@@ -1069,7 +1112,15 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
     // Host storage and orchestration use IO. The caller's priority dispatcher owns the outer
     // request only; nested timeout jobs must not compete with their parent for its last permit.
     internal suspend fun <T : Any> operation(field: String, timeoutMillis: Long = 60000, block: suspend () -> T): T = withContext(Dispatchers.IO) {
-        serial.withLock { checkedOperation(field, timeoutMillis, block) }
+        val queuedAt = System.nanoTime()
+        serial.withLock {
+            trace.record(ContentTraceEvent("queue", field, (System.nanoTime() - queuedAt) / 1_000_000, result = "Serial"))
+            if (field != "ruleBookInfo" && field != "ruleToc" && field != "bookAlias") {
+                completedInformation = null; completedDirectory = null
+            }
+            try { checkedOperation(field, timeoutMillis, block) }
+            catch (failure: Throwable) { completedInformation = null; completedDirectory = null; throw failure }
+        }
     }
     private suspend fun <T : Any> checkedOperation(field: String, timeoutMillis: Long, block: suspend () -> T): T {
         if (!authority.accepts(identity)) throw SourceContentException(ContentError.Unavailable, field)

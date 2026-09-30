@@ -12,6 +12,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -37,10 +39,11 @@ fun ContentComponent(
     onClickNextChapter: () -> Unit,
     chapterTitle: (String) -> String? = { null },
 ) {
+    val active by rememberUpdatedState(LocalReaderRendererActive.current)
     val selectionState = remember { ReaderSelectionState() }
     val speech = LocalReaderSpeechFollow.current
     LaunchedEffect(selectionState.hasSelection, speech.position?.bookId) {
-        if (selectionState.hasSelection) speech.onManualNavigation()
+        if (active && selectionState.hasSelection) speech.onManualNavigation()
     }
     CompositionLocalProvider(LocalReaderSelectionState provides selectionState) {
         uiState.let { contentUiState ->
@@ -50,9 +53,9 @@ fun ContentComponent(
                 contentUiState,
                 settingState,
                 paddingValues,
-                changeIsImmersive,
-                onClickPrevChapter,
-                onClickNextChapter,
+                { if (active) changeIsImmersive() },
+                { if (active) onClickPrevChapter() },
+                { if (active) onClickNextChapter() },
                 chapterTitle,
             )
             is ScrollContentUiState -> ScrollContentComponent(
@@ -61,9 +64,9 @@ fun ContentComponent(
                 settingState,
                 fontFamilySettings,
                 paddingValues,
-                changeIsImmersive,
-                onClickPrevChapter,
-                onClickNextChapter,
+                { if (active) changeIsImmersive() },
+                { if (active) onClickPrevChapter() },
+                { if (active) onClickNextChapter() },
                 chapterTitle,
             )
             }

@@ -28,18 +28,20 @@ import io.nightfish.lightnovelreader.api.web.search.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
+import org.jsoup.Jsoup
+import org.jsoup.nodes.TextNode
 import java.time.LocalDateTime
 
 /** Converts rule data once; repositories, readers and workers consume their existing source-bound contracts. */
 internal class RuleWebBookDataSource(override val id: Identifier, private val source: RuleSource,
-    private val recovery: RuleRequestRecovery? = null) :
+    private val recovery: RuleRequestRecovery? = null, private val pixivFilter: PixivBookFilter? = null) :
     WebBookDataSource by EmptyWebDataSource, SourceImageProvider, AutoCloseable {
     override val permits = 1
     internal val canReplayDownloads get() = source.canReplayDownloads
     override val offLine = false
     override val isOffLineFlow = MutableStateFlow(false)
     override suspend fun isOffLine() = false
-    override val discoveryProvider = RuleDiscoveryProvider(source, recovery = recovery)
+    override val discoveryProvider = RuleDiscoveryProvider(source, recovery = recovery, pixivFilter = pixivFilter)
     override val searchProvider: SearchProvider = object : SearchProvider, PagedSearchProvider {
         private val queries = object : LinkedHashMap<Pair<String, String>, RuleListSession>(8, 0.75f, true) {
             override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Pair<String, String>, RuleListSession>) = size > 8
@@ -49,16 +51,18 @@ internal class RuleWebBookDataSource(override val id: Identifier, private val so
             val pager = if (query == null) source.openSearchPages(keyword) else synchronized(queries) {
                 queries.getOrPut(query to keyword) { source.openSearchPages(keyword) }
             }
-            val result = request { pager.page(page) }.getOrElse {
+            val result = request { filtered(pager.page(page)) }.getOrElse {
                 throw (it.throwable ?: SourceContentException(ContentError.Unavailable, "ruleSearch"))
             }
-            return SearchPage(result.books.map { SearchResult.MultipleBook(it.id, it.information()) }, result.nextPage)
+            return SearchPage(result.books.map {
+                SearchResult.MultipleBook(it.id, it.information())
+            }, result.nextPage)
         }
         override fun search(searchType: SearchType, keyword: String) = flow {
             val seen = mutableSetOf<String>()
             val pager = source.openSearchPages(keyword)
             for (page in 1..64) {
-                val result = request { pager.page(page) }
+                val result = request { filtered(pager.page(page)) }
                 result.onErr { emit(SearchResult.Error(it.throwable ?: IllegalStateException(it.message))) }
                 if (result.isErr) return@flow
                 result.onOk { data -> data.books.filter { seen.add(it.id) }.forEach {
@@ -73,16 +77,33 @@ internal class RuleWebBookDataSource(override val id: Identifier, private val so
             emit(SearchResult.Error(SourceContentException(ContentError.Limit, "ruleSearch")))
         }
     }
+    private suspend fun filtered(page: RuleListPage) = pixivFilter?.let { page.copy(books = it.filter(page)) } ?: page
+
     internal suspend fun canonicalBookId(id: String) = source.canonicalBookId(id)
 
     internal suspend fun informationForDisplay(id: String, information: BookInformation): BookInformation {
         val saved = source.cachedInformation(id)
         return information.copy(
+            description = descriptionForDisplay(information.description),
             wordCount = saved?.let { WordCount(parseBookWordCount(it.wordCount) ?: parseBookWordCount(it.lastValidWordCount) ?: 0) }
                 ?: information.wordCount,
             lastUpdated = saved?.let { parseBookUpdateTime(it.updateTime) ?: parseBookUpdateTime(it.lastValidUpdateTime) }
                 ?: UNKNOWN_BOOK_UPDATE_TIME
         )
+    }
+
+    private fun descriptionForDisplay(raw: String): String {
+        if ('<' !in raw) return raw
+        val body = Jsoup.parseBodyFragment(raw).body()
+        // Plain descriptions may contain angle brackets. Rule extraction already
+        // handles entities, so do not decode a plain description a second time.
+        if (body.getAllElements().none { it !== body && it.tag().isKnownTag }) return raw
+        body.select("script,style").remove()
+        body.select("br").forEach { it.before(TextNode("\n")); it.remove() }
+        body.getAllElements().filter { it !== body && it.isBlock }.forEach {
+            it.before(TextNode("\n")); it.after(TextNode("\n"))
+        }
+        return body.wholeText().replace(Regex("\n{3,}"), "\n\n").trim()
     }
 
     override suspend fun getBookInformation(id: String) = request {

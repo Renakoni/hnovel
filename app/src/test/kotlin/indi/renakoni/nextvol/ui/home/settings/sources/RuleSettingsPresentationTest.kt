@@ -1,6 +1,8 @@
 package indi.renakoni.nextvol.ui.home.settings.sources
 
 import hnovel.imports.*
+import hnovel.content.LoginForm
+import indi.renakoni.nextvol.data.web.rules.SourceLoginService
 import kotlinx.serialization.json.*
 import org.junit.Assert.*
 import org.junit.Test
@@ -23,9 +25,11 @@ class RuleSettingsPresentationTest {
     @Test fun staticFormsAndBrowserDeclarationsUseExistingFormSemantics() {
         val form = declaration(mapOf("loginUi" to JsonPrimitive("""[{"name":"account"},{"name":"action","type":"button","action":"doWork()"}]""")))
         assertTrue(form.loginDeclared)
+        assertTrue(form.configurationDeclared)
         assertNull(form.loginErrorField)
         val browser = declaration(mapOf("loginUrl" to JsonPrimitive("https://example.invalid/login"), "browserRead" to JsonPrimitive(true)))
         assertTrue(browser.loginDeclared)
+        assertFalse(browser.configurationDeclared)
         assertTrue(browser.nativeBrowser)
         assertNull(browser.loginErrorField)
     }
@@ -40,5 +44,17 @@ class RuleSettingsPresentationTest {
         assertEquals("loginUi", declaration(dynamic).loginErrorField)
         assertNull(declaration(dynamic, EXTENSION_PROFILE).loginErrorField)
         assertTrue(declaration(dynamic, EXTENSION_PROFILE).loginDeclared)
+        assertTrue(declaration(dynamic, EXTENSION_PROFILE).configurationDeclared)
+    }
+
+    @Test fun directLoginUsesOnlyTheUniqueConventionalActionAndPreservesCredentialForms() {
+        val login = """{"name":"Translated account button","type":"button","action":" login(); "}"""
+        val form = LoginForm.parse("[$login,{\"name\":\"Preferences\"}]", "")
+        assertEquals(form.fields.first().id, SourceLoginService.directLoginAction(form))
+        for (extra in listOf("""{"name":"user"}""", """{"name":"secret","type":"password"}""",
+            """{"name":"user"},{"name":"email"}""", login)) {
+            assertNull(SourceLoginService.directLoginAction(LoginForm.parse("[$login,$extra]", "")))
+        }
+        assertNull(SourceLoginService.directLoginAction(LoginForm.parse("""[{"name":"Login","type":"button","action":"updateSource()"}]""", "")))
     }
 }

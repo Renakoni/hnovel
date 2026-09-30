@@ -7,7 +7,8 @@ import java.util.UUID
 
 data class LoginField(val name: String, val type: String, val action: String? = null,
     val default: String = "", val choices: List<String> = emptyList(), val label: String = name,
-    val viewName: String? = null, val id: String = UUID.randomUUID().toString())
+    val viewName: String? = null, val id: String = UUID.randomUUID().toString(),
+    val enabled: Boolean = true, val section: String? = null, val checked: Boolean? = null, val description: String? = null)
 data class LoginForm(val fields: List<LoginField>, val browserUrl: String?, val values: Map<String, String> = emptyMap(),
     val id: String = UUID.randomUUID().toString()) {
     internal fun withValues(saved: Map<String, String>) = copy(values = fields.filter { it.type != "button" }.associate { field ->
@@ -42,15 +43,24 @@ data class LoginForm(val fields: List<LoginField>, val browserUrl: String?, val 
                 val row = value as? JsonObject ?: invalid("row")
                 // Like RuleDiscoverySession.rows in RuleDiscovery.kt, accept style while the host owns
                 // layout. Keep this compatibility decision aligned when tightening either row schema.
-                val allowed = setOf("name", "type", "action", "style") + if (extended) setOf("default", "chars", "viewName") else emptySet()
+                val allowed = setOf("name", "type", "action", "style") + if (extended)
+                    setOf("default", "chars", "viewName", "enabled", "section", "checked", "description") else emptySet()
                 row.keys.firstOrNull { it !in allowed }?.let { invalid(it) }
                 fun string(key: String): String? = row[key]?.takeUnless { it == JsonNull }?.let {
                     if (it !is JsonPrimitive || !it.isString) invalid(key)
                     it.content
                 }
+                fun boolean(key: String): Boolean? = row[key]?.takeUnless { it == JsonNull }?.let {
+                    if (it !is JsonPrimitive || it.isString) invalid(key)
+                    it.booleanOrNull ?: invalid(key)
+                }
                 val name = string("name")?.takeIf { it.isNotBlank() && it.length <= 128 } ?: invalid("name")
                 val type = string("type") ?: "text"
                 if (type !in setOf("text", "password", "button") && (!extended || type !in setOf("toggle", "select"))) invalid("type")
+                val section = string("section")?.also { if (it.isBlank() || it.length > 128) invalid("section") }
+                val description = string("description")?.also { if (it.length > 512) invalid("description") }
+                val checked = boolean("checked")
+                if (checked != null && type != "button") invalid("checked")
                 val choices = row["chars"]?.takeUnless { it == JsonNull }?.let { chars ->
                     (chars as? JsonArray ?: invalid("chars")).filter { it != JsonNull }.map {
                         if (it !is JsonPrimitive || !it.isString || it.content.length > 4096) invalid("chars")
@@ -68,7 +78,8 @@ data class LoginForm(val fields: List<LoginField>, val browserUrl: String?, val 
                 val key = UUID.nameUUIDFromBytes(identity.toString().toByteArray(Charsets.UTF_8)).toString()
                 val occurrence = occurrences.getOrDefault(key, 0)
                 occurrences[key] = occurrence + 1
-                LoginField(name, type, action, default, choices, viewName = string("viewName"), id = "$key:$occurrence")
+                LoginField(name, type, action, default, choices, viewName = string("viewName"), id = "$key:$occurrence",
+                    enabled = boolean("enabled") ?: true, section = section, checked = checked, description = description)
             }
             // Reference inputs share a name-keyed map. Compatible duplicate bindings share one
             // value; conflicting defaults or options are rejected instead of last-row overwrite.

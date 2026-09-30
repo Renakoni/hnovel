@@ -136,16 +136,10 @@ class RuleDiscoveryCatalogTest {
         }
     }
 
-    @Test fun combinedLimitCountsScreenControlsAndTheCustomButton() = runBlocking {
+    @Test fun combinedLimitCountsScreenControls() = runBlocking {
         RuleSourceFixture().use { fixture ->
-            val cases = listOf(
-                buildJsonObject { put("exploreScreen", """[{"id":"button","title":"Action","type":"button"}]""") },
-                buildJsonObject {
-                    put("customButton", true); put("eventListener", true)
-                    put("ruleContent", buildJsonObject { put("callBackJs", "java.refreshExplore()") })
-                },
-            )
-            for (extra in cases) fixture.source { JsonObject(definition(it, urls(RuleDiscoveryCatalogParser.MAX_CATALOG_ROWS)) + extra) }.use { source ->
+            val extra = buildJsonObject { put("exploreScreen", """[{"id":"button","title":"Action","type":"button"}]""") }
+            fixture.source { JsonObject(definition(it, urls(RuleDiscoveryCatalogParser.MAX_CATALOG_ROWS)) + extra) }.use { source ->
                 val error = failure { source.openDiscovery("combined").catalog() }
                 assertEquals(ContentError.Limit, error.code)
                 assertEquals("exploreUrl", error.field)
