@@ -3,12 +3,15 @@ package indi.renakoni.nextvol.defaultplugin.wenku8.explore
 import com.github.michaelbull.result.Err
 import com.github.michaelbull.result.Ok
 import com.github.michaelbull.result.Result
+import com.github.michaelbull.result.getOrElse
 import indi.renakoni.nextvol.defaultplugin.wenku8.Wenku8RouteUnavailableException
 import io.nightfish.lightnovelreader.api.web.discovery.*
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.last
+import kotlinx.coroutines.launch
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import java.net.URI
@@ -16,24 +19,50 @@ import java.net.URLDecoder
 import java.net.URLEncoder
 
 /** Stateless adapter. The injected fetcher owns credentials, decoding and cancellation. */
-class Wenku8Discovery(private val host: String, private val fetch: suspend (String) -> Document) : DiscoveryProvider {
+class Wenku8Discovery(private val host: String, private val fetch: suspend (String) -> Document) : DiscoveryPreviewProvider {
     override val hasFeed = true
     override val hasCategories = true
 
-    override suspend fun feed(): Result<List<DiscoverySection>, DiscoveryError> = request {
-        val home = Wenku8DiscoveryParser.home(fetch(host), host).map { section ->
+    override suspend fun feed() = feedUpdates().last()
+
+    override fun feedUpdates() = flow<Result<List<DiscoverySection>, DiscoveryError>> {
+        val home = request { Ok(Wenku8DiscoveryParser.home(fetch(host), host)) }
+            .getOrElse { emit(Err(it)); return@flow }.map { section ->
             section.copy(more = lists.entries.firstOrNull { it.value == section.title }?.key)
         }
         // Keep homepage order; a matching list gets a more target, not a second section.
-        // The API limits concurrent fetches; awaitAll preserves the configured list order.
-        Ok(home + coroutineScope {
-            lists.filterKeys { id -> home.none { it.more == id } }.map { (id, title) ->
-                async {
-                    DiscoverySection(id, title, Wenku8DiscoveryParser.cards(fetch(url(id, 1, emptyMap())), host)
-                        .take(6).map { it.book }, id)
+        val pending = lists.filterKeys { id -> home.none { it.more == id } }.toList()
+        val sections = (home + pending.map { (id, title) ->
+            DiscoverySection(id, title, emptyList(), id, previewLoading = true)
+        }).toMutableList()
+        emit(Ok(sections.toList()))
+        coroutineScope {
+            val completed = Channel<Pair<Int, DiscoverySection>>(Channel.BUFFERED)
+            try {
+                pending.forEachIndexed { index, (id, title) ->
+                    launch {
+                        val section = preview(id).getOrElse {
+                            DiscoverySection(id, title, emptyList(), id,
+                                previewFailure = DiscoveryPreviewFailure(it), previewLoading = false)
+                        }
+                        completed.send(index to section)
+                    }
                 }
-            }.awaitAll()
-        })
+                repeat(pending.size) {
+                    val (index, section) = completed.receive()
+                    sections[home.size + index] = section
+                    emit(Ok(sections.toList()))
+                }
+            } finally { completed.cancel() }
+        }
+    }
+
+    override suspend fun preview(id: String): Result<DiscoverySection, DiscoveryError> {
+        val title = lists[id] ?: return Err(DiscoveryError.InvalidRequest)
+        return request {
+            Ok(DiscoverySection(id, title, Wenku8DiscoveryParser.cards(fetch(url(id, 1, emptyMap())), host)
+                .take(6).map { it.book }, id))
+        }
     }
 
     override suspend fun categories(): Result<List<DiscoveryCategory>, DiscoveryError> = request {
