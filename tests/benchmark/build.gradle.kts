@@ -57,4 +57,5 @@ dependencies {
     implementation(libs.androidx.test.runner)
     implementation(libs.androidx.test.uiautomator)
     implementation(libs.androidx.benchmark.macro.junit4)
+    implementation("com.squareup.okhttp3:mockwebserver:5.4.0")
 }
