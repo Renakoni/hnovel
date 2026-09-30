@@ -1,5 +1,7 @@
 package indi.renakoni.nextvol.ui.book.reader.content.flip
 
+import androidx.compose.ui.unit.IntSize
+import indi.renakoni.nextvol.ui.book.reader.ReaderBodyGeometry
 import io.nightfish.lightnovelreader.api.content.component.AbstractContentComponent
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -12,6 +14,25 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class FlipPaginationCoordinatorTest {
+    @Test fun changingOnlyBodyOriginInvalidatesThePendingChapter() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val events = mutableListOf<String>()
+        val geometry = ReaderBodyGeometry(10, 20, IntSize(400, 600))
+        val coordinator = FlipPaginationCoordinator(this, StandardTestDispatcher(testScheduler)) { _, _, _ ->
+            gate.await()
+            emptyList()
+        }
+        coordinator.submit(geometry, emptyList(), 600, 400) { events += "stale" }
+        runCurrent()
+        coordinator.syncInput(geometry.copy(startPx = 11))
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(emptyList<String>(), events)
+        coordinator.submit(geometry.copy(startPx = 11), emptyList(), 600, 400) { events += "current" }
+        advanceUntilIdle()
+        assertEquals(listOf("current"), events)
+    }
+
     @Test
     fun newerRequestCancelsAnOlderRequestBeforeItCanPublish() = runTest {
         val gate = CompletableDeferred<Unit>()

@@ -10,11 +10,8 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.calculateEndPadding
-import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.material3.SnackbarDuration
@@ -50,6 +47,9 @@ import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.ui.book.reader.ReaderSettings
 import indi.renakoni.nextvol.ui.book.reader.animatePageTurns
 import indi.renakoni.nextvol.ui.book.reader.LocalReaderTextLayout
+import indi.renakoni.nextvol.ui.book.reader.resolveReaderBodyLayout
+import indi.renakoni.nextvol.ui.book.reader.readerBodyGeometry
+import indi.renakoni.nextvol.ui.book.reader.content.ReaderMode
 import indi.renakoni.nextvol.ui.book.reader.content.ChapterContentError
 import indi.renakoni.nextvol.ui.book.reader.content.ChapterContentLoading
 import indi.renakoni.nextvol.ui.book.reader.content.ChapterContentUiState
@@ -153,20 +153,14 @@ private fun SimpleFlipPageTextComponent(
     val readerStyle = LocalReaderStyle.current
     val textLayout = LocalReaderTextLayout.current
     val textLocaleList = LocalTextLocaleList.current
-    val horizontalPadding = with(density) {
-        (paddingValues.calculateStartPadding(layoutDirection) + paddingValues.calculateEndPadding(layoutDirection)).toPx()
-    }.toInt()
-    val verticalPadding = with(density) {
-        (paddingValues.calculateTopPadding() + paddingValues.calculateBottomPadding()).toPx()
-    }.toInt()
+    // The single-leaf renderer opts out of spreads until the spread pager is installed.
+    val geometry = resolveReaderBodyLayout(contentSize, paddingValues, ReaderMode.Flip, preference = "single").geometry
     val pagination = remember(scope) { FlipPaginationCoordinator(scope) }
     val adjacentPagination = remember(scope) { FlipPaginationCoordinator(scope) }
     val paginationInput = FlipPaginationInput(
         chapterId = chapterContent.id,
         content = chapterContent.content,
-        contentSize = contentSize,
-        horizontalPadding = horizontalPadding,
-        verticalPadding = verticalPadding,
+        geometry = geometry,
         density = density,
         layoutDirection = layoutDirection,
         fontSize = textLayout?.settings?.fontSize ?: readerStyle.fontSize,
@@ -273,18 +267,14 @@ private fun SimpleFlipPageTextComponent(
             return@LaunchedEffect
         }
         positions?.reflow(uiState)
-        val width = contentSize.width - horizontalPadding
-        val height = contentSize.height - verticalPadding
-        if (width <= 0 || height <= 0) {
+        if (geometry == null) {
             pagination.cancelPending()
-            slippedContentComponentList = emptyList()
-            uiState.updatePageState(PagerState { 0 })
             return@LaunchedEffect
         }
         slippedContentComponentList = emptyList()
         uiState.updatePageState(PagerState { 0 })
         snapshotFlow { !speech.awaitingIndex(chapterContent) }.first { it }
-        pagination.submit(paginationInput, chapterContent.content, height, width, onError = { error ->
+        pagination.submit(paginationInput, chapterContent.content, geometry.leafSize.height, geometry.leafSize.width, onError = { error ->
             positions?.pending?.let { positions.finish(uiState, it, null) }
             throw error
         }) { result ->
@@ -333,13 +323,12 @@ private fun SimpleFlipPageTextComponent(
     val paginationError = WebRequestError(stringResource(R.string.reader_chapter), stringResource(R.string.reader_pagination_failed))
     LaunchedEffect(pending, pendingInput) {
         if (pending == null || pendingInput == null) return@LaunchedEffect
-        val width = pendingInput.contentSize.width - pendingInput.horizontalPadding
-        val height = pendingInput.contentSize.height - pendingInput.verticalPadding
-        if (width <= 0 || height <= 0) {
+        val pendingGeometry = pendingInput.geometry
+        if (pendingGeometry == null) {
             adjacentPagination.cancelPending()
             return@LaunchedEffect
         }
-        adjacentPagination.submit(pendingInput, pendingInput.content, height, width,
+        adjacentPagination.submit(pendingInput, pendingInput.content, pendingGeometry.leafSize.height, pendingGeometry.leafSize.width,
             onError = { uiState.failPendingChapter(pending, paginationError) }) { pages ->
             if (uiState.pendingChapter !== pending) return@submit
             if (pages.isEmpty()) {
@@ -381,6 +370,7 @@ private fun SimpleFlipPageTextComponent(
     val previousChapterText = stringResource(R.string.previous_chapter)
     val reachedStartText = stringResource(R.string.reader_reached_start)
     suspend fun lastPage(pagerState: PagerState) {
+        if (geometry == null || renderedInput != paginationInput) return
         speech.onManualNavigation()
         if (pagerState.pageCount == 0 || slippedContentComponentList.isEmpty()) return
         if (uiState.pendingChapter?.entry == ChapterEntry.Start) uiState.cancelPendingChapter()
@@ -420,6 +410,7 @@ private fun SimpleFlipPageTextComponent(
     val reachedEndText = stringResource(R.string.reader_reached_end)
 
     suspend fun nextPage(pagerState: PagerState) {
+        if (geometry == null || renderedInput != paginationInput) return
         speech.onManualNavigation()
         if (pagerState.pageCount == 0 || slippedContentComponentList.isEmpty()) return
         if (uiState.pendingChapter?.entry == ChapterEntry.End) uiState.cancelPendingChapter()
@@ -467,7 +458,7 @@ private fun SimpleFlipPageTextComponent(
             )
     ) {
         // A replaced pager must attach its own first-layout callback before restoring position.
-        key(uiState.pagerState) {
+        if (geometry != null) key(uiState.pagerState) {
             HorizontalPager(
                 state = uiState.pagerState,
                 key = { it },
@@ -532,7 +523,7 @@ private fun SimpleFlipPageTextComponent(
                         slippedContentComponentList.getOrNull(it)?.Content(
                             modifier
                                 .fillMaxSize()
-                                .padding(paddingValues)
+                                .readerBodyGeometry(geometry)
                         )
                     }
                 }
