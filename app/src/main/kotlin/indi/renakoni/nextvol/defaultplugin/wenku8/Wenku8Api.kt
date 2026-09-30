@@ -133,7 +133,7 @@ class Wenku8Api(routes: (Identifier) -> SourceNetworkRoute) : WebBookDataSource,
             retryOnServerErrors(maxRetries = 3)
             exponentialDelay()
             retryIf { _, response ->
-                !response.status.isSuccess()
+                !response.status.isSuccess() && response.status.value !in 300..399
             }
             retryOnExceptionIf { _, cause ->
                 cause is EOFException || cause is ConnectException

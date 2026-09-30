@@ -5,7 +5,11 @@ import com.github.michaelbull.result.get
 import io.nightfish.lightnovelreader.api.web.discovery.DiscoveryError
 import io.nightfish.lightnovelreader.api.web.discovery.DiscoveryRequest
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.jsoup.Jsoup
 import org.junit.Assert.*
 import org.junit.Test
@@ -38,6 +42,24 @@ class Wenku8DiscoveryTest {
         assertEquals("99", feed.first().books.single().remoteId)
         assertEquals("$host/99.jpg", feed.first().books.single().coverUrl)
         assertTrue(calls.last().endsWith("page=1&fullflag=1"))
+    }
+
+    @Test fun supplementalListsOverlapWithoutChangingOrder() = runBlocking {
+        withTimeout(2000) {
+            val started = Channel<Unit>(Channel.UNLIMITED)
+            val release = CompletableDeferred<Unit>()
+            val provider = Wenku8Discovery(host) { url ->
+                if (url == host) Jsoup.parse(home(listOf("Home"))) else {
+                    started.send(Unit)
+                    release.await()
+                    Jsoup.parse(cards(2))
+                }
+            }
+            val feed = async { provider.feed().get()!! }
+            repeat(2) { started.receive() }
+            release.complete(Unit)
+            assertEquals(listOf("home:0") + Wenku8Discovery.lists.keys, feed.await().map { it.id })
+        }
     }
 
     @Test fun duplicateHomepageListGetsMoreTargetWithoutAnotherRequest() = runBlocking {

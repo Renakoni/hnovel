@@ -239,6 +239,27 @@ class Wenku8NetworkTest {
         }
     }
 
+    @Test(timeout = 45000) fun redirectsAreFollowedWithoutRetryingTheOriginalRequest() = runBlocking {
+        Fixture().use { fixture ->
+            val runtime = fixture.runtime(a)
+            for (status in listOf(301, 302, 303, 307, 308)) {
+                fixture.first.dispatcher = object : Dispatcher() {
+                    override fun dispatch(request: RecordedRequest): MockResponse =
+                        if (request.path == "/redirect") MockResponse().setResponseCode(status)
+                            .setHeader("Location", "http://child.fixture/final")
+                        else document("A")
+                }
+                val before = fixture.first.requestCount
+                assertEquals("A • ・ 〜", runtime.execute {
+                    fixture.api.getWithWenku8Cookie("http://www.wenku8.cc/redirect").getOrElse { throw it }.text()
+                })
+                assertEquals("HTTP $status must follow the redirect without retrying it", 2, fixture.first.requestCount - before)
+                assertEquals("/redirect", fixture.first.takeRequest(3, TimeUnit.SECONDS)!!.path)
+                assertEquals("/final", fixture.first.takeRequest(3, TimeUnit.SECONDS)!!.path)
+            }
+        }
+    }
+
     @Test(timeout = 45000) fun retriesAndRedirectsRetainTheirRouteWhileNewRequestsReadTheSavedMode() = runBlocking {
         Fixture().use { fixture ->
             val runtime = fixture.runtime(a)
