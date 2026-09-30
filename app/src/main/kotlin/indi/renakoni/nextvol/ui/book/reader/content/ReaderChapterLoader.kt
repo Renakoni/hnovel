@@ -31,13 +31,15 @@ class ReaderChapterLoader @Inject constructor(
             previous.isOk && next.isOk && previous.get() == next.get()
         }.map { result ->
             result.map {
-                ChapterContentUiState(
-                    id = it.id,
-                    title = it.title,
-                    content = contentRenderer.getContentDataFromJson(it.content).components,
-                    prevChapter = it.prevChapter,
-                    nextChapter = it.nextChapter,
-                )
+                readerTrace("reader.prepare") {
+                    ChapterContentUiState(
+                        id = it.id,
+                        title = it.title,
+                        content = contentRenderer.getContentDataFromJson(it.content).components,
+                        prevChapter = it.prevChapter,
+                        nextChapter = it.nextChapter,
+                    )
+                }
             }
         }.flowOn(if (interactive) kotlin.coroutines.EmptyCoroutineContext
             else indi.renakoni.nextvol.data.web.ForegroundSourceRequest(allowsInteraction = false))

@@ -15,3 +15,7 @@ Keep personal data off that test application. Live-source tests need network acc
 performance thresholds require a stable physical device.
 
 Reports and traces are generated under `tests/benchmark/build/` and are not committed.
+
+For the local-only, production-cache-decision reader matrix, see
+[Reader performance](READER_PERFORMANCE.md). It uses a **separate application ID**
+and `readerBenchmark` variant; do not run its tests against the ordinary benchmark APK.
