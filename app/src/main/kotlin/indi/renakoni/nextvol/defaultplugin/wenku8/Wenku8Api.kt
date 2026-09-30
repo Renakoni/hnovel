@@ -79,6 +79,8 @@ import kotlin.time.Duration.Companion.milliseconds
 
 /** wenku8 页面使用的字符集。声明为 gbk，实际输出 GB18030，详见 [Wenku8Api.getWithWenku8Cookie] */
 private val WENKU8_CHARSET: Charset = Charset.forName("GB18030")
+private const val WENKU8_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
 
 @WebDataSource(
     "Wenku8",
@@ -102,9 +104,7 @@ class Wenku8Api(routes: (Identifier) -> SourceNetworkRoute) : WebBookDataSource,
     private fun createContentClient(transport: OkHttpClient) = HttpClient(OkHttp) {
         engine { preconfigured = transport }
         install(UserAgent) {
-            agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
-                    "AppleWebKit/537.36 (KHTML, like Gecko) " +
-                    "Chrome/125.0.0.0 Safari/537.36"
+            agent = WENKU8_USER_AGENT
         }
 
         install(HttpCookies) {
@@ -241,6 +241,8 @@ class Wenku8Api(routes: (Identifier) -> SourceNetworkRoute) : WebBookDataSource,
     }
 
     override val id = "Wenku8".ofId()
+    // Native image requests bypass Ktor's UserAgent plugin. Do not copy document cookies.
+    override val imageHeader = mapOf(HttpHeaders.UserAgent to WENKU8_USER_AGENT)
 
     // The periodic built-in reachability check has no host caller and belongs to this source.
     private suspend fun requestSourceId() = currentCoroutineContext()[SourceRequestOwner]?.id ?: id

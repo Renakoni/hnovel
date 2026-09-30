@@ -226,7 +226,10 @@ class Wenku8NetworkTest {
                 assertTrue(load(a) is SuccessResult); assertTrue(load(b) is SuccessResult)
                 assertEquals(DataSource.MEMORY_CACHE, (load(a) as SuccessResult).dataSource)
                 assertEquals(4, fixture.first.requestCount); assertEquals(4, fixture.second.requestCount)
-                assertNull("Document cookies must not become image headers", fixture.first.takeRequest(3, TimeUnit.SECONDS)!!.getHeader("Cookie"))
+                val imageRequest = fixture.first.takeRequest(3, TimeUnit.SECONDS)!!
+                assertTrue("Native images must retain the source's browser identity",
+                    imageRequest.getHeader("User-Agent").orEmpty().contains("Chrome/125.0.0.0"))
+                assertNull("Document cookies must not become image headers", imageRequest.getHeader("Cookie"))
                 assertArrayEquals(fixture.firstPng, first.imageBytes("same", "http://www.wenku8.cc/image", false).getOrElse { error(it.title) })
                 assertArrayEquals(fixture.secondPng, second.imageBytes("same", "http://www.wenku8.cc/image", true).getOrElse { error(it.title) })
                 val cachedCount = fixture.first.requestCount + fixture.second.requestCount
