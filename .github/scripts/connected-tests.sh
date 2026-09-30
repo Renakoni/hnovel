@@ -29,6 +29,11 @@ if [[ "$api_level" == 24 || "$api_level" == 35 ]]; then
   trap restore_viewport EXIT
   timeout 15s adb shell wm size 2560x1440
   timeout 15s adb shell wm density 160
+  reader_size=$(timeout 15s adb shell wm size | tr -d '\r' | sed -n 's/.*size: //p' | tail -n 1)
+  if [[ "$reader_size" != 2560x1440 ]]; then
+    echo "Reader tests require a 2560x1440 viewport; device reported $reader_size." >&2
+    exit 1
+  fi
   bash .github/scripts/run-prebuilt-tests.sh app/build/outputs/apk/debug \
     app/build/outputs/apk/androidTest/debug app/build/outputs/androidTest-results/connected/debug/reader "$reader_test_classes"
   exit 0

@@ -13,7 +13,8 @@ for resource in "$sdk/emulator/emulator" "$sdk/platform-tools/adb" \
   "$sdk/system-images/android-$api/google_apis/x86_64/system.img"; do
   test -f "$resource" || { echo "Missing emulator resource: $resource" >&2; exit 1; }
 done
-# Match avdmanager's generic 320x640/160dpi profile without invoking its repository loader.
+# API 24 limits size overrides relative to the physical panel. Allow wide reader
+# tests, while retaining the original 320x640/160dpi test viewport after boot.
 cat > "$avds/ci.ini" <<EOF
 avd.ini.encoding=UTF-8
 path=$avds/ci.avd
@@ -25,8 +26,8 @@ abi.type=x86_64
 hw.cpu.arch=x86_64
 hw.cpu.ncore=2
 hw.ramSize=2560
-hw.lcd.width=320
-hw.lcd.height=640
+hw.lcd.width=1280
+hw.lcd.height=720
 hw.lcd.density=160
 hw.mainKeys=yes
 hw.keyboard=no
@@ -91,6 +92,7 @@ if [[ "$booted" != true ]]; then
   echo 'Android boot/ADB readiness failed after two attempts with 180-second polling windows.' >&2
   exit 1
 fi
+timeout 10s adb shell wm size 320x640
 for setting in window_animation_scale transition_animation_scale animator_duration_scale; do
   timeout 10s adb shell settings put global "$setting" 0
 done
