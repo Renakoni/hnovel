@@ -320,6 +320,43 @@ class FlipModeContractTest {
         assertEquals(0.45f, mode.uiState.readingProgress)
     }
 
+    @Test fun reflowDisplaysTheNewLeafRangeWithoutPublishingNewReading() {
+        open()
+        env.emit("requested", Ok(env.chapter("requested")))
+        mode.updatePagerState(pager(10, mutableIntStateOf(5)))
+        env.runCurrent()
+        assertEquals(0.6f, mode.uiState.readingProgress)
+        progress.clear()
+        val page = mutableIntStateOf(1)
+        val spread = spreadPager(ReaderLeafMapping(5, 2), page)
+        mode.uiState.updateAnchoredPageState(spread)
+        repeat(3) { env.runCurrent() }
+        assertEquals(0.8f, mode.uiState.readingProgress)
+        assertTrue(progress.isEmpty())
+        page.intValue = 2
+        env.runCurrent()
+        assertEquals(listOf("requested" to 1f), progress)
+    }
+
+    @Test fun oldPercentageUsesRealLeafCountEvenWhenPagerHasFewerScreens() {
+        env.records.data = env.records.data.copy(currentChapterReadingProgressMap = mapOf("requested" to 0.85f))
+        open()
+        val targets = mutableListOf<Int>()
+        mode.updatePagerState(spreadPager(ReaderLeafMapping(5, 2), mutableIntStateOf(0), targets))
+        env.runCurrent()
+        assertEquals(listOf(1), targets)
+    }
+
+    private fun spreadPager(mapping: ReaderLeafMapping, page: androidx.compose.runtime.MutableIntState, targets: MutableList<Int> = mutableListOf()): PagerState = mockk<ReaderSpreadPagerState> {
+        every { leaves } returns mapping
+        every { pageCount } returns mapping.screenCount
+        every { settledPage } answers { page.intValue }
+        every { currentPage } answers { page.intValue }
+        every { targetPage } answers { page.intValue }
+        every { isScrollInProgress } returns false
+        coEvery { scrollToPage(any(), any()) } answers { targets += firstArg<Int>(); page.intValue = firstArg() }
+    }
+
     private fun pager(count: Int, page: androidx.compose.runtime.MutableIntState = mutableIntStateOf(0), targets: MutableList<Int> = mutableListOf()): PagerState = mockk {
         every { pageCount } returns count
         every { settledPage } answers { page.intValue }

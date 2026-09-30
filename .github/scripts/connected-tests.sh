@@ -10,6 +10,7 @@ else
   test_classes+=",indi.renakoni.nextvol.sourceexecution.IsolatedConcurrencyInstrumentedTest"
 fi
 reader_test_classes="indi.renakoni.nextvol.reader.ReaderPositionInstrumentedTest"
+reader_test_classes+=",indi.renakoni.nextvol.reader.ReaderSpreadInstrumentedTest"
 test_classes+="${1:-}"
 
 # API 24 can hang after UTP/ddmlib has streamed all APK bytes into install-write.

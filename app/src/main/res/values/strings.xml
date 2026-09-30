@@ -631,4 +631,5 @@
     <string name="log_empty_file_desc">This file has no log entries.</string>
     <string name="log_empty_current_desc">New logs appear here. Restart after changing the log level.</string>
     <string name="book_directory_incomplete">The chapter list is incomplete. Only loaded chapters are shown.</string>
+    <string name="reader_visible_page_range">Pages %1$d–%2$d of %3$d</string>
 </resources>

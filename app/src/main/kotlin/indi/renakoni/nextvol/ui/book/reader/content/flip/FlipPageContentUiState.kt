@@ -24,6 +24,8 @@ interface FlipPageContentUiState: ContentUiState {
     val updateAnchoredPageState: (PagerState) -> Unit get() = updatePageState
     val updateSpeechPageState: (PagerState) -> Unit get() = updateAnchoredPageState
     val pagerState: PagerState
+    val realLeafCount: Int get() = pagerState.readerLeaves.leafCount
+    val visibleLeafRange: IntRange get() = pagerState.readerLeaves.leavesOnScreen(pagerState.settledPage)
     val pendingChapter: FlipChapterTransition? get() = null
     val commitPendingChapter: (FlipChapterTransition, PagerState) -> Boolean get() = { _, _ -> false }
     val failPendingChapter: (FlipChapterTransition, WebRequestError) -> Unit get() = { _, _ -> }

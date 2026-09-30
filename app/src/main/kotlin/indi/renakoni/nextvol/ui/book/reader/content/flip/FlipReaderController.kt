@@ -39,7 +39,7 @@ class FlipReaderController(
         loadNextChapter = ::loadNextChapter,
         changeChapter = ::changeChapter,
         updatePageState = ::updatePagerState,
-        updateAnchoredPageState = { progress.updatePagerState(it, anchored = true) },
+        updateAnchoredPageState = { progress.updateAnchoredPageState(it) },
         updateSpeechPageState = { progress.updateSpeechPageState(it) },
         commitPendingChapter = ::commitPendingChapter,
         failPendingChapter = ::failPendingChapter,
@@ -130,7 +130,7 @@ class FlipReaderController(
         uiState.readingChapterId = expected.chapterId
         uiState.readingChapterContent = pending.result
         uiState.pendingChapter = null
-        progress.updatePagerState(pager, anchored = true)
+        progress.updatePagerState(pager, anchored = true, publishInitial = true)
         coroutineScope.launch { persistAndPreload(expected, content) }
         return true
     }
