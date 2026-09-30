@@ -13,9 +13,11 @@ import io.nightfish.lightnovelreader.api.bookshelf.Bookshelf
 import io.nightfish.lightnovelreader.api.bookshelf.BookshelfBookMetadata
 import io.nightfish.lightnovelreader.api.bookshelf.BookshelfRepositoryApi
 import io.nightfish.lightnovelreader.api.bookshelf.BookshelfSortType
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.withContext
 import java.time.LocalDateTime
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -140,7 +142,9 @@ class BookshelfRepository @Inject constructor(
             }
         } ?: return
         // Work submission must not run inside the bookshelf transaction or undo a saved bookmark.
-        val submission = downloadScheduler.submit(automaticDownload, resumePrevious = false)
+        val submission = withContext(Dispatchers.IO) {
+            downloadScheduler.submit(automaticDownload, resumePrevious = false)
+        }
         if (submission is DownloadSubmission.Rejected) {
             Log.w("BookshelfRepository", "Automatic download submission failed: ${submission.failure}")
         }

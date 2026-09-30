@@ -55,7 +55,7 @@ class MetadataBookmarkTest {
         publishingHouse = "", wordCount = WordCount(0), lastUpdated = LocalDateTime.of(1970, 1, 1, 0, 0), isComplete = false)
 
     @Before fun setUp() = runBlocking {
-        db = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), NextVolDatabase::class.java).allowMainThreadQueries().build()
+        db = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), NextVolDatabase::class.java).build()
         val aliases = BookAliasStore(db)
         downloads = BookDownloadStore(RuntimeEnvironment.getApplication(), db, ContentJsonDecoder(ContentComponentRegistry()))
         shelves = BookshelfRepository(db.bookshelfDao(), BookDownloadScheduler(downloads, work, aliases), registry, aliases)
@@ -95,7 +95,29 @@ class MetadataBookmarkTest {
         verify(exactly = 0) { work.enqueueUniqueWork(any<String>(), any<ExistingWorkPolicy>(), any<OneTimeWorkRequest>()) }
     }
 
-    @Test fun newMembershipIsSavedBeforeSubmissionAndConcurrentDuplicatesStayIdle() = runBlocking {
+    @Test fun mainThreadCallerStillSubmitsAfterSavingMembership() = runBlocking {
+        assertEquals(android.os.Looper.getMainLooper().thread, Thread.currentThread())
+        shelves.addBookIntoBookShelf(1, info.copy(id = novel.storageKey))
+        assertEquals(1, submitted.size)
+        assertEquals("Queued", downloads.entry(novel)!!.taskStatus)
+        assertEquals(listOf(novel.storageKey), shelves.getBookshelf(1)!!.allBookIds)
+    }
+
+    @Test fun existingManualTaskIsReusedWithoutReplacingItsSelection() = runBlocking(Dispatchers.IO) {
+        val id = java.util.UUID.randomUUID()
+        downloads.queueTask(novel, downloads.generation(), id.toString(), chapterIds = listOf("selected"))
+        val active = mockk<androidx.work.WorkInfo> {
+            every { this@mockk.id } returns id
+            every { state } returns androidx.work.WorkInfo.State.ENQUEUED
+        }
+        every { work.getWorkInfoByIdFlow(id) } returns flowOf(active)
+        shelves.addBookIntoBookShelf(1, info.copy(id = novel.storageKey))
+        assertEquals(id.toString(), downloads.entry(novel)!!.taskWorkId)
+        assertEquals(setOf("selected"), downloads.entry(novel)!!.selectedChapterIds())
+        verify(exactly = 0) { work.enqueueUniqueWork(any<String>(), any<ExistingWorkPolicy>(), any<OneTimeWorkRequest>()) }
+    }
+
+    @Test fun newMembershipIsSavedBeforeSubmissionAndConcurrentDuplicatesStayIdle() = runBlocking(Dispatchers.IO) {
         coroutineScope {
             repeat(4) { launch(Dispatchers.Default) { shelves.addBookIntoBookShelf(1, info.copy(id = novel.storageKey)) } }
         }
@@ -113,7 +135,7 @@ class MetadataBookmarkTest {
         verify(exactly = 2) { work.enqueueUniqueWork(any<String>(), any<ExistingWorkPolicy>(), any<OneTimeWorkRequest>()) }
     }
 
-    @Test fun automaticDownloadDropsOldSelectionAndSubmissionFailureKeepsBookmark() = runBlocking {
+    @Test fun automaticDownloadDropsOldSelectionAndSubmissionFailureKeepsBookmark() = runBlocking(Dispatchers.IO) {
         val oldWorkId = java.util.UUID.randomUUID().toString()
         downloads.queueTask(novel, downloads.generation(), oldWorkId, refresh = true, chapterIds = listOf("selected"))
         downloads.finishTask(BookDownloadStore.Task(novel, downloads.generation(), oldWorkId), DownloadFailure.Scheduling)
