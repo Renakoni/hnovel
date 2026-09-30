@@ -1,6 +1,5 @@
 package indi.renakoni.nextvol.ui.book.reader.content.flip
 
-import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.flow.first
 
 import androidx.compose.foundation.Image
@@ -54,6 +53,9 @@ import indi.renakoni.nextvol.ui.book.reader.LocalReaderTextLayout
 import indi.renakoni.nextvol.ui.book.reader.content.ChapterContentError
 import indi.renakoni.nextvol.ui.book.reader.content.ChapterContentLoading
 import indi.renakoni.nextvol.ui.book.reader.content.ChapterContentUiState
+import indi.renakoni.nextvol.ui.book.reader.content.LocalReaderPositionSession
+import indi.renakoni.nextvol.ui.book.reader.content.ReaderPosition
+import indi.renakoni.nextvol.ui.book.reader.content.RegisterReaderPositionCapture
 import indi.renakoni.nextvol.ui.book.reader.content.readerTapGestures
 import indi.renakoni.nextvol.ui.book.reader.content.readerPageSwipe
 import indi.renakoni.nextvol.ui.book.reader.content.readerBoundarySwipe
@@ -92,6 +94,12 @@ fun FlipPageContentComponent(
     onClickNextChapter: () -> Unit,
     chapterTitle: (String) -> String? = { null },
 ) {
+    val positions = LocalReaderPositionSession.current
+    val request = positions?.pending
+    LaunchedEffect(uiState.readingChapterContent, request) {
+        if (request != null && uiState.readingChapterContent?.isErr == true)
+            positions.finish(uiState, request, null)
+    }
     uiState.readingChapterContent?.onOk {
         SimpleFlipPageTextComponent(
             modifier = modifier,
@@ -140,6 +148,7 @@ private fun SimpleFlipPageTextComponent(
     }
     var readingAnchor by remember(chapterContent.id, chapterContent.content) { mutableStateOf<ReaderContentAnchor?>(null) }
     var anchoredPage by remember(chapterContent.id, chapterContent.content) { mutableStateOf<ReaderPage?>(null) }
+    var renderedInput by remember { mutableStateOf<FlipPaginationInput?>(null) }
     var contentSize by remember { mutableStateOf(IntSize.Zero) }
     val readerStyle = LocalReaderStyle.current
     val textLayout = LocalReaderTextLayout.current
@@ -168,7 +177,35 @@ private fun SimpleFlipPageTextComponent(
         textLayout = textLayout,
     )
     val bookmarks = LocalReaderBookmarks.current
+    val positions = LocalReaderPositionSession.current
     val visiblePage = slippedContentComponentList.getOrNull(uiState.pagerState.settledPage) as? ReaderPage
+    val renderer = RegisterReaderPositionCapture(uiState) {
+        val anchor = readingAnchor ?: visiblePage?.anchor
+        if (anchor == null || visiblePage == null || renderedInput != paginationInput ||
+            uiState.pagerState.isScrollInProgress || bookmarks?.pending != null ||
+            uiState.readingChapterContent?.get() !== chapterContent) null
+        else ReaderPosition.capture(uiState.bookId, chapterContent, anchor)
+    }
+    val positionRequest = positions?.pending
+    LaunchedEffect(positionRequest, renderedInput, slippedContentComponentList) {
+        if (positionRequest == null || renderedInput != paginationInput ||
+            !positions.isCurrent(uiState, positionRequest)) return@LaunchedEffect
+        val anchor = speech.anchor(chapterContent)
+            ?: positionRequest.position.resolve(uiState.bookId, chapterContent)?.anchor
+        val target = anchor?.let { source ->
+            slippedContentComponentList.indexOfFirst { (it as? ReaderPage)?.contains(source) == true }
+        } ?: -1
+        if (target >= 0) {
+            val pager = uiState.pagerState
+            uiState.updateSpeechPageState(pager)
+            pager.scrollToPage(target)
+            if (!positions.isCurrent(uiState, positionRequest)) return@LaunchedEffect
+            readingAnchor = anchor
+            anchoredPage = slippedContentComponentList[target] as ReaderPage
+        }
+        positions.finish(uiState, positionRequest,
+            anchor?.takeIf { target >= 0 }?.let { ReaderPosition.capture(uiState.bookId, chapterContent, it) })
+    }
     RegisterBookmarkCapture {
         val anchor = readingAnchor ?: visiblePage?.anchor
         if (anchor == null || visiblePage == null || uiState.pagerState.isScrollInProgress ||
@@ -183,14 +220,18 @@ private fun SimpleFlipPageTextComponent(
             slippedContentComponentList.isEmpty()) return@LaunchedEffect
         val anchor = withContext(Dispatchers.Default) { bookmark.anchorIn(chapterContent) }
         val target = anchor?.let { position -> slippedContentComponentList.indexOfFirst { (it as? ReaderPage)?.contains(position) == true } } ?: -1
-        if (bookmarks.pending !== bookmark || uiState.readingChapterContent?.get() !== chapterContent) return@LaunchedEffect
+        if (bookmarks.pending !== bookmark || uiState.readingChapterContent?.get() !== chapterContent ||
+            positions != null && !positions.ownsRenderer(uiState, renderer)) return@LaunchedEffect
         if (target >= 0) {
             val pager = uiState.pagerState
             // Explicit positions, like speech anchors, cancel any late percentage recovery.
             uiState.updateSpeechPageState(pager)
             pager.scrollToPage(target)
+            if (bookmarks.pending !== bookmark || positions != null && !positions.ownsRenderer(uiState, renderer))
+                return@LaunchedEffect
             readingAnchor = anchor
             anchoredPage = slippedContentComponentList[target] as ReaderPage
+            positions?.positioned(uiState, anchor?.let { ReaderPosition.capture(uiState.bookId, chapterContent, it) })
         }
         bookmarks.finish(bookmark, target >= 0)
     }
@@ -214,7 +255,8 @@ private fun SimpleFlipPageTextComponent(
         if (pendingInput != null) adjacentPagination.syncInput(pendingInput)
         else adjacentPagination.cancelPending()
         // A user page change establishes a new position; a reflow keeps the original character.
-        if (visiblePage != null && visiblePage !== anchoredPage) {
+        if (visiblePage != null && visiblePage !== anchoredPage && renderedInput == paginationInput &&
+            positions?.pending == null && bookmarks?.pending == null && !uiState.pagerState.isScrollInProgress) {
             readingAnchor = visiblePage.anchor
             anchoredPage = visiblePage
         }
@@ -226,7 +268,11 @@ private fun SimpleFlipPageTextComponent(
         if (uiState.readingChapterContent?.get() !== chapterContent) return@LaunchedEffect
         val prepared = preparedChapter
         preparedChapter = null
-        if (prepared?.input == paginationInput) return@LaunchedEffect
+        if (prepared?.input == paginationInput) {
+            renderedInput = paginationInput
+            return@LaunchedEffect
+        }
+        positions?.reflow(uiState)
         val width = contentSize.width - horizontalPadding
         val height = contentSize.height - verticalPadding
         if (width <= 0 || height <= 0) {
@@ -238,16 +284,22 @@ private fun SimpleFlipPageTextComponent(
         slippedContentComponentList = emptyList()
         uiState.updatePageState(PagerState { 0 })
         snapshotFlow { !speech.awaitingIndex(chapterContent) }.first { it }
-        pagination.submit(paginationInput, chapterContent.content, height, width) { result ->
+        pagination.submit(paginationInput, chapterContent.content, height, width, onError = { error ->
+            positions?.pending?.let { positions.finish(uiState, it, null) }
+            throw error
+        }) { result ->
             if (uiState.readingChapterContent?.get() !== chapterContent) return@submit
             slippedContentComponentList = result
+            renderedInput = paginationInput
             val speechAnchor = speech.anchor(chapterContent)
-            val anchor = speechAnchor ?: readingAnchor
+            val sessionAnchor = positions?.pending?.position?.resolve(uiState.bookId, chapterContent)?.anchor
+            val anchor = speechAnchor ?: sessionAnchor ?: readingAnchor
             val target = if (anchor == null) -1 else result.indexOfFirst { (it as? ReaderPage)?.contains(anchor) == true }
             if (target >= 0) {
+                readingAnchor = anchor
                 anchoredPage = result[target] as ReaderPage
                 val pager = PagerState(currentPage = target) { result.size }
-                if (speechAnchor != null) uiState.updateSpeechPageState(pager)
+                if (speechAnchor != null || sessionAnchor != null) uiState.updateSpeechPageState(pager)
                 else uiState.updateAnchoredPageState(pager)
             } else {
                 readingAnchor = null
@@ -256,12 +308,13 @@ private fun SimpleFlipPageTextComponent(
             }
         }
     }
-    val speechPage = speech.takeIf { it.active }?.anchor(chapterContent)?.let { anchor ->
+    val speechAnchor = speech.takeIf { it.active }?.anchor(chapterContent)
+    val speechPage = speechAnchor?.let { anchor ->
         slippedContentComponentList.indexOfFirst { (it as? ReaderPage)?.contains(anchor) == true }
     } ?: -1
-    LaunchedEffect(speechPage, uiState.pagerState) {
+    LaunchedEffect(speechAnchor, speechPage, uiState.pagerState) {
         val target = speechPage
-        if (target < 0) return@LaunchedEffect
+        if (target < 0 || positions != null && !positions.ownsRenderer(uiState, renderer)) return@LaunchedEffect
         val pager = uiState.pagerState
         uiState.updateSpeechPageState(pager)
         if (target != pager.currentPage) {
@@ -269,6 +322,10 @@ private fun SimpleFlipPageTextComponent(
                 pager.animateScrollToPage(target)
             else pager.scrollToPage(target)
         }
+        if (positions != null && !positions.ownsRenderer(uiState, renderer)) return@LaunchedEffect
+        readingAnchor = speechAnchor
+        anchoredPage = slippedContentComponentList.getOrNull(target) as? ReaderPage
+        positions?.positioned(uiState, speechAnchor?.let { ReaderPosition.capture(uiState.bookId, chapterContent, it) })
     }
     val snackbarHostState = LocalSnackbarHost.current
     val retryLabel = stringResource(R.string.action_retry)

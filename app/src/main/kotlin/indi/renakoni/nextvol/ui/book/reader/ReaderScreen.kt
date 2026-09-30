@@ -104,6 +104,7 @@ import indi.renakoni.nextvol.utils.showSnackbar
 import kotlinx.coroutines.launch
 import indi.renakoni.nextvol.data.bookmark.ReadingBookmark
 import indi.renakoni.nextvol.ui.book.reader.bookmark.LocalReaderBookmarks
+import indi.renakoni.nextvol.ui.book.reader.content.LocalReaderPositionSession
 import indi.renakoni.nextvol.ui.book.reader.bookmark.ReaderBookmarkSession
 import indi.renakoni.nextvol.ui.book.reader.bookmark.ReaderBookmarkPosition
 import indi.renakoni.nextvol.ui.book.reader.bookmark.ReaderBookmarksSheet
@@ -151,6 +152,7 @@ fun ReaderScreen(
     var showSettingsBottomSheet by remember { mutableStateOf(false) }
     var showChapterSelectionBottomSheet by remember { mutableStateOf(false) }
     val bookmarkSession = remember(readingScreenUiState.bookId) { ReaderBookmarkSession() }
+    val positionSession = LocalReaderPositionSession.current
     var showBookmarks by remember(readingScreenUiState.bookId) { mutableStateOf(false) }
     var bookmarkPosition by remember(readingScreenUiState.bookId) { mutableStateOf<ReaderBookmarkPosition?>(null) }
     var creatingBookmark by remember { mutableStateOf(false) }
@@ -358,6 +360,7 @@ fun ReaderScreen(
                         bookmarkSession.pending = bookmark
                         showBookmarks = false
                         val content = readingScreenUiState.contentUiState
+                        if (content != null) positionSession?.navigate(content, bookmark.bookId, bookmark.chapterId, false)
                         if (content?.readingChapterId != bookmark.chapterId || content.readingChapterContent?.isOk != true)
                             onChangeChapter(bookmark.chapterId)
                     }
@@ -447,6 +450,7 @@ fun Content(
     val textLayout = rememberReaderTextLayout(settingState)
     val speechFollow = LocalReaderSpeechFollow.current
     val bookmarks = LocalReaderBookmarks.current
+    val positions = LocalReaderPositionSession.current
     Box(modifier = Modifier.fillMaxSize().readerProbeLayout("content-root")) {
         val isEnableIndicator =
             settingState.enableTimeIndicator ||
@@ -461,6 +465,8 @@ fun Content(
             ) { contentUiState ->
                 // Controls cover the reading viewport; outgoing animated modes must release input.
                 CompositionLocalProvider(LocalReaderTextLayout provides textLayout,
+                    LocalReaderPositionSession provides if (contentUiState === readingScreenUiState.contentUiState)
+                        positions else null,
                     LocalReaderBookmarks provides if (contentUiState === readingScreenUiState.contentUiState)
                         bookmarks else null,
                     LocalReaderSpeechFollow provides if (contentUiState === readingScreenUiState.contentUiState)

@@ -31,6 +31,8 @@ class FlipReaderController(
 ) : ReaderModeController {
     private var latestRequestedChapterId: String? = null
     override val requestedChapterId: String? get() = latestRequestedChapterId
+    private var positionNavigation: (String, String, Boolean) -> Unit = { _, _, _ -> }
+    override fun observeNavigation(listener: (String, String, Boolean) -> Unit) { positionNavigation = listener }
 
     override val uiState: MutableFlipPageContentUiState = MutableFlipPageContentUiState(
         loadPrevChapter = { loadAdjacent(previous = true, entry = ChapterEntry.End) },
@@ -80,11 +82,14 @@ class FlipReaderController(
         if (id == uiState.readingChapterId) return
         val pending = uiState.pendingChapter
         if (pending?.chapterId == id && pending.entry == entry && pending.result?.isErr != true) return
+        // A staged boundary remains in the readable chapter until real pages commit.
+        uiState.readingChapterId?.let { positionNavigation(uiState.bookId, it, true) }
         loadChapter(id, entry)
     }
 
     override fun changeChapter(id: String) {
         if (id.isBlank()) return
+        positionNavigation(uiState.bookId, id, false)
         latestRequestedChapterId = id
         progress.resetForChapter()
         uiState.pendingChapter = null
@@ -119,6 +124,7 @@ class FlipReaderController(
         val content = pending.result?.get() ?: return false
         if (!isCurrent(expected) || uiState.pendingChapter !== pending || pager.pageCount == 0) return false
         expected.committed = true
+        positionNavigation(expected.bookId, expected.chapterId, false)
         progress.resetForChapter()
         latestRequestedChapterId = expected.chapterId
         uiState.readingChapterId = expected.chapterId
@@ -140,6 +146,7 @@ class FlipReaderController(
         request = null
         chapterLoadJob?.cancel()
         uiState.pendingChapter = null
+        uiState.readingChapterId?.let { positionNavigation(uiState.bookId, it, true) }
     }
 
     private suspend fun persistAndPreload(expected: Request, content: ChapterContentUiState) {

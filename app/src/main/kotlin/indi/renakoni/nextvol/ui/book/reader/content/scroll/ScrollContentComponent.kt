@@ -29,6 +29,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -64,6 +65,9 @@ import indi.renakoni.nextvol.ui.book.reader.ReaderSettings
 import indi.renakoni.nextvol.ui.book.reader.ReaderFontFamilySettings
 import indi.renakoni.nextvol.ui.book.reader.content.ChapterContentError
 import indi.renakoni.nextvol.ui.book.reader.content.ChapterContentLoading
+import indi.renakoni.nextvol.ui.book.reader.content.LocalReaderPositionSession
+import indi.renakoni.nextvol.ui.book.reader.content.ReaderPosition
+import indi.renakoni.nextvol.ui.book.reader.content.RegisterReaderPositionCapture
 import indi.renakoni.nextvol.ui.book.reader.content.componet.readerTextColor as readerContentTextColor
 import indi.renakoni.nextvol.ui.book.reader.content.readerTapGestures
 import indi.renakoni.nextvol.ui.book.reader.content.readerVolumeKeys
@@ -144,11 +148,37 @@ fun ScrollContentTextComponent(
         }
     }
     val bookmarks = LocalReaderBookmarks.current
+    val positions = LocalReaderPositionSession.current
     var bookmarkReady by remember(listState) { mutableStateOf(false) }
+    var readingPosition by remember(listState) { mutableStateOf<ReaderPosition?>(null) }
+    var anchoredViewport by remember(listState) { mutableStateOf<Pair<Int, Int>?>(null) }
+    var restoredGeometry by remember(listState) { mutableStateOf(textLayout to IntSize.Zero) }
+    var restorationOwner by remember(listState) { mutableStateOf<Any?>(null) }
     val speech by rememberUpdatedState(LocalReaderSpeechFollow.current)
     val latestPrepared by rememberUpdatedState(preparedChapters)
     val reduceMotion by rememberUpdatedState(settingState.reduceMotion)
+    fun viewport() = listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
+    fun capturePosition(): ReaderPosition? {
+        if (!bookmarkReady || uiState.lazyListState !== listState || listState.isScrollInProgress ||
+            positions?.pending != null || bookmarks?.pending != null ||
+            restoredGeometry != (textLayout to lazyColumnSize)) return null
+        val item = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.offset + it.size > 0 } ?: return null
+        val prepared = latestPrepared.getOrNull(item.index)?.takeIf {
+            it.content === uiState.contentList.getOrNull(item.index)?.second?.get() &&
+                (textLayout == null || it.layout == textLayout && it.size == lazyColumnSize)
+        } ?: return null
+        if (anchoredViewport == viewport() && readingPosition?.resolve(uiState.bookId, prepared.content) != null)
+            return readingPosition
+        return prepared.anchorAt((-item.offset).coerceAtLeast(0))?.let {
+            ReaderPosition.capture(uiState.bookId, prepared.content, it)
+        }
+    }
+    val renderer = RegisterReaderPositionCapture(uiState, ::capturePosition)
+    SideEffect {
+        capturePosition()?.let { readingPosition = it; anchoredViewport = viewport() }
+    }
     fun speechTarget(initialPlacement: Boolean = false): Pair<Int, Int>? {
+        if (!bookmarkReady && !initialPlacement) return null
         if (!speech.following || !speech.active && !initialPlacement) return null
         val index = latestPrepared.indexOfFirst { it?.content?.id == speech.position?.chapterId }
         val prepared = latestPrepared.getOrNull(index) ?: return null
@@ -179,13 +209,20 @@ fun ScrollContentTextComponent(
                 (textLayout == null || it.layout == textLayout && it.size == lazyColumnSize)
         } ?: return@LaunchedEffect
         val anchor = withContext(Dispatchers.Default) { bookmark.anchorIn(prepared.content) }
+        if (positions != null && !positions.ownsRenderer(uiState, renderer)) return@LaunchedEffect
         if (anchor == null) { bookmarks.finish(bookmark, false); return@LaunchedEffect }
         val index = latestPrepared.indexOf(prepared)
         if (index < 0 || bookmarks.pending !== bookmark) return@LaunchedEffect
         listState.scrollToItem(index)
         val offset = snapshotFlow { prepared.offsetFor(anchor) }.filterNotNull().first()
-        if (bookmarks.pending !== bookmark || uiState.lazyListState !== listState) return@LaunchedEffect
+        if (bookmarks.pending !== bookmark || uiState.lazyListState !== listState ||
+            positions != null && !positions.ownsRenderer(uiState, renderer)) return@LaunchedEffect
         listState.scrollToItem(index, offset)
+        if (bookmarks.pending !== bookmark || positions != null && !positions.ownsRenderer(uiState, renderer))
+            return@LaunchedEffect
+        readingPosition = ReaderPosition.capture(uiState.bookId, prepared.content, anchor)
+        anchoredViewport = viewport()
+        positions?.positioned(uiState, readingPosition)
         bookmarks.finish(bookmark, true)
     }
 
@@ -197,51 +234,88 @@ fun ScrollContentTextComponent(
     val reachedStartMsg = stringResource(R.string.reader_reached_start)
     val reachedEndMsg = stringResource(R.string.reader_reached_end)
 
-    LaunchedEffect(listState) {
-        snapshotFlow {
-            uiState.readingChapterContent?.isOk == true && lazyColumnSize.height > 0 &&
-                latestPrepared.getOrNull(1)?.content?.id == uiState.readingChapterId &&
-                listState.layoutInfo.visibleItemsInfo.isNotEmpty()
-        }.first { it }
-        val restoredProgress = uiState.readingProgress
-        // Let the prepared current item replace its loading layout before positioning it.
-        // Otherwise a cached previous chapter can pin the viewport while we wait for the
-        // current chapter's geometry, which cannot be placed outside the lazy window.
-        withFrameNanos { }
-        listState.scrollToItem(1)
-        val item = snapshotFlow {
-            listState.layoutInfo.visibleItemsInfo.firstOrNull {
-                it.key == uiState.readingChapterId && it.contentType == true
+    val positionRequest = positions?.pending
+    LaunchedEffect(listState, textLayout, lazyColumnSize, uiState.readingChapterContent, positionRequest) {
+        // Promoting an adjacent chapter is natural reading, not a new percentage restore.
+        if (bookmarkReady && restoredGeometry == (textLayout to lazyColumnSize) && positions?.pending == null)
+            return@LaunchedEffect
+        if (positions != null && !positions.ownsRenderer(uiState, renderer)) return@LaunchedEffect
+        val attempt = Any().also { restorationOwner = it }
+        bookmarkReady = false
+        positions?.reflow(uiState)
+        uiState.onProgressRestoring(listState)
+        try {
+            snapshotFlow {
+                uiState.readingChapterContent?.isErr == true ||
+                    lazyColumnSize.width > 0 && lazyColumnSize.height > 0 &&
+                    latestPrepared.any { it?.content === uiState.readingChapterContent?.get() &&
+                        it != null && (textLayout == null || it.layout == textLayout && it.size == lazyColumnSize) } &&
+                    listState.layoutInfo.visibleItemsInfo.isNotEmpty()
+            }.first { it }
+            if (uiState.readingChapterContent?.isErr == true) {
+                positions?.pending?.let { positions.finish(uiState, it, null) }
+                return@LaunchedEffect
             }
-        }.filterNotNull().first()
-        // The incoming speech anchor wins over the ordinary percentage restore.
-        snapshotFlow {
-            val prepared = latestPrepared.getOrNull(1)
-            if (prepared != null && speech.awaitingIndex(prepared.content)) return@snapshotFlow false
-            val anchor = prepared?.let { speech.anchor(it.content) }
-            anchor == null || anchor.componentIndex !in prepared.text || prepared.offsetFor(anchor) != null
-        }.first { it }
-        val initialTarget = speechTarget(initialPlacement = true)
-        val offset = if (initialTarget != null) {
-            (initialTarget.second - lazyColumnSize.height * 0.22f).toInt().coerceAtLeast(0)
-        } else if (restoredProgress <= 0f) {
-            0
-        } else {
-            ((item.size * restoredProgress).toInt() - lazyColumnSize.height).coerceAtLeast(0)
+            val prepared = latestPrepared.first { it?.content === uiState.readingChapterContent?.get() }!!
+            val index = latestPrepared.indexOf(prepared)
+            val request = positions?.pending
+            val restoredProgress = uiState.readingProgress
+            snapshotFlow { !speech.awaitingIndex(prepared.content) }.first { it }
+            val speechAnchor = speech.anchor(prepared.content)
+            val source = if (bookmarks?.pending == null) request?.position ?: readingPosition else null
+            val anchor = speechAnchor ?: source?.resolve(uiState.bookId, prepared.content)?.anchor
+            // Place the chapter before waiting for its component coordinates.
+            withFrameNanos { }
+            listState.scrollToItem(index)
+            val item = snapshotFlow {
+                listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == prepared.content.id && it.contentType == true }
+            }.filterNotNull().first()
+            val sourceOffset = if (anchor != null) {
+                snapshotFlow { prepared.componentOffsets.containsKey(anchor.componentIndex) }.first { it }
+                prepared.offsetFor(anchor)
+            } else null
+            if (uiState.lazyListState !== listState || positions != null && !positions.ownsRenderer(uiState, renderer) ||
+                request != null && !positions.isCurrent(uiState, request))
+                return@LaunchedEffect
+            val offset = when {
+                sourceOffset != null && speechAnchor != null -> (sourceOffset - lazyColumnSize.height * 0.22f).toInt().coerceAtLeast(0)
+                sourceOffset != null -> sourceOffset
+                restoredProgress <= 0f -> 0
+                else -> ((item.size * restoredProgress).toInt() - lazyColumnSize.height).coerceAtLeast(0)
+            }
+            listState.scrollToItem(index, offset)
+            if (positions != null && !positions.ownsRenderer(uiState, renderer) ||
+                request != null && !positions.isCurrent(uiState, request)) return@LaunchedEffect
+            readingPosition = anchor?.takeIf { sourceOffset != null }?.let {
+                ReaderPosition.capture(uiState.bookId, prepared.content, it)
+            }
+            anchoredViewport = viewport()
+            if (request != null) positions.finish(uiState, request, readingPosition)
+            else if (speechAnchor != null) positions?.positioned(uiState, readingPosition)
+            restoredGeometry = textLayout to lazyColumnSize
+            bookmarkReady = true
+        } finally {
+            if (restorationOwner === attempt && (positions == null || positions.ownsRenderer(uiState, renderer)))
+                uiState.onProgressRestored(listState)
         }
-        listState.scrollToItem(initialTarget?.first ?: 1, offset)
-        uiState.onProgressRestored(listState)
-        bookmarkReady = true
+    }
+    LaunchedEffect(listState) {
         snapshotFlow { speechTarget() }.collectLatest { target ->
-            if (target == null) return@collectLatest
+            if (target == null || positions != null && !positions.ownsRenderer(uiState, renderer)) return@collectLatest
             val viewport = listState.layoutInfo.viewportSize.height
             val visible = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == target.first }
             val y = visible?.offset?.plus(target.second)
-            if (y != null && y in (viewport * 0.15f).toInt()..(viewport * 0.72f).toInt()) return@collectLatest
-            val targetOffset = (target.second - viewport * 0.22f).toInt().coerceAtLeast(0)
-            if (!reduceMotion && y != null && kotlin.math.abs(y) < viewport * 2)
-                listState.animateScrollToItem(target.first, targetOffset)
-            else listState.scrollToItem(target.first, targetOffset)
+            if (y == null || y !in (viewport * 0.15f).toInt()..(viewport * 0.72f).toInt()) {
+                val targetOffset = (target.second - viewport * 0.22f).toInt().coerceAtLeast(0)
+                if (!reduceMotion && y != null && kotlin.math.abs(y) < viewport * 2)
+                    listState.animateScrollToItem(target.first, targetOffset)
+                else listState.scrollToItem(target.first, targetOffset)
+            }
+            if (positions != null && !positions.ownsRenderer(uiState, renderer)) return@collectLatest
+            val chapter = latestPrepared.getOrNull(target.first)?.content ?: return@collectLatest
+            readingPosition = speech.anchor(chapter)?.let { ReaderPosition.capture(uiState.bookId, chapter, it) }
+            anchoredViewport = viewport()
+            positions?.positioned(uiState, readingPosition)
         }
     }
     LaunchedEffect(listState) {
