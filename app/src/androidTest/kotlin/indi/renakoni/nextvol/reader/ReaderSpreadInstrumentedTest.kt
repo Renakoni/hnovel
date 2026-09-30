@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.rememberNavController
 import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.filters.SdkSuppress
 import androidx.test.platform.app.InstrumentationRegistry
 import com.github.michaelbull.result.Ok
 import indi.renakoni.nextvol.R
@@ -82,6 +83,7 @@ class ReaderSpreadInstrumentedTest {
 
     @After fun close() { scope.cancel(); database.close(); image.delete() }
 
+    @SdkSuppress(minSdkVersion = 26) // captureToImage uses PixelCopy.request(Window, ...).
     @Test fun portraitImageFitsWithoutCroppingEitherEnd() {
         Fixture()
         val node = compose.onNodeWithTag("reader-leaf-1", useUnmergedTree = true)
