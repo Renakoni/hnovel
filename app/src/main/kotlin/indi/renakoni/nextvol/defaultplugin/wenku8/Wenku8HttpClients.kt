@@ -1,5 +1,6 @@
 package indi.renakoni.nextvol.defaultplugin.wenku8
 
+import hnovel.network.BrokerLimits
 import hnovel.network.SourceNetworkMode
 import hnovel.network.SourceNetworkRoute
 import io.ktor.client.HttpClient
@@ -42,7 +43,7 @@ internal class Wenku8HttpClients(private val routes: (Identifier) -> SourceNetwo
     suspend fun <T> request(source: Identifier, block: suspend (HttpClient) -> T): T =
         onRoute(source) { block(it.http) }
 
-    /** Keep the old image headers and OkHttp defaults; document cookies are not image credentials. */
+    /** Preserve source image headers; document cookies are not image credentials. */
     suspend fun image(source: Identifier, url: String, headers: Map<String, String>): ByteArray = onRoute(source) { client ->
         val request = Request.Builder().url(url).apply { headers.forEach { (name, value) -> header(name, value) } }.build()
         suspendCancellableCoroutine { continuation ->
@@ -88,6 +89,10 @@ internal class Wenku8HttpClients(private val routes: (Identifier) -> SourceNetwo
 
     private fun create(route: SourceNetworkRoute): Client {
         val transport = OkHttpClient.Builder().dns(route.dns).socketFactory(route.socketFactory)
+            .dispatcher(okhttp3.Dispatcher().apply {
+                maxRequests = BrokerLimits.DEFAULT_CONCURRENCY
+                maxRequestsPerHost = BrokerLimits.DEFAULT_CONCURRENCY
+            })
             .apply { if (route.mode == SourceNetworkMode.BypassVpn) proxy(Proxy.NO_PROXY) }
             .addInterceptor { chain ->
                 available(route)

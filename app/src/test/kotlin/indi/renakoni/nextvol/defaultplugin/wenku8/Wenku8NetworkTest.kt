@@ -1,5 +1,6 @@
 package indi.renakoni.nextvol.defaultplugin.wenku8
 
+import indi.renakoni.nextvol.data.web.ForegroundSourceRequest
 import android.app.Application
 import android.content.ContextWrapper
 import android.graphics.Bitmap
@@ -125,6 +126,7 @@ class Wenku8NetworkTest {
         fun source(owner: Identifier): WebBookDataSource = object : WebBookDataSource by EmptyWebDataSource,
             SourceImageProvider by api {
             override val id = owner
+            override val permits get() = api.permits
             override suspend fun getBookInformation(id: String) = api.getWithWenku8Cookie(url)
                 .map { BookInformation(id, it.text(), coverUri = Uri.parse("http://www.wenku8.cc/image"), author = "Fixture",
                     description = "", publishingHouse = "", wordCount = WordCount(1), lastUpdated = LocalDateTime.MIN, isComplete = false) }
@@ -236,6 +238,54 @@ class Wenku8NetworkTest {
             } finally { loader.shutdown() }
             assertTrue(fixture.firstDns.get() > 0); assertTrue(fixture.secondDns.get() > 0)
             assertTrue(fixture.firstSockets.created.get() > 0); assertTrue(fixture.secondSockets.created.get() > 0)
+        }
+    }
+
+    @Test(timeout = 30000) fun foregroundDocumentsAllowEightConcurrentRequestsAndReleaseCancelledSlots() = runBlocking {
+        assertEightConcurrentRequests { false }
+    }
+
+    @Test(timeout = 30000) fun imagesAllowEightConcurrentRequestsAndReleaseCancelledSlots() = runBlocking {
+        assertEightConcurrentRequests { true }
+    }
+
+    @Test(timeout = 30000) fun documentsAndImagesShareEightTransportSlots() = runBlocking {
+        assertEightConcurrentRequests { it % 2 == 0 }
+    }
+
+    private suspend fun assertEightConcurrentRequests(imageRequest: (Int) -> Boolean) = coroutineScope {
+        Fixture().use { fixture ->
+            val runtime = fixture.runtime(a)
+            fixture.first.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest) = MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE)
+            }
+            // Foreground calls own their cancellation; background coalesced work may outlive a waiter.
+            fun request(index: Int) = async(ForegroundSourceRequest()) {
+                if (imageRequest(index)) runtime.imageBytes(
+                    "book-$index", "http://www.wenku8.cc/image?request=$index", false)
+                else runtime.getBookInformation("book-$index")
+            }
+            val requests = (0 until 8).map { request(it) }.toMutableList()
+            try {
+                withContext(Dispatchers.IO) {
+                    repeat(8) { index ->
+                        assertNotNull("Request ${index + 1} must start before any response completes",
+                            fixture.first.takeRequest(3, TimeUnit.SECONDS))
+                    }
+                }
+                requests += request(8)
+                withContext(Dispatchers.IO) {
+                    assertNull("The ninth request must wait", fixture.first.takeRequest(300, TimeUnit.MILLISECONDS))
+                }
+                requests.first().cancelAndJoin()
+                withContext(Dispatchers.IO) {
+                    assertNotNull("Cancellation must admit the queued request", fixture.first.takeRequest(3, TimeUnit.SECONDS))
+                }
+                assertEquals(9, fixture.first.requestCount)
+            } finally {
+                requests.forEach { it.cancel() }
+                requests.joinAll()
+            }
         }
     }
 
