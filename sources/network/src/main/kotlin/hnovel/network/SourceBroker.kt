@@ -794,6 +794,9 @@ internal class ValueCache(private val limits: BrokerLimits, private val storage:
         if (request.value == null) entries.remove(request.key)
         else {
             val ttl = request.ttlMillis ?: limits.cacheTtlMillis
+            // A permanent value has no deadline to renew; do not rewrite the whole cache for a no-op.
+            if (ttl == 0L && entries[request.key] == Entry(request.value, 0L))
+                return@access StorageResult.Value(request.value)
             val size = entries.entries.filter { it.key != request.key }.sumOf { (it.key.length.toLong() + it.value.value.length) * 2 } +
                 (request.key.length.toLong() + request.value.length) * 2
             if (size > limits.maxCacheBytes || request.key !in entries && entries.size >= limits.maxStorageEntries)
