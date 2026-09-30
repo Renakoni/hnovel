@@ -57,17 +57,18 @@ fun ZoomableImage(
     placeholderHeight: Dp = 200.dp,
     bookId: String,
     contentScale: ContentScale = ContentScale.FillWidth,
+    chapterId: String? = null
 ) {
     val context = LocalContext.current
     var retryKey by remember { mutableIntStateOf(0) }
     var lastError by remember { mutableStateOf<String?>(null) }
     val imageTransPostProcessingViewModel = hiltViewModel<ImageTransPostProcessingViewModel>()
-    val request = remember(imageUri, bookId) {
+    val request = remember(imageUri, bookId, chapterId) {
         val transformations = imageTransPostProcessingViewModel
             .imageTransPostProcessingManager
             .getCoil3Transformations(ImagePostProcessingPipeline.imageComponent, imageUri)
         ImageRequest.Builder(context)
-            .data(SourceImage(BookIdentity.book(bookId), imageUri.toString()))
+            .data(SourceImage(BookIdentity.book(bookId), imageUri.toString(), chapterId = chapterId))
             .transformations(transformations)
             .crossfade(true)
             .memoryCachePolicy(CachePolicy.ENABLED)
