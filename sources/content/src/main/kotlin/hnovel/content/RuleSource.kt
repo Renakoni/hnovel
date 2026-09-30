@@ -190,18 +190,23 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
             plans.mapIndexed { index, prepared ->
                 var first = true
                 val load: suspend () -> RuleListResult = {
-                    withContext(Dispatchers.IO) { checkedOperation("ruleExplore", 60000) {
+                    withContext(Dispatchers.IO) {
                         if (!first) operation("ruleExplore") { listPage(context(), urls[index], "exploreUrl", spec.explore, "ruleExplore", true, 6) }
                         else {
                             first = false
                             val plan = prepared.getOrThrow()
-                            val finish = plan.read()
-                            if (parallelParsing) {
+                            val started = System.nanoTime()
+                            val finish = checkedOperation("ruleExplore", 60000) { plan.read() }
+                            // Transport and parsing share one execution budget; waiting for another
+                            // stateful parsing turn must not spend it before this turn begins.
+                            val remaining = 60000 - (System.nanoTime() - started) / 1_000_000
+                            if (remaining <= 0) throw SourceContentException(ContentError.Limit, "ruleExplore")
+                            if (parallelParsing) checkedOperation("ruleExplore", remaining) {
                                 plan.context.readOnly = true
                                 finish()
-                            } else operation("ruleExplore") { finish() }
+                            } else operation("ruleExplore", remaining) { finish() }
                         }
-                    } }
+                    }
                 }
                 load
             }
