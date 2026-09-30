@@ -64,6 +64,7 @@ import indi.renakoni.nextvol.ui.book.reader.LocalReaderTextLayout
 import indi.renakoni.nextvol.data.content.component.SimpleTextComponent
 import indi.renakoni.nextvol.ui.book.reader.ReaderSettings
 import indi.renakoni.nextvol.ui.book.reader.resolveReaderBodyLayout
+import indi.renakoni.nextvol.ui.book.reader.LocalReaderLayoutResult
 import indi.renakoni.nextvol.ui.book.reader.readerBodyGeometry
 import indi.renakoni.nextvol.ui.book.reader.content.ReaderMode
 import indi.renakoni.nextvol.ui.book.reader.ReaderFontFamilySettings
@@ -146,10 +147,18 @@ fun ScrollContentTextComponent(
     val listState = uiState.lazyListState
     val scope = rememberCoroutineScope()
     var hostSize by remember { mutableStateOf(IntSize.Zero) }
-    val geometry = resolveReaderBodyLayout(hostSize, paddingValues, ReaderMode.Scroll).geometry
+    val layoutResult = resolveReaderBodyLayout(hostSize, paddingValues, ReaderMode.Scroll,
+        preference = settingState.pageLayout)
+    val geometry = layoutResult.geometry
+    val layoutStatus = LocalReaderLayoutResult.current
     val lazyColumnSize = geometry?.leafSize ?: IntSize.Zero
     // The controller's viewport and text preparation use exactly the pixels measured by the body.
-    SideEffect { if (active) uiState.setLazyColumnSize(lazyColumnSize) }
+    SideEffect {
+        if (active) {
+            uiState.setLazyColumnSize(lazyColumnSize)
+            layoutStatus?.value = layoutResult
+        }
+    }
     val textLayout = LocalReaderTextLayout.current
     val preparedChapters = uiState.contentList.mapIndexed { index, entry ->
         key(listState, entry?.first ?: "placeholder-$index") {

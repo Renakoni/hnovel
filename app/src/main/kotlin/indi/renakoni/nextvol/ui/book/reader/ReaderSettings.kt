@@ -26,6 +26,7 @@ internal class UserDataReaderFontFamilySettings(
 interface ReaderSettings {
     val paperId: String get() = "default"
     val reduceMotion: Boolean get() = false
+    val pageLayout: String get() = "auto"
     val fontSize: Float
     val fontLineHeight: Float
     val paragraphSpacing: Float get() = 0f
@@ -79,6 +80,7 @@ interface ReaderSettingsEditor : ReaderSettings {
     val volumeKeyContinuousFlipIntervalUserData: FloatUserData
     val volumeKeyScrollFractionUserData: FloatUserData
     val flipAnimeUserData: StringUserData
+    val pageLayoutUserData: StringUserData
     val fastChapterChangeUserData: BooleanUserData
     val batteryIndicatorDisplayModeUserData: StringUserData
     val enableTimeIndicatorUserData: BooleanUserData

@@ -55,6 +55,9 @@ import indi.renakoni.nextvol.ui.book.reader.ReaderSettings
 import indi.renakoni.nextvol.ui.book.reader.animatePageTurns
 import indi.renakoni.nextvol.ui.book.reader.LocalReaderTextLayout
 import indi.renakoni.nextvol.ui.book.reader.resolveReaderBodyLayout
+import indi.renakoni.nextvol.ui.book.reader.LocalReaderLayoutResult
+import indi.renakoni.nextvol.ui.book.reader.ReaderLayoutResult
+import indi.renakoni.nextvol.ui.book.reader.ReaderLayoutReason
 import indi.renakoni.nextvol.data.content.component.ImageComponent
 import indi.renakoni.nextvol.data.content.component.SimpleTextComponent
 import indi.renakoni.nextvol.ui.book.reader.content.ReaderMode
@@ -162,8 +165,10 @@ private fun SimpleFlipPageTextComponent(
     val readerStyle = LocalReaderStyle.current
     val textLayout = LocalReaderTextLayout.current
     val textLocaleList = LocalTextLocaleList.current
-    val geometry = resolveReaderBodyLayout(contentSize, paddingValues, ReaderMode.Flip,
-        supportsDoublePage = chapterContent.content.all { it is SimpleTextComponent || it is ImageComponent }).geometry
+    val layoutResult = resolveReaderBodyLayout(contentSize, paddingValues, ReaderMode.Flip,
+        preference = settingState.pageLayout,
+        supportsDoublePage = chapterContent.content.all { it is SimpleTextComponent || it is ImageComponent })
+    val geometry = layoutResult.geometry
     val pagination = remember(scope) { FlipPaginationCoordinator(scope) }
     val adjacentPagination = remember(scope) { FlipPaginationCoordinator(scope) }
     val paginationInput = FlipPaginationInput(
@@ -179,6 +184,11 @@ private fun SimpleFlipPageTextComponent(
         textLocaleList = textLocaleList,
         textLayout = textLayout,
     )
+    val layoutStatus = LocalReaderLayoutResult.current
+    SideEffect {
+        if (active) layoutStatus?.value = if (renderedInput == paginationInput) layoutResult
+            else ReaderLayoutResult(null, ReaderLayoutReason.AwaitingMeasurement)
+    }
     val bookmarks = LocalReaderBookmarks.current
     val positions = LocalReaderPositionSession.current
     val visibleLeaves = uiState.visibleLeafRange
@@ -267,6 +277,7 @@ private fun SimpleFlipPageTextComponent(
     val pendingInput = pendingContent?.let {
         paginationInput.copy(chapterId = it.id, content = it.content,
             geometry = resolveReaderBodyLayout(contentSize, paddingValues, ReaderMode.Flip,
+                preference = settingState.pageLayout,
                 supportsDoublePage = it.content.all { component -> component is SimpleTextComponent || component is ImageComponent }).geometry)
     }
     val isDragged by uiState.pagerState.interactionSource.collectIsDraggedAsState()

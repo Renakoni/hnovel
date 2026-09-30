@@ -4,6 +4,8 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
@@ -13,6 +15,9 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.sp
 import indi.renakoni.nextvol.ui.book.reader.content.ReaderMode
 import io.nightfish.lightnovelreader.api.ui.LocalReaderStyle
+
+/** The active body reports its actual layout; settings never infer it from a preference. */
+internal val LocalReaderLayoutResult = compositionLocalOf<MutableState<ReaderLayoutResult?>?> { null }
 
 @Composable
 internal fun resolveReaderBodyLayout(
