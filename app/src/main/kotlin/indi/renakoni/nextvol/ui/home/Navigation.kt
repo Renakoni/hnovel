@@ -19,6 +19,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.navigation.NavController
+import androidx.navigation.NavDestination.Companion.hasRoute
+import androidx.lifecycle.Lifecycle
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.navigation
@@ -29,7 +31,6 @@ import indi.renakoni.nextvol.ui.home.explore.exploreNavigation
 import indi.renakoni.nextvol.ui.home.reading.readingNavigation
 import indi.renakoni.nextvol.ui.home.settings.settingsNavigation
 import indi.renakoni.nextvol.utils.currentMainRoute
-import indi.renakoni.nextvol.utils.isResumed
 import io.nightfish.lightnovelreader.api.Route
 import kotlinx.serialization.json.Json
 
@@ -108,7 +109,9 @@ internal const val CATEGORY_SOURCE_REQUEST = "category.sourceRequest"
 
 /** Bottom roots restore their own stack. An explicit category shortcut changes only its source. */
 internal fun <T : Any> NavController.navigateToMainRoot(route: T) {
-    if (!isResumed()) return
+    // Incoming entries remain STARTED during transitions. The visible bottom bar must accept
+    // another root selection then; sameRoot/launchSingleTop already prevent duplicate entries.
+    if (currentBackStackEntry?.lifecycle?.currentState?.isAtLeast(Lifecycle.State.STARTED) != true) return
     val current = currentDestination.currentMainRoute()
     // Equality handles singleton roots and the canonical empty Categories tab marker. A Categories
     // shortcut with source arguments differs by data-class equality but still targets that same root.
@@ -119,8 +122,9 @@ internal fun <T : Any> NavController.navigateToMainRoot(route: T) {
         popUpTo(graph.findStartDestination().id) { saveState = true }
     }
     if (route is Route.Main.Categories && route.namespace != null && route.sourceId != null) {
-        // Compose Navigation adds/restores the entry synchronously in navigate(), before transitions
-        // finish. An asynchronous navigator would need to await that entry before writing this request.
-        getBackStackEntry<Route.Main.Categories>().savedStateHandle[CATEGORY_SOURCE_REQUEST] = Json.encodeToString<Route.Main.Categories>(route)
+        // Compose Navigation adds/restores this leaf synchronously. Deliver only if Categories
+        // is still current after navigate(), without a throwing lookup for a missing entry.
+        currentBackStackEntry?.takeIf { it.destination.hasRoute<Route.Main.Categories>() }
+            ?.savedStateHandle?.set(CATEGORY_SOURCE_REQUEST, Json.encodeToString<Route.Main.Categories>(route))
     }
 }
