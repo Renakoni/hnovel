@@ -9,10 +9,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.Layout
-import androidx.compose.ui.layout.boundsInWindow
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.layout.SubcomposeLayout
+import androidx.compose.ui.layout.findRootCoordinates
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -137,32 +135,25 @@ internal fun rememberPreparedScrollChapter(
 
 @Composable
 internal fun ScrollTextContent(layout: ScrollTextLayout, color: Color, modifier: Modifier) {
-    var visible by remember(layout) { mutableStateOf(IntRange.EMPTY) }
-    Layout(
-        modifier = modifier.onGloballyPositioned { coordinates ->
-            val bounds = coordinates.boundsInWindow()
-            if (bounds.isEmpty) {
-                visible = IntRange.EMPTY
-            } else {
-                val origin = coordinates.positionInWindow().y
-                // One viewport on either side avoids a blank edge between placement callbacks.
-                val overscan = bounds.height
-                visible = layout.visibleRange(
-                    floor(bounds.top - origin - overscan).toInt(),
-                    ceil(bounds.bottom - origin + overscan).toInt(),
-                )
-            }
-        },
-        content = {
-            if (!visible.isEmpty()) {
-                ReaderTextFragments(layout.fragments.subList(visible.first, visible.last + 1),
-                    layout.style, color, Modifier)
-            }
-        },
-    ) { measurables, constraints ->
-        val placeable = measurables.firstOrNull()?.measure(Constraints.fixedWidth(constraints.maxWidth))
+    SubcomposeLayout(modifier) { constraints ->
         layout(constraints.maxWidth, layout.height) {
-            if (!visible.isEmpty()) placeable?.placeRelative(0, layout.offsets[visible.first])
+            // Reading coordinates here also reruns placement when an ancestor scrolls without
+            // remeasurement. Compose supplies coordinates on the real (non-alignment) placement.
+            val positioned = coordinates ?: return@layout
+            val viewport = positioned.localBoundingBoxOf(positioned.findRootCoordinates(), clipBounds = false)
+            val visible = layout.visibleRange(
+                floor(viewport.top - viewport.height).toInt(),
+                ceil(viewport.bottom + viewport.height).toInt(),
+            )
+            // Compose and measure in this placement, before drawing. A state write from
+            // onGloballyPositioned would leave the current frame with the old/empty text window.
+            if (!visible.isEmpty()) {
+                val placeable = subcompose(Unit) {
+                    ReaderTextFragments(layout.fragments.subList(visible.first, visible.last + 1),
+                        layout.style, color, Modifier)
+                }.single().measure(Constraints.fixedWidth(constraints.maxWidth))
+                placeable.placeRelative(0, layout.offsets[visible.first])
+            }
         }
     }
 }
