@@ -136,6 +136,8 @@ internal fun rememberPreparedScrollChapter(
 @Composable
 internal fun ScrollTextContent(layout: ScrollTextLayout, color: Color, modifier: Modifier) {
     SubcomposeLayout(modifier) { constraints ->
+        var previousRange = IntRange.EMPTY
+        var content: @Composable () -> Unit = {}
         layout(constraints.maxWidth, layout.height) {
             // Reading coordinates here also reruns placement when an ancestor scrolls without
             // remeasurement. Compose supplies coordinates on the real (non-alignment) placement.
@@ -148,11 +150,18 @@ internal fun ScrollTextContent(layout: ScrollTextLayout, color: Color, modifier:
             // Compose and measure in this placement, before drawing. A state write from
             // onGloballyPositioned would leave the current frame with the old/empty text window.
             if (!visible.isEmpty()) {
-                val placeable = subcompose(Unit) {
-                    ReaderTextFragments(layout.fragments.subList(visible.first, visible.last + 1),
-                        layout.style, color, Modifier)
-                }.single().measure(Constraints.fixedWidth(constraints.maxWidth))
-                placeable.placeRelative(0, layout.offsets[visible.first])
+                if (visible != previousRange) {
+                    previousRange = visible
+                    content = {
+                        ReaderTextFragments(layout.fragments.subList(visible.first, visible.last + 1),
+                            layout.style, color, Modifier)
+                    }
+                }
+                // Reuse the content identity during scroll-only placement. Still claim the slot
+                // every time (unused slots are disposed) and let Compose reuse its measurement
+                // unless constraints or child state changed. Never retain a stale Placeable.
+                subcompose(Unit, content).firstOrNull()?.measure(Constraints.fixedWidth(constraints.maxWidth))
+                    ?.placeRelative(0, layout.offsets[visible.first])
             }
         }
     }

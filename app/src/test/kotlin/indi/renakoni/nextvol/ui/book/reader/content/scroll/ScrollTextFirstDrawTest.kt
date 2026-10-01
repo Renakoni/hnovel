@@ -19,9 +19,12 @@ import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import indi.renakoni.nextvol.ui.book.reader.content.componet.LocalReaderTextDrawObserver
+import indi.renakoni.nextvol.ui.book.reader.content.componet.LocalReaderTextWorkObserver
 import indi.renakoni.nextvol.ui.book.reader.content.componet.ReaderTextFragment
 import org.junit.After
 import org.junit.Assert.*
@@ -45,6 +48,10 @@ class ScrollTextFirstDrawTest {
     private val offset = mutableStateOf(0)
     private val draws = mutableListOf<Set<Int>>()
     private val drawnFragments = mutableSetOf<Int>()
+    private var measurements = 0
+    private var compositions = 0
+    private val density = mutableStateOf(Density(1f))
+    private val width = mutableStateOf(240.dp)
 
     @Before fun open() {
         activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
@@ -69,8 +76,10 @@ class ScrollTextFirstDrawTest {
             MaterialTheme {
                 CompositionLocalProvider(LocalReaderTextDrawObserver provides { fragment, _, _ ->
                     drawnFragments += fragment.start
+                }, LocalDensity provides density.value, LocalReaderTextWorkObserver provides { phase ->
+                    if (phase == "compose") compositions++ else measurements++
                 }) {
-                    Box(Modifier.size(240.dp).clipToBounds().drawWithContent {
+                    Box(Modifier.size(width.value, 240.dp).clipToBounds().drawWithContent {
                         drawnFragments.clear()
                         drawContent()
                         draws += drawnFragments.toSet()
@@ -99,12 +108,48 @@ class ScrollTextFirstDrawTest {
         assertEveryDrawHasText()
     }
 
+    @Test fun steadyAncestorScrollingReusesMeasuredTextUntilTheWindowChanges() {
+        mount()
+        // Stay inside one 100px fragment boundary after settling the initial placement.
+        compose.runOnIdle { offset.value = 10 }
+        compose.waitForIdle()
+        val count = measurements
+        val compositionCount = compositions
+        val window = draws.last()
+        assertTrue(count > 0)
+        for (destination in List(20) { 11 - it % 2 }) {
+            compose.runOnIdle { draws.clear(); offset.value = destination }
+            compose.waitForIdle()
+            assertEveryDrawHasText()
+            assertEquals(window, draws.last())
+            assertEquals("Unchanged window must reuse its measured text", count, measurements)
+            assertEquals("Unchanged window must reuse its composition", compositionCount, compositions)
+        }
+        compose.runOnIdle { offset.value = 8_000 }
+        compose.waitForIdle()
+        assertTrue("A changed window must measure new fragments", measurements > count)
+    }
+
     @Test fun anOffscreenComponentHasTextOnItsFirstVisibleDraw() {
         offset.value = -4_000
         mount()
         compose.runOnIdle { draws.clear(); offset.value = 0 }
         compose.waitForIdle()
         assertEveryDrawHasText()
+    }
+
+    @Test fun unchangedWindowStillRemeasuresWhenWidthOrFontScaleChanges() {
+        mount()
+        val initial = measurements
+        compose.runOnIdle { draws.clear(); width.value = 220.dp }
+        compose.waitForIdle()
+        assertEveryDrawHasText()
+        assertTrue(measurements > initial)
+        val resized = measurements
+        compose.runOnIdle { draws.clear(); density.value = Density(1f, 1.5f) }
+        compose.waitForIdle()
+        assertEveryDrawHasText()
+        assertTrue(measurements > resized)
     }
 
     @Test fun largeAncestorPlacementJumpsComposeTheDestinationBeforeDrawing() {

@@ -9,6 +9,7 @@ import androidx.compose.foundation.text.selection.rememberSelectionState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -18,6 +19,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -39,6 +41,9 @@ internal data class ReaderTextSource(val componentIndex: Int, val text: String)
 internal val LocalReaderTextDrawObserver = staticCompositionLocalOf<
     ((ReaderTextFragment, TextLayoutResult, LayoutCoordinates) -> Unit)?
 > { null }
+
+/** Optional benchmark counters; normal readers have no observer or extra layout modifier. */
+internal val LocalReaderTextWorkObserver = staticCompositionLocalOf<((String) -> Unit)?> { null }
 
 internal data class ReaderTextFragment(
     val componentIndex: Int,
@@ -134,6 +139,8 @@ internal fun ReaderTextFragments(
 ) {
     val readerSelection = LocalReaderSelectionState.current
     val drawObserver = LocalReaderTextDrawObserver.current
+    val workObserver = LocalReaderTextWorkObserver.current
+    if (workObserver != null) SideEffect { workObserver("compose") }
     val selectionState = rememberSelectionState()
     val density = LocalDensity.current
     val speechRanges = LocalReaderSpeechRanges.current
@@ -144,7 +151,11 @@ internal fun ReaderTextFragments(
         onDispose { readerSelection.unregister(selectionState) }
     }
     SelectionContainer(state = selectionState) {
-        Column(modifier) {
+        Column(modifier.then(if (workObserver == null) Modifier else Modifier.layout { measurable, constraints ->
+            workObserver("measure")
+            val child = measurable.measure(constraints)
+            layout(child.width, child.height) { child.placeRelative(0, 0) }
+        })) {
             fragments.forEach { fragment ->
                 key(fragment.componentIndex, fragment.start) {
                     var measured by remember { mutableStateOf<TextLayoutResult?>(null) }
