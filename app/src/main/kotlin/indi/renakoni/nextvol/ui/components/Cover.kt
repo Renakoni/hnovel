@@ -85,11 +85,11 @@ internal fun BookCoverImage(request: ImageRequest, bookId: String, width: Dp, he
         contentScale = ContentScale.Crop,
         modifier = Modifier.size(width, height),
         loading = {
-            DefaultBookCover(title, width, height, bookId, author)
+            DefaultBookCover(title, width, height, bookId, author, cacheArtwork = false)
         },
         error = {
             // Keep the original request/error and cache key. A retry can still recover its real image.
-            DefaultBookCover(title, width, height, bookId, author)
+            DefaultBookCover(title, width, height, bookId, author, cacheArtwork = false)
         },
     )
 }

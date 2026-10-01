@@ -39,6 +39,7 @@ class DefaultBookCoverRequestTest {
             val second = loader.execute(observed) as SuccessResult
             assertEquals(118, first.image.width)
             assertEquals(172, first.image.height)
+            assertEquals(DataSource.MEMORY, first.dataSource)
             assertEquals(DataSource.MEMORY_CACHE, second.dataSource)
             assertSame(first.image, second.image)
             assertEquals(1, threads.size)
@@ -56,11 +57,36 @@ class DefaultBookCoverRequestTest {
             request(text.copy(author = "another")), request(width = 94), request(height = 138),
             request(text.copy(bookId = "ab", title = "c")), request(text.copy(bookId = "a", title = "bc")))
         assertEquals(requests.size, requests.map { it.memoryCacheKey }.toSet().size)
+        val version = DefaultBookCoverRenderer.STYLE_VERSION
+        assertTrue(request().memoryCacheKey!!.startsWith("default-cover:${version.length}:$version"))
         val loader = ImageLoader.Builder(context).build()
         try {
             val large = loader.execute(request(width = 2400, height = 3480)) as SuccessResult
             assertEquals(600, large.image.width)
             assertEquals(870, large.image.height)
         } finally { loader.shutdown() }
+    }
+
+    @Test fun remoteFallbackDoesNotRetainArtworkAndDedicatedCacheStaysWithinFourMiB() = runBlocking {
+        val loader = DefaultBookCoverImages.get(context)
+        val cache = loader.memoryCache!!
+        cache.clear()
+        assertEquals(4L * 1024 * 1024, cache.maxSize)
+        assertNull(loader.diskCache)
+        val text = DefaultBookCoverRenderer.Text("remote", "Remote title")
+        val fallback = defaultBookCoverRequest(context, text, 600, 870, cacheArtwork = false)
+        val first = loader.execute(fallback) as SuccessResult
+        assertEquals(DataSource.MEMORY, first.dataSource)
+        assertEquals(0L, cache.size)
+        assertNull(cache[MemoryCache.Key(fallback.memoryCacheKey!!)])
+        assertEquals(DataSource.MEMORY, (loader.execute(fallback) as SuccessResult).dataSource)
+        repeat(8) { index ->
+            loader.execute(defaultBookCoverRequest(context, text.copy(bookId = "local-$index"), 600, 870))
+            assertTrue(cache.size <= cache.maxSize)
+        }
+        assertTrue(cache.size > 0)
+        // Cache writes for real default covers never enter the application's remote image pool.
+        assertNotSame(coil3.SingletonImageLoader.get(context).memoryCache, cache)
+        cache.clear()
     }
 }

@@ -23,7 +23,7 @@ import java.security.MessageDigest
 object DefaultBookCoverRenderer {
     const val DEFAULT_WIDTH = 600
     const val DEFAULT_HEIGHT = 870
-    private const val STYLE_VERSION = "v2"
+    internal const val STYLE_VERSION = "v2"
     data class Text(val bookId: String, val title: String, val author: String = "")
 
     // Fixed ink/paper pairs remain legible in both app themes and in exported files.
