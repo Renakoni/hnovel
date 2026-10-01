@@ -3,8 +3,6 @@ package indi.renakoni.nextvol.ui.book.reader
 import indi.renakoni.nextvol.data.book.availableVolumes
 import android.annotation.SuppressLint
 import android.app.Activity
-import android.content.Context.BATTERY_SERVICE
-import android.os.BatteryManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -694,16 +692,15 @@ fun Indicator(
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (enableBatteryIndicator) {
-                val batteryManager = LocalContext.current.getSystemService(BATTERY_SERVICE) as BatteryManager
-                val batLevel: Int = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
-                RollingNumber(
+                val batLevel = rememberReaderBatteryLevel().value
+                if (batLevel != null) RollingNumber(
                     animationEnabled = !LocalReduceReaderMotion.current,
                     modifier = Modifier.align(Alignment.CenterVertically),
                     number = batLevel,
                     style = typography.bodyLarge,
                     color = colorScheme.onSurfaceVariant,
                     length = 3
-                )
+                ) else Text("--", style = typography.bodyLarge, color = colorScheme.onSurfaceVariant)
                 Text(
                     text = "%",
                     style = typography.bodyLarge,
