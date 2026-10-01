@@ -13,9 +13,20 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.Icon
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -33,11 +44,14 @@ import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.android.controller.ActivityController
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
+import indi.renakoni.nextvol.R
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], application = Application::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ReaderBatteryTest {
     @get:Rule val compose = createEmptyComposeRule()
     private lateinit var activity: ActivityController<ComponentActivity>
@@ -47,6 +61,7 @@ class ReaderBatteryTest {
     }
     private val visible = mutableStateOf(true)
     private val progress = mutableStateOf(0f)
+    private val referenceIcon = mutableStateOf<Int?>(null)
 
     @Before fun open() {
         activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
@@ -61,9 +76,13 @@ class ReaderBatteryTest {
             MaterialTheme {
                 CompositionLocalProvider(LocalContext provides context, LocalLifecycleOwner provides owner,
                     LocalReduceReaderMotion provides true) {
-                    if (indicator) Indicator(enableBatteryIndicator = visible.value, enableTimeIndicator = false,
+                    if (indicator) Column {
+                        Indicator(enableBatteryIndicator = visible.value, enableTimeIndicator = false,
                         enableChapterTitle = false, chapterTitle = "", enableReadingChapterProgressIndicator = true,
                         readingChapterProgress = progress.value)
+                        referenceIcon.value?.let { Icon(painterResource(it), null,
+                            Modifier.size(20.dp).testTag("reference-icon"), tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    }
                     else if (visible.value) Text("battery:${rememberReaderBatteryLevel().value}")
                 }
             }
@@ -114,6 +133,44 @@ class ReaderBatteryTest {
         compose.runOnIdle { owner.lifecycle.currentState = Lifecycle.State.DESTROYED }
         compose.waitUntil(5_000) { context.unregistered.get() == 3 }
         assertTrue(context.binderThreads.none { it === Looper.getMainLooper().thread })
+    }
+
+    @Test fun indicatorDrawsUnknownAndEveryBatteryIconAtItsBoundaries() {
+        context.sticky = Intent(Intent.ACTION_BATTERY_CHANGED)
+        referenceIcon.value = R.drawable.battery_android_question_24px
+        mount(indicator = true)
+        compose.waitUntil(5_000) { context.registered.get() == 1 }
+        val cases = listOf(
+            null to R.drawable.battery_android_question_24px,
+            0..15 to R.drawable.battery_android_alert_24px,
+            16..35 to R.drawable.battery_android_3_24px,
+            36..65 to R.drawable.battery_android_4_24px,
+            66..80 to R.drawable.battery_android_5_24px,
+            81..95 to R.drawable.battery_android_6_24px,
+            96..100 to R.drawable.battery_android_full_24px,
+            null to R.drawable.battery_android_question_24px,
+        )
+        for ((range, icon) in cases) for (level in range?.let { listOf(it.first, it.last) } ?: listOf(null)) {
+            compose.runOnIdle {
+                referenceIcon.value = icon
+                context.receiver!!.onReceive(context, level?.let { battery(it, 100) } ?: Intent(Intent.ACTION_BATTERY_CHANGED))
+            }
+            compose.waitForIdle()
+            if (level == null) compose.onNodeWithText("--").assertIsDisplayed()
+            fun pixels(tag: String): IntArray {
+                val map = compose.onNodeWithTag(tag).captureToImage().toPixelMap()
+                return IntArray(map.width * map.height) { map[it % map.width, it / map.width].toArgb() }
+            }
+            val expected = pixels("reference-icon")
+            assertTrue("Reference icon must contain visible artwork", expected.toSet().size > 1)
+            val actual = pixels("reader-battery-icon")
+            assertEquals(expected.size, actual.size)
+            // Skia dithering can differ by one channel step at different screen positions.
+            expected.indices.forEach { pixel ->
+                for (shift in listOf(0, 8, 16, 24)) assertTrue("Battery icon for $level at pixel $pixel",
+                    kotlin.math.abs((expected[pixel] ushr shift and 255) - (actual[pixel] ushr shift and 255)) <= 2)
+            }
+        }
     }
 
     private fun awaitValue(value: String) {

@@ -709,9 +709,10 @@ fun Indicator(
                 )
                 Spacer(Modifier.width(4.dp))
                 Icon(
-                    modifier = Modifier.size(20.dp),
+                    modifier = Modifier.size(20.dp).testTag("reader-battery-icon"),
                     painter =
                         when {
+                            batLevel == null -> painterResource(R.drawable.battery_android_question_24px)
                             (batLevel in 0..15) -> painterResource(R.drawable.battery_android_alert_24px)
                             (batLevel in 16..35) -> painterResource(R.drawable.battery_android_3_24px)
                             (batLevel in 36..65) -> painterResource(R.drawable.battery_android_4_24px)
