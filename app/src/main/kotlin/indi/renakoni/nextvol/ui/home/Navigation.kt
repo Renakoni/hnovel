@@ -19,6 +19,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.navigation.NavController
+import androidx.lifecycle.Lifecycle
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.navigation
@@ -29,7 +30,6 @@ import indi.renakoni.nextvol.ui.home.explore.exploreNavigation
 import indi.renakoni.nextvol.ui.home.reading.readingNavigation
 import indi.renakoni.nextvol.ui.home.settings.settingsNavigation
 import indi.renakoni.nextvol.utils.currentMainRoute
-import indi.renakoni.nextvol.utils.isResumed
 import io.nightfish.lightnovelreader.api.Route
 import kotlinx.serialization.json.Json
 
@@ -108,7 +108,9 @@ internal const val CATEGORY_SOURCE_REQUEST = "category.sourceRequest"
 
 /** Bottom roots restore their own stack. An explicit category shortcut changes only its source. */
 internal fun <T : Any> NavController.navigateToMainRoot(route: T) {
-    if (!isResumed()) return
+    // Incoming entries remain STARTED during transitions. The visible bottom bar must accept
+    // another root selection then; sameRoot/launchSingleTop already prevent duplicate entries.
+    if (currentBackStackEntry?.lifecycle?.currentState?.isAtLeast(Lifecycle.State.STARTED) != true) return
     val current = currentDestination.currentMainRoute()
     // Equality handles singleton roots and the canonical empty Categories tab marker. A Categories
     // shortcut with source arguments differs by data-class equality but still targets that same root.

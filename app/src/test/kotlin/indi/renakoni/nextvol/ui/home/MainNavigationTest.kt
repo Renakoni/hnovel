@@ -24,11 +24,16 @@ import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.*
+import androidx.lifecycle.Lifecycle
 import indi.renakoni.nextvol.ui.home.categories.CategorySourceSelection
 import indi.renakoni.nextvol.ui.home.settings.SettingsTopBar
 import indi.renakoni.nextvol.ui.home.settings.navigateToSettingsDestination
 import indi.renakoni.nextvol.utils.currentMainRoute
 import indi.renakoni.nextvol.utils.popBackStackIfResumed
+import indi.renakoni.nextvol.utils.expandEnter
+import indi.renakoni.nextvol.utils.expandExit
+import indi.renakoni.nextvol.utils.expandPopEnter
+import indi.renakoni.nextvol.utils.expandPopExit
 import io.nightfish.lightnovelreader.api.Route
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -61,7 +66,7 @@ class MainNavigationTest {
     }
     @After fun destroy() { activity.pause().stop().destroy() }
 
-    private fun show() {
+    private fun show(animated: Boolean = false) {
         activity.get().setContent { MaterialTheme {
             val controller = rememberNavController()
             nav = controller
@@ -69,8 +74,10 @@ class MainNavigationTest {
             val root = entry?.destination.currentMainRoute()
             Box(Modifier.fillMaxSize()) {
                 NavHost(controller, startDestination = Route.Main,
-                    enterTransition = { EnterTransition.None }, exitTransition = { ExitTransition.None },
-                    popEnterTransition = { EnterTransition.None }, popExitTransition = { ExitTransition.None }) {
+                    enterTransition = { if (animated) expandEnter() else EnterTransition.None },
+                    exitTransition = { if (animated) expandExit() else ExitTransition.None },
+                    popEnterTransition = { if (animated) expandPopEnter() else EnterTransition.None },
+                    popExitTransition = { if (animated) expandPopExit() else ExitTransition.None }) {
                     navigation<Route.Main>(startDestination = Route.Main.Reading) {
                         navigation<Route.Main.Reading>(startDestination = Route.Main.Reading.Home) {
                             composable<Route.Main.Reading.Home> { RootPage("Reading", it) }
@@ -125,6 +132,48 @@ class MainNavigationTest {
     private fun go(route: Any) {
         compose.runOnIdle { nav.navigateToMainRoot(route) }
         compose.waitForIdle()
+    }
+
+    @Test fun bottomTabsAcceptTheLastClickDuringTransitionsAndRestoreTheirState() {
+        show(animated = true)
+        go(Route.Main.Bookshelf)
+        compose.runOnIdle { runBlocking { lists.getValue("Bookshelf").scrollToItem(12, 7) } }
+        val shelfId = nav.currentBackStackEntry!!.id
+        compose.mainClock.autoAdvance = false
+        // Drive the real bar while Navigation keeps the incoming entry at STARTED.
+        for (target in listOf(3, 0, 2, 3, 0, 2)) {
+            val tabs = compose.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.Selected))
+            tabs[target].performClick()
+            compose.mainClock.advanceTimeBy(100)
+            compose.runOnIdle {
+                assertEquals(Lifecycle.State.STARTED, nav.currentBackStackEntry!!.lifecycle.currentState)
+            }
+            tabs[1].performClick()
+            compose.runOnIdle { assertEquals(Route.Main.Bookshelf, nav.currentDestination.currentMainRoute()) }
+            compose.mainClock.advanceTimeBy(500)
+            compose.waitForIdle()
+            assertEquals(shelfId, nav.currentBackStackEntry!!.id)
+            assertEquals(12, lists.getValue("Bookshelf").firstVisibleItemIndex)
+            assertEquals(7, lists.getValue("Bookshelf").firstVisibleItemScrollOffset)
+            tabs[1].performClick()
+            assertEquals(shelfId, nav.currentBackStackEntry!!.id)
+        }
+        compose.mainClock.autoAdvance = true
+        compose.runOnIdle { assertTrue(nav.popBackStack()) }
+        compose.waitForIdle()
+        assertEquals(Route.Main.Reading, nav.currentDestination.currentMainRoute())
+        assertNull(nav.previousBackStackEntry)
+    }
+
+    @Test fun stoppedHostDoesNotAcceptRootNavigation() {
+        val origin = nav.currentBackStackEntry!!.id
+        compose.runOnIdle {
+            activity.pause().stop()
+            assertEquals(Lifecycle.State.CREATED, nav.currentBackStackEntry!!.lifecycle.currentState)
+            nav.navigateToMainRoot(Route.Main.Bookshelf)
+            assertEquals(origin, nav.currentBackStackEntry!!.id)
+            activity.start().resume()
+        }
     }
 
     @Test fun fourRootsUseOneSettingsDestinationAndDoubleClicksReturnToExactOrigin() {
