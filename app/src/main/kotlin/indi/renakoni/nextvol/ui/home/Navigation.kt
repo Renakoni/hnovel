@@ -19,6 +19,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.navigation.NavController
+import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.lifecycle.Lifecycle
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavGraphBuilder
@@ -121,8 +122,9 @@ internal fun <T : Any> NavController.navigateToMainRoot(route: T) {
         popUpTo(graph.findStartDestination().id) { saveState = true }
     }
     if (route is Route.Main.Categories && route.namespace != null && route.sourceId != null) {
-        // Compose Navigation adds/restores the entry synchronously in navigate(), before transitions
-        // finish. An asynchronous navigator would need to await that entry before writing this request.
-        getBackStackEntry<Route.Main.Categories>().savedStateHandle[CATEGORY_SOURCE_REQUEST] = Json.encodeToString<Route.Main.Categories>(route)
+        // Compose Navigation adds/restores this leaf synchronously. Deliver only if Categories
+        // is still current after navigate(), without a throwing lookup for a missing entry.
+        currentBackStackEntry?.takeIf { it.destination.hasRoute<Route.Main.Categories>() }
+            ?.savedStateHandle?.set(CATEGORY_SOURCE_REQUEST, Json.encodeToString<Route.Main.Categories>(route))
     }
 }

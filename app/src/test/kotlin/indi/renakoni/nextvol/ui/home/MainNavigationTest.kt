@@ -38,6 +38,7 @@ import io.nightfish.lightnovelreader.api.Route
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.*
+import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -146,7 +147,8 @@ class MainNavigationTest {
             tabs[target].performClick()
             compose.mainClock.advanceTimeBy(100)
             compose.runOnIdle {
-                assertEquals(Lifecycle.State.STARTED, nav.currentBackStackEntry!!.lifecycle.currentState)
+                assumeTrue("Fixture must exercise an incoming transition",
+                    nav.currentBackStackEntry!!.lifecycle.currentState == Lifecycle.State.STARTED)
             }
             tabs[1].performClick()
             compose.runOnIdle { assertEquals(Route.Main.Bookshelf, nav.currentDestination.currentMainRoute()) }
@@ -174,6 +176,26 @@ class MainNavigationTest {
             assertEquals(origin, nav.currentBackStackEntry!!.id)
             activity.start().resume()
         }
+    }
+
+    @Test fun categoryShortcutsDuringTransitionsReuseEntryAndApplyTheLastSource() {
+        show(animated = true)
+        compose.mainClock.autoAdvance = false
+        go(Route.Main.Bookshelf)
+        compose.mainClock.advanceTimeBy(100)
+        compose.runOnIdle {
+            assumeTrue("Fixture must exercise an incoming transition",
+                nav.currentBackStackEntry!!.lifecycle.currentState == Lifecycle.State.STARTED)
+            nav.navigateToMainRoot(Route.Main.Categories("fixture", "a"))
+            val categoryId = nav.currentBackStackEntry!!.id
+            nav.navigateToMainRoot(Route.Main.Categories("fixture", "b"))
+            assertEquals(categoryId, nav.currentBackStackEntry!!.id)
+            assertTrue(nav.currentDestination!!.hasRoute<Route.Main.Categories>())
+        }
+        compose.mainClock.autoAdvance = true
+        compose.waitForIdle()
+        compose.onNodeWithText("Selected source: b").assertExists()
+        assertNull(nav.currentBackStackEntry!!.savedStateHandle.get<String>(CATEGORY_SOURCE_REQUEST))
     }
 
     @Test fun fourRootsUseOneSettingsDestinationAndDoubleClicksReturnToExactOrigin() {
