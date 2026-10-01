@@ -37,11 +37,17 @@ object DefaultBookCoverRenderer {
 
     fun displayTitle(context: Context, title: String) = title.trim().ifBlank { context.getString(R.string.cover_untitled) }
 
+    private fun palette(bookId: String, title: String, author: String) =
+        palettes[(digest(bookId.ifBlank { "$title\u0000$author" })[0].toInt() and 255) % palettes.size]
+
+    fun backgroundColor(context: Context, text: Text): Int =
+        palette(text.bookId, displayTitle(context, text.title).take(512), text.author.trim().take(256))[0]
+
     /** Layout is constructed once per input, then scaled as artwork, not as UI text in sp. */
     class Artwork(context: Context, text: Text) {
         private val title = displayTitle(context, text.title).take(512)
         private val author = text.author.trim().take(256)
-        private val colors = palettes[(digest(text.bookId.ifBlank { "$title\u0000$author" })[0].toInt() and 255) % palettes.size]
+        private val colors = palette(text.bookId, title, author)
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
         private val titleLayout = layout(title, if (title.length <= 6) 86f else if (title.length <= 20) 72f else 60f, 4, true)
         private val authorLayout = layout(author, 30f, 2, false)
