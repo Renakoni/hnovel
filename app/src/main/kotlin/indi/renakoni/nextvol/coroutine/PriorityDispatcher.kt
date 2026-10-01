@@ -68,7 +68,9 @@ class PriorityDispatcher(
                 job = job,
             )
 
-            if (job == null) {
+            // A cancelled continuation must run to finish cancellation; it must not
+            // wait for a request permit that an unrelated slow operation still owns.
+            if (job == null || job.isCancelled) {
                 readyTasks.add(task)
                 return
             }
@@ -77,6 +79,9 @@ class PriorityDispatcher(
                 knownJobs += job
                 job.invokeOnCompletion {
                     commands.trySend(Command.JobCompleted(job))
+                }
+                job.invokeOnCompletion(onCancelling = true, invokeImmediately = true) { cause ->
+                    if (cause != null) commands.trySend(Command.JobCancelling(job))
                 }
                 pendingStarts.add(task)
                 return
@@ -91,7 +96,7 @@ class PriorityDispatcher(
 
         fun launchTask(task: ScheduledTask) {
             val taskJob = task.job
-            if (taskJob != null) {
+            if (taskJob?.isActive == true) {
                 activeJobs += taskJob
             }
 
@@ -130,6 +135,9 @@ class PriorityDispatcher(
                     activeJobs -= command.job
                     knownJobs -= command.job
                 }
+                is Command.JobCancelling -> {
+                    pendingStarts.remove(command.job).forEach(readyTasks::add)
+                }
 
                 Command.Pause -> paused = true
                 Command.Resume -> paused = false
@@ -161,6 +169,7 @@ class PriorityDispatcher(
         ) : Command
 
         data class JobCompleted(val job: Job) : Command
+        data class JobCancelling(val job: Job) : Command
         data object Pause : Command
         data object Resume : Command
         data object Shutdown : Command
@@ -189,6 +198,15 @@ class PriorityDispatcher(
                 siftDown()
             }
             return first
+        }
+
+        fun remove(job: Job): List<ScheduledTask> {
+            val removed = items.filter { it.job === job }
+            if (removed.isNotEmpty()) {
+                items.removeAll { it.job === job }
+                for (index in (items.size / 2 - 1) downTo 0) siftDown(index)
+            }
+            return removed
         }
 
         fun isEmpty(): Boolean = items.isEmpty()
