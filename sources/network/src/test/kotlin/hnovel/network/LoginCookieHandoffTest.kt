@@ -77,8 +77,8 @@ class LoginCookieHandoffTest {
             val base = "https://source.example/"
             val session = broker.open(scope, listOf(NetworkGrant(base))).apply { seed(base) }
             val seed = session.nativeBrowserCookieSeed(base)
-            session.updateNativeBrowserCookies(base + "private/", listOf(
-                "auth=old; Path=/", "theme=dark; Path=/", "auth=private; Path=/private/"), expectedSeedVersion = seed.version)
+            session.updateNativeBrowserCookies(base + "private/", seed.cookies + "auth=private; Path=/private/",
+                expectedSeedVersion = seed.version)
             assertTrue((session.read(login) as StorageResult.Value).value!!.contains("auth=old"))
             session.write(login.copy(value = """{"cookie":"auth=new-login"}"""))
             session.setCookie(base, "auth=new-login")
@@ -105,6 +105,71 @@ class LoginCookieHandoffTest {
             assertTrue(session.nativeBrowserCookieSeed(base).cookies.any { it.startsWith("auth=old;") })
             session.execute(BrokerRequest("explicit", base, headers = mapOf("Cookie" to "auth=pinned"), browser = BrowserOptions()))
             assertEquals("auth=pinned", seen.last()["Cookie"])
+        }
+    }
+
+    @Test fun sameValueHttpExpiryDoesNotLeaveAnImmortalLoginHeader() = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            val base = server.url("/").toString()
+            SourceBroker(directory.root.toPath()).use { broker ->
+                val session = broker.open(scope, listOf(NetworkGrant(base, true))).apply { seed(base) }
+                server.enqueue(MockResponse().addHeader("Set-Cookie", "auth=old; Path=/; Max-Age=1; HttpOnly"))
+                assertTrue(session.execute(BrokerRequest("shorten", base)) is BrokerResult.Success)
+                server.takeRequest()
+                kotlinx.coroutines.delay(1100)
+                server.enqueue(MockResponse())
+                assertTrue(session.execute(BrokerRequest("expired", base)) is BrokerResult.Success)
+                assertFalse(server.takeRequest().getHeader("Cookie").orEmpty().contains("auth="))
+            }
+        }
+    }
+
+    @Test fun loginSeedDoesNotMaskMoreSpecificBrowserCookies() = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            val base = server.url("/").toString()
+            SourceBroker(directory.root.toPath()).use { broker ->
+                val session = broker.open(scope, listOf(NetworkGrant(base, true))).apply { seed(base) }
+                val seed = session.nativeBrowserCookieSeed(base)
+                session.updateNativeBrowserCookies(base + "private/", seed.cookies + "auth=private; Path=/private/; HttpOnly",
+                    expectedSeedVersion = seed.version)
+                for (path in listOf("/", "/private/page")) {
+                    server.enqueue(MockResponse())
+                    assertTrue(session.execute(BrokerRequest("read", server.url(path).toString())) is BrokerResult.Success)
+                    val header = server.takeRequest().getHeader("Cookie").orEmpty()
+                    assertTrue(header.contains("auth=old"))
+                    assertEquals(path != "/", header.startsWith("auth=private;"))
+                }
+            }
+        }
+    }
+
+    @Test fun sameValueBrowserSessionCookieDoesNotResurrectAfterReopening() {
+        val base = "https://source.example/"
+        val grants = listOf(NetworkGrant(base))
+        SourceBroker(directory.root.toPath()).use { broker ->
+            val session = broker.open(scope, grants).apply { seed(base) }
+            session.updateNativeBrowserCookies(base, listOf("auth=old; Path=/; HttpOnly", "theme=dark; Path=/"),
+                expectedSeedVersion = session.nativeBrowserCookieSeed(base).version)
+        }
+        SourceBroker(directory.root.toPath()).use { broker ->
+            val restored = broker.open(scope, grants).apply { configureSource(base, true) }
+            assertFalse((restored.read(login) as StorageResult.Value).value!!.contains("auth=old"))
+            assertFalse(restored.cookie(base).contains("auth="))
+        }
+    }
+
+    @Test fun grantedSubdomainCanRotateItsParentDomainCookieWithoutRetiringUnrelatedValues() {
+        val base = "https://source.example/"
+        val child = "https://login.source.example/"
+        SourceBroker(directory.root.toPath()).use { broker ->
+            val session = broker.open(scope, listOf(NetworkGrant(base), NetworkGrant(child))).apply { seed(base) }
+            session.updateNativeBrowserCookies(child, listOf("auth=fresh; Domain=source.example; Path=/; HttpOnly"),
+                expectedSeedVersion = session.nativeBrowserCookieSeed(child).version)
+            assertFalse((session.read(login) as StorageResult.Value).value!!.contains("auth=old"))
+            assertTrue((session.read(login) as StorageResult.Value).value!!.contains("theme=dark"))
+            assertTrue(session.cookie(base).contains("auth=fresh"))
         }
     }
 }
