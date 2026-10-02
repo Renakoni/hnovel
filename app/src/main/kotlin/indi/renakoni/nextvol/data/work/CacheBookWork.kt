@@ -240,6 +240,7 @@ class CacheBookWork @AssistedInject constructor(
                 var finishedChapters = 0
                 mark(DownloadStage.Body)
                 NativeDownloadBudget.chapters(selected, concurrent) { (index, chapter) ->
+                    if (!concurrent) mark(DownloadStage.Body, chapter.id)
                     var chapterStage = DownloadStage.Body
                     val prepared = try {
                         coroutineBinding<BookDownloadStore.ChapterCheckpoint, WebRequestError> {
