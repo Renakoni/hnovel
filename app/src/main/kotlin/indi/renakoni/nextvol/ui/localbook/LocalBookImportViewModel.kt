@@ -72,16 +72,22 @@ class LocalBookImportViewModel @Inject constructor(
     fun selectTarget(id: Int?, name: String) {
         savedState["targetShelf"] = id
         savedState["targetName"] = name
+        savedState["localShelf"] = false
     }
 
-    fun open(uri: Uri) {
+    fun selectLocalShelf(name: String) {
+        selectTarget(null, name)
+        savedState["localShelf"] = true
+    }
+
+    fun open(uri: Uri, name: String? = null, format: LocalBookFormat? = null) {
         if (state.importing) return
         dismiss()
         state = LocalBookImportState(visible = true, busy = true, shelfName = targetName)
         val current = ++revision
         operation = viewModelScope.launch {
             try {
-                val staged = books.stage(uri)
+                val staged = if (name != null && format != null) books.stage(uri, name, format) else books.stage(uri)
                 draft = staged
                 state = state.copy(fileName = staged.originalName, fileBytes = staged.original.length(),
                     bookKey = staged.book.storageKey, format = staged.format,
@@ -143,7 +149,9 @@ class LocalBookImportViewModel @Inject constructor(
         state = state.copy(importing = true)
         operation = viewModelScope.launch {
             try {
-                val (_, shelfId) = books.publish(staged, parsed, title, targetShelf)
+                val (_, shelfId) = if (savedState.get<Boolean>("localShelf") == true) {
+                    books.publish(staged, parsed, title, null, localShelfName = targetName)
+                } else books.publish(staged, parsed, title, targetShelf)
                 draft = null
                 runCatching { storage.invalidateSnapshot() }.onFailure { Log.e("LocalBookImport", "Cannot invalidate storage estimate", it) }
                 state = LocalBookImportState()
