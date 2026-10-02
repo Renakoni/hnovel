@@ -46,11 +46,16 @@ class BookDownloadScheduler @Inject constructor(
         return flow { emitAll(workManager.getWorkInfoByIdFlow(submission.await().workId)) }
     }
 
-    suspend fun submit(requested: SourceBookId, refresh: Boolean = false, chapterIds: List<String>? = null): DownloadSubmission {
+    suspend fun submit(
+        requested: SourceBookId,
+        refresh: Boolean = false,
+        chapterIds: List<String>? = null,
+        resumePrevious: Boolean = true,
+    ): DownloadSubmission {
         if (LocalBookStore.isLocal(requested)) return DownloadSubmission.Rejected(DownloadFailure.SourceUnavailable)
         if (chapterIds?.isEmpty() == true) return DownloadSubmission.Rejected(DownloadFailure.SelectionUnavailable)
         return try {
-            enqueueTask(requested, refresh, chapterIds?.distinct(), resumePrevious = true).await()
+            enqueueTask(requested, refresh, chapterIds?.distinct(), resumePrevious).await()
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Exception) {
@@ -63,7 +68,7 @@ class BookDownloadScheduler @Inject constructor(
 
     private fun enqueueTask(requested: SourceBookId, refresh: Boolean, chapterIds: List<String>?, resumePrevious: Boolean) = run {
         val generation = downloads.generation()
-        // Submission is eager; automatic bookshelf downloads do not collect the result.
+        // Submit eagerly even when a caller does not collect the progress flow.
         submissions.async(start = CoroutineStart.UNDISPATCHED) { lock.withLock {
             val book = aliases.resolve(requested)
             val name = CacheBookWork.ofId(book.storageKey)

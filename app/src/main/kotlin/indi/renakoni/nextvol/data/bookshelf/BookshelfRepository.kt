@@ -1,8 +1,10 @@
 package indi.renakoni.nextvol.data.bookshelf
 
+import android.util.Log
 import indi.renakoni.nextvol.data.book.BookIdentity
 import indi.renakoni.nextvol.data.book.BookAliasStore
 import indi.renakoni.nextvol.data.download.BookDownloadScheduler
+import indi.renakoni.nextvol.data.download.DownloadSubmission
 import indi.renakoni.nextvol.data.local.room.converter.ListConverter
 import indi.renakoni.nextvol.data.local.room.dao.BookshelfDao
 import indi.renakoni.nextvol.data.local.room.entity.BookshelfEntity
@@ -11,9 +13,11 @@ import io.nightfish.lightnovelreader.api.bookshelf.Bookshelf
 import io.nightfish.lightnovelreader.api.bookshelf.BookshelfBookMetadata
 import io.nightfish.lightnovelreader.api.bookshelf.BookshelfRepositoryApi
 import io.nightfish.lightnovelreader.api.bookshelf.BookshelfSortType
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.withContext
 import java.time.LocalDateTime
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -117,26 +121,32 @@ class BookshelfRepository @Inject constructor(
         bookshelfDao.deleteBookshelf(bookshelfId)
     }
 
-    override suspend fun addBookIntoBookShelf(bookshelfId: Int, bookInformation: BookInformation) = aliases.transaction {
-        val bookId = key(bookInformation.id)
-        val bookshelf = bookshelfDao.getBookshelf(bookshelfId) ?: return@transaction
-        bookshelfDao.addBookshelfMetadata(
-            id = bookId,
-            lastUpdate = bookInformation.lastUpdated,
-            bookshelfIds = listOf(bookshelfId)
-        )
-        // Metadata-only sources can be bookmarked, but an automatic cache would always fail.
-        val sourceId = BookIdentity.book(bookId).sourceId
-        val canCache = sourceRegistry.sources.value.any { it.metadata.id == sourceId && it.metadata.supportsReading }
-        if (canCache && bookshelf.autoCache) {
-            downloadScheduler.enqueue(BookIdentity.book(bookId))
-        }
-        (bookshelf.allBookIds + listOf(bookId)).let {
-            bookshelfDao.insertBookshelf(
-                bookshelf.copy(
-                    allBookIds = it.distinct(),
-                )
+    override suspend fun addBookIntoBookShelf(bookshelfId: Int, bookInformation: BookInformation) {
+        val automaticDownload = aliases.transaction {
+            val bookId = key(bookInformation.id)
+            val bookshelf = bookshelfDao.getBookshelf(bookshelfId) ?: return@transaction null
+            if (bookId in bookshelf.allBookIds) return@transaction null
+            bookshelfDao.addBookshelfMetadata(
+                id = bookId,
+                lastUpdate = bookInformation.lastUpdated,
+                bookshelfIds = listOf(bookshelfId)
             )
+            bookshelfDao.insertBookshelf(
+                bookshelf.copy(allBookIds = bookshelf.allBookIds + bookId)
+            )
+            // Metadata-only sources remain bookmarkable without an impossible download.
+            BookIdentity.book(bookId).takeIf { book ->
+                bookshelf.autoCache && sourceRegistry.sources.value.any {
+                    it.metadata.id == book.sourceId && it.metadata.supportsReading
+                }
+            }
+        } ?: return
+        // Work submission must not run inside the bookshelf transaction or undo a saved bookmark.
+        val submission = withContext(Dispatchers.IO) {
+            downloadScheduler.submit(automaticDownload, resumePrevious = false)
+        }
+        if (submission is DownloadSubmission.Rejected) {
+            Log.w("BookshelfRepository", "Automatic download submission failed: ${submission.failure}")
         }
     }
 
