@@ -353,7 +353,7 @@ class ExploreHomeViewModelTest {
         assertEquals(DiscoveryError.Network, complete.sections.last().previewFailure!!.error)
     }
 
-    @Test fun refreshingACompletedFeedKeepsBooksUntilEachSectionHasAFreshResult() = runTest(dispatcher) {
+    @Test fun refreshingACompletedFeedReplacesSuccessfulSectionsAndKeepsFailedSections() = runTest(dispatcher) {
         val first = DiscoverySection("first", "First", listOf(DiscoveryBook("old-first", "Old first")), "/first")
         val second = DiscoverySection("second", "Second", listOf(DiscoveryBook("old-second", "Old second")), "/second")
         val update = CompletableDeferred<Unit>()
@@ -389,8 +389,10 @@ class ExploreHomeViewModelTest {
         val complete = model.state.value.content.getValue(id)
         assertTrue(complete.loaded)
         assertFalse(complete.sections.first().previewLoading)
+        assertNull(complete.sections.first().previewFailure)
         assertEquals("New first", complete.sections.first().books.single().title)
-        assertTrue(complete.sections.last().books.isEmpty())
+        assertFalse(complete.sections.last().previewLoading)
+        assertEquals("Old second", complete.sections.last().books.single().title)
         assertEquals(DiscoveryError.Network, complete.sections.last().previewFailure!!.error)
     }
 

@@ -18,7 +18,6 @@ import indi.renakoni.nextvol.defaultplugin.wenku8.book.Wenku8WebsiteDataSource
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
-import io.nightfish.lightnovelreader.api.book.BookVolumes
 import io.nightfish.lightnovelreader.api.book.ChapterContent
 import io.nightfish.lightnovelreader.api.util.Cache
 import kotlinx.coroutines.flow.last
@@ -45,17 +44,23 @@ class Wenku8ChapterPersistenceTest {
         var offline = false
         val requested = mutableListOf<String>()
         val api = mockk<Wenku8Api>()
-        val memory = Cache().apply { cache("1234".hashCode(), BookVolumes("1234", emptyList())) }
-        every { api.cache } returns memory
+        every { api.cache } returns Cache()
         coEvery { api.getWithWenku8Cookie(any()) } answers {
             val url = firstArg<String>()
             requested += url
             if (offline) Err(IOException("fixture offline")) else {
                 val id = url.substringAfterLast('/').substringBefore('.')
-                Ok(Jsoup.parse("<div id='title'>Chapter $id</div><div id='content'>BODY_$id</div>"))
+                if (id == "index") {
+                    Ok(Jsoup.parse("<table><tr><td class='vcss' vid='1'>Volume</td></tr>" +
+                        (3..5).joinToString("") { "<tr><td><a href='$it.htm'>Chapter $it</a></td></tr>" } +
+                        "</table>"))
+                } else {
+                    Ok(Jsoup.parse("<div id='title'>Chapter $id</div><div id='content'>BODY_$id</div>"))
+                }
             }
         }
         val parser = Wenku8WebsiteDataSource("https://fixture.invalid", api)
+        assertTrue(parser.getBookVolumes("1234").isOk)
         val runtime = mockk<SourceRuntime> {
             every { metadata } returns mockk { every { revision } returns "1" }
             coEvery { execute<Any?>(any()) } coAnswers { firstArg<suspend () -> Any?>().invoke() }
@@ -102,7 +107,7 @@ class Wenku8ChapterPersistenceTest {
             for (id in listOf("3", "4", "5")) {
                 assertTrue(storage.getChapterContent(key(id))!!.content.toString().contains("BODY_$id"))
             }
-            assertEquals(listOf("3", "4", "4", "5"), requested.map { it.substringAfterLast('/').substringBefore('.') })
+            assertEquals(listOf("index", "3", "4", "4", "5"), requested.map { it.substringAfterLast('/').substringBefore('.') })
         } finally { db.close() }
     }
 }
