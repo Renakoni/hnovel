@@ -33,7 +33,13 @@ class NextVolApplication : Application(), Configuration.Provider, coil3.Singleto
     @Inject lateinit var bangumiSync: javax.inject.Provider<indi.renakoni.nextvol.data.bangumi.BangumiSyncScheduler>
 
     override fun newImageLoader(context: Context): coil3.ImageLoader = coil3.ImageLoader.Builder(context)
-        .components { add(sourceImageInterceptor); add(indi.renakoni.nextvol.data.image.SourceImageFetcher.Factory()) }
+        .components {
+            add(sourceImageInterceptor)
+            add(indi.renakoni.nextvol.data.image.SourceImageFetcher.Factory())
+            add(coil3.network.okhttp.OkHttpNetworkFetcherFactory(callFactory = {
+                okhttp3.OkHttpClient.Builder().addInterceptor(hnovel.network.DefaultUserAgentInterceptor()).build()
+            }))
+        }
         .build()
 
     private val coroutineScope = CoroutineScope(Dispatchers.IO)

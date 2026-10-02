@@ -78,7 +78,7 @@ import kotlin.time.Duration.Companion.milliseconds
 
 /** wenku8 页面使用的字符集。声明为 gbk，实际输出 GB18030，详见 [Wenku8Api.getWithWenku8Cookie] */
 private val WENKU8_CHARSET: Charset = Charset.forName("GB18030")
-private const val WENKU8_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+internal const val WENKU8_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
 
 @WebDataSource(
