@@ -7,6 +7,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.res.stringResource
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -28,6 +29,7 @@ import io.nightfish.lightnovelreader.api.ui.LocalNavController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 
 @Suppress("UNUSED_PARAMETER")
 fun NavGraphBuilder.bookshelfHomeDestination(sharedTransitionScope: SharedTransitionScope) {
@@ -35,6 +37,16 @@ fun NavGraphBuilder.bookshelfHomeDestination(sharedTransitionScope: SharedTransi
         val navController = LocalNavController.current
         val parentEntry = remember(it) { navController.getBackStackEntry(Route.Main) }
         val bookshelfHomeViewModel = hiltViewModel<BookshelfHomeViewModel>(parentEntry)
+        val entry = it
+        LaunchedEffect(entry) {
+            entry.savedStateHandle.getStateFlow<Int?>("externalShelf", null).collect { shelf ->
+                if (shelf != null) {
+                    snapshotFlow { bookshelfHomeViewModel.uiState.bookshelfList.any { it.id == shelf } }.first { it }
+                    bookshelfHomeViewModel.changePage(shelf)
+                    entry.savedStateHandle["externalShelf"] = null
+                }
+            }
+        }
         val importViewModel = hiltViewModel<LocalBookImportViewModel>()
         val localBookshelfName = stringResource(R.string.local_bookshelf_name)
         val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
