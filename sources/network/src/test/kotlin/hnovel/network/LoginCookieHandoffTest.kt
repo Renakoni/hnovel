@@ -173,6 +173,28 @@ class LoginCookieHandoffTest {
         }
     }
 
+    @Test fun identicalHostOnlyCookiesAtAnotherOriginDoNotKeepARetiredLoginSeed() {
+        val base = "https://source.example/"
+        val other = "https://other.example/"
+        for (browserUpdate in listOf(false, true)) SourceBroker(directory.root.toPath()).use { broker ->
+            val session = broker.open(scope.copy(sourceId = "origin-$browserUpdate"),
+                listOf(NetworkGrant(base), NetworkGrant(other))).apply { seed(base) }
+            val seed = session.nativeBrowserCookieSeed(base)
+            // Host-only Set-Cookie text omits the host; copy identical attributes to another origin.
+            session.updateNativeBrowserCookies(other, seed.cookies,
+                expectedSeedVersion = session.nativeBrowserCookieSeed(other).version)
+            if (browserUpdate) session.updateNativeBrowserCookies(base,
+                seed.cookies.filterNot { it.startsWith("auth=") } + "auth=fresh; Path=/; HttpOnly",
+                expectedSeedVersion = session.nativeBrowserCookieSeed(base).version)
+            else session.setCookie(base, "auth=fresh")
+            assertTrue(session.cookie(base).contains("auth=fresh"))
+            assertTrue(session.cookie(other).contains("auth=old"))
+            assertFalse("Another host cannot preserve a retired login seed",
+                (session.read(login) as StorageResult.Value).value!!.contains("auth=old"))
+            assertTrue((session.read(login) as StorageResult.Value).value!!.contains("theme=dark"))
+        }
+    }
+
     @Test fun grantedSubdomainCanRotateItsParentDomainCookieWithoutRetiringUnrelatedValues() {
         val base = "https://source.example/"
         val child = "https://login.source.example/"

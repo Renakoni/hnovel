@@ -318,7 +318,9 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         update()
         if (loginUrl == null || before.isEmpty()) return
         // Cookie expiry is serialized at HTTP-date (second) precision in browser seeds.
-        fun identity(cookie: Cookie) = if (retireAttributes) cookie.toString() else "${cookie.name}=${cookie.value}"
+        // Host-only Set-Cookie text omits its domain; another host/path cannot keep this seed alive.
+        fun identity(cookie: Cookie) = listOf(cookie.domain, cookie.path,
+            if (retireAttributes) cookie.toString() else "${cookie.name}=${cookie.value}")
         val after = cookies.snapshot().map { identity(it.second) }.toSet()
         val retired = before.filter { identity(it) !in after }.map { it.name to it.value }.toSet()
         if (retired.isEmpty()) return
