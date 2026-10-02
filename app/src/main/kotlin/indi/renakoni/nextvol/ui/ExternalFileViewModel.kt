@@ -8,9 +8,11 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.work.OneTimeWorkRequest
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
+import androidx.work.await
 import androidx.work.workDataOf
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -62,12 +64,16 @@ class ExternalFileViewModel @Inject constructor(
         intents.trySend(intent)
     }
 
-    fun open(intent: Intent, bookVisible: Boolean) {
-        if (ExternalFiles.uri(intent) == null) return
+    fun checkAvailable(bookVisible: Boolean): Boolean {
         if (busy || backupName != null || book != null || bookVisible) {
             messages.trySend(R.string.external_file_busy)
-            return
+            return false
         }
+        return true
+    }
+
+    fun open(intent: Intent, bookVisible: Boolean) {
+        if (ExternalFiles.uri(intent) == null || !checkAvailable(bookVisible)) return
         busy = true
         viewModelScope.launch {
             try {
@@ -109,18 +115,27 @@ class ExternalFileViewModel @Inject constructor(
             .build()
         restoring = true
         savedState["restoreWork"] = request.id.toString()
-        workManager.enqueue(request)
-        observeRestore(request.id)
+        observeRestore(request.id, request)
     }
 
-    private fun observeRestore(id: UUID) {
+    private fun observeRestore(id: UUID, request: OneTimeWorkRequest? = null) {
         viewModelScope.launch {
-            val result = workManager.getWorkInfoByIdFlow(id).first { it?.state?.isFinished == true } ?: return@launch
-            restoring = false
-            savedState["restoreWork"] = null
-            dismissBackup()
-            messages.send(if (result.state == WorkInfo.State.SUCCEEDED) R.string.data_import_success
-                else backupFailureMessage(result.outputData, R.string.data_import_failed))
+            try {
+                // A null record is only meaningful after enqueue has finished writing it.
+                request?.let { workManager.enqueue(it).await() }
+                val result = workManager.getWorkInfoByIdFlow(id).first { it == null || it.state.isFinished }
+                restoring = false
+                savedState["restoreWork"] = null
+                if (result != null) dismissBackup()
+                messages.send(if (result?.state == WorkInfo.State.SUCCEEDED) R.string.data_import_success
+                    else backupFailureMessage(result?.outputData, R.string.data_import_failed))
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                restoring = false
+                savedState["restoreWork"] = null
+                messages.send(R.string.data_import_failed)
+            }
         }
     }
 

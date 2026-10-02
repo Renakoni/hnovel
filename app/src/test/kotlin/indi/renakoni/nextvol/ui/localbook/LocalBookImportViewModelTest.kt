@@ -172,6 +172,28 @@ class LocalBookImportViewModelTest {
         assertEquals(42, model.imported.first())
     }
 
+    @Test fun manualImportAfterExternalImportUsesTheSelectedShelfInTheSharedSession() = runBlocking {
+        val original = file()
+        val model = model(selectTarget = false)
+        model.selectLocalShelf("Local Books")
+        model.open(original.toUri())
+        await { !model.state.busy }
+        model.confirm()
+        await { !model.state.visible }
+        val localShelf = database.bookshelfDao().getAllBookshelves().single { it.name == "Local Books" }
+        assertEquals(localShelf.id, model.imported.first())
+
+        model.selectTarget(7, "Shelf")
+        model.open(original.toUri())
+        await { !model.state.busy }
+        assertEquals("Shelf", model.state.shelfName)
+        model.confirm()
+        await { !model.state.visible }
+        assertEquals(7, model.imported.first())
+        assertEquals(1, database.bookshelfDao().getBookshelf(7)!!.allBookIds.size)
+        assertEquals(localShelf, database.bookshelfDao().getBookshelf(localShelf.id))
+    }
+
     @Test fun cancellingExternalImportCreatesNoShelfAndImportStillWorksWithNoExistingShelves() = runBlocking {
         database.bookshelfDao().deleteBookshelf(7)
         val model = model(selectTarget = false)

@@ -6,7 +6,11 @@ import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModelStore
 import androidx.work.OneTimeWorkRequest
+import androidx.work.Operation
+import androidx.work.WorkInfo
 import androidx.work.WorkManager
+import com.google.common.util.concurrent.SettableFuture
+import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.data.ExternalFiles
 import io.mockk.every
 import io.mockk.mockk
@@ -31,6 +35,8 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import java.io.IOException
+import java.util.UUID
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [27], application = Application::class)
@@ -100,8 +106,10 @@ class ExternalFileViewModelTest {
         model.open(backup(), bookVisible = false)
         assertEquals(name, model.backupName)
         val request = slot<OneTimeWorkRequest>()
-        every { work.getWorkInfoByIdFlow(any()) } returns MutableStateFlow(null)
-        every { work.enqueue(capture(request)) } returns mockk(relaxed = true)
+        every { work.getWorkInfoByIdFlow(any()) } returns MutableStateFlow(mockk {
+            every { state } returns WorkInfo.State.ENQUEUED
+        })
+        every { work.enqueue(capture(request)) } returns operation(SettableFuture.create<Operation.State.SUCCESS>().apply { set(Operation.SUCCESS) })
         model.restore(overwrite = false)
         model.restore(overwrite = true)
         verify(exactly = 1) { work.enqueue(any<OneTimeWorkRequest>()) }
@@ -109,5 +117,62 @@ class ExternalFileViewModelTest {
         assertFalse(request.captured.workSpec.input.getBoolean("overwrite", true))
         model.dismissBackup()
         assertEquals(name, model.backupName)
+    }
+
+    private fun operation(future: SettableFuture<Operation.State.SUCCESS>): Operation = mockk {
+        every { result } returns future
+    }
+
+    @Test fun failedEnqueueLeavesTheBackupAvailableForRetryOrCancel() = runBlocking {
+        val state = SavedStateHandle()
+        val model = model(state)
+        model.open(backup(), bookVisible = false)
+        awaitIdle(model)
+        val staged = ExternalFiles.backupFile(context, model.backupName!!)
+        val enqueued = SettableFuture.create<Operation.State.SUCCESS>()
+        every { work.enqueue(any<OneTimeWorkRequest>()) } returns operation(enqueued)
+        every { work.getWorkInfoByIdFlow(any()) } returns MutableStateFlow(null)
+        model.restore(false)
+        enqueued.setException(IOException("Work database is full"))
+        assertFalse(model.restoring)
+        assertNull(state.get<String>("restoreWork"))
+        assertTrue(staged.exists())
+        assertEquals(R.string.data_import_failed, withTimeout(1_000) { model.messageFlow.first() })
+        model.dismissBackup()
+        assertFalse(staged.exists())
+    }
+
+    @Test fun missingRestoredWorkDoesNotTrapTheUserInAnImportingDialog() = runBlocking {
+        val staged = ExternalFiles.stageBackup(context, backup().data!!)
+        val state = SavedStateHandle(mapOf("backupName" to staged.name, "restoreWork" to UUID.randomUUID().toString()))
+        every { work.getWorkInfoByIdFlow(any()) } returns MutableStateFlow(null)
+        val model = model(state)
+        assertFalse(model.restoring)
+        assertNull(state.get<String>("restoreWork"))
+        assertEquals(staged.name, model.backupName)
+        assertTrue(staged.exists())
+        assertEquals(R.string.data_import_failed, withTimeout(1_000) { model.messageFlow.first() })
+    }
+
+    @Test fun restoreWaitsForEnqueueBeforeObservingAndCleansUpOnlyAfterCompletion() = runBlocking {
+        val model = model()
+        model.open(backup(), bookVisible = false)
+        awaitIdle(model)
+        val staged = ExternalFiles.backupFile(context, model.backupName!!)
+        val enqueued = SettableFuture.create<Operation.State.SUCCESS>()
+        every { work.enqueue(any<OneTimeWorkRequest>()) } returns operation(enqueued)
+        val info = MutableStateFlow<WorkInfo?>(null)
+        every { work.getWorkInfoByIdFlow(any()) } returns info
+        model.restore(false)
+        verify(exactly = 0) { work.getWorkInfoByIdFlow(any()) }
+        assertTrue(model.restoring)
+        info.value = mockk { every { state } returns WorkInfo.State.RUNNING }
+        enqueued.set(Operation.SUCCESS)
+        assertTrue(staged.exists())
+        info.value = mockk { every { state } returns WorkInfo.State.SUCCEEDED }
+        assertFalse(model.restoring)
+        assertNull(model.backupName)
+        assertFalse(staged.exists())
+        assertEquals(R.string.data_import_success, withTimeout(1_000) { model.messageFlow.first() })
     }
 }

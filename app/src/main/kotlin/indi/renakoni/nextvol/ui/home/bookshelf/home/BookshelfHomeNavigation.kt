@@ -1,13 +1,18 @@
 package indi.renakoni.nextvol.ui.home.bookshelf.home
 
 import androidx.compose.animation.SharedTransitionScope
+import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -17,11 +22,11 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.dialog
 import androidx.navigation.toRoute
 import indi.renakoni.nextvol.R
+import indi.renakoni.nextvol.ui.ExternalFileViewModel
 import indi.renakoni.nextvol.ui.book.detail.navigateToBookDetailDestination
 import indi.renakoni.nextvol.ui.dialog.AddBookToBookshelfDialog
 import indi.renakoni.nextvol.ui.home.bookshelf.edit.navigateToBookshelfEditDestination
 import indi.renakoni.nextvol.ui.home.settings.navigateToSettingsDestination
-import indi.renakoni.nextvol.ui.localbook.LocalBookImportDialog
 import indi.renakoni.nextvol.ui.localbook.LocalBookImportViewModel
 import io.nightfish.lightnovelreader.api.Route
 import io.nightfish.lightnovelreader.api.bookshelf.Bookshelf
@@ -47,13 +52,18 @@ fun NavGraphBuilder.bookshelfHomeDestination(sharedTransitionScope: SharedTransi
                 }
             }
         }
-        val importViewModel = hiltViewModel<LocalBookImportViewModel>()
+        // Share the activity's import session and dialog with external file intents.
+        val activity = LocalView.current.context as ComponentActivity
+        val importViewModel = hiltViewModel<LocalBookImportViewModel>(activity)
+        val externalFiles = hiltViewModel<ExternalFileViewModel>(activity)
         val localBookshelfName = stringResource(R.string.local_bookshelf_name)
+        var targetShelf by rememberSaveable { mutableStateOf<Int?>(null) }
+        var targetName by rememberSaveable { mutableStateOf(localBookshelfName) }
         val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-            uri?.let(importViewModel::open)
-        }
-        LaunchedEffect(importViewModel) {
-            importViewModel.imported.collect { bookshelfHomeViewModel.changePage(it) }
+            if (uri != null && externalFiles.checkAvailable(importViewModel.state.visible)) {
+                importViewModel.selectTarget(targetShelf, targetName)
+                importViewModel.open(uri)
+            }
         }
         val bookshelfNewTitle = stringResource(R.string.bookshelf_new_title)
         val bookshelfEditTitle = stringResource(R.string.bookshelf_edit_title)
@@ -89,18 +99,13 @@ fun NavGraphBuilder.bookshelfHomeDestination(sharedTransitionScope: SharedTransi
             uiState = uiState,
             onSettings = navController::navigateToSettingsDestination,
             onImportLocalBook = {
-                val shelf = bookshelfHomeViewModel.uiState.selectedBookshelf
-                importViewModel.selectTarget(shelf?.id, shelf?.name ?: localBookshelfName)
-                importLauncher.launch(arrayOf("*/*"))
+                if (externalFiles.checkAvailable(importViewModel.state.visible)) {
+                    val shelf = bookshelfHomeViewModel.uiState.selectedBookshelf
+                    targetShelf = shelf?.id
+                    targetName = shelf?.name ?: localBookshelfName
+                    importLauncher.launch(arrayOf("*/*"))
+                }
             },
-        )
-        if (importViewModel.state.visible) LocalBookImportDialog(
-            state = importViewModel.state,
-            onDismiss = importViewModel::dismiss,
-            onTitleChange = importViewModel::changeTitle,
-            onEncodingChange = importViewModel::changeEncoding,
-            onRuleChange = importViewModel::changeRule,
-            onImport = importViewModel::confirm,
         )
     }
 
