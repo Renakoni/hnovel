@@ -31,6 +31,70 @@ class Wenku8SearchRecallTest {
         coEvery { remember(any(), any()) } just Runs
     }, BangumiSearchExpansion(BangumiSearchApi(api, api)))
 
+    @Test fun fastChannelIsNotBlockedBySlowRelations() = runBlocking {
+        val relationStarted = CompletableDeferred<Unit>()
+        val releaseRelations = CompletableDeferred<Unit>()
+        coEvery { api.searchTag("春物", 0) } returns BangumiSearchPage(listOf(
+            BangumiSubject(100, name = "Unmatched volume", platform = "小说")), 1)
+        coEvery { api.related(100) } coAnswers {
+            relationStarted.complete(Unit)
+            releaseRelations.await()
+            emptyList()
+        }
+        coEvery { api.search("春物", 0) } coAnswers {
+            relationStarted.await()
+            BangumiSearchPage(listOf(BangumiSubject(19441, nameCn = "果然我的青春恋爱喜剧搞错了")), 21)
+        }
+        val entries = listOf(Wenku8SearchEntry("1213", "果然我的青春恋爱喜剧搞错了", "渡航"))
+        val found = CompletableDeferred<Unit>()
+        val job = async { support(entries).bangumi.search("春物", 1, entries).onEach { batch ->
+            if (batch.matches.any { it.first.id == "1213" }) found.complete(Unit)
+        }.toList() }
+        try {
+            withTimeout(3_000) { found.await() }
+            assertFalse("Optional relations should still be blocked", releaseRelations.isCompleted)
+            releaseRelations.complete(Unit)
+            assertTrue(job.await().last().hasMore)
+        } finally { job.cancelAndJoin() }
+    }
+
+    @Test fun clearingWhileTheCatalogueLoadsPreventsTheOldSearchFromRecreatingItsCache() = runBlocking {
+        val context = RuntimeEnvironment.getApplication()
+        val catalog = Wenku8SearchCatalog(context)
+        catalog.clear()
+        val wrapped = mockk<Wenku8SearchCatalog> {
+            every { generation } answers { catalog.generation }
+            coEvery { snapshot() } coAnswers { catalog.snapshot().also { catalog.clear() } }
+            every { refreshInBackground() } just Runs
+            coEvery { remember(any(), any()) } coAnswers { catalog.remember(firstArg(), secondArg()) }
+        }
+        val info = Wenku8SearchEntry("9999", "缓存竞争测试", "Author").preview().copy(lastUpdated = java.time.LocalDateTime.now())
+        val support = Wenku8SearchSupport(wrapped, BangumiSearchExpansion(BangumiSearchApi(api, api)))
+        try {
+            val result = Wenku8SearchSession(support, "author", "Author") { _, _ ->
+                SearchPage(listOf(io.nightfish.lightnovelreader.api.web.search.SearchResult.MultipleBook("9999", info)), null)
+            }.page(1).last()
+            assertTrue(result.books.any { it.bookId == "9999" })
+            assertFalse(java.io.File(context.cacheDir, Wenku8SearchCatalog.DIRECTORY).exists())
+        } finally { catalog.clear() }
+    }
+
+    @Test fun parallelChannelsShareRelationshipReadsAndTheRequestBudget() = runBlocking {
+        val subjects = (1..8).map { BangumiSubject(it, nameCn = "系列", platform = "小说") }
+        val publicApi = mockk<BangumiSearchApi> {
+            coEvery { search("系列", 0, any()) } returns BangumiSearchPage(subjects, 8)
+        }
+        val ids = java.util.concurrent.ConcurrentHashMap.newKeySet<Int>()
+        coEvery { publicApi.related(any()) } coAnswers {
+            assertTrue("Duplicate relationship lookup", ids.add(firstArg()))
+            delay(10)
+            emptyList()
+        }
+        BangumiSearchExpansion(publicApi).search("系列", 1, emptyList()).toList()
+        assertEquals(6, ids.size)
+        coVerify(exactly = 6) { publicApi.related(any()) }
+    }
+
     @Test fun normalizationPreservesOriginalNamesAndNumericTitles() = runBlocking {
         val catalog = Wenku8SearchCatalog(RuntimeEnvironment.getApplication())
         val entries = catalog.snapshot()

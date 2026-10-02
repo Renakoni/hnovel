@@ -33,6 +33,8 @@ data class SearchHubSource(
     val page: Int = 1, val nextPage: Int? = null, val pending: Boolean = true,
     val failure: SourceSearchFailure? = null,
     val query: String? = null,
+    // Persist the current page's progress across cancellation and a cached-page replay.
+    val receivedBooks: Boolean = false, val addedBooks: Boolean = false,
 )
 
 data class SearchHubState(
@@ -156,7 +158,8 @@ class SearchHubViewModel internal constructor(
     fun loadMore() {
         if (state.value.searching || !state.value.hasMore || state.value.stopped) return
         mutable.value = state.value.copy(sources = state.value.sources.map {
-            if (it.nextPage != null) it.copy(page = it.nextPage, nextPage = null, pending = true, failure = null) else it
+            if (it.nextPage != null) it.copy(page = it.nextPage, nextPage = null, pending = true, failure = null,
+                receivedBooks = false, addedBooks = false) else it
         })
         loadPending()
     }
@@ -219,6 +222,8 @@ class SearchHubViewModel internal constructor(
             }
         }
         val ranked = rankedResults()
+        val receivedBooks = source.receivedBooks || batch.books.isNotEmpty()
+        val addedBooks = source.addedBooks || added
         val limited = state.value.limited || batch.limited || ranked.size > SEARCH_RESULT_LIMIT
         if (ranked.size > SEARCH_RESULT_LIMIT) {
             val retained = ranked.take(SEARCH_RESULT_LIMIT).mapTo(hashSetOf()) { it.id }
@@ -227,12 +232,13 @@ class SearchHubViewModel internal constructor(
         mutable.value = state.value.copy(books = ranked.take(SEARCH_RESULT_LIMIT), limited = limited,
             completed = state.value.completed + if (batch.complete) 1 else 0,
             sources = state.value.sources.map {
-                if (it.id == source.id && batch.complete) it.copy(pending = false, failure = batch.failure,
-                    nextPage = batch.nextPage?.takeIf { (added || batch.books.isEmpty()) && !limited }) else it
+                if (it.id != source.id) it else it.copy(receivedBooks = receivedBooks, addedBooks = addedBooks,
+                    pending = !batch.complete, failure = if (batch.complete) batch.failure else it.failure,
+                    nextPage = if (batch.complete) batch.nextPage?.takeIf { (addedBooks || !receivedBooks) && !limited } else it.nextPage)
             })
     }
 
-    private fun rankedResults() = results.values.sortedBy { book ->
+    private fun rankedResults() = results.values.sortedWith(compareBy<SearchHubBook> { book ->
         val info = book.preview
         val keyword = state.value.submittedKeyword
         book.score ?: when {
@@ -241,7 +247,7 @@ class SearchHubViewModel internal constructor(
             info.title.contains(keyword, ignoreCase = true) || info.author.contains(keyword, ignoreCase = true) -> 10
             else -> 20
         }
-    }
+    }.thenBy { if (it.score != null) it.id else "" })
 
     private fun details(id: String, preview: BookInformation?): Flow<Result<BookInformation, WebRequestError>> {
         var cached: Result<BookInformation, WebRequestError>? = null

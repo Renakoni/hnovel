@@ -11,6 +11,7 @@ import okhttp3.mockwebserver.MockWebServer
 import org.junit.Assert.*
 import org.junit.Test
 import java.io.IOException
+import java.util.concurrent.TimeUnit
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class BangumiSearchApiTest {
@@ -118,5 +119,25 @@ class BangumiSearchApiTest {
             server.enqueue(MockResponse().setBody("<html>Browser verification required</html>"))
             try { transport.search("春物", 0, false); fail() } catch (_: IOException) { }
         } finally { server.shutdown() }
+    }
+
+    @Test fun mirrorSuccessDoesNotWaitForTheLosingOfficialResponseBody() = runBlocking {
+        val officialServer = MockWebServer()
+        val mirrorServer = MockWebServer()
+        officialServer.start()
+        mirrorServer.start()
+        try {
+            officialServer.enqueue(MockResponse().setBody("""{"data":[],"total":0}""")
+                .setBodyDelay(3, TimeUnit.SECONDS))
+            mirrorServer.enqueue(MockResponse().setBody("""{"data":[{"id":19441}],"total":1}"""))
+            val client = OkHttpClient.Builder().callTimeout(5, TimeUnit.SECONDS).build()
+            val transport = BangumiSearchApi(BangumiApi(client, officialServer.url("/")),
+                BangumiApi(client, mirrorServer.url("/")))
+            // The official server sends headers immediately but stalls its body after await() resumes.
+            val result = withTimeout(2_000) { transport.search("春物", 0, false) }
+            assertEquals(19441, result.data.single().id)
+            assertEquals(1, officialServer.requestCount)
+            assertEquals(1, mirrorServer.requestCount)
+        } finally { officialServer.shutdown(); mirrorServer.shutdown() }
     }
 }

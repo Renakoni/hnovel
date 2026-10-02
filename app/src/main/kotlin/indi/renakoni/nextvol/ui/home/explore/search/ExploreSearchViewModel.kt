@@ -235,7 +235,7 @@ class ExploreSearchViewModel internal constructor(
                                 mutableState.searchResult[index] = item.bookId to flowOf(Ok(completeInfo))
                             }
                         }
-                        if (scores.isNotEmpty()) mutableState.searchResult.sortBy { scores[it.first] ?: 30 }
+                        if (scores.isNotEmpty()) mutableState.searchResult.sortWith(compareBy({ scores[it.first] ?: 30 }, { it.first }))
                         if (batch.complete) {
                             mutableState.nextPage = batch.nextPage?.takeIf { it > page }
                             mutableState.failure = batch.failure?.let(::searchFailure)

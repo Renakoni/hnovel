@@ -248,6 +248,61 @@ class SearchHubViewModelTest {
         assertFalse(model.state.value.hasMore)
     }
 
+    @Test fun cachedPageAfterResumeKeepsItsNextCursor() = runTest(dispatcher) {
+        var calls = 0
+        val provider = object : Paged() {
+            override fun searchPageUpdates(type: SearchType, keyword: String, page: Int, query: String?) = flow {
+                if (++calls == 1) {
+                    emit(SearchPage(listOf(item("1")), null, complete = false))
+                    awaitCancellation()
+                }
+                emit(SearchPage(listOf(item("1")), 2))
+            }
+        }
+        add("a", provider)
+        val model = model()
+        runCurrent(); model.search("Title"); runCurrent()
+        assertEquals(1, model.state.value.books.size)
+        model.stop(); model.resume(); advanceUntilIdle()
+        assertEquals(2, calls)
+        assertEquals(1, model.state.value.books.size)
+        assertTrue(model.state.value.hasMore)
+    }
+
+    @Test fun repeatedProgressivePageStopsWithoutLosingExistingResults() = runTest(dispatcher) {
+        val provider = object : Paged() {
+            override fun searchPageUpdates(type: SearchType, keyword: String, page: Int, query: String?) = flow {
+                emit(SearchPage(listOf(item("1")), null, complete = false))
+                emit(SearchPage(emptyList(), page + 1))
+            }
+        }
+        add("a", provider)
+        val model = model()
+        runCurrent(); model.search("Title"); advanceUntilIdle()
+        assertTrue(model.state.value.hasMore)
+        model.loadMore(); advanceUntilIdle()
+        assertEquals(1, model.state.value.books.size)
+        assertFalse(model.state.value.hasMore)
+    }
+
+    @Test fun scoredBatchesHaveStableOrderRegardlessOfArrivalOrder() = runTest(dispatcher) {
+        var reverse = false
+        val provider = object : Paged() {
+            override fun searchPageUpdates(type: SearchType, keyword: String, page: Int, query: String?) = flow {
+                for (id in if (reverse) listOf("2", "1") else listOf("1", "2"))
+                    emit(SearchPage(listOf(item(id)), null, complete = false, scores = mapOf(id to 10)))
+                emit(SearchPage(emptyList(), null))
+            }
+        }
+        add("a", provider)
+        val model = model()
+        runCurrent(); model.search("Title"); advanceUntilIdle()
+        val first = model.state.value.books.map { it.id }
+        reverse = true
+        model.search("Title"); advanceUntilIdle()
+        assertEquals(first, model.state.value.books.map { it.id })
+    }
+
     @Test fun replacingQueryWaitsForOldRequestsAndNeverPublishesTheirLateResults() = runTest(dispatcher) {
         val release = CompletableDeferred<Unit>()
         var active = 0

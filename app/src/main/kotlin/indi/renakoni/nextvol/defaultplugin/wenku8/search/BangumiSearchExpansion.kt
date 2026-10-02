@@ -4,6 +4,7 @@ import indi.renakoni.nextvol.data.bangumi.BangumiRelatedSubject
 import indi.renakoni.nextvol.data.bangumi.BangumiSubject
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -18,10 +19,9 @@ class BangumiSearchExpansion @Inject constructor(private val api: BangumiSearchA
     internal fun search(keyword: String, page: Int, catalog: List<Wenku8SearchEntry>): Flow<SearchExpansion> = channelFlow {
         val index = catalog.flatMap { entry -> entry.names.map { it to entry } }.groupBy({ it.first }, { it.second })
         val query = Wenku8SearchText.key(keyword)
-        val relations = mutableMapOf<Int, List<BangumiRelatedSubject>>()
-        val resolved = mutableSetOf<Int>()
+        val relations = mutableMapOf<Int, Deferred<List<BangumiRelatedSubject>>>()
+        val resolved = ConcurrentHashMap.newKeySet<Int>()
         val fallback = linkedMapOf<Int, String>()
-        var relationRequests = 0
         var hasMore = false
         fun searchPage(tag: Boolean) = flow {
             try {
@@ -33,6 +33,16 @@ class BangumiSearchExpansion @Inject constructor(private val api: BangumiSearchA
         }
         data class Candidate(val id: Int, val names: List<String>, val depth: Int, val root: Int, val score: Int)
         withTimeoutOrNull(16_000) {
+            suspend fun related(id: Int): List<BangumiRelatedSubject> {
+                // Both channels share in-flight reads and the six-request budget; never await under the lock.
+                val request = synchronized(relations) {
+                    relations[id] ?: if (relations.size >= 6) null else async {
+                        try { api.related(id) }
+                        catch (error: Exception) { currentCoroutineContext().ensureActive(); emptyList() }
+                    }.also { relations[id] = it }
+                }
+                return request?.await().orEmpty()
+            }
             merge(searchPage(false), searchPage(true)).collect { (tag, result) ->
                 hasMore = hasMore || (page * 10 < result.total && result.data.isNotEmpty())
                 val queue = ArrayDeque<Candidate>()
@@ -56,27 +66,18 @@ class BangumiSearchExpansion @Inject constructor(private val api: BangumiSearchA
                         fallback[subject.id] = subject.nameCn
                     if ((tag && subject.isNovel) || exact || tag && ordered.none { it.isNovel }) queue += candidate
                 }
-                while (queue.isNotEmpty()) {
+                // Keep accepting the other channel while this one walks optional relationships.
+                launch { while (queue.isNotEmpty()) {
                     currentCoroutineContext().ensureActive()
                     val candidate = queue.removeFirst()
                     if (candidate.depth >= 2 || !expanded.add(candidate.id)) continue
-                    var related = relations[candidate.id]
-                    if (related == null) {
-                        if (relationRequests >= 6) continue
-                        relationRequests++
-                        try { related = api.related(candidate.id).also { relations[candidate.id] = it } }
-                        catch (error: Exception) {
-                            currentCoroutineContext().ensureActive()
-                            continue
-                        }
-                    }
-                    val children = related.filter { it.type == 1 && it.relation in setOf("系列", "前传", "续集", "书籍") }
+                    val children = related(candidate.id).filter { it.type == 1 && it.relation in setOf("系列", "前传", "续集", "书籍") }
                         .sortedBy { if (it.relation == "系列") 0 else if (it.relation == "续集") 1 else 2 }
                         .map { Candidate(it.id, listOf(it.nameCn, it.name).filter(String::isNotBlank),
                             candidate.depth + 1, candidate.root, candidate.score + 1) }
                     children.forEach { match(it) }
                     children.asReversed().forEach { queue.addFirst(it) }
-                }
+                } }
             }
         }
         send(SearchExpansion(names = fallback.filterKeys { it !in resolved }.values.distinct().take(2),

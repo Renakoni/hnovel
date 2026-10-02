@@ -313,6 +313,24 @@ class ExploreSearchViewModelTest {
         verify(exactly = 0) { books.getBookInformationFlow(any<String>(), any()) }
     }
 
+    @Test fun scoredPagedResultsKeepTheSameOrderWhenChannelsFinishInReverse() = runTest(dispatcher) {
+        var reverse = false
+        val provider = object : Search(), PagedSearchProvider {
+            override suspend fun searchPage(type: SearchType, keyword: String, page: Int, query: String?) = error("Use batches")
+            override fun searchPageUpdates(type: SearchType, keyword: String, page: Int, query: String?) = flow {
+                for (id in if (reverse) listOf("2", "1") else listOf("1", "2"))
+                    emit(SearchPage(listOf(SearchResult.MultipleBook(id)), null, complete = false, scores = mapOf(id to 10)))
+                emit(SearchPage(emptyList(), null))
+            }
+        }
+        val model = model(add("a", provider))
+        advanceUntilIdle(); model.search("Title"); advanceUntilIdle()
+        val first = model.uiState.searchResult.map { it.first }
+        reverse = true
+        model.search("Title"); advanceUntilIdle()
+        assertEquals(first, model.uiState.searchResult.map { it.first })
+    }
+
     @Test fun pagedSourcePublishesIncrementallyAndLoadsMoreOnlyWhenRequested() = runTest(dispatcher) {
         val release = CompletableDeferred<Unit>()
         val requested = mutableListOf<Int>()

@@ -37,8 +37,8 @@ internal class Wenku8SearchSession(
         require(number > 0)
         lock.withLock {
             pages[number]?.takeIf { it.result.failure == null }?.let { send(it.result); return@withLock }
-            val entries = catalog ?: support.catalog.snapshot().also { catalog = it; support.catalog.refreshInBackground() }
             val catalogVersion = support.catalog.generation
+            val entries = catalog ?: support.catalog.snapshot().also { catalog = it; support.catalog.refreshInBackground() }
             if (explicit != null && !authorOnly) {
                 send(SearchPage(listOf(SearchResult.MultipleBook(explicit, entries.find { it.id == explicit }?.preview())), null,
                     scores = mapOf(explicit to 0), previewIds = setOf(explicit)))
