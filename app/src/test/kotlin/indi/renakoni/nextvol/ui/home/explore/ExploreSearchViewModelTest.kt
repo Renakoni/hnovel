@@ -59,7 +59,7 @@ class ExploreSearchViewModelTest {
         dispatcher.scheduler.advanceUntilIdle()
         Dispatchers.resetMain()
     }
-    private class Search : SearchProvider {
+    private open class Search : SearchProvider {
         override val searchTypes = listOf("title", "author").map { SearchType(it, LocalString(it), LocalString(it)) }
         val requests = mutableListOf<Pair<String, String>>()
         var results: (String) -> Flow<SearchResult> = { flowOf(SearchResult.MultipleBook("same"), SearchResult.End()) }
@@ -311,5 +311,36 @@ class ExploreSearchViewModelTest {
         val result = model.uiState.searchResult.single().second.first()
         assertTrue(result.isOk)
         verify(exactly = 0) { books.getBookInformationFlow(any<String>(), any()) }
+    }
+
+    @Test fun pagedSourcePublishesIncrementallyAndLoadsMoreOnlyWhenRequested() = runTest(dispatcher) {
+        val release = CompletableDeferred<Unit>()
+        val requested = mutableListOf<Int>()
+        val provider = object : Search(), PagedSearchProvider {
+            override suspend fun searchPage(type: SearchType, keyword: String, page: Int, query: String?) = error("Use batches")
+            override fun searchPageUpdates(type: SearchType, keyword: String, page: Int, query: String?) = flow {
+                requested += page
+                emit(SearchPage(listOf(SearchResult.MultipleBook("$page")), null, complete = false))
+                if (page == 1) release.await()
+                emit(SearchPage(emptyList(), if (page == 1) 2 else null))
+            }
+        }
+        val model = model(add("a", provider))
+        advanceUntilIdle()
+        model.search("title")
+        runCurrent()
+        assertEquals(1, model.uiState.searchResult.size)
+        assertFalse(model.uiState.isLoadingComplete)
+        release.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(listOf(1), requested)
+        assertEquals(2, model.uiState.nextPage)
+        model.loadMore()
+        model.loadMore()
+        advanceUntilIdle()
+        assertEquals(listOf(1, 2), requested)
+        assertEquals(2, model.uiState.searchResult.size)
+        assertNull(model.uiState.nextPage)
+        assertTrue(model.uiState.isLoadingComplete)
     }
 }

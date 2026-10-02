@@ -48,6 +48,7 @@ class NextVolApplication : Application(), Configuration.Provider, coil3.Singleto
     @Inject lateinit var userDataRepository: UserDataRepository
     @Inject lateinit var webBookDataSourceManager: WebBookDataSourceManager
     @Inject lateinit var sourceNetworkSettings: SourceNetworkSettings
+    @Inject lateinit var wenku8SearchSupport: indi.renakoni.nextvol.defaultplugin.wenku8.search.Wenku8SearchSupport
     @Inject lateinit var matomoAnalytics: MatomoAnalytics
 
     override val workManagerConfiguration: Configuration
@@ -92,7 +93,7 @@ class NextVolApplication : Application(), Configuration.Provider, coil3.Singleto
         startupPhase("sources") { runBlocking {
             startupPhase("builtin-source") {
                 webBookDataSourceManager.loadBuiltInSource(
-                    Wenku8Api { id -> sourceNetworkSettings.forSource(id).snapshot() },
+                    Wenku8Api(wenku8SearchSupport) { id -> sourceNetworkSettings.forSource(id).snapshot() },
                     SourceCategory.Anime,
                 )
             }

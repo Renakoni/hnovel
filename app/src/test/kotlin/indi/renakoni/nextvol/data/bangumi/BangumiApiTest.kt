@@ -29,6 +29,15 @@ class BangumiApiTest {
         assertTrue(request.getHeader("User-Agent")!!.contains("Renakoni/NextVol/"))
     }
 
+    @Test fun publicTagSearchUsesTagFilterAndNeverAnAccountCredential() = runBlocking {
+        server.enqueue(MockResponse().setBody("""{"data":[],"total":0}"""))
+        api.searchTag("实教", 10)
+        val request = server.takeRequest()
+        assertEquals("/v0/search/subjects?limit=10&offset=10", request.path)
+        assertEquals("""{"keyword":"","sort":"heat","filter":{"type":[1],"tag":["实教"]}}""", request.body.readUtf8())
+        assertNull(request.getHeader("Authorization"))
+    }
+
     @Test fun statusChangesAndCreationAreSeparateFromProgressAndAcceptEmptySuccess() = runBlocking {
         server.enqueue(MockResponse().setResponseCode(202))
         server.enqueue(MockResponse().setResponseCode(204))

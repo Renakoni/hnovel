@@ -147,6 +147,10 @@ class SourceIdentityRoomTest {
         val context = RuntimeEnvironment.getApplication()
         val data = indi.renakoni.nextvol.data.userdata.UserDataRepository(db.userDataDao())
         data.stringUserData("fixture/login").set("retained-login")
+        val searchCache = java.io.File(context.cacheDir, "wenku8-search/catalog.tsv.gz").apply {
+            parentFile!!.mkdirs()
+            writeText("search metadata")
+        }
         val cache = coil3.disk.DiskCache.Builder().directory(okio.Path.Companion.run {
             java.nio.file.Files.createTempDirectory("manual-image-cache").toString().toPath()
         }).maxSizeBytes(1024 * 1024).build()
@@ -162,13 +166,17 @@ class SourceIdentityRoomTest {
             mockk {
                 coEvery { getCachedSnapshot() } returns null
                 coEvery { refreshSnapshot() } returns indi.renakoni.nextvol.data.storage.StorageUsageSnapshot()
-            }, downloads, mockk(), mockk()
+            }, downloads, mockk(), mockk(), indi.renakoni.nextvol.defaultplugin.wenku8.search.Wenku8SearchCatalog(context)
         )
         val modelJob = model.viewModelScope.coroutineContext.job
         models.put("storage", model)
         try {
             assertNotNull(cache.openSnapshot("image")?.also { it.close() })
+            val usage = indi.renakoni.nextvol.data.storage.StorageUsageRepository(context, db, data).refreshSnapshot()
+            assertEquals(searchCache.length(), usage.searchCacheBytes)
+            assertEquals(usage.readingContentBytes + usage.imageCacheBytes + usage.searchCacheBytes, usage.readingCacheBytes)
             model.clearReadingCache()
+            assertFalse(searchCache.exists())
             assertTrue(db.chapterContentDao().getAllEntities().isEmpty())
             assertNull(cache.openSnapshot("image"))
             assertEquals(setOf(a.storageKey, b.storageKey), shelves.getBookshelf(1)!!.allBookIds.toSet())
@@ -198,7 +206,7 @@ class SourceIdentityRoomTest {
             mockk {
                 coEvery { getCachedSnapshot() } returns null
                 coEvery { refreshSnapshot() } returns indi.renakoni.nextvol.data.storage.StorageUsageSnapshot()
-            }, downloads, mockk(), mockk()
+            }, downloads, mockk(), mockk(), indi.renakoni.nextvol.defaultplugin.wenku8.search.Wenku8SearchCatalog(context)
         )
         val modelJob = model.viewModelScope.coroutineContext.job
         models.put("storage", model)

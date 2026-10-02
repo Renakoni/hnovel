@@ -25,7 +25,8 @@ data class StorageUsageSnapshot(
     val preparingChapterCount: Int = 0,
     val unfinishedDownloadCount: Int = 0,
     val schemaVersion: Int = 0,
+    val searchCacheBytes: Long = 0L,
 ) {
-    val readingCacheBytes get() = readingContentBytes + imageCacheBytes
+    val readingCacheBytes get() = readingContentBytes + imageCacheBytes + searchCacheBytes
     val downloadBytes get() = downloadedContentBytes + preparationBytes + downloadImageBytes
 }

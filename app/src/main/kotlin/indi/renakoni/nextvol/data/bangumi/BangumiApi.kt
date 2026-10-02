@@ -43,10 +43,19 @@ class BangumiApi internal constructor(private val client: OkHttpClient, private 
     suspend fun me(session: BangumiSession): BangumiUser = decode(request("GET", "v0/me", session = session)!!)
 
     suspend fun search(query: String, offset: Int = 0): BangumiSearchPage {
+        return searchSubjects(query, offset, false)
+    }
+
+    suspend fun searchTag(tag: String, offset: Int = 0): BangumiSearchPage = searchSubjects(tag, offset, true)
+
+    private suspend fun searchSubjects(query: String, offset: Int, tag: Boolean): BangumiSearchPage {
         val body = buildJsonObject {
-            put("keyword", query)
-            put("sort", "match")
-            put("filter", buildJsonObject { put("type", JsonArray(listOf(JsonPrimitive(1)))) })
+            put("keyword", if (tag) "" else query)
+            put("sort", if (tag) "heat" else "match")
+            put("filter", buildJsonObject {
+                put("type", JsonArray(listOf(JsonPrimitive(1))))
+                if (tag) put("tag", JsonArray(listOf(JsonPrimitive(query))))
+            })
         }
         return decode(request("POST", "v0/search/subjects?limit=10&offset=$offset", body)!!)
     }

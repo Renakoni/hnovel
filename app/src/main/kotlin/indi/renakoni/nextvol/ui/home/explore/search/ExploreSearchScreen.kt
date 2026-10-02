@@ -68,6 +68,7 @@ fun ExploreSearchScreen(
     onClickBook: (String) -> Unit,
     updateSuggestions: (keyword: String) -> Unit,
     onManageSources: () -> Unit,
+    onLoadMore: () -> Unit = {},
 ) {
     val searchKeyword = exploreSearchUiState.query
     Scaffold(
@@ -296,7 +297,8 @@ fun ExploreSearchScreen(
                 DiscoveryFailure(failure.error, refresh, onManageSources, onClickBack, failure.field, failure.permission, failure.diagnostic, failure.httpStatus)
             }
             if (exploreSearchUiState.isLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
-            if (exploreSearchUiState.isLoadingComplete && exploreSearchUiState.searchResult.isEmpty() && exploreSearchUiState.failure == null) {
+            if (exploreSearchUiState.isLoadingComplete && exploreSearchUiState.searchResult.isEmpty() &&
+                exploreSearchUiState.nextPage == null && exploreSearchUiState.failure == null) {
                 EmptyPage(
                     icon = painterResource(R.drawable.not_found_90dp),
                     title = stringResource(R.string.search_no_results),
@@ -334,6 +336,11 @@ fun ExploreSearchScreen(
                 }
                 if (!exploreSearchUiState.isLoadingComplete && exploreSearchUiState.failure == null && exploreSearchUiState.submittedKeyword.isNotBlank()) item {
                     LinearProgressIndicator(Modifier.fillMaxWidth().padding(vertical = 8.dp, horizontal = 20.dp))
+                }
+                if (exploreSearchUiState.nextPage != null && !exploreSearchUiState.isLoading) item {
+                    Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                        androidx.compose.material3.FilledTonalButton(onClick = onLoadMore) { Text(stringResource(R.string.search_load_more)) }
+                    }
                 }
             }
         }

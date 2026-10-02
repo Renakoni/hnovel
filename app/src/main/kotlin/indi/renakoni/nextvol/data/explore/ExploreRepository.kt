@@ -50,7 +50,8 @@ class SourceSearch internal constructor(private val runtime: SourceRuntime, val 
         result.copy(books = result.books.map { item ->
             val book = SourceBookId(runtime.id, item.bookId)
             SearchResult.MultipleBook(book.storageKey, item.information?.takeIf { it.id == item.bookId }?.let(book::bind))
-        })
+        }, scores = result.scores.mapKeys { (id, _) -> SourceBookId(runtime.id, id).storageKey },
+            previewIds = result.previewIds.mapTo(hashSetOf()) { SourceBookId(runtime.id, it).storageKey })
     }
 
     fun search(type: SearchType, keyword: String) = runtime.search.search(type, keyword).map { result ->

@@ -56,6 +56,7 @@ fun NavGraphBuilder.exploreSearchDestination() {
             }
         }
         ExploreSearchScreen(
+            onLoadMore = model::loadMore,
             exploreSearchUiState = model.uiState,
             refresh = model::retry,
             requestAddBookToBookshelf = { nav.navigateToAddBookToBookshelfDialog(it) },

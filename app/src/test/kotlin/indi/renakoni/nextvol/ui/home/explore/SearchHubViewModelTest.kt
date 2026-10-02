@@ -66,7 +66,7 @@ class SearchHubViewModelTest {
         var events: (String) -> Flow<SearchResult> = { flowOf(SearchResult.End()) }
         override fun search(searchType: SearchType, keyword: String) = events(keyword)
     }
-    private class Paged : Stream(), PagedSearchProvider {
+    private open class Paged : Stream(), PagedSearchProvider {
         val requests = mutableListOf<Pair<String, Int>>()
         val queries = mutableListOf<String?>()
         var load: suspend (String, Int) -> SearchPage = { _, _ -> SearchPage(emptyList(), null) }
@@ -197,6 +197,43 @@ class SearchHubViewModelTest {
         assertEquals(listOf("Title" to 1, "Title" to 2, "Title" to 3), provider.requests)
     }
 
+    @Test fun progressiveResultsRetainPreviewsRankUpdatesAndTheNextCursor() = runTest(dispatcher) {
+        val finish = CompletableDeferred<Unit>()
+        val provider = object : Paged() {
+            override fun searchPageUpdates(type: SearchType, keyword: String, page: Int, query: String?) = flow {
+                requests += keyword to page
+                if (page == 1) {
+                    emit(SearchPage(listOf(item("weak"), item("best")), null, complete = false,
+                        scores = mapOf("weak" to 30, "best" to 40), previewIds = setOf("weak", "best")))
+                    finish.await()
+                    emit(SearchPage(listOf(item("best", "Full metadata")), 2, scores = mapOf("best" to 5)))
+                } else emit(SearchPage(listOf(item("last")), null))
+            }
+        }
+        every { books.getBookInformationFlow(any<String>(), any()) } returns flowOf(
+            Err(io.nightfish.lightnovelreader.api.error.WebRequestError("Search", "offline")))
+        add("a", provider)
+        val model = model()
+        runCurrent()
+        model.search("title")
+        runCurrent()
+        assertEquals(2, model.state.value.books.size)
+        assertEquals(0, model.state.value.completed)
+        assertTrue(model.state.value.searching)
+        assertTrue(model.state.value.books.first().information.toList().all { it.isOk })
+        finish.complete(Unit)
+        advanceUntilIdle()
+        assertEquals("Full metadata", model.state.value.books.first().preview!!.title)
+        assertEquals(1, model.state.value.completed)
+        assertTrue(model.state.value.hasMore)
+        assertTrue(model.state.value.failures.isEmpty())
+        assertEquals(listOf("title" to 1), provider.requests)
+        model.loadMore()
+        advanceUntilIdle()
+        assertEquals(3, model.state.value.books.size)
+        assertFalse(model.state.value.hasMore)
+    }
+
     @Test fun repeatedPageEndsPaginationAndMatchingBooksRankAheadOfUnrelatedTitles() = runTest(dispatcher) {
         val provider = Paged().apply { load = { _, page -> SearchPage(listOf(item("other", "Other"), item("match", "Title")), page + 1) } }
         add("a", provider)
@@ -306,6 +343,7 @@ class SearchHubViewModelTest {
         runCurrent(); model.search("query"); advanceUntilIdle()
         accounts.begin(id); advanceUntilIdle()
         assertEquals(2, a.requests.size)
+        assertNotEquals(a.queries[0], a.queries[1])
         assertEquals(1, b.requests.size)
         registry.unregister(id); advanceUntilIdle()
         assertEquals(1, model.state.value.books.size)

@@ -67,6 +67,9 @@ class ExploreSearchViewModel internal constructor(
     // suggest() and suggestion-only retries use suggestionSerial without invalidating navigation.
     private var epoch = 0L
     private var suggestionSerial = 0L
+    private var page = 1
+    private var queryId = java.util.UUID.randomUUID().toString()
+    private val scores = mutableMapOf<String, Int>()
     private val outgoing = Channel<SearchNavigation>(Channel.BUFFERED)
     val navigation = outgoing.receiveAsFlow()
 
@@ -86,6 +89,7 @@ class ExploreSearchViewModel internal constructor(
                 mutableState.searchTypeIdList.clear()
                 mutableState.searchTypeNameMap.clear()
                 mutableState.searchResult.clear()
+                resetPages()
                 mutableState.suggestions = emptyList()
                 mutableState.suggestionFailure = null
                 mutableState.isLoadingComplete = false
@@ -111,6 +115,7 @@ class ExploreSearchViewModel internal constructor(
         cancelWork()
         chooseType(id)
         mutableState.searchResult.clear()
+        resetPages()
         mutableState.submittedKeyword = ""
         saved["search.submitted"] = ""
         mutableState.isLoadingComplete = false
@@ -133,6 +138,7 @@ class ExploreSearchViewModel internal constructor(
         saved["search.submitted"] = keyword
         mutableState.setSearchBarExpandedState(false)
         mutableState.searchResult.clear()
+        resetPages()
         mutableState.failure = if (version == null) SourceSearchFailure(DiscoveryError.Unavailable) else null
         mutableState.isLoadingComplete = false
         load()
@@ -149,6 +155,7 @@ class ExploreSearchViewModel internal constructor(
         mutableState.suggestionFailure = null
         mutableState.isLoadingComplete = false
         mutableState.searchResult.clear()
+        resetPages()
         load()
         suggest()
     }
@@ -160,6 +167,7 @@ class ExploreSearchViewModel internal constructor(
             // as a static snapshot without a spinner; "complete" prevents load() from restarting the
             // old submitted query while draft edits refresh suggestions. Submitting resumes results.
             mutableState.isLoadingComplete = true
+            mutableState.nextPage = null
             mutableState.query = keyword
             saved["search.query"] = keyword
         }
@@ -187,6 +195,7 @@ class ExploreSearchViewModel internal constructor(
         }
     }
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     private fun load() {
         if (!active || version == null || uiState.failure != null || work?.isActive == true) return
         if (session != null && (uiState.submittedKeyword.isBlank() || uiState.isLoadingComplete)) return
@@ -210,6 +219,33 @@ class ExploreSearchViewModel internal constructor(
                 }
                 if (token != epoch || !active || uiState.submittedKeyword.isBlank() || uiState.isLoadingComplete) return@launch
                 val type = current.types.first { it.type == uiState.searchType }
+                if (current.hasPages) {
+                    val seen = mutableState.searchResult.mapTo(hashSetOf()) { it.first }
+                    current.page(type, uiState.submittedKeyword, page, queryId).flowOn(io).transformWhile { batch ->
+                        if (token != epoch || !active) return@transformWhile false
+                        for (item in batch.books) {
+                            batch.scores[item.bookId]?.let { score -> scores[item.bookId] = minOf(scores[item.bookId] ?: Int.MAX_VALUE, score) }
+                            val completeInfo = item.information?.takeUnless { item.bookId in batch.previewIds }
+                            if (seen.add(item.bookId)) mutableState.searchResult.add(item.bookId to (
+                                completeInfo?.let { flowOf(Ok(it)) } ?: bookRepository.getBookInformationFlow(item.bookId)
+                                    .filter { it.isOk || item.information == null }
+                                    .onStart { item.information?.let { emit(Ok(it)) } }))
+                            else if (completeInfo != null) {
+                                val index = mutableState.searchResult.indexOfFirst { it.first == item.bookId }
+                                mutableState.searchResult[index] = item.bookId to flowOf(Ok(completeInfo))
+                            }
+                        }
+                        if (scores.isNotEmpty()) mutableState.searchResult.sortBy { scores[it.first] ?: 30 }
+                        if (batch.complete) {
+                            mutableState.nextPage = batch.nextPage?.takeIf { it > page }
+                            mutableState.failure = batch.failure?.let(::searchFailure)
+                        }
+                        emit(Unit)
+                        !batch.complete
+                    }.collect()
+                    if (token == epoch) mutableState.isLoadingComplete = true
+                    return@launch
+                }
                 val seen = mutableSetOf<String>()
                 mutableState.searchResult.clear()
                 current.search(type, uiState.submittedKeyword).flowOn(io).takeWhile { event ->
@@ -250,6 +286,23 @@ class ExploreSearchViewModel internal constructor(
         suggestions?.cancel()
         suggestions = null
         mutableState.isLoading = false
+    }
+
+    fun loadMore() {
+        val next = uiState.nextPage ?: return
+        if (!active || work?.isActive == true) return
+        page = next
+        mutableState.nextPage = null
+        mutableState.failure = null
+        mutableState.isLoadingComplete = false
+        load()
+    }
+
+    private fun resetPages() {
+        page = 1
+        queryId = java.util.UUID.randomUUID().toString()
+        scores.clear()
+        mutableState.nextPage = null
     }
 
     fun deleteHistory(value: String) {

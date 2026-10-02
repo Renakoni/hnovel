@@ -19,7 +19,7 @@
     <string name="storage_clear_cache">Clear cache</string>
     <string name="storage_reading_cache">Reading cache</string>
     <string name="storage_cache_empty">No reading cache to clear.</string>
-    <string name="storage_reading_cache_desc">Temporary chapters and images from reading. Clearing them keeps your downloads.</string>
+    <string name="storage_reading_cache_desc">Temporary chapters, images and search data. Clearing them keeps your downloads.</string>
     <string name="storage_downloads">Downloads</string>
     <string name="storage_downloads_empty">No downloaded content yet.</string>
     <string name="storage_download_counts">%1$d books · %2$d saved chapters</string>
