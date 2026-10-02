@@ -125,6 +125,7 @@ class SourceVerificationCoordinator @Inject constructor(private val registry: We
         }
         entry.verification.complete()
         if (!current(entry.prompt.owner)) throw SourceContentException(hnovel.content.ContentError.Unavailable, "browser.verification")
+        indi.renakoni.nextvol.data.image.SourceImageRetryEvents.request(entry.prompt.owner.source)
     }
 
     /** A background failure exposes an action, but never waits or opens an Activity itself. */

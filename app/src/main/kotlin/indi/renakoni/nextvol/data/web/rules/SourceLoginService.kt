@@ -47,6 +47,7 @@ class SourceLoginService @Inject constructor(private val sources: ImportedRuleSo
                 target(attempt).rules.login(values.toMap(), action, formId).also { result ->
                     target(attempt)
                     if (result.refreshDiscovery) sources.refreshDiscovery(attempt.source)
+                    indi.renakoni.nextvol.data.image.SourceImageRetryEvents.request(attempt.source)
                 }
             }
         } catch (cancelled: CancellationException) {

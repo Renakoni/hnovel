@@ -19,6 +19,10 @@ import coil3.intercept.Interceptor
 import coil3.request.ErrorResult
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
+import indi.renakoni.nextvol.data.book.SourceBookId
+import indi.renakoni.nextvol.data.image.SourceImage
+import indi.renakoni.nextvol.data.image.SourceImageRetryEvents
+import io.nightfish.lightnovelreader.api.identifier.Identifier
 import org.junit.*
 import org.junit.Assert.*
 import org.junit.runner.RunWith
@@ -64,20 +68,59 @@ class BookCoverTest {
                 else SuccessResult(createBitmap(60, 87).asImage(), chain.request, DataSource.MEMORY)
             })
         }.build()
-        val request = ImageRequest.Builder(activity.get()).data("https://fixture.invalid/cover").size(60, 87).build()
-        var visit by mutableIntStateOf(0)
+        val source = Identifier("fixture", "cover")
+        val request = ImageRequest.Builder(activity.get())
+            .data(SourceImage(SourceBookId(source, "fixture"), "https://fixture.invalid/cover", cover = true))
+            .size(60, 87).build()
         var fallback: Boolean? = null
         activity.get().setContent { MaterialTheme {
-            key(visit) { BookCoverImage(request, "fixture", 72.dp, 108.dp, "A book", "An author",
-                onFallbackChanged = { fallback = it }, imageLoader = loader) }
+            BookCoverImage(request, "fixture", 72.dp, 108.dp, "A book", "An author",
+                onFallbackChanged = { fallback = it }, imageLoader = loader)
         } }
         compose.waitForIdle()
         compose.waitUntil(10_000) { fallback == true }
         compose.onAllNodesWithContentDescription("Cover of A book").onFirst().assertIsDisplayed()
-        compose.runOnIdle { fallback = null; visit++ }
+        compose.runOnIdle { SourceImageRetryEvents.request(Identifier("fixture", "unrelated")) }
+        compose.waitForIdle()
+        assertEquals(1, calls.get())
+        compose.runOnIdle { fallback = null; SourceImageRetryEvents.request(source) }
         compose.onAllNodesWithContentDescription("Cover of A book").onFirst().assertExists()
         compose.waitUntil(10_000) { fallback == false }
         assertEquals(2, calls.get())
+        compose.runOnIdle { SourceImageRetryEvents.request(source) }
+        compose.waitForIdle()
+        assertEquals(2, calls.get())
+        loader.shutdown()
+    }
+
+    @Test fun persistentFailureRetriesOnlyOncePerExplicitAction() {
+        val calls = AtomicInteger()
+        val failures = AtomicInteger()
+        val loader = ImageLoader.Builder(activity.get()).components {
+            add(Interceptor { chain ->
+                calls.incrementAndGet()
+                ErrorResult(null, chain.request, IOException("fixture"))
+            })
+        }.build()
+        val source = Identifier("fixture", "persistent")
+        val request = ImageRequest.Builder(activity.get())
+            .data(SourceImage(SourceBookId(source, "fixture"), "https://fixture.invalid/cover", cover = true))
+            .size(60, 87).build()
+        activity.get().setContent { MaterialTheme {
+            BookCoverImage(request, "fixture", 72.dp, 108.dp, "A book",
+                onFallbackChanged = { if (it) failures.incrementAndGet() }, imageLoader = loader)
+        } }
+        compose.waitUntil(10_000) { failures.get() == 1 }
+        for (expected in 2..3) {
+            compose.waitForIdle()
+            compose.runOnIdle { SourceImageRetryEvents.request(source) }
+            compose.waitUntil(10_000) { failures.get() == expected }
+            compose.waitForIdle()
+            assertEquals(expected, calls.get())
+        }
+        compose.mainClock.advanceTimeBy(5_000)
+        compose.waitForIdle()
+        assertEquals(3, calls.get())
         loader.shutdown()
     }
 }

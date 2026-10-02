@@ -44,7 +44,7 @@ fun retryAfterMillis(response: BrokerResponse, nowMillis: Long = System.currentT
     response.headers.entries.filter { it.key.equals("Retry-After", true) }.flatMap { it.value }
         .mapNotNull { retryAfterMillis(it, nowMillis) }.maxOrNull() ?: 0
 
-private fun retryAfterMillis(header: String, nowMillis: Long): Long? {
+fun retryAfterMillis(header: String, nowMillis: Long = System.currentTimeMillis()): Long? {
     val value = header.trim()
     if (value.isNotEmpty() && value.all { it in '0'..'9' }) {
         val seconds = value.toLongOrNull() ?: return Long.MAX_VALUE
