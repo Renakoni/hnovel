@@ -364,10 +364,13 @@ class BookDownloadStore @Inject constructor(@ApplicationContext private val cont
         ChapterCheckpoint(chapter, signature, images, version)
     }
 
-    suspend fun hasCheckpointImage(attempt: Attempt, checkpoint: ChapterCheckpoint, uri: String): Boolean = current(attempt) {
+    suspend fun checkpointImage(attempt: Attempt, checkpoint: ChapterCheckpoint, uri: String): File? = current(attempt) {
         val file = imageFile(attempt.book, attempt.generation, uri, false, checkpoint.resourceVersion)
-        file.isFile && file.length() > 0 && !staleMarker(file).exists()
+        file.takeIf { it.isFile && it.length() > 0 && !staleMarker(it).exists() }
     }
+
+    suspend fun hasCheckpointImage(attempt: Attempt, checkpoint: ChapterCheckpoint, uri: String): Boolean =
+        checkpointImage(attempt, checkpoint, uri) != null
 
     suspend fun publish(attempt: Attempt, checkpoint: ChapterCheckpoint) = saveChapter(attempt, checkpoint.content,
         checkpoint.signature, checkpoint.images, resourceVersion = checkpoint.resourceVersion)
@@ -406,8 +409,8 @@ class BookDownloadStore @Inject constructor(@ApplicationContext private val cont
         staleMarker(imageFile(attempt.book, attempt.generation, uri, cover)).exists()
     }
 
-    suspend fun saveImage(attempt: Attempt, uri: String, cover: Boolean, bytes: ByteArray) = current(attempt) {
-        writeImage(imageFile(attempt.book, attempt.generation, uri, cover), bytes)
+    suspend fun saveImage(attempt: Attempt, uri: String, cover: Boolean, bytes: ByteArray, resourceVersion: String = "") = current(attempt) {
+        writeImage(imageFile(attempt.book, attempt.generation, uri, cover, resourceVersion), bytes)
     }
 
     /** Copy the successfully decoded source bytes, not a resized/re-encoded bitmap. */
