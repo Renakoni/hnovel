@@ -201,10 +201,10 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
     /** Resolve the same header precedence as an HTTP request without sending one. */
     suspend fun requestUserAgent(url: String, explicit: Map<String, String> = emptyMap()): String {
         checkOpen()
-        prepareUserAgent(explicit)
+        val address = requireNotNull(url.toHttpUrlOrNull())
+        prepareUserAgent(address, explicit, policy)
         return synchronized(this) {
             checkOpen()
-            val address = requireNotNull(url.toHttpUrlOrNull())
             headers(address, explicit, policy, includeCookies = false)["User-Agent"] ?: "okhttp/${OkHttp.VERSION}"
         }
     }
@@ -217,9 +217,11 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         return value
     }
 
-    private suspend fun prepareUserAgent(explicit: Map<String, String>) {
+    private suspend fun prepareUserAgent(url: HttpUrl, explicit: Map<String, String>, policy: NetworkPolicy) {
         // A source-selected request identity must not depend on initializing the default provider.
-        if (preferBrowserUserAgent && explicit.none { (key, value) -> key.equals("User-Agent", true) && value.isNotBlank() })
+        if (preferBrowserUserAgent && synchronized(this) {
+                headers(url, explicit, policy, includeCookies = false, includeDefaultUserAgent = false)["User-Agent"].isNullOrBlank()
+            })
             browserIdentity.await()
     }
 
@@ -440,7 +442,9 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
                 withTimeout(if (snapshot.browser?.interactive == true) 300000 else snapshot.timeoutMillis) {
                     // Resolve once before either HTTP or browser dispatch. Header rules can still
                     // override this default, but verification must not switch an automatic identity.
-                    if (!snapshot.url.startsWith("data:")) prepareUserAgent(snapshot.headers)
+                    if (!snapshot.url.startsWith("data:")) prepareUserAgent(
+                        snapshot.url.toHttpUrlOrNull() ?: throw BrokerFailure(RequestStage.Parse, FailureCode.InvalidRequest),
+                        snapshot.headers, policy)
                     if (snapshot.url.startsWith("data:")) {
                         val encoded = Regex("^data:.*?;base64,([A-Za-z0-9+/=\\s]*)$").matchEntire(snapshot.url)
                             ?.groupValues?.get(1) ?: throw BrokerFailure(RequestStage.Parse, FailureCode.InvalidRequest)
@@ -678,7 +682,8 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
     }
 
     private fun headers(url: HttpUrl, explicit: Map<String, String>, policy: NetworkPolicy, includeCookies: Boolean = true,
-        observation: RequestObservation? = null, attempt: Int? = null, hop: Int? = null): Headers {
+        observation: RequestObservation? = null, attempt: Int? = null, hop: Int? = null,
+        includeDefaultUserAgent: Boolean = true): Headers {
         val headers = Headers.Builder()
         val sources = observation?.let { mutableListOf<UserAgentSource>() }
         fun supplied(key: String, source: UserAgentSource) {
@@ -686,7 +691,7 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         }
         // Automatic browser sources share the provider's identity across HTTP and verification.
         // Headless hosts keep their configured compatibility default. Explicit headers win.
-        (if (preferBrowserUserAgent) providerUserAgent ?: defaultUserAgent else defaultUserAgent)
+        (if (!includeDefaultUserAgent) null else if (preferBrowserUserAgent) providerUserAgent ?: defaultUserAgent else defaultUserAgent)
             ?.let { headers.set("User-Agent", it); supplied("User-Agent", UserAgentSource.SessionDefault) }
         policy.check(url).headers.forEach { (key, value) -> headers.set(key, value); supplied(key, UserAgentSource.OriginGrant) }
         val sameOrigin = sourceUrl.toHttpUrlOrNull()?.let { NetworkPolicy.origin(it) == NetworkPolicy.origin(url) } == true

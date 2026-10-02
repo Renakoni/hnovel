@@ -91,4 +91,28 @@ class BrowserIdentityTest {
             }
         }
     }
+
+    @Test fun originAndLoginIdentitiesDoNotRequireTheDefaultBrowserProvider() = runBlocking {
+        val browser = object : BrowserExecutor {
+            override suspend fun defaultUserAgent(): String = error("An explicit identity must be independent of the provider")
+            override suspend fun execute(session: SourceSession, request: BrokerRequest, options: BrowserOptions,
+                guard: RequestCommitGuard, route: SourceNetworkRoute): BrokerResult = error("No navigation expected")
+        }
+        MockWebServer().use { server ->
+            server.start()
+            val base = server.url("/").toString()
+            for (account in listOf(false, true)) SourceBroker(directory.root.toPath(), browser = browser).use { broker ->
+                val session = broker.open(SourceScope("test", "explicit-$account", "legado"),
+                    listOf(NetworkGrant(base, true, headers = if (account) emptyMap() else mapOf("User-Agent" to "origin"))))
+                session.configureSource(base, true, defaultUserAgent = DESKTOP_USER_AGENT, preferBrowserUserAgent = true)
+                if (account) session.write(StorageRequest(StorageArea.Account, StorageRequestKey.LOGIN_HEADERS,
+                    """{"User-Agent":"account"}"""))
+                val expected = if (account) "account" else "origin"
+                assertEquals(expected, session.requestUserAgent(base))
+                server.enqueue(MockResponse())
+                assertTrue(session.execute(BrokerRequest("http", base)) is BrokerResult.Success)
+                assertEquals(expected, server.takeRequest().getHeader("User-Agent"))
+            }
+        }
+    }
 }
