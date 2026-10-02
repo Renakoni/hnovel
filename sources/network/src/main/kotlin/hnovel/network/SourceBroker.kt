@@ -661,6 +661,8 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         var callerHeaders = request.headers
         for (hop in 0..limits.maxRedirects) {
             policy.check(url)
+            // An origin/account override can disappear after a cross-origin redirect.
+            prepareUserAgent(url, callerHeaders, policy)
             rate.withLock {
                 val elapsed = (System.nanoTime() - lastStart) / 1_000_000
                 if (lastStart != 0L && elapsed < limits.minIntervalMillis) delay(limits.minIntervalMillis - elapsed)
