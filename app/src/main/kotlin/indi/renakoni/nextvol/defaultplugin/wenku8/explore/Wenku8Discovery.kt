@@ -41,11 +41,18 @@ class Wenku8Discovery(private val host: String, private val fetch: suspend (Stri
             try {
                 pending.forEachIndexed { index, (id, title) ->
                     launch {
-                        val section = preview(id).getOrElse {
-                            DiscoverySection(id, title, emptyList(), id,
-                                previewFailure = DiscoveryPreviewFailure(it), previewLoading = false)
+                        try {
+                            val section = preview(id).getOrElse {
+                                DiscoverySection(id, title, emptyList(), id,
+                                    previewFailure = DiscoveryPreviewFailure(it), previewLoading = false)
+                            }
+                            completed.send(index to section)
+                        } catch (cancelled: CancellationException) {
+                            // A child cancellation alone does not cancel coroutineScope;
+                            // wake the collector so it cannot wait for a missing result.
+                            completed.cancel(cancelled)
+                            throw cancelled
                         }
-                        completed.send(index to section)
                     }
                 }
                 repeat(pending.size) {
