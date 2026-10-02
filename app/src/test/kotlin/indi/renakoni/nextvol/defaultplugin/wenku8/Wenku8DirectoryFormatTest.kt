@@ -9,8 +9,10 @@ import indi.renakoni.nextvol.ui.book.detail.directoryPageChapters
 import indi.renakoni.nextvol.ui.book.detail.directoryPageCount
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
 import io.nightfish.lightnovelreader.api.book.BookVolumes
+import io.nightfish.lightnovelreader.api.util.Cache
 import kotlinx.coroutines.runBlocking
 import org.jsoup.Jsoup
 import org.junit.Assert.*
@@ -37,6 +39,7 @@ class Wenku8DirectoryFormatTest {
             append("</tbody></table></body></html>")
         }
         val api = mockk<Wenku8Api>()
+        every { api.cache } returns Cache()
         val url = "https://wenku8.test/novel/0/123/index.htm"
         coEvery { api.getWithWenku8Cookie(url) } returns Ok(Jsoup.parse(html))
         val result = Wenku8WebsiteDataSource("https://wenku8.test", api).getBookVolumes("123").get()!!

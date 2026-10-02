@@ -198,6 +198,9 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         return BrokerResult.Failure(RequestStage.Connect, FailureCode.Certificate, certificate = problem)
     }
 
+    // TTS is an API transport, not a browser source; preserve its existing default identity.
+    private val transportUserAgent get() = if (scope.profile == "http-tts") "okhttp/${OkHttp.VERSION}" else DESKTOP_USER_AGENT
+
     /** Resolve the same header precedence as an HTTP request without sending one. */
     suspend fun requestUserAgent(url: String, explicit: Map<String, String> = emptyMap()): String {
         checkOpen()
@@ -205,7 +208,7 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         prepareUserAgent(address, explicit, policy)
         return synchronized(this) {
             checkOpen()
-            headers(address, explicit, policy, includeCookies = false)["User-Agent"] ?: "okhttp/${OkHttp.VERSION}"
+            resolvedUserAgent(headers(address, explicit, policy, includeCookies = false)["User-Agent"], transportUserAgent)
         }
     }
 
@@ -686,27 +689,28 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         includeDefaultUserAgent: Boolean = true): Headers {
         val headers = Headers.Builder()
         val sources = observation?.let { mutableListOf<UserAgentSource>() }
-        fun supplied(key: String, source: UserAgentSource) {
+        fun supplied(key: String, value: String, source: UserAgentSource) {
+            if (key.equals("User-Agent", true) && value.isBlank()) return
+            headers.set(key, value)
             if (key.equals("User-Agent", true) && sources?.contains(source) == false) sources.add(source)
         }
         // Automatic browser sources share the provider's identity across HTTP and verification.
         // Headless hosts keep their configured compatibility default. Explicit headers win.
         (if (!includeDefaultUserAgent) null else if (preferBrowserUserAgent) providerUserAgent ?: defaultUserAgent else defaultUserAgent)
-            ?.let { headers.set("User-Agent", it); supplied("User-Agent", UserAgentSource.SessionDefault) }
-        policy.check(url).headers.forEach { (key, value) -> headers.set(key, value); supplied(key, UserAgentSource.OriginGrant) }
+            ?.let { supplied("User-Agent", it, UserAgentSource.SessionDefault) }
+        policy.check(url).headers.forEach { (key, value) -> supplied(key, value, UserAgentSource.OriginGrant) }
         val sameOrigin = sourceUrl.toHttpUrlOrNull()?.let { NetworkPolicy.origin(it) == NetworkPolicy.origin(url) } == true
         val loginHeaders = if (sameOrigin) (account.read(StorageRequestKey.LOGIN_HEADERS) as? StorageResult.Value)?.value else null
         loginHeaders?.let { Json.parseToJsonElement(it).let { json ->
             (json as kotlinx.serialization.json.JsonObject).forEach { (key, value) ->
-                headers.set(key, (value as kotlinx.serialization.json.JsonPrimitive).content)
-                supplied(key, UserAgentSource.AccountLogin)
+                supplied(key, (value as kotlinx.serialization.json.JsonPrimitive).content, UserAgentSource.AccountLogin)
             }
         } }
         // A CDN learned from page data must not receive a source's arbitrary credential headers.
         val knownOrigin = grants.any { sourceOrigin(it.origin) == NetworkPolicy.origin(url) }
         explicit.forEach { (key, value) ->
-            if (policy !== imagePolicy || knownOrigin || key.lowercase() in setOf("user-agent", "referer", "accept", "accept-language")) headers.set(key, value)
-            supplied(key, UserAgentSource.RequestHeaders)
+            if (policy !== imagePolicy || knownOrigin || key.lowercase() in setOf("user-agent", "referer", "accept", "accept-language"))
+                supplied(key, value, UserAgentSource.RequestHeaders)
         }
         if (headers.build().names().any { it.lowercase() in setOf("host", "content-length", "transfer-encoding", "proxy-authorization", "proxy-connection") }) {
             throw BrokerFailure(RequestStage.Permission, FailureCode.InvalidRequest)
@@ -731,10 +735,14 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
             headers.removeAll("Cookie")
             if (cookie.isNotEmpty()) headers.set("Cookie", cookie)
         }
+        if (includeCookies && headers["User-Agent"].isNullOrBlank()) {
+            headers.set("User-Agent", resolvedUserAgent(headers["User-Agent"], transportUserAgent))
+            sources?.add(UserAgentSource.TransportDefault)
+        }
         if (sources != null) {
             if (sources.isEmpty()) sources.add(if (includeCookies) UserAgentSource.TransportDefault else UserAgentSource.WebViewDefault)
             observation.record(RequestEvidence.HeadersResolved, userAgentSources = sources.toList(),
-                userAgent = UserAgentSummary.from(headers["User-Agent"] ?: if (includeCookies) "okhttp/${OkHttp.VERSION}" else null),
+                userAgent = UserAgentSummary.from(headers["User-Agent"]),
                 attempt = attempt, hop = hop, cookies = cookieDiagnostic?.get(0))
         }
         return headers.build()

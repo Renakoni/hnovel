@@ -372,7 +372,7 @@ abstract class DiscoveryPageViewModel(
         val previous = state.value.content[id] ?: newContent()
         if (previous.loaded || previous.loading || previous.acting || previous.error != null) return
         val retained = if (resumablePreviews.remove(id))
-            previous.sections.filter { it.previewFailure == null && it.books.isNotEmpty() }.associateBy { it.id }
+            previous.sections.filter { it.books.isNotEmpty() }.associateBy { it.id }
             else emptyMap()
         val token = ++serial
         put(id, previous.copy(loading = true))
@@ -393,7 +393,7 @@ abstract class DiscoveryPageViewModel(
                         val sections = update.getOrElse { failure = it; return@collect }
                         content = content.copy(sections = sections.map { section ->
                             previewOverrides[section.id] ?: retained[section.id]?.takeIf {
-                                section.previewLoading && section.books.isEmpty() && content.values == previous.values &&
+                                (section.previewLoading || section.previewFailure != null) && section.books.isEmpty() && content.values == previous.values &&
                                     it.title == section.title && it.more == section.more && it.categoryId == section.categoryId
                             }?.let { section.copy(books = it.books) } ?: section
                         })

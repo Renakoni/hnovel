@@ -82,6 +82,7 @@ class SourceWorkerTest {
         for (book in listOf(a, b)) {
             val runtime = mockk<SourceRuntime> {
                 every { canReplayDownloads } returns false
+                every { canDownloadConcurrently } returns false
                 coEvery { execute<Any?>(any()) } coAnswers { firstArg<suspend () -> Any?>().invoke() }
                 coEvery { canonicalBookId(any()) } coAnswers { firstArg() }
                 coEvery { getBookInformation("same", any(), any()) } returns Ok(info("same"))
@@ -105,6 +106,7 @@ class SourceWorkerTest {
         val context = RuntimeEnvironment.getApplication()
         val repository = mockk<BookRepository>()
         coEvery { repository.canReplayDownload(any()) } returns false
+        coEvery { repository.canDownloadConcurrently(any()) } returns false
         every { repository.downloadSource(any()) } returns null
         coEvery { repository.canonicalBook(any()) } coAnswers { firstArg() }
         coEvery { repository.refreshBookInformation(a, any(), any()) } returns Ok(info(a.storageKey))

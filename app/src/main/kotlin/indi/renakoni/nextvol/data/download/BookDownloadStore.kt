@@ -41,7 +41,7 @@ import javax.inject.Singleton
 @Singleton
 class BookDownloadStore @Inject constructor(@ApplicationContext private val context: Context,
     private val database: NextVolDatabase, private val decoder: ContentJsonDecoder) {
-    data class Attempt(val book: SourceBookId, val generation: Long, val id: String)
+    data class Attempt(val book: SourceBookId, val generation: Long, val id: String, val requireTask: Boolean = false)
     data class Task(val book: SourceBookId, val generation: Long, val workId: String)
     data class ChapterCheckpoint(val content: ChapterContent, val signature: String,
         val images: List<String>, val resourceVersion: String)
@@ -294,7 +294,7 @@ class BookDownloadStore @Inject constructor(@ApplicationContext private val cont
         if (previous.taskWorkId == id && previous.taskStatus == DownloadTaskStatus.Cancelled.name)
             throw CancellationException("Download task was cancelled")
         dao.put(previous.copy(phase = "updating", generation = generation, attempt = id))
-        Attempt(book, generation, id)
+        Attempt(book, generation, id, requireTask)
     } }
 
     private suspend fun <T> current(attempt: Attempt, block: suspend (BookDownloadEntity) -> T): T =
@@ -302,6 +302,7 @@ class BookDownloadStore @Inject constructor(@ApplicationContext private val cont
             currentCoroutineContext().ensureActive()
             val owner = dao.get(attempt.book.storageKey)
             if (attempt.generation != generation() || owner == null || owner.attempt != attempt.id ||
+                attempt.requireTask && owner.taskWorkId != attempt.id ||
                 owner.taskWorkId == attempt.id && owner.taskStatus == DownloadTaskStatus.Cancelled.name)
                 throw CancellationException("Download was cleared or replaced")
             block(checkNotNull(owner))
