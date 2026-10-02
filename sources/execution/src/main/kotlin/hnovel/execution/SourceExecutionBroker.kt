@@ -71,15 +71,21 @@ class SourceExecutionBroker(val identity: ExecutionIdentity, private val authori
     }
 
     private suspend fun callWithHeaders(name: String, args: List<JsonElement>, sourceHeaders: Map<String, String>): JsonElement {
+        if (name == "java.getUserAgent") {
+            authorized { require(args.isEmpty()) }
+            val value = requestUserAgent ?: ownedWork {
+                session.requestUserAgent(baseUrl.ifBlank { session.sourceUrl }, sourceHeaders)
+            }
+            return authorized { JsonPrimitive(value) }
+        }
         // BookSource.getKey only returns its URL. Per-image text replacement can read it
         // hundreds of times without making any requests or accessing persistent storage.
-        if (name in setOf("source.getKey", "source.getBookSourceName", "source.getLastUpdateTime", "java.getUserAgent", "request.userAgent")) return authorized {
+        if (name in setOf("source.getKey", "source.getBookSourceName", "source.getLastUpdateTime", "request.userAgent")) return authorized {
             require(args.isEmpty())
             when (name) {
                 "source.getBookSourceName" -> JsonPrimitive(sourceName)
                 "source.getLastUpdateTime" -> JsonPrimitive(sourceLastUpdateTime)
                 "request.userAgent" -> requestUserAgent?.let(::JsonPrimitive) ?: JsonNull
-                "java.getUserAgent" -> JsonPrimitive(requestUserAgent ?: session.requestUserAgent(baseUrl.ifBlank { session.sourceUrl }, sourceHeaders))
                 else -> JsonPrimitive(session.sourceUrl.ifBlank { baseUrl })
             }
         }
