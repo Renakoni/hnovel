@@ -92,6 +92,35 @@ class BrowserIdentityTest {
         }
     }
 
+    @Test fun redirectFromAnExplicitOriginResolvesTheDestinationDefaultIdentity() = runBlocking {
+        val calls = AtomicInteger()
+        val browser = object : BrowserExecutor {
+            override suspend fun defaultUserAgent(): String { calls.incrementAndGet(); return "actual-provider" }
+            override suspend fun execute(session: SourceSession, request: BrokerRequest, options: BrowserOptions,
+                guard: RequestCommitGuard, route: SourceNetworkRoute): BrokerResult = error("No navigation expected")
+        }
+        MockWebServer().use { first -> MockWebServer().use { second ->
+            first.start(); second.start()
+            val base = first.url("/").toString()
+            val destination = second.url("/").toString()
+            for (account in listOf(false, true)) SourceBroker(directory.root.toPath(), browser = browser).use { broker ->
+                val session = broker.open(SourceScope("test", "redirect-$account", "legado"), listOf(
+                    NetworkGrant(base, true, headers = if (account) emptyMap() else mapOf("User-Agent" to "origin")),
+                    NetworkGrant(destination, true)))
+                session.configureSource(base, true, defaultUserAgent = DESKTOP_USER_AGENT, preferBrowserUserAgent = true)
+                if (account) session.write(StorageRequest(StorageArea.Account, StorageRequestKey.LOGIN_HEADERS,
+                    """{"User-Agent":"account"}"""))
+                first.enqueue(MockResponse().setResponseCode(302).setHeader("Location", destination))
+                second.enqueue(MockResponse())
+                assertTrue(session.execute(BrokerRequest("redirect", base)) is BrokerResult.Success)
+                assertEquals(if (account) "account" else "origin", first.takeRequest().getHeader("User-Agent"))
+                assertEquals("actual-provider", second.takeRequest().getHeader("User-Agent"))
+                assertEquals("actual-provider", session.requestUserAgent(destination))
+            }
+            assertEquals(2, calls.get())
+        } }
+    }
+
     @Test fun originAndLoginIdentitiesDoNotRequireTheDefaultBrowserProvider() = runBlocking {
         val browser = object : BrowserExecutor {
             override suspend fun defaultUserAgent(): String = error("An explicit identity must be independent of the provider")
