@@ -3,8 +3,6 @@
     <string name="storage_refresh_failed">Could not update storage usage. Try refreshing.</string>
     <string name="storage_measuring">Measuring storage…</string>
     <string name="storage_your_content">Your content</string>
-    <string name="storage_size_note">Content sizes are estimates. Database space may be reused later, so deleting content may not immediately shrink the database file.</string>
-    <string name="storage_external_note">Exported files outside the app are not included or deleted. Switching source accounts keeps local content.</string>
     <string name="storage_updated_at">Updated at %1$s</string>
     <string name="storage_download_images">Downloaded images</string>
     <string name="storage_download_images_desc">Covers and illustrations saved for offline reading. Kept by cache cleanup; removed when their downloads are deleted.</string>
@@ -33,5 +31,4 @@
     <string name="download_error_storage_quota">This source reached its saved-state limit. Clearing reading cache will not reset it. Check or update the source rule before continuing.</string>
     <string name="storage_distribution">Storage overview</string>
     <string name="storage_used_short">App usage</string>
-    <string name="storage_chart_hint">Select a category to see what it contains and how cleanup affects it.</string>
 </resources>

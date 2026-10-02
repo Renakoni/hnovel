@@ -94,16 +94,18 @@ internal fun StorageUsageChart(snapshot: StorageUsageSnapshot, loading: Boolean)
                     legend(Modifier.fillMaxWidth())
                 }
             }
-            HorizontalDivider(color = colors.outlineVariant.copy(alpha = .5f))
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (selectedSection != null) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(stringResource(selectedSection.title), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-                    val share = if (snapshot.totalBytes > 0) selectedSection.size.toDouble() / snapshot.totalBytes else 0.0
-                    Text(NumberFormat.getPercentInstance().apply { maximumFractionDigits = 1 }.format(share),
-                        style = MaterialTheme.typography.labelLarge, color = colors.onSurfaceVariant)
+            if (selectedSection != null) {
+                HorizontalDivider(color = colors.outlineVariant.copy(alpha = .5f))
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(stringResource(selectedSection.title), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+                        val share = if (snapshot.totalBytes > 0) selectedSection.size.toDouble() / snapshot.totalBytes else 0.0
+                        Text(NumberFormat.getPercentInstance().apply { maximumFractionDigits = 1 }.format(share),
+                            style = MaterialTheme.typography.labelLarge, color = colors.onSurfaceVariant)
+                    }
+                    Text(stringResource(selectedSection.description),
+                        style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
                 }
-                Text(stringResource(selectedSection?.description ?: R.string.storage_chart_hint),
-                    style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
             }
         }
     }

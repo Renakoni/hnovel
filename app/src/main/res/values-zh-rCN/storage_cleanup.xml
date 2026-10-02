@@ -3,8 +3,6 @@
     <string name="storage_refresh_failed">未能更新空间统计，请刷新重试。</string>
     <string name="storage_measuring">正在统计空间…</string>
     <string name="storage_your_content">内容与清理</string>
-    <string name="storage_size_note">内容大小为估算值。删除正文后，数据库会复用腾出的空间，文件不一定立即缩小。</string>
-    <string name="storage_external_note">应用外的导出文件不计入统计，也不会被清理。切换书源账号会保留本地内容。</string>
     <string name="storage_updated_at">更新于 %1$s</string>
     <string name="storage_download_images">下载图片</string>
     <string name="storage_download_images_desc">离线阅读所需的封面和插图。清缓存时保留，删除对应下载时移除。</string>
@@ -33,5 +31,4 @@
     <string name="download_error_storage_quota">该书源的状态存储已达配额，并非应用总空间已满。清阅读缓存不会重置此配额，请检查或更新书源规则后继续。</string>
     <string name="storage_distribution">空间概况</string>
     <string name="storage_used_short">已用空间</string>
-    <string name="storage_chart_hint">点选类别，查看占用内容与清理范围。</string>
 </resources>

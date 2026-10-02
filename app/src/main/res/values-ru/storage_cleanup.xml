@@ -3,8 +3,6 @@
     <string name="storage_refresh_failed">Не удалось обновить данные. Повторите попытку.</string>
     <string name="storage_measuring">Подсчёт объёма…</string>
     <string name="storage_your_content">Ваши данные</string>
-    <string name="storage_size_note">Размер содержимого приблизительный. После удаления база может использовать освободившееся место повторно, не уменьшая размер файла сразу.</string>
-    <string name="storage_external_note">Экспортированные за пределы приложения файлы не учитываются и не удаляются. Смена аккаунта источника сохраняет локальные данные.</string>
     <string name="storage_updated_at">Обновлено в %1$s</string>
     <string name="storage_download_images">Скачанные изображения</string>
     <string name="storage_download_images_desc">Обложки и иллюстрации для чтения без сети. Очистка кэша их сохраняет; удаление загрузок удаляет их.</string>
@@ -33,5 +31,4 @@
     <string name="download_error_storage_quota">Достигнут лимит сохранённого состояния источника. Это не общий лимит приложения. Очистка кэша его не сбросит; проверьте или обновите правило источника.</string>
     <string name="storage_distribution">Обзор хранилища</string>
     <string name="storage_used_short">Занято</string>
-    <string name="storage_chart_hint">Выберите категорию, чтобы узнать её состав и правила очистки.</string>
 </resources>

@@ -21,7 +21,7 @@ fun StorageOverviewContent(
 ) {
     val snapshot = uiState.snapshot
     LazyColumn(modifier.testTag("storage_overview"), contentPadding = PaddingValues(20.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp)) {
+        verticalArrangement = Arrangement.spacedBy(16.dp)) {
         if (uiState.failed) item {
             Surface(color = MaterialTheme.colorScheme.errorContainer, shape = MaterialTheme.shapes.large) {
                 Column(Modifier.fillMaxWidth().padding(16.dp)) {
@@ -45,10 +45,6 @@ fun StorageOverviewContent(
                     Text(stringResource(R.string.storage_your_content), style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier.padding(start = 4.dp))
                     StorageCleanupSettings(snapshot, clearReadingCache, clearDownloads, onOpenBooks, !uiState.isLoading)
-                    Text(stringResource(R.string.storage_size_note), style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 4.dp))
-                    Text(stringResource(R.string.storage_external_note), style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 4.dp))
                 }
             }
         }

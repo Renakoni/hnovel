@@ -3,8 +3,6 @@
     <string name="storage_refresh_failed">未能更新空間統計，請重新整理。</string>
     <string name="storage_measuring">正在統計空間…</string>
     <string name="storage_your_content">內容與清理</string>
-    <string name="storage_size_note">內容大小為估算值。刪除正文後，資料庫會重用騰出的空間，檔案不一定立即縮小。</string>
-    <string name="storage_external_note">應用程式外的匯出檔案不計入統計，也不會被清理。切換書源帳號會保留本機內容。</string>
     <string name="storage_updated_at">更新於 %1$s</string>
     <string name="storage_download_images">下載圖片</string>
     <string name="storage_download_images_desc">離線閱讀所需的封面和插圖。清除快取時保留，刪除對應下載時移除。</string>
@@ -33,5 +31,4 @@
     <string name="download_error_storage_quota">該書源的狀態儲存已達配額，並非應用程式總空間已滿。清除閱讀快取不會重設此配額，請檢查或更新書源規則後繼續。</string>
     <string name="storage_distribution">空間概況</string>
     <string name="storage_used_short">已用空間</string>
-    <string name="storage_chart_hint">點選類別，查看佔用內容與清理範圍。</string>
 </resources>
