@@ -1,0 +1,1908 @@
+{
+  "origin": "https://api.bgm.tv/v0/",
+  "capturedAt": "2026-10-02",
+  "notes": "First 10 results in original order; only fields used for recall are retained. Unrecorded relation requests behave as unavailable optional requests.",
+  "cases": [
+    {
+      "keyword": "春物",
+      "keywordPage": {
+        "total": 821,
+        "data": [
+          {
+            "platform": "小说",
+            "name": "やはり俺の青春ラブコメはまちがっている。",
+            "name_cn": "我的青春恋爱物语果然有问题",
+            "id": 19441,
+            "series": true,
+            "type": 1,
+            "infobox": [
+              {
+                "key": "别名",
+                "value": [
+                  {
+                    "v": "我的青春恋爱喜剧果然有问题"
+                  },
+                  {
+                    "v": "果然我的青春恋爱喜剧搞错了。"
+                  },
+                  {
+                    "v": "Yahari Ore no Seishun Lovecome wa Machigatte Iru."
+                  },
+                  {
+                    "v": "My Teen Romantic Comedy: SNAFU"
+                  },
+                  {
+                    "v": "My Teenage RomCom SNAFU"
+                  },
+                  {
+                    "v": "俺ガイル"
+                  },
+                  {
+                    "v": "OreGairu"
+                  },
+                  {
+                    "v": "春物"
+                  },
+                  {
+                    "v": "果青"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "platform": "小说",
+            "name": "こぐまのクーク物語 春と夏",
+            "name_cn": "",
+            "id": 634335,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "漫画",
+            "name": "春の音",
+            "name_cn": "春之音",
+            "id": 7421,
+            "series": false,
+            "type": 1,
+            "infobox": [
+              {
+                "key": "别名",
+                "value": [
+                  {
+                    "v": "吹奏情人梦"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "platform": "漫画",
+            "name": "春を抱いていた",
+            "name_cn": "拥抱春天的罗曼史",
+            "id": 19443,
+            "series": true,
+            "type": 1,
+            "infobox": [
+              {
+                "key": "别名",
+                "value": [
+                  {
+                    "v": "抱春"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "platform": "漫画",
+            "name": "春行きバス 1",
+            "name_cn": "春浪漫巴士 1",
+            "id": 24257,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "漫画",
+            "name": "春行きバス 2",
+            "name_cn": "春浪漫巴士 2",
+            "id": 24258,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "漫画",
+            "name": "春行きバス 3",
+            "name_cn": "春浪漫巴士 3",
+            "id": 24259,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "漫画",
+            "name": "春行きバス 4",
+            "name_cn": "春浪漫巴士 4",
+            "id": 24260,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "漫画",
+            "name": "春恋さくら",
+            "name_cn": "春戀櫻花飛",
+            "id": 34793,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "漫画",
+            "name": "春夢",
+            "name_cn": "",
+            "id": 47193,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          }
+        ]
+      },
+      "tagPage": {
+        "total": 6,
+        "data": [
+          {
+            "platform": "小说",
+            "name": "やはり俺の青春ラブコメはまちがっている。",
+            "name_cn": "我的青春恋爱物语果然有问题",
+            "id": 19441,
+            "series": true,
+            "type": 1,
+            "infobox": [
+              {
+                "key": "别名",
+                "value": [
+                  {
+                    "v": "我的青春恋爱喜剧果然有问题"
+                  },
+                  {
+                    "v": "果然我的青春恋爱喜剧搞错了。"
+                  },
+                  {
+                    "v": "Yahari Ore no Seishun Lovecome wa Machigatte Iru."
+                  },
+                  {
+                    "v": "My Teen Romantic Comedy: SNAFU"
+                  },
+                  {
+                    "v": "My Teenage RomCom SNAFU"
+                  },
+                  {
+                    "v": "俺ガイル"
+                  },
+                  {
+                    "v": "OreGairu"
+                  },
+                  {
+                    "v": "春物"
+                  },
+                  {
+                    "v": "果青"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "platform": "小说",
+            "name": "やはり俺の青春ラブコメはまちがっている。6",
+            "name_cn": "我的青春恋爱物语果然有问题 6",
+            "id": 53666,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "小说",
+            "name": "やはり俺の青春ラブコメはまちがっている。4",
+            "name_cn": "我的青春恋爱物语果然有问题 4",
+            "id": 43904,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "小说",
+            "name": "やはり俺の青春ラブコメはまちがっている。14",
+            "name_cn": "我的青春恋爱物语果然有问题 14",
+            "id": 293478,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "小说",
+            "name": "やはり俺の青春ラブコメはまちがっている。12",
+            "name_cn": "我的青春恋爱物语果然有问题 12",
+            "id": 209360,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "小说",
+            "name": "やはり俺の青春ラブコメはまちがっている。結",
+            "name_cn": "我的青春恋爱物语果然有问题。结",
+            "id": 345943,
+            "series": true,
+            "type": 1,
+            "infobox": []
+          }
+        ]
+      },
+      "expectedIds": [
+        "1213"
+      ]
+    },
+    {
+      "keyword": "俺妹",
+      "keywordPage": {
+        "total": 1000,
+        "data": [
+          {
+            "platform": "漫画",
+            "name": "妹は猫",
+            "name_cn": "俺妹是猫",
+            "id": 305694,
+            "series": true,
+            "type": 1,
+            "infobox": [
+              {
+                "key": "别名",
+                "value": [
+                  {
+                    "v": "俺妹是貓"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "platform": "漫画",
+            "name": "俺が妹と結婚しているのはないしょだ",
+            "name_cn": "与妹成婚乃机密事项",
+            "id": 151717,
+            "series": true,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "漫画",
+            "name": "俺の妹がこんなに可愛いわけがない",
+            "name_cn": "我的妹妹哪有這麼可愛！",
+            "id": 45334,
+            "series": true,
+            "type": 1,
+            "infobox": [
+              {
+                "key": "别名",
+                "value": [
+                  {
+                    "v": "俺妹"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "platform": "其他",
+            "name": "俺の妹がこんなに可愛いわけがない  アニメ制作資料集",
+            "name_cn": "我的妹妹不可能这么可爱 动画制作资料集",
+            "id": 94096,
+            "series": false,
+            "type": 1,
+            "infobox": [
+              {
+                "key": "别名",
+                "value": [
+                  {
+                    "v": "俺妹アニメ制作資料集"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "platform": "小说",
+            "name": "俺の妹がこんなに可愛いわけがない (4)",
+            "name_cn": "",
+            "id": 2621,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "小说",
+            "name": "俺の妹がこんなに可愛いわけがない",
+            "name_cn": "我的妹妹哪有这么可爱！",
+            "id": 2622,
+            "series": true,
+            "type": 1,
+            "infobox": [
+              {
+                "key": "别名",
+                "value": [
+                  {
+                    "v": "我的妹妹不可能这么可爱"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "platform": "小说",
+            "name": "俺の妹がこんなに可愛いわけがない (3)",
+            "name_cn": "",
+            "id": 2623,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "小说",
+            "name": "俺の妹がこんなに可愛いわけがない (2)",
+            "name_cn": "",
+            "id": 2624,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "小说",
+            "name": "俺の妹がこんなに可愛いわけがない",
+            "name_cn": "",
+            "id": 2625,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "小说",
+            "name": "俺の妹がこんなに可愛いわけがない (5)",
+            "name_cn": "",
+            "id": 3978,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          }
+        ]
+      },
+      "tagPage": {
+        "total": 18,
+        "data": [
+          {
+            "platform": "小说",
+            "name": "俺の妹がこんなに可愛いわけがない",
+            "name_cn": "我的妹妹哪有这么可爱！",
+            "id": 2622,
+            "series": true,
+            "type": 1,
+            "infobox": [
+              {
+                "key": "别名",
+                "value": [
+                  {
+                    "v": "我的妹妹不可能这么可爱"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "platform": "小说",
+            "name": "俺の妹がこんなに可愛いわけがない",
+            "name_cn": "",
+            "id": 2625,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "小说",
+            "name": "俺の妹がこんなに可愛いわけがない (2)",
+            "name_cn": "",
+            "id": 2624,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "小说",
+            "name": "俺の妹がこんなに可愛いわけがない (3)",
+            "name_cn": "",
+            "id": 2623,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "小说",
+            "name": "俺の妹がこんなに可愛いわけがない (4)",
+            "name_cn": "",
+            "id": 2621,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "小说",
+            "name": "俺の妹がこんなに可愛いわけがない (5)",
+            "name_cn": "",
+            "id": 3978,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "小说",
+            "name": "俺の妹がこんなに可愛いわけがない (6)",
+            "name_cn": "",
+            "id": 5339,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "小说",
+            "name": "俺の妹がこんなに可愛いわけがない (7)",
+            "name_cn": "",
+            "id": 9902,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "小说",
+            "name": "俺の妹がこんなに可愛いわけがない (8)",
+            "name_cn": "",
+            "id": 17359,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "小说",
+            "name": "俺の妹がこんなに可愛いわけがない (9)",
+            "name_cn": "",
+            "id": 23127,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          }
+        ]
+      },
+      "expectedIds": [
+        "47"
+      ]
+    },
+    {
+      "keyword": "实教",
+      "keywordPage": {
+        "total": 219,
+        "data": [
+          {
+            "platform": "漫画",
+            "name": "고3여교생",
+            "name_cn": "实习老师的变装游戏",
+            "id": 227971,
+            "series": true,
+            "type": 1,
+            "infobox": [
+              {
+                "key": "别名",
+                "value": [
+                  {
+                    "k": "台版",
+                    "v": "高3實習女教師"
+                  },
+                  {
+                    "k": "日版",
+                    "v": "ハイスクールガーデン"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "platform": "漫画",
+            "name": "キモチイイって日本語で何て言うの？ ～実力派俳優に迫られました～",
+            "name_cn": "請教我怎麼表達這份快感～實力派演員推我上了他的床～",
+            "id": 497947,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "小说",
+            "name": "悪の教典",
+            "name_cn": "恶之教典",
+            "id": 68344,
+            "series": false,
+            "type": 1,
+            "infobox": [
+              {
+                "key": "别名",
+                "value": [
+                  {
+                    "v": "莲实的课堂"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "platform": "漫画",
+            "name": "実録鬼嫁日記 (1)",
+            "name_cn": "",
+            "id": 65858,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "漫画",
+            "name": "実録鬼嫁日記 (2)",
+            "name_cn": "",
+            "id": 65859,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "漫画",
+            "name": "実録鬼嫁日記",
+            "name_cn": "实录鬼嫁日记",
+            "id": 65860,
+            "series": true,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "漫画",
+            "name": "實驗品家庭",
+            "name_cn": "实验品家庭",
+            "id": 205334,
+            "series": true,
+            "type": 1,
+            "infobox": [
+              {
+                "key": "别名",
+                "value": [
+                  {
+                    "v": "実験品家族"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "platform": "漫画",
+            "name": "實驗品家庭 (1)",
+            "name_cn": "实验品家庭 (1)",
+            "id": 238538,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "漫画",
+            "name": "實驗品家庭 (2)",
+            "name_cn": "实验品家庭 (2)",
+            "id": 238539,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "其他",
+            "name": "実伝 石田三成",
+            "name_cn": "",
+            "id": 274606,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          }
+        ]
+      },
+      "tagPage": {
+        "total": 36,
+        "data": [
+          {
+            "platform": "小说",
+            "name": "ようこそ実力至上主義の教室へ 3年生編",
+            "name_cn": "欢迎来到实力至上主义的教室 3年级篇",
+            "id": 534682,
+            "series": true,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "小说",
+            "name": "ようこそ実力至上主義の教室へ (1)",
+            "name_cn": "",
+            "id": 132824,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "小说",
+            "name": "ようこそ実力至上主義の教室へ (4)",
+            "name_cn": "",
+            "id": 183682,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "小说",
+            "name": "ようこそ実力至上主義の教室へ (3)",
+            "name_cn": "",
+            "id": 165426,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "小说",
+            "name": "ようこそ実力至上主義の教室へ (2)",
+            "name_cn": "",
+            "id": 146128,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "小说",
+            "name": "ようこそ実力至上主義の教室へ (5)",
+            "name_cn": "",
+            "id": 202564,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "小说",
+            "name": "ようこそ実力至上主義の教室へ (6)",
+            "name_cn": "",
+            "id": 213887,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "小说",
+            "name": "ようこそ実力至上主義の教室へ (7)",
+            "name_cn": "",
+            "id": 227061,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "小说",
+            "name": "ようこそ実力至上主義の教室へ (7.5)",
+            "name_cn": "",
+            "id": 232735,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "小说",
+            "name": "ようこそ実力至上主義の教室へ (4.5)",
+            "name_cn": "",
+            "id": 191394,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          }
+        ]
+      },
+      "expectedIds": [
+        "1973"
+      ]
+    },
+    {
+      "keyword": "魔禁",
+      "keywordPage": {
+        "total": 1000,
+        "data": [
+          {
+            "platform": "小说",
+            "name": "純粋培養すぎる聖女の逆行 II.半魔のエルフ×禁忌の継承魔法",
+            "name_cn": "",
+            "id": 663583,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "其他",
+            "name": "魔笛",
+            "name_cn": "",
+            "id": 11461,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "漫画",
+            "name": "魔砲使い黒姫 1",
+            "name_cn": "",
+            "id": 14722,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "漫画",
+            "name": "魔探偵ロキ",
+            "name_cn": "魔侦探洛基",
+            "id": 30259,
+            "series": true,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "漫画",
+            "name": "魔探偵ロキ (7)",
+            "name_cn": "",
+            "id": 30260,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "漫画",
+            "name": "魔探偵ロキ (6)",
+            "name_cn": "",
+            "id": 30261,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "漫画",
+            "name": "魔探偵ロキ (4)",
+            "name_cn": "",
+            "id": 30262,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "漫画",
+            "name": "魔探偵ロキ (3)",
+            "name_cn": "",
+            "id": 30263,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "漫画",
+            "name": "魔探偵ロキ (5)",
+            "name_cn": "",
+            "id": 30264,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "漫画",
+            "name": "魔探偵ロキ (2)",
+            "name_cn": "",
+            "id": 30265,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          }
+        ]
+      },
+      "tagPage": {
+        "total": 17,
+        "data": [
+          {
+            "platform": "漫画",
+            "name": "とある魔術の禁書目録外伝 とある科学の超電磁砲",
+            "name_cn": "某科学的超电磁炮",
+            "id": 3582,
+            "series": true,
+            "type": 1,
+            "infobox": [
+              {
+                "key": "别名",
+                "value": [
+                  {
+                    "v": "魔法禁书目录外传 科学超电磁炮"
+                  },
+                  {
+                    "v": "A Certain Scientific Railgun"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "platform": "漫画",
+            "name": "とある魔術の禁書目録",
+            "name_cn": "魔法禁书目录",
+            "id": 24239,
+            "series": true,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "小说",
+            "name": "とある魔術の禁書目録 (3)",
+            "name_cn": "",
+            "id": 3561,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "漫画",
+            "name": "とある魔術の禁書目録外伝 とある科学の心理掌握",
+            "name_cn": "某科学的心理掌握",
+            "id": 344035,
+            "series": true,
+            "type": 1,
+            "infobox": [
+              {
+                "key": "别名",
+                "value": [
+                  {
+                    "v": "魔法禁書目錄外傳 科學心理掌握"
+                  },
+                  {
+                    "v": "魔法禁书目录外传 科学心理掌握"
+                  },
+                  {
+                    "v": "とある科学の心理掌握〈メンタルアウト〉"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "platform": "漫画",
+            "name": "とある魔術の禁書目録外伝 とある科学の一方通行",
+            "name_cn": "某科学的一方通行",
+            "id": 95590,
+            "series": true,
+            "type": 1,
+            "infobox": [
+              {
+                "key": "别名",
+                "value": [
+                  {
+                    "v": "魔法禁书目录外传 科学一方通行"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "platform": "漫画",
+            "name": "とある科学の超電磁砲外伝 アストラル・バディ",
+            "name_cn": "某科学的超电磁炮外传 幽幻姐妹",
+            "id": 217840,
+            "series": true,
+            "type": 1,
+            "infobox": [
+              {
+                "key": "别名",
+                "value": [
+                  {
+                    "v": "A Certain Scientific Railgun: Astral Buddy"
+                  },
+                  {
+                    "v": "科学超电磁炮外传"
+                  },
+                  {
+                    "v": "某科学的超电磁炮外传 Astral Buddy"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "platform": "小说",
+            "name": "新約 とある魔術の禁書目録 (1)",
+            "name_cn": "",
+            "id": 13247,
+            "series": false,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "漫画",
+            "name": "とある魔術の禁書目録外伝 とある科学の未元物質",
+            "name_cn": "某科学的未元物质",
+            "id": 291461,
+            "series": false,
+            "type": 1,
+            "infobox": [
+              {
+                "key": "别名",
+                "value": [
+                  {
+                    "v": "魔法禁书目录外传 科学未元物质"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "platform": "漫画",
+            "name": "とある偶像の一方通行さま",
+            "name_cn": "某偶像的一方通行大人",
+            "id": 165389,
+            "series": true,
+            "type": 1,
+            "infobox": []
+          },
+          {
+            "platform": "小说",
+            "name": "とある暗部の少女共棲",
+            "name_cn": "暗部共生少女",
+            "id": 439286,
+            "series": true,
+            "type": 1,
+            "infobox": [
+              {
+                "key": "别名",
+                "value": [
+                  {
+                    "k": "非官方",
+                    "v": "某暗部的少女共栖"
+                  },
+                  {
+                    "v": "暗部少女共栖"
+                  },
+                  {
+                    "v": "Toaru Anbu no Item"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expectedIds": [
+        "3",
+        "1297",
+        "2728"
+      ]
+    }
+  ],
+  "relations": {
+    "45334": [
+      {
+        "name": "俺の妹がこんなに可愛いわけがない",
+        "name_cn": "我的妹妹哪有这么可爱！",
+        "relation": "书籍",
+        "type": 1,
+        "id": 2622
+      },
+      {
+        "name": "俺の妹がこんなに可愛いわけがない",
+        "name_cn": "我的妹妹哪有这么可爱！",
+        "relation": "动画",
+        "type": 2,
+        "id": 5436
+      },
+      {
+        "name": "俺の後輩がこんなに可愛いわけがない",
+        "name_cn": "我的后辈哪有这么可爱",
+        "relation": "番外篇",
+        "type": 1,
+        "id": 37659
+      },
+      {
+        "name": "俺の妹がこんなに可愛いわけがない (1)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 45298
+      },
+      {
+        "name": "俺の妹がこんなに可愛いわけがない (2)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 10044
+      },
+      {
+        "name": "俺の妹がこんなに可愛いわけがない (3)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 45299
+      },
+      {
+        "name": "俺の妹がこんなに可愛いわけがない (4)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 149390
+      }
+    ],
+    "132824": [
+      {
+        "name": "ようこそ実力至上主義の教室へ",
+        "name_cn": "欢迎来到实力至上主义的教室",
+        "relation": "系列",
+        "type": 1,
+        "id": 132823
+      }
+    ],
+    "296857": [
+      {
+        "name": "ようこそ実力至上主義の教室へ",
+        "name_cn": "欢迎来到实力至上主义的教室",
+        "relation": "前传",
+        "type": 1,
+        "id": 132823
+      },
+      {
+        "name": "ようこそ実力至上主義の教室へ 終・2年生編、3年生編startBOX トモセシュンサク Art Works",
+        "name_cn": "",
+        "relation": "画集",
+        "type": 1,
+        "id": 655946
+      },
+      {
+        "name": "ようこそ実力至上主義の教室へ 一之瀬帆波 キャラクターブック",
+        "name_cn": "",
+        "relation": "其他",
+        "type": 1,
+        "id": 639069
+      },
+      {
+        "name": "ようこそ実力至上主義の教室へ 2年生編公式ガイドブック Second List",
+        "name_cn": "",
+        "relation": "其他",
+        "type": 1,
+        "id": 535670
+      },
+      {
+        "name": "ようこそ実力至上主義の教室へ 3年生編",
+        "name_cn": "欢迎来到实力至上主义的教室 3年级篇",
+        "relation": "续集",
+        "type": 1,
+        "id": 534682
+      },
+      {
+        "name": "ようこそ実力至上主義の教室へ 2年生編 start トモセシュンサク Art Works",
+        "name_cn": "",
+        "relation": "画集",
+        "type": 1,
+        "id": 461481
+      },
+      {
+        "name": "ようこそ実力至上主義の教室へ 2年生編 (1)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 296858
+      },
+      {
+        "name": "ようこそ実力至上主義の教室へ 2年生編",
+        "name_cn": "欢迎来到实力至上主义的教室 2年级篇",
+        "relation": "书籍",
+        "type": 1,
+        "id": 354774
+      },
+      {
+        "name": "ようこそ実力至上主義の教室へ 4th Season",
+        "name_cn": "欢迎来到实力至上主义的教室 第四季",
+        "relation": "动画",
+        "type": 2,
+        "id": 510710
+      },
+      {
+        "name": "ようこそ実力至上主義の教室へ 5th Season",
+        "name_cn": "欢迎来到实力至上主义的教室 第五季",
+        "relation": "动画",
+        "type": 2,
+        "id": 663370
+      },
+      {
+        "name": "ようこそ実力至上主義の教室へ 2年生編 2nd Stage",
+        "name_cn": "欢迎来到实力至上主义的教室 2年级篇 第2章",
+        "relation": "书籍",
+        "type": 1,
+        "id": 535232
+      },
+      {
+        "name": "ようこそ実力至上主義の教室へ 2年生編 (2)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 309275
+      },
+      {
+        "name": "ようこそ実力至上主義の教室へ 2年生編 (3)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 317195
+      },
+      {
+        "name": "ようこそ実力至上主義の教室へ 2年生編 (4)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 323793
+      },
+      {
+        "name": "ようこそ実力至上主義の教室へ 2年生編 (4.5)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 333963
+      },
+      {
+        "name": "ようこそ実力至上主義の教室へ 2年生編 (5)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 348206
+      },
+      {
+        "name": "ようこそ実力至上主義の教室へ 2年生編 (6)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 364706
+      },
+      {
+        "name": "ようこそ実力至上主義の教室へ 2年生編 (7)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 384689
+      },
+      {
+        "name": "ようこそ実力至上主義の教室へ 2年生編 (8)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 400161
+      },
+      {
+        "name": "ようこそ実力至上主義の教室へ 2年生編  (9)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 412209
+      },
+      {
+        "name": "ようこそ実力至上主義の教室へ 2年生編 (9.5)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 432026
+      },
+      {
+        "name": "ようこそ実力至上主義の教室へ 2年生編 (10)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 451476
+      },
+      {
+        "name": "ようこそ実力至上主義の教室へ 2年生編 (11)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 472646
+      },
+      {
+        "name": "ようこそ実力至上主義の教室へ 2年生編 (12)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 496944
+      },
+      {
+        "name": "ようこそ実力至上主義の教室へ 2年生編 (12.5)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 515182
+      }
+    ],
+    "534682": [
+      {
+        "name": "ようこそ実力至上主義の教室へ 2年生編",
+        "name_cn": "欢迎来到实力至上主义的教室 2年级篇",
+        "relation": "前传",
+        "type": 1,
+        "id": 296857
+      },
+      {
+        "name": "ようこそ実力至上主義の教室へ 一之瀬帆波 キャラクターブック",
+        "name_cn": "",
+        "relation": "其他",
+        "type": 1,
+        "id": 639069
+      },
+      {
+        "name": "ようこそ実力至上主義の教室へ 終・2年生編、3年生編startBOX トモセシュンサク Art Works",
+        "name_cn": "",
+        "relation": "画集",
+        "type": 1,
+        "id": 655946
+      },
+      {
+        "name": "ようこそ実力至上主義の教室へ 3年生編 (1)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 534684
+      },
+      {
+        "name": "ようこそ実力至上主義の教室へ 3年生編 (2)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 561188
+      },
+      {
+        "name": "ようこそ実力至上主義の教室へ 3年生編 (3)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 588507
+      },
+      {
+        "name": "ようこそ実力至上主義の教室へ 3年生編 (4)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 636401
+      },
+      {
+        "name": "ようこそ実力至上主義の教室へ 3年生編 (5)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 697831
+      }
+    ],
+    "3561": [
+      {
+        "name": "とある魔術の禁書目録",
+        "name_cn": "魔法禁书目录",
+        "relation": "系列",
+        "type": 1,
+        "id": 3559
+      }
+    ],
+    "13247": [
+      {
+        "name": "新約 とある魔術の禁書目録",
+        "name_cn": "新约 魔法禁书目录",
+        "relation": "系列",
+        "type": 1,
+        "id": 45251
+      }
+    ],
+    "3559": [
+      {
+        "name": "一番くじ限定電撃鎌池和馬10周年記念文庫",
+        "name_cn": "一等奖限定电击镰池和马10周年纪念文库",
+        "relation": "其他",
+        "type": 1,
+        "id": 546443
+      },
+      {
+        "name": "デュラララ!!",
+        "name_cn": "无头骑士异闻录",
+        "relation": "联动",
+        "type": 1,
+        "id": 4615
+      },
+      {
+        "name": "ヘヴィーオブジェクト",
+        "name_cn": "重装武器",
+        "relation": "联动",
+        "type": 1,
+        "id": 20669
+      },
+      {
+        "name": "とある魔術の禁書目録",
+        "name_cn": "魔法禁书目录",
+        "relation": "书籍",
+        "type": 1,
+        "id": 24239
+      },
+      {
+        "name": "とある魔術の禁書目録―エンデュミオンの奇蹟―",
+        "name_cn": "魔法禁书目录 恩底弥翁的奇迹",
+        "relation": "动画",
+        "type": 2,
+        "id": 26804
+      },
+      {
+        "name": "とある魔術の禁書目録 SP",
+        "name_cn": "魔法禁书目录 SP",
+        "relation": "番外篇",
+        "type": 1,
+        "id": 29963
+      },
+      {
+        "name": "新約 とある魔術の禁書目録",
+        "name_cn": "新约 魔法禁书目录",
+        "relation": "续集",
+        "type": 1,
+        "id": 45251
+      },
+      {
+        "name": "とある偶像の一方通行さま",
+        "name_cn": "某偶像的一方通行大人",
+        "relation": "不同世界观",
+        "type": 1,
+        "id": 165389
+      },
+      {
+        "name": "とある魔術の電脳戦機（バーチャロン）",
+        "name_cn": "某魔法的电脑战机",
+        "relation": "游戏",
+        "type": 4,
+        "id": 211082
+      },
+      {
+        "name": "とある魔術の禁書目録 幻想収束",
+        "name_cn": "魔法禁书目录 幻想收束",
+        "relation": "游戏",
+        "type": 4,
+        "id": 269645
+      },
+      {
+        "name": "とある魔術の禁書目録 頂点決戦Ⅱ",
+        "name_cn": "魔法禁书目录：顶点决战",
+        "relation": "游戏",
+        "type": 4,
+        "id": 272525
+      },
+      {
+        "name": "とある魔術の禁書目録 外典書庫",
+        "name_cn": "魔法禁书目录 外典书库",
+        "relation": "番外篇",
+        "type": 1,
+        "id": 310486
+      },
+      {
+        "name": "とある魔術の禁書目録外伝 とある科学の心理掌握",
+        "name_cn": "某科学的心理掌握",
+        "relation": "番外篇",
+        "type": 1,
+        "id": 344035
+      },
+      {
+        "name": "とある暗部の少女共棲",
+        "name_cn": "暗部共生少女",
+        "relation": "番外篇",
+        "type": 1,
+        "id": 439286
+      },
+      {
+        "name": "とある魔術の禁書目録",
+        "name_cn": "魔法禁书目录",
+        "relation": "动画",
+        "type": 2,
+        "id": 1014
+      },
+      {
+        "name": "とある魔術の禁書目録",
+        "name_cn": "魔法禁书目录",
+        "relation": "游戏",
+        "type": 4,
+        "id": 11220
+      },
+      {
+        "name": "とある魔術の禁書目録外伝 とある科学の超電磁砲",
+        "name_cn": "某科学的超电磁炮",
+        "relation": "番外篇",
+        "type": 1,
+        "id": 3582
+      },
+      {
+        "name": "電撃学園RPG Cross of Venus",
+        "name_cn": "电击学园RPG 女神的十字架",
+        "relation": "角色出演",
+        "type": 4,
+        "id": 1084
+      },
+      {
+        "name": "とある魔術の禁書目録 (1)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 1538
+      },
+      {
+        "name": "とある魔術の禁書目録外伝 とある科学の一方通行",
+        "name_cn": "某科学的一方通行",
+        "relation": "番外篇",
+        "type": 1,
+        "id": 95590
+      },
+      {
+        "name": "とある魔術の禁書目録 (2)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 3560
+      },
+      {
+        "name": "電撃文庫 FIGHTING CLIMAX",
+        "name_cn": "电击文库 格斗巅峰",
+        "relation": "角色出演",
+        "type": 4,
+        "id": 84944
+      },
+      {
+        "name": "とある魔術の禁書目録Ⅱ",
+        "name_cn": "魔法禁书目录 第二季",
+        "relation": "动画",
+        "type": 2,
+        "id": 7843
+      },
+      {
+        "name": "とある魔術の禁書目録 (3)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 3561
+      },
+      {
+        "name": "とある魔術の禁書目録外伝 とある科学の未元物質",
+        "name_cn": "某科学的未元物质",
+        "relation": "番外篇",
+        "type": 1,
+        "id": 291461
+      },
+      {
+        "name": "電撃文庫 FIGHTING CLIMAX IGNITION",
+        "name_cn": "电击文库 巅峰格斗者再燃",
+        "relation": "角色出演",
+        "type": 4,
+        "id": 146296
+      },
+      {
+        "name": "魔法禁书目录",
+        "name_cn": "",
+        "relation": "游戏",
+        "type": 4,
+        "id": 229846
+      },
+      {
+        "name": "とある魔術の禁書目録 (4)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 3562
+      },
+      {
+        "name": "とある魔術の禁書目録Ⅲ",
+        "name_cn": "魔法禁书目录 第三季",
+        "relation": "动画",
+        "type": 2,
+        "id": 226540
+      },
+      {
+        "name": "电击文库：零境交错",
+        "name_cn": "",
+        "relation": "角色出演",
+        "type": 4,
+        "id": 228714
+      },
+      {
+        "name": "とある魔術の禁書目録 (5)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 3563
+      },
+      {
+        "name": "とある魔術の禁書目録外伝 エース御坂美琴 対 クイーン食蜂操祈!!",
+        "name_cn": "魔法禁书目录外传 王牌御坂美琴对女王食蜂操祈！！",
+        "relation": "番外篇",
+        "type": 1,
+        "id": 487493
+      },
+      {
+        "name": "とある魔術の禁書目録 (6)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 3564
+      },
+      {
+        "name": "とある魔術の禁書目録 (7)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 3565
+      },
+      {
+        "name": "とある魔術の禁書目録 (8)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 3566
+      },
+      {
+        "name": "とある魔術の禁書目録 (9)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 3567
+      },
+      {
+        "name": "とある魔術の禁書目録 (10)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 3568
+      },
+      {
+        "name": "とある魔術の禁書目録 (11)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 3569
+      },
+      {
+        "name": "とある魔術の禁書目録 (12)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 3570
+      },
+      {
+        "name": "とある魔術の禁書目録 (13)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 3571
+      },
+      {
+        "name": "とある魔術の禁書目録 SS",
+        "name_cn": "魔法禁书目录SS",
+        "relation": "单行本",
+        "type": 1,
+        "id": 3578
+      },
+      {
+        "name": "とある魔術の禁書目録 (14)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 3572
+      },
+      {
+        "name": "とある魔術の禁書目録 (15)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 3573
+      },
+      {
+        "name": "とある魔術の禁書目録 (16)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 3574
+      },
+      {
+        "name": "とある魔術の禁書目録 SS2",
+        "name_cn": "魔法禁书目录SS2",
+        "relation": "单行本",
+        "type": 1,
+        "id": 3579
+      },
+      {
+        "name": "とある魔術の禁書目録 (17)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 3575
+      },
+      {
+        "name": "とある魔術の禁書目録 (18)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 3576
+      },
+      {
+        "name": "とある日常のいんでっくすさん",
+        "name_cn": "某日常的茵蒂克丝小姐",
+        "relation": "不同世界观",
+        "type": 1,
+        "id": 111007
+      },
+      {
+        "name": "とある魔術の禁書目録 (19)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 3577
+      },
+      {
+        "name": "とある魔術の禁書目録 (20)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 6661
+      },
+      {
+        "name": "とある魔術の禁書目録 (21)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 13193
+      },
+      {
+        "name": "とある魔術の禁書目録 (22)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 13194
+      },
+      {
+        "name": "とある魔術の禁書目録×電脳戦機バーチャロン とある魔術の電脳戦機",
+        "name_cn": "魔法禁书目录外传：魔法电脑战机",
+        "relation": "不同世界观",
+        "type": 1,
+        "id": 182355
+      },
+      {
+        "name": "とある魔術のヘヴィーな座敷童が簡単な殺人妃の婚活事情",
+        "name_cn": "某魔法的重装座敷童子的简单的杀人妃的婚前准备",
+        "relation": "角色出演",
+        "type": 1,
+        "id": 143100
+      },
+      {
+        "name": "公式コミックアンソロジー とある科学の超電磁砲 featuring とある魔術の禁書目録",
+        "name_cn": "官方漫画选集 科学超电磁炮 featuring 魔法禁书目录",
+        "relation": "其他",
+        "type": 1,
+        "id": 230998
+      }
+    ],
+    "45251": [
+      {
+        "name": "とある魔術の禁書目録",
+        "name_cn": "魔法禁书目录",
+        "relation": "前传",
+        "type": 1,
+        "id": 3559
+      },
+      {
+        "name": "ヘヴィーオブジェクト",
+        "name_cn": "重装武器",
+        "relation": "其他",
+        "type": 1,
+        "id": 20669
+      },
+      {
+        "name": "はいむらきよたか画集4 REBIRTH",
+        "name_cn": "",
+        "relation": "画集",
+        "type": 1,
+        "id": 514410
+      },
+      {
+        "name": "とある魔術の禁書目録 外典書庫",
+        "name_cn": "魔法禁书目录 外典书库",
+        "relation": "番外篇",
+        "type": 1,
+        "id": 310486
+      },
+      {
+        "name": "はいむらきよたか画集3 CROSS",
+        "name_cn": "",
+        "relation": "画集",
+        "type": 1,
+        "id": 307146
+      },
+      {
+        "name": "創約 とある魔術の禁書目録",
+        "name_cn": "创约 魔法禁书目录",
+        "relation": "续集",
+        "type": 1,
+        "id": 296165
+      },
+      {
+        "name": "とある魔術の禁書目録 幻想収束",
+        "name_cn": "魔法禁书目录 幻想收束",
+        "relation": "游戏",
+        "type": 4,
+        "id": 269645
+      },
+      {
+        "name": "新約 とある魔術の禁書目録 (1)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 13247
+      },
+      {
+        "name": "新約 とある魔術の禁書目録 (2)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 21895
+      },
+      {
+        "name": "新約 とある魔術の禁書目録 (3)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 28488
+      },
+      {
+        "name": "新約 とある魔術の禁書目録 (4)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 36031
+      },
+      {
+        "name": "新約 とある魔術の禁書目録 (5)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 50834
+      },
+      {
+        "name": "新約 とある魔術の禁書目録 (6)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 62980
+      },
+      {
+        "name": "新約 とある魔術の禁書目録 (7)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 73304
+      },
+      {
+        "name": "新約 とある魔術の禁書目録 (8)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 84832
+      },
+      {
+        "name": "新約 とある魔術の禁書目録 (9)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 97889
+      },
+      {
+        "name": "新約 とある魔術の禁書目録 (10)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 103820
+      },
+      {
+        "name": "新約 とある魔術の禁書目録 (11)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 115589
+      },
+      {
+        "name": "新約 とある魔術の禁書目録 (12)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 131956
+      },
+      {
+        "name": "新約 とある魔術の禁書目録 (13)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 146364
+      },
+      {
+        "name": "新約 とある魔術の禁書目録 (14)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 163945
+      },
+      {
+        "name": "新約 とある魔術の禁書目録 (15)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 177859
+      },
+      {
+        "name": "新約 とある魔術の禁書目録 (16)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 188931
+      },
+      {
+        "name": "新約 とある魔術の禁書目録(17)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 199560
+      },
+      {
+        "name": "新約 とある魔術の禁書目録 (18)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 213435
+      },
+      {
+        "name": "新約 とある魔術の禁書目録 (19)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 225802
+      },
+      {
+        "name": "新約 とある魔術の禁書目録 (20)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 252661
+      },
+      {
+        "name": "新約 とある魔術の禁書目録 (21)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 262992
+      },
+      {
+        "name": "新約 とある魔術の禁書目録 (22)",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 289753
+      },
+      {
+        "name": "新約 とある魔術の禁書目録 (22) リバース",
+        "name_cn": "",
+        "relation": "单行本",
+        "type": 1,
+        "id": 289759
+      }
+    ]
+  }
+}

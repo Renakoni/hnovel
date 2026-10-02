@@ -19,7 +19,7 @@
     <string name="storage_clear_cache">Очистить кэш</string>
     <string name="storage_reading_cache">Кэш чтения</string>
     <string name="storage_cache_empty">Кэш чтения пуст.</string>
-    <string name="storage_reading_cache_desc">Временные главы и изображения. Скачанные книги останутся доступны без сети.</string>
+    <string name="storage_reading_cache_desc">Временные главы, изображения и данные поиска. Скачанные книги останутся доступны без сети.</string>
     <string name="storage_downloads">Мои загрузки</string>
     <string name="storage_downloads_empty">Сохранённых загрузок пока нет.</string>
     <string name="storage_download_counts">Книг: %1$d · Глав сохранено: %2$d</string>

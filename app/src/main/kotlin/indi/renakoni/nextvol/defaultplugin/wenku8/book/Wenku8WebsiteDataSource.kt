@@ -36,6 +36,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.jsoup.nodes.Element
 import org.jsoup.nodes.TextNode
 import java.net.URLEncoder
@@ -45,6 +47,8 @@ class Wenku8WebsiteDataSource(
     val host: String,
     val wenku8Api: Wenku8Api
 ): Wenku8BookDataSource {
+    private val searchLock = Mutex()
+    private var nextSearchAt = 0L
     private data class DirectoryKey(val owner: Identifier?, val host: String, val bookId: String)
     private val titleRegex = Regex("(.*) ?[(（](.*)[)）] ?$")
     private fun url(string: String) = "$host/$string"
@@ -219,9 +223,13 @@ class Wenku8WebsiteDataSource(
         val encodedKeyword = URLEncoder.encode(keyword, "gb2312")
         while (true) {
             currentCoroutineContext().ensureActive()
-            val soup = wenku8Api.getWithWenku8Cookie(
-                url("modules/article/search.php?searchtype=$searchType&searchkey=$encodedKeyword&page=$page")
-            ).getOrElse { throw java.io.IOException("Search request failed", it) }
+            val soup = searchLock.withLock {
+                delay((nextSearchAt - android.os.SystemClock.elapsedRealtime()).coerceAtLeast(0))
+                nextSearchAt = android.os.SystemClock.elapsedRealtime() + 5_000
+                wenku8Api.getWithWenku8Cookie(
+                    url("modules/article/search.php?searchtype=$searchType&searchkey=$encodedKeyword&page=$page")
+                ).getOrElse { throw java.io.IOException("Search request failed", it) }
+            }
             if (soup.text().contains("错误原因：对不起，两次搜索的间隔时间不得少于 5 秒")) {
                 delay(5.seconds)
                 continue

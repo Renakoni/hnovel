@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.Flow
 interface ExploreSearchUiState {
     val isLoading: Boolean
     val isLoadingComplete: Boolean
+    val nextPage: Int?
     val sourceName: String
     val query: String
     val submittedKeyword: String
@@ -40,6 +41,7 @@ interface ExploreSearchUiState {
 class MutableExploreSearchUiState(private val onExpanded: (Boolean) -> Unit = {}) : ExploreSearchUiState {
     override var isLoading: Boolean by mutableStateOf(true)
     override var isLoadingComplete: Boolean by mutableStateOf(false)
+    override var nextPage: Int? by mutableStateOf(null)
     override var sourceName: String by mutableStateOf("")
     override var query: String by mutableStateOf("")
     override var submittedKeyword: String by mutableStateOf("")

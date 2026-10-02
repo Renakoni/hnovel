@@ -12,7 +12,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 internal const val SEARCH_RESULT_LIMIT = 1000
-internal data class SearchRequest(val source: Identifier, val page: Int)
+internal data class SearchRequest(val source: Identifier, val page: Int, val query: String? = null)
 internal data class SearchBatch(
     val request: SearchRequest,
     val books: List<SearchResult.MultipleBook> = emptyList(),
@@ -20,6 +20,8 @@ internal data class SearchBatch(
     val nextPage: Int? = null,
     val failure: SourceSearchFailure? = null,
     val limited: Boolean = false,
+    val scores: Map<String, Int> = emptyMap(),
+    val previewIds: Set<String> = emptySet(),
 )
 
 /** Searches one page per source. Both worker count and in-flight requests are bounded. */
@@ -33,7 +35,7 @@ class SearchCoordinator internal constructor(private val explore: ExploreReposit
     @OptIn(ExperimentalCoroutinesApi::class)
     internal fun search(keyword: String, requests: List<SearchRequest>, query: String? = null): Flow<SearchBatch> = requests.asFlow()
         .flatMapMerge(concurrency = 4) { request ->
-            flow { gate.withPermit { emitAll(load(keyword, request, query)) } }.flowOn(io)
+            flow { gate.withPermit { emitAll(load(keyword, request, request.query ?: query)) } }.flowOn(io)
         }
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -43,6 +45,9 @@ class SearchCoordinator internal constructor(private val explore: ExploreReposit
         var failure: SourceSearchFailure? = null
         var next: Int? = null
         var limited = false
+        var progressive = false
+        var scores: Map<String, Int> = emptyMap()
+        var previews: Set<String> = emptySet()
         try {
             withTimeout(30_000) {
                 val session = explore.open(request.source).getOrElse {
@@ -50,11 +55,28 @@ class SearchCoordinator internal constructor(private val explore: ExploreReposit
                     return@withTimeout
                 }
                 if (session.hasPages) {
-                    val page = session.page(session.types.first(), keyword, request.page, query).first()
-                    pending += page.books.take(SEARCH_RESULT_LIMIT)
-                    limited = page.books.size > SEARCH_RESULT_LIMIT
-                    next = page.nextPage
-                    if (next != null && next <= request.page) {
+                    session.page(session.types.first(), keyword, request.page, query).transformWhile { page ->
+                        emit(page)
+                        !page.complete
+                    }.collect { page ->
+                        val additions = page.books.filter { item ->
+                            item.bookId in seen || seen.size < SEARCH_RESULT_LIMIT && seen.add(item.bookId)
+                        }
+                        limited = limited || additions.size < page.books.size
+                        if (!page.complete) {
+                            progressive = true
+                            if (additions.isNotEmpty()) emit(SearchBatch(request, additions, scores = page.scores, previewIds = page.previewIds))
+                        } else if (progressive) {
+                            if (additions.isNotEmpty()) emit(SearchBatch(request, additions, scores = page.scores, previewIds = page.previewIds))
+                        } else {
+                            pending += additions
+                            scores = page.scores
+                            previews = page.previewIds
+                        }
+                        next = page.nextPage
+                        page.failure?.let { failure = searchFailure(it) }
+                    }
+                    if (next?.let { it <= request.page } == true) {
                         next = null
                         failure = SourceSearchFailure(DiscoveryError.InvalidResponse)
                     }
@@ -89,7 +111,8 @@ class SearchCoordinator internal constructor(private val explore: ExploreReposit
             currentCoroutineContext().ensureActive()
             failure = searchFailure(error)
         }
-        emit(SearchBatch(request, pending.toList(), complete = true, nextPage = next, failure = failure, limited = limited))
+        emit(SearchBatch(request, pending.toList(), complete = true, nextPage = next, failure = failure, limited = limited,
+            scores = scores, previewIds = previews))
     }
 
     private class ResultLimitReached : RuntimeException()

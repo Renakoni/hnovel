@@ -19,7 +19,7 @@
     <string name="storage_clear_cache">清除快取</string>
     <string name="storage_reading_cache">閱讀快取</string>
     <string name="storage_cache_empty">暫無需要清除的閱讀快取。</string>
-    <string name="storage_reading_cache_desc">閱讀時暫存的正文和圖片。清理後仍可離線閱讀已下載內容。</string>
+    <string name="storage_reading_cache_desc">暫存的正文、圖片和搜尋資料。清理後仍可離線閱讀已下載內容。</string>
     <string name="storage_downloads">我的下載</string>
     <string name="storage_downloads_empty">暫無已儲存的下載內容。</string>
     <string name="storage_download_counts">%1$d 本書 · 已儲存 %2$d 章</string>

@@ -151,6 +151,7 @@ class StorageUsageRepository @Inject constructor(
             preparingChapterCount = preparation.values.sumOf { it.chapters },
             unfinishedDownloadCount = owners.count { it.taskStatus !in setOf(DownloadTaskStatus.None.name, DownloadTaskStatus.Complete.name) },
             schemaVersion = 1,
+            searchCacheBytes = size(File(context.cacheDir, indi.renakoni.nextvol.defaultplugin.wenku8.search.Wenku8SearchCatalog.DIRECTORY)),
         )
         snapshotUserData.set(json.encodeToString(StorageUsageSnapshot.serializer(), snapshot))
         snapshot

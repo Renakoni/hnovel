@@ -19,7 +19,7 @@
     <string name="storage_clear_cache">清理缓存</string>
     <string name="storage_reading_cache">阅读缓存</string>
     <string name="storage_cache_empty">暂无需要清理的阅读缓存。</string>
-    <string name="storage_reading_cache_desc">阅读时暂存的正文和图片。清理后仍可离线阅读已下载内容。</string>
+    <string name="storage_reading_cache_desc">暂存的正文、图片和搜索数据。清理后仍可离线阅读已下载内容。</string>
     <string name="storage_downloads">我的下载</string>
     <string name="storage_downloads_empty">暂无已保存的下载内容。</string>
     <string name="storage_download_counts">%1$d 本书 · 已保存 %2$d 章</string>

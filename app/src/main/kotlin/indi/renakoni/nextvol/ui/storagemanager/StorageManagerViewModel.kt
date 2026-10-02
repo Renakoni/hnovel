@@ -23,6 +23,7 @@ class StorageManagerViewModel @Inject constructor(
     private val downloads: BookDownloadStore,
     private val workManager: WorkManager,
     private val downloadProgress: DownloadProgressRepository,
+    private val searchCatalog: indi.renakoni.nextvol.defaultplugin.wenku8.search.Wenku8SearchCatalog,
 ) : ViewModel() {
     val uiState = MutableStorageManagerUiState().apply {
         load = ::load
@@ -51,7 +52,7 @@ class StorageManagerViewModel @Inject constructor(
 
     suspend fun clearReadingCache(): Boolean {
         val cleared = downloads.clearReadingCache()
-        if (cleared) refresh()
+        if (cleared) { searchCatalog.clear(); refresh() }
         return cleared
     }
 

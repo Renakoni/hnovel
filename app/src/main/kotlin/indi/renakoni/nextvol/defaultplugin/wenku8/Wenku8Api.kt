@@ -85,7 +85,8 @@ internal const val WENKU8_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64
     "Wenku8",
     "LightNovelReader from wenku8.net"
 )
-class Wenku8Api(routes: (Identifier) -> SourceNetworkRoute) : WebBookDataSource, SourceImageProvider, AutoCloseable {
+class Wenku8Api(searchSupport: indi.renakoni.nextvol.defaultplugin.wenku8.search.Wenku8SearchSupport? = null,
+    routes: (Identifier) -> SourceNetworkRoute) : WebBookDataSource, SourceImageProvider, AutoCloseable {
     private val tagList = listOf(
         "校园", "青春", "恋爱", "治愈", "群像",
         "竞技", "音乐", "美食", "旅行", "欢乐向",
@@ -259,7 +260,7 @@ class Wenku8Api(routes: (Identifier) -> SourceNetworkRoute) : WebBookDataSource,
 
     override suspend fun getChapterContent(chapterId: String, bookId: String) = bookRequestDispatcher.getChapterContent(chapterId, bookId)
 
-    override val searchProvider: SearchProvider = Wenku8SearchProvider(bookRequestDispatcher)
+    override val searchProvider: SearchProvider = Wenku8SearchProvider(bookRequestDispatcher, searchSupport)
     override val explorePageProvider: ExplorePageProvider = Wenku8ExplorePageProvider(host, this)
 
     override val discoveryProvider = indi.renakoni.nextvol.defaultplugin.wenku8.explore.Wenku8Discovery(host) { url ->

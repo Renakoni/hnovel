@@ -43,10 +43,19 @@ class BangumiApi internal constructor(private val client: OkHttpClient, private 
     suspend fun me(session: BangumiSession): BangumiUser = decode(request("GET", "v0/me", session = session)!!)
 
     suspend fun search(query: String, offset: Int = 0): BangumiSearchPage {
+        return searchSubjects(query, offset, false)
+    }
+
+    suspend fun searchTag(tag: String, offset: Int = 0): BangumiSearchPage = searchSubjects(tag, offset, true)
+
+    private suspend fun searchSubjects(query: String, offset: Int, tag: Boolean): BangumiSearchPage {
         val body = buildJsonObject {
-            put("keyword", query)
-            put("sort", "match")
-            put("filter", buildJsonObject { put("type", JsonArray(listOf(JsonPrimitive(1)))) })
+            put("keyword", if (tag) "" else query)
+            put("sort", if (tag) "heat" else "match")
+            put("filter", buildJsonObject {
+                put("type", JsonArray(listOf(JsonPrimitive(1))))
+                if (tag) put("tag", JsonArray(listOf(JsonPrimitive(query))))
+            })
         }
         return decode(request("POST", "v0/search/subjects?limit=10&offset=$offset", body)!!)
     }
@@ -87,9 +96,9 @@ class BangumiApi internal constructor(private val client: OkHttpClient, private 
             .method(method, body?.toString()?.toByteArray(Charsets.UTF_8)?.toRequestBody("application/json".toMediaType()))
         val call = session?.request(builder, transport::newCall) ?: transport.newCall(builder.build())
         try {
-            call.await().use { response ->
+            call.await { response ->
                 session?.checkActive()
-                if (allowMissing && response.code == 404) return@withContext null
+                if (allowMissing && response.code == 404) return@await null
                 if (!response.isSuccessful) throw BangumiApiException(response.code,
                     response.header("Retry-After")?.toLongOrNull()?.coerceAtLeast(0) ?: 0)
                 response.body.string()
@@ -97,12 +106,14 @@ class BangumiApi internal constructor(private val client: OkHttpClient, private 
         } finally { session?.finished(call) }
     }
 
-    private suspend fun Call.await(): Response = suspendCancellableCoroutine { continuation ->
+    private suspend fun <T> Call.await(read: (Response) -> T): T = suspendCancellableCoroutine { continuation ->
         continuation.invokeOnCancellation { cancel() }
         enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) { continuation.resumeWithException(e) }
             override fun onResponse(call: Call, response: Response) {
-                continuation.resume(response) { _, value, _ -> value.close() }
+                // Keep cancellation attached to the call until the body has been consumed, too.
+                try { continuation.resume(response.use(read)) }
+                catch (failure: Exception) { continuation.resumeWithException(failure) }
             }
         })
     }
