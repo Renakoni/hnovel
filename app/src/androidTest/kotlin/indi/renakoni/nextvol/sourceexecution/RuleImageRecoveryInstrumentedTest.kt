@@ -7,7 +7,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.captureToImage
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.unit.dp
 import androidx.room.Room
@@ -48,6 +48,7 @@ import java.util.concurrent.TimeUnit
 
 /** Real rule preparation/HTTP, Coil decoding, login event and rendered pixels on one page. */
 class RuleImageRecoveryInstrumentedTest {
+    // Queue background image completions instead of resuming UI frames on the completing thread.
     @get:Rule val compose = createAndroidComposeRule<ReaderLayoutTestActivity>()
 
     @Test fun ruleFailuresRecoverAfterLoginWithoutEvictingSuccessfulImagesOrReplayingOffscreen() {
