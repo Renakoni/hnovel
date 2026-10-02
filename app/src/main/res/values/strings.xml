@@ -101,10 +101,10 @@
     <string name="font_file_error">Font file is incorrect or corrupted, please check and import again</string>
     <string name="local_book_clear_options">Clear Options</string>
     <string name="local_book_clear_index">Clear volume and chapter index</string>
-    <string name="local_book_clear_content">Clear chapter content</string>
+    <string name="local_book_clear_content">Delete chapters and images</string>
     <string name="local_book_clear_reading">Clear reading record</string>
     <string name="local_book_clear_confirm_title">Confirm deletion</string>
-    <string name="local_book_clear_confirm_content">If you continue, the selected content will be deleted and %1$s of storage space will be freed.\nYou can re-import or download the content later.\nThis action cannot be undone.</string>
+    <string name="local_book_clear_confirm_content">Delete the selected categories (about %1$s)? Deleting chapters also removes their downloaded images and unfinished downloads. Unselected categories are kept. Database files may not shrink immediately.</string>
     <string name="confirm_exit">Confirm Exit?</string>
     <string name="hint_unsaved_changes_will_be_lost">If you exit now, your unsaved changes will be lost.</string>
 

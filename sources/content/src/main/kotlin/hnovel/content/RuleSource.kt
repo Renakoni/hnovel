@@ -1000,7 +1000,8 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
         val response = when (result) {
             is BrokerResult.Success -> result.response
             is BrokerResult.Failure -> throw SourceContentException(result.code.contentError(), field, result.denial,
-                verification = verification(result), retry = if (result.retryable) RequestRetryHint() else null)
+                verification = verification(result), retry = if (result.retryable) RequestRetryHint() else null,
+                storageFailure = result.code.takeIf { it == hnovel.network.FailureCode.StorageQuota || it == hnovel.network.FailureCode.StorageUnavailable })
         }
         if (request.kind == ResourceKind.Image && response.status !in 200..299)
             throw SourceContentException(ContentError.Network, field, httpStatus = httpErrorStatus(response.status),
@@ -1073,7 +1074,8 @@ class RuleSource(val definition: SourceDefinition, private val identity: Executi
                     RequestCommitGuard { authority.authorized(identity, it) })
                 if (result is BrokerResult.Failure)
                     throw SourceContentException(result.code.contentError(), "browser.verification", result.denial,
-                        verification = if (result.certificate != null) verification(result) else null)
+                        verification = if (result.certificate != null) verification(result) else null,
+                        storageFailure = result.code.takeIf { it == hnovel.network.FailureCode.StorageQuota || it == hnovel.network.FailureCode.StorageUnavailable })
                 if (result is BrokerResult.Success)
                     checkStatus(result.response.status, "browser.verification", result.response.kind == ResponseKind.BrowserDocument)
                 // A newer failed request must retain its own fallback target.

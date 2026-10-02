@@ -20,6 +20,7 @@ internal data class BoundSourceImage(val image: SourceImage, val key: String, va
 internal class SourceImageRequestException(error: WebRequestError) : IOException("Source image request failed") {
     val kind = error.kind
     val networkFailure = error.throwable is IOException && error.throwable !is SourceImageHttpException
+    val storageFailure = (error.throwable as? hnovel.content.SourceContentException)?.storageFailure
     val contentError = (error.throwable as? hnovel.content.SourceContentException)?.code
     val retry = (error.throwable as? hnovel.content.SourceContentException)?.retry
         ?: (error.throwable as? SourceImageHttpException)?.retry

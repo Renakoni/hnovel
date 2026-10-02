@@ -78,6 +78,8 @@ internal fun downloadFailureResource(failure: DownloadFailure) = when (failure) 
     DownloadFailure.SourceUnavailable -> R.string.download_error_source
     DownloadFailure.SourceRequest -> R.string.download_error_request
     DownloadFailure.Storage -> R.string.download_error_storage
+    DownloadFailure.StorageFull -> R.string.download_error_storage_full
+    DownloadFailure.StorageQuota -> R.string.download_error_storage_quota
     DownloadFailure.SystemRestricted -> R.string.download_error_system_restricted
     DownloadFailure.SystemInterrupted -> R.string.download_error_system_interrupted
     DownloadFailure.Scheduling -> R.string.download_error_scheduling

@@ -1,15 +1,19 @@
 package indi.renakoni.nextvol.data.storage
 
 import android.content.Context
+import coil3.SingletonImageLoader
 import dagger.hilt.android.qualifiers.ApplicationContext
 import indi.renakoni.nextvol.data.local.room.NextVolDatabase
 import indi.renakoni.nextvol.data.local.room.converter.ListConverter
+import indi.renakoni.nextvol.data.book.BookIdentity
+import indi.renakoni.nextvol.data.download.DownloadTaskStatus
 import indi.renakoni.nextvol.data.userdata.UserDataRepository
 import io.nightfish.lightnovelreader.api.userdata.UserDataPath
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import java.io.File
+import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -30,12 +34,22 @@ class StorageUsageRepository @Inject constructor(
 
     suspend fun getCachedSnapshot(): StorageUsageSnapshot? = withContext(Dispatchers.IO) {
         snapshotUserData.get()?.let {
-            runCatching { json.decodeFromString<StorageUsageSnapshot>(it) }.getOrNull()
+            runCatching { json.decodeFromString<StorageUsageSnapshot>(it) }.getOrNull()?.takeIf { it.schemaVersion == 1 }
         }
     }
 
     suspend fun refreshSnapshot(): StorageUsageSnapshot = withContext(Dispatchers.IO) {
         val storageStatsDao = database.storageStatsDao()
+        val downloadedChapters = database.bookDownloadDao().allChapters()
+        val downloadedIds = downloadedChapters.map { it.id }.toSet()
+        val owners = database.bookDownloadDao().getAll()
+        val preparation = storageStatsDao.getDownloadPreparationBytes().associateBy { it.bookId }
+        val directoryBytes = scanDirectories(context.dataDir.canonicalFile)
+        fun size(file: File) = directoryBytes[file.canonicalPath] ?: 0L
+        val downloadRoot = File(context.filesDir, "book-downloads")
+        val bookImageBytes = owners.associate { owner ->
+            owner.bookId to size(File(downloadRoot, "${owner.generation}/${BookIdentity.book(owner.bookId).fileKey}"))
+        }
 
         val bookInfoBytesMap = storageStatsDao.getBookInformationBytes()
             .associate { it.id to it.bytes }
@@ -50,6 +64,8 @@ class StorageUsageRepository @Inject constructor(
                 .filter { it.isNotBlank() }
                 .forEach { chapterToBookMap[it] = row.bookId }
         }
+        // A removed remote chapter still belongs to its saved offline book.
+        downloadedChapters.forEach { chapterToBookMap[it.id] = it.bookId }
 
         var orphanChapterInformationBytes = 0L
         val bookChapterInfoBytesMap = mutableMapOf<String, Long>()
@@ -64,8 +80,11 @@ class StorageUsageRepository @Inject constructor(
         }
 
         var orphanChapterContentBytes = 0L
+        var readingContentBytes = 0L
+        var downloadedContentBytes = 0L
         val bookChapterContentBytesMap = mutableMapOf<String, Long>()
         storageStatsDao.getChapterContentBytes().forEach { row ->
+            if (row.id in downloadedIds) downloadedContentBytes += row.bytes else readingContentBytes += row.bytes
             val bookId = chapterToBookMap[row.id]
             if (bookId == null) {
                 orphanChapterContentBytes += row.bytes
@@ -80,6 +99,8 @@ class StorageUsageRepository @Inject constructor(
             addAll(bookVolumeBytesMap.keys)
             addAll(bookChapterInfoBytesMap.keys)
             addAll(bookChapterContentBytesMap.keys)
+            addAll(preparation.keys)
+            addAll(bookImageBytes.filterValues { it > 0L }.keys)
         }
 
         val books = bookIds.map { bookId ->
@@ -88,24 +109,19 @@ class StorageUsageRepository @Inject constructor(
                 bookInformationBytes = bookInfoBytesMap[bookId] ?: 0L,
                 volumeBytes = bookVolumeBytesMap[bookId] ?: 0L,
                 chapterInformationBytes = bookChapterInfoBytesMap[bookId] ?: 0L,
-                chapterContentBytes = bookChapterContentBytesMap[bookId] ?: 0L
+                chapterContentBytes = bookChapterContentBytesMap[bookId] ?: 0L,
+                downloadImageBytes = bookImageBytes[bookId] ?: 0L,
+                preparationBytes = preparation[bookId]?.bytes ?: 0L,
             )
         }.sortedByDescending { it.totalBytes }
 
         val appBytes = getAppFileBytes(context)
         val databaseDiskBytes = getRoomFileBytes(context, DB_NAME)
-        val cacheBytes = fileSize(context.cacheDir)
-        val otherFileBytes = childrenSizeExcept(
-            root = context.dataDir,
-            excludedPaths = setOf(
-                context.cacheDir.canonicalPath,
-                context.getDatabasePath(DB_NAME).parentFile?.canonicalPath ?: "",
-                context.dataDir.resolve("code_cache").canonicalPath,
-                context.dataDir.resolve("app_webview").canonicalPath,
-                context.filesDir.canonicalPath,
-                context.dataDir.resolve("no_backup").canonicalPath,
-            )
-        ) + fileSize(context.filesDir)
+        val cacheBytes = size(context.cacheDir)
+        val downloadImageBytes = size(downloadRoot)
+        val importedFileBytes = size(File(context.filesDir, "local-books"))
+        val dataBytes = size(context.dataDir)
+        val otherFileBytes = (dataBytes - databaseDiskBytes - cacheBytes - downloadImageBytes - importedFileBytes).coerceAtLeast(0L)
 
         val allBookMetadataBytes =
             bookInfoBytesMap.values.sum() +
@@ -114,7 +130,7 @@ class StorageUsageRepository @Inject constructor(
                     orphanChapterInformationBytes
 
         val snapshot = StorageUsageSnapshot(
-            totalBytes = appBytes + databaseDiskBytes + cacheBytes + otherFileBytes,
+            totalBytes = appBytes + dataBytes,
             appBytes = appBytes,
             databaseDiskBytes = databaseDiskBytes,
             cacheBytes = cacheBytes,
@@ -123,7 +139,18 @@ class StorageUsageRepository @Inject constructor(
             orphanChapterInfoBytes = orphanChapterInformationBytes,
             orphanChapterContentBytes = orphanChapterContentBytes,
             books = books,
-            calculatedAt = System.currentTimeMillis()
+            calculatedAt = System.currentTimeMillis(),
+            downloadImageBytes = downloadImageBytes,
+            importedFileBytes = importedFileBytes,
+            readingContentBytes = readingContentBytes,
+            imageCacheBytes = SingletonImageLoader.get(context).diskCache?.size ?: 0L,
+            downloadedContentBytes = downloadedContentBytes,
+            preparationBytes = preparation.values.sumOf { it.bytes },
+            downloadedBookCount = (downloadedChapters.map { it.bookId } + preparation.keys + bookImageBytes.filterValues { it > 0L }.keys).toSet().size,
+            downloadedChapterCount = downloadedChapters.size,
+            preparingChapterCount = preparation.values.sumOf { it.chapters },
+            unfinishedDownloadCount = owners.count { it.taskStatus !in setOf(DownloadTaskStatus.None.name, DownloadTaskStatus.Complete.name) },
+            schemaVersion = 1,
         )
         snapshotUserData.set(json.encodeToString(StorageUsageSnapshot.serializer(), snapshot))
         snapshot
@@ -133,18 +160,21 @@ class StorageUsageRepository @Inject constructor(
         userDataRepository.remove(UserDataPath.Settings.Data.StorageUsageSnapshot.path)
     }
 
-    private fun fileSize(file: File): Long {
-        if (!file.exists()) return 0L
-        if (file.isFile) return file.length()
-        return file.listFiles()?.sumOf(::fileSize) ?: 0L
-    }
-
-    private fun childrenSizeExcept(root: File, excludedPaths: Set<String>): Long {
-        if (!root.exists()) return 0L
-        return root.listFiles()
-            ?.filterNot { excludedPaths.contains(it.canonicalPath) }
-            ?.sumOf(::fileSize)
-            ?: 0L
+    /** One scan per refresh; links outside private app data are not counted again as app files. */
+    private fun scanDirectories(root: File): Map<String, Long> {
+        val sizes = mutableMapOf<String, Long>()
+        val visited = mutableSetOf<String>()
+        fun scan(file: File): Long {
+            if (!file.exists()) return 0L
+            val path = file.canonicalPath
+            if (path != root.path && !path.startsWith(root.path + File.separator)) return 0L
+            if (file.isFile) return file.length()
+            if (!visited.add(path)) return 0L
+            val children = file.listFiles() ?: throw IOException("Cannot measure app storage")
+            return children.sumOf(::scan).also { sizes[path] = it }
+        }
+        scan(root)
+        return sizes
     }
 }
 

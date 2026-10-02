@@ -14,7 +14,7 @@ internal class RuleBookStore(private val session: SourceSession, private val aut
         repeat(16) {
             if (!visited.add(id)) throw SourceContentException(ContentError.Storage, "bookAlias")
             val result = session.read(StorageRequest(StorageArea.BookState, aliasKey(id)))
-            if (result !is StorageResult.Value) throw SourceContentException(ContentError.Storage, "bookAlias")
+            if (result !is StorageResult.Value) throw storageException(result, "bookAlias")
             id = result.value ?: return@authorized id
         }
         throw SourceContentException(ContentError.Limit, "bookAlias")
@@ -25,7 +25,7 @@ internal class RuleBookStore(private val session: SourceSession, private val aut
         // Existing installations stored these snapshots beside small script settings.
         val result = if (current is StorageResult.Value && current.value == null)
             session.read(StorageRequest(StorageArea.Config, key(id))) else current
-        if (result !is StorageResult.Value) throw SourceContentException(ContentError.Storage, "bookState")
+        if (result !is StorageResult.Value) throw storageException(result, "bookState")
         result.value?.let { Json.decodeFromString(BookRecord.serializer(), it) }?.takeIf { it.book.id == id }
     }
     fun write(record: BookRecord, requestedId: String = record.book.id) =
@@ -35,12 +35,17 @@ internal class RuleBookStore(private val session: SourceSession, private val aut
         val values = records.associate { key(it.book.id) to Json.encodeToString(BookRecord.serializer(), it) } +
             aliases.mapKeys { aliasKey(it.key) }
         val result = session.writeBookStates(values)
-        if (result !is StorageResult.Value) throw SourceContentException(ContentError.Storage, "bookState")
+        if (result !is StorageResult.Value) throw storageException(result, "bookState")
         // Release the old quota only after the new snapshot has been committed atomically.
-        if (values.keys.any { session.write(StorageRequest(StorageArea.Config, it)) !is StorageResult.Value })
-            throw SourceContentException(ContentError.Storage, "bookState")
+        values.keys.forEach {
+            val cleared = session.write(StorageRequest(StorageArea.Config, it))
+            if (cleared !is StorageResult.Value) throw storageException(cleared, "bookState")
+        }
         Unit
     }
+    private fun storageException(result: StorageResult, field: String) =
+        SourceContentException(ContentError.Storage, field, storageFailure = (result as? StorageResult.Failure)?.code)
+
     private fun key(bookId: String) = "content/book/" + digest(bookId)
     private fun aliasKey(bookId: String) = "content/alias/" + digest(bookId)
 }

@@ -26,7 +26,7 @@
     <string name="download_error_verification">Пройдите проверку источника и повторите попытку</string>
     <string name="download_error_source">Источник недоступен</string>
     <string name="download_error_request">Ошибка запроса к источнику</string>
-    <string name="download_error_storage">Не удалось сохранить; проверьте свободное место</string>
+    <string name="download_error_storage">Не удалось сохранить данные. Проверьте свободное место и повторите попытку.</string>
     <string name="download_notification_channel">Загрузка книг</string>
     <string name="download_notification_title">Загрузка книги</string>
     <string name="download_notification_text">Откройте приложение, чтобы проверить ход загрузки</string>

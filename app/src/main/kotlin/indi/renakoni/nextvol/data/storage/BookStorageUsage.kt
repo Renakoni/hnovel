@@ -9,7 +9,9 @@ data class BookStorageUsage(
     val volumeBytes: Long,
     val chapterInformationBytes: Long,
     val chapterContentBytes: Long,
+    val downloadImageBytes: Long = 0L,
+    val preparationBytes: Long = 0L,
 ) {
     val totalBytes: Long
-        get() = bookInformationBytes + volumeBytes + chapterInformationBytes + chapterContentBytes
+        get() = bookInformationBytes + volumeBytes + chapterInformationBytes + chapterContentBytes + downloadImageBytes + preparationBytes
 }

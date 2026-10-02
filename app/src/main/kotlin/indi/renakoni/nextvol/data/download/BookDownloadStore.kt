@@ -49,6 +49,7 @@ class BookDownloadStore @Inject constructor(@ApplicationContext private val cont
     private val dao = database.bookDownloadDao()
     private val lock = Mutex()
     private val bookOperations = ConcurrentHashMap<String, Mutex>()
+    private var activeBookOperations = 0 // Guarded by lock, together with ordinary cache cleanup.
     private val root = File(context.filesDir, "book-downloads")
     private val imageKeys = context.getSharedPreferences("source_image_cache_keys", Context.MODE_PRIVATE)
 
@@ -65,7 +66,11 @@ class BookDownloadStore @Inject constructor(@ApplicationContext private val cont
     suspend fun prepare() = withContext(Dispatchers.IO) { lock.withLock { removeRetiredGenerations(); migrateLegacy() } }
     /** Normal downloads and export preparation must not replace each other's attempt. */
     suspend fun <T> withBookOperation(book: SourceBookId, block: suspend () -> T): T =
-        bookOperations.getOrPut(book.storageKey) { Mutex() }.withLock { block() }
+        bookOperations.getOrPut(book.storageKey) { Mutex() }.withLock {
+            lock.withLock { activeBookOperations++ }
+            try { block() }
+            finally { withContext(kotlinx.coroutines.NonCancellable) { lock.withLock { activeBookOperations-- } } }
+        }
     suspend fun entries() = withContext(Dispatchers.IO) { lock.withLock { migrateLegacy(); dao.getAll() } }
     fun observeEntries() = dao.observeAll()
     suspend fun entry(book: SourceBookId) = withContext(Dispatchers.IO) { dao.get(book.storageKey) }
@@ -536,10 +541,13 @@ class BookDownloadStore @Inject constructor(@ApplicationContext private val cont
             file.isFile && file.length() > 0 && (!requireCurrentImages || !staleMarker(file).exists())
         }
 
-    suspend fun clearReadingCache() = withContext(Dispatchers.IO) { lock.withLock {
+    suspend fun clearReadingCache(): Boolean = withContext(Dispatchers.IO) { lock.withLock {
+        // Image decoding and retaining its original bytes span separate store calls.
+        if (activeBookOperations > 0) return@withLock false
         migrateLegacy()
         dao.clearReadingContent()
         SingletonImageLoader.get(context).apply { memoryCache?.clear(); diskCache?.clear() }
+        true
     } }
 
     /** Return the retired generation so WorkManager cancels only requests submitted before this clear. */

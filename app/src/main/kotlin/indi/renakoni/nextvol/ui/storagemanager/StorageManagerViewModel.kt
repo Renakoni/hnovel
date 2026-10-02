@@ -5,15 +5,16 @@ import androidx.lifecycle.viewModelScope
 import androidx.work.WorkManager
 import androidx.work.await
 import dagger.hilt.android.lifecycle.HiltViewModel
-import indi.renakoni.nextvol.R
 import indi.renakoni.nextvol.data.download.BookDownloadStore
 import indi.renakoni.nextvol.data.download.DownloadProgressRepository
 import indi.renakoni.nextvol.data.work.CacheBookWork
 import indi.renakoni.nextvol.data.storage.StorageUsageRepository
-import indi.renakoni.nextvol.data.storage.StorageUsageSnapshot
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
 
 @HiltViewModel
@@ -25,81 +26,55 @@ class StorageManagerViewModel @Inject constructor(
 ) : ViewModel() {
     val uiState = MutableStorageManagerUiState().apply {
         load = ::load
-        selectSection = ::selectSection
     }
+    private val refreshLock = Mutex()
 
     init {
-        viewModelScope.launch(Dispatchers.IO) {
-            storageUsageRepository.getCachedSnapshot()?.let { updateStorageOverview(it, false) }
+        viewModelScope.launch {
+            try { uiState.snapshot = storageUsageRepository.getCachedSnapshot() }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { /* A fresh scan can recover an unavailable snapshot. */ }
             refresh()
         }
+    }
+
+    private var entered = false
+
+    fun onResume() {
+        if (entered) load()
+        entered = true
     }
 
     fun load() {
-        viewModelScope.launch(Dispatchers.IO) {
-            refresh()
-        }
+        if (!refreshLock.isLocked) viewModelScope.launch { refresh() }
     }
 
-    fun selectSection(title: Int) {
-        uiState.expandedTitle = title
+    suspend fun clearReadingCache(): Boolean {
+        val cleared = downloads.clearReadingCache()
+        if (cleared) refresh()
+        return cleared
     }
 
-    suspend fun clearReadingCache() {
-        downloads.clearReadingCache()
-        load()
-    }
-
-    suspend fun clearDownloads() {
+    suspend fun clearDownloads() = withContext(Dispatchers.IO) {
         val generation = downloads.generation()
         try { downloads.clearDownloads() }
         finally {
             try { workManager.cancelAllWorkByTag(CacheBookWork.generationTag(generation)).await() }
             finally { downloadProgress.clearCachedItems() }
         }
-        load()
+        refresh()
     }
 
-    private suspend fun refresh() {
+    private suspend fun refresh() = refreshLock.withLock {
         withContext(Dispatchers.Main) {
             uiState.isLoading = true
+            uiState.failed = false
         }
-        updateStorageOverview(storageUsageRepository.refreshSnapshot(), false)
-    }
-
-    private suspend fun updateStorageOverview(snapshot: StorageUsageSnapshot, loading: Boolean) {
-        val sections = listOf(
-            StorageManagerSection(
-                title = R.string.storage_manager_section_app_title,
-                description = R.string.storage_manager_section_app_description,
-                size = snapshot.appBytes
-            ),
-            StorageManagerSection(
-                title = R.string.storage_manager_section_database_title,
-                description = R.string.storage_manager_section_database_description,
-                size = snapshot.databaseDiskBytes
-            ),
-            StorageManagerSection(
-                title = R.string.storage_manager_section_cache_title,
-                description = R.string.storage_manager_section_cache_description,
-                size = snapshot.cacheBytes
-            ),
-            StorageManagerSection(
-                title = R.string.storage_manager_section_other_title,
-                description = R.string.storage_manager_section_other_description,
-                size = snapshot.otherFileBytes
-            )
-        ).filter { it.size > 0L }
-
-        withContext(Dispatchers.Main) {
-            uiState.isLoading = loading
-            uiState.totalSize = snapshot.totalBytes
-            uiState.calculatedAt = snapshot.calculatedAt
-            uiState.bookCount = snapshot.books.count { it.totalBytes > 0L }
-            uiState.sections = sections
-            if (uiState.expandedTitle !in sections.map(StorageManagerSection::title)) {
-                uiState.expandedTitle = sections.firstOrNull()?.title
-            }
-        }
+        try {
+            val snapshot = storageUsageRepository.refreshSnapshot()
+            withContext(Dispatchers.Main) { uiState.snapshot = snapshot }
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { withContext(Dispatchers.Main) { uiState.failed = true } }
+        finally { withContext(kotlinx.coroutines.NonCancellable + Dispatchers.Main) { uiState.isLoading = false } }
     }
 }

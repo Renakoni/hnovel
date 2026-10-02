@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="storage_refresh_failed">未能更新空间统计，请刷新重试。</string>
+    <string name="storage_measuring">正在统计空间…</string>
+    <string name="storage_your_content">内容与清理</string>
+    <string name="storage_updated_at">更新于 %1$s</string>
+    <string name="storage_download_images">下载图片</string>
+    <string name="storage_download_images_desc">离线阅读所需的封面和插图。清缓存时保留，删除对应下载时移除。</string>
+    <string name="storage_imported_books">导入文件</string>
+    <string name="storage_imported_books_desc">已导入应用的原始文件。清缓存和删除下载均会保留。</string>
+    <string name="storage_temporary_desc">图片缓存及导出、分享临时文件。阅读缓存清理仅移除此处的图片缓存。</string>
+    <string name="storage_other_desc">书源状态、设置、日志等应用私有文件。清阅读缓存时保留。</string>
+    <string name="storage_delete_all">删除全部下载</string>
+    <string name="storage_delete_all_confirm">删除全部已下载正文、图片和未完成下载，并停止相关任务。保留普通阅读缓存、书架、阅读记录和导入原文件，不影响应用外的导出文件。</string>
+    <string name="storage_clear_cache_confirm">清理临时正文和图片缓存。保留已下载正文、必需图片、未完成下载和书源状态。下载或导出正在处理时，请待其结束后再清理。</string>
+    <string name="storage_content_estimate">涉及内容约 %1$s</string>
+    <string name="storage_downloads_deleted">已删除下载</string>
+    <string name="storage_cleanup_busy">下载或导出正在处理，请结束后再清理。</string>
+    <string name="storage_clear_cache">清理缓存</string>
+    <string name="storage_reading_cache">阅读缓存</string>
+    <string name="storage_cache_empty">暂无需要清理的阅读缓存。</string>
+    <string name="storage_reading_cache_desc">阅读时暂存的正文和图片。清理后仍可离线阅读已下载内容。</string>
+    <string name="storage_downloads">我的下载</string>
+    <string name="storage_downloads_empty">暂无已保存的下载内容。</string>
+    <string name="storage_download_counts">%1$d 本书 · 已保存 %2$d 章</string>
+    <string name="storage_preparing_chapters">另有 %1$d 章尚未完成，已保留进度</string>
+    <string name="storage_unfinished_downloads">%1$d 个下载任务尚未完成</string>
+    <string name="storage_downloads_protected">清理阅读缓存时保留</string>
+    <string name="storage_manage_books">按书管理</string>
+    <string name="download_error_storage_full">设备存储空间不足，请释放空间后继续。</string>
+    <string name="download_error_storage_quota">该书源的状态存储已达配额，并非应用总空间已满。清阅读缓存不会重置此配额，请检查或更新书源规则后继续。</string>
+    <string name="storage_distribution">空间概况</string>
+    <string name="storage_used_short">已用空间</string>
+</resources>

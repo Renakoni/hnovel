@@ -22,8 +22,9 @@ import indi.renakoni.nextvol.R
 fun StorageManagerScreen(
     onClickBack: () -> Unit,
     uiState: StorageManagerUiState,
-    clearReadingCache: suspend () -> Unit,
+    clearReadingCache: suspend () -> Boolean,
     clearDownloads: suspend () -> Unit,
+    onOpenBooks: () -> Unit,
 ) {
     val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior()
     Scaffold(
@@ -33,7 +34,9 @@ fun StorageManagerScreen(
                     Text(
                         text = stringResource(R.string.storage_manager_title),
                         style = MaterialTheme.typography.displayLarge,
-                        fontWeight = FontWeight.W600
+                        fontWeight = FontWeight.W600,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
                 },
                 navigationIcon = {
@@ -45,7 +48,7 @@ fun StorageManagerScreen(
                     }
                 },
                 actions = {
-                    IconButton(uiState.load) {
+                    IconButton(uiState.load, enabled = !uiState.isLoading) {
                         Icon(
                             painter = painterResource(id = R.drawable.refresh_24px),
                             contentDescription = stringResource(R.string.action_refresh)
@@ -62,6 +65,7 @@ fun StorageManagerScreen(
             uiState = uiState,
             clearReadingCache = clearReadingCache,
             clearDownloads = clearDownloads,
+            onOpenBooks = onOpenBooks,
         )
     }
 }

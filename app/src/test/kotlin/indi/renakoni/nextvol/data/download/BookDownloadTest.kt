@@ -1154,6 +1154,97 @@ class BookDownloadTest {
         assertEquals(BookDownloadPhase.Complete, state().phase)
     }
 
+
+    @Test fun deviceFullIsIdentifiedByItsTypedCauseWithoutGuessingFromMessages() {
+        val full = java.io.IOException(android.database.sqlite.SQLiteFullException())
+        assertEquals(DownloadFailure.StorageFull, downloadFailure(WebRequestError("", "", full), DownloadStage.Body))
+        val noSpace = java.io.IOException(android.system.ErrnoException("write", android.system.OsConstants.ENOSPC))
+        assertEquals(DownloadFailure.StorageFull, downloadFailure(WebRequestError("", "", noSpace), DownloadStage.Storage))
+    }
+
+    @Test fun clearingCacheBetweenImageDecodeAndRetentionDefersUntilTheBookFinishes() = runBlocking {
+        register(a).withImages = true
+        downloads.withBookOperation(a) {
+            val attempt = downloads.begin(a, downloads.generation(), "clear-race")
+            val image = SourceImage(a, IMAGE, preferDownloaded = false)
+            val result = loader.execute(ImageRequest.Builder(context).data(image)
+                .memoryCachePolicy(coil3.request.CachePolicy.DISABLED).build())
+            assertTrue(result is SuccessResult)
+            assertFalse(downloads.clearReadingCache())
+            downloads.retainImage(attempt, image, (result as SuccessResult).diskCacheKey)
+            assertArrayEquals(png, downloads.image(SourceImage(a, IMAGE))!!.readBytes())
+            downloads.finish(attempt, true)
+        }
+        assertTrue(downloads.clearReadingCache())
+        assertArrayEquals(png, downloads.image(SourceImage(a, IMAGE))!!.readBytes())
+    }
+
+    @Test fun cancellingOneOfTwoBookOperationsDoesNotEnableCleanupTooEarly() = runBlocking {
+        val firstEntered = CompletableDeferred<Unit>()
+        val secondEntered = CompletableDeferred<Unit>()
+        val first = launch { downloads.withBookOperation(a) { firstEntered.complete(Unit); awaitCancellation() } }
+        val second = launch { downloads.withBookOperation(b) { secondEntered.complete(Unit); awaitCancellation() } }
+        withTimeout(5000) { firstEntered.await(); secondEntered.await() }
+        assertFalse(downloads.clearReadingCache())
+        first.cancelAndJoin()
+        assertFalse(downloads.clearReadingCache())
+        second.cancelAndJoin()
+        assertTrue(downloads.clearReadingCache())
+    }
+
+    @Test fun storageOverviewAccountsForImagesCandidatesAndChaptersRemovedFromTheRemoteDirectory() = runBlocking {
+        val source = register(a).apply { withImages = true }
+        assertTrue(download() is ListenableWorker.Result.Success)
+        register(b).apply { withImages = true; imageFailed = true }
+        assertTrue(download(b) is ListenableWorker.Result.Failure)
+        source.chapters = source.chapters.take(1)
+        local.updateBookVolumes(a.bind(source.directory()))
+        val online = SourceBookId(a.sourceId, "online-only")
+        local.updateChapterContent(SourceChapterId(online, "1").bind(
+            ChapterContent("1", "Online", ContentBuilder().simpleText("temporary").build())))
+        val measuredContext = object : ContextWrapper(context) {
+            override fun getDataDir() = directory.root
+            override fun getCacheDir() = directory.root.resolve("coil")
+            override fun getDatabasePath(name: String) = directory.root.resolve("library.db")
+        }
+        val imported = context.filesDir.resolve("local-books/fixture.epub").apply { parentFile.mkdirs(); writeText("original") }
+        val sourceState = context.filesDir.resolve("source-state").apply { writeText("keep") }
+        val data = indi.renakoni.nextvol.data.userdata.UserDataRepository(db.userDataDao())
+        val usage = indi.renakoni.nextvol.data.storage.StorageUsageRepository(measuredContext, db, data)
+        val before = usage.refreshSnapshot()
+        assertEquals(2, before.downloadedBookCount)
+        assertEquals(3, before.downloadedChapterCount)
+        assertTrue(before.preparingChapterCount > 0)
+        assertEquals(png.size.toLong() * 3, before.downloadImageBytes)
+        assertEquals(imported.length(), before.importedFileBytes)
+        assertTrue(before.readingContentBytes > 0)
+        val saved = before.books.single { it.bookId == a.storageKey }
+        assertEquals(png.size.toLong() * 3, saved.downloadImageBytes)
+        assertEquals(before.downloadedContentBytes, saved.chapterContentBytes)
+        assertEquals(before.preparationBytes, before.books.single { it.bookId == b.storageKey }.preparationBytes)
+        assertTrue(downloads.clearReadingCache())
+        val after = usage.refreshSnapshot()
+        assertEquals(0L, after.readingContentBytes)
+        assertEquals(0L, after.orphanChapterContentBytes)
+        assertEquals(before.downloadBytes, after.downloadBytes)
+        assertEquals("original", imported.readText())
+        assertEquals("keep", sourceState.readText())
+        assertNotNull(chapter(a, "3"))
+        assertEquals(after, usage.getCachedSnapshot())
+        data.stringUserData(UserDataPath.Settings.Data.StorageUsageSnapshot.path).set("{}")
+        assertNull(usage.getCachedSnapshot())
+        downloads.removeBooks(listOf(b))
+        val removed = usage.refreshSnapshot()
+        assertEquals(0L, removed.preparationBytes)
+        assertEquals(1, removed.downloadedBookCount)
+        assertEquals(3, removed.downloadedChapterCount)
+        assertArrayEquals(png, downloads.image(SourceImage(a, IMAGE))!!.readBytes())
+        downloads.clearDownloads()
+        assertEquals(0L, usage.refreshSnapshot().downloadBytes)
+        assertEquals("original", imported.readText())
+        assertEquals("keep", sourceState.readText())
+    }
+
     private inner class Remote(private val book: SourceBookId) : WebBookDataSource by EmptyWebDataSource, SourceImageProvider {
         override val id = book.sourceId
         override val cache = Cache(timeout = 60_000)

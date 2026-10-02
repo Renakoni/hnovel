@@ -82,6 +82,11 @@ class SettingsHierarchyTest {
     }
 
     private fun label(id: Int) = activity.get().getString(id)
+    private fun storageAction(tag: String): SemanticsNodeInteraction {
+        compose.onNodeWithTag("storage_overview").performScrollToNode(hasTestTag(tag))
+        return compose.onNodeWithTag(tag)
+    }
+
     private fun entry(id: Int): SemanticsNodeInteraction {
         compose.onNode(hasScrollAction()).performScrollToNode(hasText(label(id)))
         return compose.onNodeWithText(label(id))
@@ -280,20 +285,27 @@ class SettingsHierarchyTest {
         assertEquals(1, backs)
     }
 
-    @Test fun storageCleanupStaysReachableWhileLoadingAndWhenEmptyAndRequiresConfirmation() {
+
+    @Test fun storageCleanupRequiresMeasuredContentAndExplicitConfirmation() {
         val state = MutableStorageManagerUiState()
         var cacheClears = 0
         var downloadClears = 0
-        show { StorageManagerScreen({}, state, { cacheClears++ }, { downloadClears++ }) }
-        entry(R.string.settings_clear_reading_cache).performClick()
+        show { StorageManagerScreen({}, state, { cacheClears++; true }, { downloadClears++ }, {}) }
+        compose.onNodeWithTag("clear_reading_cache").assertDoesNotExist()
+        compose.runOnIdle {
+            state.isLoading = false
+            state.snapshot = indi.renakoni.nextvol.data.storage.StorageUsageSnapshot()
+        }
+        storageAction("clear_reading_cache").assertIsNotEnabled()
+        compose.runOnIdle { state.snapshot = state.snapshot!!.copy(readingContentBytes = 1024, downloadedContentBytes = 2048) }
+        storageAction("clear_reading_cache").performScrollTo().performClick()
         compose.onNodeWithText(label(android.R.string.cancel)).performClick()
         assertEquals(0, cacheClears)
-        compose.runOnIdle { state.isLoading = false }
-        entry(R.string.settings_clear_reading_cache).performClick()
-        compose.onNodeWithText(label(android.R.string.ok)).performClick()
+        storageAction("clear_reading_cache").performScrollTo().performClick()
+        compose.onNode(hasText(label(R.string.storage_clear_cache)) and hasClickAction() and hasAnyAncestor(isDialog())).performClick()
         compose.waitUntil { cacheClears == 1 }
-        entry(R.string.settings_clear_downloads).performClick()
-        compose.onNodeWithText(label(android.R.string.ok)).performClick()
+        storageAction("delete_all_downloads").performScrollTo().performClick()
+        compose.onNode(hasText(label(R.string.storage_delete_all)) and hasClickAction() and hasAnyAncestor(isDialog())).performClick()
         compose.waitUntil { downloadClears == 1 }
         assertEquals(1, cacheClears)
     }
@@ -301,20 +313,23 @@ class SettingsHierarchyTest {
     @Test fun cleanupPreventsRepeatedConfirmationAndCanRetryAfterFailure() {
         val pending = CompletableDeferred<Unit>()
         var attempts = 0
-        show {
-            StorageManagerScreen({}, MutableStorageManagerUiState().apply { isLoading = false }, {}, {
-                attempts++
-                if (attempts == 1) pending.await()
-            })
+        val state = MutableStorageManagerUiState().apply {
+            isLoading = false
+            snapshot = indi.renakoni.nextvol.data.storage.StorageUsageSnapshot(downloadedContentBytes = 1024)
         }
-        entry(R.string.settings_clear_downloads).performClick()
-        compose.onNodeWithText(label(android.R.string.ok)).performClick()
-        compose.onNodeWithText(label(android.R.string.ok)).assertIsNotEnabled()
+        show { StorageManagerScreen({}, state, { true }, {
+            attempts++
+            if (attempts == 1) pending.await()
+        }, {}) }
+        storageAction("delete_all_downloads").performScrollTo().performClick()
+        compose.onNode(hasText(label(R.string.storage_delete_all)) and hasClickAction() and hasAnyAncestor(isDialog())).performClick()
+        compose.onNodeWithText(label(R.string.processing)).assertIsNotEnabled()
         compose.onNodeWithText(label(android.R.string.cancel)).assertIsNotEnabled()
         assertEquals(1, attempts)
         compose.runOnIdle { pending.completeExceptionally(IllegalStateException("fixture failure")) }
-        compose.onNodeWithText(label(android.R.string.ok)).assertIsEnabled().performClick()
+        compose.waitUntil { compose.onAllNodes(isDialog()).fetchSemanticsNodes().isEmpty() }
+        storageAction("delete_all_downloads").performScrollTo().performClick()
+        compose.onNode(hasText(label(R.string.storage_delete_all)) and hasClickAction() and hasAnyAncestor(isDialog())).performClick()
         compose.waitUntil { attempts == 2 }
-        compose.onNodeWithText(label(android.R.string.ok)).assertDoesNotExist()
     }
 }

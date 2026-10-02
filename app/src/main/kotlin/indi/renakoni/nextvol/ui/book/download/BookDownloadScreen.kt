@@ -50,6 +50,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import indi.renakoni.nextvol.R
+import indi.renakoni.nextvol.data.download.isStorageFailure
 import indi.renakoni.nextvol.data.download.DownloadStage
 import indi.renakoni.nextvol.data.download.DownloadTaskStatus
 import indi.renakoni.nextvol.ui.components.Cover
@@ -62,6 +63,7 @@ fun BookDownloadScreen(
     state: BookDownloadUiState, onBack: () -> Unit, onReload: () -> Unit,
     onSelect: (Set<String>) -> Unit,
     onSubmit: () -> Unit, onResume: () -> Unit, onCancel: () -> Unit,
+    onOpenStorage: () -> Unit = {},
 ) {
     val chapters = remember(state.volumes) { state.allChapters }
     val chapterIds = remember(chapters) { chapters.map { it.id }.toSet() }
@@ -129,6 +131,13 @@ fun BookDownloadScreen(
                                 Text(stringResource(R.string.download_cancel_reselect))
                             }
                         }
+                    }
+                }
+            }
+            if (state.status.task.failure?.isStorageFailure == true || state.directoryFailure?.isStorageFailure == true) {
+                item(key = "storage-recovery") {
+                    TextButton(onOpenStorage, Modifier.padding(top = 8.dp).testTag("download-open-storage")) {
+                        Text(stringResource(R.string.storage_manager_title))
                     }
                 }
             }

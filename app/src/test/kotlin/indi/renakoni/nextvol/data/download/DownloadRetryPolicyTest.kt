@@ -36,4 +36,17 @@ class DownloadRetryPolicyTest {
             io.nightfish.lightnovelreader.api.error.WebRequestError("", "", image), DownloadStage.Image))
         assertNull(image.retry)
     }
+    @Test fun quotaAndDiskFullAreStorageFailuresEvenAtADocumentOrImageStage() {
+        val quota = hnovel.content.SourceContentException(hnovel.content.ContentError.Storage, "bookState",
+            storageFailure = hnovel.network.FailureCode.StorageQuota)
+        val error = io.nightfish.lightnovelreader.api.error.WebRequestError("", "", quota)
+        assertEquals(DownloadFailure.StorageQuota, downloadFailure(error, DownloadStage.Directory))
+        val image = indi.renakoni.nextvol.data.image.SourceImageRequestException(error)
+        assertEquals(DownloadFailure.StorageQuota, downloadFailure(
+            io.nightfish.lightnovelreader.api.error.WebRequestError("", "", image), DownloadStage.Image))
+        assertNull(image.retry)
+        assertEquals(DownloadFailure.SourceRequest, downloadFailure(
+            io.nightfish.lightnovelreader.api.error.WebRequestError("", "", IllegalStateException("disk full")), DownloadStage.Body))
+    }
+
 }

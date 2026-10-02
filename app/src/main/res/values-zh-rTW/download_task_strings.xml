@@ -26,7 +26,7 @@
     <string name="download_error_verification">請完成書源驗證後重試</string>
     <string name="download_error_source">書源無法使用</string>
     <string name="download_error_request">書源請求失敗</string>
-    <string name="download_error_storage">本機儲存失敗，請檢查儲存空間</string>
+    <string name="download_error_storage">無法儲存本機資料，請檢查可用空間後重試。</string>
     <string name="download_notification_channel">書籍下載</string>
     <string name="download_notification_title">正在快取書籍</string>
     <string name="download_notification_text">開啟應用程式查看下載進度</string>
