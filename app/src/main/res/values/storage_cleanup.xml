@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="storage_refresh_failed">Could not update storage usage. Try refreshing.</string>
+    <string name="storage_measuring">Measuring storage…</string>
+    <string name="storage_your_content">Your content</string>
+    <string name="storage_size_note">Content sizes are estimates. Database space may be reused later, so deleting content may not immediately shrink the database file.</string>
+    <string name="storage_external_note">Exported files outside the app are not included or deleted. Switching source accounts keeps local content.</string>
+    <string name="storage_updated_at">Updated at %1$s</string>
+    <string name="storage_download_images">Downloaded images</string>
+    <string name="storage_download_images_desc">Covers and illustrations saved for offline reading. Kept by cache cleanup; removed when their downloads are deleted.</string>
+    <string name="storage_imported_books">Imported books</string>
+    <string name="storage_imported_books_desc">Original files imported into the app. Cache cleanup and download deletion keep these files.</string>
+    <string name="storage_temporary_desc">Image cache and temporary export or share files. Reading cache cleanup only removes cached images here.</string>
+    <string name="storage_other_desc">Source state, settings, logs and other private app files. Kept during reading cache cleanup.</string>
+    <string name="storage_delete_all">Delete all downloads</string>
+    <string name="storage_delete_all_confirm">Delete all downloaded chapters, saved images and unfinished downloads, and stop their tasks. Keep reading cache, shelves, reading history and imported originals. External exports are not affected.</string>
+    <string name="storage_clear_cache_confirm">Remove temporary chapters and image cache. Downloaded chapters, required images, unfinished downloads and source state are kept. Cleanup waits until an active download or export finishes.</string>
+    <string name="storage_content_estimate">Estimated content: %1$s</string>
+    <string name="storage_downloads_deleted">Downloads deleted</string>
+    <string name="storage_cleanup_busy">Download or export in progress. Try cleanup after it finishes.</string>
+    <string name="storage_clear_cache">Clear cache</string>
+    <string name="storage_reading_cache">Reading cache</string>
+    <string name="storage_cache_empty">No reading cache to clear.</string>
+    <string name="storage_reading_cache_desc">Temporary chapters and images from reading. Clearing them keeps your downloads.</string>
+    <string name="storage_downloads">Downloads</string>
+    <string name="storage_downloads_empty">No downloaded content yet.</string>
+    <string name="storage_download_counts">%1$d books · %2$d saved chapters</string>
+    <string name="storage_preparing_chapters">Includes %1$d unfinished chapters</string>
+    <string name="storage_unfinished_downloads">%1$d unfinished download tasks</string>
+    <string name="storage_downloads_protected">Kept when clearing reading cache</string>
+    <string name="storage_manage_books">Manage by book</string>
+    <string name="download_error_storage_full">Device storage is full. Free some space before continuing.</string>
+    <string name="download_error_storage_quota">This source reached its saved-state limit. Clearing reading cache will not reset it. Check or update the source rule before continuing.</string>
+    <string name="storage_distribution">Storage overview</string>
+    <string name="storage_used_short">App usage</string>
+    <string name="storage_chart_hint">Select a category to see what it contains and how cleanup affects it.</string>
+</resources>

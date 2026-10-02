@@ -19,13 +19,15 @@ data class LocalBookItem(
     val chapterContentBytes: Long = 0L,
     val readingRecordBytes: Long = 0L,
     val importedFileBytes: Long = 0L,
+    val downloadImageBytes: Long = 0L,
+    val preparationBytes: Long = 0L,
 ) {
     val hasChapterContent: Boolean
-        get() = chapterContentBytes > 0L || importedFileBytes > 0L
+        get() = chapterContentBytes > 0L || importedFileBytes > 0L || downloadImageBytes > 0L || preparationBytes > 0L
 
     fun bytesOf(target: LocalBookClearTarget): Long = when (target) {
         LocalBookClearTarget.VolumeAndChapterIndex -> volumeBytes + chapterInformationBytes
-        LocalBookClearTarget.ChapterContent -> chapterContentBytes
+        LocalBookClearTarget.ChapterContent -> chapterContentBytes + downloadImageBytes + preparationBytes
         LocalBookClearTarget.ReadingRecord -> readingRecordBytes
     }
 }

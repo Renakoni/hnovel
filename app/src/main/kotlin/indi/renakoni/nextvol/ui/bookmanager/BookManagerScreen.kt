@@ -81,8 +81,9 @@ fun BookManagerScreen(
     onClickRetry: (DownloadItem) -> Unit,
     onClickClearCompleted: () -> Unit,
     onOpenDownload: (String) -> Unit = {},
+    initialLocalTab: Boolean = false,
 ) {
-    var tabIndex by rememberSaveable { mutableIntStateOf(0) }
+    var tabIndex by rememberSaveable { mutableIntStateOf(if (initialLocalTab) 1 else 0) }
     var sortMenuExpanded by remember { mutableStateOf(false) }
     var moreMenuExpanded by remember { mutableStateOf(false) }
     var orphanDialogVisible by remember { mutableStateOf(false) }

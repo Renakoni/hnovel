@@ -26,7 +26,7 @@
     <string name="download_error_verification">Complete source verification, then retry</string>
     <string name="download_error_source">Source unavailable</string>
     <string name="download_error_request">Source request failed</string>
-    <string name="download_error_storage">Could not save locally; check storage space</string>
+    <string name="download_error_storage">Local data could not be saved. Check available storage and try again.</string>
     <string name="download_notification_channel">Book downloads</string>
     <string name="download_notification_title">Downloading book</string>
     <string name="download_notification_text">Open the app to view download progress</string>

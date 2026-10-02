@@ -98,10 +98,10 @@
     <string name="font_file_error">Файл шрифта некорректен или повреждён. Проверьте его и импортируйте снова.</string>
     <string name="local_book_clear_options">Параметры очистки</string>
     <string name="local_book_clear_index">Очистить список томов и глав</string>
-    <string name="local_book_clear_content">Очистить текст глав</string>
+    <string name="local_book_clear_content">Удалить главы и изображения</string>
     <string name="local_book_clear_reading">Очистить записи о чтении</string>
     <string name="local_book_clear_confirm_title">Подтвердить удаление</string>
-    <string name="local_book_clear_confirm_content">Выбранное содержимое будет удалено, освободится %1$s.\nПозже его можно импортировать или скачать снова.\nЭто действие нельзя отменить.</string>
+    <string name="local_book_clear_confirm_content">Удалить выбранные категории (около %1$s)? Удаление глав также удалит их скачанные изображения и незавершённые загрузки. Остальные категории сохранятся. Размер базы может не уменьшиться сразу.</string>
     <string name="confirm_exit">Выйти?</string>
     <string name="hint_unsaved_changes_will_be_lost">При выходе несохранённые изменения будут потеряны.</string>
     <!-- Snackbar Hints -->

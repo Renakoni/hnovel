@@ -154,7 +154,9 @@ internal class RuleEvaluation(private val identity: ExecutionIdentity, private v
                 FailureCode.UnsupportedDependency -> ContentError.UnsupportedDependency
                 else -> ContentError.InvalidRule
             }, failureField, networkFailure?.denial.takeIf { result.code == FailureCode.BridgeDenied }, dependency,
-                networkFailure?.takeIf { result.code == FailureCode.BridgeDenied && !requestLimitExceeded && !responseLimitExceeded }?.let(verification), result)
+                networkFailure?.takeIf { result.code == FailureCode.BridgeDenied && !requestLimitExceeded && !responseLimitExceeded }?.let(verification), result, storageFailure = networkFailure?.code.takeIf {
+                    result.code == FailureCode.BridgeDenied && !requestLimitExceeded && !responseLimitExceeded
+                })
             is ExecutionResult.Success -> Json.decodeFromString(ExecutedRule.serializer(), result.output)
         }
     }

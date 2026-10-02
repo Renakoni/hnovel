@@ -290,6 +290,8 @@ class BookManagerViewModel @Inject constructor(
                 chapterContentBytes = usage.chapterContentBytes,
                 readingRecordBytes = readingRecordBytes,
                 importedFileBytes = importedFileBytes,
+                downloadImageBytes = usage.downloadImageBytes,
+                preparationBytes = usage.preparationBytes,
             )
         }.filter { it.size > 0L }
         val retainedSelectedIds = localBookManagerUiState.selectedIds.intersect(bookList.map { it.id }.toSet())

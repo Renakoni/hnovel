@@ -64,7 +64,9 @@ class BookDownloadScheduler @Inject constructor(
     }
 
     private fun submissionFailure(failure: Exception) =
-        if (failure is android.database.sqlite.SQLiteException) DownloadFailure.Storage else DownloadFailure.Scheduling
+        if (failure is android.database.sqlite.SQLiteException)
+            downloadFailure(io.nightfish.lightnovelreader.api.error.WebRequestError("", "", failure), DownloadStage.Storage)
+        else DownloadFailure.Scheduling
 
     private fun enqueueTask(requested: SourceBookId, refresh: Boolean, chapterIds: List<String>?, resumePrevious: Boolean) = run {
         val generation = downloads.generation()

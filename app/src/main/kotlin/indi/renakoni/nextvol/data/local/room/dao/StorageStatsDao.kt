@@ -4,9 +4,14 @@ import androidx.room.Dao
 import androidx.room.Query
 import indi.renakoni.nextvol.data.local.room.entity.StorageBytes
 import indi.renakoni.nextvol.data.local.room.entity.VolumeStorageRow
+import indi.renakoni.nextvol.data.local.room.entity.DownloadPreparationBytes
 
 @Dao
 interface StorageStatsDao {
+    @Query("select bookId, sum(length(cast(body as blob)) + length(cast(images as blob))) as bytes, " +
+        "count(*) as chapters from download_chapter_candidate group by bookId")
+    suspend fun getDownloadPreparationBytes(): List<DownloadPreparationBytes>
+
     @Query(
         """
         select

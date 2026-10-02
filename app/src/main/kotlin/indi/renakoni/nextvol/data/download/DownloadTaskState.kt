@@ -9,7 +9,9 @@ import java.io.IOException
 
 enum class DownloadTaskStatus { None, Queued, Running, WaitingRetry, WaitingVerification, Interrupted, Failed, Cancelled, Complete }
 enum class DownloadStage { Unknown, Details, Directory, Body, Image, Cover, Storage }
-enum class DownloadFailure { Network, RateLimited, RetryExhausted, Authentication, Verification, SourceUnavailable, SourceRequest, Storage, SystemRestricted, SystemInterrupted, Scheduling, SelectionUnavailable }
+enum class DownloadFailure { Network, RateLimited, RetryExhausted, Authentication, Verification, SourceUnavailable, SourceRequest, Storage, StorageFull, StorageQuota, SystemRestricted, SystemInterrupted, Scheduling, SelectionUnavailable }
+
+val DownloadFailure.isStorageFailure get() = this in setOf(DownloadFailure.Storage, DownloadFailure.StorageFull, DownloadFailure.StorageQuota)
 
 data class DownloadTaskState(
     val status: DownloadTaskStatus = DownloadTaskStatus.None,
@@ -41,6 +43,11 @@ internal fun downloadFailure(error: WebRequestError?, stage: DownloadStage): Dow
     if (error?.throwable is DownloadSelectionChangedException) return DownloadFailure.SelectionUnavailable
     val image = error?.throwable as? SourceImageRequestException
     val content = error?.throwable as? hnovel.content.SourceContentException
+    if ((content?.storageFailure ?: image?.storageFailure) == hnovel.network.FailureCode.StorageQuota) return DownloadFailure.StorageQuota
+    if (generateSequence(error?.throwable) { it.cause }.take(16).any {
+        it is android.database.sqlite.SQLiteFullException ||
+            it is android.system.ErrnoException && it.errno == android.system.OsConstants.ENOSPC
+    }) return DownloadFailure.StorageFull
     return when (image?.kind ?: error?.kind) {
         WebRequestErrorKind.AuthenticationRequired -> DownloadFailure.Authentication
         WebRequestErrorKind.VerificationRequired -> DownloadFailure.Verification

@@ -26,7 +26,7 @@
     <string name="download_error_verification">请完成书源验证后重试</string>
     <string name="download_error_source">书源不可用</string>
     <string name="download_error_request">书源请求失败</string>
-    <string name="download_error_storage">本地保存失败，请检查存储空间</string>
+    <string name="download_error_storage">无法保存本地数据，请检查可用空间后重试。</string>
     <string name="download_notification_channel">书籍下载</string>
     <string name="download_notification_title">正在缓存书籍</string>
     <string name="download_notification_text">打开应用查看下载进度</string>
