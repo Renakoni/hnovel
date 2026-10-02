@@ -160,6 +160,19 @@ class LoginCookieHandoffTest {
         }
     }
 
+    @Test fun repeatingAnExplicitLoginDoesNotRetireItsNewlySavedHeader() = runBlocking {
+        val base = "https://source.example/"
+        SourceBroker(directory.root.toPath()).use { broker ->
+            val session = broker.open(scope, listOf(NetworkGrant(base))).apply { seed(base) }
+            kotlinx.coroutines.delay(1100)
+            // putLoginHeader saves the caller's map before bootstrapping the jar.
+            val saved = """{"Cookie":"auth=old"}"""
+            session.write(login.copy(value = saved))
+            session.setCookie(base, "auth=old")
+            assertEquals(saved, (session.read(login) as StorageResult.Value).value)
+        }
+    }
+
     @Test fun grantedSubdomainCanRotateItsParentDomainCookieWithoutRetiringUnrelatedValues() {
         val base = "https://source.example/"
         val child = "https://login.source.example/"

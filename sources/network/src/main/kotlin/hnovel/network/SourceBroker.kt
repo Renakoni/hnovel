@@ -268,7 +268,8 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         policy.check(parsed); return cookies.header(parsed, null) }
     @Synchronized fun setCookie(url: String, value: String, replace: Boolean = false) {
         checkOpen(); val parsed = url.toHttpUrlOrNull() ?: error("Invalid cookie URL"); policy.check(parsed)
-        updateSessionCookies { cookies.setHeader(parsed, value, replace) }
+        // Re-seeding an explicit login renews our synthetic expiry, not server authority.
+        updateSessionCookies(retireAttributes = false) { cookies.setHeader(parsed, value, replace) }
     }
     @Synchronized fun removeCookie(url: String) { checkOpen(); val parsed = url.toHttpUrlOrNull() ?: error("Invalid cookie URL")
         policy.check(parsed); updateSessionCookies { cookies.setHeader(parsed, "", true) } }
@@ -309,7 +310,7 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
 
     /** Login headers bootstrap cookies. A confirmed value/attribute update retires only that seed;
      * the jar owns the replacement's domain, path and expiry. Request headers remain explicit. */
-    @Synchronized private fun updateSessionCookies(update: () -> Unit) {
+    @Synchronized private fun updateSessionCookies(retireAttributes: Boolean = true, update: () -> Unit) {
         val loginUrl = sourceUrl.toHttpUrlOrNull()
         // A granted subdomain can update a parent-domain cookie. Compare accepted jar
         // entries, including attributes; header strings lose expiry and scope changes.
@@ -317,8 +318,9 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         update()
         if (loginUrl == null || before.isEmpty()) return
         // Cookie expiry is serialized at HTTP-date (second) precision in browser seeds.
-        val after = cookies.snapshot().map { it.second.toString() }.toSet()
-        val retired = before.filter { it.toString() !in after }.map { it.name to it.value }.toSet()
+        fun identity(cookie: Cookie) = if (retireAttributes) cookie.toString() else "${cookie.name}=${cookie.value}"
+        val after = cookies.snapshot().map { identity(it.second) }.toSet()
+        val retired = before.filter { identity(it) !in after }.map { it.name to it.value }.toSet()
         if (retired.isEmpty()) return
         val saved = when (val result = account.read(StorageRequestKey.LOGIN_HEADERS)) {
             is StorageResult.Failure -> throw BrokerFailure(RequestStage.Storage, result.code)
