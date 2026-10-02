@@ -95,6 +95,7 @@ fun LazyListState.isScrollingUp(): State<Boolean> {
 
 
 fun NavController.popBackStackIfResumed() {
+    // Unlike selecting a bottom root, repeated Back during a transition can pop multiple screens.
     if (isResumed()) {
         popBackStack()
     }

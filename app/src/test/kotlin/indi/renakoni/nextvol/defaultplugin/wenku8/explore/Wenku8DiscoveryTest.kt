@@ -7,12 +7,17 @@ import io.nightfish.lightnovelreader.api.web.discovery.DiscoveryRequest
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import org.jsoup.Jsoup
 import org.junit.Assert.*
 import org.junit.Test
+import java.util.concurrent.atomic.AtomicInteger
 
 class Wenku8DiscoveryTest {
     private val host = "https://fixture.invalid"
@@ -143,6 +148,56 @@ class Wenku8DiscoveryTest {
         assertThrows(CancellationException::class.java) { runBlocking {
             Wenku8Discovery(host) { throw CancellationException() }.feed()
         } }
+    }
+
+    @Test fun oneCancelledSupplementalRequestTerminatesTheFeedAndCancelsItsSiblings() = runBlocking {
+        val started = Channel<Unit>(Channel.UNLIMITED)
+        val release = CompletableDeferred<Unit>()
+        val active = AtomicInteger()
+        val provider = Wenku8Discovery(host) { url ->
+            if (url == host) Jsoup.parse(home(listOf("Home"))) else {
+                active.incrementAndGet()
+                try {
+                    started.send(Unit)
+                    if (url.endsWith("articlelist.php?page=1")) {
+                        release.await()
+                        throw CancellationException("Supplemental request cancelled")
+                    }
+                    awaitCancellation()
+                } finally { active.decrementAndGet() }
+            }
+        }
+        val feed = async { runCatching { provider.feed() }.exceptionOrNull() }
+        try {
+            withTimeout(5000) { repeat(Wenku8Discovery.lists.size) { started.receive() } }
+            release.complete(Unit)
+            val failure = withTimeoutOrNull(2000) { feed.await() }
+            assertTrue("One cancelled request must terminate the feed without waiting for its siblings",
+                failure is CancellationException)
+            assertEquals("Supplemental request cancelled", failure?.message)
+            assertEquals(0, active.get())
+        } finally { release.complete(Unit); feed.cancelAndJoin() }
+    }
+
+    @Test fun supplementalFailureKeepsProgressiveContentAndCanRetryIndependently() = runBlocking {
+        var fail = true
+        val provider = Wenku8Discovery(host) { url ->
+            if (fail && url.endsWith("sort=allvisit")) throw java.io.IOException("Unavailable list")
+            Jsoup.parse(if (url == host) home(listOf("Home")) else cards(2))
+        }
+        val snapshots = provider.feedUpdates().toList().map { it.get()!! }
+        assertEquals(7, snapshots.size)
+        assertEquals("99", snapshots.first().first().books.single().remoteId)
+        assertTrue(snapshots.first().drop(1).all { it.previewLoading && it.books.isEmpty() })
+        assertTrue(snapshots.all { it.map { section -> section.id } == snapshots.first().map { section -> section.id } })
+        val last = snapshots.last()
+        assertEquals(listOf("allvisitBook"), last.filter { it.previewFailure != null }.map { it.id })
+        assertTrue(last.none { it.previewLoading })
+        assertTrue(last.filter { it.id != "allvisitBook" }.all { it.books.isNotEmpty() })
+        fail = false
+        val retried = provider.preview("allvisitBook").get()!!
+        assertNull(retried.previewFailure)
+        assertEquals(2, retried.books.size)
     }
 
     @Test fun singleBookRedirectStillProducesOneBookAndStopsPaging() = runBlocking {

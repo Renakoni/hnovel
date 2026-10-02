@@ -26,11 +26,13 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.JsonArray
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import io.nightfish.lightnovelreader.api.book.BookInformation
 import io.nightfish.lightnovelreader.api.web.WebDataSourcePriority
-import kotlinx.coroutines.delay
-import kotlin.time.Duration.Companion.milliseconds
 
 @HiltWorker
 class CheckUpdateWork @AssistedInject constructor(
@@ -50,35 +52,55 @@ class CheckUpdateWork @AssistedInject constructor(
                 needRemindBookIdSet.addAll(it.allBookIds)
             }
         var failedCount = 0
-        val outcomes = mutableListOf<kotlinx.serialization.json.JsonObject>()
-        bookshelfRepository.getAllBookshelfBooksMetadata().forEach { metadata ->
-            if (metadata.id !in needRemindBookIdSet) return@forEach
-            delay(3000.milliseconds)
-            var status = "unchanged"
-            // Each metadata entry owns its source; browsing never supplies a fallback.
-            val book = runCatching { BookIdentity.book(metadata.id) }.getOrNull()
-            if (book == null) {
-                status = "invalid_book_identity"
-            } else try {
-                val result = bookRepository.refreshBookInformation(book, WebDataSourcePriority.Low)
-                if (result.isErr) status = bookWorkFailureReason(result.component2())
-                result.onOk { information ->
-                    if (information.lastUpdated.isAfter(metadata.lastUpdate)) {
-                        // Repository refresh already updated metadata and bookshelf markers.
-                        reminderBookMap[book.storageKey] = information
-                        status = "updated"
+        val targets = bookshelfRepository.getAllBookshelfBooksMetadata()
+            .filter { it.id in needRemindBookIdSet }
+        val outcomes = arrayOfNulls<kotlinx.serialization.json.JsonObject>(targets.size)
+        val ready = ArrayDeque(targets.withIndex().groupBy {
+            runCatching { BookIdentity.book(it.value.id).sourceId }.getOrNull()
+        }.values.map { ArrayDeque(it) })
+        val scheduling = Mutex()
+        coroutineScope {
+            // A source owns at most one active refresh. Return it to the end of the
+            // ready queue after each book so a large shelf cannot monopolize a lane.
+            repeat(minOf(MAX_ACTIVE_SOURCES, ready.size)) {
+                launch {
+                    while (true) {
+                        currentCoroutineContext().ensureActive()
+                        val sourceBooks = scheduling.withLock { ready.removeFirstOrNull() } ?: break
+                        val (index, metadata) = sourceBooks.removeFirst()
+                        var status = "unchanged"
+                        var updatedInformation: BookInformation? = null
+                        // Each metadata entry owns its source; browsing never supplies a fallback.
+                        val book = runCatching { BookIdentity.book(metadata.id) }.getOrNull()
+                        if (book == null) {
+                            status = "invalid_book_identity"
+                        } else try {
+                            val result = bookRepository.refreshBookInformation(book, WebDataSourcePriority.Low)
+                            if (result.isErr) status = bookWorkFailureReason(result.component2())
+                            result.onOk { information ->
+                                if (information.lastUpdated.isAfter(metadata.lastUpdate)) {
+                                    // Repository refresh already updated metadata and bookshelf markers.
+                                    updatedInformation = information
+                                    status = "updated"
+                                }
+                            }
+                        } catch (failure: CancellationException) {
+                            currentCoroutineContext().ensureActive()
+                            status = "source_unavailable"
+                        } catch (failure: Exception) {
+                            status = "source_request_failed"
+                        }
+                        scheduling.withLock {
+                            updatedInformation?.let { reminderBookMap[checkNotNull(book).storageKey] = it }
+                            if (status != "updated" && status != "unchanged") failedCount++
+                            outcomes[index] = buildJsonObject {
+                                put("bookId", metadata.id)
+                                put("status", status)
+                            }
+                            if (sourceBooks.isNotEmpty()) ready.addLast(sourceBooks)
+                        }
                     }
                 }
-            } catch (failure: CancellationException) {
-                currentCoroutineContext().ensureActive()
-                status = "source_unavailable"
-            } catch (failure: Exception) {
-                status = "source_request_failed"
-            }
-            if (status != "updated" && status != "unchanged") failedCount++
-            outcomes += buildJsonObject {
-                put("bookId", metadata.id)
-                put("status", status)
             }
         }
         reminderBookMap.values.forEach {
@@ -110,7 +132,7 @@ class CheckUpdateWork @AssistedInject constructor(
         var output: java.io.FileOutputStream? = null
         try {
             output = atomic.startWrite()
-            output!!.write(JsonArray(outcomes).toString().toByteArray(Charsets.UTF_8))
+            output!!.write(JsonArray(outcomes.map { checkNotNull(it) }).toString().toByteArray(Charsets.UTF_8))
             atomic.finishWrite(output!!)
         } catch (failure: Exception) {
             output?.let(atomic::failWrite)
@@ -136,5 +158,9 @@ class CheckUpdateWork @AssistedInject constructor(
                 appContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             notificationManager.createNotificationChannel(channel)
         }
+    }
+
+    private companion object {
+        const val MAX_ACTIVE_SOURCES = 8
     }
 }

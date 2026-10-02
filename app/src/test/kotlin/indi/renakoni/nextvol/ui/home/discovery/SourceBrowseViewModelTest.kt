@@ -75,6 +75,55 @@ class SourceBrowseViewModelTest {
             stores += ViewModelStore().apply { put("page", it) }
         }
 
+    @Test fun failedProgressiveRefreshKeepsOldBooksUntilRetryOrSuccessfulEmptyResult() = runTest(dispatcher) {
+        val old = DiscoverySection("feed", "Feed", listOf(DiscoveryBook("old", "Old book")), "all")
+        val loading = old.copy(books = emptyList(), previewLoading = true)
+        val failure = DiscoveryPreviewFailure(DiscoveryError.Network)
+        val response = CompletableDeferred<Unit>()
+        val provider = object : Provider(), DiscoveryPreviewProvider {
+            var refreshes = 0
+            override fun feedUpdates() = kotlinx.coroutines.flow.flow {
+                when (refreshes++) {
+                    0 -> emit(Ok(listOf(old)))
+                    1, 2 -> {
+                        emit(Ok(listOf(loading)))
+                        response.await()
+                        emit(Ok(listOf(loading.copy(previewLoading = false, previewFailure = failure))))
+                    }
+                    else -> emit(Ok(listOf(old.copy(books = emptyList()))))
+                }
+            }
+            override suspend fun preview(id: String) = Ok(old.copy(books = listOf(DiscoveryBook("new", "New book"))))
+        }
+        val source = add(0, provider = provider)
+        val model = model()
+        model.setActive(true)
+        advanceUntilIdle()
+        fun section() = model.state.value.content.getValue(source).sections.single()
+        assertEquals("old", section().books.single().id.remoteId)
+        model.refresh()
+        advanceUntilIdle()
+        assertTrue(section().previewLoading)
+        assertEquals("old", section().books.single().id.remoteId)
+        response.complete(Unit)
+        advanceUntilIdle()
+        assertFalse(section().previewLoading)
+        assertEquals(failure, section().previewFailure)
+        assertEquals("old", section().books.single().id.remoteId)
+        model.refresh()
+        advanceUntilIdle()
+        assertEquals(failure, section().previewFailure)
+        assertEquals("old", section().books.single().id.remoteId)
+        model.retryPreview(section())
+        advanceUntilIdle()
+        assertNull(section().previewFailure)
+        assertEquals("new", section().books.single().id.remoteId)
+        model.refresh()
+        advanceUntilIdle()
+        assertTrue(section().books.isEmpty())
+        assertNull(section().previewFailure)
+    }
+
     @Test fun sourcePagesRespectAllBoundariesAndNeverLoadUnselectedSources() = runTest(dispatcher) {
         val model = model()
         var count = 0

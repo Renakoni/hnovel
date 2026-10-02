@@ -12,6 +12,7 @@ import hnovel.content.parseBookUpdateTime
 import hnovel.content.parseBookWordCount
 import indi.renakoni.nextvol.data.explore.SearchPage
 import indi.renakoni.nextvol.data.web.SourceRequestException
+import indi.renakoni.nextvol.data.web.SourceRequestOwner
 import io.nightfish.lightnovelreader.api.web.discovery.DiscoveryError
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -28,6 +29,7 @@ import io.nightfish.lightnovelreader.api.content.builder.image
 import io.nightfish.lightnovelreader.api.content.builder.simpleText
 import io.nightfish.lightnovelreader.api.error.WebRequestError
 import io.nightfish.lightnovelreader.api.error.mapAsWebRequestError
+import io.nightfish.lightnovelreader.api.identifier.Identifier
 import io.nightfish.lightnovelreader.api.web.search.SearchResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -43,6 +45,7 @@ class Wenku8WebsiteDataSource(
     val host: String,
     val wenku8Api: Wenku8Api
 ): Wenku8BookDataSource {
+    private data class DirectoryKey(val owner: Identifier?, val host: String, val bookId: String)
     private val titleRegex = Regex("(.*) ?[(（](.*)[)）] ?$")
     private fun url(string: String) = "$host/$string"
 
@@ -145,7 +148,10 @@ class Wenku8WebsiteDataSource(
             }
         }
         volume?.let(volumes::add)
-        return@coroutineBinding BookVolumes(id, volumes)
+        val result = BookVolumes(id, volumes)
+        val key = DirectoryKey(currentCoroutineContext()[SourceRequestOwner]?.id, host, id)
+        synchronized(wenku8Api.cache) { wenku8Api.cache.cache(key, result) }
+        return@coroutineBinding result
     }
 
     override suspend fun getChapterContent(
@@ -188,22 +194,13 @@ class Wenku8WebsiteDataSource(
             if (it.attr("href") == "index.htm" || it.attr("href").contains("article")) null
             else it.attr("href").split(".").firstOrNull()
         }
-        val neoTitle = wenku8Api.cache.getCache<BookVolumes>(bookId.hashCode())
-            .let {
-                if (it == null) {
-                    val bookVolumes = getBookVolumes(bookId).get() ?: return@let null
-                    wenku8Api.cache.cache(bookId.hashCode()) {
-                        bookVolumes
-                    }
-                    return@let bookVolumes
-                }
-                return@let null
-            }?.let { bookVolumes ->
-                bookVolumes.volumes.forEach { volume ->
-                    return@let volume.chapters.firstOrNull { it.id == chapterId }?.title
-                }
-                return@let null
-            }
+        val key = DirectoryKey(currentCoroutineContext()[SourceRequestOwner]?.id, host, bookId)
+        val bookVolumes = synchronized(wenku8Api.cache) {
+            wenku8Api.cache.getCache<BookVolumes>(key)
+        } ?: getBookVolumes(bookId).get()
+        val neoTitle = bookVolumes?.volumes?.firstNotNullOfOrNull { volume ->
+            volume.chapters.firstOrNull { it.id == chapterId }?.title
+        }
         return@coroutineBinding ChapterContent(
             id = chapterId,
             title = neoTitle ?: title,
@@ -240,7 +237,7 @@ class Wenku8WebsiteDataSource(
             val books = wenku8Api.getBookInformationListFromBookCards(
                 soup.selectXpath("//*[@id=\"content\"]/table/tbody/tr/td/div")
             ).map { (id, information) ->
-                wenku8Api.cache.cache(id.hashCode(), information)
+                synchronized(wenku8Api.cache) { wenku8Api.cache.cache(id.hashCode(), information) }
                 SearchResult.MultipleBook(id, information.get())
             }
             return SearchResponse(SearchPage(books, if (books.isNotEmpty() && page < lastPage) page + 1 else null))

@@ -297,6 +297,9 @@ class BookRepository @Inject constructor(
     internal suspend fun canReplayDownload(book: SourceBookId): Boolean =
         (sourceRegistry.resolve(book.sourceId) as? indi.renakoni.nextvol.data.web.SourceResolution.Ready)?.runtime?.canReplayDownloads == true
 
+    internal suspend fun canDownloadConcurrently(book: SourceBookId): Boolean =
+        (sourceRegistry.resolve(book.sourceId) as? indi.renakoni.nextvol.data.web.SourceResolution.Ready)?.runtime?.canDownloadConcurrently == true
+
     fun downloadGeneration(): Long = downloads.generation()
 
     /** Export works from one offline snapshot, filling only missing source data. */

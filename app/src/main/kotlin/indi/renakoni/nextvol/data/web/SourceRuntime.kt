@@ -41,6 +41,8 @@ class SourceRuntime internal constructor(
     val id get() = metadata.id
     val isAvailable get() = lifetime.isActive
     internal val canReplayDownloads get() = (source as? indi.renakoni.nextvol.data.web.rules.RuleWebBookDataSource)?.canReplayDownloads == true
+    // Audited native reads only; replay-safe rules can still share mutable execution state.
+    internal val canDownloadConcurrently get() = source is indi.renakoni.nextvol.defaultplugin.wenku8.Wenku8Api
     private val responseCache = source.cache?.let { Cache(it.maxCountEachType, it.timeout) }
     private val priority = ProxyPriorityWebBookDataSource(source)
     private val coalescing = ProxyCoalescingWebBookDataSource(priority)
