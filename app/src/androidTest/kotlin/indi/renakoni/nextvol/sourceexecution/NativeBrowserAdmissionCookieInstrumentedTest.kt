@@ -18,6 +18,80 @@ import java.util.concurrent.atomic.AtomicInteger
 
 @RunWith(AndroidJUnit4::class)
 class NativeBrowserAdmissionCookieInstrumentedTest {
+    @Test fun browserOwnsExpiryEvenWhenTheLoginCookieValueDoesNotChange() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val root = File(context.cacheDir, "native-cookie-expiry-${System.nanoTime()}")
+        try { MockWebServer().use { server ->
+            server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse =
+                    if (request.path == "/expired") MockResponse()
+                        .setResponseCode(if (request.getHeader("Cookie").orEmpty().contains("auth=")) 401 else 200)
+                    else MockResponse().setHeader("Content-Type", "text/html")
+                        .addHeader("Set-Cookie", "auth=old; Path=/; Max-Age=2; HttpOnly; SameSite=Lax")
+                        .setBody("<html><head><link rel='icon' href='data:,'></head><body>expiry</body></html>")
+            }
+            server.start(java.net.InetAddress.getByName("127.0.0.1"), 0)
+            val base = server.url("/").toString()
+            SourceBroker(root.toPath(), browser = AndroidSourceBrowser(context)).use { broker ->
+                val session = broker.open(SourceScope("native-expiry", root.name, "test"), listOf(NetworkGrant(base, true)))
+                session.configureSource(base, true)
+                val login = StorageRequest(StorageArea.Account, StorageRequestKey.LOGIN_HEADERS)
+                session.write(login.copy(value = """{"Cookie":"auth=old"}"""))
+                session.setCookie(base, "auth=old")
+                try {
+                    val browser = session.execute(BrokerRequest("expire", base, timeoutMillis = 30000,
+                        browser = BrowserOptions(script = "document.cookie.indexOf('auth=') < 0 ? 'hidden' : 'visible'")))
+                    assertTrue(browser.toString(), browser is BrokerResult.Success)
+                    assertEquals("hidden", (browser as BrokerResult.Success).response.text())
+                    kotlinx.coroutines.delay(2100)
+                    val next = session.execute(BrokerRequest("next", server.url("/expired").toString(), kind = ResourceKind.Api))
+                    assertTrue(next.toString(), next is BrokerResult.Success)
+                    assertEquals(200, (next as BrokerResult.Success).response.status)
+                    assertEquals("{}", (session.read(login) as StorageResult.Value).value)
+                } finally { session.clearAccount() }
+            }
+        } } finally { root.deleteRecursively() }
+    }
+
+    @Test fun savedLoginCookieDoesNotBlockBrowserRotationOrOverrideItsUpdatedSession() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val root = File(context.cacheDir, "native-login-handoff-${System.nanoTime()}")
+        try { MockWebServer().use { server ->
+            server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse {
+                    if (request.path == "/protected") return MockResponse().setHeader("Content-Type", "text/plain")
+                        .setResponseCode(if (request.getHeader("Cookie") == "auth=fresh") 200 else 401).setBody("fixture")
+                    return MockResponse().setHeader("Content-Type", "text/html")
+                        .addHeader("Set-Cookie", "auth=fresh; Path=/; HttpOnly; SameSite=Lax")
+                        .setBody("<html><head><link rel='icon' href='data:,'></head><body>done</body></html>")
+                }
+            }
+            server.start(java.net.InetAddress.getByName("127.0.0.1"), 0)
+            val base = server.url("/").toString()
+            SourceBroker(root.toPath(), browser = AndroidSourceBrowser(context)).use { broker ->
+                val session = broker.open(SourceScope("native-login-handoff", root.name, "test"), listOf(NetworkGrant(base, true)))
+                session.configureSource(base, true, browserRead = true)
+                val login = StorageRequest(StorageArea.Account, StorageRequestKey.LOGIN_HEADERS)
+                session.write(login.copy(value = """{"Cookie":"auth=old","Authorization":"Bearer keep"}"""))
+                session.setCookie(base, "auth=old")
+                suspend fun read(): Int {
+                    val result = session.execute(BrokerRequest("read", server.url("/protected").toString(), kind = ResourceKind.Api))
+                    assertTrue(result.toString(), result is BrokerResult.Success)
+                    return (result as BrokerResult.Success).response.status
+                }
+                try {
+                    assertEquals(401, read())
+                    val browser = session.execute(BrokerRequest("rotate", server.url("/rotate").toString(),
+                        timeoutMillis = 30000, browser = BrowserOptions(script = "document.body.textContent")))
+                    assertTrue(browser.toString(), browser is BrokerResult.Success)
+                    assertEquals("auth=fresh", session.cookie(base))
+                    assertEquals(200, read())
+                    assertEquals("""{"Authorization":"Bearer keep"}""", (session.read(login) as StorageResult.Value).value)
+                } finally { session.clearAccount() }
+            }
+        } } finally { root.deleteRecursively() }
+    }
+
     @Test fun parentDomainCookiesReachSubdomainsAndSurviveBrowserProcessReplacement() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val root = File(context.cacheDir, "native-domain-cookie-${System.nanoTime()}")

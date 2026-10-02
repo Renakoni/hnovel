@@ -268,10 +268,11 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         policy.check(parsed); return cookies.header(parsed, null) }
     @Synchronized fun setCookie(url: String, value: String, replace: Boolean = false) {
         checkOpen(); val parsed = url.toHttpUrlOrNull() ?: error("Invalid cookie URL"); policy.check(parsed)
-        cookies.setHeader(parsed, value, replace)
+        // Re-seeding an explicit login renews our synthetic expiry, not server authority.
+        updateSessionCookies(retireAttributes = false) { cookies.setHeader(parsed, value, replace) }
     }
     @Synchronized fun removeCookie(url: String) { checkOpen(); val parsed = url.toHttpUrlOrNull() ?: error("Invalid cookie URL")
-        policy.check(parsed); cookies.setHeader(parsed, "", true) }
+        policy.check(parsed); updateSessionCookies { cookies.setHeader(parsed, "", true) } }
 
     /** Host-only cookie handoff; never exposed as a website JavascriptInterface. */
     @Synchronized fun nativeBrowserCookieSeed(url: String): NativeBrowserCookieSeed {
@@ -297,14 +298,55 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         expectedSeedVersion: Long? = null) {
         checkOpen(); val parsed = url.toHttpUrlOrNull() ?: error("Invalid cookie URL")
         policy.check(parsed)
-        cookies.replaceBrowserSnapshot(parsed, values, completeMetadata, expectedSeedVersion)
+        updateSessionCookies { cookies.replaceBrowserSnapshot(parsed, values, completeMetadata, expectedSeedVersion) }
     }
 
     @Synchronized fun browserCookie(url: String, value: String? = null): String {
         checkOpen(); val parsed = url.toHttpUrlOrNull() ?: error("Invalid cookie URL"); policy.check(parsed)
         if (!enabledCookieJar) return ""
-        if (value != null) cookies.documentCookie(parsed, value)
+        if (value != null) updateSessionCookies { cookies.documentCookie(parsed, value) }
         return cookies.documentHeader(parsed)
+    }
+
+    /** Login headers bootstrap cookies. A confirmed value/attribute update retires only that seed;
+     * the jar owns the replacement's domain, path and expiry. Request headers remain explicit. */
+    @Synchronized private fun updateSessionCookies(retireAttributes: Boolean = true, update: () -> Unit) {
+        val loginUrl = sourceUrl.toHttpUrlOrNull()
+        // A granted subdomain can update a parent-domain cookie. Compare accepted jar
+        // entries, including attributes; header strings lose expiry and scope changes.
+        val before = loginUrl?.let { address -> cookies.snapshot().map { it.second }.filter { it.matches(address) } }.orEmpty()
+        update()
+        if (loginUrl == null || before.isEmpty()) return
+        // Cookie expiry is serialized at HTTP-date (second) precision in browser seeds.
+        // Host-only Set-Cookie text omits its domain; another host/path cannot keep this seed alive.
+        fun identity(cookie: Cookie) = listOf(cookie.domain, cookie.path,
+            if (retireAttributes) cookie.toString() else "${cookie.name}=${cookie.value}")
+        val after = cookies.snapshot().map { identity(it.second) }.toSet()
+        val retired = before.filter { identity(it) !in after }.map { it.name to it.value }.toSet()
+        if (retired.isEmpty()) return
+        val saved = when (val result = account.read(StorageRequestKey.LOGIN_HEADERS)) {
+            is StorageResult.Failure -> throw BrokerFailure(RequestStage.Storage, result.code)
+            is StorageResult.Value -> result.value ?: return
+        }
+        val headers = (Json.parseToJsonElement(saved) as kotlinx.serialization.json.JsonObject).toMutableMap()
+        var changed = false
+        headers.toMap().forEach { (key, value) ->
+            if (key.equals("Cookie", true)) {
+                val original = (value as kotlinx.serialization.json.JsonPrimitive).content
+                val kept = original.split(';').filter { part ->
+                    val pair = part.trim().split('=', limit = 2)
+                    pair.size != 2 || (pair[0] to pair[1]) !in retired
+                }.joinToString(";").trim()
+                if (kept != original.trim()) {
+                    changed = true
+                    if (kept.isEmpty()) headers.remove(key) else headers[key] = kotlinx.serialization.json.JsonPrimitive(kept)
+                }
+            }
+        }
+        if (changed) when (val result = account.write(StorageRequestKey.LOGIN_HEADERS, kotlinx.serialization.json.JsonObject(headers).toString())) {
+            is StorageResult.Failure -> throw BrokerFailure(RequestStage.Storage, result.code)
+            is StorageResult.Value -> Unit
+        }
     }
 
     /** Called by the host after revocation; deletes only the retired account's sensitive state. */
@@ -705,6 +747,10 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
         val loginHeaders = if (sameOrigin) (account.read(StorageRequestKey.LOGIN_HEADERS) as? StorageResult.Value)?.value else null
         loginHeaders?.let { Json.parseToJsonElement(it).let { json ->
             (json as kotlinx.serialization.json.JsonObject).forEach { (key, value) ->
+                // The login API already seeded the jar. Replaying its unscoped header
+                // masks path-specific cookies and can resurrect expired credentials.
+                // Explicit source/request cookies below remain deliberate overrides.
+                if (key.equals("Cookie", true)) return@forEach
                 supplied(key, (value as kotlinx.serialization.json.JsonPrimitive).content, UserAgentSource.AccountLogin)
             }
         } }
@@ -779,7 +825,7 @@ class SourceSession internal constructor(val scope: SourceScope, grants: List<Ne
                             synchronized(this@SourceSession) {
                                 checkOpen()
                                 if (continuation.isActive) {
-                                    if (enabledCookieJar) cookies.save(response.request.url, response.headers)
+                                    if (enabledCookieJar) updateSessionCookies { cookies.save(response.request.url, response.headers) }
                                     continuation.resume(BrokerResponse(response.code, response.request.url.toString(),
                                         response.headers.toMultimap().mapValues { it.value.toList() }, responseBytes, charset, redirects,
                                         message = response.message, protocol = response.protocol.toString(),
