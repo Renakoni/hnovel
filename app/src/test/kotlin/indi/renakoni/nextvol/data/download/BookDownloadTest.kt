@@ -104,6 +104,7 @@ class BookDownloadTest {
         io.mockk.coEvery { repository.canonicalBook(a) } returns a
         every { repository.downloadSource(a) } returns null
         io.mockk.coEvery { repository.canReplayDownload(a) } returns false
+        io.mockk.coEvery { repository.canDownloadConcurrently(a) } returns false
         val params = indi.renakoni.nextvol.data.work.workerParameters(
             androidx.work.workDataOf("bookId" to a.storageKey, "persistedTask" to true), id)
         every { params.foregroundUpdater.setForegroundAsync(any(), any(), any()) } returns
