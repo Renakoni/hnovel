@@ -136,7 +136,10 @@ class NetworkBridgeTest {
             val base = server.url("/").toString()
             SourceBroker(folder.root.toPath(), browser = browser).use { sessions ->
                 val session = sessions.open(SourceScope("fixture", "a", "legado"), listOf(NetworkGrant(base, true)))
+                session.configureSource(base, true, defaultUserAgent = DESKTOP_USER_AGENT, preferBrowserUserAgent = true)
                 SourceExecutionBroker(id, authority, session, ExecutionLimits(), base).use { broker ->
+                    assertEquals(ExecutionResult.Success("[\"DeviceWebView/1.0/\",\"DeviceWebView/1.0/\"]"),
+                        script(broker, "[java.getUserAgent(),java.getWebViewUA()]"))
                     server.enqueue(MockResponse().setBody("chapter"))
                     val task = ExecutionTask.Rule("@js:java.ajax(baseUrl)", hnovel.rules.RuleValue.Empty,
                         baseUrl = base, sourceHeaderRule = """@js:JSON.stringify({

@@ -5,6 +5,7 @@ import hnovel.execution.SourceWorkRequest
 import io.nightfish.lightnovelreader.api.web.WebBookDataSource
 import io.nightfish.lightnovelreader.api.web.WebDataSourcePriority
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 class ProxyPriorityWebBookDataSource(
@@ -17,7 +18,11 @@ class ProxyPriorityWebBookDataSource(
 
     private suspend fun <T> prioritized(priority: WebDataSourcePriority, block: suspend () -> T): T {
         val effective = maxOf(priority.priority, currentCoroutineContext()[SourceWorkRequest]?.priority ?: priority.priority)
-        return withContext(dispatcher + PriorityDispatcher.Priority(effective) + SourceWorkRequest(effective)) { block() }
+        return withContext(dispatcher + PriorityDispatcher.Priority(effective) + SourceWorkRequest(effective)) {
+            // Admission belongs to the whole request. Nested source scopes must not
+            // compete with their parent for another request permit when resuming.
+            withContext(Dispatchers.IO) { block() }
+        }
     }
 
     override suspend fun getBookInformation(id: String, priority: WebDataSourcePriority) = prioritized(priority) {

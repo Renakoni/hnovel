@@ -66,6 +66,7 @@ class DownloadRecoveryTest {
         var workId = UUID.randomUUID()
         val registry = WebSourceRegistry(fixture.authority)
         val requests = Collections.synchronizedList(mutableListOf<String>())
+        var onRequest: (String) -> Unit = {}
         var failedPath = "/c/2"
         var status = 503
         var retryAfter = "90"
@@ -89,6 +90,7 @@ class DownloadRecoveryTest {
                 override fun dispatch(request: RecordedRequest): MockResponse {
                     val path = request.path!!.substringBefore('?')
                     requests += path
+                    onRequest(path)
                     if (path == failedPath) return MockResponse().setResponseCode(status).setHeader("Retry-After", retryAfter)
                     val body = when (path) {
                         "/book" -> "<h1>Book</h1><a class='toc' href='/toc'>toc</a>" +
@@ -178,6 +180,25 @@ class DownloadRecoveryTest {
                     assertEquals(3, owner().taskRetryCount)
                 }
                 assertTrue(requests.isEmpty())
+            }
+        } } }
+    }
+
+    @Test fun serialRuleDownloadRecordsTheCurrentChapterBeforeItsRequest() = runBlocking {
+        RuleSourceFixture().use { fixture -> Library(fixture).use { library -> with(library) {
+            failedPath = ""; withImages = false
+            val observed = Collections.synchronizedList(mutableListOf<Triple<String, String, String>>())
+            onRequest = { path -> if (path.startsWith("/c/")) {
+                val task = runBlocking { owner() }
+                observed += Triple(path, task.taskStage, task.taskChapter)
+            } }
+            queue()
+            assertEquals(Result.success(), run())
+            assertEquals(listOf("/c/1", "/c/2"), observed.map { it.first })
+            assertEquals(listOf(DownloadStage.Body.name, DownloadStage.Body.name), observed.map { it.second })
+            for ((path, _, chapter) in observed) {
+                assertTrue("The in-flight chapter must already be recorded", chapter.isNotEmpty())
+                assertEquals(fixture.server.url(path).toString(), SourceChapterId.fromStorageKey(chapter).remoteId.substringBefore(','))
             }
         } } }
     }

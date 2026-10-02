@@ -105,6 +105,39 @@ class NativeBrowserInstrumentedTest {
         return (result as BrokerResult.Success).response
     }
 
+    @Test fun automaticIdentityMatchesTheProviderAcrossHttpNativeBrowserAndJavascript(): Unit = runBlocking { fixture { broker, server ->
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                if (request.path == "/http") return MockResponse().setBody(request.getHeader("User-Agent").orEmpty())
+                return MockResponse().setHeader("Content-Type", "text/html").setBody("""
+                    <html><head><link rel='icon' href='data:,'></head><body><script>
+                    window.identity=JSON.stringify({sent:${JsonPrimitive(request.getHeader("User-Agent").orEmpty())},
+                        actual:navigator.userAgent,platform:navigator.platform});</script></body></html>
+                """.trimIndent())
+            }
+        }
+        val account = session(broker, server)
+        val base = server.url("/").toString()
+        account.configureSource(base, true, browserRead = true, defaultUserAgent = DESKTOP_USER_AGENT, preferBrowserUserAgent = true)
+        val expected = account.requestUserAgent(base)
+        assertEquals(expected, account.webViewUserAgent())
+        val http = account.execute(BrokerRequest("http", server.url("/http").toString(), kind = ResourceKind.Api))
+        assertTrue(http.toString(), http is BrokerResult.Success)
+        assertEquals(expected, (http as BrokerResult.Success).response.text())
+        repeat(2) {
+            val sample = Json.parseToJsonElement(render(account, base, "window.identity").text()).jsonObject
+            assertEquals(expected, sample.getValue("sent").jsonPrimitive.content)
+            assertEquals(expected, sample.getValue("actual").jsonPrimitive.content)
+            assertFalse(expected.contains("Windows NT"))
+        }
+        val explicit = account.execute(BrokerRequest("explicit", base, headers = mapOf("User-Agent" to DESKTOP_USER_AGENT),
+            browser = BrowserOptions(script = "window.identity")))
+        assertTrue(explicit.toString(), explicit is BrokerResult.Success)
+        val sample = Json.parseToJsonElement((explicit as BrokerResult.Success).response.text()).jsonObject
+        assertEquals(DESKTOP_USER_AGENT, sample.getValue("sent").jsonPrimitive.content)
+        assertEquals(DESKTOP_USER_AGENT, sample.getValue("actual").jsonPrimitive.content)
+    } }
+
     @Test fun desktopUserAgentReachesNativeNavigationAndClientHints(): Unit = runBlocking { fixture { broker, server ->
         server.dispatcher = object : Dispatcher() {
             override fun dispatch(request: RecordedRequest) = MockResponse().setHeader("Content-Type", "text/html")

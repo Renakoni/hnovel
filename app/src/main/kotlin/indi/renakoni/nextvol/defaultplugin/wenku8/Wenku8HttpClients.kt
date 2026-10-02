@@ -95,6 +95,7 @@ internal class Wenku8HttpClients(private val routes: (Identifier) -> SourceNetwo
 
     private fun create(route: SourceNetworkRoute): Client {
         val transport = OkHttpClient.Builder().dns(route.dns).socketFactory(route.socketFactory)
+            .addInterceptor(hnovel.network.DefaultUserAgentInterceptor(WENKU8_USER_AGENT))
             .dispatcher(okhttp3.Dispatcher().apply {
                 maxRequests = BrokerLimits.DEFAULT_CONCURRENCY
                 maxRequestsPerHost = BrokerLimits.DEFAULT_CONCURRENCY

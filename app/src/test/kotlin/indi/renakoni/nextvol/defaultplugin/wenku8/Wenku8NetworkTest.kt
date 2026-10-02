@@ -96,6 +96,25 @@ class Wenku8NetworkTest {
     private val b = Identifier("routing-fixture", "b")
     private val url = "http://www.wenku8.cc/document"
 
+    @Test fun rawImageTransportFillsMissingUserAgentWithoutOverridingSourceHeaders() = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            Wenku8HttpClients({ SourceNetworkRoute(SourceNetworkMode.SystemDefault, Dns.SYSTEM) }) { transport ->
+                io.ktor.client.HttpClient(io.ktor.client.engine.okhttp.OkHttp) { engine { preconfigured = transport } }
+            }.use { clients ->
+                for ((headers, expected) in listOf(
+                    emptyMap<String, String>() to WENKU8_USER_AGENT,
+                    mapOf("User-Agent" to "  ") to WENKU8_USER_AGENT,
+                    mapOf("user-agent" to "Explicit-Image-UA") to "Explicit-Image-UA",
+                )) {
+                    server.enqueue(MockResponse().setBody("image bytes"))
+                    assertArrayEquals("image bytes".toByteArray(), clients.image(a, server.url("/cover").toString(), headers))
+                    assertEquals(expected, server.takeRequest(5, TimeUnit.SECONDS)!!.getHeader("User-Agent"))
+                }
+            }
+        }
+    }
+
     private inner class Fixture : AutoCloseable {
         val first = MockWebServer().apply { start() }
         val second = MockWebServer().apply { start() }

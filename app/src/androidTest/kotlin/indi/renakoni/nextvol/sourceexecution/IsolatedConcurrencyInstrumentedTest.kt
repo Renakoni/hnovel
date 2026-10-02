@@ -30,13 +30,21 @@ class IsolatedConcurrencyInstrumentedTest {
         val entered = Channel<Int>(Channel.UNLIMITED)
         val releases = List(16) { CompletableDeferred<String>() }
         val calls = AtomicInteger()
-        override suspend fun defaultUserAgent(): String {
+        private suspend fun barrier(): String {
             val index = calls.getAndIncrement()
             entered.send(index)
             return releases[index].await()
         }
+        override suspend fun defaultUserAgent(): String = barrier()
+        // Stateful scripts need a fresh host call; read-only scripts only admit
+        // UA lookup and use distinct sessions when testing multiple workers.
         override suspend fun execute(session: SourceSession, request: BrokerRequest, options: BrowserOptions,
-            guard: RequestCommitGuard, route: SourceNetworkRoute): BrokerResult = error("No navigation expected")
+            guard: RequestCommitGuard, route: SourceNetworkRoute): BrokerResult {
+            val body = barrier().toByteArray()
+            guard.commit {}
+            return BrokerResult.Success(BrokerResponse(200, request.url, emptyMap(), body,
+                "UTF-8", 0, kind = ResponseKind.BrowserDocument))
+        }
     }
 
     private data class Source(val identity: ExecutionIdentity, val session: SourceSession)
@@ -63,9 +71,10 @@ class IsolatedConcurrencyInstrumentedTest {
             }
         }, authority)
         fun source(name: String) = Source(authority.issue(name, "legado", "1", "concurrency"),
-            sessions.open(SourceScope("concurrency", name, "legado"), emptyList()))
+            sessions.open(SourceScope("concurrency", name, "legado"), listOf(NetworkGrant("https://concurrency.example"))))
         suspend fun execute(source: Source, readOnly: Boolean = true, timeout: Long = 30000,
-            rule: String = "@js:java.getWebViewUA()"): ExecutionResult {
+            rule: String = if (readOnly) "@js:java.getWebViewUA()"
+                else "@js:java.webView('', 'https://concurrency.example/', '')"): ExecutionResult {
             val limits = ExecutionLimits(timeoutMillis = timeout)
             return SourceExecutionBroker(source.identity, authority, source.session, limits).use { broker ->
                 executor.execute(source.identity, ExecutionTask.Rule(rule, RuleValue.Empty,
@@ -107,7 +116,7 @@ class IsolatedConcurrencyInstrumentedTest {
             assertEquals(count, fixture.bindings.size)
             assertTrue(fixture.bindings.all { it.className.contains("IndependentExecutionService") })
             assertEquals(0, fixture.browser.calls.get())
-            val running = List(count) { async { fixture.execute(source) } }
+            val running = List(count) { index -> async { fixture.execute(fixture.source("prepared-$index")) } }
             withTimeout(25000) { repeat(count) { fixture.browser.entered.receive() } }
             assertEquals("Execution must reuse the prepared bindings", count, fixture.bindings.size)
             repeat(count) { fixture.browser.releases[it].complete("prepared") }
@@ -139,14 +148,14 @@ class IsolatedConcurrencyInstrumentedTest {
         fixture { fixture ->
             val source = fixture.source("parallel-source")
             val count = fixture.executor.parallelism
-            val running = List(count) { async { fixture.execute(source) } }
+            val running = List(count) { index -> async { fixture.execute(fixture.source("parallel-$index")) } }
             withTimeout(25000) { repeat(count) { fixture.browser.entered.receive() } }
-            val cancelled = async { fixture.execute(source) }
+            val cancelled = async { fixture.execute(fixture.source("cancelled")) }
             assertNull(withTimeoutOrNull(250) { fixture.browser.entered.receive() })
             cancelled.cancelAndJoin()
             withTimeout(5000) { running.first().cancelAndJoin() }
             assertTrue(running.drop(1).all { !it.isCompleted })
-            val replacement = async { fixture.execute(source) }
+            val replacement = async { fixture.execute(fixture.source("replacement")) }
             assertEquals(count, withTimeout(15000) { fixture.browser.entered.receive() })
             val retiredSource = fixture.source("retired-while-queued")
             val retired = async { fixture.execute(retiredSource) }
