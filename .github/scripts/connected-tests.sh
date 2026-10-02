@@ -4,6 +4,7 @@ set -euo pipefail
 api_level=$(timeout 15s adb shell getprop ro.build.version.sdk | tr -d '\r')
 if [[ "$api_level" == 35 ]]; then
   test_classes="indi.renakoni.nextvol.sourceexecution.NativeBrowserInstrumentedTest,indi.renakoni.nextvol.sourceexecution.NativeBrowserPoolInstrumentedTest,indi.renakoni.nextvol.sourceexecution.NativeBrowserAdmissionCookieInstrumentedTest,indi.renakoni.nextvol.sourceexecution.NativeBrowserStorageInstrumentedTest,indi.renakoni.nextvol.sourceexecution.NativeBrowserRouteInstrumentedTest,indi.renakoni.nextvol.sourceexecution.SourceVerificationInstrumentedTest"
+  test_classes+=",indi.renakoni.nextvol.sourceexecution.SourceImageRecoveryInstrumentedTest,indi.renakoni.nextvol.sourceexecution.RuleImageRecoveryInstrumentedTest"
 else
   test_classes="indi.renakoni.nextvol.sourceexecution.IsolatedExecutionInstrumentedTest,indi.renakoni.nextvol.sourceexecution.SourceAccountInstrumentedTest,indi.renakoni.nextvol.sourceexecution.SourceBrowserInstrumentedTest,indi.renakoni.nextvol.sourceexecution.SourceVpnInstrumentedTest"
   test_classes+=",indi.renakoni.nextvol.sourceexecution.SourceCompatibilityInstrumentedTest,indi.renakoni.nextvol.sourceexecution.PixivLifecycleInstrumentedTest"
