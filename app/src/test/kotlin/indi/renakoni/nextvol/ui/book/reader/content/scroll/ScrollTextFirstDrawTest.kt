@@ -10,13 +10,18 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.LookaheadScope
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
@@ -71,25 +76,28 @@ class ScrollTextFirstDrawTest {
     }
     @After fun close() { activity.pause().stop().destroy() }
 
-    private fun mount() {
+    private fun mount(observeDraws: Boolean = true, lookahead: Boolean = false) {
         activity.get().setContent {
             MaterialTheme {
-                CompositionLocalProvider(LocalReaderTextDrawObserver provides { fragment, _, _ ->
+                CompositionLocalProvider(LocalReaderTextDrawObserver provides if (observeDraws) { fragment, _, _ ->
                     drawnFragments += fragment.start
-                }, LocalDensity provides density.value, LocalReaderTextWorkObserver provides { phase ->
+                } else null, LocalDensity provides density.value, LocalReaderTextWorkObserver provides if (observeDraws) { phase ->
                     if (phase == "compose") compositions++ else measurements++
-                }) {
-                    Box(Modifier.size(width.value, 240.dp).clipToBounds().drawWithContent {
-                        drawnFragments.clear()
-                        drawContent()
-                        draws += drawnFragments.toSet()
-                    }) {
-                        // Move only the ancestor placement, as LazyColumn's scroll-only path does.
-                        Layout(content = { ScrollTextContent(prepared.value, Color.Black, Modifier) }) { children, constraints ->
-                            val child = children.single().measure(Constraints.fixedWidth(constraints.maxWidth))
-                            layout(constraints.maxWidth, constraints.maxHeight) { child.place(0, -offset.value) }
+                } else null) {
+                    val body: @Composable () -> Unit = {
+                        Box(Modifier.size(width.value, 240.dp).clipToBounds().drawWithContent {
+                            drawnFragments.clear()
+                            drawContent()
+                            draws += drawnFragments.toSet()
+                        }) {
+                            // Move only the ancestor placement, as LazyColumn's scroll-only path does.
+                            Layout(content = { ScrollTextContent(prepared.value, Color.Black, Modifier) }) { children, constraints ->
+                                val child = children.single().measure(Constraints.fixedWidth(constraints.maxWidth))
+                                layout(constraints.maxWidth, constraints.maxHeight) { child.place(0, -offset.value) }
+                            }
                         }
                     }
+                    if (lookahead) LookaheadScope { body() } else body()
                 }
             }
         }
@@ -101,6 +109,28 @@ class ScrollTextFirstDrawTest {
         assertEveryDrawHasText()
     }
 
+    @Test fun scrollingInsideLookaheadUpdatesTheDisplayedText() {
+        mount(observeDraws = false, lookahead = true)
+        for (destination in listOf(1_000, 8_000, 16_000, 8_000, 1_000, 0)) {
+            compose.runOnIdle { offset.value = destination }
+            compose.waitForIdle()
+            compose.onNodeWithText("TEXT_${destination / 100}", useUnmergedTree = true).assertIsDisplayed()
+            if (destination >= 8_000) compose.onNodeWithText("TEXT_0", useUnmergedTree = true).assertIsNotDisplayed()
+        }
+    }
+
+    @Test fun lookaheadWindowChangesDrawTheDestinationImmediately() {
+        mount(lookahead = true)
+        for (destination in listOf(1_000, 8_000, 16_000, 8_000, 0)) {
+            compose.runOnIdle { draws.clear(); offset.value = destination }
+            compose.waitForIdle()
+            assertEveryDrawHasText()
+            assertTrue("Each frame must draw the destination, not a stale window: $draws",
+                draws.all { it.contains(destination / 100 * 10) })
+            assertTrue("Far-away fragments should stay uncomposed", draws.all { it.size < 40 })
+        }
+    }
+
     @Test fun replacementGeometryDoesNotDrawAnEmptyFrame() {
         mount()
         compose.runOnIdle { draws.clear(); prepared.value = chapter() }
@@ -109,7 +139,15 @@ class ScrollTextFirstDrawTest {
     }
 
     @Test fun steadyAncestorScrollingReusesMeasuredTextUntilTheWindowChanges() {
-        mount()
+        assertSteadyScrollingReusesText(lookahead = false)
+    }
+
+    @Test fun steadyLookaheadScrollingReusesMeasuredTextUntilTheWindowChanges() {
+        assertSteadyScrollingReusesText(lookahead = true)
+    }
+
+    private fun assertSteadyScrollingReusesText(lookahead: Boolean) {
+        mount(lookahead = lookahead)
         // Stay inside one 100px fragment boundary after settling the initial placement.
         compose.runOnIdle { offset.value = 10 }
         compose.waitForIdle()
@@ -171,7 +209,8 @@ class ScrollTextFirstDrawTest {
 
     companion object {
         private fun chapter() = ScrollTextLayout((0 until 200).map { index ->
-            ReaderTextFragment(0, index * 10, index * 10 + 10, "TEXT_$index", 0, 100,
+            // Match the actual 20px text plus its spacer to the 100px prepared geometry.
+            ReaderTextFragment(0, index * 10, index * 10 + 10, "TEXT_$index", 80, 20,
                 listOf(index * 10), listOf(0))
         }, TextStyle(fontSize = 16.sp, lineHeight = 20.sp))
     }
