@@ -14,6 +14,7 @@ import org.xbill.DNS.*
 import org.xbill.DNS.Record
 import java.io.IOException
 import java.net.InetAddress
+import java.net.Inet6Address
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
@@ -24,6 +25,7 @@ class BangumiNetworkTest {
     private val queries = mutableListOf<RecordedRequest>()
     private var clock = 0L
     private var ttl = 5L
+    private var ipv6 = false
     @Before fun setup() {
         server.dispatcher = object : Dispatcher() {
             override fun dispatch(request: RecordedRequest): MockResponse {
@@ -35,6 +37,8 @@ class BangumiNetworkTest {
                     Type.HTTPS -> HTTPSRecord(query.question.name, DClass.IN, ttl, 1, Name.root,
                         listOf(SVCBBase.ParameterEch(byteArrayOf(1, 2, 3))))
                     Type.A -> ARecord(query.question.name, DClass.IN, ttl, InetAddress.getByName("192.0.2.1"))
+                    Type.AAAA -> if (ipv6) AAAARecord(query.question.name, DClass.IN, ttl,
+                        InetAddress.getByName("2001:db8::1")) else null
                     else -> null // An IPv4-only answer must still be cached.
                 }
                 record?.let { reply.addRecord(it, Section.ANSWER) }
@@ -47,30 +51,113 @@ class BangumiNetworkTest {
         (clients + bootstrap).forEach { it.dispatcher.executorService.shutdownNow(); it.connectionPool.evictAll() }
         server.shutdown()
     }
-    private fun network(client: OkHttpClient = bootstrap, fallback: Boolean = false) = BangumiNetwork(
+    private fun configQueries() = synchronized(queries) { queries.count { it.requestUrl!!.encodedPath == "/config" } }
+    private fun network(client: OkHttpClient = bootstrap, fallback: Boolean = false,
+        probe: (Request, Dns) -> Unit = { _, _ -> }) = BangumiNetwork(
         client, if (fallback) listOf(server.url("/unavailable"), server.url("/config")) else listOf(server.url("/config")),
         server.url("/dns"), { ech, dns ->
             assertArrayEquals(byteArrayOf(1, 2, 3), ech)
-            OkHttpClient.Builder().build().also { clients += it }
+            OkHttpClient.Builder().dns(dns).addInterceptor { chain ->
+                if (chain.request().url.host == BangumiNetwork.API_HOST && chain.request().method == "HEAD") {
+                    probe(chain.request(), dns)
+                    Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("OK")
+                        .body(okhttp3.ResponseBody.EMPTY).build()
+                } else chain.proceed(chain.request())
+            }.build().also { synchronized(clients) { clients += it } }
         }, { clock })
+
+    @Test fun aUsableIpv4RouteDoesNotWaitForAStalledIpv6Query() = runBlocking {
+        val normal = server.dispatcher
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                val type = Message(request.requestUrl!!.queryParameter("dns")!!.decodeBase64()!!.toByteArray()).question.type
+                return if (type == Type.AAAA) MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE)
+                else normal.dispatch(request)
+            }
+        }
+        val probes = mutableListOf<Request>()
+        val network = network(probe = { request, _ -> probes += request })
+        val route = withTimeout(2_000) { network.client() }
+        assertEquals("192.0.2.1", route.dns.lookup(BangumiNetwork.API_HOST).single().hostAddress)
+        assertEquals(1, probes.size)
+        assertNull(probes.single().header("Authorization"))
+        assertNull(probes.single().header("Cookie"))
+    }
+
+    @Test fun anUnreachableIpv6AnswerCannotDefeatAWorkingIpv4Route() = runBlocking {
+        ipv6 = true
+        val normal = server.dispatcher
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                val type = Message(request.requestUrl!!.queryParameter("dns")!!.decodeBase64()!!.toByteArray()).question.type
+                return normal.dispatch(request).apply { if (type == Type.A) setBodyDelay(150, TimeUnit.MILLISECONDS) }
+            }
+        }
+        val network = network(probe = { _, dns ->
+            if (dns.lookup(BangumiNetwork.API_HOST).first() is Inet6Address) throw IOException("IPv6 unreachable")
+        })
+        val route = withTimeout(2_000) { network.client() }
+        assertEquals("192.0.2.1", route.dns.lookup(BangumiNetwork.API_HOST).single().hostAddress)
+    }
+
+    @Test fun aUsableIpv6RouteDoesNotWaitForAStalledIpv4Query() = runBlocking {
+        ipv6 = true
+        val normal = server.dispatcher
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                val type = Message(request.requestUrl!!.queryParameter("dns")!!.decodeBase64()!!.toByteArray()).question.type
+                return if (type == Type.A) MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE)
+                else normal.dispatch(request)
+            }
+        }
+        val route = withTimeout(2_000) { network().client() }
+        assertTrue(route.dns.lookup(BangumiNetwork.API_HOST).single() is Inet6Address)
+    }
+
+    @Test fun failedConnectionProbesAreNotCachedAsUsableRoutes() = runBlocking {
+        var reachable = false
+        val network = network(probe = { _, _ -> if (!reachable) throw IOException("unreachable") })
+        try { network.client(); fail() } catch (_: IOException) { }
+        reachable = true
+        network.client()
+        assertEquals(2, configQueries())
+    }
+
+    @Test fun anOldFailureDoesNotWaitForAnotherRequestsDnsPreparation() = runBlocking {
+        val network = network()
+        val first = network.client()
+        clock = 5_000
+        val started = CountDownLatch(1)
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                started.countDown()
+                return MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE)
+            }
+        }
+        val preparing = launch(Dispatchers.Default) { network.client() }
+        try {
+            assertTrue(started.await(2, TimeUnit.SECONDS))
+            withTimeout(250) { network.invalidate(first) }
+        } finally { preparing.cancelAndJoin() }
+    }
 
     @Test fun ipv4OnlyRouteIsSharedUntilTtlExpiresThenRefreshed() = runBlocking {
         val network = network()
         val first = network.client()
-        assertEquals(3, server.requestCount)
+        assertEquals(1, configQueries())
         clock = 4999
         assertSame(first, network.client())
-        assertEquals(3, server.requestCount)
+        assertEquals(1, configQueries())
         clock = 5000
         assertNotSame(first, network.client())
-        assertEquals(6, server.requestCount)
+        assertEquals(2, configQueries())
     }
 
     @Test fun parallelCallersShareOnePreparationAndDnsNeverCarriesCredentials() = runBlocking {
         val network = network()
         val results = (1..4).map { async { network.client() } }.awaitAll()
         assertTrue(results.all { it === results.first() })
-        assertEquals(3, server.requestCount)
+        assertEquals(1, configQueries())
         synchronized(queries) {
             queries.forEach {
                 assertNull(it.getHeader("Authorization"))
@@ -82,7 +169,8 @@ class BangumiNetworkTest {
 
     @Test fun bootstrapFailureUsesTheNextResolver() = runBlocking {
         network(fallback = true).client()
-        assertEquals(4, server.requestCount)
+        assertEquals(1, configQueries())
+        synchronized(queries) { assertTrue(queries.any { it.requestUrl!!.encodedPath == "/unavailable" }) }
     }
 
     @Test fun cancellationCancelsTheActualDohCall() = runBlocking {
@@ -106,7 +194,7 @@ class BangumiNetworkTest {
         val second = network.client()
         network.invalidate(first)
         assertSame(second, network.client())
-        assertEquals(6, server.requestCount)
+        assertEquals(2, configQueries())
     }
 
     @Test fun failedSecureDnsRefreshesTheEchConfiguration() = runBlocking {
@@ -121,7 +209,7 @@ class BangumiNetworkTest {
         try { network.client(); fail() } catch (_: IOException) { }
         unavailable = false
         network.client()
-        assertEquals(6, server.requestCount)
+        assertEquals(2, configQueries())
     }
 
     @Test fun disconnectDuringPreparationPreventsAuthenticatedRequest() = runBlocking {
@@ -137,7 +225,7 @@ class BangumiNetworkTest {
             apiServer.start()
             val api = BangumiApi(OkHttpClient(), apiServer.url("/"), network())
             try { api.updateVolumes(session, 123, 9); fail() } catch (_: CancellationException) { }
-            assertEquals(3, server.requestCount)
+            assertEquals(1, configQueries())
             assertEquals(0, apiServer.requestCount)
         }
     }

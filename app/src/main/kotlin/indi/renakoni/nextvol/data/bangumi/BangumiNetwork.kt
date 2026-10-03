@@ -1,20 +1,24 @@
 package indi.renakoni.nextvol.data.bangumi
 
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import okhttp3.Dns
-import okhttp3.HttpUrl
+import okhttp3.*
 import okhttp3.HttpUrl.Companion.toHttpUrl
-import okhttp3.OkHttpClient
 import org.xbill.DNS.Type
 import java.io.IOException
 import java.io.InterruptedIOException
 import java.net.InetAddress
 import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 /** Official API only. The search mirror keeps its separate, credential-free client. */
 @Singleton
@@ -31,44 +35,66 @@ class BangumiNetwork internal constructor(
     private data class Route(val client: OkHttpClient, val expires: Long)
     private val mutex = Mutex()
     private val doh = BangumiDoh()
-    private var config: Config? = null
-    private var route: Route? = null
+    private val route = AtomicReference<Route?>()
 
     suspend fun client(): OkHttpClient = try {
         withTimeout(12_000) {
             mutex.withLock {
-                route?.takeIf { now() < it.expires }?.let { return@withLock it.client }
-                val ech = config?.takeIf { now() < it.expires } ?: loadConfig().also { config = it }
+                route.get()?.takeIf { now() < it.expires }?.let { return@withLock it.client }
+                route.getAndSet(null)?.client?.connectionPool?.evictAll()
+                val ech = loadConfig()
                 val resolver = secureClient(ech.bytes, fixedDns(mapOf(DNS_HOST to DNS_ADDRESSES)))
-                val answers = try { coroutineScope {
-                    listOf(Type.A, Type.AAAA).map { type -> async {
-                        try { doh.query(resolver, dnsEndpoint, API_HOST, type) }
-                        catch (_: IOException) { null }
-                    } }.awaitAll().filterNotNull()
-                } } finally { resolver.connectionPool.evictAll() }
-                val addresses = answers.flatMap { it.addresses() }.distinct()
-                if (addresses.isEmpty()) {
-                    config = null // A rejected ECH key must be refreshed on the next attempt.
-                    throw UnknownHostException("Bangumi DNS unavailable")
+                val candidates = ConcurrentLinkedQueue<OkHttpClient>()
+                var selected: Route? = null
+                try {
+                    selected = channelFlow {
+                        for (type in listOf(Type.A, Type.AAAA)) launch {
+                            try {
+                                val answer = doh.query(resolver, dnsEndpoint, API_HOST, type)
+                                val addresses = answer.addresses().distinct()
+                                if (addresses.isEmpty()) return@launch
+                                val expires = minOf(ech.expires, now() + answer.ttl * 1000)
+                                val client = secureClient(ech.bytes, fixedDns(mapOf(API_HOST to addresses)))
+                                candidates += client
+                                // A DNS answer alone cannot prove that this network can use IPv6.
+                                probe(client)
+                                send(Route(client, expires))
+                            } catch (_: IOException) { currentCoroutineContext().ensureActive() }
+                        }
+                    }.firstOrNull() ?: throw UnknownHostException("Bangumi connection unavailable")
+                    route.set(selected)
+                    selected.client
+                } finally {
+                    resolver.connectionPool.evictAll()
+                    candidates.filter { it !== selected?.client }.forEach { it.connectionPool.evictAll() }
                 }
-                val expires = minOf(ech.expires, now() + answers.filter { it.addresses().isNotEmpty() }.minOf { it.ttl } * 1000)
-                val client = secureClient(ech.bytes, fixedDns(mapOf(API_HOST to addresses)))
-                route?.client?.connectionPool?.evictAll()
-                route = Route(client, expires)
-                client
             }
         }
     } catch (timeout: TimeoutCancellationException) {
         currentCoroutineContext().ensureActive()
-        throw InterruptedIOException("Bangumi DNS timed out")
+        throw InterruptedIOException("Bangumi connection preparation timed out")
     }
 
-    suspend fun invalidate(client: OkHttpClient) = mutex.withLock {
-        if (route?.client === client) {
-            route = null
-            config = null
+    suspend fun invalidate(client: OkHttpClient) {
+        val failed = route.get()
+        // A failed request must not wait behind another request's network preparation.
+        if (failed?.client === client && route.compareAndSet(failed, null)) {
             client.connectionPool.evictAll()
         }
+    }
+
+    /** HEAD establishes reusable TLS without an account, cookies, or a business write. */
+    private suspend fun probe(client: OkHttpClient): Unit = suspendCancellableCoroutine { continuation ->
+        val call = client.newCall(Request.Builder().url("https://$API_HOST/").head()
+            .header("User-Agent", "Renakoni/NextVol (https://github.com/Renakoni/nextvol)").build())
+        continuation.invokeOnCancellation { call.cancel() }
+        call.enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) { continuation.resumeWithException(e) }
+            override fun onResponse(call: Call, response: Response) {
+                response.close()
+                continuation.resume(Unit)
+            }
+        })
     }
 
     private suspend fun loadConfig(): Config {
