@@ -40,11 +40,14 @@ data class SearchHubSource(
 data class SearchHubState(
     val query: String = "", val submittedKeyword: String = "", val history: List<String> = emptyList(),
     val scope: SourceCategory? = null, val sources: List<SearchHubSource> = emptyList(),
+    val selectedSource: Identifier? = null, val selectedSourceName: String = "",
     val books: List<SearchHubBook> = emptyList(), val searching: Boolean = false,
     val stopped: Boolean = false, val limited: Boolean = false,
     val completed: Int = 0, val total: Int = 0, val revision: Long = 0,
 ) {
-    val scopedSources get() = sources.filter { scope == null || it.category == scope }
+    val scopedSources get() = sources.filter {
+        if (selectedSource != null) it.id == selectedSource else scope == null || it.category == scope
+    }
     val failures get() = scopedSources.filter { it.failure != null }
     val hasMore get() = !limited && scopedSources.any { it.nextPage != null }
 }
@@ -65,10 +68,14 @@ class SearchHubViewModel internal constructor(
         browsing: SourceBrowseSettings) : this(registry, coordinator, books, users, accounts, saved, browsing, Dispatchers.IO)
 
     private val history = users.stringListUserData(UserDataPath.Search.History.path)
+    private val initialSource = saved.get<String>("sourceNamespace")?.let { namespace ->
+        saved.get<String>("sourceId")?.let { Identifier(namespace, it) }
+    }
     private val mutable = MutableStateFlow(SearchHubState(
         query = saved["search.query"] ?: "", submittedKeyword = saved["search.submitted"] ?: "",
         scope = if (saved.contains("search.scope")) SourceCategory.entries.find { it.name == saved.get<String>("search.scope") }
-            else browsing.scope.value,
+            else browsing.scope.value.takeIf { initialSource == null },
+        selectedSource = initialSource, selectedSourceName = saved["sourceName"] ?: "",
     ))
     val state = mutable.asStateFlow()
     private var versions = emptyMap<Identifier, DiscoveryVersion>()
@@ -114,9 +121,23 @@ class SearchHubViewModel internal constructor(
     }
 
     fun selectScope(scope: SourceCategory?) {
-        if (scope == state.value.scope) return
+        if (scope == state.value.scope && state.value.selectedSource == null) return
         saved["search.scope"] = scope?.name.orEmpty()
-        reset(state.value.copy(scope = scope))
+        saved["sourceNamespace"] = null
+        saved["sourceId"] = null
+        saved["sourceName"] = null
+        reset(state.value.copy(scope = scope, selectedSource = null, selectedSourceName = ""))
+        loadPending()
+    }
+
+    fun selectSource(id: Identifier) {
+        if (id == state.value.selectedSource) return
+        val source = state.value.sources.firstOrNull { it.id == id } ?: return
+        saved["search.scope"] = ""
+        saved["sourceNamespace"] = id.namespace
+        saved["sourceId"] = id.id
+        saved["sourceName"] = source.name
+        reset(state.value.copy(scope = null, selectedSource = id, selectedSourceName = source.name))
         loadPending()
     }
 
