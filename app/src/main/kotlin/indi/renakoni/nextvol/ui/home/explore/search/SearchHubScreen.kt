@@ -204,7 +204,7 @@ fun SearchHubScreen(
 
 @Composable
 private fun SearchBookRow(book: SearchHubBook, onClick: () -> Unit) {
-    val result by book.information.collectAsStateWithLifecycle(initialValue = null)
+    val result by key(book.information) { book.information.collectAsStateWithLifecycle(initialValue = null) }
     val info = book.preview ?: result?.getOrElse { null }
     Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 24.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp)) {

@@ -287,25 +287,32 @@ class SearchHubViewModel internal constructor(
         var cached: Result<BookInformation, WebRequestError>? = null
         var preview: BookInformation? = null
         lateinit var information: Flow<Result<BookInformation, WebRequestError>>
+        // Read only on Main. A retained collector must still belong to this exact result list and source session.
+        fun currentCandidate() = results[id]?.takeIf {
+            resultQuery == query && it.book.information === information &&
+                registry.sources.value.firstOrNull { it.metadata.id == source }
+                    ?.version(accounts.changes.value) == version
+        }
         information = flow {
             lock.withLock {
-                preview = withContext(Dispatchers.Main.immediate) {
-                    results[id]?.takeIf { resultQuery == query && versions[source] == version }?.book?.preview
-                }
+                val current = withContext(Dispatchers.Main.immediate) { currentCandidate() } ?: return@withLock
+                preview = current.book.preview
                 (cached ?: preview?.let { Ok(it) })?.let { emit(it) }
                 if (cached?.isOk != true) detailsGate.withPermit {
+                    if (withContext(Dispatchers.Main.immediate) { currentCandidate() } == null) return@withPermit
                     withTimeout(30_000) { books.getBookInformationFlow(id).collect { result ->
-                        result.get()?.let { info -> withContext(Dispatchers.Main.immediate) {
-                            val old = results[id]
-                            if (info.id == id && resultQuery == query && old?.book?.information === information &&
-                                (old.book.preview != info || !old.complete) &&
-                                registry.sources.value.firstOrNull { it.metadata.id == source }
-                                    ?.version(accounts.changes.value) == version) {
+                        val valid = withContext(Dispatchers.Main.immediate) {
+                            val old = currentCandidate() ?: return@withContext false
+                            val info = result.get()
+                            if (info != null && info.id != id) return@withContext false
+                            if (info != null && (old.book.preview != info || !old.complete)) {
                                 results[id] = old.copy(book = old.book.copy(preview = info),
                                     rank = ranking.rank(info, old.evidence), complete = true)
                                 mutable.value = state.value.copy(books = rankedResults())
                             }
-                        } }
+                            true
+                        }
+                        if (!valid) return@collect
                         if (result.isOk || cached?.isOk != true && preview == null) { cached = result; emit(result) }
                     } }
                 }
@@ -313,7 +320,8 @@ class SearchHubViewModel internal constructor(
         }.catch { error ->
             currentCoroutineContext().ensureActive()
             // A local preview remains usable if its remote refresh times out or fails.
-            if (cached?.isOk != true && preview == null) {
+            if (cached?.isOk != true && preview == null &&
+                withContext(Dispatchers.Main.immediate) { currentCandidate() } != null) {
                 emit(com.github.michaelbull.result.Err(WebRequestError("Search", "Book information unavailable", error)))
             }
         }.flowOn(io)

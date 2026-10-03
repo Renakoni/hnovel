@@ -556,9 +556,50 @@ class SearchHubViewModelTest {
             runCurrent()
             if (accountChange) accounts.begin(source) else model.search("Next")
             runCurrent()
-            release.complete(Unit); read.await(); advanceUntilIdle()
+            release.complete(Unit)
+            assertTrue(read.await().isEmpty())
+            advanceUntilIdle()
             assertNull(model.state.value.books.single().preview)
         }
+    }
+
+    @Test fun obsoleteDetailsNeitherStartRequestsNorReplayCachedMetadata() = runTest(dispatcher) {
+        val source = add("a", Stream().apply { events = { flowOf(SearchResult.SingleBook("1")) } })
+        val model = model()
+        runCurrent(); model.search("Title"); advanceUntilIdle()
+        for (accountChange in listOf(false, true)) {
+            val old = model.state.value.books.single()
+            if (accountChange) accounts.begin(source) else model.search("Next")
+            // The registry/account guard must work even before its StateFlow observer runs.
+            assertTrue(old.information.toList().isEmpty())
+            advanceUntilIdle()
+        }
+        verify(exactly = 0) { books.getBookInformationFlow(any<String>(), any()) }
+        val cached = model.state.value.books.single()
+        every { books.getBookInformationFlow(cached.id, any()) } returns flowOf(Ok(item(cached.id).information!!))
+        assertTrue(cached.information.toList().single().isOk)
+        model.search("Another")
+        assertTrue(cached.information.toList().isEmpty())
+        verify(exactly = 1) { books.getBookInformationFlow(any<String>(), any()) }
+    }
+
+    @Test fun queuedDetailsRecheckTheirAccountBeforeStartingARequest() = runTest(dispatcher) {
+        val release = CompletableDeferred<Unit>()
+        every { books.getBookInformationFlow(any<String>(), any()) } returns flow { release.await() }
+        val source = add("a", Stream().apply { events = { flow {
+            repeat(5) { emit(SearchResult.MultipleBook("$it")) }
+        } } })
+        val model = model()
+        runCurrent(); model.search("Title"); advanceUntilIdle()
+        val old = model.state.value.books.map { async { it.information.toList() } }
+        runCurrent()
+        verify(exactly = 4) { books.getBookInformationFlow(any<String>(), any()) }
+        accounts.begin(source); runCurrent()
+        release.complete(Unit)
+        old.forEach { assertTrue(it.await().isEmpty()) }
+        verify(exactly = 4) { books.getBookInformationFlow(any<String>(), any()) }
+        model.state.value.books.first().information.toList()
+        verify(exactly = 5) { books.getBookInformationFlow(any<String>(), any()) }
     }
 
     @Test fun idOnlyDetailsImproveRankingAndConcurrentCollectorsShareOneRefresh() = runTest(dispatcher) {
