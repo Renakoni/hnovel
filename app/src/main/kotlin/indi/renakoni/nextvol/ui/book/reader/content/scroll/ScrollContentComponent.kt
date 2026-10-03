@@ -37,6 +37,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
@@ -230,11 +231,7 @@ fun ScrollContentTextComponent(
         } ?: return@LaunchedEffect
         val anchor = withContext(Dispatchers.Default) { bookmark.anchorIn(prepared.content) }
         if (!ownsRenderer()) return@LaunchedEffect
-        if (anchor == null) {
-            bookmarks.finish(bookmark, false)
-            if (bookmarks.pending == null) entryReady = true
-            return@LaunchedEffect
-        }
+        if (anchor == null) { bookmarks.finish(bookmark, false); return@LaunchedEffect }
         val index = latestPrepared.indexOf(prepared)
         if (index < 0 || bookmarks.pending !== bookmark) return@LaunchedEffect
         val attempt = Any().also { restorationOwner = it }
@@ -252,7 +249,6 @@ fun ScrollContentTextComponent(
             anchoredViewport = viewport()
             positions?.positioned(uiState, readingPosition)
             bookmarks.finish(bookmark, true)
-            entryReady = true
             positioned = true
         } finally {
             if (restorationOwner === attempt && ownsRenderer()) {
@@ -334,7 +330,6 @@ fun ScrollContentTextComponent(
             else if (speechAnchor != null) positions?.positioned(uiState, readingPosition)
             restoredGeometry = textLayout to lazyColumnSize
             bookmarkReady = true
-            if (bookmarks?.pending == null) entryReady = true
             publishInitial = !reflow && restoredProgress <= 0f && anchor == null && bookmarks?.pending == null
         } finally {
             if (restorationOwner === attempt && ownsRenderer()) {
@@ -373,16 +368,8 @@ fun ScrollContentTextComponent(
         snapshotFlow { listState.isScrollInProgress }
             .collect { scrolling ->
                 if (!scrolling) {
-                    val layoutInfo = listState.layoutInfo
-                    val totalCount = layoutInfo.totalItemsCount
-                    val firstIndex = listState.firstVisibleItemIndex
-                    val firstOffset = listState.firstVisibleItemScrollOffset
-                    val lastVisible = layoutInfo.visibleItemsInfo.lastOrNull()
-
-                    val isAtTop = firstIndex == 0 && firstOffset == 0
-                    val isAtBottom = lastVisible != null &&
-                            lastVisible.index == totalCount - 1 &&
-                            (lastVisible.offset + lastVisible.size) <= layoutInfo.viewportEndOffset
+                    val isAtTop = !listState.canScrollBackward
+                    val isAtBottom = !listState.canScrollForward
 
                     when {
                         isAtTop -> {
@@ -477,7 +464,8 @@ fun ScrollContentTextComponent(
     }
     // Measure and position the list behind one loader; revealing it earlier exposes all three
     // chapter placeholders and the intermediate scrollToItem steps. Reflows keep the body visible.
-    val showContent = entryReady
+    val showContent = entryReady || (bookmarkReady && bookmarks?.pending == null && !uiState.isRestoringProgress)
+    SideEffect { if (showContent) entryReady = true }
     Box(
         modifier = modifier
                 .fillMaxSize()
@@ -516,7 +504,8 @@ fun ScrollContentTextComponent(
                 key = { index, pair -> pair?.first ?: "placeholder-$index" },
                 contentType = { index, pair -> pair?.second?.isOk == true && preparedChapters[index] != null },
             ) { index, pair ->
-                if (index != 1 && uiState.readingChapterContent?.isErr == true) return@itemsIndexed
+                if (index != 1 && (!settingState.isUsingContinuousScrolling ||
+                        uiState.readingChapterContent?.isErr == true)) return@itemsIndexed
                 pair?.second.let { result ->
                     uiState.contentList.getOrNull(index + 1)?.second?.get()?.let {
                         if (!it.hasPrevChapter()) return@itemsIndexed
@@ -542,7 +531,12 @@ fun ScrollContentTextComponent(
                 }
             }
         }
-        if (!showContent) Loading()
+        if (!showContent) Box(Modifier.matchParentSize().pointerInput(Unit) {
+            // Hidden chapter controls must not receive gestures while the list is being positioned.
+            awaitPointerEventScope {
+                while (true) awaitPointerEvent().changes.forEach { it.consume() }
+            }
+        }) { Loading() }
     }
 }
 
