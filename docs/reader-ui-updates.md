@@ -105,6 +105,8 @@ sequenceDiagram
 | 字体、边距、视口重排 | 可暂时显示已有几何；新几何到位后按原文锚点恢复 | 捕获/完成请求要匹配正文、布局、视口与活跃渲染器。重排不是新的阅读事件。 |
 | 当前章/邻章失败 | 当前章可显示错误并重试；失败或尚未测成正文的邻章不能晋升 | 内容恢复成功与条目重新测量之间仍有间隔，不能只检查 Result 成功。 |
 
+重排恢复协程可能因新位置请求或几何输入变化而取消、重启。取消不代表恢复完成：旧任务不能在 `finally` 中提前解除 `isRestoringProgress`，应由接替任务完成定位后解除。正文变矮时，旧像素偏移可能暂时落入下一章；若此时打开晋升观察，就会把重排误判为自然跨章并丢失原文位置。书签取消有独立的收尾契约，不能将两条路径的清理逻辑一概替换。
+
 ### 同一帧内的更新次序
 
 同一主线程帧可以出现以下顺序：
@@ -225,6 +227,7 @@ adb -s <serial> shell pm art dump <package>
 | 过期请求/槽位、失败邻章、自然晋升 | [ScrollChapterWindowTest](../app/src/test/kotlin/indi/renakoni/nextvol/ui/book/reader/content/scroll/ScrollChapterWindowTest.kt)、`ScrollModeContractTest` |
 | 完整源数据去重、重订阅复用、错误恢复 | [ReaderChapterLoaderTest](../app/src/test/kotlin/indi/renakoni/nextvol/ui/book/reader/mode/ReaderChapterLoaderTest.kt) |
 | 进度尾值、恢复屏障、正文入口 | [ScrollProgressTimingTest](../app/src/test/kotlin/indi/renakoni/nextvol/ui/book/reader/content/scroll/ScrollProgressTimingTest.kt)、`ScrollRestorationTest`、`ScrollEntryLoadingTest` |
+| 重排取消、章节晋升屏障与原文位置 | [ReaderPositionInstrumentedTest](../app/src/androidTest/kotlin/indi/renakoni/nextvol/reader/ReaderPositionInstrumentedTest.kt) |
 | 原文位置、退出模式的所有权 | [ReaderPositionSessionTest](../app/src/test/kotlin/indi/renakoni/nextvol/ui/book/reader/ReaderPositionSessionTest.kt)、`ReaderModeHostTest` |
 | 实际页面布局与设置文案 | [ReaderLayoutPolicyTest](../app/src/test/kotlin/indi/renakoni/nextvol/ui/book/reader/ReaderLayoutPolicyTest.kt)、`ReaderPageLayoutSettingsTest` |
 | 标题/目录、数字槽、书源面板 | `ReaderDirectoryScreenTest`、`RollingNumberTest`、`ReaderSourcePanelViewModelTest` |
