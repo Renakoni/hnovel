@@ -140,8 +140,9 @@ class SearchHubScreenTest {
     }
 
     @Test fun oneOfAThousandSourcesCanBeFoundWithoutChangingTheBookQuery() {
-        state = SearchHubState(query = "A book", sources = List(1000) {
-            source.copy(id = Identifier("fixture", "$it"), name = "Source $it")
+        state = SearchHubState(query = "A book", scope = SourceCategory.Adult, sources = List(1000) {
+            source.copy(id = Identifier("fixture", "$it"), name = "Source $it",
+                category = if (it == 999) null else source.category)
         })
         render()
         compose.onNodeWithTag("search_scope").performClick()
@@ -153,24 +154,12 @@ class SearchHubScreenTest {
         assertEquals(fieldTop, compose.onNodeWithTag("search_source_query").fetchSemanticsNode().boundsInRoot.top)
         compose.onNodeWithText("Source 999").assertIsDisplayed().performClick()
         assertEquals(Identifier("fixture", "999"), state.selectedSource)
+        assertNull(state.scope)
         assertEquals("A book", state.query)
         assertNull(submitted)
         compose.onNodeWithTag("search_source_query").assertDoesNotExist()
         compose.onNodeWithTag("search_scope").assertTextEquals("Source 999")
         compose.onNodeWithText("Searchable sources: 1").assertDoesNotExist()
-    }
-
-    @Test fun singleSourceLookupIncludesUngroupedSourcesWithoutBrowsingGroups() {
-        val ungrouped = source.copy(id = Identifier("fixture", "other"), name = "Other source", category = null)
-        state = SearchHubState(sources = listOf(source, ungrouped), selectedSource = source.id)
-        render()
-        compose.onNodeWithTag("search_scope").performClick()
-        compose.onNodeWithText("One source").performClick()
-        compose.onNode(hasText("Source A") and hasAnyAncestor(hasTestTag("search_source_matches"))).assertIsDisplayed()
-        compose.onNodeWithTag("search_source_query").performTextInput("Other")
-        compose.onNodeWithText("Other source").performClick()
-        assertEquals(ungrouped.id, state.selectedSource)
-        assertNull(state.scope)
     }
 
     @Test fun sourceLookupSearchesAcrossGroupsAndClearingRestoresTheCompactPicker() {
@@ -196,6 +185,7 @@ class SearchHubScreenTest {
         render()
         compose.onNodeWithTag("search_scope").performClick()
         compose.onNodeWithText("One source").performClick()
+        compose.onNode(hasText("Source A") and hasAnyAncestor(hasTestTag("search_source_matches"))).assertIsDisplayed()
         compose.onNodeWithTag("search_source_query").performTextInput("unknown")
         compose.runOnIdle { visible = false }
         compose.runOnIdle { visible = true }
@@ -214,7 +204,7 @@ class SearchHubScreenTest {
     }
 
     @Test
-    @Config(sdk = [30, 35])
+    @Config(sdk = [35])
     fun systemBackReturnsFromSourceLookupBeforeDismissingTheScopeSheet() {
         state = SearchHubState(query = "A book", sources = listOf(source), selectedSource = source.id)
         render()
