@@ -58,7 +58,6 @@ import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import java.util.Locale
-import kotlin.math.roundToInt
 import java.time.format.TextStyle as JavaTextStyle
 
 private val BottomAxisLabelKey = ExtraStore.Key<List<String>>()
@@ -70,7 +69,7 @@ private val BottomAxisValueFormatter = CartesianValueFormatter { context, x, _ -
 private val EndAxisItemPlacer = VerticalAxis.ItemPlacer.count({ 8 })
 
 private fun useHoursUnit(values: List<Float>): Boolean =
-    values.maxOrNull()?.let { it > 400f } == true
+    values.maxOrNull()?.let { it >= 60f } == true
 
 @Composable
 fun rememberAxisLabelComponent(): TextComponent {
@@ -87,7 +86,7 @@ private fun rememberReadingTimeAxisFormatter(useHours: Boolean): CartesianValueF
     return remember(useHours) {
         CartesianValueFormatter { _, value, _ ->
             if (useHours) {
-                (value / 60.0).roundToInt().toString()
+                String.format(Locale.getDefault(), "%.1f", value / 60.0)
             } else {
                 value.toInt().toString()
             }
