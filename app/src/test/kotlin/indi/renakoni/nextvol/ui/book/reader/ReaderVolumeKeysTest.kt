@@ -27,6 +27,9 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.WindowInfo
+import androidx.compose.ui.test.hasAnyDescendant
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.isFocused
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
@@ -164,10 +167,13 @@ class ReaderVolumeKeysTest {
         }
         compose.waitForIdle()
         // Compose can be idle while the chapter is prepared on Dispatchers.Default.
-        // Initial placement must finish before a key can measure or change its offset.
+        // Restoration can report from a cancelled placement's finally block. Wait for the
+        // reader's focused input node too, before a test freezes the animation clock.
         compose.waitUntil(5_000) {
             compose.waitForIdle()
-            scrollProgressRestored
+            scrollProgressRestored && compose.onAllNodes(
+                isFocused() and hasAnyDescendant(hasScrollAction()), useUnmergedTree = true,
+            ).fetchSemanticsNodes().isNotEmpty()
         }
         compose.waitForIdle()
     }
