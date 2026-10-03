@@ -273,6 +273,20 @@ class SearchHubScreenTest {
         compose.onNodeWithText("Book 0").assertIsDisplayed()
     }
 
+    @Test fun updatedMetadataIsDisplayedEvenWhenTheInformationFlowStillHoldsAnOlderPreview() {
+        val info = BookInformation("book", "Old preview", author = "Writer", description = "",
+            publishingHouse = "", wordCount = WordCount(0), lastUpdated = LocalDateTime.MIN, isComplete = false)
+        val information = flowOf(Ok(info))
+        state = SearchHubState(query = "book", submittedKeyword = "book", sources = listOf(source),
+            books = listOf(SearchHubBook("book", source.id, source.name, info, information)))
+        render()
+        compose.onNodeWithText("Old preview").assertIsDisplayed()
+        compose.runOnIdle { state = state.copy(books = state.books.map { it.copy(preview = info.copy(title = "Updated title")) }) }
+        compose.onNodeWithText("Updated title").assertIsDisplayed()
+        compose.onNodeWithText("Old preview").assertDoesNotExist()
+        assertSame(information, state.books.single().information)
+    }
+
     @Test fun editingFiltersHistoryAndSubmittingWorksWithTheImeAndAccessibleBackButton() {
         state = SearchHubState(history = listOf("first", "second"), sources = listOf(source))
         render()

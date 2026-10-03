@@ -94,7 +94,7 @@ class SearchHubViewModelTest {
         author = "Author", description = "Description", publishingHouse = "", wordCount = WordCount(0),
         lastUpdated = LocalDateTime.MIN, isComplete = false))
 
-    @Test fun thousandSourcesAreLazyAndRunWithAtMostFourRequests() = runTest(dispatcher) {
+    @Test fun thousandSourcesAreLazyAndRunWithAtMostEightRequests() = runTest(dispatcher) {
         var active = 0
         var peak = 0
         var calls = 0
@@ -107,9 +107,9 @@ class SearchHubViewModelTest {
         assertEquals(0, calls)
         model.search("title")
         runCurrent()
-        assertEquals(4, calls)
+        assertEquals(8, calls)
         advanceUntilIdle()
-        assertEquals(4, peak)
+        assertEquals(8, peak)
         assertEquals(1000, calls)
         assertEquals(1000, model.state.value.completed)
         assertFalse(model.state.value.searching)
@@ -307,7 +307,8 @@ class SearchHubViewModelTest {
                     emit(SearchPage(listOf(item("weak"), item("best")), null, complete = false,
                         scores = mapOf("weak" to 30, "best" to 40), previewIds = setOf("weak", "best")))
                     finish.await()
-                    emit(SearchPage(listOf(item("best", "Full metadata")), 2, scores = mapOf("best" to 5)))
+                    emit(SearchPage(listOf(item("best", "Full metadata")), 2, scores = mapOf("best" to 5),
+                        evidence = mapOf("best" to SearchEvidence.VerifiedAlias)))
                 } else emit(SearchPage(listOf(item("last")), null))
             }
         }
@@ -425,7 +426,7 @@ class SearchHubViewModelTest {
         assertTrue(providers.all { provider -> provider.requests.none { it.first == "new" } })
         release.complete(Unit)
         advanceUntilIdle()
-        assertEquals(4, peak)
+        assertEquals(8, peak)
         assertEquals(8, model.state.value.books.size)
         assertTrue(model.state.value.books.all { it.preview?.title == "new" })
     }
@@ -444,6 +445,7 @@ class SearchHubViewModelTest {
         advanceUntilIdle()
         assertEquals(2, model.state.value.failures.size)
         assertTrue(model.state.value.failures.any { it.failure!!.error == DiscoveryError.AuthenticationRequired })
+        assertEquals("search.execution", model.state.value.failures.single { it.id.id == "slow" }.failure!!.field)
         slow.load = { _, _ -> SearchPage(listOf(item("slow")), null) }
         denied.load = { _, _ -> SearchPage(listOf(item("denied")), null) }
         model.retryFailures()
@@ -451,6 +453,135 @@ class SearchHubViewModelTest {
         assertTrue(model.state.value.failures.isEmpty())
         assertEquals(1, good.requests.size)
         assertEquals(3, model.state.value.books.size)
+    }
+
+    @Test fun fourSlowSourcesDoNotBlockTheFollowingFourFastSources() = runTest(dispatcher) {
+        repeat(4) { add("slow-$it", Paged().apply { load = { _, _ -> awaitCancellation() } }) }
+        repeat(4) { add("fast-$it", Paged().apply { load = { _, _ -> delay(100); SearchPage(listOf(item("fast")), null) } }) }
+        val model = model()
+        runCurrent(); model.search("query"); advanceTimeBy(101); runCurrent()
+        assertEquals(4, model.state.value.books.size)
+        assertEquals(4, model.state.value.completed)
+        assertTrue(model.state.value.searching)
+        advanceUntilIdle()
+    }
+
+    @Test fun replacementAdmissionTimesOutWithoutFreeingOldRequestsAndCanRetry() = runTest(dispatcher) {
+        val release = CompletableDeferred<Unit>()
+        val providers = List(8) { Paged().apply { load = { keyword, _ ->
+            if (keyword == "old") withContext(NonCancellable) { release.await() }
+            SearchPage(listOf(item(keyword)), null)
+        } } }
+        providers.forEachIndexed { i, provider -> add("$i", provider) }
+        val model = model()
+        runCurrent(); model.search("old"); runCurrent(); model.search("new"); runCurrent()
+        advanceTimeBy(30_001); runCurrent()
+        assertFalse(model.state.value.searching)
+        assertEquals(8, model.state.value.failures.size)
+        assertTrue(model.state.value.failures.all { it.failure!!.field == "search.queue" })
+        assertTrue(providers.all { it.requests.size == 1 })
+        release.complete(Unit); advanceUntilIdle()
+        assertTrue(model.state.value.books.isEmpty())
+        model.retryFailures(); advanceUntilIdle()
+        assertEquals(8, model.state.value.books.size)
+        assertTrue(model.state.value.books.all { it.preview!!.title == "new" })
+        assertTrue(model.state.value.failures.isEmpty())
+    }
+
+    @Test fun unscoredArrivalPermutationsAndTruncationHaveDeterministicOrder() = runTest(dispatcher) {
+        var reverse = false
+        repeat(2) { source -> add("$source", object : Paged() {
+            override fun searchPageUpdates(type: SearchType, keyword: String, page: Int, query: String?) = flow {
+                delay(if ((source == 0) == reverse) 100 else 0)
+                val candidates = (1..600).map { item("$it", "Title") }
+                for (batch in (if (reverse) candidates.reversed() else candidates).chunked(37))
+                    emit(SearchPage(batch, null, complete = false))
+                emit(SearchPage(emptyList(), null))
+            }
+        }) }
+        val model = model()
+        runCurrent(); model.search("title"); advanceUntilIdle()
+        val first = model.state.value.books.map { it.id }
+        reverse = true
+        model.search("title"); advanceUntilIdle()
+        assertEquals(first, model.state.value.books.map { it.id })
+        assertEquals(1000, first.size)
+        assertTrue(model.state.value.limited)
+    }
+
+    @Test fun arbitraryProviderScoresCannotOutrankBetterTextMatches() = runTest(dispatcher) {
+        add("ordinary", Paged().apply { load = { _, _ -> SearchPage(listOf(item("other", "Other")), null, scores = mapOf("other" to -100)) } })
+        add("fuzzy", Paged().apply { load = { _, _ -> SearchPage(listOf(item("near", "义妺生活")), null, scores = mapOf("near" to 40)) } })
+        val model = model()
+        runCurrent(); model.search("义妹生活"); advanceUntilIdle()
+        assertEquals(listOf("义妺生活", "Other"), model.state.value.books.map { it.preview!!.title })
+        verify(exactly = 0) { books.getBookInformationFlow(any<String>(), any()) }
+    }
+
+    @Test fun previewsUpdateWithoutScoreChangesAndCompleteDetailsRerankWithoutReplacingTheFlow() = runTest(dispatcher) {
+        val updates = MutableSharedFlow<SearchPage>()
+        add("a", object : Paged() {
+            override fun searchPageUpdates(type: SearchType, keyword: String, page: Int, query: String?) = updates
+        })
+        val model = model()
+        runCurrent(); model.search("Title"); runCurrent()
+        updates.emit(SearchPage(listOf(item("1", "Other"), item("2", "Title sequel")), null,
+            complete = false, previewIds = setOf("1", "2"))); runCurrent()
+        val book = model.state.value.books.single { it.preview!!.title == "Other" }
+        updates.emit(SearchPage(listOf(item("1", "Updated preview")), null, complete = false, previewIds = setOf("1"))); runCurrent()
+        assertEquals("Updated preview", model.state.value.books.single { it.id == book.id }.preview!!.title)
+        assertSame(book.information, model.state.value.books.single { it.id == book.id }.information)
+        every { books.getBookInformationFlow(book.id, any()) } returns flowOf(Ok(item(book.id, "Title").information!!))
+        book.information.toList(); runCurrent()
+        assertEquals(book.id, model.state.value.books.first().id)
+        assertEquals("Title", model.state.value.books.first().preview!!.title)
+        assertSame(book.information, model.state.value.books.first().information)
+        updates.emit(SearchPage(listOf(item("1", "Stale preview")), null, previewIds = setOf("1"))); runCurrent()
+        assertEquals("Title", model.state.value.books.first().preview!!.title)
+        book.information.first()
+        verify(exactly = 1) { books.getBookInformationFlow(any<String>(), any()) }
+    }
+
+    @Test fun lateDetailsCannotCrossQueryOrAccountBoundaries() = runTest(dispatcher) {
+        val source = add("a", Stream().apply { events = { flowOf(SearchResult.SingleBook("1")) } })
+        val model = model()
+        runCurrent(); model.search("Title"); advanceUntilIdle()
+        for (accountChange in listOf(false, true)) {
+            val release = CompletableDeferred<Unit>()
+            val old = model.state.value.books.single()
+            every { books.getBookInformationFlow(old.id, any()) } returns flow {
+                release.await(); emit(Ok(item(old.id, "Stale").information!!))
+            }
+            val read = async { old.information.toList() }
+            runCurrent()
+            if (accountChange) accounts.begin(source) else model.search("Next")
+            runCurrent()
+            release.complete(Unit); read.await(); advanceUntilIdle()
+            assertNull(model.state.value.books.single().preview)
+        }
+    }
+
+    @Test fun idOnlyDetailsImproveRankingAndConcurrentCollectorsShareOneRefresh() = runTest(dispatcher) {
+        add("a", Paged().apply { load = { _, _ ->
+            SearchPage(listOf(SearchResult.MultipleBook("1"), item("2", "Title sequel")), null)
+        } })
+        val model = model()
+        runCurrent(); model.search("Title"); advanceUntilIdle()
+        val empty = model.state.value.books.last()
+        assertNull(empty.preview)
+        verify(exactly = 0) { books.getBookInformationFlow(any<String>(), any()) }
+        every { books.getBookInformationFlow(empty.id, any()) } returns flow {
+            delay(100); emit(Ok(item(empty.id, "Title").information!!))
+            emit(Err(io.nightfish.lightnovelreader.api.error.WebRequestError("Search", "refresh failed")))
+        }
+        val first = async { empty.information.toList() }
+        val second = async { empty.information.toList() }
+        advanceUntilIdle()
+        assertTrue(first.await().all { it.isOk })
+        assertTrue(second.await().last().isOk)
+        assertEquals(empty.id, model.state.value.books.first().id)
+        assertEquals("Title", model.state.value.books.first().preview!!.title)
+        verify(exactly = 1) { books.getBookInformationFlow(any<String>(), any()) }
     }
 
     @Test fun legacyStreamsRetainPartialResultsAndStopAtTerminalEvents() = runTest(dispatcher) {

@@ -5,8 +5,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.github.michaelbull.result.Ok
 import com.github.michaelbull.result.Result
+import com.github.michaelbull.result.get
 import dagger.hilt.android.lifecycle.HiltViewModel
 import indi.renakoni.nextvol.data.book.BookRepository
+import indi.renakoni.nextvol.data.book.SourceBookId
 import indi.renakoni.nextvol.data.explore.*
 import indi.renakoni.nextvol.data.userdata.UserDataRepository
 import indi.renakoni.nextvol.data.web.*
@@ -19,13 +21,14 @@ import io.nightfish.lightnovelreader.api.userdata.UserDataPath
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import javax.inject.Inject
 
 data class SearchHubBook(
     val id: String, val source: Identifier, val sourceName: String,
     val preview: BookInformation?, val information: Flow<Result<BookInformation, WebRequestError>>,
-    val score: Int? = null,
 )
 
 data class SearchHubSource(
@@ -79,7 +82,11 @@ class SearchHubViewModel internal constructor(
     ))
     val state = mutable.asStateFlow()
     private var versions = emptyMap<Identifier, DiscoveryVersion>()
-    private val results = linkedMapOf<String, SearchHubBook>()
+    private data class Candidate(val book: SearchHubBook, val rank: SearchRank, val evidence: SearchEvidence?,
+        val complete: Boolean, val remoteId: String)
+    private val results = linkedMapOf<String, Candidate>()
+    private var ranking = SearchRanking(state.value.submittedKeyword)
+    private val sourceOrder = linkedMapOf<Identifier, Int>()
     private var work: Job? = null
     // Identifies one result list; load-more pages reuse it and every reset starts a new one.
     private var query = java.util.UUID.randomUUID().toString()
@@ -102,12 +109,13 @@ class SearchHubViewModel internal constructor(
                 cancelWork()
                 val old = state.value.sources.associateBy { it.id }
                 val unchanged = next.keys.filter { next[it] == versions[it] }.toSet()
-                results.entries.removeAll { it.value.source !in unchanged }
+                results.entries.removeAll { it.value.book.source !in unchanged }
                 val sources = next.map { (id, version) ->
                     old[id]?.takeIf { id in unchanged } ?: SearchHubSource(id, version.metadata.item.name, version.metadata.category,
                         query = if (versions.isEmpty()) null else java.util.UUID.randomUUID().toString())
                 }
                 versions = next
+                next.keys.forEach { if (it !in sourceOrder) sourceOrder[it] = sourceOrder.size }
                 mutable.value = state.value.copy(sources = sources, books = rankedResults())
                 loadPending()
             }
@@ -161,6 +169,9 @@ class SearchHubViewModel internal constructor(
     private fun reset(next: SearchHubState) {
         cancelWork()
         results.clear()
+        ranking = SearchRanking(next.submittedKeyword)
+        sourceOrder.clear()
+        next.sources.forEach { sourceOrder[it.id] = sourceOrder.size }
         query = java.util.UUID.randomUUID().toString()
         mutable.value = next.copy(books = emptyList(), sources = next.sources.map { SearchHubSource(it.id, it.name, it.category) },
             searching = false, stopped = false, limited = false, completed = 0, total = 0, revision = next.revision + 1)
@@ -226,23 +237,29 @@ class SearchHubViewModel internal constructor(
     private fun accept(batch: SearchBatch) {
         val source = state.value.sources.first { it.id == batch.request.source }
         var added = false
+        var changed = false
         batch.books.forEach { item ->
             val old = results[item.bookId]
-            val score = listOfNotNull(old?.score, batch.scores[item.bookId]).minOrNull()
+            val evidence = listOfNotNull(old?.evidence, batch.evidence[item.bookId]).minByOrNull { it.ordinal }
             val completeInfo = item.information?.takeUnless { item.bookId in batch.previewIds }
+            val preview = completeInfo ?: if (old?.complete == true) old.book.preview else item.information ?: old?.book?.preview
+            val complete = completeInfo != null || old?.complete == true
             if (old == null) {
                 added = true
-                results[item.bookId] = SearchHubBook(item.bookId, source.id, source.name, item.information,
+                val book = SearchHubBook(item.bookId, source.id, source.name, preview,
                     completeInfo?.let { flowOf(Ok(it)) }
-                        ?: details(item.bookId, item.information), score)
-            } else if (score != old.score || completeInfo != null) {
-                results[item.bookId] = old.copy(score = score,
-                    preview = completeInfo ?: old.preview ?: item.information,
-                    information = completeInfo?.let { flowOf(Ok(it)) }
-                        ?: old.information)
+                        ?: details(item.bookId, source.id))
+                results[item.bookId] = Candidate(book, ranking.rank(preview, evidence), evidence, complete,
+                    SourceBookId.fromStorageKey(item.bookId).remoteId)
+                changed = true
+            } else if (preview != old.book.preview || evidence != old.evidence || complete != old.complete) {
+                results[item.bookId] = old.copy(book = old.book.copy(preview = preview,
+                    information = completeInfo?.let { flowOf(Ok(it)) } ?: old.book.information),
+                    rank = ranking.rank(preview, evidence), evidence = evidence, complete = complete)
+                changed = true
             }
         }
-        val ranked = rankedResults()
+        val ranked = if (changed) rankedResults() else state.value.books
         val receivedBooks = source.receivedBooks || batch.books.isNotEmpty()
         val addedBooks = source.addedBooks || added
         val limited = state.value.limited || batch.limited || ranked.size > SEARCH_RESULT_LIMIT
@@ -259,25 +276,39 @@ class SearchHubViewModel internal constructor(
             })
     }
 
-    private fun rankedResults() = results.values.sortedWith(compareBy<SearchHubBook> { book ->
-        val info = book.preview
-        val keyword = state.value.submittedKeyword
-        book.score ?: when {
-            info == null -> 30
-            info.title.equals(keyword, ignoreCase = true) || info.author.equals(keyword, ignoreCase = true) -> 0
-            info.title.contains(keyword, ignoreCase = true) || info.author.contains(keyword, ignoreCase = true) -> 10
-            else -> 20
-        }
-    }.thenBy { if (it.score != null) it.id else "" })
+    private fun rankedResults() = results.values.sortedWith(compareBy<Candidate> { it.rank }
+        .thenBy { sourceOrder[it.book.source] ?: Int.MAX_VALUE }
+        .thenBy { it.book.source.namespace }.thenBy { it.book.source.id }.thenBy { it.remoteId }).map { it.book }
 
-    private fun details(id: String, preview: BookInformation?): Flow<Result<BookInformation, WebRequestError>> {
+    private fun details(id: String, source: Identifier): Flow<Result<BookInformation, WebRequestError>> {
+        val resultQuery = query
+        val version = versions[source]
+        val lock = Mutex()
         var cached: Result<BookInformation, WebRequestError>? = null
-        return flow {
-            (cached ?: preview?.let { Ok(it) })?.let { emit(it) }
-            if (cached?.isOk != true) detailsGate.withPermit {
-                withTimeout(30_000) { books.getBookInformationFlow(id).collect {
-                    if (it.isOk || preview == null) { cached = it; emit(it) }
-                } }
+        var preview: BookInformation? = null
+        lateinit var information: Flow<Result<BookInformation, WebRequestError>>
+        information = flow {
+            lock.withLock {
+                preview = withContext(Dispatchers.Main.immediate) {
+                    results[id]?.takeIf { resultQuery == query && versions[source] == version }?.book?.preview
+                }
+                (cached ?: preview?.let { Ok(it) })?.let { emit(it) }
+                if (cached?.isOk != true) detailsGate.withPermit {
+                    withTimeout(30_000) { books.getBookInformationFlow(id).collect { result ->
+                        result.get()?.let { info -> withContext(Dispatchers.Main.immediate) {
+                            val old = results[id]
+                            if (info.id == id && resultQuery == query && old?.book?.information === information &&
+                                (old.book.preview != info || !old.complete) &&
+                                registry.sources.value.firstOrNull { it.metadata.id == source }
+                                    ?.version(accounts.changes.value) == version) {
+                                results[id] = old.copy(book = old.book.copy(preview = info),
+                                    rank = ranking.rank(info, old.evidence), complete = true)
+                                mutable.value = state.value.copy(books = rankedResults())
+                            }
+                        } }
+                        if (result.isOk || cached?.isOk != true && preview == null) { cached = result; emit(result) }
+                    } }
+                }
             }
         }.catch { error ->
             currentCoroutineContext().ensureActive()
@@ -286,6 +317,7 @@ class SearchHubViewModel internal constructor(
                 emit(com.github.michaelbull.result.Err(WebRequestError("Search", "Book information unavailable", error)))
             }
         }.flowOn(io)
+        return information
     }
 
     fun deleteHistory(value: String) { viewModelScope.launch(io) { history.update { it.filterNot { item -> item == value } } } }
