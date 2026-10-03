@@ -138,6 +138,107 @@ class SearchHubViewModelTest {
         assertTrue(general.requests.isEmpty())
     }
 
+    @Test fun entrySourceOverridesTheBrowseGroupAndSwitchingSourceKeepsTheKeyword() = runTest(dispatcher) {
+        val a = Paged().apply { load = { _, _ -> SearchPage(listOf(item("a")), null) } }
+        val b = Paged().apply { load = { _, _ -> SearchPage(listOf(item("b")), null) } }
+        val aId = add("a", a, SourceCategory.Anime)
+        val bId = add("b", b, SourceCategory.General)
+        every { browsing.scope } returns MutableStateFlow(SourceCategory.Adult)
+        val model = model(SavedStateHandle(mapOf("sourceNamespace" to aId.namespace, "sourceId" to aId.id, "sourceName" to "a")))
+        runCurrent()
+        model.search("Title")
+        advanceUntilIdle()
+        assertEquals(listOf("Title" to 1), a.requests)
+        assertTrue(b.requests.isEmpty())
+        assertEquals(aId, model.state.value.selectedSource)
+        assertNull(model.state.value.scope)
+        model.selectSource(bId)
+        advanceUntilIdle()
+        assertEquals(listOf("Title" to 1), b.requests)
+        assertEquals(1, a.requests.size)
+        assertEquals("Title", model.state.value.query)
+        assertEquals(bId, model.state.value.books.single().source)
+        model.selectScope(null)
+        advanceUntilIdle()
+        assertEquals(2, a.requests.size)
+        assertEquals(2, b.requests.size)
+        assertEquals(2, model.state.value.books.size)
+        verify(exactly = 0) { browsing.selectScope(any()) }
+    }
+
+    @Test fun switchingSourceDuringProgressiveSearchRejectsLateResultsAndResetsPagination() = runTest(dispatcher) {
+        val release = CompletableDeferred<Unit>()
+        val a = object : Paged() {
+            override fun searchPageUpdates(type: SearchType, keyword: String, page: Int, query: String?) = flow {
+                emit(SearchPage(listOf(item("preview")), null, complete = false))
+                withContext(NonCancellable) { release.await() }
+                emit(SearchPage(listOf(item("late")), 2))
+            }
+        }
+        val b = Paged().apply { load = { _, _ -> SearchPage(listOf(item("b")), null) } }
+        val aId = add("a", a)
+        val bId = add("b", b)
+        val model = model()
+        runCurrent()
+        model.selectSource(aId)
+        model.search("Title")
+        runCurrent()
+        assertTrue(model.state.value.searching)
+        assertEquals(aId, model.state.value.books.single().source)
+        model.selectSource(bId)
+        runCurrent()
+        assertEquals(bId, model.state.value.books.single().source)
+        release.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(bId, model.state.value.books.single().source)
+        assertEquals("Title", model.state.value.submittedKeyword)
+        assertEquals(1, model.state.value.completed)
+        assertEquals(1, model.state.value.total)
+        assertFalse(model.state.value.hasMore)
+        assertFalse(model.state.value.searching)
+    }
+
+    @Test fun selectedSourceSurvivesRestorationAndRemovalNeverBroadensTheSearch() = runTest(dispatcher) {
+        val a = Paged()
+        val b = Paged()
+        val aId = add("a", a)
+        add("b", b)
+        val saved = SavedStateHandle()
+        val original = model(saved)
+        runCurrent()
+        original.selectSource(aId)
+        original.search("Title")
+        advanceUntilIdle()
+        original.setActive(false)
+        val restored = model(SavedStateHandle(saved.keys().associateWith { saved.get<Any?>(it) }))
+        advanceUntilIdle()
+        assertEquals(aId, restored.state.value.selectedSource)
+        assertEquals("a", restored.state.value.selectedSourceName)
+        assertEquals("Title", restored.state.value.submittedKeyword)
+        assertEquals(2, a.requests.size)
+        assertTrue(b.requests.isEmpty())
+        registry.unregister(aId)
+        advanceUntilIdle()
+        assertTrue(restored.state.value.scopedSources.isEmpty())
+        assertEquals(aId, restored.state.value.selectedSource)
+        assertTrue(b.requests.isEmpty())
+    }
+
+    @Test fun expandingToAllIsRestoredInsteadOfReapplyingTheEntrySource() = runTest(dispatcher) {
+        val id = add("a")
+        add("b")
+        val saved = SavedStateHandle(mapOf("sourceNamespace" to id.namespace, "sourceId" to id.id, "sourceName" to "a"))
+        val original = model(saved)
+        runCurrent()
+        original.selectScope(null)
+        original.setActive(false)
+        val restored = model(SavedStateHandle(saved.keys().associateWith { saved.get<Any?>(it) }))
+        runCurrent()
+        assertNull(restored.state.value.selectedSource)
+        assertNull(restored.state.value.scope)
+        assertEquals(2, restored.state.value.scopedSources.size)
+    }
+
     @Test fun pageRequestsAreOnDemandAndSameTitleFromDifferentSourcesRetainsItsIdentity() = runTest(dispatcher) {
         val a = Paged().apply { load = { _, page -> when (page) {
             1 -> SearchPage((1..20).map { item("$it", "Title") }, 2)
