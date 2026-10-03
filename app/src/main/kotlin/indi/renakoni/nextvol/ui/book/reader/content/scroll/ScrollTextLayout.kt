@@ -146,10 +146,11 @@ internal fun ScrollTextContent(layout: ScrollTextLayout, color: Color, modifier:
                 // remeasurement. Compose supplies coordinates on the real (non-alignment) placement.
                 val positioned = coordinates ?: return@layout
                 val viewport = positioned.localBoundingBoxOf(positioned.findRootCoordinates(), clipBounds = false)
-                val visible = layout.visibleRange(
-                    floor(viewport.top - viewport.height).toInt(),
-                    ceil(viewport.bottom + viewport.height).toInt(),
-                )
+                val onScreen = layout.visibleRange(floor(viewport.top).toInt(), ceil(viewport.bottom).toInt())
+                // Bound overscan by fragments: a whole extra screen eagerly creates dozens of
+                // offscreen paragraphs when a previous chapter first re-enters the lazy list.
+                val visible = if (onScreen.isEmpty()) onScreen else
+                    (onScreen.first - 1).coerceAtLeast(0)..(onScreen.last + 1).coerceAtMost(layout.fragments.lastIndex)
                 // Compose and measure in this placement, before drawing. A state write from
                 // onGloballyPositioned would leave the current frame with the old/empty text window.
                 contents.keys.removeAll { it !in visible }

@@ -87,7 +87,8 @@ class ScrollTextFirstDrawTest {
     }
     @After fun close() { activity.pause().stop().destroy() }
 
-    private fun mount(observeDraws: Boolean = true, lookahead: Boolean = false, lazy: Boolean = false) {
+    private fun mount(observeDraws: Boolean = true, lookahead: Boolean = false, lazy: Boolean = false,
+        nextChapter: ScrollTextLayout? = null) {
         activity.get().setContent {
             MaterialTheme {
                 CompositionLocalProvider(LocalReaderSelectionState provides selection,
@@ -105,6 +106,13 @@ class ScrollTextFirstDrawTest {
                         }) {
                             if (lazy) LazyColumn(state = listState) {
                                 item(key = "chapter") { ScrollTextContent(prepared.value, Color.Black, Modifier) }
+                                if (nextChapter != null) item(key = "next") {
+                                    // Keep the work counter specific to the chapter being re-entered.
+                                    CompositionLocalProvider(LocalReaderTextWorkObserver provides null,
+                                        LocalReaderTextDrawObserver provides null) {
+                                        ScrollTextContent(nextChapter, Color.Black, Modifier)
+                                    }
+                                }
                             } else {
                                 // Move only the ancestor placement, as LazyColumn's scroll-only path does.
                                 Layout(content = { ScrollTextContent(prepared.value, Color.Black, Modifier) }) { children, constraints ->
@@ -124,6 +132,31 @@ class ScrollTextFirstDrawTest {
     @Test fun firstDrawAlreadyContainsText() {
         mount()
         assertEveryDrawHasText()
+    }
+
+    @Test fun upwardChapterEntryDoesNotComposeAnExtraScreenOfParagraphs() {
+        prepared.value = ScrollTextLayout(chapter().fragments.map { it.copy(spacingBefore = 0) }, chapter().style)
+        val next = ScrollTextLayout(chapter().fragments.map { it.copy(text = "NEXT_${it.start / 10}") }, chapter().style)
+        mount(lookahead = true, lazy = true, nextChapter = next)
+        repeat(3) {
+            compose.runOnIdle { runBlocking { listState.scrollToItem(1, 5_000) } }
+            compose.waitForIdle()
+            compose.runOnIdle { runBlocking { listState.scrollToItem(1) } }
+            compose.waitForIdle()
+            val before = compositions
+            compose.runOnIdle {
+                draws.clear()
+                listState.dispatchRawDelta(-20f)
+            }
+            compose.waitForIdle()
+            assertEveryDrawHasText()
+            compose.onNodeWithText("TEXT_199", useUnmergedTree = true).assertIsDisplayed()
+            compose.onNodeWithText("NEXT_0", useUnmergedTree = true).assertIsDisplayed()
+            // Lookahead can initially place a recreated item at its old origin before placing
+            // its tail. Allow both placement windows, but no extra screen around either one.
+            assertTrue("Chapter entry must bound offscreen text work: ${compositions - before}",
+                compositions - before in 1..16)
+        }
     }
 
     @Test fun lazyLookaheadScrollingRetainsOverlappingTextLayouts() {
