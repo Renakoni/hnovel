@@ -10,8 +10,10 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.github.michaelbull.result.Ok
@@ -64,7 +66,8 @@ class SearchHubScreenTest {
                     val holder = rememberSaveableStateHolder()
                     if (visible) holder.SaveableStateProvider("search") {
                     SearchHubScreen(state, onQuery = { state = state.copy(query = it, submittedKeyword = "") },
-                        onSearch = { submitted = it }, onScope = { state = state.copy(scope = it) },
+                        onSearch = { submitted = it }, onScope = { state = state.copy(scope = it, selectedSource = null) },
+                        onSelectSource = { state = state.copy(scope = null, selectedSource = it) },
                         onDeleteHistory = { value -> state = state.copy(history = state.history - value) },
                         onClearHistory = { state = state.copy(history = emptyList()) },
                         onLoadMore = {}, onStop = {}, onResume = {}, onRetry = { retried = true },
@@ -105,10 +108,115 @@ class SearchHubScreenTest {
         state = SearchHubState(sources = List(1000) { source.copy(id = Identifier("fixture", "$it"), name = "Source $it") })
         render()
         compose.onNodeWithText("All sources").performClick()
-        compose.onNodeWithText("r18").performScrollTo().performClick()
+        compose.onNodeWithText("Source 0").assertDoesNotExist()
+        compose.onNodeWithTag("search_source_query").assertDoesNotExist()
+        compose.onNodeWithText("One source").assertIsDisplayed()
+        compose.onNodeWithTag("search_scope_options").performScrollToNode(hasText("r18"))
+        compose.onNodeWithText("r18").performClick()
         assertEquals(SourceCategory.Adult, state.scope)
         compose.onNodeWithText("Source 0").assertDoesNotExist()
         compose.onNodeWithText("Searchable sources: 1000").assertIsDisplayed()
+    }
+
+    @Test fun singleSourceNameKeepsItsArrowAnchoredForEmptyShortAndLongNames() {
+        state = SearchHubState(sources = listOf(source))
+        render(fontScale = 1.6f)
+        compose.onNodeWithTag("search_scope").performClick()
+        val arrow = compose.onNodeWithTag("search_source_arrow", useUnmergedTree = true)
+        val emptyBounds = arrow.fetchSemanticsNode().boundsInRoot
+        compose.onNodeWithText("One source").assertIsNotSelected()
+        compose.runOnIdle { state = state.copy(selectedSource = source.id) }
+        compose.onNodeWithText("One source").assertIsSelected().assert(hasText(source.name))
+        assertEquals(emptyBounds, arrow.fetchSemanticsNode().boundsInRoot)
+        val longName = "A very long source name · 中英文混排阅读资料珍藏版 Archive 300"
+        compose.runOnIdle { state = state.copy(sources = listOf(source.copy(name = longName))) }
+        compose.onNodeWithText("One source").assert(hasText(longName))
+        assertEquals(emptyBounds, arrow.fetchSemanticsNode().boundsInRoot)
+        compose.runOnIdle { state = state.copy(sources = emptyList(), selectedSourceName = "Saved source") }
+        compose.onNodeWithText("One source").assert(hasText("Saved source"))
+        assertEquals(emptyBounds, arrow.fetchSemanticsNode().boundsInRoot)
+    }
+
+    @Test fun oneOfAThousandSourcesCanBeFoundWithoutChangingTheBookQuery() {
+        state = SearchHubState(query = "A book", sources = List(1000) {
+            source.copy(id = Identifier("fixture", "$it"), name = "Source $it")
+        })
+        render()
+        compose.onNodeWithTag("search_scope").performClick()
+        compose.onNodeWithText("Source 0").assertDoesNotExist()
+        compose.onNodeWithText("One source").performClick()
+        compose.onNodeWithTag("search_source_query").assertIsFocused()
+        val fieldTop = compose.onNodeWithTag("search_source_query").fetchSemanticsNode().boundsInRoot.top
+        compose.onNodeWithTag("search_source_query").performTextInput("999")
+        assertEquals(fieldTop, compose.onNodeWithTag("search_source_query").fetchSemanticsNode().boundsInRoot.top)
+        compose.onNodeWithText("Source 999").assertIsDisplayed().performClick()
+        assertEquals(Identifier("fixture", "999"), state.selectedSource)
+        assertEquals("A book", state.query)
+        assertNull(submitted)
+        compose.onNodeWithTag("search_source_query").assertDoesNotExist()
+        compose.onNodeWithTag("search_scope").assertTextEquals("Source 999")
+        compose.onNodeWithText("Searchable sources: 1").assertDoesNotExist()
+    }
+
+    @Test fun singleSourceLookupIncludesUngroupedSourcesWithoutBrowsingGroups() {
+        val ungrouped = source.copy(id = Identifier("fixture", "other"), name = "Other source", category = null)
+        state = SearchHubState(sources = listOf(source, ungrouped), selectedSource = source.id)
+        render()
+        compose.onNodeWithTag("search_scope").performClick()
+        compose.onNodeWithText("One source").performClick()
+        compose.onNode(hasText("Source A") and hasAnyAncestor(hasTestTag("search_source_matches"))).assertIsDisplayed()
+        compose.onNodeWithTag("search_source_query").performTextInput("Other")
+        compose.onNodeWithText("Other source").performClick()
+        assertEquals(ungrouped.id, state.selectedSource)
+        assertNull(state.scope)
+    }
+
+    @Test fun sourceLookupSearchesAcrossGroupsAndClearingRestoresTheCompactPicker() {
+        val other = source.copy(id = Identifier("fixture", "wenku8"), name = "Light novel library", category = SourceCategory.Anime)
+        state = SearchHubState(sources = listOf(source, other), scope = SourceCategory.Adult)
+        render()
+        compose.onNodeWithTag("search_scope").performClick()
+        compose.onNodeWithText("One source").performClick()
+        compose.onNodeWithTag("search_source_query").performTextInput("WENKU")
+        compose.onNodeWithText("Light novel library").assertIsDisplayed()
+        compose.onNodeWithTag("search_source_query").performTextReplacement("unknown")
+        compose.onNodeWithText("No matching sources. Try another name.").assertIsDisplayed()
+        compose.onNodeWithTag("search_source_query").performTextClearance()
+        compose.onNodeWithText("Light novel library").assertDoesNotExist()
+        compose.onNodeWithTag("search_scope_back").performClick()
+        compose.onNodeWithTag("search_source_query").assertDoesNotExist()
+        compose.onNodeWithText("One source").assertIsDisplayed()
+        assertEquals(SourceCategory.Adult, state.scope)
+    }
+
+    @Test fun returningFromSourceLookupKeepsTheSelectionAndLetsGroupsBeSelectedDirectly() {
+        state = SearchHubState(query = "A book", submittedKeyword = "A book", sources = listOf(source), selectedSource = source.id)
+        render()
+        compose.onNodeWithTag("search_scope").performClick()
+        compose.onNodeWithText("One source").performClick()
+        compose.onNodeWithTag("search_source_query").performTextInput("unknown")
+        compose.onNodeWithTag("search_scope_back").performClick()
+        assertEquals(source.id, state.selectedSource)
+        assertEquals("A book", state.submittedKeyword)
+        compose.onNodeWithText("One source").performClick()
+        compose.onNodeWithTag("search_source_query").assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("")))
+        compose.onNodeWithTag("search_scope_back").performClick()
+        compose.onNodeWithTag("search_scope_options").performScrollToNode(hasText("r18"))
+        compose.onNodeWithText("r18").performClick()
+        assertNull(state.selectedSource)
+        assertEquals(SourceCategory.Adult, state.scope)
+        assertEquals("A book", state.submittedKeyword)
+    }
+
+    @Test fun emptySingleSourceCanExpandWithoutLosingTheKeyword() {
+        state = SearchHubState(query = "A book", submittedKeyword = "A book", selectedSource = source.id,
+            sources = listOf(source.copy(pending = false)))
+        render()
+        compose.onNodeWithText("No books found in Source A").assertIsDisplayed()
+        compose.onNodeWithText("Search all sources").performClick()
+        assertNull(state.selectedSource)
+        assertNull(state.scope)
+        assertEquals("A book", state.submittedKeyword)
     }
 
     @Test fun filteredEmptyPageShowsLoadMoreInsteadOfTerminalNoResults() {
@@ -173,7 +281,9 @@ class SearchHubScreenTest {
             sources = listOf(source.copy(failure = SourceSearchFailure(DiscoveryError.Network))))
         render(fontScale = 1.6f)
         compose.onNodeWithText(activity.get().getString(R.string.source_range_all)).assertIsDisplayed().performClick()
-        compose.onNodeWithText(activity.get().getString(R.string.source_category_adult)).performScrollTo().performClick()
+        val category = activity.get().getString(R.string.source_category_adult)
+        compose.onNodeWithTag("search_scope_options").performScrollToNode(hasText(category))
+        compose.onNodeWithText(category).performClick()
         compose.onNodeWithContentDescription(activity.get().getString(R.string.search_stop)).assertIsDisplayed()
         compose.onNodeWithContentDescription(activity.get().getString(R.string.search_hub_title)).assertIsDisplayed()
     }
