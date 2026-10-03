@@ -80,7 +80,8 @@ class ReaderVolumeKeysTest {
     private val controlsOpen = mutableStateOf(false)
     private val modalOpen = mutableStateOf(false)
     private val visible = mutableStateOf(true)
-    private val fraction = mutableStateOf(0.25f)
+    private val fraction = mutableStateOf(0.6f)
+    private val reduceMotion = mutableStateOf(false)
     private val interval = mutableStateOf(-1f)
     private val height = mutableStateOf(400)
     private val rtl = mutableStateOf(false)
@@ -89,8 +90,10 @@ class ReaderVolumeKeysTest {
     private var nextChapters = 0
     private var previousChapters = 0
     private var scrollProgressRestored = false
+    private var scrollReadingPositioned = false
     private val scroll = MutableScrollContentUiSate({}, {}, {}, {}, {},
-        onProgressRestored = { scrollProgressRestored = true })
+        onProgressRestored = { scrollProgressRestored = true },
+        onReadingPositioned = { scrollReadingPositioned = true })
     private lateinit var flip: MutableFlipPageContentUiState
     private val reader = MutableReaderScreenUiState(scroll)
     private val bookmarks = ReaderBookmarkSession()
@@ -114,6 +117,7 @@ class ReaderVolumeKeysTest {
         every { settings.isUsingVolumeKeyFlip } answers { enabled.value }
         every { settings.volumeKeyScrollFraction } answers { fraction.value }
         every { settings.volumeKeyContinuousFlipInterval } answers { interval.value }
+        every { settings.reduceMotion } answers { reduceMotion.value }
         every { settings.topPadding } returns 20f
         every { settings.bottomPadding } returns 20f
         every { settings.fontFamilyUri } returns Uri.EMPTY
@@ -171,7 +175,7 @@ class ReaderVolumeKeysTest {
         val viewport = scroll.lazyListState.layoutInfo.viewportSize.height
         assertEquals(360, viewport)
         tap(KeyEvent.KEYCODE_VOLUME_DOWN)
-        assertEquals(initial + 90, scroll.lazyListState.firstVisibleItemScrollOffset)
+        assertEquals(initial + 216, scroll.lazyListState.firstVisibleItemScrollOffset)
         tap(KeyEvent.KEYCODE_VOLUME_UP)
         assertEquals(initial, scroll.lazyListState.firstVisibleItemScrollOffset)
         compose.runOnIdle { fraction.value = 0.5f; height.value = 240; rtl.value = true }
@@ -180,6 +184,58 @@ class ReaderVolumeKeysTest {
         assertEquals(200, scroll.lazyListState.layoutInfo.viewportSize.height)
         tap(KeyEvent.KEYCODE_VOLUME_DOWN)
         assertEquals(before + 100, scroll.lazyListState.firstVisibleItemScrollOffset)
+    }
+
+    @Test
+    fun scrollTapAnimatesInBothDirectionsAndFinishesAfterKeyRelease() {
+        val initial = scroll.lazyListState.firstVisibleItemScrollOffset
+        compose.mainClock.autoAdvance = false
+        try {
+            for (code in listOf(KeyEvent.KEYCODE_VOLUME_DOWN, KeyEvent.KEYCODE_VOLUME_UP)) {
+                compose.runOnIdle { scrollReadingPositioned = false }
+                val start = scroll.lazyListState.firstVisibleItemScrollOffset
+                val target = if (code == KeyEvent.KEYCODE_VOLUME_DOWN) initial + 216 else initial
+                assertTrue(dispatch(code, KeyEvent.ACTION_DOWN))
+                assertTrue(dispatch(code, KeyEvent.ACTION_UP))
+                compose.mainClock.advanceTimeBy(64)
+                compose.runOnIdle {
+                    val middle = scroll.lazyListState.firstVisibleItemScrollOffset
+                    assertTrue("The text must pass through intermediate positions", middle in
+                        (minOf(start, target) + 1) until maxOf(start, target))
+                    assertTrue(scroll.lazyListState.isScrollInProgress)
+                    assertTrue(scrollReadingPositioned)
+                }
+                compose.mainClock.advanceTimeBy(240)
+                compose.runOnIdle {
+                    assertEquals(target, scroll.lazyListState.firstVisibleItemScrollOffset)
+                    assertFalse(scroll.lazyListState.isScrollInProgress)
+                }
+                compose.mainClock.advanceTimeBy(1_000)
+                compose.runOnIdle { assertEquals(target, scroll.lazyListState.firstVisibleItemScrollOffset) }
+            }
+        } finally {
+            compose.mainClock.autoAdvance = true
+        }
+    }
+
+    @Test
+    fun reducedMotionScrollsTheSameDistanceWithoutAnimation() {
+        compose.runOnIdle { reduceMotion.value = true; scrollReadingPositioned = false }
+        compose.waitForIdle()
+        val initial = scroll.lazyListState.firstVisibleItemScrollOffset
+        compose.mainClock.autoAdvance = false
+        try {
+            assertTrue(dispatch(KeyEvent.KEYCODE_VOLUME_DOWN, KeyEvent.ACTION_DOWN))
+            assertTrue(dispatch(KeyEvent.KEYCODE_VOLUME_DOWN, KeyEvent.ACTION_UP))
+            compose.mainClock.advanceTimeByFrame()
+            compose.runOnIdle {
+                assertEquals(initial + 216, scroll.lazyListState.firstVisibleItemScrollOffset)
+                assertFalse(scroll.lazyListState.isScrollInProgress)
+                assertTrue(scrollReadingPositioned)
+            }
+        } finally {
+            compose.mainClock.autoAdvance = true
+        }
     }
 
     @Test
@@ -273,8 +329,14 @@ class ReaderVolumeKeysTest {
             { enabled.value = false },
         )
         blockers.forEachIndexed { index, block ->
+            val start = scroll.lazyListState.firstVisibleItemScrollOffset
+            compose.runOnIdle { scrollReadingPositioned = false }
             assertTrue("Initial down for blocker $index", dispatch(KeyEvent.KEYCODE_VOLUME_DOWN, KeyEvent.ACTION_DOWN))
-            compose.mainClock.advanceTimeBy(120)
+            compose.mainClock.advanceTimeBy(64)
+            compose.runOnIdle {
+                assertTrue(scroll.lazyListState.firstVisibleItemScrollOffset in (start + 1) until (start + 216))
+                assertTrue(scrollReadingPositioned)
+            }
             compose.runOnIdle { block(); Snapshot.sendApplyNotifications() }
             compose.mainClock.advanceTimeBy(100)
             val stopped = scroll.lazyListState.firstVisibleItemScrollOffset

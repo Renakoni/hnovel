@@ -5,9 +5,12 @@ package indi.renakoni.nextvol.ui.book.reader.content.scroll
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -496,13 +499,20 @@ fun ScrollContentTextComponent(
                     intervalSeconds = settingState.volumeKeyContinuousFlipInterval,
                 ) { direction ->
                     speech.onManualNavigation()
-                    val consumed = listState.scrollBy(volumeKeyScrollDistance(
+                    val distance = volumeKeyScrollDistance(
                         listState.layoutInfo.viewportSize.height,
                         settingState.volumeKeyScrollFraction,
                         direction,
-                    ))
-                    if (consumed != 0f && ownsRenderer())
+                    )
+                    val canScroll = if (distance > 0f) listState.canScrollForward else listState.canScrollBackward
+                    // Allow partial movement to be saved if focus loss cancels the animation.
+                    if (canScroll && ownsRenderer())
                         uiState.onReadingPositioned(listState)
+                    if (reduceMotion || !canScroll) {
+                        listState.scrollBy(distance)
+                    } else {
+                        listState.animateScrollBy(distance, tween(durationMillis = 180, easing = FastOutSlowInEasing))
+                    }
                 }
                 .readerTapGestures { changeIsImmersive() },
     ) {
