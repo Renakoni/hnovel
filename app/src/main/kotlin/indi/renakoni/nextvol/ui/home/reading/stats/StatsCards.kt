@@ -22,6 +22,7 @@ import androidx.compose.material3.MaterialTheme.typography
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -118,23 +119,23 @@ private fun BookActivitySection(
                 text = stringResource(titleResId),
                 style = typography.titleMedium
             )
-            val bookList = books
-                .take(2)
-                .map { it.second }
-            bookList.forEach { flow ->
-                val result by flow.collectAsStateWithLifecycle(null)
-                result?.onOk {
-                    Text(
-                        text = it.title,
-                        style = typography.bodyMedium,
-                        maxLines = 1,
-                        color = colorScheme.secondary,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }?.onErr {
-                    //TODO 错误显示
-                } ?: {
-                    //TODO 加载显示
+            val bookList = books.take(2)
+            bookList.forEach { (bookId, flow) ->
+                key(bookId) {
+                    val result by flow.collectAsStateWithLifecycle(null)
+                    result?.onOk {
+                        Text(
+                            text = it.title,
+                            style = typography.bodyMedium,
+                            maxLines = 1,
+                            color = colorScheme.secondary,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }?.onErr {
+                        //TODO 错误显示
+                    } ?: {
+                        //TODO 加载显示
+                    }
                 }
             }
             if (books.size > bookList.size)
@@ -186,17 +187,19 @@ fun ActivityStatsCard(
             ).filter { it.second.isNotEmpty() }
 
             sections.forEachIndexed { index, (title, books) ->
-                BookActivitySection(
-                    titleResId = title,
-                    books = books
-                )
-
-                if (index != sections.lastIndex) {
-                    HorizontalDivider(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp)
+                key(title) {
+                    BookActivitySection(
+                        titleResId = title,
+                        books = books
                     )
+
+                    if (index != sections.lastIndex) {
+                        HorizontalDivider(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                        )
+                    }
                 }
             }
         }
@@ -223,7 +226,7 @@ fun ReadingDetailStatsCard(
                 val books = allRecords
                     .sortedBy { it.lastSeen }
                     .map { it.bookId to it.bookInformationFlow }
-                    .distinct()
+                    .distinctBy { it.first }
                 BookStack(
                     books = books,
                     count = 8,
