@@ -160,7 +160,9 @@ internal fun ScrollTextContent(layout: ScrollTextLayout, color: Color, modifier:
                 // Reuse the content identity during scroll-only placement. Still claim the slot
                 // every time (unused slots are disposed) and let Compose reuse its measurement
                 // unless constraints or child state changed. Never retain a stale Placeable.
-                subcompose(Unit, content).firstOrNull()?.measure(Constraints.fixedWidth(constraints.maxWidth))
+                // Navigation's lookahead may still hold another window. A shared slot would
+                // return that window's old text in the approach pass at this window's new offset.
+                subcompose(visible, content).firstOrNull()?.measure(Constraints.fixedWidth(constraints.maxWidth))
                     ?.placeRelative(0, layout.offsets[visible.first])
             }
         }
