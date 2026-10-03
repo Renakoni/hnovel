@@ -27,6 +27,7 @@ import io.nightfish.lightnovelreader.api.book.WordCount
 import io.nightfish.lightnovelreader.api.identifier.Identifier
 import io.nightfish.lightnovelreader.api.web.discovery.DiscoveryError
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.emptyFlow
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -271,6 +272,34 @@ class SearchHubScreenTest {
         compose.onNodeWithText("Book 0").assertDoesNotExist()
         compose.runOnIdle { state = state.copy(query = "new", submittedKeyword = "new", revision = state.revision + 1) }
         compose.onNodeWithText("Book 0").assertIsDisplayed()
+    }
+
+    @Test fun updatedMetadataIsDisplayedEvenWhenTheInformationFlowStillHoldsAnOlderPreview() {
+        val info = BookInformation("book", "Old preview", author = "Writer", description = "",
+            publishingHouse = "", wordCount = WordCount(0), lastUpdated = LocalDateTime.MIN, isComplete = false)
+        val information = flowOf(Ok(info))
+        state = SearchHubState(query = "book", submittedKeyword = "book", sources = listOf(source),
+            books = listOf(SearchHubBook("book", source.id, source.name, info, information)))
+        render()
+        compose.onNodeWithText("Old preview").assertIsDisplayed()
+        compose.runOnIdle { state = state.copy(books = state.books.map { it.copy(preview = info.copy(title = "Updated title")) }) }
+        compose.onNodeWithText("Updated title").assertIsDisplayed()
+        compose.onNodeWithText("Old preview").assertDoesNotExist()
+        assertSame(information, state.books.single().information)
+    }
+
+    @Test fun replacingTheInformationFlowClearsMetadataFromThePreviousQuery() {
+        val info = BookInformation("book", "Previous query title", author = "Writer", description = "",
+            publishingHouse = "", wordCount = WordCount(0), lastUpdated = LocalDateTime.MIN, isComplete = false)
+        state = SearchHubState(query = "book", submittedKeyword = "book", sources = listOf(source),
+            books = listOf(SearchHubBook("book", source.id, source.name, null, flowOf(Ok(info)))))
+        render()
+        compose.onNodeWithText("Previous query title").assertIsDisplayed()
+        compose.runOnIdle {
+            state = state.copy(books = state.books.map { it.copy(information = emptyFlow()) })
+        }
+        compose.onNodeWithText("Previous query title").assertDoesNotExist()
+        compose.onNodeWithText(activity.get().getString(R.string.search_book_loading)).assertIsDisplayed()
     }
 
     @Test fun editingFiltersHistoryAndSubmittingWorksWithTheImeAndAccessibleBackButton() {
