@@ -166,6 +166,38 @@ class SearchHubViewModelTest {
         verify(exactly = 0) { browsing.selectScope(any()) }
     }
 
+    @Test fun switchingSourceDuringProgressiveSearchRejectsLateResultsAndResetsPagination() = runTest(dispatcher) {
+        val release = CompletableDeferred<Unit>()
+        val a = object : Paged() {
+            override fun searchPageUpdates(type: SearchType, keyword: String, page: Int, query: String?) = flow {
+                emit(SearchPage(listOf(item("preview")), null, complete = false))
+                withContext(NonCancellable) { release.await() }
+                emit(SearchPage(listOf(item("late")), 2))
+            }
+        }
+        val b = Paged().apply { load = { _, _ -> SearchPage(listOf(item("b")), null) } }
+        val aId = add("a", a)
+        val bId = add("b", b)
+        val model = model()
+        runCurrent()
+        model.selectSource(aId)
+        model.search("Title")
+        runCurrent()
+        assertTrue(model.state.value.searching)
+        assertEquals(aId, model.state.value.books.single().source)
+        model.selectSource(bId)
+        runCurrent()
+        assertEquals(bId, model.state.value.books.single().source)
+        release.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(bId, model.state.value.books.single().source)
+        assertEquals("Title", model.state.value.submittedKeyword)
+        assertEquals(1, model.state.value.completed)
+        assertEquals(1, model.state.value.total)
+        assertFalse(model.state.value.hasMore)
+        assertFalse(model.state.value.searching)
+    }
+
     @Test fun selectedSourceSurvivesRestorationAndRemovalNeverBroadensTheSearch() = runTest(dispatcher) {
         val a = Paged()
         val b = Paged()

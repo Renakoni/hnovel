@@ -3,6 +3,7 @@ package indi.renakoni.nextvol.ui.home.explore
 import android.app.Application
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.findViewTreeOnBackPressedDispatcherOwner
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
 import androidx.compose.material3.MaterialTheme
@@ -37,6 +38,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.android.controller.ActivityController
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import org.robolectric.shadows.ShadowDialog
 import java.time.LocalDateTime
 
 @RunWith(RobolectricTestRunner::class)
@@ -195,6 +197,9 @@ class SearchHubScreenTest {
         compose.onNodeWithTag("search_scope").performClick()
         compose.onNodeWithText("One source").performClick()
         compose.onNodeWithTag("search_source_query").performTextInput("unknown")
+        compose.runOnIdle { visible = false }
+        compose.runOnIdle { visible = true }
+        compose.onNodeWithTag("search_source_query").assertIsFocused().assertTextContains("unknown")
         compose.onNodeWithTag("search_scope_back").performClick()
         assertEquals(source.id, state.selectedSource)
         assertEquals("A book", state.submittedKeyword)
@@ -206,6 +211,33 @@ class SearchHubScreenTest {
         assertNull(state.selectedSource)
         assertEquals(SourceCategory.Adult, state.scope)
         assertEquals("A book", state.submittedKeyword)
+    }
+
+    @Test
+    @Config(sdk = [30, 35])
+    fun systemBackReturnsFromSourceLookupBeforeDismissingTheScopeSheet() {
+        state = SearchHubState(query = "A book", sources = listOf(source), selectedSource = source.id)
+        render()
+        compose.onNodeWithTag("search_scope").performClick()
+        compose.onNodeWithText("One source").performClick()
+        compose.onNodeWithTag("search_source_query").performTextInput("unknown")
+        compose.onNodeWithTag("search_source_query").performImeAction()
+        compose.runOnIdle {
+            ShadowDialog.getLatestDialog().window!!.decorView.findViewTreeOnBackPressedDispatcherOwner()!!
+                .onBackPressedDispatcher.onBackPressed()
+        }
+        compose.onNodeWithTag("search_source_query").assertDoesNotExist()
+        compose.onNodeWithText("One source").assertIsDisplayed().assertIsSelected()
+        assertEquals(source.id, state.selectedSource)
+        assertEquals("A book", state.query)
+        assertFalse(back)
+        compose.runOnIdle {
+            ShadowDialog.getLatestDialog().window!!.decorView.findViewTreeOnBackPressedDispatcherOwner()!!
+                .onBackPressedDispatcher.onBackPressed()
+        }
+        compose.onNodeWithTag("search_scope_options").assertDoesNotExist()
+        compose.onNodeWithTag("search_scope").assertIsDisplayed()
+        assertFalse(back)
     }
 
     @Test fun emptySingleSourceCanExpandWithoutLosingTheKeyword() {
