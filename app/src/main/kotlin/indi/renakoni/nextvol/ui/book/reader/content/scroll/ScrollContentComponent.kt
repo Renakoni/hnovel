@@ -100,6 +100,8 @@ import indi.renakoni.nextvol.ui.book.reader.bookmark.ReaderBookmarkPosition
 import indi.renakoni.nextvol.ui.book.reader.bookmark.RegisterBookmarkCapture
 import indi.renakoni.nextvol.ui.book.reader.bookmark.anchorIn
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.filterNotNull
@@ -339,7 +341,9 @@ fun ScrollContentTextComponent(
             bookmarkReady = true
             publishInitial = !reflow && restoredProgress <= 0f && anchor == null && bookmarks?.pending == null
         } finally {
-            if (restorationOwner === attempt && ownsRenderer()) {
+            // Cancellation hands restoration to the replacement effect. Releasing the barrier
+            // here can promote a neighbour under the old pixel offset while the body reflows.
+            if (currentCoroutineContext().isActive && restorationOwner === attempt && ownsRenderer()) {
                 uiState.onProgressRestored(listState)
                 if (publishInitial) uiState.onReadingPositioned(listState)
             }
