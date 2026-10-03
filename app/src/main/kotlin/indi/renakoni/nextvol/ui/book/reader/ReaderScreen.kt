@@ -379,10 +379,7 @@ fun ReaderScreen(
             onSleepTimer = onSleepTimer,
         )
     }
-    AnimatedVisibility(visible = showSettingsBottomSheet,
-        enter = if (settingState.reduceMotion) EnterTransition.None else fadeIn() + expandIn(),
-        exit = if (settingState.reduceMotion) ExitTransition.None else shrinkOut() + fadeOut(),
-    ) {
+    if (showSettingsBottomSheet) {
         CompositionLocalProvider(LocalReaderLayoutResult provides layoutResult) {
         SettingsBottomSheet(
             sheetState = settingsBottomSheetState,
@@ -395,7 +392,12 @@ fun ReaderScreen(
                 showSettingsBottomSheet = false
             },
             settingState = settingState,
-            onClickThemeSettings = onClickThemeSettings
+            onClickThemeSettings = {
+                // Unmount the reader sheet before the destination transition starts.
+                showSettingsBottomSheet = false
+                coroutineScope.launch { settingsBottomSheetState.hide() }
+                onClickThemeSettings()
+            }
         )
         }
     }
