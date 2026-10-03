@@ -85,6 +85,7 @@ import indi.renakoni.nextvol.tts.ReadAloudState
 import indi.renakoni.nextvol.tts.SpeechAction
 import indi.renakoni.nextvol.tts.SpeechPhase
 import indi.renakoni.nextvol.ui.book.reader.content.ContentComponent
+import indi.renakoni.nextvol.ui.book.reader.content.scroll.ScrollContentUiState
 import indi.renakoni.nextvol.ui.book.reader.content.LocalReaderVolumeKeysEnabled
 import indi.renakoni.nextvol.ui.book.reader.content.LocalReaderSpeechFollow
 import indi.renakoni.nextvol.ui.book.reader.content.ReaderSpeechFollow
@@ -148,8 +149,10 @@ fun ReaderScreen(
     val backBlockMode = settingState.backBlockMode
     var lastBackPressTime: Long by remember { mutableLongStateOf(0) }
     var showSettingsBottomSheet by remember { mutableStateOf(false) }
-    val layoutResult = remember(readingScreenUiState.contentUiState,
-        readingScreenUiState.contentUiState?.readingChapterContent?.get()) {
+    val contentState = readingScreenUiState.contentUiState
+    // Scroll geometry depends on the viewport, not the chapter. Flip capability still does.
+    val layoutResult = remember(contentState,
+        if (contentState is ScrollContentUiState) null else contentState?.readingChapterContent?.get()) {
         mutableStateOf<ReaderLayoutResult?>(null)
     }
     var showChapterSelectionBottomSheet by remember { mutableStateOf(false) }
@@ -188,12 +191,14 @@ fun ReaderScreen(
         bookmarkSession.notice = null
         onBookmarkNoticeShown()
     }
-    LaunchedEffect(readingScreenUiState.contentUiState?.readingChapterContent, bookmarkSession.pending) {
-        val pending = bookmarkSession.pending
-        val content = readingScreenUiState.contentUiState
-        if (pending != null && content?.readingChapterId == pending.chapterId && content.readingChapterContent?.isErr == true) {
-            bookmarkSession.pending = null
-            bookmarkSession.notice = R.string.reader_bookmarks_load_failed
+    if (bookmarkSession.pending != null) {
+        LaunchedEffect(readingScreenUiState.contentUiState?.readingChapterContent, bookmarkSession.pending) {
+            val pending = bookmarkSession.pending
+            val content = readingScreenUiState.contentUiState
+            if (pending != null && content?.readingChapterId == pending.chapterId && content.readingChapterContent?.isErr == true) {
+                bookmarkSession.pending = null
+                bookmarkSession.notice = R.string.reader_bookmarks_load_failed
+            }
         }
     }
     val settingsBottomSheetState = rememberBottomSheetState(initialValue = SheetValue.Hidden)
