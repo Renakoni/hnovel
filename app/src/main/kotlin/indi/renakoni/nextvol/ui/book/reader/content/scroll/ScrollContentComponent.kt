@@ -5,10 +5,12 @@ package indi.renakoni.nextvol.ui.book.reader.content.scroll
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -496,13 +498,28 @@ fun ScrollContentTextComponent(
                     intervalSeconds = settingState.volumeKeyContinuousFlipInterval,
                 ) { direction ->
                     speech.onManualNavigation()
-                    val consumed = listState.scrollBy(volumeKeyScrollDistance(
+                    val distance = volumeKeyScrollDistance(
                         listState.layoutInfo.viewportSize.height,
                         settingState.volumeKeyScrollFraction,
                         direction,
-                    ))
-                    if (consumed != 0f && ownsRenderer())
-                        uiState.onReadingPositioned(listState)
+                    )
+                    val canScroll = if (distance > 0f) listState.canScrollForward else listState.canScrollBackward
+                    listState.scroll {
+                        var consumed = 0f
+                        fun moveTo(target: Float) {
+                            val delta = scrollBy(target - consumed)
+                            consumed += delta
+                            // Record actual movement, including frames before cancellation.
+                            if (delta != 0f && ownsRenderer()) uiState.onReadingPositioned(listState)
+                        }
+                        if (reduceMotion || !canScroll) {
+                            moveTo(distance)
+                        } else {
+                            animate(0f, distance, animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing)) {
+                                value, _ -> moveTo(value)
+                            }
+                        }
+                    }
                 }
                 .readerTapGestures { changeIsImmersive() },
     ) {
