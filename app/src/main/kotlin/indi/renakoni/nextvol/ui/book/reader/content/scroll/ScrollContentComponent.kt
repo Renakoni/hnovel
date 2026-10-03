@@ -6,12 +6,11 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.gestures.animateScrollBy
-import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -505,13 +504,21 @@ fun ScrollContentTextComponent(
                         direction,
                     )
                     val canScroll = if (distance > 0f) listState.canScrollForward else listState.canScrollBackward
-                    // Allow partial movement to be saved if focus loss cancels the animation.
-                    if (canScroll && ownsRenderer())
-                        uiState.onReadingPositioned(listState)
-                    if (reduceMotion || !canScroll) {
-                        listState.scrollBy(distance)
-                    } else {
-                        listState.animateScrollBy(distance, tween(durationMillis = 180, easing = FastOutSlowInEasing))
+                    listState.scroll {
+                        var consumed = 0f
+                        fun moveTo(target: Float) {
+                            val delta = scrollBy(target - consumed)
+                            consumed += delta
+                            // Record actual movement, including frames before cancellation.
+                            if (delta != 0f && ownsRenderer()) uiState.onReadingPositioned(listState)
+                        }
+                        if (reduceMotion || !canScroll) {
+                            moveTo(distance)
+                        } else {
+                            animate(0f, distance, animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing)) {
+                                value, _ -> moveTo(value)
+                            }
+                        }
                     }
                 }
                 .readerTapGestures { changeIsImmersive() },

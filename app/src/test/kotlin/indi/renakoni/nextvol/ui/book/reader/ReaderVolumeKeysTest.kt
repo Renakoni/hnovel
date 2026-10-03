@@ -6,6 +6,7 @@ import android.view.KeyEvent
 import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.MutatePriority
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -34,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.github.michaelbull.result.Ok
 import indi.renakoni.nextvol.theme.AppTheme
@@ -51,7 +53,10 @@ import io.mockk.mockk
 import io.nightfish.lightnovelreader.api.content.component.AbstractContentComponent
 import io.nightfish.lightnovelreader.api.content.component.AbstractContentComponentData
 import io.nightfish.lightnovelreader.api.identifier.Identifier
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -214,6 +219,55 @@ class ReaderVolumeKeysTest {
                 compose.runOnIdle { assertEquals(target, scroll.lazyListState.firstVisibleItemScrollOffset) }
             }
         } finally {
+            compose.mainClock.autoAdvance = true
+        }
+    }
+
+    @Test
+    fun cancelledBeforeMovementDoesNotRecordRestoredPositionAsReading() {
+        val initial = scroll.lazyListState.firstVisibleItemScrollOffset
+        compose.mainClock.autoAdvance = false
+        try {
+            compose.runOnIdle { scrollReadingPositioned = false }
+            assertTrue(dispatch(KeyEvent.KEYCODE_VOLUME_DOWN, KeyEvent.ACTION_DOWN))
+            compose.mainClock.advanceTimeByFrame()
+            compose.runOnIdle {
+                assertTrue(scroll.lazyListState.isScrollInProgress)
+                assertEquals(initial, scroll.lazyListState.firstVisibleItemScrollOffset)
+                owner.lifecycle.currentState = Lifecycle.State.STARTED
+            }
+            compose.mainClock.advanceTimeBy(500)
+            compose.runOnIdle {
+                assertEquals(initial, scroll.lazyListState.firstVisibleItemScrollOffset)
+                assertFalse(scroll.lazyListState.isScrollInProgress)
+                assertFalse("Cancelled input must not authorize saving the restored position", scrollReadingPositioned)
+            }
+        } finally {
+            compose.mainClock.autoAdvance = true
+        }
+    }
+
+    @Test
+    fun touchScrollRejectsVolumeMovementWithoutRecordingReading() {
+        val initial = scroll.lazyListState.firstVisibleItemScrollOffset
+        compose.mainClock.autoAdvance = false
+        val touch = compose.runOnIdle {
+            scrollReadingPositioned = false
+            activity.get().lifecycleScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                scroll.lazyListState.scroll(MutatePriority.UserInput) { awaitCancellation() }
+            }
+        }
+        try {
+            assertTrue(dispatch(KeyEvent.KEYCODE_VOLUME_DOWN, KeyEvent.ACTION_DOWN))
+            assertTrue(dispatch(KeyEvent.KEYCODE_VOLUME_DOWN, KeyEvent.ACTION_UP))
+            compose.mainClock.advanceTimeBy(500)
+            compose.runOnIdle {
+                assertTrue(touch.isActive)
+                assertEquals(initial, scroll.lazyListState.firstVisibleItemScrollOffset)
+                assertFalse(scrollReadingPositioned)
+            }
+        } finally {
+            compose.runOnIdle { touch.cancel() }
             compose.mainClock.autoAdvance = true
         }
     }
