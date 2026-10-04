@@ -87,7 +87,6 @@ import indi.renakoni.nextvol.ui.book.reader.content.LocalReaderSpeechFollow
 import indi.renakoni.nextvol.ui.book.reader.content.PrepareReaderSpeechIndex
 import indi.renakoni.nextvol.ui.book.reader.content.LocalReaderSpeechRanges
 import indi.renakoni.nextvol.ui.book.reader.content.readerSpeechManualScroll
-import indi.renakoni.nextvol.ui.components.Loading
 import indi.renakoni.nextvol.ui.home.settings.data.MenuOptions
 import indi.renakoni.nextvol.utils.LocalSnackbarHost
 import indi.renakoni.nextvol.utils.readerTextColor
@@ -542,7 +541,7 @@ fun ScrollContentTextComponent(
                     result?.onOk {
                         val prepared = preparedChapters[index]
                         if (prepared == null) Box(Modifier.fillParentMaxHeight().fillMaxWidth()) {
-                            ChapterContentLoading()
+                            if (showContent) ChapterContentLoading()
                         } else TextContent(
                             modifier = modifier,
                             settingState = settingState,
@@ -553,7 +552,9 @@ fun ScrollContentTextComponent(
                         ChapterContentError(it, pair?.first?.let(chapterTitle)) {
                             pair?.first?.let(uiState.retryChapter)
                         }
-                    } ?: Box(Modifier.fillParentMaxHeight().fillMaxWidth()) { ChapterContentLoading() }
+                    } ?: Box(Modifier.fillParentMaxHeight().fillMaxWidth()) {
+                        if (showContent) ChapterContentLoading()
+                    }
                 }
             }
         }
@@ -562,7 +563,7 @@ fun ScrollContentTextComponent(
             awaitPointerEventScope {
                 while (true) awaitPointerEvent().changes.forEach { it.consume() }
             }
-        }) { Loading() }
+        }) { ChapterContentLoading() }
     }
 }
 

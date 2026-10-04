@@ -177,6 +177,8 @@ class ReaderScreenUpdatesTest {
                 }
             }
         }
+        // Compose can become idle while chapter preparation/restoration is still running.
+        compose.waitUntil(5_000) { compose.onNodeWithText("Body a").isDisplayed() }
         compose.onNodeWithText("Body a").assertIsDisplayed()
     }
 

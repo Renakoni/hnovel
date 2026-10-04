@@ -30,6 +30,7 @@ import indi.renakoni.nextvol.data.bookmark.ReadingBookmark
 import indi.renakoni.nextvol.theme.AppTheme
 import indi.renakoni.nextvol.ui.LocalAppTheme
 import indi.renakoni.nextvol.ui.book.reader.LocalReaderTextLayout
+import indi.renakoni.nextvol.ui.book.reader.MutableReaderScreenUiState
 import indi.renakoni.nextvol.ui.book.reader.ReaderSettings
 import indi.renakoni.nextvol.ui.book.reader.bookmark.LocalReaderBookmarks
 import indi.renakoni.nextvol.ui.book.reader.bookmark.ReaderBookmarkSession
@@ -118,13 +119,28 @@ class ScrollEntryLoadingTest {
         assertEquals(1, clicks)
     }
 
+    @Test fun firstReaderModeAppearsAtFullSizeWithoutAnInnerScaleTransition() {
+        every { settings.reduceMotion } returns false
+        val screen = MutableReaderScreenUiState(null)
+        mount(screen)
+        compose.mainClock.autoAdvance = false
+        compose.runOnUiThread { screen.contentUiState = state }
+        repeat(4) {
+            compose.mainClock.advanceTimeByFrame()
+            compose.waitForIdle()
+        }
+        val bounds = compose.onAllNodes(loading).fetchSemanticsNodes().single().boundsInRoot
+        assertEquals("Initial loader must use the final viewport scale", 46f, bounds.width, 0.5f)
+        compose.mainClock.autoAdvance = true
+    }
+
     private fun loadChapters() {
         state.contentList[0] = "previous" to Ok(chapter("previous", next = "current"))
         state.contentList[1] = "current" to Ok(chapter("current", "previous", "next"))
         state.contentList[2] = "next" to Ok(chapter("next", prev = "current"))
     }
 
-    private fun mount() {
+    private fun mount(readerState: MutableReaderScreenUiState? = null) {
         compose.runOnUiThread {
             activity.get().setContent {
                 MaterialTheme {
@@ -132,8 +148,10 @@ class ScrollEntryLoadingTest {
                         LocalReaderBookmarks provides bookmarks,
                         LocalReaderTextLayout provides rememberReaderTextLayout(settings)) {
                         Box(Modifier.size(320.dp)) {
-                            ScrollContentComponent(Modifier, state, settings,
+                            if (readerState == null) ScrollContentComponent(Modifier, state, settings,
                                 mockk { every { getFlow() } returns flowOf(Uri.EMPTY) }, PaddingValues(0.dp), {}, {}, {})
+                            else indi.renakoni.nextvol.ui.book.reader.Content(true, readerState, settings,
+                                mockk { every { getFlow() } returns flowOf(Uri.EMPTY) }, {}, {}, {})
                         }
                     }
                 }

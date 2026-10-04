@@ -63,6 +63,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -92,7 +95,6 @@ import indi.renakoni.nextvol.ui.book.reader.content.ReaderSpeechFollow
 import indi.renakoni.nextvol.ui.components.AnimatedText
 import indi.renakoni.nextvol.ui.components.AnimatedTextLine
 import indi.renakoni.nextvol.ui.components.LnrSnackbar
-import indi.renakoni.nextvol.ui.components.RollingNumber
 import indi.renakoni.nextvol.ui.home.settings.data.MenuOptions
 import indi.renakoni.nextvol.ui.tts.ReadAloudSheet
 import indi.renakoni.nextvol.utils.LocalClaimSnackbarHost
@@ -472,7 +474,9 @@ fun Content(
         Box(Modifier.fillMaxSize()) {
             AnimatedContent(
                 readingScreenUiState.contentUiState,
-                transitionSpec = { readerContentTransform(settingState.reduceMotion) },
+                // Navigation already animates entry. The first renderer must use its final size;
+                // only an explicit switch between two existing modes needs a content transition.
+                transitionSpec = { readerContentTransform(settingState.reduceMotion || initialState == null || targetState == null) },
                 label = "ContentAnimate"
             ) { contentUiState ->
                 // Controls cover the reading viewport; outgoing animated modes must release input.
@@ -700,14 +704,7 @@ fun Indicator(
         ) {
             if (enableBatteryIndicator) {
                 val batLevel = rememberReaderBatteryLevel().value
-                if (batLevel != null) RollingNumber(
-                    animationEnabled = !LocalReduceReaderMotion.current,
-                    modifier = Modifier.align(Alignment.CenterVertically),
-                    number = batLevel,
-                    style = typography.bodyLarge,
-                    color = colorScheme.onSurfaceVariant,
-                    length = 3
-                ) else Text("--", style = typography.bodyLarge, color = colorScheme.onSurfaceVariant)
+                ReaderIndicatorNumber(batLevel, typography.bodyLarge)
                 Text(
                     text = "%",
                     style = typography.bodyLarge,
@@ -770,15 +767,10 @@ fun Indicator(
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (enableReadingChapterProgressIndicator) {
-                RollingNumber(
-                    animationEnabled = !LocalReduceReaderMotion.current,
-                    modifier = Modifier.align(Alignment.CenterVertically),
+                ReaderIndicatorNumber(
                     number = (readingChapterProgress * 100).toInt(),
-                    style = typography.bodyLarge.copy(
-                        fontWeight = FontWeight.W500
-                    ),
-                    color = colorScheme.onSurfaceVariant,
-                    length = 3
+                    style = typography.bodyLarge.copy(fontWeight = FontWeight.W500),
+                    modifier = Modifier.testTag("reader-progress-number"),
                 )
                 Text(
                     text = "%",
@@ -788,5 +780,16 @@ fun Indicator(
                 )
             }
         }
+    }
+}
+
+/** Fixed digit width keeps the title still; the value itself follows progress immediately. */
+@Composable
+private fun ReaderIndicatorNumber(number: Int?, style: TextStyle, modifier: Modifier = Modifier) {
+    val numberStyle = style.copy(fontFeatureSettings = "tnum")
+    Box(modifier, contentAlignment = Alignment.CenterEnd) {
+        // Two text nodes replace three rolling columns (sixty text nodes) per number.
+        Text("000", Modifier.clearAndSetSemantics {}, style = numberStyle, color = Color.Transparent)
+        Text(number?.toString() ?: "--", style = numberStyle, color = colorScheme.onSurfaceVariant)
     }
 }

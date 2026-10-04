@@ -23,7 +23,7 @@ flowchart TD
     List --> Text[ScrollTextContent: 放置阶段确定可见片段]
     Text --> Draw[ReaderTextFragmentContent: 测量 / 选择 / 绘制]
     List --> Progress[ScrollReadingProgress]
-    Progress --> Indicator[ReaderScreen.Indicator / RollingNumber]
+    Progress --> Indicator[ReaderScreen.Indicator / ReaderIndicatorNumber]
     Progress --> Save[阅读进度保存]
     State --> Chrome[章节标题 / 上下章按钮 / 目录]
     State --> Panel[书源面板绑定]
@@ -44,6 +44,8 @@ flowchart TD
 主要入口：[ReaderScreen.kt](../app/src/main/kotlin/indi/renakoni/nextvol/ui/book/reader/ReaderScreen.kt)、[Navigation.kt](../app/src/main/kotlin/indi/renakoni/nextvol/ui/book/reader/Navigation.kt)、[ScrollContentComponent.kt](../app/src/main/kotlin/indi/renakoni/nextvol/ui/book/reader/content/scroll/ScrollContentComponent.kt)。
 
 ## 从进入阅读页到正文可见
+
+首次 `null → 渲染器` 直接使用最终尺寸，导航负责页面入场；只有两个已存在模式之间的切换才使用正文过渡。滚动列表仍在遮罩下完成测量与恢复，但隐藏章节占位符不创建加载动画，只保留其高度。可见加载状态使用简单圆形指示器，避免在首次组合中反复构造多边形变形动画。底栏电量与百分比保持三位数字宽度，直接显示新值，避免两组滚动数字列带来的节点创建和测量。
 
 | 阶段 | 调用入口与发布内容 | 线程、身份与退出条件 |
 | --- | --- | --- |
@@ -128,7 +130,7 @@ sequenceDiagram
 | `ReaderScreen` 的布局结果容器 | 滚动模式只按模式对象记忆；其他模式继续将当前成功正文作为 key | 滚动几何与章节无关，避免因晋升替换 provider；模式切换仍创建新容器，翻页章节变化仍使旧结果失效。 |
 | `ReaderScreen` 的书签失败 effect | 仅存在 pending 书签时读取当前章节内容作为 effect key | 普通阅读不为一个空操作订阅窗口；pending 出现、章节失败或请求替换时仍会更新。 |
 | 工具栏槽位 | 菜单显示时读取 `chapterTitle` 与当前章上下邻接关系 | 需要及时更新标题和按钮；局部槽位重组不等于整个 `ReaderScreen` 或导航重组。 |
-| `Content` 的指示器槽位 | 当前章节标题与 `readingProgress` | 百分比有节流，晋升也会同步写进度；固定数字槽位避免位数改变时集中建节点，但动画仍有成本。 |
+| `Content` 的指示器槽位 | 当前章节标题与 `readingProgress` | 百分比有节流，晋升也会同步写进度；底栏数字用固定宽度的普通文本立即更新，避免入场预建滚动数字列和恢复时的数字滚动。 |
 | 目录选择 | 目录弹层内读取当前章节 ID 与目录数据 | 当前章变更要更新选中项；目录刷新不能无故抹掉手动浏览的卷和位置。 |
 | 书源面板 | `Navigation` 的 effect 内读取模式对象与章节 ID；打开面板时再即时绑定 | 章节变化使旧上下文失效，但仅此观察不使导航组合失效。 |
 | 正文渲染器 | 窗口、列表、当前章、排版输入与活跃身份 | 准备任务、恢复和当前正文的必要更新仍要执行，不能为了减少重组展示旧数据。 |
@@ -230,7 +232,7 @@ adb -s <serial> shell pm art dump <package>
 | 重排取消、章节晋升屏障与原文位置 | [ReaderPositionInstrumentedTest](../app/src/androidTest/kotlin/indi/renakoni/nextvol/reader/ReaderPositionInstrumentedTest.kt) |
 | 原文位置、退出模式的所有权 | [ReaderPositionSessionTest](../app/src/test/kotlin/indi/renakoni/nextvol/ui/book/reader/ReaderPositionSessionTest.kt)、`ReaderModeHostTest` |
 | 实际页面布局与设置文案 | [ReaderLayoutPolicyTest](../app/src/test/kotlin/indi/renakoni/nextvol/ui/book/reader/ReaderLayoutPolicyTest.kt)、`ReaderPageLayoutSettingsTest` |
-| 标题/目录、数字槽、书源面板 | `ReaderDirectoryScreenTest`、`RollingNumberTest`、`ReaderSourcePanelViewModelTest` |
+| 标题/目录、数字槽、书源面板 | `ReaderDirectoryScreenTest`、`ReaderBatteryTest`、`ReaderSourcePanelViewModelTest` |
 | 书签、朗读与模式动画 | `ReaderBookmarksUiTest`、`FlipSpeechFollowTest`、`ReaderMotionTest` |
 
 例如修改 `ReaderScreen` 的布局结果归属后，可先运行：
