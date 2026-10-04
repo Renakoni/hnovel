@@ -33,6 +33,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.github.michaelbull.result.Result
+import com.github.michaelbull.result.get
 import com.github.michaelbull.result.onErr
 import com.github.michaelbull.result.onOk
 import indi.renakoni.nextvol.R
@@ -41,12 +42,9 @@ import indi.renakoni.nextvol.ui.home.reading.stats.detailed.BookStack
 import indi.renakoni.nextvol.ui.home.reading.stats.detailed.StatsCard
 import indi.renakoni.nextvol.ui.home.reading.stats.detailed.StatsDetailedUiState
 import indi.renakoni.nextvol.ui.home.reading.stats.detailed.currentDateRange
-import indi.renakoni.nextvol.utils.stats.generateTimeBarItems
 import io.nightfish.lightnovelreader.api.book.BookInformation
 import io.nightfish.lightnovelreader.api.error.WebRequestError
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.flowOf
 import java.time.LocalDate
 
 val predefinedColors = listOf(
@@ -254,22 +252,24 @@ fun ReadingTimeBar(
         assignColors(recordList)
     }
 
-    val barItemsFlow = remember(recordList) {
-        generateTimeBarItems(
-            recordList,
-            colorMap
-        ).let { flows ->
-            if (flows.isEmpty()) {
-                flowOf(emptyList())
-            } else {
-                combine(flows) {
-                    it.toList()
-                }
+    val groupedTime = remember(recordList) {
+        recordList.groupBy { it.bookId }.values
+            .map { it.first() to it.sumOf(BookRecord::seconds) }
+            .sortedByDescending { it.second }
+    }
+    // Times belong to the committed period. Metadata may arrive later, without holding back
+    // those times or restarting subscriptions for books that remain in the visible list.
+    val barItems = buildList {
+        groupedTime.take(8).forEach { (record, seconds) ->
+            key(record.bookId) {
+                val information by record.bookInformationFlow.collectAsStateWithLifecycle(null)
+                add(TimeBarItem(information?.get()?.title ?: "Unknown", seconds,
+                    colorMap[record.bookId] ?: Color.Gray))
             }
         }
+        val othersTime = groupedTime.drop(8).sumOf { it.second }
+        if (othersTime > 0) add(TimeBarItem("Others", othersTime, Color.Gray))
     }
-
-    val barItems by barItemsFlow.collectAsStateWithLifecycle(emptyList())
     val normalizedItems = remember(barItems) {
         barItems.normalize()
     }

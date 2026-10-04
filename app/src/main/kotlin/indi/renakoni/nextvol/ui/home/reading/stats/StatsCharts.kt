@@ -29,6 +29,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import com.patrykandpatrick.vico.compose.cartesian.CartesianChartHost
 import com.patrykandpatrick.vico.compose.cartesian.CartesianDrawingContext
+import com.patrykandpatrick.vico.compose.cartesian.Zoom
 import com.patrykandpatrick.vico.compose.cartesian.axis.HorizontalAxis
 import com.patrykandpatrick.vico.compose.cartesian.axis.VerticalAxis
 import com.patrykandpatrick.vico.compose.cartesian.axis.rememberAxisGuidelineComponent
@@ -341,7 +342,12 @@ fun ReadingTimeStatsChart(
                 .fillMaxWidth()
                 .height(230.dp),
             scrollState = rememberVicoScrollState(scrollEnabled = viewOption != StatsViewOption.Weekly),
-            zoomState = rememberVicoZoomState(zoomEnabled = false)
+            zoomState = rememberVicoZoomState(
+                zoomEnabled = false,
+                initialZoom = remember(viewOption) {
+                    if (viewOption == StatsViewOption.Weekly) Zoom.Content else Zoom.max(Zoom.fixed(), Zoom.Content)
+                },
+            )
         )
 
         when (viewOption) {
